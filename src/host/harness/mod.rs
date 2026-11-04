@@ -60,11 +60,10 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::core::HostCore;
+use crate::host::device_core::DeviceCore;
 use crate::host::harness::harness_builder::{HarnessBuilder, TARGET_LABEL};
-use crate::host::offscreen;
-use crate::host::wake_signal::WakeSignal;
-use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, WindowDriver};
+use crate::host::headless_window::{HeadlessDepth, HeadlessFrame, HeadlessWindow};
+use crate::host::window_driver::{FrameSpec, TargetKey};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::response_state::ResponseState;
@@ -77,15 +76,15 @@ use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::capture::DRAG_THRESHOLD;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::reduce_preference::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::inspected_widget::InspectedWidget;
-use crate::window::window_commands::{WindowCommand, WindowCommands};
+use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
-use std::sync::Arc;
 use std::time::Duration;
 
 /// The ambient font size this crate's unit tests frame at, pinned so the default text size can
@@ -116,15 +115,9 @@ const FIXTURE_FONT_SIZE: f32 = 16.0;
 #[derive(Debug)]
 #[must_use]
 pub struct Harness {
-    core: HostCore,
-    driver: WindowDriver,
-    depth: FrameDepth,
-    /// The texture a painted frame paints into, at [`Depth::Gpu`](crate::Depth::Gpu): one, kept
-    /// between frames, so a still frame paints nothing.
-    target: Option<OwnedTarget>,
-    physical: UVec2,
-    system_scale: SystemScale,
-    refresh_millihertz: Option<u32>,
+    window: HeadlessWindow,
+    /// How far frames run, and the window's size, held by its texture where it paints.
+    paint: HarnessPaint,
     /// Moves only on [`Self::advance`] and [`Self::at`], and the frames [`Self::settle`] and
     /// [`Self::play`] run.
     time: Duration,
@@ -138,24 +131,84 @@ pub struct Harness {
     settle_frames: u32,
     /// The real time a settle waits for a wake while the app is busy.
     background_wait: Duration,
-    /// The wakes the window's [`Waker`](crate::Waker) sends, which the next frame takes.
-    wake: Arc<WakeSignal>,
     /// Every change the frames made to a window, oldest first ([`log_window_command`]).
     window_commands: Vec<WindowCommand>,
-    /// One frame's commands, drained into `window_commands`.
-    drained: WindowCommands,
     /// Frames run, which a settle counts by.
     frames: u32,
 }
 
-/// What [`HarnessBuilder::build`] seals besides the core and the driver.
+/// How far a harness's frames run, with the window's size: kept by the texture of a window that
+/// paints, beside the device it paints with, so the size, the paint and the device are one fact.
+/// Refused: the depth, an optional target and the core's optional device stored apart, which
+/// each check read a different one of.
+#[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one per harness, held in place: a box would cost a pointer chase and save nothing"
+)]
+enum HarnessPaint {
+    /// Record through damage, and build no draw list.
+    Record { size: UVec2 },
+    /// Build the draw list too, and paint nothing.
+    Compose { size: UVec2 },
+    /// Paint into `target` on `device`: one target, kept between frames, so a still frame
+    /// paints nothing.
+    Gpu {
+        target: OwnedTarget,
+        device: DeviceCore,
+    },
+}
+
+impl HarnessPaint {
+    const fn paints(&self) -> bool {
+        matches!(self, Self::Gpu { .. })
+    }
+
+    /// The target the window's frames are laid out for: its texture where it paints, else an
+    /// 8-bit sRGB one of its size that copies.
+    fn target_key(&self) -> TargetKey {
+        match self {
+            Self::Record { size } | Self::Compose { size } => Self::unpainted(*size),
+            Self::Gpu { target, .. } => TargetKey::of(target.as_target()),
+        }
+    }
+
+    const fn unpainted(size: UVec2) -> TargetKey {
+        TargetKey {
+            physical: size,
+            format: TargetFormat::RGBA8_SRGB,
+            gives_copy: true,
+        }
+    }
+
+    /// How far the next frame runs, on the target [`Self::target_key`] names.
+    fn depth(&mut self) -> HeadlessDepth<'_> {
+        match self {
+            Self::Record { size } => HeadlessDepth::Record {
+                target: Self::unpainted(*size),
+            },
+            Self::Compose { size } => HeadlessDepth::Compose {
+                target: Self::unpainted(*size),
+            },
+            Self::Gpu { target, device } => HeadlessDepth::Paint {
+                device,
+                target: target.as_target(),
+            },
+        }
+    }
+
+    const fn target_mut(&mut self) -> Option<&mut OwnedTarget> {
+        match self {
+            Self::Record { .. } | Self::Compose { .. } => None,
+            Self::Gpu { target, .. } => Some(target),
+        }
+    }
+}
+
+/// What [`HarnessBuilder::build`] seals besides the window.
 #[derive(Debug)]
 struct Seal {
-    depth: FrameDepth,
-    target: Option<OwnedTarget>,
-    physical: UVec2,
-    system_scale: SystemScale,
-    refresh_millihertz: Option<u32>,
+    paint: HarnessPaint,
     frame_dt: Duration,
     settle_frames: u32,
     background_wait: Duration,
@@ -182,31 +235,22 @@ impl Harness {
         HarnessBuilder::new(size)
     }
 
-    fn open(core: HostCore, driver: WindowDriver, seal: Seal) -> Self {
+    fn open(window: HeadlessWindow, seal: Seal) -> Self {
         let mut harness = Self {
-            core,
-            driver,
-            depth: seal.depth,
-            target: seal.target,
-            physical: seal.physical,
-            system_scale: seal.system_scale,
-            refresh_millihertz: seal.refresh_millihertz,
+            window,
+            paint: seal.paint,
             time: Duration::ZERO,
             held: [None; PointerButton::COUNT],
             last_press: None,
             frame_dt: seal.frame_dt,
             settle_frames: seal.settle_frames,
             background_wait: seal.background_wait,
-            wake: Arc::default(),
             window_commands: Vec::new(),
-            drained: WindowCommands::default(),
             frames: 0,
         };
-        let waker = harness.wake.waker();
-        harness.driver.ui.set_waker(waker);
         #[cfg(test)]
         {
-            harness.driver.ui.theme_mut().text.font_size = FIXTURE_FONT_SIZE;
+            harness.window.driver.ui.theme_mut().text.font_size = FIXTURE_FONT_SIZE;
         }
         harness.sync_display();
         harness.mark_warm();
@@ -239,7 +283,7 @@ impl Harness {
         self.deliver_held_input(&mut |ui: &mut Ui| {
             record(ui);
         });
-        let mut warmup = self.driver.ui.frame_runtime().is_first_frame();
+        let mut warmup = self.window.driver.ui.frame_runtime().is_first_frame();
         let mut first = None;
         self.step(|ui| {
             // `record` runs on every pass: skipping it would record an empty tree.
@@ -302,7 +346,7 @@ impl Harness {
     /// Move the clock past the double-click interval, so the next press starts a new run of
     /// clicks. Runs no frame.
     pub fn advance_past_double_click(&mut self) -> &mut Self {
-        let interval = self.driver.ui.double_click_interval();
+        let interval = self.window.driver.ui.double_click_interval();
         self.advance(interval + Duration::from_millis(1))
     }
 
@@ -315,11 +359,15 @@ impl Harness {
     /// At [`Depth::Gpu`](crate::Depth::Gpu), when either side is zero or past the device's
     /// largest 2D texture.
     pub fn resize(&mut self, size: UVec2) -> &mut Self {
-        self.physical = size;
-        if let Some(target) = &mut self.target
-            && target.size() != size
-        {
-            *target = target.resized(TARGET_LABEL, size);
+        match &mut self.paint {
+            HarnessPaint::Record { size: held } | HarnessPaint::Compose { size: held } => {
+                *held = size;
+            }
+            HarnessPaint::Gpu { target, .. } => {
+                if target.size() != size {
+                    *target = target.resized(TARGET_LABEL, size);
+                }
+            }
         }
         self.sync_display();
         self
@@ -329,7 +377,7 @@ impl Harness {
     /// monitor of another density does; the window keeps its physical size, which
     /// [`Self::resize`] moves. The app's own scale stays on top.
     pub fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self {
-        self.system_scale = scale;
+        self.window.system_scale = scale;
         self.sync_display();
         self
     }
@@ -337,7 +385,7 @@ impl Harness {
     /// Report the monitor's refresh rate, which repaint wakes coalesce to, from the next frame
     /// on; `None` reports none.
     pub fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
-        self.refresh_millihertz = millihertz;
+        self.window.refresh_millihertz = millihertz;
         self.sync_display();
         self
     }
@@ -346,21 +394,24 @@ impl Harness {
     /// start, reports nothing, so [`SchemePreference::System`](crate::SchemePreference::System)
     /// shows the fallback. The next frame shows the resolved scheme.
     pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
-        self.driver.ui.set_system_color_scheme(scheme);
+        self.window
+            .set_preferences(|preferences| preferences.color_scheme = scheme);
         self
     }
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.driver.ui.set_system_motion_reduced(reduced);
+        self.window
+            .set_preferences(|preferences| preferences.motion = Reduction::of(reduced));
         self
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.driver.ui.set_system_transparency_reduced(reduced);
+        self.window
+            .set_preferences(|preferences| preferences.transparency = Reduction::of(reduced));
         self
     }
 
@@ -373,13 +424,13 @@ impl Harness {
                     "{button:?} is already held; release it before pressing it again",
                 );
                 self.held[button.idx()] = Some(PressOrigin {
-                    at: self.driver.ui.input().pointer_pos(),
+                    at: self.window.driver.ui.input().pointer_pos(),
                 });
             }
             InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
             _ => {}
         }
-        self.driver.ui.on_input(event, self.time)
+        self.window.driver.ui.on_input(event, self.time)
     }
 
     /// Move the pointer to `at`.
@@ -528,7 +579,7 @@ impl Harness {
         if mods == ShortcutMods::NONE {
             return send(self);
         }
-        let held = self.driver.ui.input().modifiers_after_held_input();
+        let held = self.window.driver.ui.input().modifiers_after_held_input();
         self.hold_modifiers(mods.held());
         let delta = send(self);
         self.hold_modifiers(held);
@@ -538,7 +589,7 @@ impl Harness {
     /// Hold `mods` from now on. Sends nothing when they are held already, counting input that
     /// waits for a later frame.
     pub fn hold_modifiers(&mut self, mods: Modifiers) -> InputDelta {
-        if self.driver.ui.input().modifiers_after_held_input() == mods {
+        if self.window.driver.ui.input().modifiers_after_held_input() == mods {
             InputDelta::default()
         } else {
             self.on_input(InputEvent::ModifiersChanged(mods))
@@ -564,26 +615,26 @@ impl Harness {
     ///
     /// [`LocateError`] when it names no place, or several.
     pub fn find<A, X: Locate<A>>(&self, app: &A, at: &Locator<X>) -> Result<Found, LocateError> {
-        at.find(app, &self.driver.ui)
+        at.find(app, &self.window.driver.ui)
     }
 
     /// The visible interactive widgets of the last frame whose text holds `filter`, ignoring
     /// case, in paint order: what an agent reads to pick a locator.
     pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget> {
-        InspectedWidget::visible(&self.driver.ui, filter)
+        InspectedWidget::visible(&self.window.driver.ui, filter)
     }
 
     /// `id`'s visible rect in the last frame: after transforms and clips, what the pointer hits.
     /// [`Self::arranged`] is the rect a layout test means; the two differ only under a
     /// transform or a clip.
     pub fn rect(&self, id: WidgetId) -> Option<Rect> {
-        self.driver.ui.response_for(id).rect
+        self.window.driver.ui.response_for(id).rect
     }
 
     /// `id`'s arranged rect in the last frame: before transforms, not clipped; `None` when `id`
     /// did not arrange in it.
     pub fn arranged(&self, id: WidgetId) -> Option<Rect> {
-        self.driver.ui.response_for(id).layout_rect
+        self.window.driver.ui.response_for(id).layout_rect
     }
 
     /// The window point of `local`, a point in `id`'s arranged space, through every ancestor
@@ -596,12 +647,12 @@ impl Harness {
     /// hovers.
     #[track_caller]
     pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2 {
-        let response = self.driver.ui.response_for(id);
+        let response = self.window.driver.ui.response_for(id);
         let layout = response.layout_rect.unwrap_or_else(|| {
             panic!("{id:?} has no arranged rect: it did not record, or no frame ran")
         });
         let pos = response.transform.apply_point(layout.min + local);
-        let cascade = self.driver.ui.cascade();
+        let cascade = self.window.driver.ui.cascade();
         let routing = cascade
             .hit_rows()
             .iter()
@@ -620,13 +671,13 @@ impl Harness {
 
     /// The topmost widget a hover at `pos` reaches.
     pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
-        self.driver.ui.cascade().hit_test(pos, Sense::hovers)
+        self.window.driver.ui.cascade().hit_test(pos, Sense::hovers)
     }
 
     /// `id`'s state row of type `S`, as [`Ui::state`] reads it; `None` when there is no such
     /// row.
     pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
-        self.driver.ui.state::<S>(id)
+        self.window.driver.ui.state::<S>(id)
     }
 
     /// Every window the frames opened or closed, oldest first: a harness has one window, and
@@ -644,7 +695,8 @@ impl Harness {
     ///
     /// When no clipboard answers; the harness's own, in memory, always does.
     pub fn clipboard_text(&self) -> Option<String> {
-        self.driver
+        self.window
+            .driver
             .ui
             .clipboard()
             .text()
@@ -653,7 +705,8 @@ impl Harness {
 
     /// Put `text` on the window's clipboard, for a paste to come.
     pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self {
-        self.driver
+        self.window
+            .driver
             .ui
             .clipboard()
             .set_text(text)
@@ -666,10 +719,9 @@ impl Harness {
     /// ended: [`GpuWait::Done`], or why the copies did not come back. Below
     /// [`Depth::Gpu`](crate::Depth::Gpu) nothing paints, and it is done at once.
     pub fn wait_for_gpu(&self) -> GpuWait {
-        if self.core.paints() {
-            self.core.wait_for_gpu(&self.driver)
-        } else {
-            GpuWait::Done
+        match &self.paint {
+            HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => GpuWait::Done,
+            HarnessPaint::Gpu { device, .. } => device.wait_for_gpu(&self.window.driver),
         }
     }
 
@@ -678,7 +730,10 @@ impl Harness {
     /// below [`Depth::Gpu`](crate::Depth::Gpu). A frame then runs the app and paints nothing
     /// until [`Self::recover`] hands the harness a new device.
     pub fn is_device_lost(&self) -> bool {
-        self.core.paints() && self.core.gpu().is_lost()
+        match &self.paint {
+            HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => false,
+            HarnessPaint::Gpu { device, .. } => device.gpu().is_lost(),
+        }
     }
 
     /// Paint with `gpu` from now on, in place of a lost device, as
@@ -691,33 +746,30 @@ impl Harness {
     /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints with no device, and if `gpu` cannot
     /// run Palantir's pipelines, as [`HarnessBuilder::build`] says.
     pub fn recover(&mut self, gpu: Gpu) {
-        assert!(
-            self.core.paints(),
-            "a harness below Depth::Gpu paints with no device to recover"
+        let HarnessPaint::Gpu { target, device } = &mut self.paint else {
+            panic!("a harness below Depth::Gpu paints with no device to recover");
+        };
+        *target = OwnedTarget::window(
+            &gpu,
+            TARGET_LABEL,
+            target.size(),
+            target.as_target().format(),
         );
-        offscreen::assert_runs_palantir(&gpu);
-        let lost = self
-            .target
-            .as_ref()
-            .expect("a harness that paints holds a target");
-        let target =
-            OwnedTarget::window(&gpu, TARGET_LABEL, lost.size(), lost.as_target().format());
-        self.core.attach(gpu, [&mut self.driver]);
-        self.target = Some(target);
+        self.window.recover(device, gpu);
     }
 
     /// The window's `Ui`, for what no method here reads.
     pub const fn ui(&self) -> &Ui {
-        &self.driver.ui
+        &self.window.driver.ui
     }
 
     /// The window's `Ui`, to change what no method here changes.
     pub const fn ui_mut(&mut self) -> &mut Ui {
-        &mut self.driver.ui
+        &mut self.window.driver.ui
     }
 
     fn deliver_held_input(&mut self, app: &mut impl App) {
-        while self.driver.ui.input().has_held_input() {
+        while self.window.driver.ui.input().has_held_input() {
             self.drive(app);
         }
     }
@@ -726,58 +778,40 @@ impl Harness {
     /// commands, and paint onto the target at [`Depth::Gpu`](crate::Depth::Gpu) while the device
     /// lives.
     fn drive(&mut self, app: &mut impl App) -> FrameReport {
-        if self.wake.take() {
-            self.driver.ui.request_repaint();
-        }
-        let spec = self.spec();
-        let CpuFrame { report, mode } = self.core.record(&mut self.driver, spec, app, self.depth);
-        self.driver.drain_window_output(&mut self.drained);
-        for command in self.drained.drain() {
+        let report = self.window.frame(
+            app,
+            HeadlessFrame {
+                depth: self.paint.depth(),
+                now: self.time,
+            },
+        );
+        for command in self.window.drain_commands() {
             log_window_command(&mut self.window_commands, command);
-        }
-        if let Some(target) = &self.target
-            && !self.core.gpu().is_lost()
-        {
-            self.core.submit(&mut self.driver, target.as_target(), mode);
         }
         self.frames += 1;
         report
     }
 
     fn spec(&self) -> FrameSpec {
-        let (format, gives_copy) =
-            self.target
-                .as_ref()
-                .map_or((TargetFormat::RGBA8_SRGB, true), |target| {
-                    let target = target.as_target();
-                    (target.format(), target.gives_copy())
-                });
-        FrameSpec {
-            physical: self.physical,
-            format,
-            gives_copy,
-            system_scale: self.system_scale,
-            refresh_millihertz: self.refresh_millihertz,
-            now: self.time,
-        }
+        self.window.spec(self.paint.target_key(), self.time)
     }
 
     /// Show the display the next frame lays out at before it runs, so a point read off it is
     /// right.
     fn sync_display(&mut self) {
-        let stamp = self.driver.stamp(&self.spec());
-        self.driver.ui.set_display(stamp.display);
+        let stamp = self.window.driver.stamp(&self.spec());
+        self.window.driver.ui.set_display(stamp.display);
     }
 
     fn mark_warm(&mut self) {
-        let stamp = self.driver.stamp(&self.spec());
-        self.driver.ui.set_prev_stamp(Some(stamp));
+        let stamp = self.window.driver.stamp(&self.spec());
+        self.window.driver.ui.set_prev_stamp(Some(stamp));
     }
 
     /// The point `at` names, for an input method.
     #[track_caller]
     fn aim(&self, at: &Locator) -> Vec2 {
-        at.find(&(), &self.driver.ui)
+        at.find(&(), &self.window.driver.ui)
             .unwrap_or_else(|error| panic!("{error}"))
             .point
     }
@@ -817,9 +851,8 @@ const fn either(a: InputDelta, b: InputDelta) -> InputDelta {
 pub(crate) mod internals {
     use crate::damage::Damage;
     use crate::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
-    use crate::host::harness::Harness;
+    use crate::host::harness::{Harness, HarnessPaint};
     use crate::host::window_driver::internals::DriverParts;
-    use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::frontend::BuildPlan;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_plan::RenderPlan;
@@ -828,7 +861,8 @@ pub(crate) mod internals {
     use crate::{
         input::input_event::InputEvent, input::interaction::input_delta::InputDelta,
         internals::paint_capture::PaintCapture, primitives::geometry::rect::Rect,
-        primitives::geometry::translate_scale::TranslateScale, primitives::layout::sizing::Sizing,
+        primitives::geometry::translate_scale::TranslateScale,
+        primitives::identity::widget_id::WidgetId, primitives::layout::sizing::Sizing,
         primitives::math::animatable::Animatable, renderer::frontend::Frontend,
         renderer::frontend::encoder,
         renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas,
@@ -846,33 +880,40 @@ pub(crate) mod internals {
         /// options flip it.
         #[cfg(test)]
         pub(crate) fn set_pixel_snap(&mut self, pixel_snap: bool) -> &mut Self {
-            self.driver.set_pixel_snap(pixel_snap);
+            self.window
+                .cpu
+                .resources
+                .settings()
+                .set_pixel_snap(pixel_snap);
             self.sync_display();
             self
         }
 
         /// The draw list the last composed or painted frame built.
         pub(crate) const fn render_buffer(&self) -> &RenderBuffer {
-            &self.core.frontend.buffer
+            &self.window.cpu.frontend.buffer
         }
 
         /// Build the draw list of the last frame's scene by `plan`, its panes left out, and read
         /// it: the encode and compose alone, as a bench times them.
         pub(crate) fn rebuild(&mut self, plan: RenderPlan) -> &RenderBuffer {
-            self.core
-                .frontend
-                .build(self.driver.ui.frame_scene(), BuildPlan::without_panes(plan));
-            &self.core.frontend.buffer
+            self.window.cpu.frontend.build(
+                self.window.driver.ui.frame_scene(),
+                BuildPlan::without_panes(plan),
+            );
+            &self.window.cpu.frontend.buffer
         }
 
         /// Build the draw list of the whole retained scene, as a full repaint does; at
         /// [`Depth::Compose`](crate::Depth::Compose), it paints nothing.
         pub fn paint_full(&mut self) {
             let plan = RenderPlan {
-                clear: self.driver.ui.theme().window_bg,
+                clear: self.window.driver.ui.theme().window_bg,
                 damage: Damage::Full,
             };
-            self.driver.compose(&mut self.core.frontend, plan);
+            self.window
+                .driver
+                .compose(&mut self.window.cpu.frontend, plan);
         }
 
         /// The window's pixels as the last frame left them, waited for. See
@@ -882,27 +923,19 @@ pub(crate) mod internals {
         ///
         /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints no pixels.
         pub fn read_back(&self) -> RgbaImage {
-            self.target
-                .as_ref()
-                .expect("a harness that paints holds a target")
-                .read_back()
+            let HarnessPaint::Gpu { target, .. } = &self.paint else {
+                panic!("a harness below Depth::Gpu paints no pixels");
+            };
+            target.read_back()
         }
 
         pub(crate) const fn engines(&self) -> &FrameEngines {
-            self.driver.engines()
-        }
-
-        pub(crate) const fn engines_mut(&mut self) -> &mut FrameEngines {
-            self.driver.engines_mut()
+            self.window.driver.engines()
         }
 
         /// The window's `Ui` and the engines its frames run on, borrowed at once.
         pub(crate) const fn parts(&mut self) -> DriverParts<'_> {
-            self.driver.parts()
-        }
-
-        pub(crate) const fn set_focus(&mut self, id: WidgetId) {
-            self.driver.ui.set_focus(id);
+            self.window.driver.parts()
         }
 
         /// This frame's raw damage rects, collapsed as the damage engine collapses them.
@@ -910,7 +943,7 @@ pub(crate) mod internals {
             DamageRegion::collapse_from(
                 self.engines().damage.raw_rects(),
                 DEFAULT_PASS_BUDGET_PX,
-                self.driver.ui.display().logical_rect(),
+                self.window.driver.ui.display().logical_rect(),
             )
         }
 
@@ -962,12 +995,17 @@ pub(crate) mod internals {
     impl Harness {
         /// The CPU frontend every frame builds its draw list with.
         pub(crate) const fn frontend(&self) -> &Frontend {
-            &self.core.frontend
+            &self.window.cpu.frontend
         }
 
         /// The blurs the last frame ran, one per pane whose cached result went stale.
         pub(crate) const fn backdrop_blurs(&self) -> usize {
-            self.core.backend().backdrop_blurs()
+            match &self.paint {
+                HarnessPaint::Gpu { device, .. } => device.backend().backdrop_blurs(),
+                HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
+                    panic!("a harness below Depth::Gpu runs no blur")
+                }
+            }
         }
 
         /// A window of `size` that shapes with the mono fallback, whose metrics this crate's
@@ -979,7 +1017,7 @@ pub(crate) mod internals {
         /// [`Self::mono`] with a cold recorder: frame 1 runs the warmup pass.
         pub(crate) fn cold(size: UVec2) -> Self {
             let mut harness = Self::mono(size);
-            harness.driver.ui.set_prev_stamp(None);
+            harness.window.driver.ui.set_prev_stamp(None);
             harness
         }
 
@@ -1007,7 +1045,7 @@ pub(crate) mod internals {
 
         /// [`Self::frame_passes`] over exactly one frame, as [`Self::step`].
         pub(crate) fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
-            let mut warmup = self.driver.ui.frame_runtime().is_first_frame();
+            let mut warmup = self.window.driver.ui.frame_runtime().is_first_frame();
             let mut values = Vec::new();
             let report = self.step(|ui| {
                 let value = record(ui);
@@ -1026,7 +1064,7 @@ pub(crate) mod internals {
             &mut self,
             record: impl FnMut(&mut Ui),
         ) -> FrameReport {
-            self.driver.invalidate_target_contents();
+            self.window.driver.invalidate_target_contents();
             self.step(record)
         }
 
@@ -1051,31 +1089,14 @@ pub(crate) mod internals {
             })
         }
 
-        pub(crate) const fn focus(&self) -> Option<WidgetId> {
-            self.driver.ui.focus()
-        }
-
-        pub(crate) const fn clear_focus(&mut self) {
-            self.driver.ui.clear_focus();
-        }
-
-        pub(crate) fn is_focus_within(&self, ancestor: WidgetId) -> bool {
-            self.driver.ui.is_focus_within(ancestor)
-        }
-
         /// The pointer leaves the window.
         pub(crate) fn pointer_left(&mut self) -> InputDelta {
             self.on_input(InputEvent::PointerLeft)
         }
 
-        /// `id`'s arranged rect, `None` when it did not arrange.
-        pub(crate) fn layout_rect(&self, id: WidgetId) -> Option<Rect> {
-            self.driver.ui.response_for(id).layout_rect
-        }
-
         /// `id`'s map from arranged space to the window, unchecked, unlike [`Self::point_in`].
         pub(crate) fn transform(&self, id: WidgetId) -> TranslateScale {
-            self.driver.ui.response_for(id).transform
+            self.window.driver.ui.response_for(id).transform
         }
 
         /// The center of `id`'s visible rect, unchecked.
@@ -1086,15 +1107,20 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
-            self.driver.ui.forest().node_for_widget_id(Layer::Main, id)
+            self.window
+                .driver
+                .ui
+                .forest()
+                .node_for_widget_id(Layer::Main, id)
         }
 
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {
-            self.driver.ui.cascade().endpoint(id)
+            self.window.driver.ui.cascade().endpoint(id)
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
-            self.driver
+            self.window
+                .driver
                 .ui
                 .tree(Layer::Main)
                 .children(parent)
@@ -1103,16 +1129,17 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
-            self.driver
+            self.window
+                .driver
                 .ui
                 .tree(Layer::Main)
                 .children(parent)
-                .map(|child| self.driver.ui.layout(Layer::Main).rect[child.id.idx()])
+                .map(|child| self.window.driver.ui.layout(Layer::Main).rect[child.id.idx()])
                 .collect()
         }
 
         pub(crate) fn animation_row_count<T: Animatable>(&mut self) -> usize {
-            self.driver.ui.animation_mut().row_count::<T>()
+            self.window.driver.ui.animation_mut().row_count::<T>()
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {
@@ -1125,11 +1152,11 @@ pub(crate) mod internals {
 
         fn encode(&self, damage: Damage) -> PaintCapture {
             let plan = RenderPlan {
-                clear: self.driver.ui.theme().window_bg,
+                clear: self.window.driver.ui.theme().window_bg,
                 damage,
             };
             encoder::internals::encode(
-                self.driver.ui.frame_scene(),
+                self.window.driver.ui.frame_scene(),
                 &SharedGradientAtlas::default(),
                 plan,
             )

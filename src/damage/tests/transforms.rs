@@ -384,7 +384,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // clean Skip. Fails if the bulk refresh corrupted a snapshot field.
     build(60.0, &mut h);
     assert!(
-        h.engines_mut().damage.counters.dirty().is_empty(),
+        h.parts().engines.damage.counters.dirty().is_empty(),
         "still frame after motion must not dirty any node",
     );
     assert_eq!(

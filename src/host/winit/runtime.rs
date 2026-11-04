@@ -10,13 +10,14 @@ use crate::common::tracy;
 use crate::gpu::error::SurfaceStartError;
 use crate::gpu::surface::surface_manager::{FirstWindow, SurfaceManager, SurfaceStartup};
 use crate::host::core::HostCore;
+use crate::host::system_preferences::SystemPreferences;
 use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::QueryTask;
-use crate::host::winit::system_preferences::SystemPreferences;
+use crate::host::winit::system_preferences;
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::host::winit::window::{FramePresent, OpenedWindow, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
@@ -77,7 +78,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             .then(|| FontScan::spawn(options.fonts));
         // Read while the font scan runs, so the first window opens in the system's scheme; the
         // first frame moves the decorations if the app's factory picks another.
-        let system = SystemPreferences::read();
+        let system = system_preferences::read();
         let decorations = SchemePreference::default().resolve(system.color_scheme);
         let window = native::create_window(event_loop, token, &config.window, decorations)?;
         let SurfaceStartup {
@@ -100,7 +101,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             options.shaper_or_else(|| scan.expect("a scan runs when no shaper is set").join());
         let core = HostCore::new(gpu, options, shaper);
         // Before the first `Ui`, so it starts in the system's scheme.
-        system.apply(&core.resources);
+        let _ = system.apply(&core.cpu.resources);
         let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
         driver.ui.set_waker(Self::waker(&handle, token));
         let create_app = bootstrap
@@ -114,7 +115,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         let system_preferences = {
             let handle = handle.clone();
             // A host gone quiet drops the report, as it has no window left to show it in.
-            SystemPreferences::subscribe(move |preferences| {
+            system_preferences::subscribe(move |preferences| {
                 handle.send(UserEvent::SystemPreferences(preferences)).ok();
             })
         };
@@ -155,7 +156,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Adopt the system's settings as `mundy` reports a change; [`Self::repaint_on_shared_change`]
     /// then repaints every window if the scheme moved.
     pub(super) fn apply_system_preferences(&self, preferences: SystemPreferences) {
-        preferences.apply(&self.core.resources);
+        let _ = preferences.apply(&self.core.cpu.resources);
     }
 
     /// Resolve the window winit reports events for as `id`, once per event.
@@ -196,7 +197,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// No device opened and held in [`RecoveryBackoff`]'s window, or the window's new surface
     /// failed.
     pub(super) fn draw(&mut self, slot: WindowSlot) -> Result<(), WinitHostError> {
-        if self.core.gpu().is_lost() {
+        if self.core.device.gpu().is_lost() {
             self.recover()?;
         }
         let single_window = self.windows.len() == 1;
@@ -211,12 +212,16 @@ impl<T: App + 'static> WinitRuntime<T> {
             }
         }
         let win = self.windows.at(slot);
-        if self.core.gpu().is_lost() {
+        if self.core.device.gpu().is_lost() {
             // Lost before the frame or found by its submit or present: every window shows its last
             // frame, which no wake of its own replaces.
             self.wake_for_recovery();
         } else if win.surface.is_lost() {
-            renew_surface(&self.surfaces, win, self.core.gpu().max_texture_dim());
+            renew_surface(
+                &self.surfaces,
+                win,
+                self.core.device.gpu().max_texture_dim(),
+            );
         }
         if single_window {
             tracy::mark_main_frame();
@@ -232,7 +237,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             return Ok(());
         }
         let failure = match self.attach_new_device() {
-            Ok(()) if !self.core.gpu().is_lost() => {
+            Ok(()) if !self.core.device.gpu().is_lost() => {
                 tracing::info!("graphics device lost: a new one is attached");
                 self.recovery.succeeded();
                 self.follow_all();
@@ -273,9 +278,12 @@ impl<T: App + 'static> WinitRuntime<T> {
                 SurfaceStartError::Gpu { source } => WinitHostError::DeviceLost { source },
                 SurfaceStartError::Surface { source } => WinitHostError::Surface { token, source },
             })?;
-        self.core
-            .attach(gpu, self.windows.iter_mut().map(|win| &mut win.driver));
-        let max_texture_dim = self.core.gpu().max_texture_dim();
+        self.core.device.attach(
+            gpu,
+            &self.core.cpu.resources,
+            self.windows.iter_mut().map(|win| &mut win.driver),
+        );
+        let max_texture_dim = self.core.device.gpu().max_texture_dim();
         for win in self.windows.iter_mut().skip(1) {
             renew_surface(&self.surfaces, win, max_texture_dim);
         }
@@ -320,7 +328,7 @@ impl<T: App + 'static> WinitRuntime<T> {
 
     /// Repaint everything when an app-global setting changed.
     pub(super) fn repaint_on_shared_change(&mut self) {
-        if self.core.resources.settings().take_change() {
+        if self.core.cpu.resources.settings().take_change() {
             self.follow_all();
         }
     }
@@ -347,14 +355,14 @@ impl<T: App + 'static> WinitRuntime<T> {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return Ok(());
         }
-        let decorations = self.core.resources.color_scheme();
+        let decorations = self.core.cpu.resources.color_scheme();
         let window = native::create_window(event_loop, token, config, decorations)?;
         let surface = self
             .surfaces
             .make_surface(
                 &window,
                 SurfaceManager::clamp_extent(
-                    self.core.gpu().max_texture_dim(),
+                    self.core.device.gpu().max_texture_dim(),
                     native::physical_size(&window),
                 ),
             )
@@ -389,7 +397,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             ..
         } = win;
         self.frames.remove(driver.token);
-        self.core.close(driver);
+        self.core.device.close(driver);
         drop(surface);
         debug_assert_eq!(
             Arc::strong_count(&window),

@@ -43,6 +43,9 @@ pub(crate) struct AppSettings {
     /// the winit host reads one, else [`DOUBLE_CLICK_INTERVAL`]. Its change shows nothing, and
     /// repaints the windows only as every setting's does.
     double_click_interval: Cell<Duration>,
+    /// Whether axis-aligned paint edges snap to physical pixels in every window: the host's,
+    /// which its builder sets.
+    pixel_snap: Cell<bool>,
     changed: Cell<bool>,
 }
 
@@ -58,6 +61,7 @@ impl Default for AppSettings {
             transparency_preference: Cell::default(),
             system_transparency: Cell::default(),
             double_click_interval: Cell::new(DOUBLE_CLICK_INTERVAL),
+            pixel_snap: Cell::new(true),
             changed: Cell::default(),
         }
     }
@@ -70,6 +74,14 @@ impl AppSettings {
 
     pub(crate) fn set_debug_overlay(&self, overlay: DebugOverlayConfig) -> bool {
         self.write(&self.debug_overlay, overlay)
+    }
+
+    pub(crate) const fn pixel_snap(&self) -> bool {
+        self.pixel_snap.get()
+    }
+
+    pub(crate) fn set_pixel_snap(&self, pixel_snap: bool) -> bool {
+        self.write(&self.pixel_snap, pixel_snap)
     }
 
     pub(crate) const fn user_scale(&self) -> UserScale {
@@ -143,7 +155,6 @@ impl AppSettings {
         self.double_click_interval.get()
     }
 
-    #[cfg(any(test, feature = "winit"))]
     pub(crate) fn set_double_click_interval(&self, interval: Duration) -> bool {
         self.write(&self.double_click_interval, interval)
     }

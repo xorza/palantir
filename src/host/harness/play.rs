@@ -7,7 +7,6 @@ use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::host::harness::Harness;
-use crate::host::window_driver::FrameDepth;
 use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::ui::app::App;
@@ -61,13 +60,13 @@ impl Harness {
     /// real time; whether a wake waits for the next frame. For a caller that waits on work it
     /// knows of, past what [`Self::settle`] waits for.
     pub fn wait_for_wake(&self, timeout: Duration) -> bool {
-        self.wake.wait(Instant::now() + timeout)
+        self.window.wait_for_wake(Instant::now() + timeout)
     }
 
     /// Whether a [`Waker`](crate::Waker) of this window woke it since the last frame, which the
     /// next frame takes.
     pub fn has_pending_wake(&self) -> bool {
-        self.wake.is_pending()
+        self.window.is_wake_pending()
     }
 
     /// A picture of `region`, the whole window for none, as the next frame paints it, as the
@@ -85,10 +84,11 @@ impl Harness {
         app: &mut impl App,
         region: Option<Rect>,
     ) -> Result<Screenshot, PlayError> {
-        if self.depth != FrameDepth::Paint {
+        if !self.paint.paints() {
             return Err(PlayError::NoPixels);
         }
         let asked = self
+            .window
             .driver
             .ui
             .request_screenshot(region)
@@ -102,7 +102,7 @@ impl Harness {
                 return Err(PlayError::DeviceLost);
             }
             self.next_frame(app);
-            if let Some(shot) = self.driver.ui.screenshot_taken(asked) {
+            if let Some(shot) = self.window.driver.ui.screenshot_taken(asked) {
                 return Ok(shot.clone());
             }
         }
@@ -129,13 +129,13 @@ impl Harness {
     /// [`PlayError::GpuTimedOut`] when it does not finish the frame in time; `pixels` is left
     /// empty on either.
     pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError> {
-        if self.depth != FrameDepth::Paint {
+        if !self.paint.paints() {
             return Err(PlayError::NoPixels);
         }
         self.drive(app);
         let target = self
-            .target
-            .as_mut()
+            .paint
+            .target_mut()
             .expect("a harness that paints holds a target");
         match target.copy_texels(pixels) {
             GpuWait::Done => Ok(()),
@@ -155,9 +155,9 @@ impl Harness {
         loop {
             let report = self.next_frame(app);
             let busy = app.is_busy();
-            let screenshots = self.driver.has_pending_screenshots();
+            let screenshots = self.window.driver.has_pending_screenshots();
             // A wake that is no busy work's progress asks for frames as an animation does.
-            if report.repaint_requested || screenshots || (self.wake.is_pending() && !busy) {
+            if report.repaint_requested || screenshots || (self.window.is_wake_pending() && !busy) {
                 // A lost device lands no screenshot and paints no frame an animation asks for.
                 if self.is_device_lost() {
                     return Err(PlayError::DeviceLost);
@@ -180,13 +180,16 @@ impl Harness {
                     return Err(PlayError::StillBusy { waited });
                 }
             }
-            if self.wake.is_pending() {
+            if self.window.is_wake_pending() {
                 continue;
             }
             if !busy {
                 return Ok(self.frames - start);
             }
-            if !self.wake.wait(Instant::now() + self.background_wait) {
+            if !self
+                .window
+                .wait_for_wake(Instant::now() + self.background_wait)
+            {
                 return Err(PlayError::Busy {
                     waited: self.background_wait,
                 });
@@ -209,7 +212,7 @@ struct HarnessStage<'a, A> {
 
 impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
     fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError> {
-        Ok(at.point_for(self.app, &self.h.driver.ui, reach)?)
+        Ok(at.point_for(self.app, &self.h.window.driver.ui, reach)?)
     }
 
     /// A modifier change that holds what is held already sends nothing, which would wait a frame.
@@ -241,7 +244,7 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
         let Some(pressed) = self.h.last_press else {
             return Ok(());
         };
-        let interval = self.h.driver.ui.double_click_interval();
+        let interval = self.h.window.driver.ui.double_click_interval();
         let since = self.h.time.saturating_sub(pressed);
         if since <= interval {
             self.h.advance(interval - since + Duration::from_millis(1));

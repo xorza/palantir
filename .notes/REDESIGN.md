@@ -26,13 +26,13 @@ in step.
   and the `Backdrops` cache. Each is rebuilt or scanned linearly (RD-03, RD-08, RD-09,
   RD-19) ✔.
 - **The frame descriptor:** `FrameSpec`, `TargetKey`, `HostDisplay`, `Display` and
-  `FrameStamp`. `pixel_snap` passes through five hops (HS-07).
-- **Whether the harness paints:** `depth`, `target` and `core.device` (HS-08).
+  `FrameStamp`. `pixel_snap` passes through five hops (HS-07) ✔.
+- **Whether the harness paints:** `depth`, `target` and `core.device` (HS-08) ✔.
 - **Layout columns:** declared four times (LT-03). Grid tracks are in a per-grid store and in a
   per-depth stack (LT-02).
 - **Node fields:** written in `Configure`, `Configurator`, `ThemeDefaults`, `authored_*`, and
   `Node::set`/`fill`. About 100 methods (UI-07).
-- **Other copies:** `Hsv` and `Okhsv` (PR-05). `OffscreenHost` and `Harness` (HS-05).
+- **Other copies:** `Hsv` and `Okhsv` (PR-05). `OffscreenHost` and `Harness` (HS-05) ✔.
   `Singletons` beside `StateMap` (UI-06). Two ways to close an overlay (UI-05).
 
 ### R2. Hand-written keys and hashes
@@ -76,7 +76,7 @@ Each resource has its own copy of a shared rule:
   - `Ident` holds a recipe and its result in one enum (SC-06).
   - `activate()` writes `Up` beside `Drag::Active` (UI-12).
   - `TabDrag { tab: Option, target: Option }` (WG-18).
-  - `HostCore` holds `Option<DeviceHalf>` (HS-08).
+  - `HostCore` holds `Option<DeviceHalf>` (HS-08) ✔.
 - **Pairs that must agree:** a pipeline and its layout (GB-07), a depth used as a stencil mask
   (GB-18), and a UV width that the atlas budget does not set (GB-19) ✔.
 
@@ -156,16 +156,13 @@ and some `Result` paths panic:
 
 Each item needs your answer before its batch starts.
 
-1. **"Refused: a one-window type for the two headless hosts"** (HS-05). The reviewer
-   proposes a private `HeadlessWindow` that both hosts compose, not a merge of the public
-   types. The winit host stays multi-window. The copies already drift (HS-10, HS-11).
-2. **"A wrapper finishes the widget it wraps through its public setters, never a hook"**
+1. **"A wrapper finishes the widget it wraps through its public setters, never a hook"**
    (WG-15). The code breaks this rule eight times, because `DockView` needs a strip protocol.
    You can amend the rule to allow `pub(crate)` protocol entry points, or make the hooks
    public.
-3. **"A pick binds a reference"** (WG-16). `TabbedView` binds `&mut usize`, which is correct,
+2. **"A pick binds a reference"** (WG-16). `TabbedView` binds `&mut usize`, which is correct,
    because close and reorder make a reference invalid. The rule needs a stated exception.
-4. **"A `Response` borrows the `Ui`"** (UI-10). The borrow makes the owned twins
+3. **"A `Response` borrows the `Ui`"** (UI-10). The borrow makes the owned twins
    `ResponseSnapshot` and `ValueEdges`, and puts `'a` on every response type. No measurement
    supports the lazy probe. The proposal is to measure an eager `Response` first.
 
@@ -204,7 +201,7 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   owns the `opened` probe.
 - One overlay trigger: `Menu::below` is a dressed `PopupTrigger` (WG-14). One id function for
   each overlay kind (WG-13). A non-generic marker for the associated functions (WG-24).
-  Settle decision 2 (WG-15).
+  Settle decision 1 (WG-15).
 - One draft protocol: the color-picker hex field and `DragValue` editing use
   `TextEdit::buffered` (WG-09, WG-10).
 - Merge `Singletons` into the state map (UI-06).
@@ -215,7 +212,7 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
 - Group the retained memory for each widget (`state`, `animation`, `gpu_views`, singletons)
   into one `Memory` with one `sweep(removed)`. Group the host seam (`window_requests`,
   `window_frame`, `gpu_pass_stats`, `waker`) into one struct (UI-16).
-- Decision 4: measure an eager `Response`, then decide (UI-10).
+- Decision 3: measure an eager `Response`, then decide (UI-10).
 - `Theme::lerp` still copies both ends each transition frame, for its text-axis hook to edit;
   share the axes once when a run starts and blend the shared ends by reference (UI-20).
 - Remove the theme-transition spares (UI-19). Give each field of `FrameRuntime` one access
@@ -225,21 +222,13 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   for `TabbedView` (WG-16). Dress `Menu::context` only when it is open (WG-22).
   `TextEdit.text` is not an `Option` (WG-23).
 
-### Batch 11. Headless host consolidation (`host`, `display`, `window`)
+### Batch 11b. Host tests and public surface (`host`, `display`, `window`)
 
-Root cause R1. Settle decision 1 first.
+The non-API part of Batch 11 is done. What is left:
 
-- A private `HeadlessWindow { core, driver, wake, display facts, clock }` and one settings
-  struct, used by `OffscreenHost` and `Harness`. Their builders share it (HS-05).
-- Add `HostCore::frame(…)`, so each host keeps only its target and its present (HS-06). With
-  it, a test of `WinitRuntime`'s scheduling (draw, follow, recover) on a fake loop and clock,
-  and `Remote` on a clock it is handed in place of real sleeps (HS-23).
-  `assert_runs_palantir` moves into `HostCore` (HS-09).
-- `FrameSpec { target: TargetKey, … }`. Delete `HostDisplay`, `HostCore.pixel_snap` and
-  `DriverConfig` (HS-07).
-- `enum HarnessPaint { Record, Compose, Gpu { target } }`. Split `HostCore` by type, not by
-  `Option` (HS-08).
-- One `SystemPreferences` input for every host, the double-click interval included (HS-11).
+- A test of `WinitRuntime`'s scheduling (draw, follow, recover) on a fake loop and clock, and
+  `Remote` on a clock it is handed in place of real sleeps (HS-23).
+- Enable the Wayland clipboard (HS-15): a feature with new dependencies, so it waits for an ask.
 - **API:**
   - Matching verbs on `Harness` and `Remote`, or a public trait from `driver::play::Stage`
     (HS-12).
@@ -248,8 +237,7 @@ Root cause R1. Settle decision 1 first.
   - A type for logical and physical window sizes (HS-18).
   - A palantir enum for `PowerPreference` (HS-19).
   - Getters on `Display` (HS-26).
-- Remove the pass-throughs that are only for tests (HS-20). Clean up `Cargo.toml` (HS-24).
-  Enable Wayland clipboard (HS-15).
+  - `Option<Duration>` in `gpu_pass_stats`, and the `compute_shader_invocations` field (HS-25).
 
 ### Batch 12. Layout internals (`layout`, `text`)
 
@@ -327,7 +315,7 @@ Prefixes:
 | 6b | WG-08 |
 | 9b | GA-16, GA-17 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
-| 11 | HS-05 to HS-09, HS-23, HS-11 to HS-13, HS-15, HS-17 to HS-20, HS-24 to HS-26 |
+| 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
 | 12 | LT-02, LT-03, LT-06, LT-07, LT-08, LT-11 to LT-13, LT-15 to LT-20 |
 | 13 | RD-01, RD-02, RD-05, RD-07, RD-10 to RD-18, RD-21, SC-06 to SC-10, SC-12 to SC-17 |
 | 14 | PR-05 to PR-07, PR-09 to PR-23, GA-14, UI-25 |
@@ -529,46 +517,10 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Direction:** a `TabKey` newtype from `impl Hash`.
 - Confidence: medium · public API change: yes · root cause: none named.
 
-### Batch 11
-
-**HS-05 · complexity · `src/host/offscreen/mod.rs:35-45, 88-98, 292-368`; `src/host/harness/mod.rs:118-149, 328-365, 661-714`; `src/host/harness/harness_builder.rs:64-157`**
-`OffscreenHost` and `Harness` duplicate each other:
-- **Fields:** `core`, `driver`, `wake: Arc<WakeSignal>`, `system_scale`, `refresh_millihertz`, time, `window_commands`.
-- **Methods (~13, near-identical docs):** `WINDOW`, `ui`, `ui_mut`, `advance`, `at`, `set_system_scale`, `set_refresh_millihertz`, three `set_system_*`, `wait_for_gpu`, `is_device_lost`, `recover`.
-- **Builders:** both carry the same 9 fields and setters (system_scale, refresh, three system prefs, plus `HostOptions`).
-
-AGENTS.md refuses "a one-window type for the two headless hosts, which splits the window by how many a host has". I think that is wrong: a private `HeadlessWindow { core, driver, wake, display facts, clock }` plus a shared settings struct is composition, not a second frame path, and the winit host stays multi-window. Sibling drift is already visible: Offscreen has no closure-sugar `frame`, and `window_commands` differs (HS-10).
-*Direction:* extract the shared struct and builder settings; the public methods delegate. *Conf:* high. *API:* no (internal), or yes if the two merge. *Root cause:* host composition copied instead of owned once.
-
-**HS-06 · complexity · `src/host/offscreen/mod.rs:375-388`; `src/host/harness/mod.rs:725-740`; `src/host/winit/window/mod.rs:354-368`**
-"The frame step is the core's", yet each host hand-assembles the same sequence: take wake → `request_repaint` → build `FrameSpec` → `core.record` → drain window output → `core.submit` unless lost. Only the target and the drain sink differ.
-*Direction:* one `HostCore::frame(driver, spec, app, depth, target: Option<RenderTarget>, commands)`, so each host keeps only its target and present. *Conf:* high. *API:* no. *Root cause:* as HS-05.
-
-**HS-07 · complexity · `src/host/window_driver/mod.rs:108-148, 292-301`; `src/display/host_display.rs:174-197`; `src/display/frame_stamp.rs`; `src/host/core.rs:48, 154-165`**
-Five overlapping per-frame descriptors:
-- `FrameSpec{physical, format, gives_copy, system_scale, refresh_millihertz, now}`
-- `TargetKey{physical, format, gives_copy}`, derived from FrameSpec field by field
-- `HostDisplay{physical, system_scale, pixel_snap, refresh_millihertz}`
-- `Display` = HostDisplay + user_scale
-- `FrameStamp{display, time}`
-
-`pixel_snap` is copied HostOptions → HostCore → DriverConfig → WindowDriver → HostDisplay → Display.
-*Direction:* `FrameSpec { target: TargetKey, system_scale, refresh_millihertz, now }`. Drop `HostDisplay` (the driver builds `Display` with `ui.user_scale()`). Drop `HostCore.pixel_snap` and `DriverConfig`. *Conf:* high. *API:* no. *Root cause:* one fact, many shapes.
-
-**HS-08 · complexity/illegal state · `src/host/harness/mod.rs:121-127, 317-326, 665-679, 733-758`; `src/host/harness/play.rs:409, 453`; `src/host/core.rs:46-47, 121, 135-150, 201, 216`**
-"This harness paints" is stored three ways: `depth: FrameDepth`, `target: Option<OwnedTarget>`, and `core.device: Option<DeviceHalf>`. Each check reads a different one: `shot`/`capture` test `depth`, `drive` tests `target`, `wait_for_gpu`/`is_device_lost` test `core.paints()`. `physical` duplicates `target.size()`. `HostCore`'s `Option` plus `.expect(NO_DEVICE)` taxes the winit and offscreen hosts, which always have a device.
-*Direction:* `enum HarnessPaint { Record, Compose, Gpu { target } }` holding the size. Split HostCore's CPU-only half by type rather than by `Option`. *Conf:* high. *API:* no. *Root cause:* derived state stored.
-
-**HS-09 · layering · `src/host/offscreen/mod.rs:406-410`; `src/host/harness/mod.rs:695`; `src/host/harness/harness_builder.rs:220`**
-The shared precondition `assert_runs_palantir` lives in the offscreen module, and the harness reaches into its sibling host for it. When the harness trips it, the panic reads "offscreen host device cannot run Palantir".
-*Direction:* move it into `HostCore::new` / `HostCore::attach`, which every painting host runs. *Conf:* high. *API:* no. *Root cause:* HS-05.
+### Batch 11b
 
 **HS-23 · test · `src/host/winit/runtime.rs:423-472`; `src/host/winit/remote/tests.rs:258, 298`; `src/host/harness/tests/play.rs:372`**
 Nothing tests `WinitRuntime` scheduling (`draw`, follow, `schedule`, `recover`); only pure helpers are covered (`earliest_wake`, `FramePresent::followed`), which is how HS-01 passes. Remote reads `Instant::now()` and `thread::sleep` directly, so its tests sleep for real (a 300 ms query, 4 ticks), against "no real sleep where the code takes a clock". *Conf:* high. *API:* no. *Root cause:* no seam for the clock or the event loop.
-
-**HS-11 · complexity/two routes · `src/host/winit/system_preferences.rs:273-278, 346-357`; `src/host/offscreen/mod.rs:95-97, 158-182, 212-218, 295-312`; `src/host/harness/harness_builder.rs:68-70, 114-138, 243-249`; `src/ui/mod.rs:370-377, 420`**
-System preferences take two routes. The winit host builds a `SystemPreferences` value and writes `resources.settings()` directly. The headless builders each carry three loose fields and go through `Ui::set_system_*`. Neither headless host can set the double-click interval that the winit host follows.
-*Direction:* move `SystemPreferences` (minus the mundy read) out of `winit/`, take it in every builder, and apply it through one door. *Conf:* high. *API:* yes if the setters collapse. *Root cause:* HS-05.
 
 **HS-12 · api · `src/host/harness/play.rs:350-437`; `src/host/winit/remote/mod.rs:164-229`; consumer `darkroom/src/driver/backend.rs:45-46`**
 `Harness` and `Remote` offer the same verbs in different shapes: `play(app, actions)` vs `play(actions)`, `settle(app)` vs `settle()`, `shot(app, region)` vs `shot(region)`, `find(app, at)` vs `find(at)`. The only consumer re-unifies them in an enum (`Backend::Offscreen/Window`). The shared abstraction exists, but only crate-private (`driver::play::Stage`).
@@ -590,17 +542,6 @@ Logical window sizes are integer `UVec2` (`WindowConfig::inner_size`, `WindowGeo
 
 **HS-19 · api · `src/host/winit/mod.rs:203-210`; `src/host/winit/config.rs:382-386`**
 `WinitHostBuilder::power_preference(wgpu::PowerPreference)` is the one raw wgpu type in the host builders, and needs two `expect(disallowed_types)`. Elsewhere the surface wraps wgpu (`Gpu`, `TargetFormat`, `Vsync`). *Direction:* a palantir enum. *Conf:* med. *API:* yes. *Root cause:* inconsistent wrapping.
-
-**HS-20 · complexity · `src/host/harness/mod.rs:872-887, 1035-1055`; `src/host/window_driver/mod.rs:715-729`**
-Test-only pass-throughs duplicate public API:
-- `Harness::layout_rect` is the same as public `arranged`.
-- `focus`, `clear_focus`, `is_focus_within`, `set_focus` forward to `ui()`.
-- `engines`, `engines_mut` and `parts` exist on both WindowDriver and Harness, and `parts()` subsumes the other two.
-
-*Direction:* keep `parts()` and the public readers; drop the rest. *Conf:* high. *API:* no. *Root cause:* forwarding layers.
-
-**HS-24 · hygiene · `Cargo.toml:213-216, 30-31`**
-`[profile.bench] inherits = "release"` is redundant: bench already inherits release. `docs.rs all-features = false` leaves the public `golden` module off docs.rs. *Conf:* high. *API:* no.
 
 **HS-25 · idiom/api · `src/diagnostics/gpu_pass_stats.rs:128-140`**
 `Inner` stores `Option<u64>` nanoseconds and every getter converts to `Duration`; it could store `Option<Duration>`. Public `PipelineStats::compute_shader_invocations` is documented as always zero for palantir's passes. *Conf:* high. *API:* the field is. *Root cause:* a unit not in the type.

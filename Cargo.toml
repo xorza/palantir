@@ -27,8 +27,10 @@ exclude = [
 ]
 
 
+# The public features beside the default: `golden`'s module is public API. `internals` is the
+# tests', `gpu-debug-markers` changes no surface, and `profile-with-tracy` opens a socket.
 [package.metadata.docs.rs]
-all-features = false
+features = ["golden"]
 
 # The driver serves `cargo drive surface` alone, which writes `.notes/API_SURFACE.md` for CI to
 # compare with the tree; the gate is plain cargo (AGENTS.md "Verification").
@@ -168,7 +170,6 @@ debug = "full"
 split-debuginfo = "off"
 
 [profile.bench]
-inherits = "release"
 debug = "line-tables-only"
 strip = "none"
 

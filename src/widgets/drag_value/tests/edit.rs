@@ -52,7 +52,7 @@ fn escape_reverts_the_draft_without_a_commit() {
     let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, TYPED);
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     for c in ['4', '2'] {
@@ -83,7 +83,7 @@ fn escape_reverts_the_draft_without_a_commit() {
         })
     };
     live(&mut h, &mut value);
-    h.set_focus(live_id);
+    h.ui_mut().set_focus(live_id);
     h.key(Key::Enter);
     live(&mut h, &mut value);
     for c in ['4', '2'] {
@@ -105,7 +105,7 @@ fn a_new_edit_seeds_a_fresh_buffer() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, TYPED);
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.key(Key::Char('4'));
@@ -117,7 +117,7 @@ fn a_new_edit_seeds_a_fresh_buffer() {
     assert_eq!(canonical, 42.0);
 
     canonical = 99.0;
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert_eq!(edit_buffer(h.ui(), id), "99.0");
@@ -138,7 +138,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, TYPED);
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert!(matches!(
@@ -177,11 +177,11 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
 
     // A hand-set garbage buffer must not clobber the value on blur; non-finite parses are rejected.
     for bad in ["junk", "nan", "inf", "-inf"] {
-        h.set_focus(id);
+        h.ui_mut().set_focus(id);
         h.key(Key::Enter);
         deferred_frame(&mut h, id, &mut canonical, TYPED);
         set_edit_buffer(h.ui_mut(), id, bad);
-        h.clear_focus();
+        h.ui_mut().clear_focus();
         let s = deferred_frame(&mut h, id, &mut canonical, TYPED);
         assert!(
             s.a().committed && !s.a().changed,
@@ -198,7 +198,7 @@ fn disabling_mid_edit_discards_the_draft() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, TYPED);
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
 
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
@@ -208,7 +208,7 @@ fn disabling_mid_edit_discards_the_draft() {
     // Disabled while editing: focus is kicked and the draft discarded.
     let s = deferred_frame(&mut h, id, &mut canonical, |d| d.disabled(true));
     assert!(!s.a().committed, "locked control emits no commit");
-    assert_eq!(h.focus(), None, "disable kicks the editor's focus");
+    assert_eq!(h.ui().focus(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
         h.state::<DragValueState>(id).unwrap(),
@@ -228,7 +228,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, TYPED);
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
 
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
@@ -237,7 +237,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     h.key(Key::Char('9'));
     deferred_frame(&mut h, id, &mut canonical, TYPED);
 
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     let s = deferred_frame(&mut h, id, &mut canonical, SCRUB);
     assert!(!s.a().committed, "read-only frame commits nothing");
     assert!(matches!(

@@ -18,7 +18,7 @@ use crate::display::system_scale::SystemScale;
 use crate::gpu::surface::window_surface::{Acquired, Prepared, WindowSurface};
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
-use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentPath, WindowDriver};
+use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, TargetKey, WindowDriver};
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
@@ -355,18 +355,22 @@ impl Window {
             // Before the display is minted, so a frame at a new scale hit-tests in the same space.
             self.resync_pointer();
             // Before the record, which reads whether the target still holds the last frame.
-            if self.surface.prepare(core.gpu()) == Prepared::Rebuilt {
+            if self.surface.prepare(core.device.gpu()) == Prepared::Rebuilt {
                 self.driver.invalidate_target_contents();
             }
             let spec = FrameSpec {
-                physical: self.surface.size(),
-                format: self.surface.format(),
-                gives_copy: self.surface.gives_copy(),
+                target: TargetKey {
+                    physical: self.surface.size(),
+                    format: self.surface.format(),
+                    gives_copy: self.surface.gives_copy(),
+                },
                 system_scale: self.system_scale,
                 refresh_millihertz: facts.refresh_millihertz,
                 now: self.clock.now(),
             };
-            let cpu = core.record(&mut self.driver, spec, app, FrameDepth::Paint);
+            let cpu = core
+                .device
+                .record(&mut core.cpu, &mut self.driver, spec, app);
             let summary = self
                 .remote
                 .after_frame(&self.driver.ui, &cpu.report, app.is_busy());
@@ -386,7 +390,7 @@ impl Window {
     fn present(&mut self, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
         // A lost device paints nothing; its recovery wakes the window again.
-        let outcome = if report.plan.is_none() || core.gpu().is_lost() {
+        let outcome = if report.plan.is_none() || core.device.gpu().is_lost() {
             AcquireOutcome::Skipped
         } else {
             self.acquire_and_present(core, mode)
@@ -410,15 +414,17 @@ impl Window {
     fn acquire_and_present(&mut self, core: &mut HostCore, mode: PresentPath) -> AcquireOutcome {
         match self.surface.acquire() {
             Acquired::Ready(frame) => {
-                core.submit(&mut self.driver, frame.target(), mode);
+                core.device
+                    .submit(&core.cpu, &mut self.driver, frame.target(), mode);
                 self.window.pre_present_notify();
-                frame.present(core.gpu());
+                frame.present(core.device.gpu());
                 AcquireOutcome::Presented
             }
             Acquired::Suboptimal(frame) => {
-                core.submit(&mut self.driver, frame.target(), mode);
+                core.device
+                    .submit(&core.cpu, &mut self.driver, frame.target(), mode);
                 self.window.pre_present_notify();
-                frame.present(core.gpu());
+                frame.present(core.device.gpu());
                 AcquireOutcome::Suboptimal(self.surface.size())
             }
             Acquired::Outdated => {

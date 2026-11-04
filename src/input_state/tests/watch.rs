@@ -274,7 +274,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
 fn key_chord_watcher_wakes_only_exact_chord() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(empty_watch_escape);
-    assert_eq!(h.focus(), None);
+    assert_eq!(h.ui().focus(), None);
 
     let delta = h.key_down(Key::Enter);
     assert!(!delta.repaint_requested);

@@ -39,7 +39,7 @@ fn empty_editor_width_is_stable_across_focus() {
     let node = frame(&mut h, &mut buf);
     let w_unfocused = h.ui().arranged_rect(Layer::Main, node).size.w;
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     frame(&mut h, &mut buf);
     let node = frame(&mut h, &mut buf);
     let w_focused = h.ui().arranged_rect(Layer::Main, node).size.w;
@@ -118,7 +118,7 @@ fn stable_editor_uses_one_direct_layout_probe() {
         };
         h.prime(2, &mut record);
         if selected {
-            h.set_focus(id);
+            h.ui_mut().set_focus(id);
             h.ui_mut().with_state::<TextEditState, _>(id, |_, state| {
                 state.edit.selection = Some(0);
                 state.edit.caret = text_len;

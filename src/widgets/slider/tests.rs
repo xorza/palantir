@@ -269,7 +269,7 @@ fn a_focused_slider_walks_by_key() {
             })
         };
         frame(&mut h, &mut value);
-        h.set_focus(id);
+        h.ui_mut().set_focus(id);
         h.hold_modifiers(mods);
         h.key(key);
         let edges = frame(&mut h, &mut value);
@@ -281,7 +281,7 @@ fn a_focused_slider_walks_by_key() {
     let mut value = 5.0_f64;
     for (focused, disabled) in [(false, false), (true, true)] {
         if focused {
-            h.set_focus(id);
+            h.ui_mut().set_focus(id);
         }
         h.key(Key::ArrowRight);
         h.frame(|ui| {
@@ -307,7 +307,7 @@ fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
     let press = |record: &mut dyn FnMut(&mut Ui)| {
         let mut h = Harness::mono(UVec2::new(200, 40));
         h.frame(&mut *record);
-        h.set_focus(id);
+        h.ui_mut().set_focus(id);
         h.key(Key::ArrowRight);
         h.frame(&mut *record);
     };
@@ -356,7 +356,7 @@ fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
                 .show(ui);
         };
         h.frame(&mut record);
-        h.set_focus(id);
+        h.ui_mut().set_focus(id);
         h.key(key);
         h.frame(&mut record);
         assert_eq!(halves, want, "{key:?} on a half step");

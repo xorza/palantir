@@ -77,7 +77,7 @@ fn space_and_enter_click_a_focused_button() {
     let at = h.center_of(id);
     h.click(at);
     assert!(h.frame_value(record(false)), "the click itself");
-    assert_eq!(h.focus(), Some(id), "a click focuses a button");
+    assert_eq!(h.ui().focus(), Some(id), "a click focuses a button");
     for key in [Key::Char(' '), Key::Enter] {
         h.key(key);
         assert!(h.frame_value(record(false)), "{key:?} clicks it");
@@ -281,7 +281,7 @@ fn an_activation_key_under_a_held_press_keeps_the_gesture() {
     let at = h.center_of(id);
     h.click(at);
     let _ = h.frame_value(record);
-    assert_eq!(h.focus(), Some(id));
+    assert_eq!(h.ui().focus(), Some(id));
 
     h.press(at, PointerButton::Left);
     h.drag_to(at + Vec2::new(10.0, 0.0));

@@ -210,7 +210,7 @@ fn space_activates_a_focused_toggle() {
                 record(ui);
             });
             if focused {
-                h.set_focus(WidgetId::from_hash("toggle"));
+                h.ui_mut().set_focus(WidgetId::from_hash("toggle"));
             }
             h.key(key);
             let (edges, app_got) = h.frame_value(&mut record);

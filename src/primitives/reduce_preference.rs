@@ -41,14 +41,12 @@ pub(crate) enum Reduction {
     Reduced,
 }
 
-impl From<bool> for Reduction {
+impl Reduction {
     /// `true` is [`Self::Reduced`], as a system reports its setting.
-    fn from(reduced: bool) -> Self {
+    pub(crate) const fn of(reduced: bool) -> Self {
         if reduced { Self::Reduced } else { Self::Full }
     }
-}
 
-impl Reduction {
     pub(crate) const fn is_reduced(self) -> bool {
         matches!(self, Self::Reduced)
     }
@@ -77,7 +75,7 @@ mod tests {
             );
         }
         assert_eq!(ReducePreference::default(), ReducePreference::System);
-        assert_eq!(Reduction::from(true), Reduced);
-        assert_eq!(Reduction::from(false), Full);
+        assert_eq!(Reduction::of(true), Reduced);
+        assert_eq!(Reduction::of(false), Full);
     }
 }

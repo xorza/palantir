@@ -42,7 +42,7 @@ fn editing_a_long_value_holds_the_field_width() {
     h.frame(|ui| render(ui, &mut v));
     let display_w = h.arranged(id).unwrap().size.w;
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut v));
     let edit_w = h.arranged(id).unwrap().size.w;
@@ -81,7 +81,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
             });
     };
     h.frame(|ui| draw(ui, &mut v));
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     h.frame(|ui| draw(ui, &mut v));
 }
@@ -141,7 +141,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     h.frame(scene);
     let chip = placement(h.ui(), id);
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     h.key(Key::Enter);
     h.frame(scene);
     let editor = placement(h.ui(), id);
@@ -188,7 +188,7 @@ fn entering_edit_mode_keeps_the_chips_box() {
     h.frame(|ui| render(ui, &mut fps));
     let chip = h.arranged(id).unwrap().size;
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
 
     h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut fps));
@@ -338,7 +338,7 @@ fn entering_edit_mode_keeps_the_glyphs_in_place() {
             let mut h = Harness::new(UVec2::new(200, 60));
             h.prime(2, |ui| render(ui, &mut v));
             let chip = glyphs(&h);
-            h.set_focus(id);
+            h.ui_mut().set_focus(id);
             h.key(Key::Enter);
             h.prime(2, |ui| render(ui, &mut v));
             assert!(

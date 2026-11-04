@@ -132,12 +132,12 @@ fn modifiers_wake_only_for_a_watcher() {
             .repaint_requested,
     );
 
-    h.set_focus(forged_focus());
+    h.ui_mut().set_focus(forged_focus());
     assert!(
         !h.on_input(InputEvent::ModifiersChanged(Modifiers::SHIFT))
             .repaint_requested,
     );
-    h.clear_focus();
+    h.ui_mut().clear_focus();
 
     h.frame(|ui| {
         build_hover_target(ui);
@@ -165,12 +165,12 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
         "unrouted key must not schedule a settling pass",
     );
 
-    h.set_focus(forged_focus());
+    h.ui_mut().set_focus(forged_focus());
     let delta = h.key_down(Key::Enter);
     assert!(delta.repaint_requested);
 
     // Watches are cleared pre-record, so re-assert it.
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     h.frame(|ui| {
         build_hover_target(ui);
         ui.watch_shortcut(Key::Escape);
@@ -207,14 +207,14 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
 fn press_on_inert_clears_focus_and_requests_repaint() {
     let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(build_hover_target);
-    h.set_focus(forged_focus());
+    h.ui_mut().set_focus(forged_focus());
     h.hover(Vec2::new(200.0, 200.0));
     let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert!(
         delta.repaint_requested,
         "press on inert with prior focus → focus clear → repaint",
     );
-    assert_eq!(h.focus(), None, "focus must be cleared");
+    assert_eq!(h.ui().focus(), None, "focus must be cleared");
 }
 
 /// A bare modifier press (`Key::Other`, no text) is nothing a focused widget acts on: it neither wakes nor
@@ -232,7 +232,7 @@ fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
     };
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(field);
-    h.set_focus(WidgetId::from_hash("field"));
+    h.ui_mut().set_focus(WidgetId::from_hash("field"));
     h.frame(field);
 
     let modifier = h.key_down(Key::Other);

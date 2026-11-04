@@ -6,8 +6,9 @@ use super::*;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::gpu::test_gpu::headless_test_gpu;
-use crate::host::window_driver::DriverConfig;
+use crate::host::headless_window::record_window_commands;
 use crate::host::window_driver::PresentPath;
+use crate::host::window_driver::{CpuFrame, WindowDriver};
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -22,20 +23,14 @@ use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
+use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use glam::UVec2;
 use image::{Rgba, imageops};
 
 /// A driver as this host opens its one window, over `shared`, on a stream with no device.
 fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
-    WindowDriver::new(
-        token,
-        shared,
-        DriverConfig {
-            strategy: PresentStrategy::BackbufferCopy,
-            pixel_snap: true,
-        },
-    )
+    WindowDriver::new(token, shared, PresentStrategy::BackbufferCopy)
 }
 
 /// A host with no window lifecycle drains a quiet frame as a windowed one does (the veto lives a
@@ -146,10 +141,8 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
     let mut frame = |host: &mut OffscreenHost| {
         let target = texture.as_target();
         let spec = host.spec(target);
-        let CpuFrame { mode, .. } =
-            host.core
-                .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
-        host.core.submit(&mut host.driver, target, mode);
+        let CpuFrame { mode, .. } = host.record(spec, &mut app);
+        host.submit(target, mode);
         mode
     };
     assert!(matches!(
@@ -251,10 +244,7 @@ fn a_retained_target_keeps_no_damage_outline() {
         let target = texture.as_target();
         let spec = retained.spec(target);
         let mut app = scene(frame % 2 == 1);
-        let CpuFrame { mode, .. } =
-            retained
-                .core
-                .record(&mut retained.driver, spec, &mut app, FrameDepth::Paint);
+        let CpuFrame { mode, .. } = retained.record(spec, &mut app);
         let what = format!("frame {frame}: {mode:?}");
         let (route, plan) = match mode {
             PresentPath::ViaBackbuffer(plan) => (true, plan),
@@ -263,7 +253,7 @@ fn a_retained_target_keeps_no_damage_outline() {
         };
         assert_eq!(route, via_backbuffer, "{what}");
         assert_eq!(matches!(plan.damage, Damage::Partial(_)), partial, "{what}");
-        retained.core.submit(&mut retained.driver, target, mode);
+        retained.submit(target, mode);
     }
     let reference = gpu.target("palantir.offscreen.unoutlined", UVec2::new(32, 16));
     host(false).frame(reference.as_target(), &mut scene(false));
@@ -316,9 +306,7 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
         let target = texture.as_target();
         let spec = host.spec(target);
         let mut app = scene(under, away);
-        let CpuFrame { mode, .. } =
-            host.core
-                .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
+        let CpuFrame { mode, .. } = host.record(spec, &mut app);
         let what = format!("under {under}, away {away}: {mode:?}");
         let (route, plan) = match mode {
             PresentPath::ViaBackbuffer(plan) => (true, plan),
@@ -327,7 +315,7 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
         };
         assert_eq!(route, via_backbuffer, "{what}");
         assert_eq!(matches!(plan.damage, Damage::Partial(_)), partial, "{what}");
-        host.core.submit(&mut host.driver, target, mode);
+        host.submit(target, mode);
     }
 }
 
@@ -350,9 +338,7 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
     for (frame, paints) in [(0, true), (1, false)] {
         let target = texture.as_target();
         let spec = host.spec(target);
-        let CpuFrame { mode, .. } =
-            host.core
-                .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
+        let CpuFrame { mode, .. } = host.record(spec, &mut app);
         assert_eq!(
             matches!(mode, PresentPath::Direct(_) | PresentPath::ViaBackbuffer(_)),
             paints,
@@ -362,12 +348,12 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
             assert_eq!(mode, PresentPath::SkipCopy, "a still frame re-presents");
         }
         assert!(
-            !host.driver.output_valid(),
+            !host.window.driver.output_valid(),
             "frame {frame}: {mode:?} is pending until the GPU half runs",
         );
-        host.core.submit(&mut host.driver, target, mode);
+        host.submit(target, mode);
         assert!(
-            host.driver.output_valid(),
+            host.window.driver.output_valid(),
             "frame {frame}: {mode:?} is complete once submitted",
         );
     }
@@ -398,9 +384,7 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
     let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
     let spec = host.spec(large.as_target());
     let mut asking = |ui: &mut Ui| scene(ui, true);
-    let CpuFrame { report, .. } =
-        host.core
-            .record(&mut host.driver, spec, &mut asking, FrameDepth::Paint);
+    let CpuFrame { report, .. } = host.record(spec, &mut asking);
     assert!(
         report.repaint_requested,
         "the unpainted request asks for a frame"
@@ -438,9 +422,7 @@ fn a_carried_request_the_window_shrank_past_lands_nothing() {
     let mut asking = |ui: &mut Ui| {
         asked.set(ui.request_screenshot(Some(Rect::new(40.0, 30.0, 10.0, 10.0))));
     };
-    let _ = host
-        .core
-        .record(&mut host.driver, spec, &mut asking, FrameDepth::Paint);
+    let _ = host.record(spec, &mut asking);
     let id = asked
         .get()
         .expect("the region has pixels in the large window");

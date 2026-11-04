@@ -41,13 +41,13 @@ fn focused_reflects_focused_id_synchronously() {
     h.frame(build_focusable_leaf);
     assert!(!h.ui().response_for(focusable_id()).focused);
 
-    h.set_focus(focusable_id());
+    h.ui_mut().set_focus(focusable_id());
     assert!(
         h.ui().response_for(focusable_id()).focused,
         "focused must be true the same frame as set_focus",
     );
 
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     assert!(!h.ui().response_for(focusable_id()).focused);
 }
 

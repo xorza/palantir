@@ -419,7 +419,7 @@ fn arrows_home_and_end_travel_and_wrap() {
     let mut h = Harness::mono(SURFACE);
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
-    h.set_focus(strip_id());
+    h.ui_mut().set_focus(strip_id());
     strip_frame(&mut h, 0);
 
     let travel = |h: &mut Harness, key: Key, mods: Modifiers, selected: usize| {
@@ -525,7 +525,7 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
         full.min.x >= clip.min.x - EPS && full.max().x <= clip.max().x + EPS
     };
     assert!(!in_clip(&mut h), "premise: the last chip is out of sight");
-    h.set_focus(strip_id());
+    h.ui_mut().set_focus(strip_id());
     record(&mut h, 0);
     h.key(Key::End);
     assert_eq!(record(&mut h, 0), Some(2));
@@ -604,7 +604,7 @@ fn travel_needs_focus_inside_the_strip() {
     let mut h = Harness::mono(SURFACE);
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     h.key(Key::ArrowRight);
     let keyed = h.frame_value(|ui| {
         let items = items(ui);
@@ -649,7 +649,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
         h.frame(|ui| {
             scene(ui, probe);
         });
-        h.set_focus(strip_id());
+        h.ui_mut().set_focus(strip_id());
         h.frame(|ui| {
             scene(ui, probe);
         });
@@ -1275,7 +1275,7 @@ fn the_overflow_menu_opens_on_the_selected_chip_in_its_menu_style() {
             .expect("the menu is open")
             .size
             .h;
-        (h.focus(), height)
+        (h.ui().focus(), height)
     };
     let (focus, plain) = open(false);
     assert_eq!(focus, Some(chevron.with(20u64)), "the selected chip's row");

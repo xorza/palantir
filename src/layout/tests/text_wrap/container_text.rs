@@ -152,10 +152,11 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         first_draw_keys,
         [first_parent_keys[0], first_child_key, first_parent_keys[1]],
     );
-    h.engines_mut().layout.forget_last_run();
+    h.parts().engines.layout.forget_last_run();
     let second_scene = h.frame_value(build_interleaved_container_text);
     assert!(
-        !h.engines_mut()
+        !h.parts()
+            .engines
             .layout
             .scratch
             .counters

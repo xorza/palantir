@@ -3,13 +3,20 @@
 
 use crate::display::system_scale::SystemScale;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::window_driver::{DriverConfig, FrameSpec, PresentStrategy, WindowDriver};
+use crate::host::window_driver::{FrameSpec, PresentStrategy, TargetKey, WindowDriver};
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::time::Duration;
 
-/// A driver's settings as a host opens it.
+/// What a host sets on a driver it opens: its strategy, and the host's pixel snapping, which
+/// the shared settings hold.
+#[derive(Clone, Copy, Debug)]
+struct DriverConfig {
+    strategy: PresentStrategy,
+    pixel_snap: bool,
+}
+
 const fn config(strategy: PresentStrategy, pixel_snap: bool) -> DriverConfig {
     DriverConfig {
         strategy,
@@ -20,15 +27,18 @@ const fn config(strategy: PresentStrategy, pixel_snap: bool) -> DriverConfig {
 /// A driver for `token` over `shared`, set by `config`, on a stream with no device behind it that
 /// shades every cutout.
 fn new_driver(token: WindowToken, shared: &UiResources, config: DriverConfig) -> WindowDriver {
-    WindowDriver::new(token, shared, config)
+    shared.settings().set_pixel_snap(config.pixel_snap);
+    WindowDriver::new(token, shared, config.strategy)
 }
 
 /// A texture frame of `physical` at `system_scale`, at time zero.
 const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
     FrameSpec {
-        physical,
-        format: TargetFormat::RGBA8_SRGB,
-        gives_copy: true,
+        target: TargetKey {
+            physical,
+            format: TargetFormat::RGBA8_SRGB,
+            gives_copy: true,
+        },
         system_scale: SystemScale::new(system_scale).unwrap(),
         refresh_millihertz: None,
         now: Duration::ZERO,
@@ -161,6 +171,7 @@ mod present_mode_tests {
 
 mod output_validity_tests {
     use crate::display::system_scale::SystemScale;
+    use crate::host::window_driver::TargetKey;
     use crate::host::window_driver::tests::new_driver;
     use glam::UVec2;
 
@@ -294,15 +305,24 @@ mod output_validity_tests {
         );
         let first = spec(UVec2::new(64, 48), 1.0);
         let resized = FrameSpec {
-            physical: UVec2::new(65, 48),
+            target: TargetKey {
+                physical: UVec2::new(65, 48),
+                ..first.target
+            },
             ..first
         };
         let reformatted = FrameSpec {
-            format: TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb),
+            target: TargetKey {
+                format: TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb),
+                ..resized.target
+            },
             ..resized
         };
         let uncopyable = FrameSpec {
-            gives_copy: false,
+            target: TargetKey {
+                gives_copy: false,
+                ..reformatted.target
+            },
             ..reformatted
         };
         let rescaled = FrameSpec {
@@ -547,7 +567,7 @@ mod record_store_tests {
             config(PresentStrategy::DirectAdaptive, false),
         );
         assert_eq!(window.strategy, PresentStrategy::DirectAdaptive);
-        assert!(!window.pixel_snap);
+        assert!(!window.ui.pixel_snap());
         let mut app = LifecycleApp::default();
 
         let _ = window.cpu_frame(
@@ -756,9 +776,7 @@ mod cutout_census_tests {
     use crate::display::frame_stamp::FrameStamp;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
-    use crate::host::window_driver::{
-        DriverConfig, FrameDepth, PresentPath, PresentStrategy, WindowDriver,
-    };
+    use crate::host::window_driver::{FrameDepth, PresentPath, PresentStrategy, WindowDriver};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
@@ -783,14 +801,8 @@ mod cutout_census_tests {
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
-        let mut driver = WindowDriver::new(
-            WindowToken(1),
-            &shared,
-            DriverConfig {
-                strategy: PresentStrategy::BackbufferCopy,
-                pixel_snap: true,
-            },
-        );
+        let mut driver =
+            WindowDriver::new(WindowToken(1), &shared, PresentStrategy::BackbufferCopy);
         driver.attach(RenderStream::detached(
             driver.render_owner(),
             CutoutMode::Bake(SharedCutoutPlacements::default()),
@@ -1128,6 +1140,7 @@ mod screenshot_tests {
 }
 
 mod capture_path_tests {
+    use crate::host::window_driver::TargetKey;
     use crate::host::window_driver::tests::new_driver;
     use crate::host::window_driver::tests::{config, spec};
     use crate::host::window_driver::{FrameDepth, FrameSpec, PresentPath, PresentStrategy};
@@ -1155,9 +1168,13 @@ mod capture_path_tests {
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
+        let base = spec(UVec2::new(100, 80), 1.0);
         let spec = FrameSpec {
-            gives_copy,
-            ..spec(UVec2::new(100, 80), 1.0)
+            target: TargetKey {
+                gives_copy,
+                ..base.target
+            },
+            ..base
         };
         driver.note_target(&spec);
         let mut app = |ui: &mut Ui| {

@@ -130,7 +130,7 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "routed keydown",
             |h| {
-                h.set_focus(WidgetId::from_hash("root"));
+                h.ui_mut().set_focus(WidgetId::from_hash("root"));
                 h.key(Key::Enter);
             },
             2,

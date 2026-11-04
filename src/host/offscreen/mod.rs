@@ -14,34 +14,30 @@ use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
-use crate::host::host_options::HostOptions;
-use crate::host::wake_signal::WakeSignal;
-use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentStrategy, WindowDriver};
+use crate::host::device_core::DeviceCore;
+use crate::host::headless_window::{
+    HeadlessDepth, HeadlessFrame, HeadlessSettings, HeadlessWindow,
+};
+use crate::host::window_driver::PresentStrategy;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
+use crate::primitives::reduce_preference::Reduction;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
-use crate::window::window_commands::{WindowCommand, WindowCommands};
+use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
-use std::sync::Arc;
 use std::time::Duration;
 
 /// The offscreen analog of `WinitHost`, rendering into a texture.
 #[derive(Debug)]
 pub struct OffscreenHost {
-    core: HostCore,
-    driver: WindowDriver,
+    window: HeadlessWindow,
+    device: DeviceCore,
     time: HostTime,
-    /// The wakes the window's [`Waker`](crate::Waker) sends, which the next frame takes.
-    wake: Arc<WakeSignal>,
-    system_scale: SystemScale,
-    refresh_millihertz: Option<u32>,
-    /// The windows the last frame opened or closed, which this host records and applies none of.
-    window_commands: WindowCommands,
 }
 
 /// What an [`OffscreenHost`]'s frames and input are stamped with.
@@ -87,33 +83,28 @@ impl HostTime {
 #[must_use]
 pub struct OffscreenHostBuilder {
     gpu: Gpu,
-    options: HostOptions,
+    settings: HeadlessSettings,
     strategy: PresentStrategy,
     time: OffscreenTime,
-    system_scale: SystemScale,
-    refresh_millihertz: Option<u32>,
-    system_color_scheme: Option<ColorScheme>,
-    system_motion_reduced: bool,
-    system_transparency_reduced: bool,
 }
 
 impl OffscreenHostBuilder {
     /// Which faces this host shapes against. Defaults to [`FontScope::Bundled`], so measurement is machine-independent. A shaper set by [`Self::shaper`] wins over it.
     pub const fn fonts(mut self, scope: FontScope) -> Self {
-        self.options.fonts = scope;
+        self.settings.options.fonts = scope;
         self
     }
 
     /// Shape through `shaper` instead of one loaded from [`Self::fonts`], to share one
     /// shaped-buffer cache or preloaded fonts.
     pub fn shaper(mut self, shaper: TextShaper) -> Self {
-        self.options.shaper = Some(shaper);
+        self.settings.options.shaper = Some(shaper);
         self
     }
 
     /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu features.
     pub const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
-        self.options.timing = FrameTiming::new(collect_gpu_stats);
+        self.settings.options.timing = FrameTiming::new(collect_gpu_stats);
         self
     }
 
@@ -144,14 +135,14 @@ impl OffscreenHostBuilder {
     /// [`Ui::set_user_scale`](crate::Ui::set_user_scale); the host's
     /// [`set_system_scale`](OffscreenHost::set_system_scale) changes this one later.
     pub const fn system_scale(mut self, scale: SystemScale) -> Self {
-        self.system_scale = scale;
+        self.settings.system_scale = scale;
         self
     }
 
     /// The display's refresh rate, which repaint wakes coalesce to; none by default. The host's
     /// [`set_refresh_millihertz`](OffscreenHost::set_refresh_millihertz) changes it later.
     pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
-        self.refresh_millihertz = Some(millihertz);
+        self.settings.refresh_millihertz = Some(millihertz);
         self
     }
 
@@ -160,7 +151,7 @@ impl OffscreenHostBuilder {
     /// fallback. The host's [`set_system_color_scheme`](OffscreenHost::set_system_color_scheme) changes
     /// it later.
     pub const fn system_color_scheme(mut self, scheme: ColorScheme) -> Self {
-        self.system_color_scheme = Some(scheme);
+        self.settings.preferences.color_scheme = Some(scheme);
         self
     }
 
@@ -168,7 +159,7 @@ impl OffscreenHostBuilder {
     /// by default. The host's
     /// [`set_system_motion_reduced`](OffscreenHost::set_system_motion_reduced) changes it later.
     pub const fn system_motion_reduced(mut self, reduced: bool) -> Self {
-        self.system_motion_reduced = reduced;
+        self.settings.preferences.motion = Reduction::of(reduced);
         self
     }
 
@@ -177,20 +168,20 @@ impl OffscreenHostBuilder {
     /// [`set_system_transparency_reduced`](OffscreenHost::set_system_transparency_reduced)
     /// changes it later.
     pub const fn system_transparency_reduced(mut self, reduced: bool) -> Self {
-        self.system_transparency_reduced = reduced;
+        self.settings.preferences.transparency = Reduction::of(reduced);
         self
     }
 
     /// Whether axis-aligned paint edges snap to physical pixels.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
-        self.options.pixel_snap = pixel_snap;
+        self.settings.options.pixel_snap = pixel_snap;
         self
     }
 
     /// Backs this host's [`Clipboard`](crate::Clipboard) with the OS clipboard instead of the in-process buffer, which stays underneath. Off by default: thumbnailers and compositors never cut text. See [`Ui::clipboard`](crate::Ui::clipboard).
     #[cfg(feature = "system-clipboard")]
     pub const fn system_clipboard(mut self, system_clipboard: bool) -> Self {
-        self.options.system_clipboard = system_clipboard;
+        self.settings.options.system_clipboard = system_clipboard;
         self
     }
 
@@ -200,34 +191,21 @@ impl OffscreenHostBuilder {
     ///
     /// Panics if the device cannot run Palantir's pipelines, see [`DeviceRequirements`](crate::DeviceRequirements).
     pub fn build(self) -> OffscreenHost {
-        assert_runs_palantir(&self.gpu);
-        let fonts = self.options.fonts;
-        let shaper = self
-            .options
-            .shaper_or_else(|| TextShaper::with_fonts(fonts));
-        let core = HostCore::new(self.gpu, &self.options, shaper);
-        let mut driver = core.open(OffscreenHost::WINDOW, self.strategy);
-        let wake = Arc::<WakeSignal>::default();
-        driver.ui.set_waker(wake.waker());
-        driver.ui.set_system_color_scheme(self.system_color_scheme);
-        driver
-            .ui
-            .set_system_motion_reduced(self.system_motion_reduced);
-        driver
-            .ui
-            .set_system_transparency_reduced(self.system_transparency_reduced);
+        let options = &self.settings.options;
+        let fonts = options.fonts;
+        let shaper = options.shaper_or_else(|| TextShaper::with_fonts(fonts));
+        let core = HostCore::new(self.gpu, options, shaper);
+        let driver = core.open(OffscreenHost::WINDOW, self.strategy);
+        let HostCore { cpu, device } = core;
+        let window = HeadlessWindow::open(cpu, driver, &self.settings);
         let time = match self.time {
             OffscreenTime::Realtime => HostTime::Realtime(RealtimeClock::new()),
             OffscreenTime::Manual => HostTime::Manual(Duration::ZERO),
         };
         OffscreenHost {
-            core,
-            driver,
+            window,
+            device,
             time,
-            wake,
-            system_scale: self.system_scale,
-            refresh_millihertz: self.refresh_millihertz,
-            window_commands: WindowCommands::default(),
         }
     }
 }
@@ -240,31 +218,26 @@ impl OffscreenHost {
     pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             gpu,
-            options: HostOptions::new(FontScope::Bundled),
+            settings: HeadlessSettings::new(FontScope::Bundled),
             strategy: PresentStrategy::BackbufferCopy,
             time: OffscreenTime::Realtime,
-            system_scale: SystemScale::ONE,
-            refresh_millihertz: None,
-            system_color_scheme: None,
-            system_motion_reduced: false,
-            system_transparency_reduced: false,
         }
     }
 
     /// The window's `Ui`, for what no method here reads.
     pub const fn ui(&self) -> &Ui {
-        &self.driver.ui
+        &self.window.driver.ui
     }
 
     /// The window's `Ui`, to change what no method here changes.
     pub const fn ui_mut(&mut self) -> &mut Ui {
-        &mut self.driver.ui
+        &mut self.window.driver.ui
     }
 
     /// Delivers one input event to the window's `Ui` and reports whether it asks for a repaint, stamped with the time the next frame reads.
     pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         let now = self.time.now();
-        self.driver.ui.on_input(event, now)
+        self.window.driver.ui.on_input(event, now)
     }
 
     /// Move the host's time forward by `dt`; events fed afterward and the next frame carry it.
@@ -293,21 +266,24 @@ impl OffscreenHost {
     /// start, reports nothing, so [`SchemePreference::System`](crate::SchemePreference::System)
     /// shows the fallback. The next frame shows the resolved scheme.
     pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
-        self.driver.ui.set_system_color_scheme(scheme);
+        self.window
+            .set_preferences(|preferences| preferences.color_scheme = scheme);
         self
     }
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.driver.ui.set_system_motion_reduced(reduced);
+        self.window
+            .set_preferences(|preferences| preferences.motion = Reduction::of(reduced));
         self
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.driver.ui.set_system_transparency_reduced(reduced);
+        self.window
+            .set_preferences(|preferences| preferences.transparency = Reduction::of(reduced));
         self
     }
 
@@ -317,14 +293,14 @@ impl OffscreenHost {
     /// frame reads it in [`Ui::screenshot_taken`](crate::Ui::screenshot_taken). Returns how the
     /// wait ended: [`GpuWait::Done`], or why the copies did not come back.
     pub fn wait_for_gpu(&self) -> GpuWait {
-        self.core.wait_for_gpu(&self.driver)
+        self.device.wait_for_gpu(&self.window.driver)
     }
 
     /// The windows the last frame opened or closed with [`Ui::open_window`] and
     /// [`Ui::close_window`], in the order called: this host has one window and opens or closes
     /// none, so an app that drives other windows reads them here.
     pub fn window_commands(&self) -> &[WindowCommand] {
-        self.window_commands.as_slice()
+        self.window.commands().as_slice()
     }
 
     /// Whether the device this host draws with is lost: a GPU reset, a driver update or a removed
@@ -334,7 +310,7 @@ impl OffscreenHost {
     /// The loss shows once a call to the device finds it. A device the app destroys reads lost
     /// after the next [`Self::wait_for_gpu`].
     pub fn is_device_lost(&self) -> bool {
-        self.core.gpu().is_lost()
+        self.device.gpu().is_lost()
     }
 
     /// Draw with `gpu` from now on, in place of a lost device: every GPU object the host holds is
@@ -349,21 +325,20 @@ impl OffscreenHost {
     ///
     /// Panics if `gpu` cannot run Palantir's pipelines, as [`OffscreenHostBuilder::build`] does.
     pub fn recover(&mut self, gpu: Gpu) {
-        assert_runs_palantir(&gpu);
-        self.core.attach(gpu, [&mut self.driver]);
+        self.window.recover(&mut self.device, gpu);
     }
 
     /// Report `scale` physical pixels per logical pixel from the next frame on, standing in for
     /// the platform's device pixel ratio, as a move to a monitor of another density changes it.
     pub const fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self {
-        self.system_scale = scale;
+        self.window.system_scale = scale;
         self
     }
 
     /// Report the display's refresh rate, which repaint wakes coalesce to, from the next frame
     /// on; `None` reports none.
     pub const fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
-        self.refresh_millihertz = millihertz;
+        self.window.refresh_millihertz = millihertz;
         self
     }
 
@@ -373,48 +348,17 @@ impl OffscreenHost {
     /// multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200%
     /// render).
     pub fn frame(&mut self, target: RenderTarget<'_>, app: &mut impl App) -> FrameReport {
-        if self.wake.take() {
-            self.driver.ui.request_repaint();
-        }
-        let spec = self.spec(target);
-        let CpuFrame { report, mode } =
-            self.core
-                .record(&mut self.driver, spec, app, FrameDepth::Paint);
-        record_window_commands(&mut self.driver, &mut self.window_commands);
-        if !self.is_device_lost() {
-            self.core.submit(&mut self.driver, target, mode);
-        }
-        report
+        self.window.frame(
+            app,
+            HeadlessFrame {
+                depth: HeadlessDepth::Paint {
+                    device: &mut self.device,
+                    target,
+                },
+                now: self.time.now(),
+            },
+        )
     }
-
-    /// The frame a texture target describes, at the host's scale, refresh rate and time.
-    fn spec(&self, target: RenderTarget<'_>) -> FrameSpec {
-        FrameSpec {
-            physical: target.size(),
-            format: target.format(),
-            gives_copy: target.gives_copy(),
-            system_scale: self.system_scale,
-            refresh_millihertz: self.refresh_millihertz,
-            now: self.time.now(),
-        }
-    }
-}
-
-/// # Panics
-///
-/// Panics if `gpu` cannot run Palantir's pipelines.
-pub(super) fn assert_runs_palantir(gpu: &Gpu) {
-    if let Err(unmet) = gpu.requirements_met() {
-        panic!("offscreen host device cannot run Palantir: {unmet}");
-    }
-}
-
-/// Drain a frame's window output into `commands` on a host with no window lifecycle, which keeps
-/// one frame's: levels (cursor, vsync) stay with the recorder and are inert here, and the opens
-/// and closes are kept for the app to read, as a harness keeps them.
-fn record_window_commands(driver: &mut WindowDriver, commands: &mut WindowCommands) {
-    commands.clear();
-    driver.drain_window_output(commands);
 }
 
 /// Peepholes for the visual suite and the benches.
@@ -424,6 +368,13 @@ pub(crate) mod internals {
     use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
     use crate::host::window_driver::PresentStrategy;
     use crate::renderer::render_buffer::RenderBuffer;
+
+    #[cfg(test)]
+    use crate::gpu::surface::render_target::RenderTarget;
+    #[cfg(test)]
+    use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, TargetKey};
+    #[cfg(test)]
+    use crate::ui::app::App;
 
     impl OffscreenHostBuilder {
         /// Present as the winit host does, through [`PresentStrategy::DirectAdaptive`], so a bench
@@ -435,39 +386,60 @@ pub(crate) mod internals {
     }
 
     impl OffscreenHost {
+        /// The frame `target` describes at the host's time, as [`Self::frame`] runs it.
+        #[cfg(test)]
+        pub(super) fn spec(&self, target: RenderTarget<'_>) -> FrameSpec {
+            self.window.spec(TargetKey::of(target), self.time.now())
+        }
+
+        /// The CPU half of a frame that paints, as [`Self::frame`] runs it, for a test that
+        /// reads or holds the frame between its halves.
+        #[cfg(test)]
+        pub(super) fn record(&mut self, spec: FrameSpec, app: &mut impl App) -> CpuFrame {
+            self.device
+                .record(&mut self.window.cpu, &mut self.window.driver, spec, app)
+        }
+
+        /// The GPU half of the frame [`Self::record`] recorded, onto `target` by `mode`.
+        #[cfg(test)]
+        pub(super) fn submit(&mut self, target: RenderTarget<'_>, mode: PresentPath) {
+            self.device
+                .submit(&self.window.cpu, &mut self.window.driver, target, mode);
+        }
+
         /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.
         pub(crate) const fn last_render_buffer(&self) -> &RenderBuffer {
-            &self.core.frontend.buffer
+            &self.window.cpu.frontend.buffer
         }
 
         /// Shades every shadow corner's cutout instead of baking tables; the visual suite's reference.
         pub fn disable_cutout_tables(&mut self) {
-            self.driver.disable_cutout_tables();
+            self.window.driver.disable_cutout_tables();
         }
 
         /// Draws every shadow as one cell instead of its grid; the visual suite's reference.
         pub fn disable_shadow_grid(&mut self) {
-            self.core.backend_mut().disable_shadow_grid();
+            self.device.backend_mut().disable_shadow_grid();
         }
 
         /// Whether the shared backend has built a pipeline set for `format`.
         pub fn has_format_pipelines(&self, format: TargetFormat) -> bool {
-            self.core.backend().has_format_pipelines(format)
+            self.device.backend().has_format_pipelines(format)
         }
 
         /// Images resident in the GPU texture cache.
         pub fn gpu_image_cache_len(&self) -> usize {
-            self.core.backend().gpu_image_cache_len()
+            self.device.backend().gpu_image_cache_len()
         }
 
         /// The blurs the last frame ran, one per pane whose cached result went stale.
         pub(crate) const fn backdrop_blurs(&self) -> usize {
-            self.core.backend().backdrop_blurs()
+            self.device.backend().backdrop_blurs()
         }
 
         /// Paints the next frame in full, as after a swapchain reconfigure.
         pub const fn invalidate_target_contents(&mut self) {
-            self.driver.invalidate_target_contents();
+            self.window.driver.invalidate_target_contents();
         }
     }
 }

@@ -110,16 +110,20 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
     h.frame(record);
     h.key(Key::Tab);
     h.frame(record);
-    assert_eq!(h.focus(), Some(trigger_id()));
+    assert_eq!(h.ui().focus(), Some(trigger_id()));
     h.key(Key::Enter);
     h.frame(record);
     assert!(PopupTrigger::is_open(h.ui(), trigger_id()));
-    assert_eq!(h.focus(), Some(item), "the keyboard's open moves focus in");
+    assert_eq!(
+        h.ui().focus(),
+        Some(item),
+        "the keyboard's open moves focus in"
+    );
     h.key(Key::Escape);
     h.frame(record);
     h.frame(record);
     assert!(!PopupTrigger::is_open(h.ui(), trigger_id()));
-    assert_eq!(h.focus(), Some(trigger_id()), "closing gives it back");
+    assert_eq!(h.ui().focus(), Some(trigger_id()), "closing gives it back");
 
     let mut h = Harness::mono(SURFACE);
     h.frame(record);
@@ -128,7 +132,11 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
     h.frame(record);
     assert!(PopupTrigger::is_open(h.ui(), trigger_id()));
     h.frame(record);
-    assert_eq!(h.focus(), Some(trigger_id()), "a click's open leaves focus");
+    assert_eq!(
+        h.ui().focus(),
+        Some(trigger_id()),
+        "a click's open leaves focus"
+    );
 }
 
 /// A popup and a context menu on one trigger keep a row each, and a close from outside gives the

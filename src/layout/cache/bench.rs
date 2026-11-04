@@ -160,7 +160,7 @@ fn bench_cache_pair(
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
-            h.engines_mut().layout.forget_last_run();
+            h.parts().engines.layout.forget_last_run();
             black_box(h.frame(build));
         });
     });
@@ -169,7 +169,7 @@ fn bench_cache_pair(
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
-            h.engines_mut().layout.cache.forget_all();
+            h.parts().engines.layout.cache.forget_all();
             black_box(h.frame(build));
         });
     });
@@ -252,12 +252,12 @@ fn bench_virtual_scroll(group: &mut CaseGroup<'_>) {
                 let _ = h.frame(|ui| build_scroll_window(ui, first));
                 first += stride;
             }
-            let before = h.engines_mut().layout.cache.snapshot_rebuilds.count();
+            let before = h.parts().engines.layout.cache.snapshot_rebuilds.count();
             for _ in 0..FRAMES {
                 let _ = h.frame(|ui| build_scroll_window(ui, first));
                 first += stride;
             }
-            let rebuilds = h.engines_mut().layout.cache.snapshot_rebuilds.count() - before;
+            let rebuilds = h.parts().engines.layout.cache.snapshot_rebuilds.count() - before;
             let expected = if stride == 0 { 0 } else { FRAMES };
             assert_eq!(
                 rebuilds, expected,

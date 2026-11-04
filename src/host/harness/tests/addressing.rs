@@ -155,7 +155,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     let mut plain = Harness::mono(SURFACE);
     plain.prime(2, support::button);
     assert_eq!(
-        plain.layout_rect(support::target()),
+        plain.arranged(support::target()),
         plain.rect(support::target())
     );
 }

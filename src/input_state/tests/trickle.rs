@@ -178,7 +178,7 @@ fn a_key_after_escape_reaches_the_next_focus_owner() {
     h.prime(2, |ui| {
         record_field(ui, &mut buffer);
     });
-    h.set_focus(field());
+    h.ui_mut().set_focus(field());
     h.frame(|ui| {
         record_field(ui, &mut buffer);
     });
@@ -192,7 +192,7 @@ fn a_key_after_escape_reaches_the_next_focus_owner() {
         record_field(ui, &mut buffer);
     });
     assert_eq!(buffer, "hello", "the blurred field typed nothing");
-    assert_eq!(h.focus(), None);
+    assert_eq!(h.ui().focus(), None);
 }
 
 /// `[Enter, 'x']`: the caller reads the submitted value in Enter's frame; `x` is typed in the next.
@@ -205,7 +205,7 @@ fn a_key_after_enter_is_typed_after_the_submit() {
         h.prime(2, |ui| {
             record_field(ui, &mut buffer);
         });
-        h.set_focus(field());
+        h.ui_mut().set_focus(field());
         h.frame(|ui| {
             record_field(ui, &mut buffer);
         });
@@ -263,7 +263,7 @@ fn keys_typed_before_a_focus_move_stay_with_their_field() {
         let mut h = Harness::mono(UVec2::new(300, 100));
         let (mut a, mut b) = (String::new(), String::new());
         h.prime(2, |ui| record_two_fields(ui, &mut a, &mut b));
-        h.set_focus(field());
+        h.ui_mut().set_focus(field());
         h.frame(|ui| record_two_fields(ui, &mut a, &mut b));
         h.key(Key::Char('a'));
         match mover {
@@ -276,7 +276,7 @@ fn keys_typed_before_a_focus_move_stay_with_their_field() {
         }
         h.frame(|ui| record_two_fields(ui, &mut a, &mut b));
         assert_eq!((a.as_str(), b.as_str()), ("a", ""), "{mover:?}");
-        assert_eq!(h.focus(), Some(field_b()), "{mover:?}");
+        assert_eq!(h.ui().focus(), Some(field_b()), "{mover:?}");
     }
 }
 

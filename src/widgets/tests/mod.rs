@@ -656,7 +656,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     fn press(focus: WidgetId, key: Key, mut record: impl FnMut(&mut Ui)) {
         let mut h = Harness::mono(SURFACE);
         h.frame(&mut record);
-        h.set_focus(focus);
+        h.ui_mut().set_focus(focus);
         h.frame(&mut record);
         h.key(key);
         h.frame(&mut record);

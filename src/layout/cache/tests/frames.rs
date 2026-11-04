@@ -34,10 +34,11 @@ use glam::UVec2;
 /// matches one.
 fn assert_warm_matches_cold(h: &mut Harness, msg: &str, mut record: impl FnMut(&mut Ui)) {
     h.frame(&mut record);
-    h.engines_mut().layout.forget_last_run();
+    h.parts().engines.layout.forget_last_run();
     h.frame(&mut record);
     assert!(
-        !h.engines_mut()
+        !h.parts()
+            .engines
             .layout
             .scratch
             .counters
@@ -168,7 +169,8 @@ fn cache_hit_preserves_grid_cell_rects() {
         assert_warm_matches_cold(&mut h, &format!("case: {label}"), *record);
         // The hit must land at the viewport root so grid measure is skipped and the hug-restore path runs.
         assert!(
-            h.engines_mut()
+            h.parts()
+                .engines
                 .layout
                 .scratch
                 .counters
@@ -176,7 +178,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                 .contains(&WidgetId::VIEWPORT),
             "case {label}: warm cache hit didn't land at the viewport root — grid hug \
              restore not exercised. hits={:?}",
-            h.engines_mut().layout.scratch.counters.cache_hits(),
+            h.parts().engines.layout.scratch.counters.cache_hits(),
         );
     }
 }
@@ -548,7 +550,8 @@ fn cache_rects_match_cold_oracle_across_resizes() {
         if i > 0 {
             for held in ["blocks", "buttons"] {
                 assert!(
-                    h.engines_mut()
+                    h.parts()
+                        .engines
                         .layout
                         .scratch
                         .counters
@@ -621,7 +624,13 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     h.frame(|ui| build(ui, 0));
     // Each of the three panels (the harness root, the outer stack, `heavy`) is walked once per
     // axis, and each of the 31 text leaves once for both: 3·2 + 31 = 37.
-    let cold = h.engines_mut().layout.scratch.counters.intrinsic_computes() as usize;
+    let cold = h
+        .parts()
+        .engines
+        .layout
+        .scratch
+        .counters
+        .intrinsic_computes() as usize;
     assert_eq!(
         cold,
         3 * 2 + HEAVY + 1,
@@ -631,7 +640,13 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     // `heavy` hits and its restored intrinsics skip a re-walk: the count is the changed chain,
     // the two panels above `tiny` once per axis and `tiny` once, 2·2 + 1 = 5, not ~2·HEAVY.
     h.frame(|ui| build(ui, 1));
-    let warm = h.engines_mut().layout.scratch.counters.intrinsic_computes() as usize;
+    let warm = h
+        .parts()
+        .engines
+        .layout
+        .scratch
+        .counters
+        .intrinsic_computes() as usize;
     assert_eq!(
         warm, 5,
         "localized change re-walked the unchanged sibling: {warm} intrinsic \
@@ -681,7 +696,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
             "tick {tick}"
         );
     }
-    let hits = h.engines_mut().layout.scratch.counters.cache_hits();
+    let hits = h.parts().engines.layout.scratch.counters.cache_hits();
     assert!(
         hits.contains(&WidgetId::from_hash("paragraph"))
             && !hits.contains(&WidgetId::from_hash("mid")),
@@ -745,7 +760,8 @@ fn moved_subtree_replays_translated_rects() {
     let after = rects(h.ui(), &after_nodes);
 
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .scratch
             .counters
@@ -753,7 +769,7 @@ fn moved_subtree_replays_translated_rects() {
             .translated
             > 0,
         "no subtree replayed via translation — fixture pins nothing, got {:?}",
-        h.engines_mut().layout.scratch.counters.arrange_replays(),
+        h.parts().engines.layout.scratch.counters.arrange_replays(),
     );
 
     // The header grew 10 → 30, so everything below shifts down exactly 20 with its size intact. Hand-computed, not a range check.
@@ -824,7 +840,8 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
         let header_h = 0.37 + frame as f32 * 29.13;
         warm.frame(|ui| record(ui, header_h));
         assert!(
-            warm.engines_mut()
+            warm.parts()
+                .engines
                 .layout
                 .scratch
                 .counters
@@ -877,7 +894,8 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
     h.frame(|ui| record(ui, 100.0));
     h.frame(|ui| record(ui, 150.0));
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .scratch
             .counters
@@ -886,7 +904,8 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
         "premise: the stable panel's measure hits the cache",
     );
     assert_eq!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .scratch
             .counters

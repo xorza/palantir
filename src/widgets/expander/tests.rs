@@ -364,7 +364,7 @@ fn space_and_enter_toggle_a_focused_header() {
         frame(&mut h, false);
         frame(&mut h, false);
 
-        h.clear_focus();
+        h.ui_mut().clear_focus();
         h.key(key);
         assert!(!frame(&mut h, false), "{key:?} clicked an unfocused header");
         assert!(
@@ -372,7 +372,7 @@ fn space_and_enter_toggle_a_focused_header() {
             "{key:?} moved an unfocused header",
         );
 
-        h.set_focus(header());
+        h.ui_mut().set_focus(header());
         frame(&mut h, false);
         h.key(key);
         assert!(frame(&mut h, false), "{key:?} clicks a focused header");

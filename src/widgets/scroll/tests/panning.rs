@@ -636,7 +636,7 @@ fn buttons(ui: &mut Ui) {
 fn the_keys_scroll_a_viewport_with_focus_within() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, buttons);
-    h.set_focus(WidgetId::from_hash(("row", 0)));
+    h.ui_mut().set_focus(WidgetId::from_hash(("row", 0)));
     h.prime(2, buttons);
     let line = h.ui().theme().text.font().line_height;
     for (key, want) in [
@@ -693,7 +693,7 @@ fn the_innermost_scroll_around_focus_takes_the_keys() {
     };
     let mut h = Harness::mono(SURFACE);
     h.prime(2, nested);
-    h.set_focus(WidgetId::from_hash(("row", 0)));
+    h.ui_mut().set_focus(WidgetId::from_hash(("row", 0)));
     h.prime(2, nested);
     h.key(Key::ArrowDown);
     h.prime(2, nested);

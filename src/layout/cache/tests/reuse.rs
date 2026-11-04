@@ -27,7 +27,7 @@ fn run_frame_at(h: &mut Harness, size: UVec2, mut record: impl FnMut(&mut Ui)) {
     // The surface lives on the harness, so a per-frame size must be applied: available changes here.
     h.resize(size);
     // Drives the snapshot restore, which a run that keeps the last output never reaches.
-    h.engines_mut().layout.forget_last_run();
+    h.parts().engines.layout.forget_last_run();
     h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -135,7 +135,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         .unwrap()
         .snap
         .subtree_hash;
-    let first_desired = h.engines_mut().layout.cache.prev.nodes.desired.clone();
+    let first_desired = h.parts().engines.layout.cache.prev.nodes.desired.clone();
     let first_rects = h.ui().layout(Layer::Main).rect.clone();
 
     run_frame(&mut h, build);
@@ -144,18 +144,18 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     assert_eq!(first_hash, second.snap.subtree_hash);
     assert_eq!(
         first_desired,
-        h.engines_mut().layout.cache.prev.nodes.desired
+        h.parts().engines.layout.cache.prev.nodes.desired
     );
     assert_eq!(first_rects, h.ui().layout(Layer::Main).rect);
     assert_eq!(
-        h.engines_mut().layout.scratch.counters.cache_hits().len(),
+        h.parts().engines.layout.scratch.counters.cache_hits().len(),
         1,
         "the highest unchanged subtree must short-circuit the frame"
     );
     // The rects must come from the replay, not from arrange re-deriving them: the output is identical
     // either way, so only this assertion says which path ran.
     assert_eq!(
-        h.engines_mut().layout.scratch.counters.arrange_replays(),
+        h.parts().engines.layout.scratch.counters.arrange_replays(),
         ReplayCounts {
             copied: 1,
             translated: 0,
@@ -193,7 +193,7 @@ fn a_recolor_hits_the_measure_cache_at_the_root() {
         "control: the paint did change",
     );
     assert_eq!(
-        h.engines_mut().layout.scratch.counters.cache_hits().len(),
+        h.parts().engines.layout.scratch.counters.cache_hits().len(),
         1,
         "the whole tree replays from one hit",
     );
@@ -250,7 +250,8 @@ fn removed_widget_is_absent_from_next_snapshot() {
         .show(ui);
     });
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .cache
             .prev
@@ -268,7 +269,8 @@ fn removed_widget_is_absent_from_next_snapshot() {
     });
 
     assert!(
-        !h.engines_mut()
+        !h.parts()
+            .engines
             .layout
             .cache
             .prev
@@ -276,7 +278,8 @@ fn removed_widget_is_absent_from_next_snapshot() {
             .contains_key(&WidgetId::from_hash("gone"))
     );
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .cache
             .prev
@@ -406,7 +409,8 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
         cold_hug_key
     );
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .scratch
             .counters
@@ -445,7 +449,7 @@ fn widget_reappearance_matches_cold_snapshot() {
     run_frame(&mut h, with_widget);
     let warm = snap_for(&h, blip).unwrap().desired.to_vec();
 
-    h.engines_mut().layout.cache.forget_all();
+    h.parts().engines.layout.cache.forget_all();
     run_frame(&mut h, with_widget);
     let cold = snap_for(&h, blip).unwrap().desired.to_vec();
 
@@ -482,16 +486,16 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     }
     // Only non-leaf nodes earn a descriptor, so adding and dropping a leaf leaves the id sequence the
     // same every frame. Steady-state oscillation must reuse the retained map, not refill it.
-    let rebuilds_after_warmup = h.engines_mut().layout.cache.snapshot_rebuilds.count();
+    let rebuilds_after_warmup = h.parts().engines.layout.cache.snapshot_rebuilds.count();
     let mut node_capacities = [
-        h.engines_mut().layout.cache.prev.nodes.desired.capacity(),
-        h.engines_mut().layout.cache.cur.nodes.desired.capacity(),
-        h.engines_mut().layout.scratch.desired.capacity(),
+        h.parts().engines.layout.cache.prev.nodes.desired.capacity(),
+        h.parts().engines.layout.cache.cur.nodes.desired.capacity(),
+        h.parts().engines.layout.scratch.desired.capacity(),
     ];
     node_capacities.sort_unstable();
     let mut desc_capacities = [
-        h.engines_mut().layout.cache.prev.snapshots.capacity(),
-        h.engines_mut().layout.cache.cur.snapshots.capacity(),
+        h.parts().engines.layout.cache.prev.snapshots.capacity(),
+        h.parts().engines.layout.cache.cur.snapshots.capacity(),
     ];
     desc_capacities.sort_unstable();
 
@@ -499,14 +503,14 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         render(&mut h, frame % 2 == 0);
         assert_snapshot_is_linear(&h);
         let mut cur_node_capacities = [
-            h.engines_mut().layout.cache.prev.nodes.desired.capacity(),
-            h.engines_mut().layout.cache.cur.nodes.desired.capacity(),
-            h.engines_mut().layout.scratch.desired.capacity(),
+            h.parts().engines.layout.cache.prev.nodes.desired.capacity(),
+            h.parts().engines.layout.cache.cur.nodes.desired.capacity(),
+            h.parts().engines.layout.scratch.desired.capacity(),
         ];
         cur_node_capacities.sort_unstable();
         let mut cur_desc_capacities = [
-            h.engines_mut().layout.cache.prev.snapshots.capacity(),
-            h.engines_mut().layout.cache.cur.snapshots.capacity(),
+            h.parts().engines.layout.cache.prev.snapshots.capacity(),
+            h.parts().engines.layout.cache.cur.snapshots.capacity(),
         ];
         cur_desc_capacities.sort_unstable();
         assert_eq!(
@@ -516,7 +520,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         assert_eq!(desc_capacities, cur_desc_capacities);
     }
     assert_eq!(
-        h.engines_mut().layout.cache.snapshot_rebuilds.count(),
+        h.parts().engines.layout.cache.snapshot_rebuilds.count(),
         rebuilds_after_warmup,
         "steady-state oscillation must reuse each buffer's descriptor map",
     );
@@ -535,12 +539,13 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
             });
     });
     assert_eq!(
-        h.engines_mut().layout.cache.snapshot_rebuilds.count(),
+        h.parts().engines.layout.cache.snapshot_rebuilds.count(),
         rebuilds_after_warmup + 1,
         "an unseen descriptor sequence must rebuild the map",
     );
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .cache
             .prev
@@ -577,7 +582,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     let mut color = RgbaF32::srgb(0.2, 0.4, 0.8);
     let mut popup_at = Vec2::new(20.0, 30.0);
     let kept = |h: &mut Harness, color: RgbaF32, popup_at: Vec2| {
-        let before = h.engines_mut().layout.scratch.counters.kept_runs();
+        let before = h.parts().engines.layout.scratch.counters.kept_runs();
         h.frame(|ui| {
             WrappedLeaf {
                 id: "a",
@@ -593,7 +598,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
                     .show(ui);
             });
         });
-        h.engines_mut().layout.scratch.counters.kept_runs() - before
+        h.parts().engines.layout.scratch.counters.kept_runs() - before
     };
     assert_eq!(kept(&mut h, color, popup_at), 0, "the first frame runs");
     let rects = h.ui().layout(Layer::Main).rect.clone();
@@ -602,7 +607,8 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     color = RgbaF32::srgb(0.9, 0.4, 0.8);
     assert_eq!(kept(&mut h, color, popup_at), 1, "a recolor keeps");
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .layout
             .scratch
             .counters

@@ -79,7 +79,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
     assert_eq!(settled, 10);
     assert_eq!(free_classes(&h), 1, "the 4-row block is parked");
 
-    let before = h.engines_mut().damage.paints.counters.counts();
+    let before = h.parts().engines.damage.paints.counters.counts();
     for f in 0..FRAMES {
         frame(&mut h, build(3 + f % 2));
         assert_eq!(
@@ -95,7 +95,7 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
         assert_eq!(free_classes(&h), 1, "exactly one block sits idle");
     }
 
-    let delta = h.engines_mut().damage.paints.counters.counts() - before;
+    let delta = h.parts().engines.damage.paints.counters.counts() - before;
     assert_eq!(
         (delta.allocs, delta.reuses),
         (0, FRAMES),
@@ -152,7 +152,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbor_churns() {
     frame(&mut h, build(4));
     frame(&mut h, build(4));
     let quiet_span = span_of(&h, "quiet");
-    let quiet_rows: Vec<_> = h.engines_mut().damage.paints.slots[quiet_span.range()].to_vec();
+    let quiet_rows: Vec<_> = h.parts().engines.damage.paints.slots[quiet_span.range()].to_vec();
     assert_eq!(quiet_span.len, 4, "chrome plus three shapes");
 
     // Walk the churner across four size classes several times.
@@ -165,7 +165,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbor_churns() {
         );
     }
     assert_eq!(
-        h.engines_mut().damage.paints.slots[quiet_span.range()],
+        h.parts().engines.damage.paints.slots[quiet_span.range()],
         quiet_rows[..],
         "and its rows are byte-identical, not merely at the same index",
     );
@@ -202,7 +202,8 @@ fn swapping_one_widget_for_another_settles_at_a_single_spare_block() {
         };
         frame(&mut h, build(arriving));
         assert!(
-            !h.engines_mut()
+            !h.parts()
+                .engines
                 .damage
                 .prev
                 .contains_key(&WidgetId::from_hash(departing)),
@@ -235,7 +236,7 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     assert_eq!(free_classes(&h), 0, "the free lists went with the storage");
     assert_eq!(
         arena_len(&h),
-        h.engines_mut().damage.prev.len(),
+        h.parts().engines.damage.prev.len(),
         "every snapshot in the rebuilt map holds one single-row block and \
          nothing else is allocated",
     );
@@ -244,7 +245,7 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     let span = span_of(&h, "a");
     assert_eq!(span.len, 1, "the 50x50 frame contributes its chrome row");
     assert_eq!(
-        h.engines_mut().damage.paints.slots[span.range()][0].screen,
+        h.parts().engines.damage.paints.slots[span.range()][0].screen,
         Rect::new(0.0, 0.0, 50.0, 50.0),
     );
 }

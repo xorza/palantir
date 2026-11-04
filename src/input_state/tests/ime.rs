@@ -30,7 +30,7 @@ fn focused_field() -> FocusedField {
     let mut h = Harness::new(SURFACE);
     let mut buf = String::new();
     h.frame(|ui| record(ui, &mut buf));
-    h.set_focus(field());
+    h.ui_mut().set_focus(field());
     h.frame(|ui| record(ui, &mut buf));
     FocusedField { h, buf }
 }
@@ -98,14 +98,14 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
     }));
     h.frame(|ui| record(ui, &mut buf));
     assert!(h.ui().ime_preedit().is_some());
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(
         h.ui().ime_preedit(),
         None,
         "it is the focused widget's alone"
     );
-    h.set_focus(field());
+    h.ui_mut().set_focus(field());
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(h.ui().ime_preedit(), None, "focus that left retired it");
 }

@@ -375,7 +375,7 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
     };
     step(&mut h, "rects only", 0, false, false);
     step(&mut h, "steady", 0, false, false);
-    h.set_focus(WidgetId::from_hash("editor"));
+    h.ui_mut().set_focus(WidgetId::from_hash("editor"));
     step(&mut h, "focus moved", 1, false, false);
     step(&mut h, "steady after the move", 0, false, false);
     step(&mut h, "a scope recorded, read next frame", 0, true, false);
@@ -388,7 +388,7 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
 /// `editor` block: the gate drops an unsubscribed chord with nothing focused and
 /// `end_frame` evicts focus on unrecorded widgets.
 fn press_escape(h: &mut Harness) {
-    h.set_focus(WidgetId::from_hash("editor"));
+    h.ui_mut().set_focus(WidgetId::from_hash("editor"));
     h.key(Key::Escape);
 }
 
@@ -439,7 +439,7 @@ fn focus_policy_routing() {
         h.ui_mut().set_focus_policy(*policy);
         h.frame(build);
         h.click(editable_id);
-        assert_eq!(h.focus(), Some(editable_id), "{label}: initial focus");
+        assert_eq!(h.ui().focus(), Some(editable_id), "{label}: initial focus");
 
         h.frame(build);
         let miss = glam::Vec2::new(180.0, 5.0);
@@ -447,7 +447,7 @@ fn focus_policy_routing() {
         h.press(miss, PointerButton::Left);
         h.release(PointerButton::Left);
         let expected = (*expect_focus).then_some(editable_id);
-        assert_eq!(h.focus(), expected, "{label}: after outside press");
+        assert_eq!(h.ui().focus(), expected, "{label}: after outside press");
     }
     assert_eq!(
         Harness::mono(BUTTON_SURFACE).ui().focus_policy(),
@@ -472,12 +472,12 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     };
     h.frame(build);
     h.click(WidgetId::from_hash("editable"));
-    assert_eq!(h.focus(), Some(WidgetId::from_hash("editable")));
+    assert_eq!(h.ui().focus(), Some(WidgetId::from_hash("editable")));
 
     h.frame(build);
     h.click(WidgetId::from_hash("plain"));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(WidgetId::from_hash("editable")),
         "click on non-focusable widget must not steal focus",
     );
@@ -494,13 +494,13 @@ fn focus_is_evicted_when_widget_disappears() {
         });
     });
     h.click(glam::Vec2::new(50.0, 20.0));
-    assert_eq!(h.focus(), Some(WidgetId::from_hash("editable")));
+    assert_eq!(h.ui().focus(), Some(WidgetId::from_hash("editable")));
 
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_ui| {});
     });
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         None,
         "focused widget removed from tree must drop focus",
     );
@@ -510,10 +510,10 @@ fn focus_is_evicted_when_widget_disappears() {
 fn set_focus_bypasses_policy() {
     let mut h = Harness::mono(BUTTON_SURFACE);
     let id = WidgetId::from_hash("manual");
-    h.set_focus(id);
-    assert_eq!(h.focus(), Some(id));
-    h.clear_focus();
-    assert_eq!(h.focus(), None);
+    h.ui_mut().set_focus(id);
+    assert_eq!(h.ui().focus(), Some(id));
+    h.ui_mut().clear_focus();
+    assert_eq!(h.ui().focus(), None);
 }
 
 #[test]
@@ -547,14 +547,14 @@ fn invisible_or_disabled_focusable_refuses_focus() {
         let mut h = Harness::mono(BUTTON_SURFACE);
         h.frame(|ui| record(ui, mode));
         h.click(glam::Vec2::new(50.0, 20.0));
-        assert_eq!(h.focus(), *expected, "case {label}");
+        assert_eq!(h.ui().focus(), *expected, "case {label}");
 
         // A holder that turns hidden or disabled drops focus, so keys stop routing to it.
         let mut h = Harness::mono(BUTTON_SURFACE);
         h.frame(|ui| record(ui, &Mode::Shown));
         h.click(glam::Vec2::new(50.0, 20.0));
         h.frame(|ui| record(ui, mode));
-        assert_eq!(h.focus(), *expected, "case {label}, after focus");
+        assert_eq!(h.ui().focus(), *expected, "case {label}, after focus");
     }
 }
 

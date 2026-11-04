@@ -276,11 +276,11 @@ fn incremental_scroll_matches_full() {
         WidgetId::from_hash("scroll"),
         Vec2::new(0.0, 40.0),
     );
-    let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
+    let rebuilds = h.parts().engines.cascade.counters.full_rebuilds();
     h.frame(build);
 
     assert_eq!(
-        h.engines_mut().cascade.counters.full_rebuilds(),
+        h.parts().engines.cascade.counters.full_rebuilds(),
         rebuilds,
         "a scroll must refresh the cascade in place",
     );
@@ -316,7 +316,7 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| build(ui, false));
     let counters = |h: &mut Harness| {
-        let counters = &h.engines_mut().cascade.counters;
+        let counters = &h.parts().engines.cascade.counters;
         [
             counters.abandoned_incrementals(),
             counters.full_rebuilds(),
@@ -455,9 +455,9 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| scene(ui, BASE));
         let base_key = h.ui().cascade().key;
-        let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
-        let repacks = h.engines_mut().cascade.counters.repacks();
-        let abandoned = h.engines_mut().cascade.counters.abandoned_incrementals();
+        let rebuilds = h.parts().engines.cascade.counters.full_rebuilds();
+        let repacks = h.parts().engines.cascade.counters.repacks();
+        let abandoned = h.parts().engines.cascade.counters.abandoned_incrementals();
 
         mutate(&mut h);
 
@@ -466,7 +466,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
             h.ui().cascade().key,
             "`{label}` left the key unmoved — the frame would reuse a stale cascade",
         );
-        let counters = &h.engines_mut().cascade.counters;
+        let counters = &h.parts().engines.cascade.counters;
         let taken = if counters.full_rebuilds() > rebuilds {
             Path::Rebuild
         } else if counters.repacks() > repacks {
@@ -486,7 +486,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| scene(ui, BASE));
     let base_key = h.ui().cascade().key;
-    let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
+    let rebuilds = h.parts().engines.cascade.counters.full_rebuilds();
     h.frame(|ui| scene(ui, BASE));
     assert_eq!(
         base_key,
@@ -494,11 +494,11 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         "an unchanged frame must keep its key",
     );
     assert!(
-        !h.engines_mut().cascade.counters.ran(),
+        !h.parts().engines.cascade.counters.ran(),
         "an unchanged key skips"
     );
     assert_eq!(
-        h.engines_mut().cascade.counters.full_rebuilds(),
+        h.parts().engines.cascade.counters.full_rebuilds(),
         rebuilds,
         "an unchanged frame must not rebuild",
     );
@@ -549,24 +549,24 @@ fn refresh_recomputes_only_what_moved() {
     {
         let mut h = Harness::mono(UVec2::splat(300));
         h.frame(|ui| scene(ui, false, 10.0));
-        let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
-        let before = h.engines_mut().cascade.counters.refreshed_nodes();
+        let rebuilds = h.parts().engines.cascade.counters.full_rebuilds();
+        let before = h.parts().engines.cascade.counters.refreshed_nodes();
 
         h.frame(|ui| scene(ui, transformed, a0_size));
 
         assert_eq!(
-            h.engines_mut().cascade.counters.full_rebuilds(),
+            h.parts().engines.cascade.counters.full_rebuilds(),
             rebuilds,
             "{label}: rebuilt",
         );
         assert_eq!(
-            h.engines_mut().cascade.counters.refreshed_nodes() - before,
+            h.parts().engines.cascade.counters.refreshed_nodes() - before,
             refreshed,
             "{label}: recomputed nodes",
         );
         // The last node recomputed is a block (`a2`, then `a0`), whose one row is its chrome.
         assert_eq!(
-            h.engines_mut().cascade.paint_rows().len(),
+            h.parts().engines.cascade.paint_rows().len(),
             1,
             "{label}: scratch holds one node's rows",
         );

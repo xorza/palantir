@@ -103,7 +103,8 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     });
 
     assert!(
-        !h.engines_mut()
+        !h.parts()
+            .engines
             .damage
             .prev
             .contains_key(&WidgetId::from_hash("off")),

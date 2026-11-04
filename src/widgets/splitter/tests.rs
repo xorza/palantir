@@ -564,7 +564,7 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
     let mut ratio = 0.5;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
-    h.set_focus(split_id().with("divider"));
+    h.ui_mut().set_focus(split_id().with("divider"));
     frame_with(&mut h, &mut ratio);
     for (mods, key, want) in [
         (Modifiers::NONE, Key::ArrowRight, 0.525),

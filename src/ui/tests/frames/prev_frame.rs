@@ -15,7 +15,7 @@ use crate::widgets::{block::Block, button::Button, panel::Panel};
 #[test]
 fn prev_frame_empty_before_first_frame() {
     let mut h = Harness::mono(SURFACE);
-    assert!(h.engines_mut().damage.prev().is_empty());
+    assert!(h.parts().engines.damage.prev().is_empty());
 }
 
 /// After the first frame, painting widgets land in `prev` with their arranged rect and hash, chromeless parents via child-marker rows (union of paint-empty screens); a rowless node stays out.
@@ -72,7 +72,8 @@ fn prev_frame_drops_disappeared_widgets() {
             });
     });
     assert!(
-        h.engines_mut()
+        h.parts()
+            .engines
             .damage
             .prev()
             .contains_key(&WidgetId::from_hash("gone"))
@@ -84,7 +85,8 @@ fn prev_frame_drops_disappeared_widgets() {
             .show(ui, |_| {});
     });
     assert!(
-        !h.engines_mut()
+        !h.parts()
+            .engines
             .damage
             .prev()
             .contains_key(&WidgetId::from_hash("gone"))
@@ -104,10 +106,10 @@ fn prev_frame_updates_on_authoring_change() {
         }
     };
     h.frame(paint(RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let h1 = h.engines_mut().damage.prev()[&WidgetId::from_hash("a")].hash;
+    let h1 = h.parts().engines.damage.prev()[&WidgetId::from_hash("a")].hash;
 
     h.frame(paint(RgbaF32::srgb(0.9, 0.4, 0.8)));
-    let h2 = h.engines_mut().damage.prev()[&WidgetId::from_hash("a")].hash;
+    let h2 = h.parts().engines.damage.prev()[&WidgetId::from_hash("a")].hash;
     assert_ne!(h1, h2);
 }
 

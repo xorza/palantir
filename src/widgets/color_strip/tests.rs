@@ -121,7 +121,7 @@ fn the_hue_bar_keeps_both_ends() {
     show(&mut h, &mut coords);
     assert_eq!(coords.hue(), 1.0, "past the right edge");
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     for (key, hue) in [(Key::Home, 0.0), (Key::End, 1.0)] {
         h.key(key);
         show(&mut h, &mut coords);
@@ -155,7 +155,7 @@ fn page_and_arrow_keys_step_the_alpha_bar() {
         });
     };
     show(&mut h, &mut color);
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     let steps = [
         (Key::PageUp, 0.5 + 0.1),
         (Key::PageDown, 0.5 + 0.1 - 0.1),

@@ -33,7 +33,6 @@ use crate::diagnostics::frame_stats::FrameStats;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::display::host_display::HostDisplay;
 use crate::display::user_scale::UserScale;
 use crate::gpu::gpu_paint::gpu_views::{GpuViews, RecordedView};
 use crate::icons::icon_set::IconSet;
@@ -68,7 +67,7 @@ use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
-use crate::primitives::reduce_preference::{ReducePreference, Reduction};
+use crate::primitives::reduce_preference::ReducePreference;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::error::ImageTooLarge;
@@ -172,10 +171,9 @@ impl Ui {
         }
     }
 
-    /// The stamp of a frame at `time` on `host`. The one place the user scale reaches a frame:
-    /// it is written mid-frame, so a host-cached copy would paint a stale frame after it moves.
-    pub(crate) fn frame_stamp(&self, host: HostDisplay, time: Duration) -> FrameStamp {
-        FrameStamp::new(host.to_display(self.user_scale()), time)
+    /// Whether the host snaps axis-aligned paint edges to physical pixels, in every window.
+    pub(crate) fn pixel_snap(&self) -> bool {
+        self.resources.settings().pixel_snap()
     }
 
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
@@ -367,18 +365,6 @@ impl Ui {
         }
     }
 
-    /// A host's report of the system's reduced-motion setting; a change asks this window for a
-    /// frame.
-    pub(crate) fn set_system_motion_reduced(&mut self, reduced: bool) {
-        if self
-            .resources
-            .settings()
-            .set_system_motion(Reduction::from(reduced))
-        {
-            self.frame_runtime.request_repaint();
-        }
-    }
-
     /// Whether this frame paints with transparency reduced: the
     /// [transparency preference](Self::transparency_preference) resolved against
     /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then
@@ -415,25 +401,6 @@ impl Ui {
             .settings()
             .set_transparency_preference(preference)
         {
-            self.frame_runtime.request_repaint();
-        }
-    }
-
-    /// A host's report of the system's reduced-transparency setting; a change asks this window
-    /// for a frame.
-    pub(crate) fn set_system_transparency_reduced(&mut self, reduced: bool) {
-        if self
-            .resources
-            .settings()
-            .set_system_transparency(Reduction::from(reduced))
-        {
-            self.frame_runtime.request_repaint();
-        }
-    }
-
-    /// A host's report of the system's scheme; a change asks this window for a frame.
-    pub(crate) fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) {
-        if self.resources.settings().set_system_color_scheme(scheme) {
             self.frame_runtime.request_repaint();
         }
     }

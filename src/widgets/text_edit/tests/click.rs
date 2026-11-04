@@ -12,7 +12,7 @@ fn typing_inserts_text_when_focused() {
 
     h.frame(Field::EDITOR.scene(&mut buf));
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(id));
+    assert_eq!(h.ui().focus(), Some(id));
 
     h.type_text("hi");
 
@@ -29,7 +29,7 @@ fn a_field_types_the_text_a_press_produced() {
 
     h.frame(Field::EDITOR.scene(&mut buf));
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(id));
+    assert_eq!(h.ui().focus(), Some(id));
 
     h.on_input(InputEvent::KeyDown {
         key: Key::Char('^'),
@@ -59,7 +59,7 @@ fn a_command_chord_types_nothing_it_reports() {
 
     h.frame(Field::EDITOR.scene(&mut buf));
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(id));
+    assert_eq!(h.ui().focus(), Some(id));
 
     h.hold_modifiers(Modifiers::CTRL);
     h.on_input(InputEvent::KeyDown {
@@ -81,7 +81,7 @@ fn keystrokes_ignored_when_not_focused() {
 
     h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "", "unfocused TextEdit must not consume keystrokes");
-    assert!(h.focus().is_none());
+    assert!(h.ui().focus().is_none());
 }
 
 #[test]
@@ -91,17 +91,17 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
     let id = WidgetId::from_hash("editor");
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    assert!(h.focus().is_none());
+    assert!(h.ui().focus().is_none());
     assert!(!h.key_down(Key::Escape).repaint_requested);
     assert!(!h.key_down(Key::Char('s')).repaint_requested);
 
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(id));
+    assert_eq!(h.ui().focus(), Some(id));
     h.frame(Field::EDITOR.scene(&mut buf));
 
     assert_eq!(buf, "seed", "unfocused text must be discarded on arrival");
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(id),
         "unfocused Escape must not blur a later focus target",
     );
@@ -115,11 +115,11 @@ fn escape_blurs_focus() {
 
     h.frame(Field::EDITOR.scene(&mut buf));
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(id));
+    assert_eq!(h.ui().focus(), Some(id));
 
     h.key(Key::Escape);
     h.frame(Field::EDITOR.scene(&mut buf));
-    assert_eq!(h.focus(), None);
+    assert_eq!(h.ui().focus(), None);
 }
 
 #[test]
@@ -176,12 +176,12 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
 
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(WidgetId::from_hash("editor")));
+    assert_eq!(h.ui().focus(), Some(WidgetId::from_hash("editor")));
 
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
     h.click(h.point_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0)));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         None,
         "default ClearOnMiss drops focus when clicking a non-focusable Button",
     );
@@ -398,7 +398,7 @@ fn two_textedits_only_one_focused_at_a_time() {
 
     h.frame(|ui| body(ui, &mut a, &mut b));
     h.click(h.point_in(id_a, Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(id_a));
+    assert_eq!(h.ui().focus(), Some(id_a));
 
     h.key(Key::Char('1'));
     h.frame(|ui| body(ui, &mut a, &mut b));
@@ -406,7 +406,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     assert_eq!(b, "");
 
     h.click(h.point_in(id_b, Vec2::new(70.0, 20.0)));
-    assert_eq!(h.focus(), Some(id_b));
+    assert_eq!(h.ui().focus(), Some(id_b));
 
     h.key(Key::Char('2'));
     h.frame(|ui| body(ui, &mut a, &mut b));
@@ -438,7 +438,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     };
 
     h.frame(|ui| render(ui, &mut on, &mut off));
-    h.set_focus(on_id);
+    h.ui_mut().set_focus(on_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     {
         let st = h.state::<TextEditState>(on_id);
@@ -454,7 +454,7 @@ fn select_all_on_focus_gates_on_the_flag() {
         );
     }
 
-    h.set_focus(off_id);
+    h.ui_mut().set_focus(off_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     assert_eq!(
         h.state::<TextEditState>(off_id).unwrap().edit.selection,
@@ -472,14 +472,14 @@ fn select_all_on_focus_gates_on_the_flag() {
         PointerButton::Left,
     );
     h.frame(|ui| render(ui, &mut on, &mut off));
-    assert_eq!(h.focus(), Some(on_id));
+    assert_eq!(h.ui().focus(), Some(on_id));
     assert_eq!(selection(&h), (None, 5), "the press places a bare caret");
     h.release(PointerButton::Left);
     h.frame(|ui| render(ui, &mut on, &mut off));
     assert_eq!(selection(&h), (Some(0), 5), "the release selects all");
 
     // A drag from the end to the start keeps its anchor at 5, where select-all's is 0.
-    h.set_focus(off_id);
+    h.ui_mut().set_focus(off_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     h.advance_past_double_click();
     h.press(
@@ -498,7 +498,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     );
 
     // A key taken mid-press acts on the press's caret, and the release keeps the result.
-    h.set_focus(off_id);
+    h.ui_mut().set_focus(off_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     h.advance_past_double_click();
     h.press(
@@ -514,7 +514,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     assert_eq!(selection(&h), (None, 6), "the release selected nothing");
 
     // Focus moved away mid-press: the release selects nothing in the field it left.
-    h.set_focus(off_id);
+    h.ui_mut().set_focus(off_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     h.advance_past_double_click();
     h.press(
@@ -522,7 +522,7 @@ fn select_all_on_focus_gates_on_the_flag() {
         PointerButton::Left,
     );
     h.frame(|ui| render(ui, &mut on, &mut off));
-    h.set_focus(off_id);
+    h.ui_mut().set_focus(off_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     h.release(PointerButton::Left);
     h.frame(|ui| render(ui, &mut on, &mut off));
@@ -533,7 +533,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     );
 
     // The flag off: the same click leaves the bare caret the press placed.
-    h.set_focus(on_id);
+    h.ui_mut().set_focus(on_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     h.advance_past_double_click();
     h.click(h.point_in(off_id, Vec2::new(110.0, 20.0)));
@@ -613,16 +613,16 @@ fn focus_and_hover_within_follow_their_targets_ancestry() {
 
     h.frame(&mut record);
     assert!(
-        !h.is_focus_within(holder),
+        !h.ui().is_focus_within(holder),
         "nothing focused → no ancestor owns focus"
     );
 
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
-    assert_eq!(h.focus(), Some(editor));
-    assert!(h.is_focus_within(editor), "self-inclusive");
-    assert!(h.is_focus_within(holder));
-    assert!(!h.is_focus_within(bystander));
-    assert!(!h.is_focus_within(WidgetId::from_hash("unrecorded")));
+    assert_eq!(h.ui().focus(), Some(editor));
+    assert!(h.ui().is_focus_within(editor), "self-inclusive");
+    assert!(h.ui().is_focus_within(holder));
+    assert!(!h.ui().is_focus_within(bystander));
+    assert!(!h.ui().is_focus_within(WidgetId::from_hash("unrecorded")));
     assert!(h.ui().is_hover_within(editor), "self-inclusive");
     assert!(h.ui().is_hover_within(holder));
     assert!(!h.ui().is_hover_within(bystander));
@@ -637,7 +637,7 @@ fn focus_and_hover_within_follow_their_targets_ancestry() {
         !h.ui().is_hover_within(bystander),
         "nothing sensed is hovered"
     );
-    assert!(h.is_focus_within(holder), "focus stays where it was");
+    assert!(h.ui().is_focus_within(holder), "focus stays where it was");
 }
 
 /// A tap (press and release fed together) places the caret; the press lands a frame before its release.
@@ -647,7 +647,7 @@ fn a_tap_places_the_caret() {
     let mut buf = String::from("hello");
     let ed_id = WidgetId::from_hash("ed");
     h.prime(2, Field::PADDED.scene(&mut buf));
-    h.set_focus(ed_id);
+    h.ui_mut().set_focus(ed_id);
     h.key(Key::End);
     h.frame(Field::PADDED.scene(&mut buf));
     assert_eq!(h.state::<TextEditState>(ed_id).unwrap().edit.caret, 5);

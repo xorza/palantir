@@ -7,12 +7,12 @@ use std::sync::mpsc;
 
 use winit::event_loop::EventLoopProxy;
 
+use crate::host::system_preferences::SystemPreferences;
 use crate::host::winit::error::HostDisconnected;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::host::winit::remote::{QueryTask, Remote, ShotAsk};
-use crate::host::winit::system_preferences::SystemPreferences;
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::window::window_token::WindowToken;
 

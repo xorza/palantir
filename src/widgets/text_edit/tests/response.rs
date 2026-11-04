@@ -33,7 +33,7 @@ fn reports_focus_gained_as_a_one_frame_edge() {
         !frame(&mut h, &mut buf).a().focus_gained,
         "unfocused: no gain"
     );
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     assert!(
         frame(&mut h, &mut buf).a().focus_gained,
         "took focus this frame"
@@ -50,7 +50,7 @@ fn reports_changed_on_edit_but_not_submit() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     h.key(Key::Char('x'));
     let s = frame(&mut h, &mut buf);
@@ -67,7 +67,7 @@ fn reports_submitted_on_single_line_enter() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("hi");
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     h.key(Key::Enter);
     let s = frame(&mut h, &mut buf);
@@ -117,7 +117,7 @@ fn committed_fires_once_per_finished_edit() {
     for (label, steps, want) in cases {
         let mut h = Harness::new(SMALL);
         let mut buf = String::new();
-        h.set_focus(WidgetId::from_hash(EDITOR));
+        h.ui_mut().set_focus(WidgetId::from_hash(EDITOR));
         assert!(
             !frame(&mut h, &mut buf).a().committed,
             "{label}: focus frame"
@@ -132,7 +132,7 @@ fn committed_fires_once_per_finished_edit() {
                     Press(key) => {
                         h.key(key);
                     }
-                    Blur => h.clear_focus(),
+                    Blur => h.ui_mut().clear_focus(),
                 }
                 frame(&mut h, &mut buf).a().committed
             })
@@ -147,9 +147,9 @@ fn reports_focus_lost_on_blur() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     assert!(
         frame(&mut h, &mut buf).a().focus_lost,
         "lost focus this frame"
@@ -162,7 +162,7 @@ fn escape_reports_focus_lost_on_the_blur_frame() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     let _ = frame(&mut h, &mut buf);
     h.key(Key::Escape);
     let escaped = frame(&mut h, &mut buf);
@@ -170,7 +170,7 @@ fn escape_reports_focus_lost_on_the_blur_frame() {
         escaped.a().focus_lost,
         "Escape reports the focus edge immediately"
     );
-    assert!(h.focus().is_none());
+    assert!(h.ui().focus().is_none());
     assert!(
         !frame(&mut h, &mut buf).a().focus_lost,
         "the edge is not repeated next frame",
@@ -184,7 +184,7 @@ fn reports_changed_on_same_length_overwrite() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("a");
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
     h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
@@ -219,7 +219,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus on the enabled editor
     h.key(Key::Char('x'));
     let sig = disabled_frame(&mut h, &mut buf);
@@ -227,7 +227,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     assert!(!sig.a().changed, "no change reported");
     assert!(sig.a().focus_lost, "disable frame reports focus_lost");
     assert!(!sig.a().committed, "a blur by disabling commits nothing");
-    assert!(h.focus().is_none(), "focus was kicked out");
+    assert!(h.ui().focus().is_none(), "focus was kicked out");
 }
 
 /// Every chord `TextEdit` binds as an editing action must classify as [`KeyClass::Edit`], or a focused editor
@@ -308,7 +308,7 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
         h.frame(|ui| {
             scene(ui, &mut buf, probe);
         });
-        h.set_focus(field);
+        h.ui_mut().set_focus(field);
         // Settles the scope path, which resolves against the previous frame's cascade.
         h.frame(|ui| {
             scene(ui, &mut buf, probe);
@@ -317,7 +317,11 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
         h.key(key);
         let at_root = h.frame_value(|ui| scene(ui, &mut buf, probe));
         assert_eq!(at_root, reaches_root, "{key:?} under {mods:?}");
-        assert_eq!(h.focus(), Some(field), "{key:?}: the field keeps focus");
+        assert_eq!(
+            h.ui().focus(),
+            Some(field),
+            "{key:?}: the field keeps focus"
+        );
     }
 }
 
@@ -403,14 +407,14 @@ fn a_buffered_field_hands_over_a_changed_draft_on_commit() {
             .iter()
             .map(|step| {
                 match *step {
-                    Focus => h.set_focus(id),
+                    Focus => h.ui_mut().set_focus(id),
                     Type(c) => {
                         h.key(Key::Char(c));
                     }
                     Press(key) => {
                         h.key(key);
                     }
-                    Blur => h.clear_focus(),
+                    Blur => h.ui_mut().clear_focus(),
                     Value(value) => current = value,
                 }
                 frame(&mut h, current)

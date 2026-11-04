@@ -93,7 +93,7 @@ fn a_chip_is_a_tab_stop_while_the_caller_keeps_it_one() {
         record(&mut h);
         h.key(Key::Tab);
         record(&mut h);
-        assert_eq!(h.focus() == Some(id), stop, "{sense:?} {focusable:?}");
+        assert_eq!(h.ui().focus() == Some(id), stop, "{sense:?} {focusable:?}");
     }
 }
 

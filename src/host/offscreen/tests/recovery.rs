@@ -16,7 +16,7 @@ use crate::gpu::test_gpu::{
     isolated_headless_test_gpu_capped,
 };
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
-use crate::host::window_driver::{CpuFrame, FrameDepth};
+use crate::host::window_driver::CpuFrame;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::{ONE_COLOR, TWO_COLORS};
@@ -318,7 +318,10 @@ fn a_host_recovers_from_a_loss_between_frames() {
     lost.lose();
     assert!(host.is_device_lost());
     host.frame(target.as_target(), &mut scene);
-    assert!(!host.driver.output_valid(), "the frame submitted nothing");
+    assert!(
+        !host.window.driver.output_valid(),
+        "the frame submitted nothing"
+    );
     assert_eq!(
         scene.refills, 0,
         "a lost device keeps its textures until the next attach"
@@ -352,11 +355,9 @@ fn a_host_recovers_from_a_second_loss_inside_a_frame() {
     host.recover(second.handles());
     let lost = second.target("palantir.test.recovery.second", SIZE);
     let spec = host.spec(lost.as_target());
-    let CpuFrame { mode, .. } =
-        host.core
-            .record(&mut host.driver, spec, &mut scene, FrameDepth::Paint);
+    let CpuFrame { mode, .. } = host.record(spec, &mut scene);
     second.lose();
-    host.core.submit(&mut host.driver, lost.as_target(), mode);
+    host.submit(lost.as_target(), mode);
     assert!(host.is_device_lost());
     assert_eq!(scene.refills, 1);
 
@@ -394,11 +395,9 @@ fn a_loss_inside_a_frame_that_grows_a_buffer_submits_nothing_that_panics() {
     let target = gpu.target("palantir.test.recovery.grow", UVec2::splat(SIDE));
     host.frame(target.as_target(), &mut |_: &mut Ui| {});
     let spec = host.spec(target.as_target());
-    let CpuFrame { mode, .. } =
-        host.core
-            .record(&mut host.driver, spec, &mut blocks, FrameDepth::Paint);
+    let CpuFrame { mode, .. } = host.record(spec, &mut blocks);
     gpu.lose();
-    host.core.submit(&mut host.driver, target.as_target(), mode);
+    host.submit(target.as_target(), mode);
     assert!(host.is_device_lost());
 }
 
@@ -488,5 +487,5 @@ fn a_recovery_onto_a_smaller_device_takes_its_limit() {
     assert!(fits_handle.is_resident());
     assert_eq!(host.gpu_image_cache_len(), 1);
     assert!(host.ui().load_image(&wide).is_err());
-    assert_eq!(host.core.resources.gradient_atlas().max_rows(), 2048);
+    assert_eq!(host.window.cpu.resources.gradient_atlas().max_rows(), 2048);
 }

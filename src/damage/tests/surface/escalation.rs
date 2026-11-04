@@ -54,7 +54,7 @@ fn display_change_forces_full_repaint() {
         let f2 = frame(&mut h, &mut build);
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(
-            h.engines_mut().damage.counters.dirty().is_empty(),
+            h.parts().engines.damage.counters.dirty().is_empty(),
             "case: {label} steady"
         );
         mutated(&mut h);
@@ -64,7 +64,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} display change"
         );
         assert!(
-            !h.engines_mut().damage.counters.dirty().is_empty(),
+            !h.parts().engines.damage.counters.dirty().is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
@@ -74,7 +74,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} post-mutation steady must Skip",
         );
         assert!(
-            h.engines_mut().damage.counters.dirty().is_empty(),
+            h.parts().engines.damage.counters.dirty().is_empty(),
             "case: {label} post-mutation dirty empty"
         );
     }
@@ -108,12 +108,13 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     };
 
     h.prime(2, &mut scene);
-    assert!(h.engines_mut().damage.counters.dirty().is_empty());
+    assert!(h.parts().engines.damage.counters.dirty().is_empty());
 
     // Flip "small"'s prev `cascade_input`: 3000 of 4M area, far below the full-repaint threshold.
     let target_widget_id = WidgetId::from_hash("small");
     let snap = h
-        .engines_mut()
+        .parts()
+        .engines
         .damage
         .prev
         .get_mut(&target_widget_id)
@@ -142,7 +143,7 @@ fn stable_surface_does_not_short_circuit() {
     h.frame(|ui| build(ui, BLUE));
     let warm = frame(&mut h, |ui| build(ui, BLUE));
     assert!(warm.is_none(), "warm steady-state must Skip");
-    assert!(h.engines_mut().damage.counters.dirty().is_empty());
+    assert!(h.parts().engines.damage.counters.dirty().is_empty());
     // Frame 3: one leaf changes color; `Partial` proves the short-circuit didn't fire.
     let changed = frame(&mut h, |ui| build(ui, RED));
     let Some(Damage::Partial(damage)) = changed else {

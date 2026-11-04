@@ -78,14 +78,14 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
     let solid = QuadDraw::Form(QuadForm::Solid);
     let shadow = QuadDraw::Shadow(ShadowEntry::General);
     let built = |host: &OffscreenHost, draw: QuadDraw, mode: StencilMode| {
-        host.core
+        host.device
             .backend()
             .format_pipelines(TargetFormat::RGBA8_SRGB)
             .quad
             .is_built(draw, mode)
     };
     let masks = |host: &OffscreenHost| {
-        host.core
+        host.device
             .backend()
             .format_pipelines(TargetFormat::RGBA8_SRGB)
             .quad

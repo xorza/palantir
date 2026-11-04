@@ -179,7 +179,7 @@ fn tab_walks_the_stops_of_its_domain_in_order() {
         let mut record = scene(walk.overlays);
         h.frame(&mut record);
         if let Some(from) = walk.from {
-            h.set_focus(id(from));
+            h.ui_mut().set_focus(id(from));
         }
         h.frame(&mut record);
         for (step, &press_once) in walk.presses.iter().enumerate() {
@@ -188,7 +188,12 @@ fn tab_walks_the_stops_of_its_domain_in_order() {
                 Back(want) => (true, want),
             };
             press(&mut h, back, &mut record);
-            assert_eq!(h.focus(), Some(id(want)), "{}: press {step}", walk.label);
+            assert_eq!(
+                h.ui().focus(),
+                Some(id(want)),
+                "{}: press {step}",
+                walk.label
+            );
         }
     }
 }
@@ -212,14 +217,14 @@ fn a_click_focuses_a_control_out_of_the_tab_order() {
     };
     let mut h = Harness::mono(SURFACE);
     h.frame(&mut record);
-    h.set_focus(id("a"));
+    h.ui_mut().set_focus(id("a"));
     h.frame(&mut record);
     press(&mut h, false, &mut record);
-    assert_eq!(h.focus(), Some(id("b")), "Tab passes the control by");
+    assert_eq!(h.ui().focus(), Some(id("b")), "Tab passes the control by");
     let at = h.center_of(id("aside"));
     h.click(at);
     h.frame(&mut record);
-    assert_eq!(h.focus(), Some(id("aside")), "a click focuses it");
+    assert_eq!(h.ui().focus(), Some(id("aside")), "a click focuses it");
 }
 
 /// A scope on the focus path that takes `FOCUS` keeps Tab; one that does not (`ACCEL` alone) leaves it to traversal.
@@ -244,7 +249,7 @@ fn a_scope_that_takes_focus_keeps_tab() {
         h.frame(|ui| {
             record(ui);
         });
-        h.set_focus(id("a"));
+        h.ui_mut().set_focus(id("a"));
         h.frame(|ui| {
             record(ui);
         });
@@ -252,7 +257,7 @@ fn a_scope_that_takes_focus_keeps_tab() {
         let read = h.frame_value(&mut record);
         assert_eq!(read, keeps, "{filter:?}: the root reads Tab");
         let want = if keeps { "a" } else { "b" };
-        assert_eq!(h.focus(), Some(id(want)), "{filter:?}: focus");
+        assert_eq!(h.ui().focus(), Some(id(want)), "{filter:?}: focus");
     }
 }
 
@@ -313,7 +318,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
     let b = h.center_of(id("b"));
     h.click(b);
     h.frame(&mut record);
-    assert_eq!(h.focus(), Some(id("b")));
+    assert_eq!(h.ui().focus(), Some(id("b")));
     assert_eq!(
         rings(&h),
         [false, false],
@@ -322,7 +327,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
 
     press(&mut h, false, &mut record);
     assert_eq!(rings(&h), [true, false], "Tab brings it back");
-    h.set_focus(id("b"));
+    h.ui_mut().set_focus(id("b"));
     h.frame(&mut record);
     assert_eq!(
         rings(&h),
@@ -355,57 +360,57 @@ fn dialog_scene(open: bool, stops: bool) -> impl FnMut(&mut Ui) {
 fn a_dialog_takes_focus_as_it_opens_and_gives_it_back() {
     let mut h = Harness::mono(SURFACE);
     h.frame(dialog_scene(false, true));
-    h.set_focus(id("a"));
+    h.ui_mut().set_focus(id("a"));
     h.frame(dialog_scene(false, true));
 
     h.frame(dialog_scene(true, true));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(id("m1")),
         "the opening frame moves focus in"
     );
     press(&mut h, false, &mut dialog_scene(true, true));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(id("m2")),
         "a later frame does not ask again"
     );
     h.frame(dialog_scene(false, true));
-    assert_eq!(h.focus(), Some(id("a")), "closing gives it back");
+    assert_eq!(h.ui().focus(), Some(id("a")), "closing gives it back");
 
     h.frame(dialog_scene(true, true));
-    h.set_focus(id("b"));
+    h.ui_mut().set_focus(id("b"));
     h.frame(dialog_scene(true, true));
     press(&mut h, false, &mut dialog_scene(true, true));
-    assert_eq!(h.focus(), Some(id("m1")));
+    assert_eq!(h.ui().focus(), Some(id("m1")));
     h.frame(dialog_scene(false, true));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(id("a")),
         "back to the widget it opened from"
     );
 
-    h.set_focus(id("a"));
+    h.ui_mut().set_focus(id("a"));
     h.frame(dialog_scene(true, true));
-    assert_eq!(h.focus(), Some(id("m1")));
-    h.set_focus(id("b"));
+    assert_eq!(h.ui().focus(), Some(id("m1")));
+    h.ui_mut().set_focus(id("b"));
     h.frame(dialog_scene(true, true));
     h.frame(dialog_scene(false, true));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(id("b")),
         "a focus moved away is not overridden"
     );
 
-    h.set_focus(id("a"));
+    h.ui_mut().set_focus(id("a"));
     h.frame(dialog_scene(true, false));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(id("a")),
         "a dialog without a stop moves nothing"
     );
     h.frame(dialog_scene(false, false));
-    assert_eq!(h.focus(), Some(id("a")));
+    assert_eq!(h.ui().focus(), Some(id("a")));
 }
 
 fn popup_scene(open: bool) -> impl FnMut(&mut Ui) {
@@ -441,18 +446,18 @@ fn focus_entering_an_overlay_by_any_path_returns_as_it_closes() {
     for entry in [Entry::Pointer, Entry::Program] {
         let mut h = Harness::mono(SURFACE);
         h.frame(popup_scene(false));
-        h.set_focus(id("a"));
+        h.ui_mut().set_focus(id("a"));
         h.frame(popup_scene(true));
         match entry {
             Entry::Pointer => {
                 h.click(id("p1"));
             }
-            Entry::Program => h.set_focus(id("p1")),
+            Entry::Program => h.ui_mut().set_focus(id("p1")),
         }
         h.frame(popup_scene(true));
-        assert_eq!(h.focus(), Some(id("p1")), "{entry:?}: focus entered");
+        assert_eq!(h.ui().focus(), Some(id("p1")), "{entry:?}: focus entered");
         h.frame(popup_scene(false));
-        assert_eq!(h.focus(), Some(id("a")), "{entry:?}: and came back");
+        assert_eq!(h.ui().focus(), Some(id("a")), "{entry:?}: and came back");
     }
 }
 
@@ -488,7 +493,7 @@ fn arrows_walk_an_arrow_group() {
         let mut record = group(own);
         let mut h = Harness::mono(SURFACE);
         h.frame(&mut record);
-        h.set_focus(id("a"));
+        h.ui_mut().set_focus(id("a"));
         h.frame(&mut record);
         for (mods, key, want) in [
             (Modifiers::NONE, Key::ArrowDown, "b"),
@@ -499,7 +504,7 @@ fn arrows_walk_an_arrow_group() {
             (Modifiers::NONE, Key::ArrowDown, "field"),
         ] {
             arrow(&mut h, mods, key, &mut record);
-            assert_eq!(h.focus(), Some(id(want)), "{own:?}: {mods:?} {key:?}");
+            assert_eq!(h.ui().focus(), Some(id(want)), "{own:?}: {mods:?} {key:?}");
         }
     }
 }
@@ -524,11 +529,11 @@ fn a_popup_nested_in_a_dialog_traps_tab() {
     };
     let mut h = Harness::mono(SURFACE);
     h.frame(record);
-    h.set_focus(id("p1"));
+    h.ui_mut().set_focus(id("p1"));
     h.frame(record);
     for want in ["p2", "p1"] {
         press(&mut h, false, &mut { record });
-        assert_eq!(h.focus(), Some(id(want)));
+        assert_eq!(h.ui().focus(), Some(id(want)));
     }
 }
 
@@ -558,19 +563,31 @@ fn a_dialog_in_a_dialog_takes_focus_and_gives_it_back() {
     let mut h = Harness::mono(SURFACE);
     h.frame(record(false));
     h.frame(record(false));
-    assert_eq!(h.focus(), Some(id("m1")), "the outer dialog took focus");
+    assert_eq!(
+        h.ui().focus(),
+        Some(id("m1")),
+        "the outer dialog took focus"
+    );
     press(&mut h, false, &mut record(false));
-    assert_eq!(h.focus(), Some(id("m2")));
+    assert_eq!(h.ui().focus(), Some(id("m2")));
 
     h.frame(record(true));
-    assert_eq!(h.focus(), Some(id("i1")), "the inner dialog takes focus");
+    assert_eq!(
+        h.ui().focus(),
+        Some(id("i1")),
+        "the inner dialog takes focus"
+    );
     for want in ["i2", "i1"] {
         press(&mut h, false, &mut record(true));
-        assert_eq!(h.focus(), Some(id(want)), "Tab stays in the inner dialog");
+        assert_eq!(
+            h.ui().focus(),
+            Some(id(want)),
+            "Tab stays in the inner dialog"
+        );
     }
     h.frame(record(false));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(id("m2")),
         "closing gives focus back to its opener"
     );

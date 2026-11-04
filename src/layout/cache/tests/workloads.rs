@@ -66,7 +66,7 @@ fn localized_change_hits_unchanged_sibling_subtrees() {
         let _ = h.frame(|ui| build_broad_variant(ui, None));
         let _ = h.frame(|ui| build_broad_variant(ui, Some(change)));
         let top = h.ui().tree(Layer::Main).records.widget_id()[1];
-        let hits = h.engines_mut().layout.scratch.counters.cache_hits();
+        let hits = h.parts().engines.layout.scratch.counters.cache_hits();
         assert_eq!(
             hits.len(),
             21,

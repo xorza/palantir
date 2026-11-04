@@ -406,7 +406,11 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
         ] {
             let what = format!("{start}: {mods:?} {key:?}");
             frame(&mut h, &mut selected);
-            assert_eq!(h.focus(), Some(id), "{what}: the combo box holds focus");
+            assert_eq!(
+                h.ui().focus(),
+                Some(id),
+                "{what}: the combo box holds focus"
+            );
             h.hold_modifiers(mods);
             h.key(key);
             assert_eq!(frame(&mut h, &mut selected), (false, false), "{what}");
@@ -417,8 +421,8 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
                 "{what}: the combo's row is its own, not a menu's"
             );
             frame(&mut h, &mut selected);
-            assert_eq!(h.focus(), row(&h, lands), "{what} lands on {lands}");
-            assert!(h.focus().is_some(), "{what}: a row holds focus");
+            assert_eq!(h.ui().focus(), row(&h, lands), "{what} lands on {lands}");
+            assert!(h.ui().focus().is_some(), "{what}: a row holds focus");
             ComboBox::close(h.ui_mut(), id);
             frame(&mut h, &mut selected);
         }
@@ -447,32 +451,32 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
     frame(&mut h, &mut selected);
     h.key(Key::Tab);
     frame(&mut h, &mut selected);
-    assert_eq!(h.focus(), Some(id), "Tab reaches the combo box");
+    assert_eq!(h.ui().focus(), Some(id), "Tab reaches the combo box");
 
     h.key(Key::Enter);
     frame(&mut h, &mut selected);
     assert!(ComboBox::is_open(h.ui(), id));
-    let first = h.focus().expect("focus moved into the list");
+    let first = h.ui().focus().expect("focus moved into the list");
     assert_ne!(first, id);
 
     h.key(Key::Tab);
     frame(&mut h, &mut selected);
-    let second = h.focus().expect("a row holds focus");
+    let second = h.ui().focus().expect("a row holds focus");
     assert_ne!(second, first, "Tab moves to the next row");
     h.key(Key::ArrowDown);
     frame(&mut h, &mut selected);
-    let third = h.focus().expect("a row holds focus");
+    let third = h.ui().focus().expect("a row holds focus");
     assert!(third != first && third != second, "Down moves to the third");
     h.key(Key::ArrowUp);
     frame(&mut h, &mut selected);
-    assert_eq!(h.focus(), Some(second), "Up moves back");
+    assert_eq!(h.ui().focus(), Some(second), "Up moves back");
 
     h.key(Key::Enter);
     let changed = frame(&mut h, &mut selected);
     assert!(changed && *selected == "B", "Enter picks the second row");
     frame(&mut h, &mut selected);
     assert!(!ComboBox::is_open(h.ui(), id), "the pick closes the list");
-    assert_eq!(h.focus(), Some(id), "focus goes back to the combo box");
+    assert_eq!(h.ui().focus(), Some(id), "focus goes back to the combo box");
 }
 
 /// The trigger lays its label and arrow apart with `SpaceBetween` under the caller's choice: a

@@ -117,7 +117,7 @@ fn keys_walk_both_axes() {
         let mut h = harness();
         let mut state = coords(0.3, 0.5, 0.5);
         frame(&mut h, id, &mut state);
-        h.set_focus(id);
+        h.ui_mut().set_focus(id);
         h.hold_modifiers(mods);
         h.key(key);
         let ValueEdges { changed, committed } = frame(&mut h, id, &mut state);

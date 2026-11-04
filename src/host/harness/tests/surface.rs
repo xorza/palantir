@@ -11,7 +11,7 @@ fn resize_and_set_system_scale_move_the_surface_between_frames() {
     // These two are the whole surface-mutation surface; both must read as a display change.
     let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
-    assert_eq!(harness.physical, SURFACE);
+    assert_eq!(harness.paint.target_key().physical, SURFACE);
     assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
 
     let bigger = UVec2::new(400, 300);
@@ -19,7 +19,7 @@ fn resize_and_set_system_scale_move_the_surface_between_frames() {
         harness.resize(bigger).frame(support::button).paint(),
         FramePaint::Full
     );
-    assert_eq!(harness.physical, bigger);
+    assert_eq!(harness.paint.target_key().physical, bigger);
     assert_eq!(harness.ui().display().physical, bigger);
 
     // A DPI move changes `physical` and `system_scale` together.

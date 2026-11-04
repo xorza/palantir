@@ -94,7 +94,7 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
             .swapchain_present()
             .build();
         host.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
-        host.core.backend_mut().paint_as(traffic);
+        host.device.backend_mut().paint_as(traffic);
         host
     };
     let mut on_backbuffer = host(PassTraffic::Drawn);
@@ -119,9 +119,9 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
             "frame {frame}: the canvas paints other pixels"
         );
     }
-    assert!(!on_backbuffer.driver.holds_canvas());
+    assert!(!on_backbuffer.window.driver.holds_canvas());
     assert!(
-        on_canvas.driver.holds_canvas(),
+        on_canvas.window.driver.holds_canvas(),
         "the device that moves its whole target painted a canvas"
     );
 }

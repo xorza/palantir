@@ -50,7 +50,7 @@ fn focused_at(text: &str, back: usize) -> (Harness, String) {
     let mut h = Harness::new(SMALL);
     let mut buf = String::from(text);
     h.frame(|ui| record(ui, &mut buf));
-    h.set_focus(field());
+    h.ui_mut().set_focus(field());
     h.frame(|ui| record(ui, &mut buf));
     h.key(Key::End);
     h.frame(|ui| record(ui, &mut buf));
@@ -130,7 +130,7 @@ fn a_focused_field_asks_for_ime_at_its_caret() {
         "{area:?} inside {field_rect:?}"
     );
 
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(
         h.ui().ime_area(),

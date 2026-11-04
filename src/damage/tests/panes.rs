@@ -110,9 +110,9 @@ fn second(before: Scene, after: Scene) -> (Vec<PaneKey>, Vec<Rect>) {
     frame(&mut h, |ui| after.record(ui));
     let dirty = (0..after.panes.len())
         .map(key)
-        .filter(|&k| h.engines_mut().damage.dirty_panes().contains(k))
+        .filter(|&k| h.parts().engines.damage.dirty_panes().contains(k))
         .collect();
-    (dirty, h.engines_mut().damage.raw_rects().to_vec())
+    (dirty, h.parts().engines.damage.raw_rects().to_vec())
 }
 
 const ONE: Scene = Scene {
@@ -196,7 +196,7 @@ fn a_blink_inside_a_pane_leaves_it() {
     h.advance(Duration::from_millis(600));
     let damage = frame(&mut h, |ui| scene.record(ui));
     assert!(damage.is_some(), "the blink flipped");
-    assert!(!h.engines_mut().damage.dirty_panes().contains(key(0)));
+    assert!(!h.parts().engines.damage.dirty_panes().contains(key(0)));
 }
 
 /// A blink that a clip hides, painted before a pane, damages nothing when it flips and leaves
@@ -230,8 +230,8 @@ fn a_clipped_blink_before_a_pane_leaves_it() {
     h.advance(Duration::from_millis(600));
     let damage = frame(&mut h, record);
     assert_eq!(damage, None, "the hidden blink damages nothing");
-    assert!(h.engines_mut().damage.raw_rects().is_empty());
-    assert!(!h.engines_mut().damage.dirty_panes().contains(key(0)));
+    assert!(h.parts().engines.damage.raw_rects().is_empty());
+    assert!(!h.parts().engines.damage.dirty_panes().contains(key(0)));
 }
 
 /// A chrome with a backdrop filter is a pane too, keyed by its node's first row: a change under it,
@@ -261,10 +261,16 @@ fn a_chrome_pane_goes_stale_as_a_shape_pane() {
     let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, record(BLUE));
     frame(&mut h, record(BLUE));
-    assert!(!h.engines_mut().damage.dirty_panes().contains(key), "still");
+    assert!(
+        !h.parts().engines.damage.dirty_panes().contains(key),
+        "still"
+    );
     frame(&mut h, record(RED));
-    assert!(h.engines_mut().damage.dirty_panes().contains(key), "under");
-    assert!(h.engines_mut().damage.raw_rects().contains(&PANE));
+    assert!(
+        h.parts().engines.damage.dirty_panes().contains(key),
+        "under"
+    );
+    assert!(h.parts().engines.damage.raw_rects().contains(&PANE));
 }
 
 /// A row removed before a pane on its canvas, outside the pane's footprint, gives the pane a new
@@ -299,13 +305,13 @@ fn a_pane_whose_row_moves_is_stale() {
     frame(&mut h, record(true));
     frame(&mut h, record(false));
     assert!(
-        h.engines_mut().damage.dirty_panes().contains(moved),
+        h.parts().engines.damage.dirty_panes().contains(moved),
         "moved"
     );
-    assert!(h.engines_mut().damage.raw_rects().contains(&PANE));
+    assert!(h.parts().engines.damage.raw_rects().contains(&PANE));
     frame(&mut h, record(false));
     assert!(
-        !h.engines_mut().damage.dirty_panes().contains(moved),
+        !h.parts().engines.damage.dirty_panes().contains(moved),
         "still"
     );
 }
@@ -355,11 +361,11 @@ fn panes_out_of_row_order_walk_quietly() {
 
     frame(&mut h, record);
     assert!(
-        !h.engines_mut().damage.dirty_panes().contains(outer),
+        !h.parts().engines.damage.dirty_panes().contains(outer),
         "still"
     );
     assert!(
-        !h.engines_mut().damage.dirty_panes().contains(inner),
+        !h.parts().engines.damage.dirty_panes().contains(inner),
         "still"
     );
 }

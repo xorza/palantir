@@ -25,9 +25,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
             let mut out = Layout::default();
             let run = |h: &mut Harness, out: &mut Layout| {
                 if miss {
-                    h.engines_mut().layout.cache.forget_all();
+                    h.parts().engines.layout.cache.forget_all();
                 } else {
-                    h.engines_mut().layout.forget_last_run();
+                    h.parts().engines.layout.forget_last_run();
                 }
                 let parts = h.parts();
                 parts.engines.layout.run(parts.ui.forest(), surface, out);

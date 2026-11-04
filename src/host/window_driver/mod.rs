@@ -8,7 +8,6 @@ use crate::common::tracy;
 use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::display::host_display::HostDisplay;
 use crate::display::system_scale::SystemScale;
 use crate::gpu::frame::submission::{self, FrameOverlay, Route, Submission};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode};
@@ -56,7 +55,6 @@ pub(super) struct WindowDriver {
     /// frame that keeps the target's pixels would keep too.
     target_outlined: bool,
     strategy: PresentStrategy,
-    pixel_snap: bool,
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
     /// The scissors the frame the CPU half built repaints inside, which its GPU half submits:
@@ -116,35 +114,25 @@ pub(super) struct TargetKey {
     pub(super) gives_copy: bool,
 }
 
-/// What a host knows of the frame it is about to run: the target, the platform's scale and
-/// refresh rate, and the time.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct FrameSpec {
-    pub(super) physical: UVec2,
-    pub(super) format: TargetFormat,
-    /// Whether pixels can be copied out of the target, as a pane's capture is.
-    pub(super) gives_copy: bool,
-    pub(super) system_scale: SystemScale,
-    pub(super) refresh_millihertz: Option<u32>,
-    pub(super) now: Duration,
-}
-
-impl FrameSpec {
-    const fn target_key(&self) -> TargetKey {
-        TargetKey {
-            physical: self.physical,
-            format: self.format,
-            gives_copy: self.gives_copy,
+impl TargetKey {
+    /// The key of the texture `target` names.
+    pub(super) fn of(target: RenderTarget<'_>) -> Self {
+        Self {
+            physical: target.size(),
+            format: target.format(),
+            gives_copy: target.gives_copy(),
         }
     }
 }
 
-/// What a host sets on each driver it opens.
+/// What a host knows of the frame it is about to run: the target, the platform's scale and
+/// refresh rate, and the time.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct DriverConfig {
-    pub(super) strategy: PresentStrategy,
-    /// The host's, inherited by every driver it opens.
-    pub(super) pixel_snap: bool,
+pub(super) struct FrameSpec {
+    pub(super) target: TargetKey,
+    pub(super) system_scale: SystemScale,
+    pub(super) refresh_millihertz: Option<u32>,
+    pub(super) now: Duration,
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
@@ -247,7 +235,11 @@ impl WindowDriver {
     /// A driver for `token` over the shared [`UiResources`], as a render owner of its own, on a
     /// detached stream until the host [attaches](Self::attach) its device's; registered in the
     /// window directory here, as its `Drop` retires it.
-    pub(super) fn new(token: WindowToken, resources: &UiResources, config: DriverConfig) -> Self {
+    pub(super) fn new(
+        token: WindowToken,
+        resources: &UiResources,
+        strategy: PresentStrategy,
+    ) -> Self {
         resources.windows().add(token);
         Self {
             token,
@@ -256,8 +248,7 @@ impl WindowDriver {
             stream: RenderStream::detached(resources.render_owners().reserve(), CutoutMode::Shade),
             output_valid: false,
             target_outlined: false,
-            strategy: config.strategy,
-            pixel_snap: config.pixel_snap,
+            strategy,
             target: None,
             scissors: RepaintScissors::Full,
             pane_captures: PaneCaptures::default(),
@@ -290,14 +281,18 @@ impl WindowDriver {
     }
 
     /// The stamp of the frame `spec` describes, as [`Self::cpu_frame`] takes it.
+    ///
+    /// The one place the user scale and the host's pixel snapping reach a frame: both are read
+    /// here, as either can move mid-frame, so a copy held by the host would paint a stale frame.
     pub(super) fn stamp(&self, spec: &FrameSpec) -> FrameStamp {
-        let host = HostDisplay {
-            physical: spec.physical,
+        let display = Display {
+            physical: spec.target.physical,
             system_scale: spec.system_scale,
-            pixel_snap: self.pixel_snap,
+            user_scale: self.ui.user_scale(),
+            pixel_snap: self.ui.pixel_snap(),
             refresh_millihertz: spec.refresh_millihertz,
         };
-        self.ui.frame_stamp(host, spec.now)
+        FrameStamp::new(display, spec.now)
     }
 
     /// Whether a screenshot is on its way back from the device, which a later frame lands.
@@ -316,7 +311,7 @@ impl WindowDriver {
     /// Declare the target of the frame `spec` describes. A change invalidates retained pixels and
     /// the damage baseline.
     pub(super) fn note_target(&mut self, spec: &FrameSpec) {
-        let key = spec.target_key();
+        let key = spec.target;
         if self.target != Some(key) {
             self.target = Some(key);
             self.invalidate_target_contents();
@@ -727,22 +722,12 @@ pub(crate) mod internals {
             &self.engines
         }
 
-        pub(crate) const fn engines_mut(&mut self) -> &mut FrameEngines {
-            &mut self.engines
-        }
-
         /// The `Ui` and the engines its frames run on, borrowed at once.
         pub(crate) const fn parts(&mut self) -> DriverParts<'_> {
             DriverParts {
                 ui: &mut self.ui,
                 engines: &mut self.engines,
             }
-        }
-
-        /// Snap paint edges to physical pixels from the next frame on, or not.
-        #[cfg(test)]
-        pub(crate) const fn set_pixel_snap(&mut self, pixel_snap: bool) {
-            self.pixel_snap = pixel_snap;
         }
 
         /// Whether the target holds this driver's last output; read by offscreen tests.

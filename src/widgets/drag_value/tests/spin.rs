@@ -27,7 +27,7 @@ fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     h.release(PointerButton::Left);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
-    assert_eq!(h.focus(), Some(id), "the press focused the chip");
+    assert_eq!(h.ui().focus(), Some(id), "the press focused the chip");
     assert!(
         !matches!(
             h.state::<DragValueState>(id).unwrap(),
@@ -59,7 +59,7 @@ fn the_arrows_step_a_focused_chip() {
         })
     };
     frame(&mut h, &mut value);
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     frame(&mut h, &mut value);
     for (mods, key, want) in [
         (Modifiers::NONE, Key::ArrowUp, 5.01),
@@ -85,7 +85,7 @@ fn the_arrows_step_a_focused_chip() {
         });
     };
     record(&mut h, &mut count);
-    h.set_focus(int_id);
+    h.ui_mut().set_focus(int_id);
     record(&mut h, &mut count);
     h.key(Key::ArrowUp);
     record(&mut h, &mut count);
@@ -111,7 +111,7 @@ fn the_arrows_step_a_focused_chip() {
         });
     };
     record(&mut h, &mut fine);
-    h.set_focus(fine_id);
+    h.ui_mut().set_focus(fine_id);
     record(&mut h, &mut fine);
     h.key(Key::ArrowUp);
     record(&mut h, &mut fine);
@@ -128,7 +128,7 @@ fn typing_into_the_focused_chip_replaces_the_value() {
     let mut h = Harness::mono(SURFACE);
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, TYPED);
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.key(Key::Char('7'));
     deferred_frame(&mut h, id, &mut canonical, TYPED);
@@ -139,7 +139,7 @@ fn typing_into_the_focused_chip_replaces_the_value() {
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert_eq!(canonical, 7.0);
-    assert_eq!(h.focus(), Some(id), "the chip keeps focus");
+    assert_eq!(h.ui().focus(), Some(id), "the chip keeps focus");
     h.key(Key::ArrowUp);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert_eq!(canonical, 7.01);
@@ -167,7 +167,7 @@ fn a_step_snaps_every_write_and_unbounded_ends_do_nothing() {
         })
     };
     frame(&mut h, &mut value, true);
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     frame(&mut h, &mut value, true);
     h.key(Key::ArrowUp);
     assert!(frame(&mut h, &mut value, true));
@@ -187,7 +187,7 @@ fn a_step_snaps_every_write_and_unbounded_ends_do_nothing() {
 
     value = 1.0;
     frame(&mut h, &mut value, false);
-    h.set_focus(id);
+    h.ui_mut().set_focus(id);
     frame(&mut h, &mut value, false);
     for key in [Key::Home, Key::End] {
         h.key(key);

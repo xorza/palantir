@@ -51,7 +51,7 @@ fn settled(text: &mut String, case: &Case) -> Harness {
     match case.selection {
         Selection::Nothing => {}
         Selection::All => {
-            h.set_focus(editor_id());
+            h.ui_mut().set_focus(editor_id());
             h.ui_mut()
                 .with_state::<TextEditState, _>(editor_id(), |_, state| {
                     state.edit.selection = Some(0);

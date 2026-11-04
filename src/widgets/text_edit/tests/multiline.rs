@@ -6,7 +6,7 @@ fn multiline_enter_inserts_newline() {
     let mut buf = String::from("abc");
     let ed_id = WidgetId::from_hash("ml-ed");
     // Focus + caret after "abc".
-    h.set_focus(ed_id);
+    h.ui_mut().set_focus(ed_id);
     h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
     });
@@ -57,7 +57,7 @@ fn multiline_paste_keeps_newlines() {
     h.set_clipboard_text("line1\nline2\nline3");
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
-    h.set_focus(ed_id);
+    h.ui_mut().set_focus(ed_id);
     h.frame(Field::MULTILINE.scene(&mut buf));
     h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
@@ -73,7 +73,7 @@ fn multiline_selection_crosses_newline() {
     let mut h = Harness::new(UVec2::new(300, 200));
     let mut buf = String::from("first\nsecond");
     let ed_id = WidgetId::from_hash("ml-ed");
-    h.set_focus(ed_id);
+    h.ui_mut().set_focus(ed_id);
     // Caret on line 1, column 3.
     h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
@@ -107,7 +107,7 @@ fn vertical_moves_keep_a_goal_column() {
     let ed_id = WidgetId::from_hash("ml-ed");
     let mut h = Harness::new(UVec2::new(300, 200));
     let mut buf = "abcdef\nab\nabcdef".to_owned();
-    h.set_focus(ed_id);
+    h.ui_mut().set_focus(ed_id);
     h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 5;
     });
@@ -147,7 +147,7 @@ fn soft_wrapped_motions_move_by_visual_row() {
     for (key, before, after) in cases {
         let mut h = Harness::new(UVec2::new(300, 200));
         let mut buf = text.clone();
-        h.set_focus(ed_id);
+        h.ui_mut().set_focus(ed_id);
         h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
             st.edit.caret = before;
         });

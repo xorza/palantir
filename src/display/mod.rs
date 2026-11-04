@@ -10,7 +10,6 @@
 //! least `1e-4`.
 
 pub(crate) mod frame_stamp;
-pub(crate) mod host_display;
 pub(crate) mod system_scale;
 pub(crate) mod user_scale;
 
@@ -29,8 +28,8 @@ pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
 /// Display state for the current output, read by the renderer at submit, by
 /// hosts computing the logical surface rect, and by the repaint scheduler.
 ///
-/// A host mints it each frame through `Ui::frame_stamp`, from its
-/// `HostDisplay` and the `Ui`'s user scale. Changes to rasterized output are detected by
+/// A host's window driver mints it each frame from the frame's target, scale and refresh rate,
+/// and the host-wide user scale and pixel snapping. Changes to rasterized output are detected by
 /// [`Self::raster_eq`]; `refresh_millihertz` is pacing-only and never forces a
 /// repaint.
 #[derive(Clone, Copy, Debug, PartialEq)]

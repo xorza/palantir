@@ -143,7 +143,7 @@ mod tests {
             h.frame_value(|ui| show(ui, value, disabled))
         };
         frame(&mut h, &mut value, false);
-        h.set_focus(id);
+        h.ui_mut().set_focus(id);
         frame(&mut h, &mut value, false);
         let both = ValueEdges {
             changed: true,

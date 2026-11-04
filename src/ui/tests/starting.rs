@@ -38,8 +38,8 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.groups.is_empty());
 
     assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 1);
-    assert!(h.engines_mut().damage.prev().is_empty());
-    assert!(h.engines_mut().damage.counters().dirty().is_empty());
+    assert!(h.parts().engines.damage.prev().is_empty());
+    assert!(h.parts().engines.damage.counters().dirty().is_empty());
     assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
@@ -54,7 +54,7 @@ fn empty_then_populated_frame() {
     });
     assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 2);
     // The rowless user Panel gets no prev entry; the viewport root tracks it as a child marker.
-    assert_eq!(h.engines_mut().damage.prev().len(), 1);
+    assert_eq!(h.parts().engines.damage.prev().len(), 1);
 }
 
 /// Pin: `Display::logical_rect` divides by both scale factors.
@@ -199,7 +199,7 @@ fn warmup_keeps_focus_requests() {
     for (before, request) in cases {
         let mut h = support::cold_ui();
         if let Some(id) = before {
-            h.set_focus(id);
+            h.ui_mut().set_focus(id);
         }
         let mut records = 0_u32;
         let mut seen = Vec::new();
@@ -231,7 +231,7 @@ fn warmup_keeps_scope_releases() {
     let inner = WidgetId::from_hash("warmup-inner");
     let editor = WidgetId::from_hash("warmup-editor");
     let mut h = support::cold_ui();
-    h.set_focus(editor);
+    h.ui_mut().set_focus(editor);
     h.key(Key::Escape);
 
     let mut records = 0_u32;

@@ -183,7 +183,7 @@ fn text_edit_inside_a_popup_receives_typing() {
 
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| scene(ui, &mut buf));
-    h.set_focus(field);
+    h.ui_mut().set_focus(field);
     h.frame(|ui| scene(ui, &mut buf));
 
     h.type_text("x");
@@ -237,7 +237,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         h.frame(|ui| {
             scene(ui, &mut buf);
         });
-        h.set_focus(field);
+        h.ui_mut().set_focus(field);
         // Two settling frames: the scope resolves from the previous cascade.
         h.frame(|ui| {
             scene(ui, &mut buf);
@@ -245,13 +245,13 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         h.frame(|ui| {
             scene(ui, &mut buf);
         });
-        assert_eq!(h.focus(), Some(field), "the field holds focus");
+        assert_eq!(h.ui().focus(), Some(field), "the field holds focus");
 
         h.key(Key::Escape);
         let dismissed = h.frame_value(|ui| scene(ui, &mut buf));
         Escaped {
             dismissed,
-            focus: h.focus(),
+            focus: h.ui().focus(),
         }
     }
 

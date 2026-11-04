@@ -302,9 +302,9 @@ fn an_unchanged_hex_field_commits_nothing_on_blur() {
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
     frame(&mut h, id, &mut color);
-    h.set_focus(id.with("hex"));
+    h.ui_mut().set_focus(id.with("hex"));
     frame(&mut h, id, &mut color);
-    h.clear_focus();
+    h.ui_mut().clear_focus();
     assert_eq!(
         frame(&mut h, id, &mut color),
         ValueEdges {

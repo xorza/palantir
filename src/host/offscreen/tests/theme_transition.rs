@@ -66,7 +66,7 @@ fn a_transition_of_font_sizes_neither_grows_nor_evicts_the_glyph_atlas() {
         "{sizes:?}"
     );
     assert_eq!(sizes[23], 18.0);
-    let counts = host.core.backend().text_atlas_counts();
+    let counts = host.device.backend().text_atlas_counts();
     assert_eq!(
         (counts.grows, counts.evictions, counts.oversized),
         (0, 0, 0),

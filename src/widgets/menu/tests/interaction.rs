@@ -293,7 +293,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
         scene(ui, false);
     });
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(trigger_id()),
         "premise: Tab focuses the trigger"
     );
@@ -301,7 +301,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
     Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(h.frame_value(|ui| scene(ui, false)));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(copy),
         "the keyboard's open focuses the first row"
     );
@@ -313,7 +313,11 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
         scene(ui, false);
     });
     assert!(!menu_open(h.ui()));
-    assert_eq!(h.focus(), Some(trigger_id()), "closing gives focus back");
+    assert_eq!(
+        h.ui().focus(),
+        Some(trigger_id()),
+        "closing gives focus back"
+    );
 
     Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(
@@ -406,7 +410,7 @@ fn a_menu_at_a_point_shows_while_its_caller_keeps_it_open() {
     h.key(Key::Tab);
     h.frame(|ui| scene(ui, &mut open));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(trigger_id()),
         "premise: the keyboard holds focus"
     );
@@ -416,7 +420,7 @@ fn a_menu_at_a_point_shows_while_its_caller_keeps_it_open() {
     assert_eq!(h.node_of(id).map(|at| at.plane.layer), Some(Layer::Menu));
     assert_eq!(h.rect(id).map(|rect| rect.min), Some(Vec2::new(60.0, 70.0)));
     assert_eq!(
-        h.focus(),
+        h.ui().focus(),
         Some(row),
         "the keyboard focus lands on the first row"
     );

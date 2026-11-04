@@ -246,10 +246,11 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
         h.ui().layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key;
     assert_ne!(cold_main_key, cold_popup_key);
 
-    h.engines_mut().layout.forget_last_run();
+    h.parts().engines.layout.forget_last_run();
     h.frame(&mut record);
     assert!(
-        !h.engines_mut()
+        !h.parts()
+            .engines
             .layout
             .scratch
             .counters
@@ -366,6 +367,6 @@ fn two_widgets_resolved_before_recording_get_distinct_ids() {
         "positional, like any auto-id collision"
     );
     for id in ids {
-        assert!(h.layout_rect(id).is_some(), "{id:?} recorded");
+        assert!(h.arranged(id).is_some(), "{id:?} recorded");
     }
 }

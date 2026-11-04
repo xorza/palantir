@@ -103,12 +103,12 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     const MAX_FRAMES: u32 = 4096;
 
     let mut frame = from_frame;
-    let mut settled_at = h.engines_mut().damage.paints.slots.len();
+    let mut settled_at = h.parts().engines.damage.paints.slots.len();
     let mut flat = 0;
     while flat < FLAT_FRAMES && frame - from_frame < MAX_FRAMES {
         let _ = h.frame(build(frame));
         frame += 1;
-        let now = h.engines_mut().damage.paints.slots.len();
+        let now = h.parts().engines.damage.paints.slots.len();
         flat = if now == settled_at { flat + 1 } else { 0 };
         settled_at = now;
     }
@@ -164,7 +164,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             "skip",
         );
         assert!(
-            h.engines_mut().damage.counters.subtree_skips() > 0,
+            h.parts().engines.damage.counters.subtree_skips() > 0,
             "no subtree skips at all — fixture is broken",
         );
         b.iter(|| {
@@ -321,7 +321,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
         });
         // The regression guard: thousands of churn frames must not add one entry.
         assert_eq!(
-            h.engines_mut().damage.paints.slots.len(),
+            h.parts().engines.damage.paints.slots.len(),
             settled.entries,
             "[shape_churn_partial] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
@@ -362,7 +362,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             black_box(&h);
         });
         assert_eq!(
-            h.engines_mut().damage.paints.slots.len(),
+            h.parts().engines.damage.paints.slots.len(),
             settled.entries,
             "[shape_churn_full] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
