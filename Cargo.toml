@@ -48,6 +48,7 @@ workspace = true
 palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.8.3", default-features = false }
 arboard = { version = "3.7", default-features = false, features = [
     "image-data",
+    "wayland-data-control",
 ], optional = true }
 bytemuck = { version = "1.25", default-features = false, features = ["derive"] }
 cosmic-text = { version = "0.19", default-features = false, features = [
@@ -74,6 +75,7 @@ half = { version = "2.7", default-features = false, features = [
     "std",
     "bytemuck",
 ] }
+hashbrown = { version = "0.17", default-features = false }
 rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = { version = "1.0", default-features = false }

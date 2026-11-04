@@ -21,6 +21,7 @@
 //!   stops converted to Oklab once; the texel loop lerps and runs only
 //!   `Oklab::to_color`. Perceptually uniform; the CSS Color 4 default.
 
+use crate::common::hash::Hasher;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
@@ -28,7 +29,8 @@ use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
 use crate::renderer::gradient_atlas::dirty_rows::DirtyRows;
 use crate::renderer::gradient_atlas::mru_list::MruList;
-use rustc_hash::FxHashMap;
+use hashbrown::HashTable;
+use std::hash::{Hash as _, Hasher as _};
 use std::ops::Range;
 
 pub(crate) mod bake;
@@ -63,7 +65,7 @@ pub(crate) const MERGE_GAP_ROWS: u32 = 48;
 /// upload is a single reinterpret to `&[u8]`.
 #[derive(Clone, Debug, Default)]
 struct RowSlot {
-    /// The key this row holds, so eviction can drop its index entry. `None` for a
+    /// The ramp this row holds, which the index hashes and compares through. `None` for a
     /// never-claimed row and for row 0 (not in the MRU list).
     key: Option<ColorRamp>,
     /// The [`CpuGradientAtlas::epoch`] the row was last registered in. A current-epoch
@@ -87,9 +89,11 @@ struct RowSlot {
 /// operation O(1) and lets [`Self::grow`] leave lookup alone.
 #[derive(Debug)]
 pub(crate) struct CpuGradientAtlas {
-    /// Ramp to the row holding it; a ramp is the exact bake identity whatever gradient
-    /// kind paints it. A pure lookup index, undisturbed by eviction and growth.
-    index: FxHashMap<ColorRamp, u32>,
+    /// The rows that hold a ramp, found by the ramp, which each row's [`RowSlot::key`] holds: a
+    /// ramp is the exact bake identity whatever gradient kind paints it, and it is stored once.
+    /// A pure lookup index, undisturbed by eviction and growth. Refused: a map from ramp to row
+    /// beside the slots, which held each resident ramp twice, about 42 B each.
+    index: HashTable<u32>,
     slots: Vec<RowSlot>,
     /// Baked LUT row bytes by row id; one contiguous allocation.
     baked: Vec<LutRowTexels>,
@@ -139,7 +143,7 @@ impl CpuGradientAtlas {
         // Row 0 alone: the permanent fallback, not an MRU member, so `resize_rows` can
         // reach `INITIAL_ATLAS_ROWS` from row 1 as every growth does.
         let mut atlas = Self {
-            index: FxHashMap::default(),
+            index: HashTable::new(),
             slots: vec![RowSlot::default()],
             baked: vec![[RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]],
             mru: MruList::seeded(1),
@@ -175,7 +179,7 @@ impl CpuGradientAtlas {
         self.counters.registrations.bump();
         let key = *ramp;
         // Hit: mark the row referenced this epoch; it must not be evicted before upload.
-        if let Some(&row) = self.index.get(&key) {
+        if let Some(row) = self.resident_row(&key) {
             self.counters.hits.bump();
             self.touch(row);
             return LutRow(row);
@@ -227,6 +231,11 @@ impl CpuGradientAtlas {
         // Read before anything moves: the MRU list extends from the old row count.
         let from = self.capacity();
         self.slots.resize(to as usize, RowSlot::default());
+        // Room for an entry a row, so a registration never grows the table: growth, a cold
+        // frame, is where it grows. An eviction's tombstone can still make an insert rehash the
+        // table in place, as in any open-addressed table, hashbrown's included.
+        self.index
+            .reserve(to as usize - self.index.len(), row_hash(&self.slots));
         self.baked
             .resize(to as usize, [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]);
         self.mru.extend_to(from, to);
@@ -244,15 +253,28 @@ impl CpuGradientAtlas {
         debug_assert_ne!(row, 0, "row 0 is the permanent magenta fallback");
         // Evicting: drop the outgoing index entry, or a lookup would resolve to another bake.
         if let Some(evicted) = self.slots[row as usize].key.replace(key) {
-            self.index.remove(&evicted);
+            self.index
+                .find_entry(ramp_hash(&evicted), |&held| held == row)
+                .expect("an evicted row is indexed")
+                .remove();
             self.counters.evictions.bump();
         }
         self.counters.bakes.bump();
         bake::row(&key, &mut self.baked[row as usize]);
-        self.index.insert(key, row);
+        self.index
+            .insert_unique(ramp_hash(&key), row, row_hash(&self.slots));
         self.touch(row);
         self.mark_row_dirty(row);
         LutRow(row)
+    }
+
+    /// The row that holds `ramp`, if one does.
+    fn resident_row(&self, ramp: &ColorRamp) -> Option<u32> {
+        self.index
+            .find(ramp_hash(ramp), |&row| {
+                self.slots[row as usize].key.as_ref() == Some(ramp)
+            })
+            .copied()
     }
 
     fn mark_row_dirty(&mut self, row: u32) {
@@ -278,6 +300,25 @@ impl CpuGradientAtlas {
             rows: &self.baked,
             total_rows,
         })
+    }
+}
+
+/// The index's hash of `ramp`, through the crate's one hasher.
+fn ramp_hash(ramp: &ColorRamp) -> u64 {
+    let mut hasher = Hasher::new();
+    ramp.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// The hash of an indexed row, through the ramp `slots` holds for it, as the table rehashes.
+fn row_hash(slots: &[RowSlot]) -> impl Fn(&u32) -> u64 {
+    |&row| {
+        ramp_hash(
+            slots[row as usize]
+                .key
+                .as_ref()
+                .expect("an indexed row holds a ramp"),
+        )
     }
 }
 
@@ -308,12 +349,6 @@ pub(crate) mod internals {
 
         pub(crate) fn max_rows(&self) -> u32 {
             self.max_rows
-        }
-
-        /// The row `key`'s gradient occupies, straight from the index, so a test can tell
-        /// "same row" from "re-baked" without registering.
-        pub(crate) fn resident_row(&self, ramp: &ColorRamp) -> Option<u32> {
-            self.index.get(ramp).copied()
         }
     }
 }

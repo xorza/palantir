@@ -208,19 +208,6 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   for `TabbedView` (WG-16). Dress `Menu::context` only when it is open (WG-22).
   `TextEdit.text` is not an `Option` (WG-23).
 
-### Batch 11b. Wayland clipboard (`clipboard`) **dependency**
-
-The rest of Batch 11 is done.
-
-- Enable the Wayland clipboard (HS-15): a feature with new dependencies, so it waits for an ask.
-
-### Batch 13b. Gradient atlas index (`renderer`) **dependency**
-
-The rest of Batch 13 is done.
-
-- Each resident `ColorRamp` is held once, through a `hashbrown::HashTable<u32>` that hashes
-  through the slots (RD-17). It makes `hashbrown` a direct dependency, which needs your go-ahead.
-
 ## Findings index
 
 Prefixes:
@@ -240,8 +227,6 @@ Prefixes:
 | Batch | Findings |
 |---|---|
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
-| 11b | HS-15 |
-| 13b | RD-17 |
 
 These findings are kept as they are, with no change: SC-20 (the `SeenIds` size is justified
 by a measurement) and RD-16 (the copies of the rounded-clip chain are accepted unless a
@@ -419,22 +404,11 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Direction:** a `TabKey` newtype from `impl Hash`.
 - Confidence: medium · public API change: yes · root cause: none named.
 
-### Batch 11b
-
-**HS-15 · hygiene/bug · `Cargo.toml:90-92`; `src/clipboard/mod.rs:344-350`**
-`arboard` is built with `default-features = false, features = ["image-data"]`, so without `wayland-data-control`. On a Wayland session the system clipboard either goes through XWayland's X11 selection or `Clipboard::new()` fails and the host quietly uses memory only. egui-winit uses `smithay-clipboard` with the window's Wayland display on Wayland.
-*Direction:* enable `wayland-data-control`, or add a Wayland backend fed the display handle. *Conf:* med (features verified; runtime behaviour per arboard docs). *API:* no. *Root cause:* platform service chosen without the Wayland case.
-
-### Batch 13b
+### Kept as they are
 
 **RD-16 · perf · `composer/session.rs:136-141`**
 - **What:** each rounded clip push copies its whole ancestor chain into `rounded_clips` with `extend_from_within`. The pool grows by the sum of depths, bounded at 255 per chain.
 - **Direction:** WebRender uses clip-chain nodes with parent links. Here the backend reads contiguous spans, so this is acceptable unless deep rounded nesting shows up in a profile.
 - **Confidence:** high (on the cost). **Public API:** no. **Root cause:** flat pool chosen for the backend.
-
-**RD-17 · complexity · `gradient_atlas/mod.rs:68,92`**
-- **What:** every resident `ColorRamp` (about 42 B) is stored twice: as the `index` key and as `RowSlot.key`. The slot copy exists only so eviction can remove the index entry.
-- **Direction:** a `hashbrown::HashTable<u32>` that hashes through `slots`.
-- **Confidence:** med. **Public API:** no. **Root cause:** a map plus a reverse map.
 
 **Already logged:** `PaneBreak.since` is a single bounding box, so an L-shaped layout breaks the pass needlessly (`composer/pane_break.rs:191`). `.notes/PERF.md` shelves it. `.notes/ISSUES.md` and `.notes/TODO.md` hold nothing else in this scope.
