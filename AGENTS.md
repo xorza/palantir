@@ -435,14 +435,19 @@ Every numeric parameter's doc names its kind, and every setter that can panic sa
 another command shape builds another copy of the crates.
 
 ```
-cargo drive check          # after each change: fmt, then clippy
+cargo drive check          # fmt, then clippy over every target and feature
 cargo drive test [args]    # the tests with default features; a test name picks some
 cargo drive bench [args]   # the benches; a filter, or --test to run each case once
-cargo drive gate           # the full check, every test lane; CI runs gate --ci on each OS
+cargo drive gate           # every lint and test lane and the docs; CI runs gate --ci on each OS
 ```
 
-`check` after each change, `test` after a batch of them, and `gate` once, when the task is done:
-it runs every lint and test lane, which `check` and `test` leave out to stay fast.
+Pick each by what it tells and what it costs, as dev time counts:
+
+- **`test` with a filter** compiles the lib and its tests and runs the named ones: the cheapest
+  way to see an edit work, and a compile check of its own.
+- **`check`** adds clippy over every target and feature, a second compile: worth it once a piece
+  of work stands, not after each edit.
+- **`gate`** runs every lane, minutes long. **Run it before a turn that changed code ends.**
 
 A run ends on one verdict line, so `| tail -1` is enough; on a failure, read the file it names
 rather than run it again.
