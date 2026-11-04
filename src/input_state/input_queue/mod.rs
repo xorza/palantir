@@ -10,6 +10,12 @@ use crate::input::pointer::PointerButton;
 use std::collections::VecDeque;
 use std::time::Duration;
 
+/// The most events the queue holds. With moves and scroll deltas merged, at most one of each sits
+/// between two discrete events a person made, so the queue fills only while frames stall: 1024
+/// is about five seconds of typing at 100 keys a second, a move between each. A full queue
+/// flushes ([`InputQueue::is_full`]).
+pub(super) const MAX_HELD: usize = 1024;
+
 /// Events held back for a later frame, and what the current frame already changed.
 ///
 /// Widgets read keys, pointer edges and scroll deltas once a frame, at record, against the
@@ -19,7 +25,7 @@ use std::time::Duration;
 /// event carrying its own set, because a frame's summed scroll delta has no single set.
 #[derive(Debug, Default)]
 pub(crate) struct InputQueue {
-    /// Held events, oldest first; capacity retained.
+    /// Held events, oldest first, at most [`MAX_HELD`]; capacity retained.
     pending: VecDeque<HeldEvent>,
     /// Buttons whose capture began or ended this frame.
     buttons: [bool; PointerButton::COUNT],
@@ -50,6 +56,19 @@ pub(super) fn is_bare_modifier(key: Key, text: KeyText) -> bool {
 impl InputQueue {
     pub(super) fn is_empty(&self) -> bool {
         self.pending.is_empty()
+    }
+
+    /// Whether the queue holds [`MAX_HELD`] events, so the next one flushes it: every held event
+    /// applies at once, as Win32 refuses a post past its queue's limit
+    /// (<https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-postmessagew>) but here
+    /// with no event lost. Only the frame that flushes reads a key against a later focus or
+    /// modifier set.
+    pub(super) fn is_full(&self) -> bool {
+        debug_assert!(
+            self.pending.len() <= MAX_HELD,
+            "the queue flushes at its cap"
+        );
+        self.pending.len() == MAX_HELD
     }
 
     /// Whether `event` may apply this frame: it changes no level an earlier event of the frame was
@@ -114,7 +133,35 @@ impl InputQueue {
         self.key_pressed = true;
     }
 
+    /// Hold `event` behind the held ones. A move right behind a held move replaces it, and a
+    /// scroll delta right behind one of its kind adds to it, as Qt's
+    /// `AA_CompressHighFrequencyEvents` merges them
+    /// (<https://doc.qt.io/qt-6/qt.html#ApplicationAttribute-enum>): adjacent held events apply in
+    /// one frame at one pointer position, so every level and the frame's summed deltas read the
+    /// same. A reader of [`Ui::pointer_events`](crate::Ui::pointer_events) sees one move or scroll
+    /// where several arrived, as a browser coalesces them; only events held behind a discrete one
+    /// merge, which a stroke drawn while frames run rarely is.
     pub(super) fn defer(&mut self, event: InputEvent<'_>, now: Duration) {
+        debug_assert!(!self.is_full(), "a full queue flushes before it holds more");
+        if let Some(last) = self.pending.back_mut() {
+            let merged = match (last.event, &event) {
+                (InputEvent::PointerMoved(_), &InputEvent::PointerMoved(pos)) => {
+                    Some(InputEvent::PointerMoved(pos))
+                }
+                (InputEvent::ScrollPixels(held), &InputEvent::ScrollPixels(delta)) => {
+                    Some(InputEvent::ScrollPixels(held + delta))
+                }
+                (InputEvent::ScrollLines(held), &InputEvent::ScrollLines(delta)) => {
+                    Some(InputEvent::ScrollLines(held + delta))
+                }
+                _ => None,
+            };
+            if let Some(merged) = merged {
+                last.event = merged;
+                last.at = now;
+                return;
+            }
+        }
         if self.pending.is_empty() {
             self.text.clear();
         }

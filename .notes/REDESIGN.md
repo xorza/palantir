@@ -172,11 +172,11 @@ API").
 
 Root causes R9 and R1. This batch removes the most code and changes the most public surface.
 
-- State the bound of the input queue and decide what a full one does (the rest of UI-27).
 
 Done in this batch: decisions 1 and 2 (WG-15, WG-16), UI-05, UI-06, UI-09, UI-14, UI-16,
 UI-17, UI-18, UI-20, UI-23, UI-26, UI-28, UI-07, UI-08, UI-10, WG-09, WG-10, WG-13, WG-14, WG-17, WG-18, WG-22, WG-23, WG-24, WG-25,
-and the wake and watch bounds of UI-27. UI-09 carries `ClickOutside`, now `Block` or `Dismiss`, in
+and UI-27: the wake and watch bounds, and the input queue's, which merges held moves and
+scroll deltas and flushes at `MAX_HELD`, by the owner's call. UI-09 carries `ClickOutside`, now `Block` or `Dismiss`, in
 the backdrop, not a new `Capture`, a name the GPU capture holds; a pass-through popup is
 `click_outside(None)`. WG-14 keeps a row for each widget, as both placements run one
 `TriggerFrame`; a trigger has one menu row. WG-24 is `ComboBoxList` for the combo, and the dock's
@@ -227,10 +227,6 @@ Each open finding as its reviewer wrote it, grouped by the batch that takes it. 
 its own findings here; the line numbers are from the review and drift as the code moves.
 
 ### Batch 10
-
-**UI-27 · bound · low · no API change** — `src/ui/frame_runtime/mod.rs:100` (`repaint_wakes`), `src/input_state/input_queue/mod.rs:23` (`pending`), `src/input_state/watches.rs:13-15`
-- **What:** these grow without a stated limit. `Watches` pushes duplicates by design.
-- **Direction:** state a cap and decide what happens when it is reached.
 
 **RD-16 · perf · `composer/session.rs:136-141`**
 - **What:** each rounded clip push copies its whole ancestor chain into `rounded_clips` with `extend_from_within`. The pool grows by the sum of depths, bounded at 255 per chain.

@@ -10,8 +10,10 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::sense::Sense;
+use crate::input::watch::KeyboardWake;
 use crate::input::watch::PointerWake;
 use crate::input_state::capture::DRAG_THRESHOLD;
+use crate::input_state::input_queue::MAX_HELD;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
@@ -454,4 +456,37 @@ fn an_evicted_drag_asks_for_the_frame_that_reports_its_stop() {
         gone.repaint_requested,
         "the eviction's stop edge owes a frame and the report asks for it",
     );
+}
+
+/// A full queue flushes: the event past [`MAX_HELD`] held ones applies with all of them at once,
+/// in order, so the queue stays bounded and loses none. Each press of a command key waits for a
+/// frame of its own, so presses fed with no frame between them fill the queue.
+#[test]
+fn a_full_queue_applies_every_held_event_at_once() {
+    let scene = |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::zstack()
+                .id(target())
+                .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                .focusable(true)
+                .show(ui, |_| {});
+        });
+    };
+    let mut h = Harness::mono(UVec2::new(200, 120));
+    h.frame(scene);
+    h.ui_mut().set_focus(target());
+    h.frame(scene);
+
+    // The first press applies; the next MAX_HELD wait and fill the queue.
+    for _ in 0..=MAX_HELD {
+        h.on_input(InputEvent::key_down(Key::ArrowDown));
+    }
+    assert!(h.ui().input().has_held_input(), "the queue is full");
+    h.on_input(InputEvent::key_down(Key::ArrowDown));
+    assert!(!h.ui().input().has_held_input(), "the full queue flushed");
+    let presses = h.frame_value(|ui| {
+        scene(ui);
+        ui.keyboard_events(KeyboardWake::KEY).len()
+    });
+    assert_eq!(presses, MAX_HELD + 2, "every press reached the frame");
 }

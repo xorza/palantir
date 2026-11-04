@@ -40,7 +40,7 @@ use crate::input_state::capture::{PressDrag, ReleaseKind};
 use crate::input_state::event_outcome::EventOutcome;
 use crate::input_state::focus::{Focus, FocusCause, FocusEntry};
 use crate::input_state::ime::Ime;
-use crate::input_state::input_queue::InputQueue;
+use crate::input_state::input_queue::{HeldEvent, InputQueue};
 use crate::input_state::key_reader::KeyReader;
 use crate::input_state::keyboard::{HeldKey, Keyboard};
 use crate::input_state::pointer::Pointer;
@@ -472,10 +472,44 @@ impl InputState {
         if self.queue.is_empty() && self.ready(&event) {
             return self.apply(event, ctx, now);
         }
-        self.queue.defer(event, now);
+        if self.queue.is_full() {
+            while let Some(held) = self.queue.front() {
+                self.queue.pop_front();
+                self.cut_held_press(&held.event);
+                self.apply_held(held, ctx);
+            }
+            self.cut_held_press(&event);
+            self.apply(event, ctx, now);
+        } else {
+            self.queue.defer(event, now);
+        }
         InputDelta {
             repaint_requested: true,
         }
+    }
+
+    /// Before a flush applies `event` unready ([`InputQueue::is_full`]): a press of a button still
+    /// held cuts its gesture off, as [`Self::ready`] does, though the cut and the press then share
+    /// a frame.
+    fn cut_held_press(&mut self, event: &InputEvent<'_>) {
+        if let InputEvent::PointerPressed(button) = *event
+            && self.pointer.capture(button).press.is_some()
+        {
+            self.pointer.capture_mut(button).abandon_press();
+        }
+    }
+
+    /// Apply `held`, its text read back from the queue.
+    fn apply_held(&mut self, held: HeldEvent, ctx: InputCtx<'_>) {
+        if held.event.text().is_none() {
+            self.apply(held.event, ctx, held.at);
+            return;
+        }
+        let mut text = mem::take(&mut self.held_text);
+        text.clear();
+        text.push_str(self.queue.text(held.text));
+        self.apply(held.event.with_text(&text), ctx, held.at);
+        self.held_text = text;
     }
 
     /// Whether `event` applies this frame (see [`InputQueue`]). A press of a button still held
@@ -512,15 +546,7 @@ impl InputState {
                 break;
             }
             self.queue.pop_front();
-            if held.event.text().is_none() {
-                self.apply(held.event, ctx, held.at);
-                continue;
-            }
-            let mut text = mem::take(&mut self.held_text);
-            text.clear();
-            text.push_str(self.queue.text(held.text));
-            self.apply(held.event.with_text(&text), ctx, held.at);
-            self.held_text = text;
+            self.apply_held(held, ctx);
         }
         self.signal_since_last_frame != InputSignal::None || !self.queue.is_empty()
     }

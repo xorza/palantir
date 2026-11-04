@@ -275,3 +275,41 @@ fn a_held_ime_event_keeps_its_own_text() {
     assert_eq!(queue.text(held.text), "z");
     assert_eq!(queue.text.len(), 1, "the buffer restarted rather than grew");
 }
+
+/// A move right behind a held move replaces it and a scroll delta right behind one of its kind
+/// adds to it, each taking the newer arrival time; any other pair holds both, so a move past a
+/// held press, or a line scroll after a pixel scroll, keeps its own place.
+#[test]
+fn held_moves_and_scroll_deltas_merge_into_their_neighbor() {
+    let ms = Duration::from_millis;
+    let mut queue = InputQueue::default();
+    queue.defer(InputEvent::PointerPressed(PointerButton::Left), ms(1));
+    for (i, x) in [10.0, 20.0, 30.0].into_iter().enumerate() {
+        queue.defer(
+            InputEvent::PointerMoved(Vec2::new(x, 5.0)),
+            ms(2 + i as u64),
+        );
+    }
+    queue.defer(InputEvent::ScrollPixels(Vec2::new(0.0, 3.0)), ms(5));
+    queue.defer(InputEvent::ScrollPixels(Vec2::new(1.0, 4.0)), ms(6));
+    queue.defer(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)), ms(7));
+    queue.defer(InputEvent::PointerMoved(Vec2::new(40.0, 5.0)), ms(8));
+
+    // `InputEvent` derives no `PartialEq`; its `Debug` prints every field.
+    let held: Vec<_> = queue.pending.iter().map(|h| (h.event, h.at)).collect();
+    assert_eq!(
+        format!("{held:?}"),
+        format!(
+            "{:?}",
+            [
+                (InputEvent::PointerPressed(PointerButton::Left), ms(1)),
+                (InputEvent::PointerMoved(Vec2::new(30.0, 5.0)), ms(4)),
+                // 0 + 1 = 1 and 3 + 4 = 7.
+                (InputEvent::ScrollPixels(Vec2::new(1.0, 7.0)), ms(6)),
+                (InputEvent::ScrollLines(Vec2::new(0.0, 1.0)), ms(7)),
+                (InputEvent::PointerMoved(Vec2::new(40.0, 5.0)), ms(8)),
+            ]
+        )
+    );
+    assert!(!queue.is_full());
+}
