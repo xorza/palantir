@@ -2,33 +2,30 @@
 
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use crate::renderer::gradient_atlas::CpuGradientAtlas;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::GradientId;
 
 /// Resolves each recorded gradient to its atlas row at most once per frame.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct GradientResolver {
-    atlas: SharedGradientAtlas,
     resolved: Vec<Option<ResolvedGradient>>,
 }
 
 impl GradientResolver {
-    pub(super) const fn new(atlas: SharedGradientAtlas) -> Self {
-        Self {
-            atlas,
-            resolved: Vec::new(),
-        }
-    }
-
-    /// Opens the frame's pass over `gradients`, forgetting last frame's rows (another window may have evicted them).
-    pub(super) fn begin<'a>(&'a mut self, gradients: &'a [RecordedGradient]) -> GradientPass<'a> {
+    /// Opens the frame's pass over `gradients`, registering them in `atlas`, forgetting last
+    /// frame's rows (another window may have evicted them).
+    pub(super) fn begin<'a>(
+        &'a mut self,
+        gradients: &'a [RecordedGradient],
+        atlas: &'a mut CpuGradientAtlas,
+    ) -> GradientPass<'a> {
         self.resolved.clear();
         self.resolved.resize(gradients.len(), None);
         GradientPass {
             gradients,
-            atlas: &self.atlas,
+            atlas,
             resolved: &mut self.resolved,
         }
     }
@@ -38,7 +35,7 @@ impl GradientResolver {
 #[derive(Debug)]
 pub(super) struct GradientPass<'a> {
     gradients: &'a [RecordedGradient],
-    atlas: &'a SharedGradientAtlas,
+    atlas: &'a mut CpuGradientAtlas,
     resolved: &'a mut Vec<Option<ResolvedGradient>>,
 }
 
@@ -74,7 +71,7 @@ pub(crate) mod internals {
 
     impl GradientResolver {
         pub(crate) fn scratch_bytes(&self) -> usize {
-            let Self { atlas: _, resolved } = self;
+            let Self { resolved } = self;
             scratch_report::vec_bytes(resolved)
         }
     }
@@ -83,6 +80,11 @@ pub(crate) mod internals {
         /// Whether this pass has resolved `id` yet.
         pub(crate) fn is_resolved(&self, id: GradientId) -> bool {
             self.resolved[id.0 as usize].is_some()
+        }
+
+        /// The atlas's `register` calls so far, which a memoized repeat leaves alone.
+        pub(crate) fn registrations(&self) -> u32 {
+            self.atlas.registrations()
         }
     }
 }

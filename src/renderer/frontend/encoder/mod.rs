@@ -8,29 +8,42 @@ mod gradient_resolver;
 mod plane_ctx;
 
 use crate::damage::Damage;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::plane_ctx::PlaneCtx;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::{BuildPlan, FrameScene};
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use crate::renderer::gradient_atlas::{CpuGradientAtlas, FlushedRows};
 use crate::renderer::repaint_scissors;
 
-/// The encode pass's retained state: the per-frame gradient memo and the footprints a partial
-/// frame encodes, kept for their capacity.
-#[derive(Debug)]
+/// The encode pass's retained state: the gradient atlas every window's frames register their
+/// ramps in, the per-frame gradient memo, and the footprints a partial frame encodes, kept for
+/// their capacity.
+#[derive(Debug, Default)]
 pub(crate) struct Encoder {
+    gradient_atlas: CpuGradientAtlas,
     gradients: GradientResolver,
     footprints: Vec<Rect>,
 }
 
 impl Encoder {
-    pub(crate) const fn new(gradient_atlas: SharedGradientAtlas) -> Self {
-        Self {
-            gradients: GradientResolver::new(gradient_atlas),
-            footprints: Vec::new(),
-        }
+    /// Start the gradient atlas over under `texture_limit`, as a new device's texture holds none
+    /// of its rows, so the next frames register their ramps again.
+    pub(crate) fn attach_device(&mut self, texture_limit: TextureLimit) {
+        self.gradient_atlas = CpuGradientAtlas::for_device(texture_limit);
+    }
+
+    /// Rows the gradient atlas holds, the height the backend's LUT texture starts at.
+    pub(crate) const fn gradient_rows(&self) -> u32 {
+        self.gradient_atlas.capacity()
+    }
+
+    /// The gradient rows baked since the last flush, for the frame that paints them; ends the
+    /// atlas's registration epoch.
+    pub(crate) fn flush_gradients(&mut self) -> Option<FlushedRows<'_>> {
+        self.gradient_atlas.flush()
     }
 
     /// Walks every tree in paint order, emitting logical-px paint commands into `out`. `Damage::Partial` culls
@@ -71,9 +84,10 @@ impl Encoder {
             }
             Damage::Full => None,
         };
-        let mut gradients = self
-            .gradients
-            .begin(scene.forest.record_store.gradients.records.as_slice());
+        let mut gradients = self.gradients.begin(
+            scene.forest.record_store.gradients.records.as_slice(),
+            &mut self.gradient_atlas,
+        );
         let mut first_pane = 0;
         for (plane, tree) in scene.forest.trees.iter_paint_order() {
             let plane_cascades = &scene.cascade.planes[plane];
@@ -113,27 +127,31 @@ pub(crate) mod internals {
     use crate::internals::scratch_report;
     use crate::renderer::frontend::encoder::Encoder;
     use crate::renderer::frontend::{BuildPlan, FrameScene};
-    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::pane_captures::{PaneCaptures, PaneDamage};
     use crate::renderer::render_plan::RenderPlan;
 
     impl Encoder {
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
+                gradient_atlas: _,
                 gradients,
                 footprints,
             } = self;
             gradients.scratch_bytes() + scratch_report::vec_bytes(footprints)
         }
+
+        pub(crate) fn gradient_max_rows(&self) -> u32 {
+            self.gradient_atlas.max_rows()
+        }
     }
 
-    /// Encode `scene` under `plan` into a capture, every pane capturing, as a fresh window's do.
+    /// Encode `scene` under `plan` through `encoder` into a capture, every pane capturing, as a
+    /// fresh window's do.
     pub(crate) fn encode(
         scene: FrameScene<'_>,
-        gradient_atlas: &SharedGradientAtlas,
+        encoder: &mut Encoder,
         plan: RenderPlan,
     ) -> PaintCapture {
-        let mut encoder = Encoder::new(gradient_atlas.clone());
         let mut ledger = PaneCaptures::default();
         ledger.decide(scene.panes(), scene.stamp.display, PaneDamage::Whole);
         let mut recorded = PaintCapture::default();

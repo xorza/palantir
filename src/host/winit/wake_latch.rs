@@ -17,9 +17,11 @@ impl WakeLatch {
     }
 
     /// Lower the latch as the loop takes its event, before the frame it asks for, so a wake the
-    /// frame does not see sends another.
+    /// frame does not see sends another. A swap, not a store: a wake whose raise read the latch
+    /// still up sent nothing, and only an acquire that reads its release orders what it
+    /// published before this frame (*Rust Atomics and Locks*, ch. 3).
     pub(crate) fn lower(&self) {
-        self.0.store(false, Ordering::Release);
+        let _ = self.0.swap(false, Ordering::AcqRel);
     }
 }
 

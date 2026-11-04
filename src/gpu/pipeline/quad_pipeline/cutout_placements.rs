@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// The cells each cutout key holds in the backend's one atlas, shared by every window's
-/// [`CutoutPlan`] on the main thread, as `SharedGradientAtlas` is.
+/// [`CutoutPlan`] on the main thread.
 ///
 /// A placement stays while any plan tables its key, so a table keeps its cells across frames and
 /// windows and the atlas bakes it once. A key no plan tables keeps its cells too, until a new key

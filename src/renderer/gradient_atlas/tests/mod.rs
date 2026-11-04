@@ -2,5 +2,5 @@
 
 mod eviction;
 mod residency;
-mod support;
+pub(crate) mod support;
 mod upload;

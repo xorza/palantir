@@ -18,8 +18,7 @@ use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::frontend::BuildPlan;
-use crate::renderer::frontend::Frontend;
+use crate::renderer::frontend::{BuildPlan, FrameOutput, Frontend};
 use crate::renderer::pane_captures::{PaneCaptures, PaneDamage, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
@@ -68,6 +67,15 @@ pub(super) struct WindowDriver {
     screenshot_requests: Vec<ScreenshotRequest>,
     /// Screenshots on their way back from the device, oldest first; one lands per frame.
     captures: VecDeque<PendingScreenshot>,
+}
+
+/// What a window's driver opens as: the window's token, the render owner its frames draw as, and
+/// how it presents.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DriverSpec {
+    pub(super) token: WindowToken,
+    pub(super) owner: RenderOwnerId,
+    pub(super) strategy: PresentStrategy,
 }
 
 /// The physical pixels of a logical `region` of `display`: edges rounded out, so every pixel
@@ -239,20 +247,21 @@ impl Drop for WindowDriver {
 }
 
 impl WindowDriver {
-    /// A driver for `token` over the shared [`UiResources`], as a render owner of its own, on a
-    /// detached stream until the host [attaches](Self::attach) its device's; registered in the
-    /// window directory here, as its `Drop` retires it.
-    pub(super) fn new(
-        token: WindowToken,
-        resources: &UiResources,
-        strategy: PresentStrategy,
-    ) -> Self {
+    /// A driver as `spec` says over the shared [`UiResources`], on a detached stream until the
+    /// host [attaches](Self::attach) its device's; registered in the window directory here, as
+    /// its `Drop` retires it.
+    pub(super) fn new(spec: DriverSpec, resources: &UiResources) -> Self {
+        let DriverSpec {
+            token,
+            owner,
+            strategy,
+        } = spec;
         resources.windows().add(token);
         Self {
             token,
             engines: FrameEngines::new(resources),
             ui: Ui::new(resources.clone()),
-            stream: RenderStream::detached(resources.render_owners().reserve(), CutoutMode::Shade),
+            stream: RenderStream::detached(owner, CutoutMode::Shade),
             output_valid: false,
             target_outlined: false,
             strategy,
@@ -595,7 +604,7 @@ impl WindowDriver {
     /// [`PresentPath`]. [`PresentPath::SkipCopy`] copies the backbuffer onto the target.
     pub(super) fn render_to_texture(
         &mut self,
-        buffer: &RenderBuffer,
+        frontend: &mut Frontend,
         backend: &mut WgpuBackend,
         target: RenderTarget<'_>,
         mode: PresentPath,
@@ -627,7 +636,7 @@ impl WindowDriver {
         );
         debug_assert!(
             !matches!(mode, PresentPath::Direct(_))
-                || buffer.captured_area() == 0
+                || frontend.buffer.captured_area() == 0
                 || target.gives_copy(),
             "a direct frame's captures copy out of the target"
         );
@@ -653,6 +662,7 @@ impl WindowDriver {
             PresentPath::Direct(plan) => (plan, Route::Direct),
             PresentPath::ViaBackbuffer(plan) => (plan, Route::ViaBackbuffer),
         };
+        let FrameOutput { buffer, gradients } = frontend.output();
         debug_assert!(
             matches!(
                 (plan.damage, &self.scissors),
@@ -670,6 +680,7 @@ impl WindowDriver {
                 stats: self.ui.gpu_pass_stats(),
                 store: self.ui.record_store(),
                 buffer,
+                gradients,
                 gpu_views: self.ui.gpu_views(),
                 clear: submission::frame_clear(plan.clear, buffer),
                 scissors: &self.scissors,

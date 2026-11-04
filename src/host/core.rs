@@ -27,7 +27,7 @@ impl HostCore {
     /// [`DeviceCore::attach`] builds it again.
     pub(super) fn new(gpu: Gpu, options: &HostOptions, shaper: TextShaper) -> Self {
         let image_store = Rc::new(WgpuImageStore::default());
-        let cpu = CpuCore::over(
+        let mut cpu = CpuCore::over(
             UiResources::new(
                 shaper,
                 options.clipboard(),
@@ -39,12 +39,12 @@ impl HostCore {
             image_store,
             timing: options.timing,
         };
-        let device = DeviceCore::new(spec, gpu, &cpu.resources);
+        let device = DeviceCore::new(spec, gpu, &mut cpu);
         Self { cpu, device }
     }
 
     /// A driver for the window `token`, presenting by `strategy`, over a render stream of its own.
-    pub(super) fn open(&self, token: WindowToken, strategy: PresentStrategy) -> WindowDriver {
+    pub(super) fn open(&mut self, token: WindowToken, strategy: PresentStrategy) -> WindowDriver {
         let mut driver = self.cpu.open(token, strategy);
         self.device.attach_window(&mut driver);
         driver
@@ -114,7 +114,7 @@ mod tests {
             "the record built the target format's pipelines, so the submit compiles none"
         );
         core.device
-            .submit(&core.cpu, &mut drawn, target.as_target(), mode);
+            .submit(&mut core.cpu, &mut drawn, target.as_target(), mode);
         assert!(drawn.ui.gpu_pass_stats().last_main_pass_cpu().is_some());
         assert_eq!(idle.ui.gpu_pass_stats().last_main_pass_cpu(), None);
     }
@@ -153,7 +153,7 @@ mod tests {
                 core.device
                     .record(&mut core.cpu, driver, spec_on(&target), &mut app);
             core.device
-                .submit(&core.cpu, driver, target.as_target(), mode);
+                .submit(&mut core.cpu, driver, target.as_target(), mode);
             let [r, g, b, _] = target.read_back().get_pixel(4, 4).0;
             u32::from_be_bytes([0, r, g, b])
         };
@@ -171,7 +171,7 @@ mod tests {
 
         let second = isolated_headless_test_gpu();
         core.device
-            .attach(second.handles(), &core.cpu.resources, windows.iter_mut());
+            .attach(second.handles(), &mut core.cpu, windows.iter_mut());
         for (window, fill) in windows.iter_mut().zip(FILLS) {
             assert_eq!(paint(&mut core, window, &second, fill), fill);
         }
@@ -241,7 +241,7 @@ mod tests {
                     );
                 }
                 core.device
-                    .submit(&core.cpu, window, target.as_target(), mode);
+                    .submit(&mut core.cpu, window, target.as_target(), mode);
                 assert_eq!(
                     rgb(target, 20, 20),
                     FILLS[i],

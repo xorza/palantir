@@ -2,6 +2,7 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::host::harness::Harness;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -15,12 +16,14 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
+use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
     as_rect, as_shadow, count_draw_rects, quad_rect,
 };
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use crate::renderer::gradient_atlas::tests::support::{distinct_grad, fill_rows};
+use crate::renderer::gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
@@ -29,6 +32,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 
 #[test]
 fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
@@ -38,18 +42,18 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
         ramp: ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE),
     };
     let gradients = [gradient];
-    let atlas = SharedGradientAtlas::default();
-    let mut resolver = GradientResolver::new(atlas.clone());
+    let mut atlas = CpuGradientAtlas::default();
+    let mut resolver = GradientResolver::default();
     let brush = ShapeBrush::Gradient {
         id: GradientId(0),
         hash: ContentHash(0),
     };
 
-    let mut pass = resolver.begin(&gradients);
+    let mut pass = resolver.begin(&gradients, &mut atlas);
     let first = pass.source(brush);
-    let registered = atlas.registrations();
+    let registered = pass.registrations();
     let repeated = pass.source(brush);
-    assert_eq!(atlas.registrations(), registered);
+    assert_eq!(pass.registrations(), registered);
     match (first, repeated) {
         (BrushSource::Gradient(first), BrushSource::Gradient(repeated)) => {
             assert_eq!(first.axis, repeated.axis);
@@ -59,10 +63,45 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
         _ => panic!("gradient brush resolved to a solid source"),
     }
 
-    let mut pass = resolver.begin(&gradients);
+    let mut pass = resolver.begin(&gradients, &mut atlas);
     assert!(!pass.is_resolved(GradientId(0)));
     let _ = pass.source(brush);
-    assert_eq!(atlas.registrations(), registered + 1);
+    assert_eq!(pass.registrations(), registered + 1);
+}
+
+/// A device attach starts the encoder's atlas over under the new limit, as the device's texture
+/// holds none of its rows: a grown atlas is back at `INITIAL_ATLAS_ROWS`, its flush holds row 0
+/// alone, and a ramp it held lands where a fresh atlas puts it.
+#[test]
+fn a_device_attach_starts_a_grown_atlas_over() {
+    let small_limit = TextureLimit::from_device(NonZeroU32::new(1024).unwrap());
+    let mut encoder = Encoder::default();
+    // Row 0 is the fallback, so the 256th ramp of one epoch outgrows the first 256 rows.
+    let _ = fill_rows(&mut encoder.gradient_atlas, INITIAL_ATLAS_ROWS);
+    assert_eq!(encoder.gradient_rows(), INITIAL_ATLAS_ROWS * 2);
+    let _ = encoder.flush_gradients();
+
+    encoder.attach_device(small_limit);
+    assert_eq!(encoder.gradient_rows(), INITIAL_ATLAS_ROWS);
+    assert_eq!(encoder.gradient_atlas.max_rows(), 1024);
+    let runs: Vec<(u32, u32)> = encoder
+        .flush_gradients()
+        .expect("the fallback row is dirty")
+        .runs
+        .iter()
+        .map(|run| (run.start, run.end))
+        .collect();
+    assert_eq!(
+        runs,
+        [(0, 1)],
+        "the new atlas uploads its fallback row alone"
+    );
+    let ramp = distinct_grad(0).ramp;
+    let mut fresh = CpuGradientAtlas::for_device(small_limit);
+    assert_eq!(
+        encoder.gradient_atlas.register(&ramp),
+        fresh.register(&ramp)
+    );
 }
 
 /// Baseline counts: an empty tree emits no draws, a filled Frame one rect quad; invisible Frames, degenerate

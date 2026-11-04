@@ -12,10 +12,11 @@ use crate::cascade::Cascade;
 use crate::cascade::pane_row::PaneRow;
 use crate::common::tracy;
 use crate::display::frame_stamp::FrameStamp;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::layout::Layout;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use crate::renderer::gradient_atlas::FlushedRows;
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
@@ -50,6 +51,14 @@ impl FrameScene<'_> {
     }
 }
 
+/// What the GPU half paints a built frame with: its draw list, and the gradient rows baked since
+/// the last frame painted.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FrameOutput<'a> {
+    pub(crate) buffer: &'a RenderBuffer,
+    pub(crate) gradients: Option<FlushedRows<'a>>,
+}
+
 /// CPU paint stage: tree to composed buffer, reused serially across window drivers.
 #[derive(Debug)]
 pub(crate) struct Frontend {
@@ -61,11 +70,31 @@ pub(crate) struct Frontend {
 impl Frontend {
     /// `device`'s texture limit caps `GpuView` target sizes; the [`Composer`] downsamples larger
     /// views.
-    pub(crate) fn new(device: Rc<SharedDevice>, gradient_atlas: SharedGradientAtlas) -> Self {
+    pub(crate) fn new(device: Rc<SharedDevice>) -> Self {
         Self {
-            encoder: Encoder::new(gradient_atlas),
+            encoder: Encoder::default(),
             composer: Composer::new(device),
             buffer: RenderBuffer::new(),
+        }
+    }
+
+    /// The CPU side of a device attach, at startup and after a loss alike: start the gradient
+    /// atlas over under the device's `texture_limit`.
+    pub(crate) fn attach_device(&mut self, texture_limit: TextureLimit) {
+        self.encoder.attach_device(texture_limit);
+    }
+
+    /// Rows the gradient atlas holds, the height a new backend's LUT texture starts at.
+    pub(crate) const fn gradient_rows(&self) -> u32 {
+        self.encoder.gradient_rows()
+    }
+
+    /// The last built frame as the GPU half paints it, which ends the gradient atlas's
+    /// registration epoch: call it for a frame that paints, once.
+    pub(crate) fn output(&mut self) -> FrameOutput<'_> {
+        FrameOutput {
+            buffer: &self.buffer,
+            gradients: self.encoder.flush_gradients(),
         }
     }
 
@@ -86,8 +115,6 @@ pub(crate) mod internals {
     use crate::renderer::frontend::BuildPlan;
     #[cfg(test)]
     use crate::renderer::frontend::Frontend;
-    #[cfg(test)]
-    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;
     #[cfg(test)]
     use crate::renderer::shared_device::SharedDevice;
@@ -116,7 +143,12 @@ pub(crate) mod internals {
     #[cfg(test)]
     impl Frontend {
         pub(crate) fn for_test() -> Self {
-            Self::new(test_device(), SharedGradientAtlas::default())
+            Self::new(test_device())
+        }
+
+        /// The growth ceiling of the gradient atlas, which the last device attach set.
+        pub(crate) fn gradient_max_rows(&self) -> u32 {
+            self.encoder.gradient_max_rows()
         }
 
         /// Leaves out `buffer`, the composed frame the backend reads.

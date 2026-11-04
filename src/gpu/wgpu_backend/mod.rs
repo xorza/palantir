@@ -306,11 +306,8 @@ impl WgpuBackend {
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, timing: FrameTiming) -> Self {
         let image_store = Rc::clone(resources.image_store);
         let texture_binding = resources.texture_binding;
-        let gradient = GpuGradientAtlas::new(
-            &gpu,
-            resources.gradient_atlas.clone(),
-            texture_binding.clone(),
-        );
+        let gradient =
+            GpuGradientAtlas::new(&gpu, resources.gradient_rows, texture_binding.clone());
         let backdrops = Backdrops::new(&gpu);
         let quad = QuadPipeline::new(&gpu, &texture_binding, backdrops.layout());
         let mesh = MeshPipeline::new(&gpu);
@@ -691,6 +688,7 @@ impl WgpuBackend {
         let Submission {
             store,
             buffer,
+            gradients,
             gpu_views,
             scissors,
             route,
@@ -700,7 +698,9 @@ impl WgpuBackend {
         let owner = stream.owner();
         let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging, encoder, frame);
 
-        self.gradient.upload(&mut ctx);
+        if let Some(rows) = gradients {
+            self.gradient.upload(&mut ctx, rows);
+        }
 
         // Damage-rect overlay quads (debug): uploaded now, drawn last after the backbuffer copy.
         if let Some(damage) = overlay.damage {

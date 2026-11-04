@@ -1,8 +1,12 @@
 //! [`CpuCore`]: the half of a host's composition root that needs no device.
 
+use crate::gpu::render_owner_id::RenderOwners;
 use crate::host::host_options::HostOptions;
-use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentStrategy, WindowDriver};
+use crate::host::window_driver::{
+    CpuFrame, DriverSpec, FrameDepth, FrameSpec, PresentStrategy, WindowDriver,
+};
 use crate::image_registry::ImageRegistry;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::renderer::frontend::Frontend;
 use crate::text::shaper::TextShaper;
 use crate::ui::app::App;
@@ -21,6 +25,8 @@ use std::rc::Rc;
 pub(super) struct CpuCore {
     pub(super) resources: UiResources,
     pub(super) frontend: Frontend,
+    /// Where each window [`Self::open`] opens takes its render owner.
+    render_owners: RenderOwners,
 }
 
 impl CpuCore {
@@ -35,21 +41,32 @@ impl CpuCore {
 
     /// The core over `resources`, which other cores may share.
     pub(super) fn over(resources: UiResources, options: &HostOptions) -> Self {
-        let frontend = Frontend::new(
-            Rc::clone(resources.device()),
-            resources.gradient_atlas().clone(),
-        );
+        let frontend = Frontend::new(Rc::clone(resources.device()));
         resources.settings().set_pixel_snap(options.pixel_snap);
         Self {
             resources,
             frontend,
+            render_owners: RenderOwners::default(),
         }
+    }
+
+    /// The CPU side of a device attach, at startup and after a loss alike: the recorders note the
+    /// device's `texture_limit`, and the frontend starts its gradient atlas over, as the device's
+    /// texture holds none of its rows.
+    pub(super) fn attach_device(&mut self, texture_limit: TextureLimit) {
+        self.resources.attach_device(texture_limit);
+        self.frontend.attach_device(texture_limit);
     }
 
     /// A driver for the window `token`, presenting by `strategy`, with no render stream: a host
     /// that paints gives it one ([`HostCore::open`](crate::host::core::HostCore::open)).
-    pub(super) fn open(&self, token: WindowToken, strategy: PresentStrategy) -> WindowDriver {
-        WindowDriver::new(token, &self.resources, strategy)
+    pub(super) fn open(&mut self, token: WindowToken, strategy: PresentStrategy) -> WindowDriver {
+        let spec = DriverSpec {
+            token,
+            owner: self.render_owners.reserve(),
+            strategy,
+        };
+        WindowDriver::new(spec, &self.resources)
     }
 
     /// Run the CPU half of the frame `spec` describes to `depth`: note its target, and record

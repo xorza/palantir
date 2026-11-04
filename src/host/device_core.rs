@@ -15,7 +15,6 @@ use crate::host::cpu_core::CpuCore;
 use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentPath, WindowDriver};
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::ui::app::App;
-use crate::ui::resources::UiResources;
 use std::rc::Rc;
 
 /// The one [`WgpuBackend`] every window of a host renders through, and what it is built from
@@ -35,22 +34,22 @@ pub(super) struct BackendSpec {
 }
 
 impl DeviceCore {
-    /// The backend `spec` builds on `gpu` over `resources`, as [`Self::attach`] builds it again.
-    pub(super) fn new(spec: BackendSpec, gpu: Gpu, resources: &UiResources) -> Self {
-        let backend = spec.open(gpu, resources);
+    /// The backend `spec` builds on `gpu` over `cpu`, as [`Self::attach`] builds it again.
+    pub(super) fn new(spec: BackendSpec, gpu: Gpu, cpu: &mut CpuCore) -> Self {
+        let backend = spec.open(gpu, cpu);
         Self { spec, backend }
     }
 
     /// Draw with `gpu` from now on, in place of a device that was lost: every device-bound object
-    /// is built again on it over `resources`, as at startup, and each of `drivers`, every window
-    /// of the host, gets its stream on it.
+    /// is built again on it over `cpu`, as at startup, and each of `drivers`, every window of the
+    /// host, gets its stream on it.
     pub(super) fn attach<'a>(
         &mut self,
         gpu: Gpu,
-        resources: &UiResources,
+        cpu: &mut CpuCore,
         drivers: impl IntoIterator<Item = &'a mut WindowDriver>,
     ) {
-        self.backend = self.spec.open(gpu, resources);
+        self.backend = self.spec.open(gpu, cpu);
         for driver in drivers {
             self.attach_window(driver);
         }
@@ -102,12 +101,12 @@ impl DeviceCore {
     /// The GPU half: draw the frame recorded through `cpu` into `target` by `mode`.
     pub(super) fn submit(
         &mut self,
-        cpu: &CpuCore,
+        cpu: &mut CpuCore,
         driver: &mut WindowDriver,
         target: RenderTarget<'_>,
         mode: PresentPath,
     ) {
-        driver.render_to_texture(&cpu.frontend.buffer, &mut self.backend, target, mode);
+        driver.render_to_texture(&mut cpu.frontend, &mut self.backend, target, mode);
     }
 
     /// Close a window: the backend drops what it keeps for its render owner, `GpuView` targets
@@ -128,8 +127,8 @@ impl DeviceCore {
 
 impl BackendSpec {
     /// The backend on `gpu`, at startup and after a loss alike: the group-0 texture binding is
-    /// made with the device, the image store holds textures on it, the CPU resources take its
-    /// limit, and the backend is built over them. Refused: the binding made by the image store,
+    /// made with the device, the image store holds textures on it, the CPU core takes its limit,
+    /// and the backend is built over it. Refused: the binding made by the image store,
     /// which pipelines took from it only because the store attached first. On a first attach the
     /// store and the gradient atlas hold nothing yet, so the same steps do nothing extra.
     ///
@@ -138,20 +137,20 @@ impl BackendSpec {
     /// If `gpu` cannot run Palantir's pipelines, see
     /// [`DeviceRequirements`](crate::DeviceRequirements): a caller's mistake every painting host
     /// meets here, at startup and at a recovery alike.
-    fn open(&self, gpu: Gpu, resources: &UiResources) -> WgpuBackend {
+    fn open(&self, gpu: Gpu, cpu: &mut CpuCore) -> WgpuBackend {
         if let Err(unmet) = gpu.requirements_met() {
             panic!("a host's device cannot run Palantir: {unmet}");
         }
         let texture_binding = TextureBinding::new(&gpu);
         self.image_store.attach(&gpu, texture_binding.clone());
-        resources.attach_device(TextureLimit::from_device(gpu.max_texture_dim()));
+        cpu.attach_device(TextureLimit::from_device(gpu.max_texture_dim()));
         WgpuBackend::new(
             gpu,
             BackendResources {
-                text: resources.text(),
+                text: cpu.resources.text(),
                 image_store: &self.image_store,
-                icons: resources.icons(),
-                gradient_atlas: resources.gradient_atlas(),
+                icons: cpu.resources.icons(),
+                gradient_rows: cpu.frontend.gradient_rows(),
                 texture_binding,
             },
             self.timing,

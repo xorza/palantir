@@ -99,7 +99,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         })?;
         let shaper =
             options.shaper_or_else(|| scan.expect("a scan runs when no shaper is set").join());
-        let core = HostCore::new(gpu, options, shaper);
+        let mut core = HostCore::new(gpu, options, shaper);
         // Before the first `Ui`, so it starts in the system's scheme.
         let _ = system.apply(&core.cpu.resources);
         let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
@@ -279,7 +279,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             })?;
         self.core.device.attach(
             gpu,
-            &self.core.cpu.resources,
+            &mut self.core.cpu,
             self.windows.iter_mut().map(|win| &mut win.driver),
         );
         let max_texture_dim = self.core.device.gpu().max_texture_dim();

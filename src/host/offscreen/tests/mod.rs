@@ -5,10 +5,11 @@ use std::cell::Cell;
 use super::*;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
+use crate::gpu::render_owner_id::RenderOwners;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::headless_window::record_window_commands;
 use crate::host::window_driver::PresentPath;
-use crate::host::window_driver::{CpuFrame, WindowDriver};
+use crate::host::window_driver::{CpuFrame, DriverSpec, WindowDriver};
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -30,7 +31,12 @@ use image::{Rgba, imageops};
 
 /// A driver as this host opens its one window, over `shared`, on a stream with no device.
 fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
-    WindowDriver::new(token, shared, PresentStrategy::BackbufferCopy)
+    let spec = DriverSpec {
+        token,
+        owner: RenderOwners::default().reserve(),
+        strategy: PresentStrategy::BackbufferCopy,
+    };
+    WindowDriver::new(spec, shared)
 }
 
 /// A host with no window lifecycle drains a quiet frame as a windowed one does (the veto lives a

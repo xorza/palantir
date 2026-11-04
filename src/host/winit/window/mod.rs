@@ -417,14 +417,14 @@ impl Window {
         match self.surface.acquire() {
             Acquired::Ready(frame) => {
                 core.device
-                    .submit(&core.cpu, &mut self.driver, frame.target(), mode);
+                    .submit(&mut core.cpu, &mut self.driver, frame.target(), mode);
                 self.window.pre_present_notify();
                 frame.present(core.device.gpu());
                 AcquireOutcome::Presented
             }
             Acquired::Suboptimal(frame) => {
                 core.device
-                    .submit(&core.cpu, &mut self.driver, frame.target(), mode);
+                    .submit(&mut core.cpu, &mut self.driver, frame.target(), mode);
                 self.window.pre_present_notify();
                 frame.present(core.device.gpu());
                 AcquireOutcome::Suboptimal(self.surface.size())

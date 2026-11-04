@@ -131,7 +131,7 @@ impl HeadlessWindow {
                 let CpuFrame { report, mode } =
                     device.record(&mut self.cpu, &mut self.driver, spec, app);
                 if !device.gpu().is_lost() {
-                    device.submit(&self.cpu, &mut self.driver, target, mode);
+                    device.submit(&mut self.cpu, &mut self.driver, target, mode);
                 }
                 report
             }
@@ -185,7 +185,7 @@ impl HeadlessWindow {
     /// Paint with `gpu` from now on, in place of `device`'s lost one: every GPU object is built
     /// again on it, and the UI state stays.
     pub(super) fn recover(&mut self, device: &mut DeviceCore, gpu: Gpu) {
-        device.attach(gpu, &self.cpu.resources, [&mut self.driver]);
+        device.attach(gpu, &mut self.cpu, [&mut self.driver]);
     }
 }
 

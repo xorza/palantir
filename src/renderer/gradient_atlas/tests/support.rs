@@ -11,7 +11,7 @@ pub(super) fn fresh_row() -> LutRowTexels {
 }
 
 /// A gradient whose stops are distinct for every `i` below 2^24 (`i`'s three low bytes are the first stop's color). Only stops key a row, so varying geometry would silently reuse one.
-pub(super) fn distinct_grad(i: u32) -> LinearGradient {
+pub(crate) fn distinct_grad(i: u32) -> LinearGradient {
     assert!(i < 1 << 24, "{i} does not fit three color bytes");
     let [r, g, b, _] = i.to_le_bytes();
     LinearGradient::two_stop(
@@ -22,7 +22,7 @@ pub(super) fn distinct_grad(i: u32) -> LinearGradient {
 }
 
 /// Register `distinct_grad(0)` through `distinct_grad(n - 1)`, in order.
-pub(super) fn fill_rows(atlas: &mut CpuGradientAtlas, n: u32) -> Vec<LutRow> {
+pub(crate) fn fill_rows(atlas: &mut CpuGradientAtlas, n: u32) -> Vec<LutRow> {
     (0..n)
         .map(|i| atlas.register(&distinct_grad(i).ramp))
         .collect()

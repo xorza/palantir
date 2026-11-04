@@ -2,8 +2,9 @@
 //! validity, record-store lifecycle.
 
 use crate::display::system_scale::SystemScale;
+use crate::gpu::render_owner_id::RenderOwners;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::window_driver::{FrameSpec, PresentStrategy, TargetKey, WindowDriver};
+use crate::host::window_driver::{DriverSpec, FrameSpec, PresentStrategy, TargetKey, WindowDriver};
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
@@ -28,7 +29,12 @@ const fn config(strategy: PresentStrategy, pixel_snap: bool) -> DriverConfig {
 /// shades every cutout.
 fn new_driver(token: WindowToken, shared: &UiResources, config: DriverConfig) -> WindowDriver {
     shared.settings().set_pixel_snap(config.pixel_snap);
-    WindowDriver::new(token, shared, config.strategy)
+    let spec = DriverSpec {
+        token,
+        owner: RenderOwners::default().reserve(),
+        strategy: config.strategy,
+    };
+    WindowDriver::new(spec, shared)
 }
 
 /// A texture frame of `physical` at `system_scale`, at time zero.
@@ -356,7 +362,7 @@ mod output_validity_tests {
     #[test]
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device());
         let mut driver = new_driver(
             WindowToken(1),
             &shared,
@@ -559,7 +565,7 @@ mod record_store_tests {
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device());
         let token = WindowToken(17);
         let mut window = new_driver(
             token,
@@ -593,7 +599,7 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device());
         let mut window_a = new_driver(
             WindowToken(1),
             &shared,
@@ -776,7 +782,10 @@ mod cutout_census_tests {
     use crate::display::frame_stamp::FrameStamp;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
-    use crate::host::window_driver::{FrameDepth, PresentPath, PresentStrategy, WindowDriver};
+    use crate::gpu::render_owner_id::RenderOwners;
+    use crate::host::window_driver::{
+        DriverSpec, FrameDepth, PresentPath, PresentStrategy, WindowDriver,
+    };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
@@ -800,9 +809,13 @@ mod cutout_census_tests {
     #[test]
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
-        let mut driver =
-            WindowDriver::new(WindowToken(1), &shared, PresentStrategy::BackbufferCopy);
+        let mut frontend = Frontend::new(test_device());
+        let spec = DriverSpec {
+            token: WindowToken(1),
+            owner: RenderOwners::default().reserve(),
+            strategy: PresentStrategy::BackbufferCopy,
+        };
+        let mut driver = WindowDriver::new(spec, &shared);
         driver.attach(RenderStream::detached(
             driver.render_owner(),
             CutoutMode::Bake(SharedCutoutPlacements::default()),
@@ -1162,7 +1175,7 @@ mod capture_path_tests {
     /// 100 × 80 target that gives a copy when `gives_copy` is.
     fn first_frame(pane: Rect, gives_copy: bool) -> PresentPath {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device());
         let mut driver = new_driver(
             WindowToken(1),
             &shared,

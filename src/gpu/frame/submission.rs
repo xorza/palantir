@@ -5,6 +5,7 @@ use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::gradient_atlas::FlushedRows;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::shape::record_store::RecordStore;
@@ -18,6 +19,8 @@ pub(crate) struct Submission<'a> {
     pub(crate) stats: &'a GpuPassStats,
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
+    /// The gradient rows baked since the last frame painted, which this one uploads first.
+    pub(crate) gradients: Option<FlushedRows<'a>>,
     /// The window's `GpuView`s, whose callbacks paint the buffer's view targets.
     pub(crate) gpu_views: &'a GpuViews,
     /// The opaque clear the frame paints ([`frame_clear`]).

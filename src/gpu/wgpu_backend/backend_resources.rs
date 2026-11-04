@@ -3,7 +3,6 @@
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::icons::icon_registry::IconRegistry;
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::text::shaper::TextShaper;
 use std::rc::Rc;
 
@@ -13,7 +12,8 @@ pub(crate) struct BackendResources<'a> {
     pub(crate) text: &'a TextShaper,
     pub(crate) image_store: &'a Rc<WgpuImageStore>,
     pub(crate) icons: &'a IconRegistry,
-    pub(crate) gradient_atlas: &'a SharedGradientAtlas,
+    /// Rows the frontend's gradient atlas holds, the height the LUT texture starts at.
+    pub(crate) gradient_rows: u32,
     /// The group-0 layout and sampler every pipeline builds over, made with the device and
     /// shared with the image store.
     pub(crate) texture_binding: TextureBinding,

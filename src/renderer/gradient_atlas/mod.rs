@@ -22,6 +22,7 @@
 //!   `Oklab::to_color`. Perceptually uniform; the CSS Color 4 default.
 
 use crate::common::hash::Hasher;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
@@ -31,6 +32,7 @@ use crate::renderer::gradient_atlas::dirty_rows::DirtyRows;
 use crate::renderer::gradient_atlas::mru_list::MruList;
 use hashbrown::HashTable;
 use std::hash::{Hash as _, Hasher as _};
+use std::num::NonZeroU32;
 use std::ops::Range;
 
 pub(crate) mod bake;
@@ -39,7 +41,6 @@ pub(crate) mod bench;
 mod counters;
 mod dirty_rows;
 mod mru_list;
-pub(crate) mod shared_gradient_atlas;
 
 /// Rows the LUT atlas texture starts with. Row 0 is a debug-magenta fallback, so a
 /// `fill_lut_row = 0` from a bug paints obviously wrong. The atlas doubles
@@ -157,6 +158,19 @@ impl CpuGradientAtlas {
         atlas
     }
 
+    /// An empty atlas whose growth ceiling is a device's `max_texture_dimension_2d` (one LUT row
+    /// per texture row), clamped by the [`MAX_ATLAS_ROWS`] policy ceiling since growth never
+    /// reverses; `None` (deviceless) uses [`DEFAULT_MAX_ATLAS_ROWS`], as `Default` does.
+    pub(crate) fn for_device(texture_limit: TextureLimit) -> Self {
+        let max_rows = texture_limit
+            .max_dimension()
+            .map_or(DEFAULT_MAX_ATLAS_ROWS, NonZeroU32::get)
+            .min(MAX_ATLAS_ROWS);
+        Self::new(max_rows)
+    }
+
+    /// Rows the atlas holds, the height the backend's LUT texture must match. Starts at
+    /// [`INITIAL_ATLAS_ROWS`] and only grows.
     pub(crate) const fn capacity(&self) -> u32 {
         self.baked.len() as u32
     }
@@ -325,6 +339,7 @@ fn row_hash(slots: &[RowSlot]) -> impl Fn(&u32) -> u64 {
 #[cfg(test)]
 pub(crate) mod internals {
     use super::*;
+    use crate::common::counters::CounterSet;
 
     impl CpuGradientAtlas {
         /// Whether this epoch's registered rows form a head prefix of the MRU list, which
@@ -350,8 +365,14 @@ pub(crate) mod internals {
         pub(crate) fn max_rows(&self) -> u32 {
             self.max_rows
         }
+
+        /// `register` calls so far, letting resolver tests prove their per-pass memo suppresses
+        /// repeats. Accumulates for the atlas's life; read a delta.
+        pub(crate) fn registrations(&self) -> u32 {
+            self.counters.counts().registrations
+        }
     }
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

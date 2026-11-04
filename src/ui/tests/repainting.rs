@@ -21,9 +21,8 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
-use crate::renderer::frontend::encoder;
+use crate::renderer::frontend::encoder::{self, Encoder};
 use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
-use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
@@ -342,12 +341,12 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
-    fn rows(ui: &Ui, atlas: &SharedGradientAtlas) -> Vec<LutRow> {
+    fn rows(ui: &Ui, encoder: &mut Encoder) -> Vec<LutRow> {
         let plan = RenderPlan {
             clear: ui.theme().window_bg,
             damage: Damage::Full,
         };
-        encoder::internals::encode(ui.frame_scene(), atlas, plan)
+        encoder::internals::encode(ui.frame_scene(), encoder, plan)
             .calls
             .iter()
             .filter_map(|command| match command {
@@ -369,14 +368,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     }
 
     let shared = UiResources::isolated_mono();
-    let atlas = shared.gradient_atlas().clone();
+    let mut encoder = Encoder::default();
     let mut a = support::ui_with_shared(&shared);
     let mut b = support::ui_with_shared(&shared);
     let half = Duration::from_millis(500);
 
     a.frame(|ui| window_a(ui, half));
-    let original_row = rows(a.ui(), &atlas)[0];
-    atlas.flush_with(|_| ());
+    let original_row = rows(a.ui(), &mut encoder)[0];
+    let _ = encoder.flush_gradients();
 
     b.frame(|ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
@@ -395,14 +394,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             }
         });
     });
-    let b_rows: HashSet<LutRow> = rows(b.ui(), &atlas).into_iter().collect();
+    let b_rows: HashSet<LutRow> = rows(b.ui(), &mut encoder).into_iter().collect();
     assert_eq!(b_rows.len(), (INITIAL_ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
-    atlas.flush_with(|_| ());
+    let _ = encoder.flush_gradients();
 
     let report = a.at(half).frame(|ui| window_a(ui, half));
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
-    let resolved_row = rows(a.ui(), &atlas)[0];
+    let resolved_row = rows(a.ui(), &mut encoder)[0];
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",

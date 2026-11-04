@@ -82,7 +82,7 @@ fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
 #[test]
 fn each_window_keeps_its_own_results() {
     let gpu = headless_test_gpu();
-    let owners = RenderOwners::default();
+    let mut owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
     let mut backdrops = Backdrops::new(&gpu);
     prepare(&mut backdrops, &gpu, a, &[]);
@@ -195,7 +195,7 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
 #[test]
 fn a_full_atlas_evicts_the_least_recently_used_result() {
     let gpu = headless_test_gpu();
-    let owners = RenderOwners::default();
+    let mut owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
     let mut backdrops = Backdrops::with_limits(&gpu, 64, u64::MAX);
     prepare(&mut backdrops, &gpu, a, &[captured(0), captured(1)]);
@@ -234,7 +234,7 @@ fn a_full_atlas_evicts_the_least_recently_used_result() {
 #[test]
 fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
     let gpu = headless_test_gpu();
-    let owners = RenderOwners::default();
+    let mut owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
     let mut backdrops = Backdrops::with_limits(&gpu, 64, 32 * 32 * 8);
     let edge = |backdrops: &Backdrops| backdrops.resources.as_ref().unwrap().atlas.edge();

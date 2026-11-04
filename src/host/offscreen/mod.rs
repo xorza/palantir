@@ -194,7 +194,7 @@ impl OffscreenHostBuilder {
         let options = &self.settings.options;
         let fonts = options.fonts;
         let shaper = options.shaper_or_else(|| TextShaper::with_fonts(fonts));
-        let core = HostCore::new(self.gpu, options, shaper);
+        let mut core = HostCore::new(self.gpu, options, shaper);
         let driver = core.open(OffscreenHost::WINDOW, self.strategy);
         let HostCore { cpu, device } = core;
         let window = HeadlessWindow::open(cpu, driver, &self.settings);
@@ -404,7 +404,7 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(super) fn submit(&mut self, target: RenderTarget<'_>, mode: PresentPath) {
             self.device
-                .submit(&self.window.cpu, &mut self.window.driver, target, mode);
+                .submit(&mut self.window.cpu, &mut self.window.driver, target, mode);
         }
 
         /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.

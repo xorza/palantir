@@ -196,20 +196,20 @@ impl HarnessBuilder {
         let token = Harness::WINDOW;
         match &self.depth {
             Depth::Record => {
-                let cpu = CpuCore::new(options, shaper);
+                let mut cpu = CpuCore::new(options, shaper);
                 let driver = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Record { size: self.size };
                 self.open(cpu, driver, paint)
             }
             Depth::Compose => {
-                let cpu = CpuCore::new(options, shaper);
+                let mut cpu = CpuCore::new(options, shaper);
                 let driver = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Compose { size: self.size };
                 self.open(cpu, driver, paint)
             }
             Depth::Gpu { gpu, format } => {
                 let target = OwnedTarget::window(gpu, TARGET_LABEL, self.size, *format);
-                let core = HostCore::new(gpu.clone(), options, shaper);
+                let mut core = HostCore::new(gpu.clone(), options, shaper);
                 let driver = core.open(token, self.strategy);
                 let HostCore { cpu, device } = core;
                 self.open(cpu, driver, HarnessPaint::Gpu { target, device })
@@ -276,7 +276,7 @@ pub(crate) mod internals {
     impl HarnessBuilder {
         /// A recording window over `resources`, as `token` among the windows that share them.
         pub(crate) fn build_over(self, resources: UiResources, token: WindowToken) -> Harness {
-            let cpu = CpuCore::over(resources, &self.settings.options);
+            let mut cpu = CpuCore::over(resources, &self.settings.options);
             let driver = cpu.open(token, self.strategy);
             let paint = match self.depth {
                 Depth::Record => HarnessPaint::Record { size: self.size },

@@ -487,5 +487,5 @@ fn a_recovery_onto_a_smaller_device_takes_its_limit() {
     assert!(fits_handle.is_resident());
     assert_eq!(host.gpu_image_cache_len(), 1);
     assert!(host.ui().load_image(&wide).is_err());
-    assert_eq!(host.window.cpu.resources.gradient_atlas().max_rows(), 2048);
+    assert_eq!(host.window.cpu.frontend.gradient_max_rows(), 2048);
 }

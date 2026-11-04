@@ -859,16 +859,25 @@ pub(crate) mod internals {
     use crate::ui::frame_engines::FrameEngines;
     #[cfg(test)]
     use crate::{
-        input::input_event::InputEvent, input::interaction::input_delta::InputDelta,
-        internals::paint_capture::PaintCapture, primitives::geometry::rect::Rect,
+        input::input_event::InputEvent,
+        input::interaction::input_delta::InputDelta,
+        internals::paint_capture::PaintCapture,
+        primitives::geometry::rect::Rect,
         primitives::geometry::translate_scale::TranslateScale,
-        primitives::identity::widget_id::WidgetId, primitives::layout::sizing::Sizing,
-        primitives::math::animatable::Animatable, renderer::frontend::Frontend,
-        renderer::frontend::encoder,
-        renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas,
-        scene::endpoint::Endpoint, scene::layer::Layer, scene::tree::node_id::NodeId, ui::Ui,
-        ui::app::App, ui::frame_report::FrameReport, ui::resources::UiResources,
-        widget_core::configure::Configure, widgets::panel::Panel,
+        primitives::identity::widget_id::WidgetId,
+        primitives::layout::sizing::Sizing,
+        primitives::math::animatable::Animatable,
+        renderer::frontend::Frontend,
+        renderer::frontend::encoder::{self, Encoder},
+        scene::endpoint::Endpoint,
+        scene::layer::Layer,
+        scene::tree::node_id::NodeId,
+        ui::Ui,
+        ui::app::App,
+        ui::frame_report::FrameReport,
+        ui::resources::UiResources,
+        widget_core::configure::Configure,
+        widgets::panel::Panel,
         window::window_token::WindowToken,
     };
     #[cfg(test)]
@@ -1158,7 +1167,7 @@ pub(crate) mod internals {
             };
             encoder::internals::encode(
                 self.window.driver.ui.frame_scene(),
-                &SharedGradientAtlas::default(),
+                &mut Encoder::default(),
                 plan,
             )
         }

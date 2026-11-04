@@ -73,7 +73,7 @@ mod tests {
     /// Owner `b`'s `2` survives all of `a`'s submits, so only `retire_owner` frees a closed stream's targets.
     #[test]
     fn eviction_follows_the_live_roster_and_is_owner_scoped() {
-        let owners = RenderOwners::default();
+        let mut owners = RenderOwners::default();
         let a = owners.reserve();
         let b = owners.reserve();
         let entries = [(1, a), (3, a), (2, b)];

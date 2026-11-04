@@ -41,7 +41,7 @@ mod tests {
     /// frame 2 and again in frame 3; a window that submits twice before the other moves it on.
     #[test]
     fn a_round_of_owners_is_one_frame() {
-        let owners = RenderOwners::default();
+        let mut owners = RenderOwners::default();
         let (a, b) = (owners.reserve(), owners.reserve());
         let mut frames = DisplayFrames::default();
         assert_eq!(frames.advance(a), 0);
