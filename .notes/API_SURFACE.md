@@ -512,6 +512,7 @@ DeviceRequirements
         pub features: Features
         pub limits: Limits
         pub const FEATURES: Features
+        pub const DOWNLEVEL: DownlevelFlags
         pub const GPU_TIMING_FEATURES: Features
         pub fn negotiate(adapter: &Adapter, optional: Features) -> Result<Self, UnmetRequirements>
 
@@ -2777,6 +2778,7 @@ UiPreferences
 UnmetRequirements
     enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq
         Features { missing: Features }
+        Downlevel { missing: DownlevelFlags }
         Limit { name: &'static str, required: u64, available: u64 }
         impl From<UnmetRequirements> for GpuRequestError
 

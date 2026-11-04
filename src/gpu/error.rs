@@ -15,6 +15,12 @@ pub enum UnmetRequirements {
         /// the device lacks.
         missing: wgpu::Features,
     },
+    /// A required capability of the backend is absent, as compute shaders are on OpenGL ES 3.0.
+    Downlevel {
+        /// The flags of [`DeviceRequirements::DOWNLEVEL`](crate::DeviceRequirements::DOWNLEVEL)
+        /// the adapter lacks.
+        missing: wgpu::DownlevelFlags,
+    },
     /// A limit sits below the floor Palantir needs.
     Limit {
         /// The device-limit field name.
@@ -32,6 +38,11 @@ impl Display for UnmetRequirements {
             Self::Features { missing } => write!(
                 f,
                 "graphics device is missing {}, which Palantir requires",
+                fmt::from_fn(|f| flag_names::write(f, missing.iter_names()))
+            ),
+            Self::Downlevel { missing } => write!(
+                f,
+                "graphics backend lacks {}, which Palantir requires",
                 fmt::from_fn(|f| flag_names::write(f, missing.iter_names()))
             ),
             Self::Limit {

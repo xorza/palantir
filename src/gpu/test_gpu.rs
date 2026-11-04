@@ -4,6 +4,7 @@ use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
 use std::env;
+use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -45,8 +46,26 @@ impl Display for LeaseFailed {
         write!(
             f,
             "lease headless test gpu after {:?}: {}",
-            self.waited, self.source
+            self.waited,
+            Chain(&self.source)
         )
+    }
+}
+
+/// An error and each cause [`Error::source`] reaches under it, joined by `": "`, as anyhow's
+/// `{:#}` prints a chain: palantir's errors name their cause in `source` alone, so a panic that
+/// prints the error by itself hides what failed under it.
+struct Chain<'a>(&'a dyn Error);
+
+impl Display for Chain<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+        let mut cause = self.0.source();
+        while let Some(error) = cause {
+            write!(f, ": {error}")?;
+            cause = error.source();
+        }
+        Ok(())
     }
 }
 
@@ -251,12 +270,12 @@ impl Registry {
         let adapter = self.adapter();
         let request = test_request();
         let mut requirements = DeviceRequirements::negotiate(&adapter, request.optional)
-            .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {why}"));
+            .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", Chain(&why)));
         let limit = &mut requirements.limits.max_texture_dimension_2d;
         *limit = (*limit).min(max_texture_dim);
         let gpu = request
             .open_with(wgpu::Adapter::clone(&adapter), requirements)
-            .unwrap_or_else(|why| panic!("open headless test gpu: {why}"));
+            .unwrap_or_else(|why| panic!("open headless test gpu: {}", Chain(&why)));
         Arc::new(OpenDevice {
             gpu: gpu.gpu,
             identity: adapter_identity(&adapter.get_info()),
@@ -295,8 +314,10 @@ fn open_adapter() -> Result<wgpu::Adapter, LeaseFailed> {
     let started = Instant::now();
     let request = test_request();
     loop {
-        match GpuRequest::instance().and_then(|instance| request.adapter(&instance)) {
-            Ok(adapter) => return Ok(adapter),
+        // The adapter a device opened on, as a driver can report what its device then refuses;
+        // the probe device closes before any lease opens its own.
+        match GpuRequest::instance().and_then(|instance| request.open(&instance)) {
+            Ok(probe) => return Ok(probe.adapter),
             // Only a missing adapter is worth retrying: another test binary may still be tearing its own down.
             Err(GpuRequestError::RequestAdapter { .. })
                 if started.elapsed() < ADAPTER_RETRY_TIMEOUT =>

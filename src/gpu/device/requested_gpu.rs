@@ -95,47 +95,81 @@ impl GpuRequest<'_> {
         Ok(())
     }
 
-    /// The adapter [`Self::open`] opens its device on, picked without opening one.
-    pub(crate) fn adapter(
+    /// The adapters [`Self::open`] tries, best first, each with what it negotiates: those that
+    /// present to the surface and meet [`DeviceRequirements`], in `power_preference`'s order
+    /// ([`PowerPreference::rank`]). With none that meets them, the best one's refusal says why;
+    /// with no adapter at all, wgpu's own answer does.
+    fn candidates(
         &self,
         instance: &wgpu::Instance,
-    ) -> Result<wgpu::Adapter, GpuRequestError> {
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: self.power_preference.into(),
-                compatible_surface: self.compatible_surface,
-                force_fallback_adapter: false,
-                apply_limit_buckets: false,
-            })
-            .block_on()?;
-
-        // Which GPU won the `power_preference` sort decides a session's frame
-        // times (a hybrid laptop's wrong pick means cross-adapter copies), and
-        // nothing else reports it.
-        let info = adapter.get_info();
-        tracing::info!(
-            name = %info.name,
-            backend = ?info.backend,
-            device_type = ?info.device_type,
-            driver = %info.driver,
-            driver_info = %info.driver_info,
-            requested = ?self.power_preference,
-            "selected gpu adapter"
-        );
-        Ok(adapter)
+    ) -> Result<Vec<(wgpu::Adapter, DeviceRequirements)>, GpuRequestError> {
+        let mut adapters = instance
+            .enumerate_adapters(wgpu::Backends::all())
+            .block_on();
+        if let Some(surface) = self.compatible_surface {
+            adapters.retain(|adapter| adapter.is_surface_supported(surface));
+        }
+        // Stable, so adapters of one type keep the backends' order, as wgpu's own sort does.
+        adapters.sort_by_key(|adapter| self.power_preference.rank(adapter.get_info().device_type));
+        if adapters.is_empty() {
+            // wgpu's error names what it searched; an adapter it finds after all is a candidate.
+            adapters.push(
+                instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: self.power_preference.into(),
+                        compatible_surface: self.compatible_surface,
+                        force_fallback_adapter: false,
+                        apply_limit_buckets: false,
+                    })
+                    .block_on()?,
+            );
+        }
+        let mut refusal = None;
+        let candidates: Vec<_> = adapters
+            .into_iter()
+            .filter_map(
+                |adapter| match DeviceRequirements::negotiate(&adapter, self.optional) {
+                    Ok(requirements) => Some((adapter, requirements)),
+                    Err(why) => {
+                        refusal.get_or_insert(why);
+                        None
+                    }
+                },
+            )
+            .collect();
+        match refusal {
+            Some(why) if candidates.is_empty() => Err(why.into()),
+            _ => {
+                debug_assert!(
+                    !candidates.is_empty(),
+                    "an adapter is a candidate or refused"
+                );
+                Ok(candidates)
+            }
+        }
     }
 
-    /// Pick an adapter and open a device on it.
-    pub(crate) fn open(self, instance: &wgpu::Instance) -> Result<RequestedGpu, GpuRequestError> {
-        let adapter = self.adapter(instance)?;
-        let requirements = DeviceRequirements::negotiate(&adapter, self.optional)?;
-        self.open_with(adapter, requirements)
+    /// Open a device on the first adapter of [`Self::candidates`] that opens one; with none, the
+    /// first adapter's failure. Refused: wgpu's `request_adapter` and its one adapter, as a
+    /// driver can report what its device then refuses: NVIDIA's OpenGL 3.3 adapter claims compute
+    /// shaders, ranks over a Vulkan CPU one as an `Other` device, and fails every device it opens.
+    pub(crate) fn open(&self, instance: &wgpu::Instance) -> Result<RequestedGpu, GpuRequestError> {
+        let mut failure = None;
+        for (adapter, requirements) in self.candidates(instance)? {
+            match self.open_with(adapter, requirements) {
+                Ok(gpu) => return Ok(gpu),
+                Err(why) => {
+                    failure.get_or_insert(why);
+                }
+            }
+        }
+        Err(failure.expect("the candidates hold an adapter or answer why not"))
     }
 
     /// Open a device on `adapter` with `requirements`, which [`DeviceRequirements::negotiate`]
     /// answered for it.
     pub(crate) fn open_with(
-        self,
+        &self,
         adapter: wgpu::Adapter,
         requirements: DeviceRequirements,
     ) -> Result<RequestedGpu, GpuRequestError> {
@@ -152,9 +186,43 @@ impl GpuRequest<'_> {
             })
             .block_on()?;
 
+        // Which GPU won the `power_preference` sort decides a session's frame
+        // times (a hybrid laptop's wrong pick means cross-adapter copies), and
+        // nothing else reports it.
+        let info = adapter.get_info();
+        tracing::info!(
+            name = %info.name,
+            backend = ?info.backend,
+            device_type = ?info.device_type,
+            driver = %info.driver,
+            driver_info = %info.driver_info,
+            requested = ?self.power_preference,
+            "selected gpu adapter"
+        );
         Ok(RequestedGpu {
             adapter,
             gpu: Gpu::new(device, queue),
         })
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::device::requested_gpu::GpuRequest;
+    use crate::gpu::error::GpuRequestError;
+
+    impl GpuRequest<'_> {
+        /// The adapter [`Self::open`] tries first, picked without opening a device.
+        pub(crate) fn adapter(
+            &self,
+            instance: &wgpu::Instance,
+        ) -> Result<wgpu::Adapter, GpuRequestError> {
+            let (adapter, _) = self
+                .candidates(instance)?
+                .into_iter()
+                .next()
+                .expect("the candidates hold an adapter or answer why not");
+            Ok(adapter)
+        }
     }
 }

@@ -29,6 +29,13 @@ impl DeviceRequirements {
     /// Features no configuration runs without: immediate data, which the viewport rides in.
     pub const FEATURES: wgpu::Features = wgpu::Features::IMMEDIATES;
 
+    /// Backend capabilities no configuration runs without: compute shaders, which Palantir's
+    /// compute pipelines and wgpu's own indirect-draw validation run, and which OpenGL ES 3.0
+    /// and a plain OpenGL 3.3 lack. An adapter whose backend lacks one opens no device that runs
+    /// Palantir. A driver can claim one its device then refuses, so a host's device request still
+    /// tries the next adapter when a device fails.
+    pub const DOWNLEVEL: wgpu::DownlevelFlags = wgpu::DownlevelFlags::COMPUTE_SHADERS;
+
     /// The four features `collect_gpu_stats` asks for, as the one set that
     /// instruments the GPU timeline.
     ///
@@ -49,7 +56,21 @@ impl DeviceRequirements {
         adapter: &wgpu::Adapter,
         optional: wgpu::Features,
     ) -> Result<Self, UnmetRequirements> {
+        Self::downlevel_against(adapter.get_downlevel_capabilities().flags)?;
         Self::against(adapter.features(), &adapter.limits(), optional)
+    }
+
+    /// Whether a backend with `available` capabilities runs Palantir ([`Self::DOWNLEVEL`]).
+    /// Apart from [`Self::against`], as a device made elsewhere reports no capabilities.
+    pub(crate) const fn downlevel_against(
+        available: wgpu::DownlevelFlags,
+    ) -> Result<(), UnmetRequirements> {
+        let missing = Self::DOWNLEVEL.difference(available);
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(UnmetRequirements::Downlevel { missing })
+        }
     }
 
     /// The negotiation itself, against a capability pair rather than an adapter,
@@ -210,5 +231,31 @@ mod tests {
         assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
         assert_eq!(requirements.limits.max_texture_dimension_2d, 7680);
         assert_eq!(requirements.limits.max_texture_dimension_3d, 7680);
+    }
+
+    /// A backend runs Palantir only with compute shaders: one without them is refused, naming
+    /// what it lacks, and one with them and more passes.
+    #[test]
+    fn a_backend_without_compute_shaders_is_refused() {
+        use wgpu::DownlevelFlags;
+        assert_eq!(
+            DeviceRequirements::downlevel_against(DownlevelFlags::empty()),
+            Err(UnmetRequirements::Downlevel {
+                missing: DownlevelFlags::COMPUTE_SHADERS
+            })
+        );
+        assert_eq!(
+            DeviceRequirements::downlevel_against(
+                DownlevelFlags::COMPUTE_SHADERS | DownlevelFlags::INDIRECT_EXECUTION
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            UnmetRequirements::Downlevel {
+                missing: DownlevelFlags::COMPUTE_SHADERS
+            }
+            .to_string(),
+            "graphics backend lacks COMPUTE_SHADERS, which Palantir requires"
+        );
     }
 }
