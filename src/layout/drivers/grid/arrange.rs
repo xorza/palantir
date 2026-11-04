@@ -2,22 +2,18 @@
 
 use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::drivers::grid::Grid;
-use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use glam::Vec2;
 
-/// [`LayoutDriver::arrange`](crate::layout::drivers::LayoutDriver::arrange) for `grid`, inside its entered depth slot.
+/// [`LayoutDriver::arrange`](crate::layout::drivers::LayoutDriver::arrange) for `grid`.
 pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
-    let tree = pass.tree;
+    let tree = pass.tree();
     let node = grid.node;
     let cols = grid.axis(tree, Axis::X);
     let rows = grid.axis(tree, Axis::Y);
-    let scratch = pass.grid_mut().depth_stack.cur();
-    scratch.col.reset_for(cols.tracks.len());
-    scratch.row.reset_for(rows.tracks.len());
 
     if rows.tracks.is_empty() || cols.tracks.is_empty() {
         for c in tree.children(node).map(|c| c.id) {
@@ -28,16 +24,11 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
 
     // Resolve track sizes. Fast path: when measure resolved this axis against the same `total` (`track_state.total_used` is `Some`) and arrange's `inner.size.X` equals measure's `inner_avail.X` (no Stretch grow since), copy the persisted sizes instead of re-solving. Offsets are cheap, so they are always recomputed.
     {
-        let GridCtx {
-            depth_stack,
-            track_state,
-            ..
-        } = pass.grid_mut();
-        let s = depth_stack.cur();
-        s.col.resolve_or_reuse(cols, track_state, inner.w);
-        s.row.resolve_or_reuse(rows, track_state, inner.h);
-        s.col.compute_offsets(cols.gap);
-        s.row.compute_offsets(rows.gap);
+        let tracks = &mut pass.grid_mut().track_state;
+        tracks.resolve_or_reuse(cols, inner.w);
+        tracks.resolve_or_reuse(rows, inner.h);
+        tracks.compute_offsets(cols.id, cols.gap);
+        tracks.compute_offsets(rows.id, rows.gap);
     }
 
     let parent_child_align = tree.panel(node).child_align;
@@ -47,15 +38,15 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
         let cell = grid.cell(tree, c);
 
         let slot = {
-            let s = pass.grid_mut().depth_stack.cur();
+            let tracks = &pass.grid_mut().track_state;
             Rect {
                 min: Vec2::new(
-                    s.col.offsets[cell.col() as usize],
-                    s.row.offsets[cell.row() as usize],
+                    tracks.offset(cols.id, cell.col() as usize),
+                    tracks.offset(rows.id, cell.row() as usize),
                 ),
                 size: Size::new(
-                    s.col.span_size(cell.track_span(Axis::X), cols.gap),
-                    s.row.span_size(cell.track_span(Axis::Y), rows.gap),
+                    tracks.span_size(cols.id, cell.track_span(Axis::X), cols.gap),
+                    tracks.span_size(rows.id, cell.track_span(Axis::Y), rows.gap),
                 ),
             }
         };

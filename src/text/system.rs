@@ -7,14 +7,19 @@
 //! Neither carries the other's fields, so a bounded resolve can't pass for a
 //! wrapping floor it never scanned for.
 //!
-//! The slots are a second cache in front of the shaper's content-keyed one, for
-//! retention, not speed. A row holds the last bounded key its run answered, the
-//! only record of which buffer to [demote](TextShaper::supersede) when the row
-//! stops answering through it. Supersession makes the shaped-buffer cache's
-//! probation window reachable (`shaped_buffer_cache::PROBATION_KEEP_FRAMES`) and
-//! so bounds a resize drag. In steady state rows go unconsulted (the layout
-//! measure cache skips whole subtrees); the `text_shape/reuse_layer/*` bench
-//! (`src/text/bench.rs`) replays runs every frame, so read it as an upper bound.
+//! The slots are a measurement cache in front of the shaper's content-keyed one, with two
+//! roles. A row answers its run's root and its last bounded extent without the shaper, also
+//! once the shaped buffer behind them is evicted, which is why it holds its own copy of the
+//! text to verify a request against. And it holds the last bounded key its run answered, the
+//! only record of which buffer to [demote](TextShaper::supersede) when the row stops answering
+//! through it. Supersession makes the shaped-buffer cache's probation window reachable
+//! (`shaped_buffer_cache::PROBATION_KEEP_FRAMES`) and so bounds a resize drag.
+//!
+//! A row is verified once per layout run ([`TextSystem::begin_run`]): a run asks each slot for
+//! one text, its intrinsic query first and its measure after, so the second ask compares the key
+//! alone. In steady state rows go unconsulted (the layout measure cache skips whole subtrees);
+//! the `text_shape/reuse_layer/*` bench (`src/text/bench.rs`) replays runs every frame, so read
+//! it as an upper bound.
 
 use crate::primitives::layout::offer;
 
@@ -45,6 +50,10 @@ pub(crate) struct TextSystem {
     /// Whether this window's shaper mints shaped buffers; false only under mono.
     shapes_buffers: bool,
     font_epoch: u32,
+    /// The layout run now going, which a row verified in it is stamped with
+    /// ([`TextReuseEntry::verified_in`]). Counts runs from 1, so a row stamped 0 is verified in
+    /// none; a `u64` that a run a microsecond would take half a million years to wrap.
+    run: u64,
 }
 
 /// How a run binds to the width layout offers it: what [`TextSystem::measure`] reads
@@ -73,7 +82,13 @@ impl TextSystem {
             font_epoch: shaper.font_epoch(),
             shaper,
             entries: FxHashMap::default(),
+            run: 0,
         }
+    }
+
+    /// Start a layout run: every row is verified against its text again on its first ask.
+    pub(crate) const fn begin_run(&mut self) {
+        self.run += 1;
     }
 
     /// Drop every reuse row when the font database has moved, reporting whether it
@@ -144,7 +159,7 @@ impl TextSystem {
             request,
             floor: wrap_policy.floor_scan(),
         };
-        Self::refresh(&mut self.entries, &self.shaper, row).root
+        Self::refresh(&mut self.entries, &self.shaper, row, self.run).root
     }
 
     /// The run's extent at a committed width plus the key of the shaped buffer the
@@ -173,6 +188,7 @@ impl TextSystem {
             entries,
             shapes_buffers,
             font_epoch: _,
+            run,
         } = self;
         let shapes_buffers = *shapes_buffers;
         let row = ReuseRow {
@@ -180,7 +196,7 @@ impl TextSystem {
             request,
             floor: wrap_policy.floor_scan(),
         };
-        let entry = Self::refresh(entries, shaper, row);
+        let entry = Self::refresh(entries, shaper, row, *run);
 
         let Some(fitted) = wrap_policy.fitted() else {
             entry.release_bound(shaper);
@@ -231,12 +247,13 @@ impl TextSystem {
         }
     }
 
-    /// The reuse row `row` names, reshaped if it answers a different run. Takes the
-    /// two fields, not `&mut self`, so the row borrows only the map.
+    /// The reuse row `row` names, reshaped if it answers a different run, as of layout run
+    /// `run`. Takes the fields, not `&mut self`, so the row borrows only the map.
     fn refresh<'a>(
         entries: &'a mut FxHashMap<TextRunSlot, TextReuseEntry>,
         shaper: &TextShaper,
         row: ReuseRow<'_>,
+        run: u64,
     ) -> &'a mut TextReuseEntry {
         let ReuseRow {
             slot,
@@ -248,8 +265,15 @@ impl TextSystem {
             text: request.text.to_owned(),
             root: shaper.root(request, floor),
             wrap: None,
+            verified_in: run,
         });
-        if !entry.answers(request) {
+        let verified = entry.verified_in == run && entry.key == request.key;
+        debug_assert!(
+            !verified || entry.text == request.text,
+            "a layout run asks a slot for one text"
+        );
+        entry.verified_in = run;
+        if !verified && !entry.answers(request) {
             entry.retire(shaper);
             entry.key = request.key;
             entry.text.clear();
@@ -308,6 +332,9 @@ struct TextReuseEntry {
     /// row's root key, and `supersede` would demote the unbounded probe a drag re-reads
     /// every frame.
     wrap: Option<WrapSlot>,
+    /// The layout run this row was last verified against its request's text in
+    /// ([`TextSystem::begin_run`]).
+    verified_in: u64,
 }
 
 impl TextReuseEntry {

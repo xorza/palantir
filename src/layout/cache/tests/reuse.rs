@@ -47,18 +47,18 @@ fn snap_for(h: &Harness, widget_id: WidgetId) -> Option<SnapView<'_>> {
     let snap = *snapshot.desc(widget_id)?;
     Some(SnapView {
         snap,
-        desired: &snapshot.nodes.desired[snap.nodes.range()],
+        desired: &snapshot.nodes.measure.desired[snap.nodes.range()],
         avail: snap.available,
     })
 }
 
 pub(super) fn assert_snapshot_is_linear(h: &Harness) {
     let snapshot = &h.engines().layout.cache.prev;
-    let len = snapshot.nodes.desired.len();
+    let len = snapshot.nodes.measure.desired.len();
     assert_eq!(snapshot.nodes.scroll_content.len(), len);
     assert_eq!(snapshot.nodes.text_spans.len(), len);
-    assert_eq!(snapshot.nodes.intrinsics.len(), len);
-    assert_eq!(snapshot.nodes.available.len(), len);
+    assert_eq!(snapshot.nodes.measure.intrinsics.len(), len);
+    assert_eq!(snapshot.nodes.measure.available.len(), len);
     let recorded = Layer::PAINT_ORDER
         .iter()
         .map(|layer| h.ui().tree(*layer).records.len())
@@ -135,7 +135,16 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         .unwrap()
         .snap
         .subtree_hash;
-    let first_desired = h.parts().engines.layout.cache.prev.nodes.desired.clone();
+    let first_desired = h
+        .parts()
+        .engines
+        .layout
+        .cache
+        .prev
+        .nodes
+        .measure
+        .desired
+        .clone();
     let first_rects = h.ui().layout(Layer::Main).rect.clone();
 
     run_frame(&mut h, build);
@@ -144,7 +153,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     assert_eq!(first_hash, second.snap.subtree_hash);
     assert_eq!(
         first_desired,
-        h.parts().engines.layout.cache.prev.nodes.desired
+        h.parts().engines.layout.cache.prev.nodes.measure.desired
     );
     assert_eq!(first_rects, h.ui().layout(Layer::Main).rect);
     assert_eq!(
@@ -159,6 +168,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         ReplayCounts {
             copied: 1,
             translated: 0,
+            container_text: 0,
         },
         "an unchanged frame must replay its one hit subtree verbatim",
     );
@@ -488,9 +498,25 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     // same every frame. Steady-state oscillation must reuse the retained map, not refill it.
     let rebuilds_after_warmup = h.parts().engines.layout.cache.snapshot_rebuilds.count();
     let mut node_capacities = [
-        h.parts().engines.layout.cache.prev.nodes.desired.capacity(),
-        h.parts().engines.layout.cache.cur.nodes.desired.capacity(),
-        h.parts().engines.layout.scratch.desired.capacity(),
+        h.parts()
+            .engines
+            .layout
+            .cache
+            .prev
+            .nodes
+            .measure
+            .desired
+            .capacity(),
+        h.parts()
+            .engines
+            .layout
+            .cache
+            .cur
+            .nodes
+            .measure
+            .desired
+            .capacity(),
+        h.parts().engines.layout.scratch.measure.desired.capacity(),
     ];
     node_capacities.sort_unstable();
     let mut desc_capacities = [
@@ -503,9 +529,25 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         render(&mut h, frame % 2 == 0);
         assert_snapshot_is_linear(&h);
         let mut cur_node_capacities = [
-            h.parts().engines.layout.cache.prev.nodes.desired.capacity(),
-            h.parts().engines.layout.cache.cur.nodes.desired.capacity(),
-            h.parts().engines.layout.scratch.desired.capacity(),
+            h.parts()
+                .engines
+                .layout
+                .cache
+                .prev
+                .nodes
+                .measure
+                .desired
+                .capacity(),
+            h.parts()
+                .engines
+                .layout
+                .cache
+                .cur
+                .nodes
+                .measure
+                .desired
+                .capacity(),
+            h.parts().engines.layout.scratch.measure.desired.capacity(),
         ];
         cur_node_capacities.sort_unstable();
         let mut cur_desc_capacities = [

@@ -4,10 +4,14 @@ use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun}
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support::{PARAGRAPH, two_hug_cols_with_wrap};
 use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
+use crate::text::glyph_font::GlyphFont;
+use crate::text::request::internals::TestShape;
+use crate::text::system::{TextRunSlot, TextSystem};
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -146,5 +150,48 @@ fn a_hug_scroll_wraps_its_text_at_the_column_width() {
     assert_eq!(
         rig.shaped_text("text").extent.size,
         Size::new(296.0, 5.0 * 16.0)
+    );
+}
+
+/// Truncation under the shaper that ships, not only the mono model: an ellipsized label in a
+/// 120 px column measures to what cosmic cuts it to at 120, which reserves the `…` and cuts at a
+/// cluster and so falls short of the column, where the mono model fills it; the leaf's rect and
+/// its shaped run agree, one line tall.
+#[test]
+fn an_ellipsized_label_lays_out_as_cosmic_cuts_it() {
+    const LABEL: &str = "Screenshot 2026-05-28 at 01.21.25.png";
+    let lay_out = |mut rig: LayoutRig| {
+        rig.run(Size::new(400.0, 400.0), |rec| {
+            let column = Widget::vstack().size((Sizing::fixed(120.0), Sizing::HUG));
+            rec.node("column", column, |rec| {
+                let run = TextRun::new(LABEL, 16.0, TextWrap::Ellipsis);
+                rec.text_leaf("label", Widget::leaf(), run);
+            });
+        });
+        rig
+    };
+    let cosmic = lay_out(LayoutRig::cosmic());
+    let cut = TextSystem::cosmic().shape_run(
+        TextRunSlot {
+            widget_id: WidgetId::from_hash("label"),
+            ordinal: 0,
+        },
+        LABEL,
+        TestShape::new(GlyphFont::new(16.0)).width(120.0),
+        TextWrap::Ellipsis,
+    );
+    let rect = cosmic.rect("label");
+    assert_eq!(rect.size, cut.size, "the leaf measures to cosmic's cut");
+    assert_eq!(cosmic.shaped_text("label").extent.size, rect.size);
+    assert!(
+        rect.size.w < 120.0,
+        "the cut falls short of the column: {rect:?}"
+    );
+
+    let mono = lay_out(LayoutRig::new());
+    assert_eq!(
+        mono.rect("label").size,
+        Size::new(120.0, 16.0),
+        "the mono model fills it"
     );
 }

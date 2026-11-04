@@ -5,10 +5,12 @@ use crate::layout::drivers::{LayoutDriver, per_axis_hug};
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use glam::{BVec2, Vec2};
 
@@ -34,12 +36,15 @@ impl ZStack {
 }
 
 impl LayoutDriver for ZStack {
-    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
+    /// Arranges from its slot and its own subtree alone.
+    fn outside_input(self, _tree: &Tree, _layout: &PlaneLayout) -> Option<Size> {
+        None
+    }
 
     /// Children all sit at the inner rect's top-left and are offered the inner extent on both axes, Hug ones included, so grids and wrapping text get a finite constraint whenever the ZStack has one. A Hug ZStack resolves to `min(content, available)`; a Fill child reports its content at measure (`AxisSlot::resolve`), so hugging it doesn't feed back (as Stack does on its cross axis).
     ///
     /// Content size is `max(child desired)` per axis.
-    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
+    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
         per_axis_hug::measure(pass, self.node, inner_avail, |_, _| Vec2::ZERO)
     }
 
@@ -49,7 +54,7 @@ impl LayoutDriver for ZStack {
             min: Vec2::ZERO,
             size: inner,
         };
-        let tree = pass.tree;
+        let tree = pass.tree();
         let parent_child_align = tree.panel(self.node).child_align;
         for child in tree.children(self.node) {
             let c = child.id;

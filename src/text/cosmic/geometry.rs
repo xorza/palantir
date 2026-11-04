@@ -3,6 +3,7 @@
 //! paths call it while holding other measurer fields mutably.
 
 use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::text::extent::{self, TextExtent};
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, WrapFloor};
@@ -19,7 +20,7 @@ pub(super) struct ShapedGeometry {
     pub(super) intrinsic_min: Option<f32>,
     /// Whether the buffer laid out as one visual line.
     pub(super) single_line: bool,
-    /// See [`CacheEntry::left`](crate::text::cosmic::cache_entry::CacheEntry::left).
+    /// See [`ShapedBuffer::left`](crate::text::cosmic::cache_entry::ShapedBuffer::left).
     pub(super) left: f32,
 }
 
@@ -65,12 +66,19 @@ impl ShapedGeometry {
         }
     }
 
-    /// These facts as a run's unbounded shape; sound only for a buffer shaped
-    /// without a width.
-    pub(super) fn root(self, extent: TextExtent) -> TextRoot {
-        debug_assert_eq!(extent.size, self.size, "the extent of another buffer");
+    /// The shaped block with its glyphs' `ink` past it.
+    pub(super) const fn extent(self, ink: Spacing) -> TextExtent {
+        TextExtent {
+            size: self.size,
+            ink,
+        }
+    }
+
+    /// These facts as a run's unbounded shape, its glyphs' `ink` past the block; sound only for
+    /// a buffer shaped without a width.
+    pub(super) const fn root(self, ink: Spacing) -> TextRoot {
         TextRoot {
-            extent,
+            extent: self.extent(ink),
             intrinsic_min: self.intrinsic_min,
             single_line: self.single_line,
         }

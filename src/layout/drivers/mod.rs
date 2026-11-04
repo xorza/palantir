@@ -22,7 +22,7 @@ use crate::layout::drivers::zstack::ZStack;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::size::Size;
@@ -38,20 +38,12 @@ use crate::scene::tree::node_id::NodeId;
 /// into one of these**, so a driver's policy lives in its own file;
 /// [`Scrollbars`] contributes nothing to an intrinsic yet still answers.
 pub(super) trait LayoutDriver: Copy {
-    /// Whether [`Self::arrange`] is a pure function of the slot it is handed,
-    /// reading nothing outside its own subtree. `LayoutPass::replay_arranged` rests
-    /// on this: a measure hit proves the subtree's authoring is unchanged, so with
-    /// an identical slot its rects are copied forward. A driver reading *outside*
-    /// its subtree breaks that silently (stale rects, no panic). No default, so a
-    /// new driver must answer; `false` opts its subtree out of replay.
-    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool;
-
     /// Bottom-up. Recurses through `pass.measure(..)` and returns the content size
     /// and floor, before padding, margin and clamping (which
-    /// [`LayoutPass::measure`] folds in); see [`Measured`]. Called exactly once per
+    /// [`LayoutPass::measure`] folds in); see [`ContentMeasure`]. Called exactly once per
     /// measure: a `Fill` axis growing past `inner_avail` needs no re-measure
     /// (`NodeSlot::resolve` carries the reason).
-    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured;
+    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure;
 
     /// Top-down. Assigns each child a final rect and recurses through
     /// `pass.arrange(..)`. **Local coordinates:** `inner` is the node's inner box
@@ -67,18 +59,20 @@ pub(super) trait LayoutDriver: Copy {
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange;
 
     /// The extent [`Self::arrange`] read from outside its subtree, on which its rects depend
-    /// beside its slot; `None` exactly for a driver whose arrange
-    /// [depends only on its slot](Self::ARRANGE_DEPENDS_ONLY_ON_SLOT). The cascade folds it into
-    /// the node's input, so damage sees a subtree whose rects moved with no change of its own.
-    fn outside_input(self, _tree: &Tree, _layout: &PlaneLayout) -> Option<Size> {
-        None
-    }
+    /// beside its slot; `None` for a driver whose arrange is a pure function of its slot.
+    ///
+    /// Two readers rest on it. The cascade folds it into the node's input, so damage sees a
+    /// subtree whose rects moved with no change of its own. `LayoutPass::replay_arranged` copies
+    /// the rects of a measure-hit subtree forward only for `None`: the hit proves its authoring
+    /// unchanged, so with an identical slot its rects are too, and a driver that reads outside
+    /// its subtree would replay stale rects with no panic. No default, so a new driver answers.
+    fn outside_input(self, tree: &Tree, layout: &PlaneLayout) -> Option<Size>;
 }
 
 /// One operation applied to whichever driver a [`LayoutMode`] names; the match
 /// lives once, in [`Self::dispatch`].
 pub(super) trait DriverOp: Sized {
-    /// What this pass answers with: a [`Measured`] for measure, nothing for
+    /// What this pass answers with: a [`ContentMeasure`] for measure, nothing for
     /// arrange, an [`IntrinsicWalk`](crate::layout::intrinsic::intrinsic_walk::IntrinsicWalk)
     /// for the query.
     type Output;
@@ -115,14 +109,7 @@ impl DriverOp for OutsideInputOp<'_> {
     type Output = Option<Size>;
 
     fn run<D: LayoutDriver>(self, driver: D) -> Option<Size> {
-        let input = driver.outside_input(self.tree, self.layout);
-        debug_assert_eq!(
-            input.is_none(),
-            D::ARRANGE_DEPENDS_ONLY_ON_SLOT,
-            "a driver reads outside its subtree exactly when its arrange depends on more than its \
-             slot"
-        );
-        input
+        driver.outside_input(self.tree, self.layout)
     }
 
     fn leaf(self, _node: NodeId) -> Option<Size> {
@@ -130,35 +117,50 @@ impl DriverOp for OutsideInputOp<'_> {
     }
 }
 
-/// Whether the driver `mode` names may replay its arranged rects.
-#[derive(Debug)]
-pub(super) struct ReplayOp;
-
-impl DriverOp for ReplayOp {
-    type Output = bool;
-
-    fn run<D: LayoutDriver>(self, _driver: D) -> bool {
-        D::ARRANGE_DEPENDS_ONLY_ON_SLOT
-    }
-
-    fn leaf(self, _node: NodeId) -> bool {
-        true
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::layout::drivers::{DriverOp, ReplayOp};
+    use crate::layout::drivers::{DriverOp, OutsideInputOp};
+    use crate::layout::plane_layout::PlaneLayout;
+    use crate::primitives::geometry::size::Size;
+    use crate::primitives::geometry::spacing::Spacing;
+    use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::layout::axis::Axis;
-    use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
+    use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
     use crate::primitives::layout::scroll_axes::ScrollAxes;
+    use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
+    use crate::scene::tree::Tree;
     use crate::scene::tree::node_id::NodeId;
+    use glam::Vec2;
 
-    /// `Scrollbars` is the sole driver reading outside its subtree, and this flag
-    /// alone prevents stale rects; pinning both sides stops a `true` being added by
-    /// reflex.
+    /// `Scrollbars` is the sole driver reading outside its subtree: it answers its viewport's
+    /// content, node 1's here, and so never replays its rects. Every other driver answers `None`,
+    /// and may replay; pinning both sides stops an outside read being added by reflex.
     #[test]
-    fn only_scrollbars_opts_out_of_arrange_replay() {
+    fn only_scrollbars_reads_outside_its_subtree() {
+        let mut tree = Tree::default();
+        let def = tree.push_scrollbars_def(ResolvedScrollbarsDef {
+            def: ScrollbarsDef {
+                content: WidgetId::from_hash("viewport"),
+                offset: Vec2::ZERO,
+                zoom: 1.0,
+                axes: ScrollAxes::BOTH,
+                reserve: Spacing::ZERO,
+                padding: Spacing::ZERO,
+                bar_thickness: 4.0,
+                min_thumb: 8.0,
+            },
+            content: NodeId(1),
+        });
+        let content = Size::new(30.0, 70.0);
+        let mut layout = PlaneLayout::default();
+        layout.scroll_content = vec![Size::ZERO, content];
+        let outside = |mode| {
+            OutsideInputOp {
+                tree: &tree,
+                layout: &layout,
+            }
+            .dispatch(NodeId(0), mode)
+        };
         let slot_pure = [
             LayoutMode::Leaf,
             LayoutMode::Stack(Axis::X),
@@ -171,17 +173,16 @@ mod tests {
             LayoutMode::Scroll(ScrollAxes::BOTH),
         ];
         for mode in slot_pure {
-            assert!(
-                ReplayOp.dispatch(NodeId(0), mode),
+            assert_eq!(
+                outside(mode),
+                None,
                 "{mode:?} arranges from its own subtree, so it may replay",
             );
         }
-        assert!(
-            !ReplayOp.dispatch(
-                NodeId(0),
-                LayoutMode::Scrollbars(ScrollbarsDefId::from_idx(0))
-            ),
-            "Scrollbars reads a sibling's scroll_content and must never replay",
+        assert_eq!(
+            outside(LayoutMode::Scrollbars(def)),
+            Some(content),
+            "Scrollbars reads its viewport's scroll_content and must never replay",
         );
     }
 }

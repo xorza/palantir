@@ -21,7 +21,7 @@
 //! and trims by walking its whole map each frame.
 
 use crate::common::expiry_wheel::ExpiryWheel;
-use crate::text::cosmic::cache_entry::{CacheEntry, CachedExtent};
+use crate::text::cosmic::cache_entry::{CacheEntry, ShapedBuffer};
 use crate::text::cosmic::counters::CacheCounters;
 use crate::text::cosmic::shape_store::ShapeStore;
 use crate::text::cosmic::text_cut::TextCut;
@@ -64,17 +64,6 @@ pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// The longest a rendered run waits to be retired: its keep plus the stagger.
 const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
 
-/// A freshly shaped buffer, as [`ShapedBufferCache::insert`] files it; the
-/// fields mean what [`CacheEntry`]'s do.
-#[derive(Debug)]
-pub(super) struct ShapedBuffer {
-    pub(super) buffer: Buffer,
-    pub(super) extent: CachedExtent,
-    pub(super) left: f32,
-    pub(super) cut: Option<TextCut>,
-    pub(super) source: String,
-}
-
 /// An evicted entry's allocations, as the pool hands them back to be shaped into.
 #[derive(Debug)]
 pub(super) struct Recycled {
@@ -86,7 +75,10 @@ pub(super) struct Recycled {
 impl Recycled {
     fn of(entry: CacheEntry) -> Self {
         let CacheEntry {
-            buffer, mut source, ..
+            shaped: ShapedBuffer {
+                buffer, mut source, ..
+            },
+            ..
         } = entry;
         source.clear();
         Self { buffer, source }
@@ -156,8 +148,9 @@ impl ShapedBufferCache {
     pub(super) fn shaped_run(&self, key: TextShapeKey, text: &str) -> Option<ShapedRun<'_>> {
         self.entries
             .get(&key)
-            .filter(|e| e.holds(text))
-            .map(CacheEntry::run)
+            .map(|entry| &entry.shaped)
+            .filter(|shaped| shaped.holds(text))
+            .map(ShapedBuffer::run)
     }
 
     /// The resident entry of `text` under `key`, its deadline pushed to the protected window.
@@ -167,10 +160,10 @@ impl ShapedBufferCache {
         let Entry::Occupied(slot) = self.entries.entry(key) else {
             return None;
         };
-        if !slot.get().holds(text) {
+        if !slot.get().shaped.holds(text) {
             self.counters.collisions.bump();
             let entry = slot.remove();
-            if entry.cut.is_none() {
+            if entry.shaped.cut.is_none() {
                 self.shapes.left(key);
             }
             self.recycle_pool.push(Recycled::of(entry));
@@ -199,41 +192,30 @@ impl ShapedBufferCache {
     pub(super) fn donor_lines(&mut self, key: TextShapeKey, text: &str) -> Option<&[BufferLine]> {
         if let Some(donor) = self.shapes.donor(key)
             && let Some(entry) = self.entries.get(&donor)
-            && entry.cut.is_none()
-            && entry.holds(text)
+            && entry.shaped.cut.is_none()
+            && entry.shaped.holds(text)
         {
-            return (!donor.shares_metrics(key)).then_some(entry.buffer.lines.as_slice());
+            return (!donor.shares_metrics(key)).then_some(entry.shaped.buffer.lines.as_slice());
         }
         self.shapes.kept_lines(key, text, self.frame)
     }
 
     /// File `shaped` under `key`, probationary until a [`Self::hit`] promotes it.
     pub(super) fn insert(&mut self, key: TextShapeKey, shaped: ShapedBuffer) {
-        let ShapedBuffer {
-            buffer,
-            extent,
-            left,
-            cut,
-            source,
-        } = shaped;
         // Counted here, not per `shape_until_scroll`: one cached run is one tally even if
         // the truncation back-off reshapes several times. The ellipsis probe isn't counted.
         self.counters.shapes.bump();
         let dies_at = self.probation_dies_at();
         let ticket_seq = self.expiry.schedule(key, dies_at);
-        if cut.is_none() {
+        if shaped.cut.is_none() {
             self.shapes.filed(key);
         }
         let displaced = self.entries.insert(
             key,
             CacheEntry {
-                buffer,
-                extent,
-                left,
-                cut,
+                shaped,
                 dies_at,
                 ticket_seq,
-                source,
             },
         );
         debug_assert!(
@@ -294,7 +276,7 @@ impl ShapedBufferCache {
             }
             counters.expiries.bump();
             let entry = slot.remove();
-            let whole = entry.cut.is_none();
+            let whole = entry.shaped.cut.is_none();
             let recycled = Recycled::of(entry);
             if !whole {
                 recycle_pool.push(recycled);
@@ -420,7 +402,7 @@ pub(crate) mod internals {
         /// The run resident under `key`, whatever text it holds, for a test that watches
         /// residency.
         pub(crate) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-            self.entries.get(&key).map(CacheEntry::run)
+            self.entries.get(&key).map(|entry| entry.shaped.run())
         }
 
         /// Outstanding expiry tickets. Grows by one per demote if a supplanted ticket
@@ -434,7 +416,9 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn extent(&self, key: TextShapeKey) -> Option<TextExtent> {
-            self.entries.get(&key).map(|entry| entry.extent.extent())
+            self.entries
+                .get(&key)
+                .map(|entry| entry.shaped.extent.extent())
         }
 
         pub(crate) fn recycle_pool_len(&self) -> usize {

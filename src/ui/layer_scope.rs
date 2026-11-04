@@ -45,7 +45,8 @@ impl<'a> LayerScope<'a> {
     }
 
     /// Caps the available extent at `s`, never past the room the origin leaves: the surface from a
-    /// fixed point to its edge, or the whole surface for an anchor.
+    /// fixed point to its edge, or, for an anchor, the surface across its side and the room its
+    /// roomier side leaves along it.
     ///
     /// # Panics
     ///

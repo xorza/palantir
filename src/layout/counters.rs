@@ -17,6 +17,10 @@ counter_snapshot! {
     copied: u32,
     /// Slot moved without resizing: rects copied and shifted.
     translated: u32,
+    /// Containers whose paint-only runs [`LayoutPass::replay_container_text`] copied forward.
+    ///
+    /// [`LayoutPass::replay_container_text`]: crate::layout::pass::LayoutPass
+    container_text: u32,
 }
 
 /// What the layout pass did this `run`. Reset by [`Self::begin_pass`] once per run,
@@ -38,6 +42,7 @@ impl LayoutCounters {
         self.cache_hits.clear();
         self.replays.copied.reset();
         self.replays.translated.reset();
+        self.replays.container_text.reset();
     }
 
     #[inline]
@@ -63,6 +68,11 @@ impl LayoutCounters {
     #[inline]
     pub(crate) fn arrange_translated(&mut self) {
         self.replays.translated.bump();
+    }
+
+    #[inline]
+    pub(crate) fn container_text_replayed(&mut self) {
+        self.replays.container_text.bump();
     }
 }
 

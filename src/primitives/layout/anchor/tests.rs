@@ -63,6 +63,28 @@ fn cross_axis_alignment_uses_the_full_rect() {
     }
 }
 
+/// A body measures along its side against the room the roomier side leaves, and across it
+/// against the whole bounds; a body that measured to that room lands on that side, clear of the
+/// rect. Below a rect at y 220..260 with a gap of 6, `300 - 266 = 34` is left below and
+/// `220 - 6 = 214` above; a 214 tall body lands at the top, `214 + 6` above the rect.
+#[test]
+fn a_body_too_long_for_both_sides_measures_to_the_roomier_one_and_lands_there() {
+    let anchor = Anchor::below(Rect::new(160.0, 220.0, 80.0, 40.0)).with_gap(6.0);
+    let available = anchor.available(BOUNDS);
+    assert_eq!(available, Size::new(400.0, 214.0));
+    assert_eq!(
+        anchor.resolve(Size::new(100.0, available.h), BOUNDS),
+        Vec2::new(160.0, 0.0)
+    );
+    // Across a horizontal side the room is a width: right of a rect ending at 240 leaves
+    // `400 - 246 = 154`, left of it `160 - 6 = 154` too.
+    let beside = Anchor::right_of(Rect::new(160.0, 120.0, 80.0, 40.0)).with_gap(6.0);
+    assert_eq!(beside.available(BOUNDS), Size::new(154.0, 300.0));
+    // A rect past an edge leaves no room there.
+    let past = Anchor::above(Rect::new(0.0, -10.0, 10.0, 5.0));
+    assert_eq!(past.room(AnchorSide::Above, BOUNDS), 0.0);
+}
+
 #[test]
 fn impossible_fit_clamps_inside_bounds() {
     let anchor =

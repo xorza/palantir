@@ -1,16 +1,16 @@
 //! Grid driver: the measure / arrange / intrinsic entry points for a `LayoutMode::Grid` node; the track solve
-//! is [`AxisScratch`](axis_scratch::AxisScratch), its state [`GridCtx`](grid_ctx::GridCtx).
+//! and its state are [`GridTrackStore`](grid_track_store::GridTrackStore)'s.
 
 use crate::common::span::Span;
 use crate::layout::drivers::LayoutDriver;
-use crate::layout::drivers::grid::axis_scratch::GridAxis;
-use crate::layout::drivers::grid::grid_track_store::GridAxisId;
+use crate::layout::drivers::grid::grid_track_store::{GridAxis, GridAxisId};
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
@@ -21,10 +21,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
 mod arrange;
-mod axis_scratch;
 pub(crate) mod grid_ctx;
-mod grid_depth_stack;
-mod grid_scratch;
 pub(crate) mod grid_track_store;
 mod measure;
 
@@ -71,25 +68,23 @@ impl Grid {
 }
 
 impl LayoutDriver for Grid {
-    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
+    /// Arranges from its slot and its own subtree alone.
+    fn outside_input(self, _tree: &Tree, _layout: &PlaneLayout) -> Option<Size> {
+        None
+    }
 
     /// WPF-style grid measure: resolves Fixed tracks, feeds each child the sum of its spanned tracks (`∞` if any
     /// is unresolved, so the child reports intrinsic), then resolves Hug tracks from span-1 children and the shortfall of spanning ones,
     /// which a span crossing a Fill track gives to its Fill tracks' floors instead ([`distribute_span`]). Star tracks
-    /// resolve only in arrange. Per-depth scratch is clobbered by sibling grids between measure and arrange, so
-    /// Hug sizes live in `grid.track_state` (`GridTrackStore`) for the whole pass. The solver is documented on
-    /// [`AxisScratch::resolve_axis`](crate::layout::drivers::grid::axis_scratch::AxisScratch::resolve_axis).
-    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
-        pass.grid_mut().depth_stack.enter();
-        let measured = measure::run(self, pass, inner_avail);
-        pass.grid_mut().depth_stack.exit();
-        measured
+    /// resolve only in arrange. Each grid's tracks live in `grid.track_state` for the whole pass, so a nested
+    /// grid cannot overwrite them between measure and arrange. The solver is documented on
+    /// [`GridTrackStore::resolve_axis`](crate::layout::drivers::grid::grid_track_store::GridTrackStore::resolve_axis).
+    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
+        measure::run(self, pass, inner_avail)
     }
 
     fn arrange(self, pass: &mut LayoutPass<'_>, inner: Size) {
-        pass.grid_mut().depth_stack.enter();
         arrange::run(self, pass, inner);
-        pass.grid_mut().depth_stack.exit();
     }
 
     /// Intrinsic size of a Grid: span-1 cells' per-track contributions, then each spanning cell's shortfall
@@ -108,11 +103,11 @@ impl LayoutDriver for Grid {
 
         let wants_min = query.includes(LenReq::MinContent);
         let wants_max = query.includes(LenReq::MaxContent);
-        let base = pass.grid_track_aggregator().len();
-        let min_base = base;
-        let max_base = base + usize::from(wants_min) * track_count;
+        let base = pass.grid_track_aggregator().mark();
+        let min_base = 0;
+        let max_base = usize::from(wants_min) * track_count;
         let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * track_count;
-        pass.grid_track_aggregator().resize(base + slot_count, 0.0);
+        pass.grid_track_aggregator().push_n(slot_count, 0.0);
         for (i, t) in tracks.iter().enumerate() {
             let min = t.min();
             let initial = t
@@ -120,10 +115,10 @@ impl LayoutDriver for Grid {
                 .fixed_value()
                 .map_or(min, |value| value.clamp(min, t.max()));
             if wants_min {
-                pass.grid_track_aggregator()[min_base + i] = initial;
+                pass.grid_track_aggregator().since(base)[min_base + i] = initial;
             }
             if wants_max {
-                pass.grid_track_aggregator()[max_base + i] = initial;
+                pass.grid_track_aggregator().since(base)[max_base + i] = initial;
             }
         }
 
@@ -139,11 +134,11 @@ impl LayoutDriver for Grid {
             }
             let child = pass.query(c, query);
             if wants_min {
-                let slot = &mut pass.grid_track_aggregator()[min_base + track_idx];
+                let slot = &mut pass.grid_track_aggregator().since(base)[min_base + track_idx];
                 *slot = slot.max(t.content_floor(child.min));
             }
             if wants_max {
-                let slot = &mut pass.grid_track_aggregator()[max_base + track_idx];
+                let slot = &mut pass.grid_track_aggregator().since(base)[max_base + track_idx];
                 *slot = slot.max(t.content_floor(child.max));
             }
         }
@@ -156,13 +151,13 @@ impl LayoutDriver for Grid {
                 }
                 let child = pass.query(c, query);
                 if wants_min {
-                    let extents =
-                        &mut pass.grid_track_aggregator()[min_base..min_base + track_count];
+                    let extents = &mut pass.grid_track_aggregator().since(base)
+                        [min_base..min_base + track_count];
                     distribute_span(tracks, cell_span, gap, child.min, extents);
                 }
                 if wants_max {
-                    let extents =
-                        &mut pass.grid_track_aggregator()[max_base..max_base + track_count];
+                    let extents = &mut pass.grid_track_aggregator().since(base)
+                        [max_base..max_base + track_count];
                     distribute_span(tracks, cell_span, gap, child.max, extents);
                 }
             }
@@ -171,13 +166,14 @@ impl LayoutDriver for Grid {
         let gaps = gap.gaps_between(track_count);
         let mut range = IntrinsicRange::ZERO;
         if wants_min {
-            range.min = pass.grid_track_aggregator()[min_base..min_base + track_count]
+            range.min = pass.grid_track_aggregator().since(base)[min_base..min_base + track_count]
                 .iter()
                 .sum::<f32>()
                 + gaps;
         }
         if wants_max {
-            let extents = &pass.grid_track_aggregator()[max_base..max_base + track_count];
+            let extents =
+                &pass.grid_track_aggregator().since(base)[max_base..max_base + track_count];
             range.max = sum_non_fill(tracks, extents) + fill_extent(tracks, extents) + gaps;
         }
         pass.grid_track_aggregator().truncate(base);

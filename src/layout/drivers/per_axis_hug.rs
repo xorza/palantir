@@ -1,7 +1,7 @@
 //! The measure ZStack and Canvas share: children that each sit at an offset and grow the panel per
 //! axis.
 
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
@@ -20,19 +20,19 @@ pub(super) fn measure(
     node: NodeId,
     inner_avail: Size,
     mut offset: impl FnMut(&Tree, NodeId) -> Vec2,
-) -> Measured {
-    let tree = pass.tree;
+) -> ContentMeasure {
+    let tree = pass.tree();
     let hug = tree.records.layout()[node.idx()].size.hug_mask();
     // The child holds while the room past its position stays past its range.
     let room_from = |from: f32, offset: f32| if from > 0.0 { from + offset } else { 0.0 };
-    let mut max = Measured::ZERO;
+    let mut max = ContentMeasure::ZERO;
     for c in tree.active_children(node) {
         let at = offset(tree, c);
         // A hug axis grows to cover where the child was put; a bounded one reports the
         // child's extent alone. The floor follows the extent.
         let child = pass.measure(c, inner_avail.room_past(at));
         let covered = |d: Size| Size::new(at.x + d.w, at.y + d.h).select(hug, d);
-        max = Measured {
+        max = ContentMeasure {
             size: max.size.max(covered(child.size)),
             floor: max.floor.max(covered(child.floor)),
             stable_from: max.stable_from.max(Size::new(

@@ -6,7 +6,7 @@ use crate::layout::drivers::LayoutDriver;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
@@ -38,26 +38,23 @@ impl Scrollbars {
 }
 
 impl LayoutDriver for Scrollbars {
-    /// Thumbs size from the sibling viewport's measured `scroll_content`, so content that stops overflowing leaves this subtree's hash and slot untouched.
-    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = false;
-
     /// Bars never inflate their scroll: the overlay reports `ZERO`. The four leaves are still measured so their `desired` rows are written; `capture_tree` stores the plane's whole column and an unwritten row would replay stale scratch.
-    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
+    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
         // `tree` reborrows independently of `pass`, so the walk and the recursion coexist.
-        let tree = pass.tree;
+        let tree = pass.tree();
         let mut stable_from = Size::ZERO;
         for child in tree.children(self.node) {
             stable_from = stable_from.max(pass.measure(child.id, inner_avail).stable_from);
         }
-        Measured {
+        ContentMeasure {
             stable_from,
-            ..Measured::ZERO
+            ..ContentMeasure::ZERO
         }
     }
 
     /// Give each bar leaf its resolved rect, zero-extent for an absent axis; child order is the recording contract above. `inner` is the overlay's arranged size (Fill on both axes).
     fn arrange(self, pass: &mut LayoutPass<'_>, inner: Size) {
-        let resolved = pass.tree.scrollbar_defs[usize::from(self.def)];
+        let resolved = pass.tree().scrollbar_defs[usize::from(self.def)];
         let def = resolved.def;
         let content = pass.scroll_content(resolved.content);
         let bar_rects = |axis: Axis| {
@@ -78,7 +75,7 @@ impl LayoutDriver for Scrollbars {
             horizontal.map(|b| b.track),
             horizontal.map(|b| b.thumb),
         ];
-        let tree = pass.tree;
+        let tree = pass.tree();
         for (child, slot) in tree.children(self.node).zip(slots) {
             // An absent bar collapses to zero extent at the overlay origin, so its `WidgetId` keeps its state row and the child list keeps its shape.
             let rect = slot.unwrap_or(Rect {
@@ -94,7 +91,8 @@ impl LayoutDriver for Scrollbars {
         IntrinsicRange::ZERO
     }
 
-    /// The viewport's measured content, which sizes the thumbs.
+    /// The viewport's measured content, which sizes the thumbs: a sibling's, so content that
+    /// stops overflowing leaves this subtree's hash and slot untouched.
     fn outside_input(self, tree: &Tree, layout: &PlaneLayout) -> Option<Size> {
         let content = tree.scrollbar_defs[usize::from(self.def)].content;
         Some(layout.scroll_content[content.idx()])

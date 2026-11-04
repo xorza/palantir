@@ -11,6 +11,7 @@ use crate::layout::placed_child::{Placed, PlacedChild};
 use crate::layout::plane_input::PlaneInput;
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetIdSet;
 use crate::scene::forest::Forest;
 use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
@@ -32,9 +33,9 @@ use crate::text::system::TextSystem;
 /// current [`PlaneLayout`](crate::layout::plane_layout::PlaneLayout) slot.
 #[derive(Debug)]
 pub(crate) struct LayoutEngine {
-    pub(crate) scratch: LayoutScratch,
-    pub(crate) text: TextSystem,
-    pub(crate) cache: MeasureCache,
+    pub(super) scratch: LayoutScratch,
+    pub(super) text: TextSystem,
+    pub(super) cache: MeasureCache,
     last_roots: Vec<RootRun>,
 }
 
@@ -105,12 +106,9 @@ impl LayoutEngine {
         // cascade and the encoder index every plane the forest holds.
         out.cover(forest);
         let interned_text = forest.record_store.interned_text();
-        debug_assert_eq!(
-            self.scratch.grid.depth_stack.depth, 0,
-            "LayoutEngine::run entered with non-zero grid depth"
-        );
         // Once per run: `resize_for` runs inside the plane loop and would wipe earlier counts.
         self.scratch.counters.begin_pass();
+        self.text.begin_run();
         // Before the snapshot check, which cannot see what this answers:
         // `TextSystem::sync_fonts` drops the reuse rows and reports the frame
         // the snapshot must go on.
@@ -175,17 +173,10 @@ impl LayoutEngine {
                 self.cache.capture_tree(
                     tree,
                     CaptureTreeInput {
-                        desired: &self.scratch.desired,
-                        floor: &self.scratch.floor,
-                        stable_from: &self.scratch.stable_from,
-                        rect: &plane_out.rect,
+                        measure: &self.scratch.measure,
+                        layout: plane_out,
                         local: &self.scratch.local,
-                        scroll_content: &plane_out.scroll_content,
-                        intrinsics: &self.scratch.intrinsics,
-                        available: &self.scratch.available,
                         grid_track_state: &self.scratch.grid.track_state,
-                        text_spans: &plane_out.text_spans,
-                        text_shapes: &plane_out.text_shapes,
                     },
                 );
             }
@@ -196,20 +187,27 @@ impl LayoutEngine {
             for idx in tree.container_text.ones() {
                 let layout = layouts[idx];
                 let node = NodeId(idx as u32);
+                if pass.replay_container_text(node) {
+                    continue;
+                }
                 // The inner box `arrange` places children in.
                 let available_w = layout.inner_rect(pass.rect(node)).size.w;
                 let runs = TextShapeInput::on_container(tree, &interned_text, node);
                 pass.shape_text_runs(node, available_w, runs);
+            }
+            if self.scratch.cache_rebuild {
+                self.cache.capture_container_text(tree, plane_out);
             }
             out[plane].hash_rects();
         }
         if self.scratch.cache_rebuild {
             self.cache.end_frame();
         }
-        debug_assert_eq!(
-            self.scratch.grid.depth_stack.depth, 0,
-            "LayoutEngine::run exited with non-zero grid depth"
-        );
+    }
+
+    /// Close the frame for the text runs: drop the rows of the widgets `removed` names.
+    pub(crate) fn end_frame(&mut self, removed: &WidgetIdSet) {
+        self.text.end_frame(removed);
     }
 }
 
@@ -226,6 +224,10 @@ pub(crate) mod internals {
     use crate::layout::intrinsic::len_req::SLOT_COUNT;
     #[cfg(test)]
     use crate::layout::plane_input::PlaneInput;
+    #[cfg(test)]
+    use crate::primitives::geometry::size::Size;
+    #[cfg(test)]
+    use crate::primitives::identity::widget_id::WidgetId;
     #[cfg(test)]
     use crate::scene::forest::Forest;
     #[cfg(test)]
@@ -259,10 +261,34 @@ pub(crate) mod internals {
             }
         }
 
+        /// The bytes the per-frame scratch holds.
+        #[cfg(test)]
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            self.scratch.scratch_bytes()
+        }
+
+        /// Last run's measured `desired` column.
+        #[cfg(test)]
+        pub(crate) fn captured_desired(&self) -> &[Size] {
+            self.cache.captured_desired()
+        }
+
+        /// The widgets whose measure the last run restored from the cache, in walk order.
+        #[cfg(test)]
+        pub(crate) fn cache_hits(&self) -> &[WidgetId] {
+            self.scratch.counters.cache_hits()
+        }
+
+        /// Whether run `ordinal` of `widget_id` holds a text reuse row.
+        #[cfg(test)]
+        pub(crate) fn has_text_entry(&self, widget_id: WidgetId, ordinal: u16) -> bool {
+            self.text.has_entry(widget_id, ordinal)
+        }
+
         /// Drop every cached intrinsic and zero the compute counter.
         #[cfg(test)]
         pub(crate) fn forget_intrinsics(&mut self) {
-            self.scratch.intrinsics.fill([f32::NAN; SLOT_COUNT]);
+            self.scratch.measure.intrinsics.fill([f32::NAN; SLOT_COUNT]);
             self.scratch.counters.reset_intrinsic_computes();
         }
     }

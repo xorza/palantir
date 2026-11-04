@@ -7,9 +7,25 @@ use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use cosmic_text::{Buffer, BufferLine};
 
+/// A shaped buffer in the cache, looked up by its [`TextShapeKey`](crate::text::key::TextShapeKey),
+/// and how long it stays.
 #[derive(Debug)]
 pub(super) struct CacheEntry {
-    /// Shaped buffer, looked up by [`TextShapeKey`](crate::text::key::TextShapeKey).
+    pub(super) shaped: ShapedBuffer,
+    /// First frame on which this entry is dead: set one probation window out on
+    /// insertion and a protected window out on each lookup, so the deadline is
+    /// the tier. Matches [`ExpiryWheel::schedule`](crate::common::expiry_wheel::ExpiryWheel::schedule).
+    pub(super) dies_at: u64,
+    /// Serial of this entry's live expiry ticket. A ticket firing under another
+    /// serial was superseded by
+    /// [`ShapedBufferCache::supersede`](crate::text::cosmic::shaped_buffer_cache::ShapedBufferCache::supersede)
+    /// and dies in the sweep, so demote/promote cycles don't accumulate tickets.
+    pub(super) ticket_seq: TicketSeq,
+}
+
+/// A shaped buffer and what it measured to, as a shaping path makes it and the cache holds it.
+#[derive(Debug)]
+pub(super) struct ShapedBuffer {
     pub(super) buffer: Buffer,
     /// What this buffer measured to; see [`CachedExtent`].
     pub(super) extent: CachedExtent,
@@ -21,21 +37,12 @@ pub(super) struct CacheEntry {
     /// The source bytes a truncating fit's buffer shows; `None` for a buffer that shows its
     /// whole source.
     pub(super) cut: Option<TextCut>,
-    /// First frame on which this entry is dead: set one probation window out on
-    /// insertion and a protected window out on each lookup, so the deadline is
-    /// the tier. Matches [`ExpiryWheel::schedule`](crate::common::expiry_wheel::ExpiryWheel::schedule).
-    pub(super) dies_at: u64,
-    /// Serial of this entry's live expiry ticket. A ticket firing under another
-    /// serial was superseded by
-    /// [`ShapedBufferCache::supersede`](crate::text::cosmic::shaped_buffer_cache::ShapedBufferCache::supersede)
-    /// and dies in the sweep, so demote/promote cycles don't accumulate tickets.
-    pub(super) ticket_seq: TicketSeq,
     /// The source a truncated buffer was cut from, as it holds only the kept part of it around
     /// a `…`; empty where `cut` is `None`. Recycled with the buffer.
     pub(super) source: String,
 }
 
-impl CacheEntry {
+impl ShapedBuffer {
     pub(super) const fn run(&self) -> ShapedRun<'_> {
         ShapedRun {
             buffer: &self.buffer,
@@ -44,7 +51,7 @@ impl CacheEntry {
         }
     }
 
-    /// Whether this entry was shaped from `text`. A key carries a hash of its text, so two
+    /// Whether this buffer was shaped from `text`. A key carries a hash of its text, so two
     /// texts can share one; the bytes decide. An untruncated buffer holds its source as its
     /// lines and their endings.
     pub(super) fn holds(&self, text: &str) -> bool {

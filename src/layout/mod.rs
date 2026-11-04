@@ -30,6 +30,7 @@ mod hug_item;
 pub(crate) mod intrinsic;
 mod justify_offsets;
 pub(crate) mod layout_scratch;
+mod measure_columns;
 pub(crate) mod measured;
 pub(crate) mod pass;
 mod placed_child;

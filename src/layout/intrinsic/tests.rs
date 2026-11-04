@@ -44,7 +44,7 @@ fn intrinsic_cache_populated_after_run() {
     let slot = LenReq::MinContent.slot(Axis::X);
     // Mono's 8 px a char: the widest unbreakable word is five chars, 40.
     assert_eq!(
-        rig.engine().scratch.intrinsics[rig.node("msg").idx()][slot],
+        rig.engine().scratch.measure.intrinsics[rig.node("msg").idx()][slot],
         40.0,
         "MinContent X for the Fill+wrap child must be cached after run"
     );
@@ -59,7 +59,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     wrapping_row(&mut rig, "hello world");
     let child = rig.node("msg");
     let slot = LenReq::MinContent.slot(Axis::X);
-    rig.parts().engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
+    rig.parts().engine.scratch.measure.intrinsics[child.idx()][slot] = SENTINEL;
 
     let v = rig.intrinsic("msg", Axis::X, LenReq::MinContent);
     assert_eq!(
@@ -70,7 +70,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     let expected_max = rig.intrinsic("msg", Axis::X, LenReq::MaxContent);
     let max_slot = LenReq::MaxContent.slot(Axis::X);
     let parts = rig.parts();
-    parts.engine.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
+    parts.engine.scratch.measure.intrinsics[child.idx()][max_slot] = f32::NAN;
     parts.engine.scratch.counters.reset_intrinsic_computes();
     let interned_text = parts.forest.record_store.interned_text();
     let input = PlaneInput {
@@ -112,14 +112,14 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     let engine = rig.parts().engine;
     engine.cache.forget_all();
     let slot = LenReq::MaxContent.slot(Axis::X);
-    for entry in &mut engine.scratch.intrinsics {
+    for entry in &mut engine.scratch.measure.intrinsics {
         entry[slot] = f32::NAN;
     }
 
     rig.intrinsic("row", Axis::X, LenReq::MaxContent);
 
     // Mono's 8 px a char: "abc" is 24, "defgh" 40, side by side 64.
-    let cached = |id| rig.engine().scratch.intrinsics[rig.node(id).idx()][slot];
+    let cached = |id| rig.engine().scratch.measure.intrinsics[rig.node(id).idx()][slot];
     assert_eq!(cached("row"), 64.0, "root slot must be cached");
     assert_eq!(
         [cached("a"), cached("b")],
@@ -265,7 +265,7 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
         );
     });
     let leaf = rig.node("msg");
-    let slots = |rig: &LayoutRig| rig.engine().scratch.intrinsics[leaf.idx()];
+    let slots = |rig: &LayoutRig| rig.engine().scratch.measure.intrinsics[leaf.idx()];
 
     rig.parts().engine.forget_intrinsics();
     let x = rig.intrinsic("msg", Axis::X, LenReq::MinContent);

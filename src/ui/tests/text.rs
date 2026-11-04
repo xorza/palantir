@@ -144,7 +144,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     });
     let widget_id = WidgetId::from_hash("transient");
     assert!(
-        h.parts().engines.layout.text.has_entry(widget_id, 0),
+        h.parts().engines.layout.has_text_entry(widget_id, 0),
         "text widget should populate text_reuse on first render",
     );
 
@@ -152,7 +152,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !h.parts().engines.layout.text.has_entry(widget_id, 0),
+        !h.parts().engines.layout.has_text_entry(widget_id, 0),
         "removed widget's reuse entry must be swept",
     );
 }
@@ -181,18 +181,18 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
     h.frame(build(3));
     for ordinal in 0..3 {
         assert!(
-            h.parts().engines.layout.text.has_entry(widget_id, ordinal),
+            h.parts().engines.layout.has_text_entry(widget_id, ordinal),
             "premise: run {ordinal} took a row",
         );
     }
 
     h.frame(build(1));
     assert!(
-        h.parts().engines.layout.text.has_entry(widget_id, 0),
+        h.parts().engines.layout.has_text_entry(widget_id, 0),
         "the run it kept"
     );
-    assert!(!h.parts().engines.layout.text.has_entry(widget_id, 1));
-    assert!(!h.parts().engines.layout.text.has_entry(widget_id, 2));
+    assert!(!h.parts().engines.layout.has_text_entry(widget_id, 1));
+    assert!(!h.parts().engines.layout.has_text_entry(widget_id, 2));
 }
 
 #[test]
@@ -232,8 +232,8 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             "window {label} shares the buffer cache, so it sees B's key",
         );
     }
-    assert!(a.engines().layout.text.has_entry(text_id, 0));
-    assert!(b.engines().layout.text.has_entry(text_id, 0));
+    assert!(a.engines().layout.has_text_entry(text_id, 0));
+    assert!(b.engines().layout.has_text_entry(text_id, 0));
 
     let after_b = a.ui().resources.text().measure_calls();
     a.frame(|ui| text_window(ui, "window A", 140.0));
@@ -249,8 +249,8 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             .size((Sizing::fixed(120.0), Sizing::HUG))
             .show(ui, |_| {});
     });
-    assert!(!b.engines().layout.text.has_entry(text_id, 0));
-    assert!(a.engines().layout.text.has_entry(text_id, 0));
+    assert!(!b.engines().layout.has_text_entry(text_id, 0));
+    assert!(a.engines().layout.has_text_entry(text_id, 0));
 
     let after_b_removal = a.ui().resources.text().measure_calls();
     a.frame(|ui| text_window(ui, "window A", 160.0));

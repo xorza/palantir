@@ -2,16 +2,15 @@
 
 use crate::common::span::Span;
 use crate::internals::layout_rig::{GridTracks, LayoutRig, TextRun};
-use crate::layout::drivers::grid::axis_scratch::{AxisScratch, GridAxis, HugRanges};
-use crate::layout::drivers::grid::grid_track_store::GridAxisId;
+use crate::layout::drivers::grid::grid_track_store::{GridAxis, GridAxisId, GridTrackStore};
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
-use crate::primitives::layout::layout_mode::GridDefId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
+use crate::scene::tree::Tree;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -78,7 +77,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     });
     let min_slot = LenReq::MinContent.slot(Axis::X);
     let max_slot = LenReq::MaxContent.slot(Axis::X);
-    let cached = |id| rig.engine().scratch.intrinsics[rig.node(id).idx()];
+    let cached = |id| rig.engine().scratch.measure.intrinsics[rig.node(id).idx()];
     for id in ["short", "long"] {
         assert!(
             !cached(id)[min_slot].is_nan() && !cached(id)[max_slot].is_nan(),
@@ -327,38 +326,43 @@ fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
 }
 
 /// `Fixed`/`Hug` resolve; `Fill` stays unresolved so cells see `INF` (WPF defers Fill to arrange).
+/// The solve notes the total it ran against, which arrange's reuse reads.
 #[test]
 fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     let tracks = [Track::fixed(50.0), Track::HUG, Track::FILL];
-    let mut a = AxisScratch::default();
-    a.reset_for(tracks.len());
-    let hugs = HugRanges {
-        min: &[0.0, 10.0, 0.0],
-        max: &[0.0, 30.0, 0.0],
-    };
-
+    let mut tree = Tree::default();
+    let def = tree.push_grid_def(&[Track::HUG], &tracks);
+    let mut store = GridTrackStore::default();
+    store.reset_for(&tree);
+    let id = GridAxisId { def, axis: Axis::X };
+    let ranges = store.ranges_mut(id);
+    ranges.min.copy_from_slice(&[0.0, 10.0, 0.0]);
+    ranges.max.copy_from_slice(&[0.0, 30.0, 0.0]);
     let axis = GridAxis {
-        id: GridAxisId {
-            def: GridDefId::from_idx(0),
-            axis: Axis::X,
-        },
+        id,
         tracks: &tracks,
         gap: 0.0,
     };
-    a.resolve_axis(axis, hugs, 200.0);
+    store.resolve_axis(axis, 200.0);
 
-    assert!(
-        a.resolved.contains(0) && a.resolved.contains(1) && !a.resolved.contains(2),
-        "Fill cols must stay unresolved so `known_span_size` returns INF for them"
-    );
+    // 200 - 50 fixed leaves 150; the Hug takes its 30, the Fill the other 120.
+    assert_eq!(store.sizes(id), &[50.0, 30.0, 120.0]);
     assert_eq!(
-        a.known_span_size(Span::new(0, 2), 10.0),
+        store.known_span_size(id, Span::new(0, 2), 10.0),
         50.0 + 10.0 + 30.0,
         "the fully resolved Fixed + Hug span includes its internal gap",
     );
     assert!(
-        a.known_span_size(Span::new(0, 3), 10.0).is_infinite(),
-        "a span containing unresolved Fill remains uncommitted",
+        store
+            .known_span_size(id, Span::new(1, 2), 10.0)
+            .is_infinite(),
+        "a span containing unresolved Fill remains uncommitted, so its cells see INF",
+    );
+    store.commit_fill(id, &tracks);
+    assert_eq!(
+        store.known_span_size(id, Span::new(2, 1), 10.0),
+        120.0,
+        "a committed Fill track is known",
     );
 }
 

@@ -2,6 +2,7 @@
 //! three layers that answer it.
 
 use crate::layout::axis_slot::AxisSlot;
+use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::drivers::{DriverOp, LayoutDriver};
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
@@ -13,7 +14,6 @@ use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::text::interned_text::InternedText;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::system::TextRunSlot;
@@ -28,28 +28,23 @@ use crate::text::system::TextRunSlot;
 #[derive(Debug)]
 pub(crate) struct IntrinsicPass<'a> {
     engine: &'a mut LayoutEngine,
-    tree: &'a Tree,
-    interned_text: &'a InternedText<'a>,
+    input: PlaneInput<'a>,
 }
 
 impl<'a> IntrinsicPass<'a> {
     pub(crate) const fn new(engine: &'a mut LayoutEngine, input: PlaneInput<'a>) -> Self {
-        Self {
-            engine,
-            tree: input.tree,
-            interned_text: input.interned_text,
-        }
+        Self { engine, input }
     }
 
     #[inline]
     pub(crate) const fn tree(&self) -> &'a Tree {
-        self.tree
+        self.input.tree
     }
 
     /// Grid's per-track intrinsic aggregator: a bump stack `Grid::intrinsic`
     /// extends, recurses through and truncates back.
     #[inline]
-    pub(crate) const fn grid_track_aggregator(&mut self) -> &mut Vec<f32> {
+    pub(crate) const fn grid_track_aggregator(&mut self) -> &mut DepthScratch<f32> {
         &mut self.engine.scratch.grid.track_aggregator
     }
 
@@ -105,7 +100,7 @@ impl<'a> IntrinsicPass<'a> {
         query: IntrinsicQuery,
         mut offset: impl FnMut(&Tree, NodeId) -> f32,
     ) -> IntrinsicRange {
-        let tree = self.tree;
+        let tree = self.input.tree;
         let mut range = IntrinsicRange::ZERO;
         for c in tree.active_children(node) {
             let child = self.query(c, query);
@@ -136,12 +131,12 @@ impl<'a> IntrinsicPass<'a> {
     #[inline]
     fn memo(&mut self, idx: usize, axis: Axis, req: LenReq) -> Option<f32> {
         let slot = req.slot(axis);
-        let cur = self.engine.scratch.intrinsics[idx][slot];
+        let cur = self.engine.scratch.measure.intrinsics[idx][slot];
         if !cur.is_nan() {
             return Some(cur);
         }
         let snapshot = self.snapshot(idx, slot)?;
-        self.engine.scratch.intrinsics[idx][slot] = snapshot;
+        self.engine.scratch.measure.intrinsics[idx][slot] = snapshot;
         Some(snapshot)
     }
 
@@ -152,7 +147,7 @@ impl<'a> IntrinsicPass<'a> {
     /// hits even on a resize frame where `try_lookup` misses.
     #[inline]
     fn snapshot(&self, idx: usize, slot: usize) -> Option<f32> {
-        let tree = self.tree;
+        let tree = self.input.tree;
         if LayoutMode::from(tree.records.layout()[idx].meta) == LayoutMode::Leaf {
             return None;
         }
@@ -167,13 +162,13 @@ impl<'a> IntrinsicPass<'a> {
     #[inline]
     fn record(&mut self, idx: usize, query: IntrinsicQuery, mut found: IntrinsicRange) {
         for (req, value) in found.requested(query) {
-            self.engine.scratch.intrinsics[idx][req.slot(query.axis())] = *value;
+            self.engine.scratch.measure.intrinsics[idx][req.slot(query.axis())] = *value;
         }
     }
 
     /// Outer intrinsic: content + padding + margin, respecting `Sizing` and `min_size` / `max_size`; the other axis rides along when the walk covered it ([`IntrinsicWalk`]). The cache miss path.
     fn walk(&mut self, node: NodeId, query: IntrinsicQuery) -> IntrinsicWalk {
-        let tree = self.tree;
+        let tree = self.input.tree;
         let layout = tree.records.layout()[node.idx()];
         if layout.meta.visibility().is_collapsed() {
             return IntrinsicWalk::one_axis(IntrinsicRange::ZERO);
@@ -208,7 +203,7 @@ impl<'a> IntrinsicPass<'a> {
     /// A run's content demands are `Size`s, so the accumulators are too and both axes fall out of one
     /// pass; see [`IntrinsicWalk`] for what the other buys.
     fn leaf(&mut self, node: NodeId, query: IntrinsicQuery) -> IntrinsicWalk {
-        let (tree, interned_text) = (self.tree, self.interned_text);
+        let (tree, interned_text) = (self.input.tree, self.input.interned_text);
         let widget_id = tree.records.widget_id()[node.idx()];
         let mut min_content = Size::ZERO;
         let mut max_content = Size::ZERO;

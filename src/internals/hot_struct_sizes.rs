@@ -114,7 +114,7 @@ const UI_SIZE: usize = 3168;
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const FRAME_ENGINES_SIZE: usize = 2256;
+const FRAME_ENGINES_SIZE: usize = 2384;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)
@@ -189,7 +189,7 @@ const PINS: &[Pin] = &[
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
-    pin::<MeasureSnapshot>("layout::MeasureSnapshot", 368, 8),
+    pin::<MeasureSnapshot>("layout::MeasureSnapshot", 392, 8),
     pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 880, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),

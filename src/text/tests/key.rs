@@ -355,9 +355,10 @@ fn a_mismatched_key_and_source_are_rejected() {
     let _ = ShapedTextRef::new(key, &other);
 }
 
-/// A reuse row compares the text it holds as well as its key, so a row asked for another text
-/// under its key shapes that text: forged here by pairing the first text's key with a longer one,
-/// whose root then measures as the longer text alone does.
+/// A reuse row compares the text it holds as well as its key, on its first ask in a layout run,
+/// so a row asked for another text under its key in a later run shapes that text: forged here by
+/// pairing the first text's key with a longer one, whose root then measures as the longer text
+/// alone does.
 #[test]
 fn a_reuse_row_is_verified_against_the_bytes() {
     let mut text = TextSystem::cosmic();
@@ -365,12 +366,14 @@ fn a_reuse_row_is_verified_against_the_bytes() {
     let face = shape(14.0).leading(18.0);
     let keys = text.shaper().family_keys();
     let first = face.unbounded_request_in(&keys, "short");
+    text.begin_run();
     let short = text.root(s, first, TextWrap::Wrap);
     let other = "a much longer text";
     let forged = TextShapeRequest {
         text: other,
         key: first.key,
     };
+    text.begin_run();
     let long = text.root(s, forged, TextWrap::Wrap);
     let fresh = CosmicMeasure::default().measure(other, face);
     assert_ne!(short.extent.size, long.extent.size, "fixture: two widths");
@@ -378,6 +381,26 @@ fn a_reuse_row_is_verified_against_the_bytes() {
         long.extent.size, fresh.size,
         "the row shaped the other text"
     );
+}
+
+/// Within one layout run a slot answers one text, so its second ask compares the key alone: a
+/// forged text under the same key in the same run is a broken contract, caught in a debug build.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "a layout run asks a slot for one text")]
+fn a_reuse_row_answers_one_text_a_run() {
+    let mut text = TextSystem::cosmic();
+    let s = slot(WidgetId::from_hash("forged"));
+    let face = shape(14.0).leading(18.0);
+    let keys = text.shaper().family_keys();
+    let first = face.unbounded_request_in(&keys, "short");
+    text.begin_run();
+    let _ = text.root(s, first, TextWrap::Wrap);
+    let forged = TextShapeRequest {
+        text: "a much longer text",
+        key: first.key,
+    };
+    let _ = text.root(s, forged, TextWrap::Wrap);
 }
 
 /// A key carries a hash of its text, so two texts can share one. A hit compares the bytes, and a

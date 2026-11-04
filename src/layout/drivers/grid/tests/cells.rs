@@ -33,16 +33,6 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     assert_eq!(rig.rect("pinned"), Rect::new(80.0, 80.0, 20.0, 20.0));
 }
 
-/// Debug-only: `enter`/`exit` pairing is the layout engine's own, so this checks the crate, not a caller.
-#[cfg(debug_assertions)]
-#[test]
-#[should_panic(expected = "GridDepthStack::exit underflow")]
-fn grid_depth_stack_rejects_exit_without_enter() {
-    use crate::layout::drivers::grid::grid_depth_stack::GridDepthStack;
-
-    GridDepthStack::default().exit();
-}
-
 /// A cell past the tracks is coerced, not refused: on a 2 × 2 grid of 50 px tracks, `(5, 7)` lands
 /// in the last cell, and a span of 3 from row 0 covers the 2 rows there are. Before, a debug build
 /// panicked at record time and a release build in layout.

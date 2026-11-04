@@ -9,7 +9,9 @@
 //! axis children measure against the whole extent and heights are shared at
 //! arrange.
 
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::layout::offer;
+use crate::scene::tree::Tree;
 
 use crate::layout::axis_share;
 use crate::layout::drivers::LayoutDriver;
@@ -21,7 +23,7 @@ use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::justify_offsets::{JustifyOffsets, JustifyRow};
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
 use crate::layout::placed_child::Placed;
 use crate::primitives::geometry::size::Size;
@@ -81,7 +83,7 @@ impl Stack {
         mut fill_floor: impl FnMut(&mut LayoutPass<'_>, NodeId) -> f32,
     ) -> StackPlan {
         let Self { node, axis, .. } = self;
-        let tree = pass.tree;
+        let tree = pass.tree();
         let layouts = tree.records.layout();
         let fill_start = pass.stack_scratch_mut().fill.mark();
         let hug_start = pass.stack_scratch_mut().hug.mark();
@@ -153,9 +155,12 @@ impl Stack {
 }
 
 impl LayoutDriver for Stack {
-    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
+    /// Arranges from its slot and its own subtree alone.
+    fn outside_input(self, _tree: &Tree, _layout: &PlaneLayout) -> Option<Size> {
+        None
+    }
 
-    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
+    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
         let axis = self.axis;
         let cross_avail = axis.cross(inner_avail);
 
@@ -262,7 +267,7 @@ impl LayoutDriver for Stack {
             stable_main = stable_main.max(w.stable_from);
         }
 
-        Measured {
+        ContentMeasure {
             size: axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross),
             floor: axis.compose_size(floor_main + total_gap, floor_cross),
             stable_from: axis.compose_size(stable_main, stable_cross),
@@ -271,7 +276,7 @@ impl LayoutDriver for Stack {
 
     fn arrange(self, pass: &mut LayoutPass<'_>, inner: Size) {
         let Self { node, axis, rigid } = self;
-        let tree = pass.tree;
+        let tree = pass.tree();
         let panel = tree.panel(node);
         let (gap, justify, parent_child_align) =
             (panel.gaps.gap(), panel.justify, panel.child_align);

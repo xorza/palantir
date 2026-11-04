@@ -4,7 +4,7 @@ use crate::primitives::layout::offer;
 
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
-use crate::layout::measured::Measured;
+use crate::layout::measured::{ContentMeasure, Measured};
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
@@ -220,7 +220,7 @@ impl NodeSlot<'_> {
     /// to the same value since every driver's content size is monotone in
     /// `available`. Pinned by `layout::tests::convergence`.
     #[inline]
-    pub(super) fn resolve(self, dispatch: impl FnOnce(Size) -> Measured) -> Measured {
+    pub(super) fn resolve(self, dispatch: impl FnOnce(Size) -> ContentMeasure) -> Measured {
         let Self {
             layout,
             bounds,
@@ -232,7 +232,7 @@ impl NodeSlot<'_> {
         let (p_horiz, p_vert) = (w.padding, h.padding);
 
         let inner_avail = Size::new(w.inner_avail(), h.inner_avail());
-        let Measured {
+        let ContentMeasure {
             size,
             floor,
             stable_from,

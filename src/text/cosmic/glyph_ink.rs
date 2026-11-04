@@ -4,7 +4,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::text::cosmic::geometry::ShapedGeometry;
 use crate::text::cosmic::stem_darkening::StemDarkening;
 use crate::text::cosmic::{FAKE_ITALIC_SKEW_DEGREES, Hinting, ScalerSpec};
-use crate::text::extent::TextExtent;
 use cosmic_text::{Buffer, CacheKeyFlags, FontSystem, LayoutGlyph, fontdb};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
@@ -13,7 +12,7 @@ use swash::scale::ScaleContext;
 use swash::scale::outline::Outline;
 
 /// Ink bounds of every glyph a run has shaped, read once per glyph and face. Ink can reach past the measured
-/// advance block (italic overhang, negative bearing); [`Self::extent`] answers by how much. Stored in ems from
+/// advance block (italic overhang, negative bearing); [`Self::ink`] answers by how much. Stored in ems from
 /// the unhinted outline (`attrs_named` sets `DISABLE_HINTING`), so one entry serves every size, and
 /// grown by [`StemDarkening::bound`], the most the rasterizer grows it at any size and scale.
 ///
@@ -58,12 +57,12 @@ struct EmBox {
 
 impl GlyphInk {
     /// How far glyph ink reaches past `buffer`'s measured block, per side, rounded out to whole pixels.
-    pub(super) fn extent(
+    pub(super) fn ink(
         &mut self,
         buffer: &Buffer,
         font_system: &mut FontSystem,
         geometry: &ShapedGeometry,
-    ) -> TextExtent {
+    ) -> Spacing {
         let ShapedGeometry { size, left, .. } = *geometry;
         let mut min = Vec2::INFINITY;
         let mut max = Vec2::NEG_INFINITY;
@@ -82,18 +81,15 @@ impl GlyphInk {
             }
         }
         if min.x > max.x {
-            return TextExtent::inked_within(size);
+            return Spacing::ZERO;
         }
         let past = |reach: f32| reach.max(0.0).ceil();
-        TextExtent {
-            size,
-            ink: Spacing::saturating([
-                past(left - min.x),
-                past(-min.y),
-                past(max.x - (left + size.w)),
-                past(max.y - size.h),
-            ]),
-        }
+        Spacing::saturating([
+            past(left - min.x),
+            past(-min.y),
+            past(max.x - (left + size.w)),
+            past(max.y - size.h),
+        ])
     }
 
     fn em_box(&mut self, font_system: &mut FontSystem, glyph: &LayoutGlyph) -> EmBox {

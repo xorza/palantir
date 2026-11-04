@@ -1,4 +1,4 @@
-//! The flat, depth-shared scratch pool both stack drivers work out of.
+//! The flat, depth-shared scratch pool the stack drivers and the grid intrinsic work out of.
 
 /// A flat buffer shared by every nesting depth of one driver.
 ///
@@ -25,6 +25,15 @@ impl<T> DepthScratch<T> {
     #[inline]
     pub(super) fn push(&mut self, item: T) {
         self.pool.push(item);
+    }
+
+    /// Push `count` copies of `item`.
+    #[inline]
+    pub(super) fn push_n(&mut self, count: usize, item: T)
+    where
+        T: Clone,
+    {
+        self.pool.resize(self.pool.len() + count, item);
     }
 
     /// This depth's own entries, as a mutable slice.

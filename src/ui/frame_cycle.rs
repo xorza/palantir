@@ -271,7 +271,7 @@ impl<'a> FrameCycle<'a> {
     fn finalize_frame(&mut self) {
         tracy::zone!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
-        self.engines.layout.text.end_frame(removed);
+        self.engines.layout.end_frame(removed);
         self.ui
             .animation
             .sweep(self.ui.frame_runtime.render_frame_id);

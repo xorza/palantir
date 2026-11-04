@@ -15,9 +15,13 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::tests::support::SURFACE;
+use crate::widgets::scroll::Scroll;
 use glam::{UVec2, Vec2};
 
-/// Popup-body sizing and anchor placement per `Sizing` mode. `Popup::show` measures against the full surface before the shared edge-aware position. `Hug`/`Fixed` fit at the raw anchor; `FILL` fills the surface and the safety clamp shifts it to `(0, 0)`.
+/// Popup-body sizing and anchor placement per `Sizing` mode. `Popup::show` measures against the room
+/// its roomier side leaves before the shared edge-aware position. `Hug`/`Fixed` fit at the raw
+/// anchor; `FILL` fills the surface across and the `400 - 30 = 370` below the anchor down, the
+/// roomier side, so the clamp shifts it to `x = 0` and it starts at the anchor's `y`.
 #[test]
 fn popup_body_sizing_matches_sizing_mode() {
     let anchor = Vec2::new(20.0, 30.0);
@@ -26,8 +30,8 @@ fn popup_body_sizing_matches_sizing_mode() {
         (
             Sizing::FILL,
             Sizing::FILL,
-            Size::new(SURFACE.x as f32, SURFACE.y as f32),
-            Vec2::ZERO,
+            Size::new(SURFACE.x as f32, SURFACE.y as f32 - anchor.y),
+            Vec2::new(0.0, anchor.y),
         ),
         (
             Sizing::fixed(80.0),
@@ -102,7 +106,7 @@ fn popup_near_bottom_flips_upward() {
     let body_rect = body_rect(&h, WidgetId::from_hash("flip-popup"));
     assert_eq!(
         body_rect.size, content,
-        "body measured at full content size (anchor-independent available)",
+        "body measured at full content size, which the roomier side holds",
     );
     // Flip upward: anchor.y − body.h = 280 − 200 = 80, so top-left is `(anchor.x, 80)`.
     assert_eq!(
@@ -110,6 +114,44 @@ fn popup_near_bottom_flips_upward() {
         Vec2::new(anchor.x, anchor.y - content.h),
         "popup near bottom anchor flipped above the anchor",
     );
+}
+
+/// A filling, scrolling body measures to the roomier side and lands there, clear of its anchor,
+/// rather than filling the surface and clamping over it: at y 100 of a 300 tall surface, 200 is
+/// left below and 100 above, so the body takes the 200 below, from the anchor down, and its 500 of
+/// content scrolls.
+#[test]
+fn popup_too_tall_for_both_sides_takes_the_roomier_one() {
+    const SURF: UVec2 = UVec2::new(400, 300);
+    let anchor = Vec2::new(20.0, 100.0);
+    let mut h = Harness::mono(SURF);
+    h.frame(|ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("main-bg"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Popup::new()
+                    .anchor(Anchor::at_point(anchor))
+                    .id(WidgetId::from_hash("tall-popup"))
+                    .padding(0.0)
+                    .chrome(Chrome::NONE)
+                    .size((Sizing::HUG, Sizing::FILL))
+                    .show(ui, |ui, _popup| {
+                        Scroll::vertical()
+                            .id(WidgetId::from_hash("tall-scroll"))
+                            .size((Sizing::HUG, Sizing::fill(1.0)))
+                            .show(ui, |ui| {
+                                Panel::vstack()
+                                    .id(WidgetId::from_hash("tall-content"))
+                                    .size((Sizing::fixed(120.0), Sizing::fixed(500.0)))
+                                    .show(ui, |_| {});
+                            });
+                    });
+            });
+    });
+    let body_rect = body_rect(&h, WidgetId::from_hash("tall-popup"));
+    // 120 of content and the vertical bar's 12 px gutter across.
+    assert_eq!(body_rect, Rect::new(anchor.x, anchor.y, 132.0, 200.0));
 }
 
 /// A flip moves the root's arranged rect, which the cascade key holds, so the painted position stays in sync with layout.
@@ -160,7 +202,6 @@ fn popup_flip_reaches_cascade_not_just_layout() {
 /// A popup containing [`crate::Scroll`] resolves at an edge in one frame.
 #[test]
 fn popup_with_scroll_settles_in_one_frame() {
-    use crate::widgets::scroll::Scroll;
     const SURF: UVec2 = UVec2::new(400, 400);
     // Anchor near the right edge so any body-width change between passes would drift.
     let anchor = Vec2::new(380.0, 20.0);

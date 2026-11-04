@@ -9,15 +9,13 @@ use crate::primitives::math::num::F32Px;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
 use crate::text::cosmic::axis_range::AxisRange;
-use crate::text::cosmic::cache_entry::CachedExtent;
+use crate::text::cosmic::cache_entry::{CachedExtent, ShapedBuffer};
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{SegmentScratch, ShapedGeometry, first_line_right};
 use crate::text::cosmic::glyph_ink::GlyphInk;
 use crate::text::cosmic::outline_raster::{OutlineGlyph, OutlineRaster};
-use crate::text::cosmic::shaped_buffer_cache::{
-    Recycled, ShapedBuffer, ShapedBufferCache, ShapedRun,
-};
+use crate::text::cosmic::shaped_buffer_cache::{Recycled, ShapedBufferCache, ShapedRun};
 use crate::text::cosmic::stem_darkening::StemDarkening;
 use crate::text::cosmic::text_cut::{CutSuffix, TextCut};
 use crate::text::error::FontLoadError;
@@ -375,11 +373,12 @@ impl CosmicMeasure {
         // it to a policy that wants it. The resize-drag path.
         let breaks = &mut self.break_scratch;
         if let Some(entry) = self.cache.hit(key, request.text) {
-            let root = entry.extent.root_mut();
+            let shaped = &mut entry.shaped;
+            let root = shaped.extent.root_mut();
             if floor == WrapFloor::Scan && root.intrinsic_min.is_none() {
-                root.intrinsic_min = Some(breaks.intrinsic_min_width(&entry.buffer));
+                root.intrinsic_min = Some(breaks.intrinsic_min_width(&shaped.buffer));
             }
-            return entry.extent.root();
+            return shaped.extent.root();
         }
         self.shape_wrapped(request, floor).root()
     }
@@ -393,7 +392,7 @@ impl CosmicMeasure {
             "an unbounded request commits no width to resolve against",
         );
         if let Some(entry) = self.cache.hit(key, request.text) {
-            return entry.extent.extent();
+            return entry.shaped.extent.extent();
         }
         match key.fit() {
             LineFit::Clip | LineFit::Ellipsis | LineFit::EllipsisMiddle => {
@@ -433,12 +432,12 @@ impl CosmicMeasure {
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let geometry = ShapedGeometry::of(&buffer, floor, &mut self.break_scratch);
-        let extent = self
+        let ink = self
             .glyph_ink
-            .extent(&buffer, &mut self.font_system, &geometry);
+            .ink(&buffer, &mut self.font_system, &geometry);
         let extent = match key.max_width() {
-            None => CachedExtent::Root(geometry.root(extent)),
-            Some(_) => CachedExtent::Bounded(extent),
+            None => CachedExtent::Root(geometry.root(ink)),
+            Some(_) => CachedExtent::Bounded(geometry.extent(ink)),
         };
         self.cache.insert(
             key,
@@ -669,7 +668,14 @@ impl CosmicMeasure {
         // verify and retire one more cluster while it overruns; `max_end` guarantees
         // termination.
         self.cut_glyphs.clear();
-        if let Some(run) = self.cache.probe(probe_key).buffer.layout_runs().next() {
+        if let Some(run) = self
+            .cache
+            .probe(probe_key)
+            .shaped
+            .buffer
+            .layout_runs()
+            .next()
+        {
             self.cut_glyphs.reserve_exact(run.glyphs.len());
             self.cut_glyphs
                 .extend(run.glyphs.iter().map(|g| ClusterGlyph {
@@ -739,9 +745,10 @@ impl CosmicMeasure {
             }
         };
 
-        let extent = self
+        let ink = self
             .glyph_ink
-            .extent(&buffer, &mut self.font_system, &geometry);
+            .ink(&buffer, &mut self.font_system, &geometry);
+        let extent = geometry.extent(ink);
         self.cache.insert(
             key,
             ShapedBuffer {

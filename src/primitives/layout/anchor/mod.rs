@@ -66,9 +66,9 @@ impl AnchorAlign {
 }
 
 /// Where a side layer lands next to the thing it belongs to, for
-/// [`LayerScope::anchor`](crate::LayerScope::anchor). The origin resolves
-/// after measure: the requested side if the body fits, else the opposite, else
-/// shifted inside the surface. [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) never moves.
+/// [`LayerScope::anchor`](crate::LayerScope::anchor). The body measures against the room the
+/// roomier side leaves, and the origin resolves after measure: the requested side if the body
+/// fits, else the opposite, else shifted inside the surface. [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) never moves.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct Anchor {
@@ -168,6 +168,32 @@ impl Anchor {
     pub const fn with_gap(mut self, px: f32) -> Self {
         self.gap = domain::length(px);
         self
+    }
+
+    /// The extent a body may measure to inside `bounds`: across its side, the whole of `bounds`;
+    /// along it, the room the roomier of its two sides leaves. As Floating UI's `flip` and `size`
+    /// bound a floating element to the side it picks, a body too long for either side measures
+    /// to the roomier one, which [`Self::resolve`] then places it on, and scrolls there rather
+    /// than covering the rect it belongs to. A body that fits a side measures as it would against
+    /// all of `bounds`, so the side it lands on is the same.
+    pub(crate) fn available(self, bounds: Rect) -> Size {
+        let axis = self.side.axis();
+        let room = self
+            .room(self.side, bounds)
+            .max(self.room(self.side.opposite(), bounds));
+        axis.compose_size(room, axis.cross(bounds.size))
+    }
+
+    /// The room `side` of the rect leaves inside `bounds`, `gap` off it; zero for a rect at or
+    /// past that edge.
+    fn room(self, side: AnchorSide, bounds: Rect) -> f32 {
+        let room = match side {
+            AnchorSide::Above => self.rect.min.y - self.gap - bounds.min.y,
+            AnchorSide::Below => bounds.max().y - (self.rect.max().y + self.gap),
+            AnchorSide::LeftOf => self.rect.min.x - self.gap - bounds.min.x,
+            AnchorSide::RightOf => bounds.max().x - (self.rect.max().x + self.gap),
+        };
+        room.max(0.0)
     }
 
     /// The origin of a body of `measured` size inside `bounds`.

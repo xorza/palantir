@@ -53,6 +53,108 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     assert_eq!(layout.text_spans[leaf.idx()].len, 1);
 }
 
+/// A container of a measure-hit subtree arranged at the width its runs were shaped at copies them
+/// forward; arranged at another width, it shapes them again. At 400 the paragraph keeps one line;
+/// at 150 it wraps, so the second shape is taller.
+#[test]
+fn container_text_replays_at_its_width_and_reshapes_at_another() {
+    let mut h = Harness::new(UVec2::new(400, 400));
+    let build = |ui: &mut Ui| {
+        Panel::vstack()
+            .id_salt("fill-container-text")
+            .size((Sizing::FILL, Sizing::HUG))
+            .padding(10.0)
+            .show(ui, |ui| {
+                DirectText::PARAGRAPH.add(ui);
+                Block::new()
+                    .id_salt("fill-container-child")
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .show(ui);
+            })
+            .response
+            .node()
+    };
+    let run_of = |h: &Harness, node: NodeId| {
+        let layout = h.ui().layout(Layer::Main);
+        let span = layout.text_spans[node.idx()];
+        assert_eq!(span.len, 1, "the container owns one run");
+        let shaped = layout.text_shapes[span.start as usize];
+        (shaped.extent.size, shaped.buffer_key())
+    };
+    let replays = |h: &mut Harness| {
+        h.parts()
+            .engines
+            .layout
+            .scratch
+            .counters
+            .arrange_replays()
+            .container_text
+    };
+    let node = h.frame_value(build);
+    let first = run_of(&h, node);
+
+    h.parts().engines.layout.forget_last_run();
+    let node = h.frame_value(build);
+    assert_eq!(replays(&mut h), 1, "the same width replays the run");
+    assert_eq!(run_of(&h, node), first);
+
+    h.resize(UVec2::new(150, 400));
+    let node = h.frame_value(build);
+    assert_eq!(replays(&mut h), 0, "another width shapes the run again");
+    let (narrow, _) = run_of(&h, node);
+    assert!(
+        narrow.h > first.0.h,
+        "the narrow run wraps: {narrow:?} vs {:?}",
+        first.0
+    );
+}
+
+/// A container under a hidden ancestor shapes no runs, yet its subtree measures and is cached;
+/// once the ancestor shows, the subtree hits the cache at the same width, and the container
+/// shapes its run rather than replaying the none it had.
+#[test]
+fn container_text_under_a_shown_ancestor_shapes_what_it_did_not_replay() {
+    let mut h = Harness::new(UVec2::new(400, 400));
+    let build = |visibility: Visibility| {
+        move |ui: &mut Ui| {
+            let mut inner = None;
+            Panel::vstack()
+                .id_salt("hiding-ancestor")
+                .visibility(visibility)
+                .show(ui, |ui| {
+                    inner = Some(
+                        Panel::vstack()
+                            .id_salt("shown-container")
+                            .padding(10.0)
+                            .show(ui, |ui| {
+                                DirectText::PARAGRAPH.add(ui);
+                                Block::new()
+                                    .id_salt("shown-child")
+                                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                                    .show(ui);
+                            })
+                            .response
+                            .node(),
+                    );
+                });
+            inner.unwrap()
+        }
+    };
+    let node = h.frame_value(build(Visibility::Hidden));
+    assert_eq!(h.ui().layout(Layer::Main).text_spans[node.idx()].len, 0);
+    let node = h.frame_value(build(Visibility::Visible));
+    let container = h.ui().tree(Layer::Main).records.widget_id()[node.idx()];
+    assert!(
+        h.parts().engines.layout.cache_hits().contains(&container),
+        "fixture: the container's subtree hits the cache"
+    );
+    assert_eq!(
+        h.ui().layout(Layer::Main).text_spans[node.idx()].len,
+        1,
+        "the shown container shapes its run"
+    );
+}
+
 #[test]
 fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     let surface = UVec2::new(400, 400);

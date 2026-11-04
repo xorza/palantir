@@ -18,8 +18,8 @@ pub(crate) enum Origin {
 pub(crate) struct Placement {
     pub(crate) origin: Origin,
     /// Upper bound on the available extent, never past the room the origin leaves: the space from a
-    /// fixed point to the surface edge, or the whole surface for an anchored root. `None` leaves
-    /// that room.
+    /// fixed point to the surface edge, or what an anchored root's roomier side leaves
+    /// ([`Anchor::available`]). `None` leaves that room.
     pub(crate) max_size: Option<Size>,
 }
 
@@ -48,7 +48,7 @@ impl Placement {
     pub(crate) fn available(self, surface: Rect) -> Size {
         let room = match self.origin {
             Origin::Fixed(point) => surface.size.room_past(point - surface.min),
-            Origin::Anchored(_) => surface.size,
+            Origin::Anchored(anchor) => anchor.available(surface),
         };
         self.max_size.map_or(room, |cap| cap.min(room))
     }
@@ -88,7 +88,8 @@ mod tests {
     fn a_size_cap_bounds_an_anchored_root_without_moving_its_origin() {
         let capped = anchored().with_max_size(Size::new(80.0, 40.0));
         assert_eq!(capped.available(SURFACE), Size::new(80.0, 40.0));
-        assert_eq!(anchored().available(SURFACE), SURFACE.size);
+        // Below leaves `100 - (16 + 4) = 80`, above `10 - 4 = 6`: the body measures to 80 down.
+        assert_eq!(anchored().available(SURFACE), Size::new(200.0, 80.0));
         assert_eq!(
             capped.origin(MEASURED, SURFACE),
             Vec2::new(40.0, 20.0),

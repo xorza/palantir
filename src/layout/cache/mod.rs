@@ -19,8 +19,9 @@ use crate::common::counters::BenchOnly;
 use crate::common::span::Span;
 use crate::layout::cache::measure_snapshot::{ArenaSnapshot, MeasureSnapshot, SubtreeKey};
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
-use crate::layout::intrinsic::len_req::SLOT_COUNT;
+use crate::layout::measure_columns::MeasureColumns;
 use crate::layout::measured::Measured;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -29,6 +30,7 @@ use crate::scene::tree::Tree;
 use crate::text::shaped_text::ShapedText;
 use glam::Vec2;
 use std::mem;
+use std::ops::Range;
 
 /// The `available` of a node no measure reached this frame; no subtree is captured under it.
 pub(super) const UNMEASURED: Size = Size::new(f32::NAN, f32::NAN);
@@ -40,22 +42,25 @@ pub(super) const fn same_offer(a: Size, b: Size) -> bool {
     a.w.to_bits() == b.w.to_bits() && a.h.to_bits() == b.h.to_bits()
 }
 
-/// Last frame's measure of one subtree, as a hit restores it.
+/// Last frame's measure of one subtree, as a hit restores it: the arena rows it takes, each
+/// column of which holds the subtree's nodes in pre-order.
 #[derive(Debug)]
 pub(super) struct CachedSubtree<'a> {
     pub(super) root: Measured,
-    /// Arena index this subtree's columns start at.
-    pub(super) nodes_base: u32,
-    pub(super) desired: &'a [Size],
-    pub(super) floor: &'a [Size],
-    pub(super) stable_from: &'a [Size],
+    pub(super) rows: Range<usize>,
+    pub(super) measure: &'a MeasureColumns,
     pub(super) scroll_content: &'a [Size],
     pub(super) text_spans: &'a [Span],
-    pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(super) available: &'a [Size],
     pub(super) tracks: &'a [f32],
     pub(super) text_shapes: &'a [ShapedText],
     pub(super) text_shapes_base: u32,
+}
+
+/// A container's paint-only runs as last frame shaped them, and the width it was arranged to.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct CachedContainerText<'a> {
+    pub(super) width: f32,
+    pub(super) shapes: &'a [ShapedText],
 }
 
 /// A subtree's arrange as last frame captured it: each node's rect and its
@@ -66,20 +71,14 @@ pub(super) struct Arranged<'a> {
     pub(super) locals: &'a [Vec2],
 }
 
-/// The engine's columns for one laid-out tree, as [`MeasureCache::capture_tree`] appends them.
+/// The engine's columns for one laid-out tree, as [`MeasureCache::capture_tree`] appends them:
+/// what measure left, the plane's output, each node's slot origin, and the grids' tracks.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CaptureTreeInput<'a> {
-    pub(super) desired: &'a [Size],
-    pub(super) floor: &'a [Size],
-    pub(super) stable_from: &'a [Size],
-    pub(super) rect: &'a [Rect],
+    pub(super) measure: &'a MeasureColumns,
+    pub(super) layout: &'a PlaneLayout,
     pub(super) local: &'a [Vec2],
-    pub(super) scroll_content: &'a [Size],
-    pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(super) available: &'a [Size],
     pub(super) grid_track_state: &'a GridTrackStore,
-    pub(super) text_spans: &'a [Span],
-    pub(super) text_shapes: &'a [ShapedText],
 }
 
 fn union_spans(a: Span, b: Span) -> Span {
@@ -114,8 +113,8 @@ impl MeasureCache {
     /// Whether last frame's capture holds a node for each of `nodes`, the forest's: a capture
     /// that a font load or no frame emptied holds none. The roots' keys, which the engine keeps
     /// with each run, say the rest.
-    pub(super) const fn holds_nodes(&self, nodes: usize) -> bool {
-        self.prev.nodes.desired.len() == nodes
+    pub(super) fn holds_nodes(&self, nodes: usize) -> bool {
+        self.prev.nodes.measure.len() == nodes
     }
 
     /// Last frame's arrange of a subtree of `len` nodes whose capture starts
@@ -138,8 +137,9 @@ impl MeasureCache {
             return None;
         }
         let available = key.available;
-        let nodes = snap.nodes.range();
-        let stable_from = self.prev.nodes.stable_from[nodes.start];
+        let rows = snap.nodes.range();
+        let measure = &self.prev.nodes.measure;
+        let stable_from = measure.stable_from[rows.start];
         let holds = |measured_at: f32, offer: f32, from: f32| {
             measured_at.to_bits() == offer.to_bits() || (offer.is_finite() && offer >= from)
         };
@@ -150,18 +150,14 @@ impl MeasureCache {
         }
         Some(CachedSubtree {
             root: Measured {
-                size: self.prev.nodes.desired[nodes.start],
-                floor: self.prev.nodes.floor[nodes.start],
+                size: measure.desired[rows.start],
+                floor: measure.floor[rows.start],
                 stable_from,
             },
-            nodes_base: snap.nodes.start,
-            desired: &self.prev.nodes.desired[nodes.clone()],
-            floor: &self.prev.nodes.floor[nodes.clone()],
-            stable_from: &self.prev.nodes.stable_from[nodes.clone()],
-            scroll_content: &self.prev.nodes.scroll_content[nodes.clone()],
-            text_spans: &self.prev.nodes.text_spans[nodes.clone()],
-            intrinsics: &self.prev.nodes.intrinsics[nodes.clone()],
-            available: &self.prev.nodes.available[nodes],
+            measure,
+            scroll_content: &self.prev.nodes.scroll_content[rows.clone()],
+            text_spans: &self.prev.nodes.text_spans[rows.clone()],
+            rows,
             tracks: &self.prev.tracks[snap.tracks.range()],
             text_shapes: &self.prev.text_shapes[snap.text_shapes.range()],
             text_shapes_base: snap.text_shapes.start,
@@ -181,43 +177,42 @@ impl MeasureCache {
         if snap.subtree_hash != subtree_hash {
             return None;
         }
-        let value = self.prev.nodes.intrinsics[snap.nodes.start as usize][slot];
+        let value = self.prev.nodes.measure.intrinsics[snap.nodes.start as usize][slot];
         (!value.is_nan()).then_some(value)
     }
 
     pub(super) fn capture_tree(&mut self, tree: &Tree, input: CaptureTreeInput<'_>) {
         let CaptureTreeInput {
-            desired,
-            floor,
-            stable_from,
-            rect,
+            measure,
+            layout,
             local,
-            scroll_content,
-            intrinsics,
-            available,
             grid_track_state,
-            text_spans,
-            text_shapes,
         } = input;
+        let PlaneLayout {
+            rect,
+            scroll_content,
+            text_shapes,
+            text_spans,
+            ..
+        } = layout;
+        let available = &measure.available;
         let node_count = tree.records.len();
         // Debug only: column-length agreement is an engine invariant, and this
         // runs once per plane per frame.
-        debug_assert_eq!(desired.len(), node_count);
-        debug_assert_eq!(floor.len(), node_count);
-        debug_assert_eq!(stable_from.len(), node_count);
+        debug_assert_eq!(measure.len(), node_count);
         debug_assert_eq!(rect.len(), node_count);
         debug_assert_eq!(local.len(), node_count);
         debug_assert_eq!(scroll_content.len(), node_count);
-        debug_assert_eq!(intrinsics.len(), node_count);
-        debug_assert_eq!(available.len(), node_count);
         debug_assert_eq!(text_spans.len(), node_count);
 
-        let node_base = self.cur.nodes.desired.len() as u32;
+        let node_base = self.cur.nodes.measure.len() as u32;
         let text_base = self.cur.text_shapes.len() as u32;
 
         self.cur.nodes.rect.extend_from_slice(rect);
         self.cur.nodes.local.extend_from_slice(local);
-        self.cur.nodes.intrinsics.extend_from_slice(intrinsics);
+        // Filled by `capture_container_text` once the container pass has shaped them.
+        let containers_len = self.cur.nodes.container_spans.len() + node_count;
+        self.cur.nodes.container_spans.resize(containers_len, None);
         self.cur
             .nodes
             .scroll_content
@@ -313,10 +308,32 @@ impl MeasureCache {
         // Copied for every plane, the first included: a swap for the first
         // would leave the engine's scratch columns empty while the
         // container-text pass still runs.
-        self.cur.nodes.desired.extend_from_slice(desired);
-        self.cur.nodes.floor.extend_from_slice(floor);
-        self.cur.nodes.stable_from.extend_from_slice(stable_from);
-        self.cur.nodes.available.extend_from_slice(available);
+        self.cur.nodes.measure.extend_from(measure);
+    }
+
+    /// Append the container runs `layout` holds for `tree`, the tree [`Self::capture_tree`]
+    /// captured last, once the container pass has shaped them.
+    pub(super) fn capture_container_text(&mut self, tree: &Tree, layout: &PlaneLayout) {
+        let node_base = self.cur.nodes.measure.len() - tree.records.len();
+        for idx in tree.container_text.ones() {
+            let span = layout.text_spans[idx];
+            let start = self.cur.text_shapes.len() as u32;
+            self.cur
+                .text_shapes
+                .extend_from_slice(&layout.text_shapes[span.range()]);
+            self.cur.nodes.container_spans[node_base + idx] = Some(Span::new(start, span.len));
+        }
+    }
+
+    /// Last frame's container runs of the node at arena row `row`, with the width it was
+    /// arranged to, which they were shaped against; `None` where last frame shaped none.
+    pub(super) fn container_text(&self, row: usize) -> Option<CachedContainerText<'_>> {
+        let nodes = &self.prev.nodes;
+        let span = nodes.container_spans[row]?;
+        Some(CachedContainerText {
+            width: nodes.rect[row].size.w,
+            shapes: &self.prev.text_shapes[span.range()],
+        })
     }
 
     pub(super) fn end_frame(&mut self) {
@@ -345,7 +362,7 @@ pub(crate) mod internals {
     impl MeasureCache {
         /// Last frame's measured `desired` column.
         pub(crate) fn captured_desired(&self) -> &[Size] {
-            &self.prev.nodes.desired
+            &self.prev.nodes.measure.desired
         }
     }
 }

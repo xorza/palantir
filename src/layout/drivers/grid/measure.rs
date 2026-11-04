@@ -2,11 +2,10 @@
 
 use crate::primitives::layout::offer;
 
-use crate::layout::drivers::grid::axis_scratch::AxisScratch;
-use crate::layout::drivers::grid::grid_ctx::GridCtx;
+use crate::layout::drivers::grid::grid_track_store::{GridAxisId, GridTrackStore};
 use crate::layout::drivers::grid::{self, Grid};
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
@@ -14,17 +13,14 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::num::F32Px;
 
-/// [`LayoutDriver::measure`](crate::layout::drivers::LayoutDriver::measure) for `grid`, inside its entered depth slot.
-pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
-    let tree = pass.tree;
+/// [`LayoutDriver::measure`](crate::layout::drivers::LayoutDriver::measure) for `grid`.
+pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
+    let tree = pass.tree();
     let node = grid.node;
     let cols = grid.axis(tree, Axis::X);
     let rows = grid.axis(tree, Axis::Y);
     let row_count = rows.tracks.len();
     let col_count = cols.tracks.len();
-    let scratch = pass.grid_mut().depth_stack.cur();
-    scratch.col.reset_for(col_count);
-    scratch.row.reset_for(row_count);
     pass.grid_mut()
         .track_state
         .debug_assert_unmeasured(grid.def);
@@ -35,7 +31,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         for c in tree.children(node).map(|c| c.id) {
             pass.measure(c, Size::ZERO);
         }
-        return Measured::ZERO;
+        return ContentMeasure::ZERO;
     }
 
     // Phase 1: query column intrinsics for Hug-column span-1 cells. This is the
@@ -94,20 +90,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // they will arrange at.
     let grid_sizing_w = tree.records.layout()[node.idx()].size.w();
     {
-        let GridCtx {
-            depth_stack,
-            track_state,
-            ..
-        } = pass.grid_mut();
-        let s = depth_stack.cur();
-        s.col
-            .resolve_axis(cols, track_state.ranges(cols.id), inner_avail.w);
+        let tracks = &mut pass.grid_mut().track_state;
+        tracks.resolve_axis(cols, inner_avail.w);
         if !grid_sizing_w.is_hug() && inner_avail.w.is_finite() {
-            s.col.commit_fill(cols.tracks);
+            tracks.commit_fill(cols.id, cols.tracks);
         }
-        // Stash col sizes for arrange's reuse path.
-        track_state.record_resolution(cols.id, inner_avail.w, &s.col.sizes);
-        s.row.resolve_fixed(rows.tracks);
+        tracks.resolve_fixed(rows.id, rows.tracks);
     }
 
     // Phase 2: measure cells at resolved col widths. Rows are unresolved except
@@ -117,25 +105,25 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         let cell = grid.cell(tree, c);
 
         let avail = {
-            let s = pass.grid_mut().depth_stack.cur();
+            let tracks = &pass.grid_mut().track_state;
             // `known_span_size` returns INFINITY if any spanned col is unresolved.
             // Fill cols stay unresolved so their cells get INF: Fill is finalized
             // at arrange, and a different measure width would commit row heights
             // arrange does not honor.
-            let avail_w = s.col.known_span_size(cell.track_span(Axis::X), cols.gap);
-            let avail_h = s.row.known_span_size(cell.track_span(Axis::Y), rows.gap);
+            let avail_w = tracks.known_span_size(cols.id, cell.track_span(Axis::X), cols.gap);
+            let avail_h = tracks.known_span_size(rows.id, cell.track_span(Axis::Y), rows.gap);
             Size::new(avail_w, avail_h)
         };
 
         let d = pass.measure(c, avail);
 
         {
-            let s = pass.grid_mut().depth_stack.cur();
+            let tracks = &mut pass.grid_mut().track_state;
             for (axis, grid_axis) in [(Axis::X, cols), (Axis::Y, rows)] {
                 let span = cell.track_span(axis);
                 let i = span.start as usize;
                 if span.len == 1 && grid_axis.tracks[i].sizing().fill_weight().is_some() {
-                    let extent = &mut s.axis_mut(axis).extents[i];
+                    let extent = &mut tracks.extents_mut(grid_axis.id)[i];
                     *extent = extent.max(axis.main(d.size));
                 }
             }
@@ -178,17 +166,9 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // Resolve row heights. Fill rows are left uncommitted: the row `resolved`
     // marking is inert here (its reader already ran and arrange re-resolves);
     // only the recorded `sizes` matter.
-    {
-        let GridCtx {
-            depth_stack,
-            track_state,
-            ..
-        } = pass.grid_mut();
-        let s = depth_stack.cur();
-        s.row
-            .resolve_axis(rows, track_state.ranges(rows.id), inner_avail.h);
-        track_state.record_resolution(rows.id, inner_avail.h, &s.row.sizes);
-    }
+    pass.grid_mut()
+        .track_state
+        .resolve_axis(rows, inner_avail.h);
 
     // What a Fill track holds: its single-track cells' extent, with the other tracks at their
     // resolved sizes, grown by the spans that cross a Fill track.
@@ -200,33 +180,17 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         if !grid::has_fill(grid_axis.tracks) {
             continue;
         }
-        {
-            let scratch = pass.grid_mut().depth_stack.cur().axis_mut(axis);
-            for ((t, extent), &size) in grid_axis
-                .tracks
-                .iter()
-                .zip(scratch.extents.iter_mut())
-                .zip(&scratch.sizes)
-            {
-                if t.sizing().fill_weight().is_none() {
-                    *extent = size;
-                }
-            }
-        }
+        pass.grid_mut()
+            .track_state
+            .hold_resolved_extents(grid_axis.id, grid_axis.tracks);
         for c in tree.active_children(node) {
             let span = grid.cell(tree, c).track_span(axis);
             if span.len < 2 || !grid::crosses_fill(grid_axis.tracks, span) {
                 continue;
             }
             let need = axis.main(pass.desired(c));
-            let scratch = pass.grid_mut().depth_stack.cur().axis_mut(axis);
-            grid::distribute_span(
-                grid_axis.tracks,
-                span,
-                grid_axis.gap,
-                need,
-                &mut scratch.extents,
-            );
+            let extents = pass.grid_mut().track_state.extents_mut(grid_axis.id);
+            grid::distribute_span(grid_axis.tracks, span, grid_axis.gap, need, extents);
         }
     }
 
@@ -236,23 +200,24 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // as a stack reports what its Fill children measured to. Fill still claims the leftover at
     // arrange. `AxisSlot::resolve` floors this at the Grid intrinsic. The floor sums each track
     // at its least: a Fixed track's size, a Hug track's content floor.
-    let GridCtx {
-        depth_stack,
-        track_state,
-        ..
-    } = pass.grid_mut();
-    let s = depth_stack.cur();
+    let tracks = &pass.grid_mut().track_state;
     let col_gaps = cols.gap.gaps_between(col_count);
     let row_gaps = rows.gap.gaps_between(row_count);
     let grid_sizing_h = tree.records.layout()[node.idx()].size.h();
-    let fill_w = FillShare::of(grid_sizing_w, inner_avail.w, cols.tracks, &s.col);
-    let fill_h = FillShare::of(grid_sizing_h, inner_avail.h, rows.tracks, &s.row);
-    let total_w = grid::sum_non_fill(cols.tracks, &s.col.sizes) + fill_w.extent + col_gaps;
-    let total_h = grid::sum_non_fill(rows.tracks, &s.row.sizes) + fill_h.extent + row_gaps;
-    let floor_w =
-        floor_non_fill(cols.tracks, track_state.ranges(cols.id).min, &s.col.sizes) + col_gaps;
-    let floor_h =
-        floor_non_fill(rows.tracks, track_state.ranges(rows.id).min, &s.row.sizes) + row_gaps;
+    let fill_w = FillShare::of(grid_sizing_w, inner_avail.w, cols.tracks, tracks, cols.id);
+    let fill_h = FillShare::of(grid_sizing_h, inner_avail.h, rows.tracks, tracks, rows.id);
+    let total_w = grid::sum_non_fill(cols.tracks, tracks.sizes(cols.id)) + fill_w.extent + col_gaps;
+    let total_h = grid::sum_non_fill(rows.tracks, tracks.sizes(rows.id)) + fill_h.extent + row_gaps;
+    let floor_w = floor_non_fill(
+        cols.tracks,
+        tracks.content_min(cols.id),
+        tracks.sizes(cols.id),
+    ) + col_gaps;
+    let floor_h = floor_non_fill(
+        rows.tracks,
+        tracks.content_min(rows.id),
+        tracks.sizes(rows.id),
+    ) + row_gaps;
     // Cells are offered their column widths and, down, Fixed rows or nothing, so the grid holds
     // while its tracks do ([`FillShare::stable_from`]); Fill sizes reach no cell, except Fill
     // columns a non-Hug grid commits.
@@ -265,7 +230,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         },
         fill_h.stable_from,
     );
-    Measured {
+    ContentMeasure {
         size: Size::new(total_w, total_h),
         floor: Size::new(floor_w, floor_h),
         stable_from,
@@ -281,27 +246,35 @@ struct FillShare {
     /// the tracks resolved to at it, as arrange gives them no more there: a min-clamped track
     /// would raise the shared fraction past the offer.
     extent: f32,
-    /// The axis's [`Measured::stable_from`], the tracks' own and the cap's.
+    /// The axis's [`ContentMeasure::stable_from`], the tracks' own and the cap's.
     stable_from: f32,
 }
 
 impl FillShare {
-    /// The share of `tracks`, resolved into `axis`, on a grid sized `sizing` offered `avail`.
-    fn of(sizing: Sizing, avail: f32, tracks: &[Track], axis: &AxisScratch) -> Self {
-        let held = grid::fill_extent(tracks, &axis.extents);
+    /// The share of `tracks`, resolved as axis `id` of `store`, on a grid sized `sizing` offered
+    /// `avail`.
+    fn of(
+        sizing: Sizing,
+        avail: f32,
+        tracks: &[Track],
+        store: &GridTrackStore,
+        id: GridAxisId,
+    ) -> Self {
+        let held = grid::fill_extent(tracks, store.extents(id));
+        let stable_from = store.stable_from(id);
         if sizing.is_hug() || !avail.is_finite() || !grid::has_fill(tracks) {
             return Self {
                 extent: held,
-                stable_from: axis.stable_from,
+                stable_from,
             };
         }
-        let resolved = grid::sum_fill(tracks, &axis.sizes);
+        let resolved = grid::sum_fill(tracks, store.sizes(id));
         if held <= resolved {
             // A larger offer gives the Fill tracks no less, so the hold stands from this offer
             // up; a smaller one may cap it.
             Self {
                 extent: held,
-                stable_from: axis.stable_from.max(avail),
+                stable_from: stable_from.max(avail),
             }
         } else {
             Self {

@@ -1,5 +1,5 @@
 //! [`LayoutRig`]: layout alone. Nodes go into a forest with no widget, so no widget's default
-//! moves an expectation, and the engine lays them out on the mono shaper. A bare
+//! moves an expectation, and the engine lays them out on the mono shaper or the cosmic one. A bare
 //! [`Widget`](crate::widget::Widget) builds a node, as it carries no widget's defaults: its
 //! `Configure` setters are the whole node.
 
@@ -47,8 +47,18 @@ pub(crate) struct NodeRecorder<'a> {
 }
 
 impl LayoutRig {
+    /// A rig on the mono shaper, whose metrics a test computes by hand.
     pub(crate) fn new() -> Self {
-        let shaper = TextShaper::test_mono();
+        Self::over(TextShaper::test_mono())
+    }
+
+    /// A rig on the cosmic shaper with the bundled faces, the one that ships, for what the mono
+    /// model does not hold: a truncation's ellipsis and cluster cut.
+    pub(crate) fn cosmic() -> Self {
+        Self::over(TextShaper::new())
+    }
+
+    fn over(shaper: TextShaper) -> Self {
         Self {
             forest: Forest::new(shaper.family_keys()),
             engine: LayoutEngine::new(shaper),
@@ -99,7 +109,7 @@ impl LayoutRig {
 
     /// The size the node recorded under `id` measured to in the last run.
     pub(crate) fn desired(&self, id: &str) -> Size {
-        self.engine.cache.captured_desired()[self.endpoint(id).node.idx()]
+        self.engine.captured_desired()[self.endpoint(id).node.idx()]
     }
 
     /// The `req` content size on `axis` of the node recorded under `id`, as a parent's intrinsic

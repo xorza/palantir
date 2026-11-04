@@ -8,7 +8,9 @@
 //! in Stack: each line's cross size is the max child cross, and Fill children
 //! grow to it without shrinking below their measured content.
 
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::layout::offer;
+use crate::scene::tree::Tree;
 
 use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::drivers::LayoutDriver;
@@ -17,7 +19,7 @@ use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::justify_offsets::{JustifyOffsets, JustifyRow};
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::{Axis, AxisExtent};
@@ -129,14 +131,17 @@ impl WrapStack {
 }
 
 impl LayoutDriver for WrapStack {
-    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
+    /// Arranges from its slot and its own subtree alone.
+    fn outside_input(self, _tree: &Tree, _layout: &PlaneLayout) -> Option<Size> {
+        None
+    }
 
     /// Pack children into lines; return (max-line-main, sum line-cross plus
     /// line-gaps). Arrange repeats the packing on the same `desired` values,
     /// so both passes agree.
-    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
+    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
         let Self { node, axis } = self;
-        let tree = pass.tree;
+        let tree = pass.tree();
         let panel = tree.panel(node);
         let line_gap = panel.gaps.line_gap();
         let cross_avail = axis.cross(inner_avail);
@@ -177,7 +182,7 @@ impl LayoutDriver for WrapStack {
         // placed smaller than it measured would break elsewhere: it gives way
         // to nothing on either axis.
         let size = axis.compose_size(max_line_main, total_cross);
-        Measured {
+        ContentMeasure {
             size,
             floor: size,
             stable_from: axis.compose_size(stable_main, stable_cross),
@@ -186,7 +191,7 @@ impl LayoutDriver for WrapStack {
 
     fn arrange(self, pass: &mut LayoutPass<'_>, inner: Size) {
         let Self { node, axis } = self;
-        let tree = pass.tree;
+        let tree = pass.tree();
         let panel = tree.panel(node);
         let gap = panel.gaps.gap();
         let line_gap = panel.gaps.line_gap();

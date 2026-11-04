@@ -1,31 +1,28 @@
 //! Every piece of grid-layout scratch the engine holds, in one bag.
 
-use crate::layout::drivers::grid::grid_depth_stack::GridDepthStack;
+use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 
-/// All grid-layout scratch held by `LayoutEngine`. `depth_stack` and `track_state` are separate fields so callers can disjoint-borrow them; `track_aggregator` is a bump stack for `Grid::intrinsic`'s per-track aggregator, each call extending by `track_count` and truncating back to its base.
+/// All grid-layout scratch held by `LayoutEngine`: each grid's tracks, and the per-track
+/// aggregator `Grid::intrinsic` extends by its tracks and truncates back on exit, which a nested
+/// grid's query extends past.
 #[derive(Debug, Default)]
 pub(crate) struct GridCtx {
-    pub(crate) depth_stack: GridDepthStack,
     pub(crate) track_state: GridTrackStore,
-    pub(crate) track_aggregator: Vec<f32>,
+    pub(crate) track_aggregator: DepthScratch<f32>,
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::internals::scratch_report;
     use crate::layout::drivers::grid::grid_ctx::GridCtx;
 
     impl GridCtx {
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
-                depth_stack,
                 track_state,
                 track_aggregator,
             } = self;
-            depth_stack.scratch_bytes()
-                + track_state.scratch_bytes()
-                + scratch_report::vec_bytes(track_aggregator)
+            track_state.scratch_bytes() + track_aggregator.scratch_bytes()
         }
     }
 }

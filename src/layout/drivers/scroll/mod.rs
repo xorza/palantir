@@ -7,10 +7,12 @@ use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::measured::Measured;
+use crate::layout::measured::ContentMeasure;
 use crate::layout::pass::LayoutPass;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::scroll_axes::{ScrollAxes, ScrollChildLayout};
+use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
 #[derive(Clone, Copy, Debug)]
@@ -27,10 +29,13 @@ impl Scroll {
 }
 
 impl LayoutDriver for Scroll {
-    const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
+    /// Arranges from its slot and its own subtree alone.
+    fn outside_input(self, _tree: &Tree, _layout: &PlaneLayout) -> Option<Size> {
+        None
+    }
 
     /// Measures children with unbounded space on panned axes, records their full content extent, and returns the viewport's desired size.
-    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
+    fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
         let Self { node, axes } = self;
         // A panned axis measures unbounded: what it scrolls over isn't limited by what it shows.
         let child_avail = Size::INF.select(axes.pan_mask(), inner_avail);
@@ -42,7 +47,7 @@ impl LayoutDriver for Scroll {
         pass.set_scroll_content(node, raw.size);
 
         // A panned axis gives way whatever it shows, so it floors at zero (peer of its zero min-content).
-        Measured {
+        ContentMeasure {
             size: raw.size.select(axes.contributes_mask(), Size::ZERO),
             floor: Size::ZERO.select(axes.pan_mask(), raw.floor),
             stable_from: Size::ZERO.select(axes.pan_mask(), raw.stable_from),

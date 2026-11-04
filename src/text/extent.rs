@@ -25,12 +25,20 @@ pub(crate) fn block_height(line_height: f32, line_count: usize) -> f32 {
     (line_count as f32 * line_height).ceil()
 }
 
-impl TextExtent {
-    /// A block whose ink stays inside it.
-    pub(crate) const fn inked_within(size: Size) -> Self {
-        Self {
-            size,
-            ink: Spacing::ZERO,
+/// The mono model's extents, and the probes the tests read, which shape no glyph ink.
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::primitives::geometry::size::Size;
+    use crate::primitives::geometry::spacing::Spacing;
+    use crate::text::extent::TextExtent;
+
+    impl TextExtent {
+        /// A block whose ink stays inside it.
+        pub(crate) const fn inked_within(size: Size) -> Self {
+            Self {
+                size,
+                ink: Spacing::ZERO,
+            }
         }
     }
 }

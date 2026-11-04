@@ -28,8 +28,8 @@ in step.
 - **The frame descriptor:** `FrameSpec`, `TargetKey`, `HostDisplay`, `Display` and
   `FrameStamp`. `pixel_snap` passes through five hops (HS-07) ✔.
 - **Whether the harness paints:** `depth`, `target` and `core.device` (HS-08) ✔.
-- **Layout columns:** declared four times (LT-03). Grid tracks are in a per-grid store and in a
-  per-depth stack (LT-02).
+- **Layout columns:** declared four times (LT-03) ✔. Grid tracks are in a per-grid store and in a
+  per-depth stack (LT-02) ✔.
 - **Node fields:** written in `Configure`, `Configurator`, `ThemeDefaults`, `authored_*`, and
   `Node::set`/`fill`. About 100 methods (UI-07).
 - **Other copies:** `Hsv` and `Okhsv` (PR-05). `OffscreenHost` and `Harness` (HS-05) ✔.
@@ -64,7 +64,7 @@ Each resource has its own copy of a shared rule:
   gradient MRU.
 - **Upload:** two loops that stage rows (GB-22).
 - **Spatial index:** four indexing policies over `TileIndex` (RD-02).
-- **Depth scratch:** three idioms (LT-08).
+- **Depth scratch:** three idioms (LT-08) ✔.
 
 ### R4. Bools and Options where an enum would hold the invariant
 
@@ -239,25 +239,11 @@ The non-API part of Batch 11 is done. What is left:
   - Getters on `Display` (HS-26).
   - `Option<Duration>` in `gpu_pass_stats`, and the `compute_shader_invocations` field (HS-25).
 
-### Batch 12. Layout internals (`layout`, `text`)
+### Batch 12b. Text identity (`text`) **API**
 
-Root causes R1 and R3. Internal only.
+The rest of Batch 12 is done.
 
-- Measure and arrange columns become one SoA type each. The scratch, the output and the
-  snapshot use it (LT-03).
-- All grid track arrays go in the per-grid store. Delete `GridDepthStack` (LT-02).
-  `track_aggregator` becomes a `DepthScratch` (LT-08).
-- Text caches: give the reuse row its true role and refresh it once a frame (LT-06).
-  `CacheEntry` holds a `ShapedBuffer` (LT-07). Container spans replay on a copy hit (LT-12).
-- Smaller items:
-  - Drop `ARRANGE_DEPENDS_ONLY_ON_SLOT` and `ReplayOp` (LT-11).
-  - Keep `PlaneInput` whole (LT-16).
-  - Make the engine fields private (LT-17).
-  - Use a newtype for each `Measured` space (LT-18).
-  - Use a flag set for `single_req` (LT-19).
-- Anchored popups measure against the side they pick (LT-13).
-- Text identity becomes an edit generation, not a hash (LT-15, **API**).
-- Test truncation in layout against cosmic, not only the mono metric (LT-20).
+- Text identity becomes an edit generation, not a hash (LT-15).
 
 ### Batch 13. Renderer and shape IR (`renderer`, `shape`)
 
@@ -316,7 +302,7 @@ Prefixes:
 | 9b | GA-16, GA-17 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
-| 12 | LT-02, LT-03, LT-06, LT-07, LT-08, LT-11 to LT-13, LT-15 to LT-20 |
+| 12b | LT-15 |
 | 13 | RD-01, RD-02, RD-05, RD-07, RD-10 to RD-18, RD-21, SC-06 to SC-10, SC-12 to SC-17 |
 | 14 | PR-05 to PR-07, PR-09 to PR-23, GA-14, UI-25 |
 
@@ -549,67 +535,11 @@ Logical window sizes are integer `UVec2` (`WindowConfig::inner_size`, `WindowGeo
 **HS-26 · api · `src/display/mod.rs:36-56, 123-128`**
 `Display` is handed out read-only, yet has all-public mutable fields and a public `raster_eq`, which is the damage engine's comparison. *Direction:* getters, `raster_eq` crate-private. *Conf:* med. *API:* yes. *Root cause:* internal detail exported.
 
-### Batch 12
-
-**LT-02 · complexity · `drivers/grid/axis_scratch.rs:19-36`, `grid_track_store.rs:43-55, 164-168`, `grid_depth_stack.rs`, `axis_scratch.rs:114-128`** — conf: med-high · public API: no · root cause: per-depth scratch kept after a per-grid store was added
-- **What's wrong:** `GridTrackStore` already gives every grid its own per-frame span (`max_pool`, `min_pool`, `sizes_pool`, `totals_pool`). Alongside it, `GridDepthStack` keeps a `Vec<GridScratch>` per nesting depth holding `sizes`, `offsets`, `extents` and `resolved` for the same tracks. Measure copies `sizes` into the store (`record_resolution`) and arrange copies them back (`resolve_or_reuse`), with `enter`/`exit` pairing and depth asserts.
-- **Direction:** Keep every per-track array in the per-grid store, which nested grids cannot overwrite. The transient `hugs`/`flexible` lists become one shared scratch, and `GridDepthStack`, `GridScratch`, the copies and the pairing go away.
-
-**LT-03 · complexity · `layout_scratch.rs:50-72`, `cache/node_arenas.rs:505-518`, `cache/mod.rs:45-59, 71-83`, `engine.rs:173-186`, `layout_scratch.rs:114-177`** — conf: med · public API: no · root cause: the snapshot is a copy of columns with no shared column type
-- **What's wrong:** The per-node column set (desired, floor, stable_from, local, intrinsics, available, rect, scroll_content, text_spans) is declared four times: `LayoutScratch` and `PlaneLayout` fields, `NodeArenas`, `CaptureTreeInput` and `CachedSubtree`. It is destructured again in `clear`, `capture_tree` and `restore_after_cache_hit`. The doc comment itself lists the three places a new column must be added.
-- **Direction:** One or two SoA column types (measure columns, arrange columns), each defined once, with `extend_from` and a range view. These would serve the scratch, the output and the snapshot, and `CaptureTreeInput`/`CachedSubtree` become borrows of them.
-
-**LT-06 · complexity / perf · `text/system.rs:110-117, 336-362`, `intrinsic/intrinsic_pass.rs:401`, `layout/pass.rs:448`, `text/key.rs:42-44`** — conf: med · public API: no · root cause: overlapping text caches with misstated roles
-- **What's wrong:**
-  - The module doc says reuse rows are "for retention, not speed".
-  - But `refresh` serves the stored `root` and `wrap.extent` without touching the shaper. That makes the row a measurement cache that outlives buffer eviction, which is why it must keep its own `text: String` copy.
-  - The same extent then lives in three places: the row, `CacheEntry.extent`, and `MeasureSnapshot.text_shapes`.
-  - Each measured leaf calls `refresh` twice per frame (intrinsic `root()`, then `measure()`): two hash probes and two O(len) byte compares. `key.rs` budgets one.
-- **Direction:** State the row's real role. Then either thread the refreshed row from the intrinsic query into measure, or narrow the row to `{key, bound}`.
-
-**LT-07 · complexity · `text/cosmic/shaped_buffer_cache.rs:159-165, 277-301` vs `cache_entry.rs:11-36`; `cosmic/geometry.rs:14-24, 70-77`** — conf: high · public API: no · root cause: value types copying each other's fields
-- **What's wrong:** `ShapedBuffer` repeats five of `CacheEntry`'s fields field for field, and `insert` unpacks one into the other. Likewise `ShapedGeometry.size` duplicates `TextExtent.size`, which only a `debug_assert_eq` holds equal.
-- **Direction:** `CacheEntry { shaped: ShapedBuffer, dies_at, ticket_seq }`, and have `GlyphInk::extent` return only the ink.
-
-**LT-08 · complexity · `drivers/grid/mod.rs:111-115, 183`, `grid_ctx.rs:299-305`, `layout/depth_scratch.rs`** — conf: high · public API: no · root cause: no single depth-scratch idiom
-- **What's wrong:** There are three ways to keep depth-shared scratch: `DepthScratch<T>` (stack, wrapstack), `GridDepthStack` (a Vec of per-depth structs), and `track_aggregator`, a hand-written mark/resize/truncate bump stack with the same semantics as `DepthScratch`.
-- **Direction:** Make `track_aggregator` a `DepthScratch<f32>`; LT-02 removes the second idiom.
-
-**LT-11 · complexity · `drivers/mod.rs:40-76, 106-147`, `layout/pass.rs:300`** — conf: med · public API: no · root cause: one fact declared twice
-- **What's wrong:** "This driver reads outside its subtree" is declared twice: `ARRANGE_DEPENDS_ONLY_ON_SLOT` (read through `ReplayOp`) and `outside_input() -> Option<Size>`. A `debug_assert` holds them equal.
-- **Direction:** Drop the const and `ReplayOp`. `arrange` already holds the `PlaneLayout`, so it can ask `OutsideInputOp{..}.dispatch(node, mode).is_none()`.
-
-**LT-12 · perf · `layout/engine.rs:171-200`** — conf: med · public API: no · root cause: container text sits outside the snapshot
-- **What's wrong:** `capture_tree` runs before the container-text pass, so container runs are never in the snapshot. Every layout run therefore re-measures every container run (a row lookup plus an O(len) compare), even inside subtrees that hit the cache and were replayed at the same inner width.
-- **Direction:** For a node that was copy-replayed at the same width, restore its container spans from the previous frame.
-
-**LT-13 · api / layout · `primitives/layout/placement.rs:48-53`, `anchor/mod.rs:181-194`** — conf: med · public API: no (behavior only) · root cause: measure is not bound to the chosen side
-- **What's wrong:** An anchored root is measured against the whole surface and then flipped or shifted. A body larger than the room on either side is clamped on its preferred side over its own anchor, even when the opposite side has more room.
-- **Direction:** Do as Floating UI's flip + size do: pick the side with the most room and bound the measure by that room, so a long menu scrolls instead of covering its trigger.
+### Batch 12b
 
 **LT-15 · api · `text/probe/mod.rs:73-91`** — conf: med · public API: yes · root cause: identity approximated by a hash
 - **What's wrong:** `TextProbe::text_hash` and `hash_of` publish a 64-bit hash as "same string as last frame?". `TextEdit` keys its undo stack on it and hashes the whole buffer every frame. `key.rs` itself rejects hash-only identity ("No layer serves a collision").
 - **Direction:** Give the app an exact identity (an edit counter or generation on the buffer) and retire the hash surface. This is an API change and needs your go-ahead.
-
-**LT-16 · complexity · `layout/plane_input.rs`, `pass.rs:47-94, 183-191`, `intrinsic/intrinsic_pass.rs:214-227`** — conf: high · public API: no · root cause: a thin wrapper
-- **What's wrong:** `PlaneInput` is built, destructured at once into `tree`/`interned_text` fields on both passes, and rebuilt in `LayoutPass::intrinsic_pass`.
-- **Direction:** Have both passes hold `input: PlaneInput<'a>`.
-
-**LT-17 · layering · `layout/engine.rs:35-38`, `intrinsic_pass.rs:237-239, 324-329, 401`, `pass.rs:1-3`** — conf: med · public API: no · root cause: the stated encapsulation isn't enforced
-- **What's wrong:** `pass.rs` says drivers reach scratch only through accessors "so one driver can't grow a dependency on another's". But `LayoutEngine.scratch`, `.text` and `.cache` are `pub(crate)`, `IntrinsicPass` reaches `engine.scratch.grid.track_aggregator` directly, and `grid_mut` hands out the whole `GridCtx`.
-- **Direction:** Make the fields private to `layout`, or drop the claim.
-
-**LT-18 · idiom · `layout/measured.rs:7-12`** — conf: med · public API: no · root cause: two coordinate spaces in one type
-- **What's wrong:** `Measured` means a driver's pre-padding inner answer in one place and a node's margin-inclusive outer answer in another; only prose tells them apart. The cache returns the outer one as `hit.root`.
-- **Direction:** Use a newtype per space so mixing them is a type error.
-
-**LT-19 · idiom · `intrinsic/intrinsic_query.rs:127-184`** — conf: low · public API: no · root cause: a set encoded as an Option
-- **What's wrong:** `single_req: Option<LenReq>`, where `None` means both, encodes a two-member set; `retain` and `includes` decode it.
-- **Direction:** A two-flag `flag_set!` (MIN|MAX) would read directly.
-
-**LT-20 · test · `layout/tests/*`, `text/mono.rs:52-85`** — conf: med · public API: no · root cause: the model and production differ
-- **What's wrong:** Tests are exact-valued and good. But layout tests run on the mono metric, whose truncation (`(first * glyph_w).min(max)`) skips the ellipsis reservation and cluster cut that cosmic applies. Layout-to-truncation interplay is therefore only checked against a model.
-- **Missing coverage:** a Fill grid inside a Hug parent (LT-01) and anchored overflow (LT-13).
 
 ### Batch 13
 
