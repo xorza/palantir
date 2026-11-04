@@ -120,7 +120,7 @@ fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
 /// unbuilt and the acquire refuses, where wgpu's acquire from that surface panics ("Error in
 /// Surface::get_current_texture_view: Validation Error"). On the device before the loss, another
 /// window's first configure builds. Opens native windows, so it runs by hand:
-/// `cargo drive test a_surface_configured_on_a_lost_device --ignored`.
+/// `cargo gate-test a_surface_configured_on_a_lost_device -- --ignored`.
 #[test]
 #[ignore = "opens native windows, which a headless machine has none of"]
 fn a_surface_configured_on_a_lost_device_refuses_to_acquire() {

@@ -230,8 +230,12 @@ fn locate_at_answers_as_locate_at_every_position() {
     });
     let cascade = h.ui().cascade();
     let found = |loc: Option<WidgetLocation>| loc.map(|loc| (loc.entry_idx, loc.endpoint));
-    let count = cascade.resolved.len();
-    assert!(count >= 4, "the stack and its three panels resolved");
+    // The viewport, the stack, then the three panels, each at the node it opened.
+    let ids: Vec<WidgetId> = cascade.resolved.iter().map(|row| row.id).collect();
+    assert_eq!(ids.len(), 5);
+    assert_eq!(ids[0], WidgetId::VIEWPORT);
+    assert_eq!(ids[2..], ["a", "b", "c"].map(WidgetId::from_hash));
+    let count = ids.len();
     for row in &cascade.resolved {
         let want = found(cascade.locate(row.id));
         assert!(want.is_some(), "{:?} recorded", row.id);

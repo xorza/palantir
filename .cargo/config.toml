@@ -1,11 +1,20 @@
-# The f16 <-> f32 conversions behind colour, corner radii, spacing and shadow
-# geometry inline into their callers only when F16C is static; x86-64-v3
-# carries F16C, plus AVX2 and FMA. The floor it sets is Haswell (2013), which
-# is this repository's call and not the crate's — a consumer that needs the
-# baseline build gets the runtime fallback either way.
-#
-# The key is arch-gated, so an aarch64 build gets no flag rather than an
-# ignored one. RUSTFLAGS in the environment replaces this whole section, so CI
-# (which sets `-D warnings`) builds baseline.
+# x86-64-v3 makes F16C static, so the f16 conversions inline. An env `RUSTFLAGS` replaces this
+# section, so CI, which sets `-D warnings`, builds the baseline.
 [target.'cfg(target_arch = "x86_64")']
 rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+[alias]
+gate-lint = "clippy --workspace --all-targets --all-features --keep-going -- -D warnings"
+gate-lint-nowinit = "clippy --workspace --all-targets --no-default-features --keep-going -- -D warnings"
+gate-ship = "clippy --workspace --keep-going -- -D warnings"
+# `alloc` alone of the tests: `visual`'s goldens are local to an adapter.
+gate-test = "test --workspace --lib --test alloc --example showcase --example reel --no-fail-fast --features golden,gpu-debug-markers"
+gate-test-nowinit = "test --workspace --lib --no-default-features --no-fail-fast"
+gate-doc = "doc --workspace --no-deps --document-private-items --all-features"
+gate-doctest = "test --workspace --doc --no-fail-fast --features golden,gpu-debug-markers"
+visual = "test --workspace --features golden,gpu-debug-markers --test visual"
+shot = "run --example showcase --features golden -- --shot"
+reel = "run --example reel --profile release-dev --"
+# `--bench *`, not `--benches`, which also selects the library.
+bench-all = "bench --workspace --bench *"
+bench-once = "test --workspace --bench *"

@@ -253,7 +253,9 @@ Facts and sources: `.notes/research/2026-11-01-reel.md`.
 ## Public API design
 
 An exported item that breaks a rule below is a bug. `cargo drive surface` writes the surface to
-`.notes/API_SURFACE.md`; regenerate it with each change, as CI compares it with the tree.
+`.notes/API_SURFACE.md`; regenerate it with each change, as CI compares it with the tree. The
+driver serves that command alone; the drive table's `version` names it
+(`cargo install --locked --git https://github.com/xorza/drive`).
 
 ### Kinds of type
 
@@ -273,8 +275,6 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
   ([error-handling project group](https://blog.rust-lang.org/inside-rust/2021/07/01/What-the-error-handling-project-group-is-working-towards.html)).
 
 ### Names
-
-`cargo drive vocabulary` lists every declared name and word for a review.
 
 - **Spelling.** American, whole words. Abbreviations: the fixed short forms, and `id`, `x` `y`
   `w` `h`, `min` `max`, `dt`, `bbox`, `eps`, `inf`, `rgb` `rgba` `srgb` `hsv` `okhsv` `oklab`
@@ -430,38 +430,30 @@ Every numeric parameter's doc names its kind, and every setter that can panic sa
 
 ## Verification
 
-`cargo drive` runs every check, from the root; the drive table's `version` names the driver
-(`cargo install --locked --git https://github.com/xorza/drive`). Never run cargo by hand:
-another command shape builds another copy of the crates.
+The gate is one chain of plain cargo commands, run from the root. Each is an alias in
+`.cargo/config.toml`, and the chain stops at the first that fails:
 
 ```
-cargo drive check          # fmt, then clippy over every target and feature
-cargo drive test [args]    # the tests with default features; a test name picks some
-cargo drive bench [args]   # the benches; a filter, or --test to run each case once
-cargo drive gate           # every lint and test lane and the docs; CI runs gate --ci on each OS
+cargo fmt --all && cargo gate-lint && cargo gate-lint-nowinit && cargo gate-ship && cargo gate-test && cargo gate-test-nowinit && RUSTDOCFLAGS="-D warnings" cargo gate-doc && cargo gate-doctest
 ```
 
-Pick each by what it tells and what it costs, as dev time counts:
-
-- **`test` with a filter** compiles the lib and its tests and runs the named ones: the cheapest
-  way to see an edit work, and a compile check of its own.
-- **`check`** adds clippy over every target and feature, a second compile: worth it once a piece
-  of work stands, not after each edit.
-- **`gate`** runs every lane, minutes long. **Run it before a turn that changed code ends.**
-
-A run ends on one verdict line, so `| tail -1` is enough; on a failure, read the file it names
-rather than run it again.
+Each command reports every error it finds, through `--keep-going` and `--no-fail-fast`. **Run the
+gate before a turn that changed code ends, and before each push**: master takes direct pushes,
+and CI runs the same lanes on three OSes. A filtered `cargo gate-test <name>` is the cheapest way
+to see an edit work: it builds the gate's own test shape, so the gate finds that build fresh.
+Run the aliases rather than cargo with flags of your own: another flag set builds another copy
+of the crates.
 
 - **Every test run needs a GPU adapter**; a headless machine needs a software Vulkan driver
   (Mesa lavapipe).
 - **`--all-features` is clippy's alone**: under `profile-with-tracy` a test binary opens the
   Tracy socket.
-- **A change to bench code** adds `cargo drive bench --test`. Before measuring or `perf`, read
+- **A change to bench code** adds `cargo bench-once`. Before measuring or `perf`, read
   `benches/AGENTS.md`.
-- **A rendering change** runs the golden suite, `cargo drive run visual [filter]`. Goldens are
+- **A rendering change** runs the golden suite, `cargo visual [filter]`. Goldens are
   local to an adapter: run the unchanged tree first and rewrite stale ones with
   `UPDATE_GOLDEN=1`. A failure leaves the images in `tests/visual/output/<name>/`.
-- **A change a user can see** ends with `cargo drive run shot SCRIPT`
+- **A change a user can see** ends with `cargo shot SCRIPT`
   (`examples/showcase/shot/script.rs`); `--against DIR` marks what moved since an earlier run.
   Goldens are a test, never a viewer.
 

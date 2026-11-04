@@ -31,12 +31,12 @@ one id depth (`CaseGroup` holds it), so a filter on a level selects alike.
 ## Running
 
 ```sh
-cargo drive bench --list
-cargo drive bench '^atomic/hit_test/'
-cargo drive bench '/cpu/'                 # every case that opens no device
-cargo drive bench --exact integration/frame/gpu/cached
-cargo drive bench '^integration/frame/' --quick
-cargo drive bench --test                  # each case once, built under the test profile
+cargo bench-all -- --list
+cargo bench-all -- '^atomic/hit_test/'
+cargo bench-all -- '/cpu/'                 # every case that opens no device
+cargo bench-all -- --exact integration/frame/gpu/cached
+cargo bench-all -- '^integration/frame/' --quick
+cargo bench-once                           # each case once, built under the test profile
 ```
 
 - An id is `<kind>/<group>/<backend>/<rest…>`, and criterion's filter is a

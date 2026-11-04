@@ -58,19 +58,25 @@ jobs:
           # No `key`: the action already keys on job, OS and architecture, and
           # nothing else tells the matrix entries apart.
           save-if: ${{ github.ref == 'refs/heads/master' }}
-      # The driver's master, which the cache's `~/.cargo/bin` keeps until it moves. A master the
-      # drive table's `version` does not take fails the gate, and names the version it is.
-      - run: cargo install --locked --git https://github.com/xorza/drive
-      # `--ci` runs past failures: fmt --check, every target under every lint
-      # set, the build that ships, rustdoc, the test lanes and the doc tests,
-      # as `Cargo.toml`'s `[workspace.metadata.drive]` states them, with
-      # `docs = true`.
-      # Clippy never runs the golden suite, so its absent baselines cost
-      # nothing, and `profile-with-tracy` starts no profiler. The test lanes are `alloc` beside the library, and
-      # the library without `winit`, a supported configuration in which the
-      # crate embeds into a host's own event loop; `doc = include_str!` makes
-      # the README a doc test.
-      - run: cargo drive gate --ci
+      # The gate of AGENTS.md, one step per command, each run past an earlier failure, so one run
+      # reports every lane.
+      - run: cargo fmt --all --check
+      - if: ${{ !cancelled() }}
+        run: cargo --locked gate-lint
+      - if: ${{ !cancelled() }}
+        run: cargo --locked gate-lint-nowinit
+      - if: ${{ !cancelled() }}
+        run: cargo --locked gate-ship
+      - if: ${{ !cancelled() }}
+        run: cargo --locked gate-test
+      - if: ${{ !cancelled() }}
+        run: cargo --locked gate-test-nowinit
+      - if: ${{ !cancelled() }}
+        run: cargo --locked gate-doc
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - if: ${{ !cancelled() }}
+        run: cargo --locked gate-doctest
 
   api-surface:
     name: public API surface

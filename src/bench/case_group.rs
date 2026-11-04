@@ -35,7 +35,7 @@ impl Drop for BetweenCases {
 
 /// A group of cases whose ids, `<backend>/<rest…>` past the group's own name, all have the depth
 /// of the first: a filter such as `'^atomic/composer/cpu/[^/]+/256$'` then means the same thing
-/// for every case. A case of another depth panics where it registers, so `cargo drive bench
+/// for every case. A case of another depth panics where it registers, so `cargo bench-all --
 /// --list` finds it.
 pub struct CaseGroup<'a> {
     group: BenchmarkGroup<'a, WallTime>,
