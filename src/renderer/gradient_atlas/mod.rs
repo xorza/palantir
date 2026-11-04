@@ -110,7 +110,7 @@ pub(crate) struct CpuGradientAtlas {
 }
 
 /// Freshly baked rows for GPU upload, as sorted runs: one copy each.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct FlushedRows<'a> {
     pub(crate) runs: &'a [Range<u32>],
     rows: &'a [LutRowTexels],
@@ -120,16 +120,10 @@ pub(crate) struct FlushedRows<'a> {
     pub(crate) total_rows: u32,
 }
 
-impl FlushedRows<'_> {
+impl<'a> FlushedRows<'a> {
     /// The texels of `run`, one of [`Self::runs`], as bytes.
-    pub(crate) fn bytes(&self, run: Range<u32>) -> &[u8] {
+    pub(crate) fn bytes(&self, run: Range<u32>) -> &'a [u8] {
         bytemuck::cast_slice(&self.rows[run.start as usize..run.end as usize])
-    }
-
-    /// Every run's bytes together.
-    pub(crate) fn len_bytes(&self) -> usize {
-        let rows: u32 = self.runs.iter().map(|run| run.end - run.start).sum();
-        rows as usize * size_of::<LutRowTexels>()
     }
 }
 

@@ -30,7 +30,7 @@ fn primed_side(gpu: &BenchGpu, content: ContentType, size: u32, zeros: &[u8]) ->
         initial_mask_px: size,
         initial_color_px: size,
         max_bytes: 16 << 20,
-        eager_growth_bytes: 16 << 20,
+        budget_bytes: 16 << 20,
     };
     let side = Side::new(&gpu.gpu, content, config);
     assert_eq!(

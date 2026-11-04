@@ -57,7 +57,8 @@ const ATTACHED: &str = "the host attaches a device before it draws or registers 
 
 /// The most [`WgpuImageStore::staged`] holds, a band of rows at least one high: a 64 MP
 /// translucent image staged whole would keep 256 MiB for the session, and in bands of 1 MiB it
-/// costs the same copies, one `write_texture` each.
+/// costs the same copies, one `write_texture` each. It bounds the CPU copy alone: wgpu stages each
+/// write in a buffer of its own until the submit, so the upload's staging peak is the image.
 const STAGED_BYTES: u32 = 1 << 20;
 
 /// A store with no device yet.

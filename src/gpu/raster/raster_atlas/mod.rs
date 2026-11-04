@@ -22,7 +22,7 @@ use crate::common::expiry_wheel::ExpiryWheel;
 use crate::common::span::Span;
 use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
+use crate::gpu::device::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
@@ -33,7 +33,6 @@ use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::side::Side;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
-use crate::gpu::texel;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
@@ -41,7 +40,6 @@ use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Range;
-use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 /// How one [`RasterAtlas`] differs from the other: GPU debug label and initial side sizes.
 #[derive(Clone, Copy, Debug)]
@@ -49,14 +47,14 @@ pub(super) struct RasterAtlasConfig {
     pub(super) label: &'static str,
     pub(super) initial_mask_px: u32,
     pub(super) initial_color_px: u32,
-    /// Hard ceiling on one side's backing texture. Per instance because the budget is
-    /// in bytes (a mask side gets four times a color side's edge). When it binds,
-    /// `Rasterized::AtlasFull` is returned and the entry re-encodes each frame.
+    /// The hard budget of one side's backing texture (`AtlasSpec::max_bytes`). Per instance
+    /// because the budget is in bytes (a mask side gets four times a color side's edge). When it
+    /// binds, `Rasterized::AtlasFull` is returned and the entry re-encodes each frame.
     pub(super) max_bytes: u64,
-    /// Byte budget below which [`RasterAtlas::allocate`] grows a side rather than
-    /// evicting. Evicting first would pin an atlas at its initial size however badly it
-    /// fits, and victim selection is O(live entries) per call.
-    pub(super) eager_growth_bytes: u64,
+    /// The soft budget (`AtlasSpec::budget_bytes`), below which a side grows rather than
+    /// evicting. Evicting first would pin an atlas at its initial size however badly it fits,
+    /// and victim selection is O(live entries) per call.
+    pub(super) budget_bytes: u64,
 }
 
 /// A raster ready to file: its packed extents and bearing, which side it reads from, and its rows
@@ -90,7 +88,6 @@ const UNALLOCATED_KEEP_FRAMES: u64 = 120;
 pub(super) struct RasterAtlas<K> {
     sides: [Side; 2],
     labels: AtlasLabels,
-    eager_growth_bytes: u64,
     /// Dense slot slab; `cache` maps each key to an index. Encoded-run caches record
     /// indices; safe because every recorded index carries the slot generation eviction
     /// advances before reuse.
@@ -110,15 +107,14 @@ pub(super) struct RasterAtlas<K> {
     pub(super) cur_frame: u64,
     /// Deadlines for non-drawing entries (see [`ExpiryWheel`]); `touch` files nothing.
     unallocated_expiry: ExpiryWheel<K>,
-    /// Everything group 0 needs to read [`Self::sides`]; see [`BoundSides`]. Rebinding
-    /// inside [`Self::grow`] leaves no window where binding and textures disagree.
+    /// Everything group 0 needs to read [`Self::sides`]; see [`BoundSides`]. Rebinding where a grow
+    /// commits, in [`Self::flush_pending_uploads`], leaves no window where binding and textures
+    /// disagree.
     bound: BoundSides,
     pub(super) counters: AtlasCounters,
 
-    /// Raster pixels queued by `insert`, rows as packed. No row padding here:
-    /// `copy_buffer_to_texture` wants `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT = 256`, so it
-    /// happens once into the belt's mapped staging; see
-    /// [`Self::flush_pending_uploads`].
+    /// Raster pixels queued by `insert`, rows as packed: [`GpuCtx::copy_rows`] pads them to the
+    /// copy pitch once, in the belt's mapped staging.
     pending_pixels: Vec<u8>,
     pending_copies: Vec<PendingCopy>,
     /// [`Self::evict_shelf`]'s tally, one per shelf, retained so a starving insert allocates
@@ -145,19 +141,8 @@ struct PendingCopy {
 }
 
 impl PendingCopy {
-    const fn bytes_per_row(self) -> u32 {
-        self.size.x * self.content.bytes_per_pixel()
-    }
-
-    /// Pitch `copy_buffer_to_texture` reads at; each raster's region is a whole number of these,
-    /// keeping buffer offsets 256-aligned.
-    const fn padded_bytes_per_row(self) -> u32 {
-        self.bytes_per_row()
-            .next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT)
-    }
-
     const fn pixels(self) -> Range<usize> {
-        let len = self.bytes_per_row() as usize * self.size.y as usize;
+        let len = (self.size.x * self.content.bytes_per_pixel()) as usize * self.size.y as usize;
         self.pixels_start..self.pixels_start + len
     }
 }
@@ -178,7 +163,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         Self {
             sides,
             labels,
-            eager_growth_bytes: config.eager_growth_bytes,
             slots: Vec::new(),
             slot_keys: Vec::new(),
             cache: FxHashMap::default(),
@@ -278,13 +262,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.pending_copies.push(copy);
     }
 
-    /// Drain this frame's queued rasters onto the GPU after any pending grow blit,
-    /// once per frame before any pass draws. Row padding is applied here, directly into
-    /// the belt's mapped staging, which the copies read: the bytes are staged once, and
-    /// no buffer of this atlas's own holds the peak frame's worth.
-    ///
-    /// Not `queue.write_texture`: queue writes run before every command buffer in the
-    /// submit, so they would land under the grow blit, and wgpu allocates per call.
+    /// Drain this frame's queued rasters onto the GPU after any pending grow blit, once per frame
+    /// before any pass draws, through [`GpuCtx::copy_rows`]: the bytes stage once, and no buffer
+    /// of this atlas's own holds the peak frame's worth. The encoder orders the copies after the
+    /// grow blit.
     pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         // Grow blits first: the old-to-new copy must complete before new glyph writes. The
         // binding follows the new textures here, before any pass samples them.
@@ -300,62 +281,24 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         if self.pending_copies.is_empty() {
             return;
         }
-        let bytes: u64 = self
-            .pending_copies
-            .iter()
-            .map(|c| u64::from(c.padded_bytes_per_row()) * u64::from(c.size.y))
-            .sum();
-        // Every raster covers at least one row, so only a lost device declines the staging.
-        // Rows start on 256-byte boundaries, as the copies read them.
-        let Some(Staged {
-            mut view,
-            buffer,
-            offset,
-            encoder,
-        }) = ctx.stage(bytes, u64::from(COPY_BYTES_PER_ROW_ALIGNMENT))
-        else {
-            self.pending_pixels.clear();
-            self.pending_copies.clear();
-            return;
-        };
-
-        // One walk, so a row's staging offset and its copy's read offset are one number. Pad bytes
-        // are left as the belt chunk held them.
-        debug_marker::push(encoder, &self.labels.batch_upload);
-        let mut at = 0usize;
-        for c in &self.pending_copies {
-            let row_bytes = c.bytes_per_row() as usize;
-            let padded = c.padded_bytes_per_row();
-            encoder.copy_buffer_to_texture(
-                wgpu::TexelCopyBufferInfo {
-                    buffer,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: offset + at as u64,
-                        bytes_per_row: Some(padded),
-                        rows_per_image: Some(c.size.y),
-                    },
-                },
-                wgpu::TexelCopyTextureInfo {
-                    texture: self.sides[c.content as usize].atlas.texture(),
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: c.origin.x,
-                        y: c.origin.y,
-                        z: 0,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                texel::extent(c.size),
-            );
-            for row in self.pending_pixels[c.pixels()].chunks_exact(row_bytes) {
-                view.slice(at..at + row_bytes).copy_from_slice(row);
-                at += padded as usize;
-            }
-        }
-        debug_marker::pop(encoder);
-
-        self.pending_pixels.clear();
-        self.pending_copies.clear();
+        let Self {
+            sides,
+            pending_pixels,
+            pending_copies,
+            labels,
+            ..
+        } = self;
+        let (sides, pixels) = (&*sides, &*pending_pixels);
+        debug_marker::push(ctx.encoder, &labels.batch_upload);
+        ctx.copy_rows(pending_copies.iter().map(|c| RowCopy {
+            texture: sides[c.content as usize].atlas.texture(),
+            origin: c.origin,
+            size: c.size,
+            rows: &pixels[c.pixels()],
+        }));
+        debug_marker::pop(ctx.encoder);
+        pending_pixels.clear();
+        pending_copies.clear();
     }
 
     /// Cache a non-drawing glyph: a slab index but no packer rectangle or upload.
@@ -396,39 +339,39 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// the loop would empty the atlas, every frame it stays on screen (the run is refused
     /// as a template; see `EncodedCache::settle`).
     fn allocate(&mut self, content: ContentType, size: U16Vec2) -> Option<U16Vec2> {
-        if !self.sides[content as usize].atlas.fits_budget(size) {
+        if !self.sides[content as usize].atlas.fits_max(size) {
             self.counters.oversized.bump();
             return None;
         }
         let mut evictions = 0;
         let origin = loop {
-            if let Some(origin) = self.sides[content as usize].atlas.allocate(size) {
+            let atlas = &mut self.sides[content as usize].atlas;
+            if let Some(origin) = atlas.allocate(size) {
                 break Some(origin);
             }
-            // Under budget, one grow (texture plus blit) is cheaper than an O(live glyphs)
-            // eviction scan per waiting glyph. Too wide for the current edge, growing is the
-            // only thing that works.
-            let must_grow = !self.sides[content as usize].atlas.fits_now(size);
-            let grew = (must_grow || self.eager_growth(content)) && self.grow(content);
-            if grew {
+            // Under the soft budget the side grows on its own. Too wide for the edge, an eviction
+            // frees nothing that holds it, so only a grow past the budget can.
+            if atlas.grow() {
+                self.counters.grows.bump();
                 continue;
             }
-            let evicted = self.evict_for(content, size);
+            let evicted = if atlas.fits_now(size) {
+                self.evict_for(content, size)
+            } else {
+                0
+            };
             evictions += evicted;
-            if evicted == 0 && !self.grow(content) {
-                break None;
+            if evicted == 0 {
+                if !self.sides[content as usize].atlas.grow_past_budget() {
+                    break None;
+                }
+                self.counters.grows.bump();
             }
         };
         self.counters
             .worst_insert_evictions
             .edit(|worst| *worst = (*worst).max(evictions));
         origin
-    }
-
-    fn eager_growth(&self, content: ContentType) -> bool {
-        let edge = u64::from(self.sides[content as usize].atlas.edge());
-        let bytes = edge * edge * u64::from(content.bytes_per_pixel());
-        bytes < self.eager_growth_bytes
     }
 
     /// Evict toward room for a `size` raster of `target` content, among entries not drawn this
@@ -584,16 +527,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             free.release(slots, sides, idx);
             false
         });
-    }
-
-    /// Double `content`'s side, held to its ceiling; its texture follows at the next
-    /// [`Self::flush_pending_uploads`], before any pass samples it.
-    fn grow(&mut self, content: ContentType) -> bool {
-        if !self.sides[content as usize].atlas.grow() {
-            return false;
-        }
-        self.counters.grows.bump();
-        true
     }
 }
 

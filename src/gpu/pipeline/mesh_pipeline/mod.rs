@@ -12,7 +12,9 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantRecipe};
+use crate::gpu::pipeline::instanced_pipeline::{
+    InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
+};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::gpu::pipeline::shader_body::ShaderBody;
@@ -56,7 +58,7 @@ impl MeshPipeline {
     };
 
     /// Format-independent mesh resources; pipelines come from
-    /// [`Self::build_variants`] via
+    /// [`Self::ensure`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(gpu: &Gpu) -> Self {
         Self {
@@ -78,17 +80,18 @@ impl MeshPipeline {
 
     /// Build the base and stencil-test color pipelines against `format`, the only
     /// format-dependent mesh objects. Called by `FormatPipelines` per format.
-    pub(super) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> StencilVariant {
-        self.family.build_variants(
+    pub(super) fn ensure(&self, variant: &mut StencilVariant, gpu: &Gpu, target: VariantTarget) {
+        self.family.ensure(
+            variant,
             gpu,
-            format,
+            target,
             VariantRecipe {
                 label: "palantir.mesh.pipeline",
                 stencil_label: "palantir.mesh.pipeline.stencil_test",
                 vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
-        )
+        );
     }
 
     pub(crate) fn upload(

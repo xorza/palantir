@@ -6,6 +6,7 @@
 pub(crate) mod raster_quad;
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{
     FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, U_BITS, V_SHIFT,
@@ -22,6 +23,14 @@ pub(crate) struct RasterVariants {
     pub(crate) flat: StencilVariant,
     /// [`SpunRasterQuad`]s, turned and filtered.
     pub(crate) spun: StencilVariant,
+}
+
+impl RasterVariants {
+    /// No pipeline built.
+    pub(crate) const NONE: Self = Self {
+        flat: StencilVariant::NONE,
+        spun: StencilVariant::NONE,
+    };
 }
 
 /// The pipelines and layout one raster draw binds, picked for the pass's stencil mode.
@@ -70,41 +79,42 @@ impl RasterProgram {
         &self.layout
     }
 
-    /// Builds the base and stencil-test pipelines against `format`, the only format-dependent part
-    /// here: for unturned quads, and for the [`SpunRasterQuad`]s a paint animation turns.
-    pub(crate) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> RasterVariants {
-        RasterVariants {
-            flat: StencilVariant::build(
-                gpu,
-                PipelineRecipe {
-                    vertex_buffers: &[Some(RasterQuad::LAYOUT)],
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
-                    ..PipelineRecipe::color(
-                        "palantir.raster.pipeline",
-                        &self.shader,
-                        &self.pipeline_layout,
-                        format,
-                    )
-                },
-                "palantir.raster.pipeline.stencil_test",
-            ),
-            spun: StencilVariant::build(
-                gpu,
-                PipelineRecipe {
-                    vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
-                    vertex_entry: "vs_spun",
-                    fragment_entry: "fs_spun",
-                    ..PipelineRecipe::color(
-                        "palantir.raster.pipeline.spun",
-                        &self.shader,
-                        &self.pipeline_layout,
-                        format,
-                    )
-                },
-                "palantir.raster.pipeline.spun.stencil_test",
-            ),
-        }
+    /// Build the halves of `variants` a pass of `target`'s mode binds, against its format, where
+    /// they are not built: the only format-dependent part here, for unturned quads, and for the
+    /// [`SpunRasterQuad`]s a paint animation turns.
+    pub(crate) fn ensure(&self, variants: &mut RasterVariants, gpu: &Gpu, target: VariantTarget) {
+        variants.flat.ensure(
+            gpu,
+            target.mode,
+            &PipelineRecipe {
+                vertex_buffers: &[Some(RasterQuad::LAYOUT)],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..PipelineRecipe::color(
+                    "palantir.raster.pipeline",
+                    &self.shader,
+                    &self.pipeline_layout,
+                    target.format,
+                )
+            },
+            "palantir.raster.pipeline.stencil_test",
+        );
+        variants.spun.ensure(
+            gpu,
+            target.mode,
+            &PipelineRecipe {
+                vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                vertex_entry: "vs_spun",
+                fragment_entry: "fs_spun",
+                ..PipelineRecipe::color(
+                    "palantir.raster.pipeline.spun",
+                    &self.shader,
+                    &self.pipeline_layout,
+                    target.format,
+                )
+            },
+            "palantir.raster.pipeline.spun.stencil_test",
+        );
     }
 
     /// Group 0: mask at 0, color at 1, no sampler (the shader reads each texel by index).

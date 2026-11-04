@@ -1,9 +1,10 @@
-//! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept on each window's render stream.
+//! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept on each window's render stream, which places its tables through the atlas's shared placements.
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
@@ -76,12 +77,12 @@ impl CutoutTables {
     /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
     pub(crate) fn new(gpu: &Gpu, shader: &wgpu::ShaderModule) -> Self {
         let mode = if Self::renders_atlas(gpu) {
-            CutoutMode::Bake
+            CutoutMode::Bake(SharedCutoutPlacements::default())
         } else {
             CutoutMode::Shade
         };
         let (side, usage) = match mode {
-            CutoutMode::Bake => (
+            CutoutMode::Bake(_) => (
                 CutoutPlan::ATLAS_SIZE,
                 wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             ),
@@ -180,9 +181,10 @@ impl CutoutTables {
         scope.pop().block_on().is_none()
     }
 
-    /// How this device cuts shadow corners; what every window's [`CutoutPlan`] is built with.
-    pub(crate) const fn mode(&self) -> CutoutMode {
-        self.mode
+    /// How this device cuts shadow corners, with the placements of its atlas: what every
+    /// window's [`CutoutPlan`] is built with.
+    pub(crate) fn mode(&self) -> CutoutMode {
+        self.mode.clone()
     }
 
     /// Group 1 of the shadow pipeline: the atlas.

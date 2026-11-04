@@ -50,7 +50,7 @@ impl IconBackend {
                         // tenants is coincidence, not a property.
                         max_bytes: 16 << 20,
                         // 4 MiB reaches 1024^2 on the color side, enough for a few hundred icons.
-                        eager_growth_bytes: 4 << 20,
+                        budget_bytes: 4 << 20,
                     },
                     initial_instances: 256,
                 },

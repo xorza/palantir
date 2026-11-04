@@ -89,7 +89,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     vec![span]
                 }
             };
-            let bytes: u32 = runs.iter().map(|run| run.len() as u32 * ROW_BYTES).sum();
             // Criterion calls the closure once per warm-up round and per sample: the fixture is
             // built on the first, so every timed iteration finds the belt's chunks allocated.
             let mut fixture = None;
@@ -107,16 +106,9 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                     // Frame 0 throughout: a staging case ends no expiry window.
                     let mut ctx = GpuCtx::new(&gpu, belt, &mut encoder, 0);
-                    gpu_gradient_atlas::stage_rows(
-                        &mut ctx,
-                        texture,
-                        &runs,
-                        u64::from(bytes),
-                        |run| {
-                            &source
-                                [(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize]
-                        },
-                    );
+                    ctx.copy_rows(gpu_gradient_atlas::row_copies(texture, &runs, |run| {
+                        &source[(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize]
+                    }));
                     belt.finish();
                     gpu.queue.submit([encoder.finish()]);
                     belt.recall();

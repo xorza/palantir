@@ -1,6 +1,6 @@
 //! Which shadow corners get a baked cutout table this frame, and where in the atlas each goes.
 //!
-//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`; the plan places each frame's tables afresh, and the atlas keeps what it baked, so a table a frame needs again at the same place is not baked again (`CutoutTables`).
+//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`, at the cells [`SharedCutoutPlacements`] keeps for its key across frames and windows, and the atlas keeps what it baked, so a table a frame needs again is not baked again (`CutoutTables`).
 //!
 //! A key gets a table only when its corners' shown area costs more to shade ([`CutoutPlan::SHADED_NODES`] per pixel) than to bake ([`CutoutPlan::BAKED_NODES`] per texel, `(10 / σ)²` texels per pixel). A frame bakes only the texels its repainted pixels read ([`BakeTable`]).
 //!
@@ -8,6 +8,7 @@
 //!
 //! A shadow whose shown corners all read tables draws through the cheaper `fs_shadow_tables` ([`ShadowEntry`]), else `fs_shadow`.
 
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -146,14 +147,15 @@ struct KeyUse {
     area: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct CutoutKey {
+/// A cutout table's radius and σ, by their bits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct CutoutKey {
     r: u32,
     sigma: u32,
 }
 
 impl CutoutKey {
-    const fn new(r: f32, sigma: f32) -> Self {
+    pub(crate) const fn new(r: f32, sigma: f32) -> Self {
         Self {
             r: r.to_bits(),
             sigma: sigma.to_bits(),
@@ -176,10 +178,11 @@ struct CensusShadow {
 }
 
 /// How shadow corners get their cutout.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub(crate) enum CutoutMode {
-    /// From tables baked where they pay; only where the backend can render to its atlas.
-    Bake,
+    /// From tables baked where they pay, at the placements of the backend's atlas; only where the
+    /// backend can render to it.
+    Bake(SharedCutoutPlacements),
     /// Shaded per pixel, which is right on any device.
     Shade,
 }
@@ -200,6 +203,9 @@ pub(crate) struct CutoutPlan {
     keys: Vec<KeyUse>,
     codes: Vec<u32>,
     order: Vec<u32>,
+    /// The keys this plan holds a placement for, sorted: the tables of its last committed frame,
+    /// and any a stale frame placed since.
+    held: Vec<CutoutKey>,
     spans: Vec<TexelSpan>,
     repaint: Vec<Rect>,
     tabled: Vec<CutoutKey>,
@@ -230,6 +236,7 @@ impl CutoutPlan {
             keys: Vec::new(),
             codes: Vec::new(),
             order: Vec::new(),
+            held: Vec::new(),
             spans: Vec::new(),
             repaint: Vec::new(),
             tabled: Vec::new(),
@@ -250,7 +257,7 @@ impl CutoutPlan {
         self.tables.clear();
         self.corners.clear();
         self.entries.clear();
-        if self.mode == CutoutMode::Shade {
+        if matches!(self.mode, CutoutMode::Shade) {
             if quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
                 self.corners.resize(quads.len(), CornerTables::NONE);
                 self.entries.resize(quads.len(), ShadowEntry::General);
@@ -308,6 +315,7 @@ impl CutoutPlan {
         }
         mem::swap(&mut self.census, &mut self.next);
         mem::swap(&mut self.tabled, &mut self.last_tabled);
+        self.release_untabled();
         if !quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
             return Census::Cur;
         }
@@ -393,7 +401,7 @@ impl CutoutPlan {
             }
         }
         self.keys.truncate(merged);
-        self.pack();
+        self.place();
         self.tabled.clear();
         self.tabled.extend(
             self.keys
@@ -421,7 +429,7 @@ impl CutoutPlan {
     }
 
     /// The atlas cells a table [`code`](Self::code) covers.
-    fn cells(table: u32) -> URect {
+    pub(super) fn cells(table: u32) -> URect {
         let side = (table >> 12).div_ceil(Self::CELL);
         let min = UVec2::new(table & 63, (table >> 6) & 63);
         URect::from_min_max(min, min + UVec2::splat(side))
@@ -444,8 +452,13 @@ impl CutoutPlan {
             && used.area * Self::SHADED_NODES as f32 > (side * side * Self::BAKED_NODES) as f32
     }
 
-    /// Shelf-packs the paying tables into the atlas, tallest first; a key that doesn't pay or fit keeps [`Self::NONE`]. A table too tall for the last shelf leaves it open, as a shorter one after it may still fit.
-    fn pack(&mut self) {
+    /// The paying tables' cells in the shared atlas, tallest first, as a shelf fills best: a key
+    /// this plan holds keeps its placement, a new one takes a use of its key's. A key that does not
+    /// pay or find room keeps [`Self::NONE`].
+    fn place(&mut self) {
+        let CutoutMode::Bake(placements) = &self.mode else {
+            unreachable!("a plan that shades places no table");
+        };
         self.codes.clear();
         self.codes.resize(self.keys.len(), Self::NONE);
         self.order.clear();
@@ -456,21 +469,36 @@ impl CutoutPlan {
             let key = keys[at as usize].key;
             (Reverse(Self::side(key)), key)
         });
-        let (mut x, mut y, mut shelf) = (0, 0, 0);
         for &at in &self.order {
             let key = self.keys[at as usize].key;
-            let side = Self::side(key);
-            let cells = side.div_ceil(Self::CELL);
-            if x + cells > Self::CELLS {
-                (x, y, shelf) = (0, y + shelf, 0);
-            }
-            if y + cells > Self::CELLS {
-                continue;
-            }
-            self.codes[at as usize] = Self::code(UVec2::new(x, y), side);
-            x += cells;
-            shelf = shelf.max(cells);
+            let code = match self.held.binary_search(&key) {
+                Ok(_) => placements.code(key),
+                Err(slot) => match placements.acquire(key, Self::side(key)) {
+                    Some(code) => {
+                        self.held.insert(slot, key);
+                        code
+                    }
+                    None => continue,
+                },
+            };
+            self.codes[at as usize] = code;
         }
+    }
+
+    /// Give back the placements of the keys this plan holds and its committed frame no longer
+    /// tables.
+    fn release_untabled(&mut self) {
+        let CutoutMode::Bake(placements) = &self.mode else {
+            return;
+        };
+        let tabled = &self.last_tabled;
+        self.held.retain(|&key| {
+            let keep = tabled.binary_search(&key).is_ok();
+            if !keep {
+                placements.release(key);
+            }
+            keep
+        });
     }
 
     fn census_shadow(quad: &Quad, viewport: Rect) -> Option<CensusShadow> {
@@ -520,6 +548,17 @@ impl CutoutPlan {
             corner(2, hi.x, -1.0, hi.y, -1.0),
             corner(3, lo.x, 1.0, hi.y, -1.0),
         ])
+    }
+}
+
+impl Drop for CutoutPlan {
+    /// Give back every placement, as the window whose frames this plan planned is gone.
+    fn drop(&mut self) {
+        if let CutoutMode::Bake(placements) = &self.mode {
+            for &key in &self.held {
+                placements.release(key);
+            }
+        }
     }
 }
 

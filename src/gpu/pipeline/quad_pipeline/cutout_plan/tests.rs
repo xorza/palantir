@@ -1,4 +1,5 @@
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowBox, ShadowEntry, spread_radius,
 };
@@ -37,7 +38,7 @@ const WIDE: UVec2 = UVec2::new(8192, 8192);
 
 /// `quads` planned as a full repaint of a `viewport`, with baking on.
 fn plan_in(quads: &[Quad], viewport: UVec2) -> CutoutPlan {
-    let mut plan = CutoutPlan::new(CutoutMode::Bake);
+    let mut plan = CutoutPlan::new(CutoutMode::Bake(SharedCutoutPlacements::default()));
     full(&mut plan, quads, viewport);
     plan
 }
@@ -374,6 +375,48 @@ fn tables_pack_into_shelves_until_the_atlas_is_full() {
         plan.corners()[9],
         CornerTables([CutoutPlan::NONE; 4]),
         "radius 8.5625, packed last"
+    );
+}
+
+/// A table keeps its cells while its key is in use, across frames and across windows sharing
+/// the atlas. At σ = 16 radius 8 makes an 87-texel table and radius 14 a 97-texel one, which
+/// sorts first. Planned alone, radius 8 takes the origin; a later frame that adds radius 14 leaves
+/// it there, where a fresh pack would have moved it behind the taller table. A second window with
+/// radius 11 lands beside both, and the first window's next frame finds its tables where they
+/// were. Once the first window closes, its keys keep their cells for the next window to use.
+#[test]
+fn a_table_keeps_its_cells_across_frames_and_windows() {
+    let shadow = |r: f32| drop_shadow(Size::new(400.0, 300.0), r, 16.0);
+    let placements = SharedCutoutPlacements::default();
+    let mut first = CutoutPlan::new(CutoutMode::Bake(placements.clone()));
+    let code = |plan: &CutoutPlan, at: usize| plan.corners()[at].0[0];
+    full(&mut first, &[shadow(8.0)], WIDE);
+    let small = code(&first, 0);
+    assert_eq!(small, CutoutPlan::code(UVec2::ZERO, 87));
+
+    full(&mut first, &[shadow(8.0), shadow(14.0)], WIDE);
+    assert_eq!(code(&first, 0), small, "the taller key moves no table");
+    let tall = code(&first, 1);
+    assert_ne!(tall, CutoutPlan::NONE);
+
+    let mut second = CutoutPlan::new(CutoutMode::Bake(placements));
+    full(&mut second, &[shadow(11.0)], WIDE);
+    let other = code(&second, 0);
+    assert!(
+        [small, tall]
+            .iter()
+            .all(|&held| !CutoutPlan::cells(held).intersects(CutoutPlan::cells(other))),
+        "the second window's table takes cells of its own"
+    );
+    full(&mut first, &[shadow(8.0), shadow(14.0)], WIDE);
+    assert_eq!([code(&first, 0), code(&first, 1)], [small, tall]);
+
+    drop(first);
+    full(&mut second, &[shadow(11.0), shadow(8.0)], WIDE);
+    assert_eq!(
+        [code(&second, 0), code(&second, 1)],
+        [other, small],
+        "a closed window's key keeps its cells"
     );
 }
 

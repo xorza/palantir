@@ -245,8 +245,8 @@ mod gpu {
     use crate::gpu::test_gpu::headless_test_gpu;
 
     /// A mask side that starts at 128² and tops out at 256², so one insert can
-    /// walk the whole ladder cheaply. `eager_growth_bytes` is zero because the
-    /// eager arm belongs to
+    /// walk the whole ladder cheaply. The soft budget is the start, 128² of 1-byte mask, so the
+    /// side evicts before every grow; the grow under the soft budget belongs to
     /// [`growth_stops_at_the_byte_budget_not_the_device_limit`].
     fn small_atlas(gpu: &Gpu) -> RasterAtlas<TestKey> {
         RasterAtlas::new(
@@ -255,10 +255,11 @@ mod gpu {
             RasterAtlasConfig {
                 label: "palantir.test",
                 initial_mask_px: 128,
-                initial_color_px: 128,
+                // 16 KiB, the soft budget, is 64² of 4-byte color.
+                initial_color_px: 64,
                 // 64 KiB is 256² of 1-byte mask and 128² of 4-byte color.
                 max_bytes: 256 * 256,
-                eager_growth_bytes: 0,
+                budget_bytes: 128 * 128,
             },
         )
     }
@@ -542,8 +543,8 @@ mod gpu {
                 atlas.side_px(ContentType::Mask),
                 atlas.side_px(ContentType::Color)
             ],
-            [128, 128],
-            "both sides start at their configured 128²",
+            [128, 64],
+            "both sides start at their configured edge",
         );
 
         let pixels = vec![0u8; 200 * 200];
@@ -571,7 +572,7 @@ mod gpu {
                 atlas.side_px(ContentType::Mask),
                 atlas.side_px(ContentType::Color)
             ],
-            [256, 128],
+            [256, 64],
             "only the side that had to grow grew",
         );
     }

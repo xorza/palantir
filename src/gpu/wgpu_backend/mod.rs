@@ -68,7 +68,7 @@ use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::format_pipelines::PipelineSources;
-use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PassPipelines};
+use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PassPipelines, PipelineCensus};
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
@@ -492,11 +492,36 @@ impl WgpuBackend {
             .passes
             .writes_target(route)
             .then(|| surface_texture.create_view(&wgpu::TextureViewDescriptor::default()));
+        // The pipelines this frame draws through and the set lacks, built before its passes
+        // borrow it: the pre-clear and the overlays draw solid quads.
+        self.pipelines
+            .get_mut(&format)
+            .expect("a window notes its target's format before it records")
+            .ensure(
+                &self.gpu,
+                PipelineSources {
+                    quad: &self.quad,
+                    mesh: &self.mesh,
+                    image: &self.image,
+                    curve: &self.curve,
+                    raster: &self.raster,
+                    blit: &self.blit,
+                },
+                PipelineCensus {
+                    stencil: if stencil {
+                        StencilMode::Test
+                    } else {
+                        StencilMode::Off
+                    },
+                    quads: self.quad.taken().with(QuadDraw::Form(QuadForm::Solid)),
+                    meshes: !buffer.meshes.is_empty(),
+                    images: !buffer.images.is_empty(),
+                    curves: !buffer.curves.is_empty(),
+                    rasters: !buffer.texts.is_empty() || !buffer.icons.is_empty(),
+                },
+            );
         let draw = FrameDraw {
-            fmt: self
-                .pipelines
-                .get(&format)
-                .expect("a window notes its target's format before it records"),
+            fmt: &self.pipelines[&format],
             buffer,
             viewport: ViewportPush::for_buffer(buffer),
             origin,
@@ -875,7 +900,9 @@ impl WgpuBackend {
             images: &images,
             targets: &self.gpu_view_targets,
         };
-        let raster = ctx.pipelines.raster(self.raster.pipeline_layout());
+        // Read at a raster draw, as a frame that draws none builds no raster pipeline.
+        let (pipelines, layout) = (ctx.pipelines, self.raster.pipeline_layout());
+        let raster = move || pipelines.raster(layout);
         let quad = |pipeline| QuadBinding {
             pipeline,
             gradient_bind_group: &self.gradient.bind_group,
@@ -923,7 +950,7 @@ impl WgpuBackend {
                 }
             }
             RenderStep::Text { batch } => ctx.batch(BatchKind::Text, |ctx| {
-                self.text.render_batch(ctx.rec, batch, raster);
+                self.text.render_batch(ctx.rec, batch, raster());
             }),
             RenderStep::TierBatch { tier, batch } => {
                 // The timing bucket and label come from the tier, so a new tier cannot reach the
@@ -948,7 +975,7 @@ impl WgpuBackend {
                             },
                             textures,
                         ),
-                        PaintTier::Icon => self.icon.render_batch(ctx.rec, batch, raster),
+                        PaintTier::Icon => self.icon.render_batch(ctx.rec, batch, raster()),
                         PaintTier::Curve => self.curve.draw_batch(
                             ctx.rec,
                             ctx.pipelines.curve(),
@@ -1122,6 +1149,8 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
+    use crate::gpu::pipeline::format_pipelines::FormatPipelines;
+    #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
@@ -1142,6 +1171,12 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(crate) fn text_atlas_counts(&self) -> AtlasCounts {
             self.text.atlas_counts()
+        }
+
+        /// The pipelines built for `format`.
+        #[cfg(test)]
+        pub(crate) fn format_pipelines(&self, format: TargetFormat) -> &FormatPipelines {
+            &self.pipelines[&format]
         }
 
         /// The shadow cutout tables the atlas holds from the frames before.

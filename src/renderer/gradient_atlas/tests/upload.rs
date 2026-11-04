@@ -21,7 +21,7 @@ fn freshly_constructed_atlas_flushes_magenta_once() {
     {
         let first = atlas.flush().expect("first flush carries magenta init");
         assert_eq!(first.runs, [0..1]);
-        assert_eq!(first.len_bytes(), size_of::<LutRowTexels>());
+        assert_eq!(first.bytes(0..1).len(), size_of::<LutRowTexels>());
     }
     assert!(atlas.flush().is_none());
 }
@@ -75,7 +75,7 @@ fn a_small_gap_rides_in_the_run_and_a_wide_one_splits_it() {
     atlas.mark_row_dirty(3);
     let f = atlas.flush().expect("two dirtied rows must flush");
     assert_eq!(f.runs, [1..4], "the one clean row between rides along");
-    assert_eq!(f.len_bytes(), 3 * size_of::<LutRowTexels>());
+    assert_eq!(f.bytes(1..4).len(), 3 * size_of::<LutRowTexels>());
 
     let delta = atlas.counters.counts() - before;
     assert_eq!(delta.bakes, 0, "nothing was re-baked, only re-uploaded");

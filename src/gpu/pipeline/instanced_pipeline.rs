@@ -4,7 +4,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
+use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 
 /// A drawing family that draws one frame's instances of `I`: their buffer, uploaded each frame,
@@ -30,6 +30,13 @@ pub(crate) struct InstancedSpec<'a> {
     pub(crate) capacity: usize,
 }
 
+/// What a pipeline is built for: the target's color format, and the pass's stencil attachment.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct VariantTarget {
+    pub(crate) format: wgpu::TextureFormat,
+    pub(crate) mode: StencilMode,
+}
+
 /// How a family's pipelines differ from [`PipelineRecipe::color`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VariantRecipe<'a> {
@@ -48,23 +55,25 @@ impl<I: bytemuck::Pod> InstancedPipeline<I> {
         }
     }
 
-    /// The base and stencil-test color pipelines of `recipe` against `format`, the only
-    /// format-dependent objects of the family.
-    pub(crate) fn build_variants(
+    /// Build the half of `variant` a pass of `mode` binds, `recipe` against `format`, where it is
+    /// not built: the only format-dependent objects of the family.
+    pub(crate) fn ensure(
         &self,
+        variant: &mut StencilVariant,
         gpu: &Gpu,
-        format: wgpu::TextureFormat,
+        target: VariantTarget,
         recipe: VariantRecipe<'_>,
-    ) -> StencilVariant {
-        StencilVariant::build(
+    ) {
+        variant.ensure(
             gpu,
-            PipelineRecipe {
+            target.mode,
+            &PipelineRecipe {
                 vertex_buffers: recipe.vertex_buffers,
                 topology: recipe.topology,
-                ..PipelineRecipe::color(recipe.label, &self.shader, &self.layout, format)
+                ..PipelineRecipe::color(recipe.label, &self.shader, &self.layout, target.format)
             },
             recipe.stencil_label,
-        )
+        );
     }
 
     /// Upload this frame's `instances`.

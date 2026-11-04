@@ -2,7 +2,7 @@
 //! and lent to the quad and curve pipelines.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
+use crate::gpu::device::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::texel;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -13,7 +13,7 @@ use std::ops::Range;
 
 /// Bytes per uploaded LUT row, derived from the CPU `RgbaF16` row store.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<RgbaF16>()) as u32;
-// A buffer-to-texture copy reads rows at a 256-byte pitch, so packed rows stage as they are.
+// A buffer-to-texture copy reads rows at a 256-byte pitch, so packed rows stage in one run.
 const _: () = assert!(
     ROW_PITCH.is_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
     "gradient atlas row pitch must stay 256-aligned to stage rows as packed"
@@ -49,52 +49,18 @@ fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
     })
 }
 
-/// Stage `runs`, each a range of `texture`'s rows whose bytes `bytes_of` gives, `len_bytes` in all,
-/// in the belt once, and copy each run into its rows on the frame's encoder, one copy a run. A flush
-/// holds at least one row, so only a lost device declines the staging, and then nothing is copied.
-pub(super) fn stage_rows<'a>(
-    ctx: &mut GpuCtx<'_>,
-    texture: &wgpu::Texture,
-    runs: &[Range<u32>],
-    len_bytes: u64,
-    bytes_of: impl Fn(Range<u32>) -> &'a [u8],
-) {
-    let Some(Staged {
-        mut view,
-        buffer,
-        offset,
-        encoder,
-    }) = ctx.stage(len_bytes, u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT))
-    else {
-        return;
-    };
-    let mut at = 0;
-    for run in runs {
-        let bytes = bytes_of(run.clone());
-        view.slice(at..at + bytes.len()).copy_from_slice(bytes);
-        encoder.copy_buffer_to_texture(
-            wgpu::TexelCopyBufferInfo {
-                buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: offset + at as u64,
-                    bytes_per_row: Some(ROW_PITCH),
-                    rows_per_image: None,
-                },
-            },
-            wgpu::TexelCopyTextureInfo {
-                texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: 0,
-                    y: run.start,
-                    z: 0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
-            texel::extent(UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start)),
-        );
-        at += bytes.len();
-    }
+/// `runs`, each a range of `texture`'s rows whose bytes `bytes_of` gives, as one copy a run.
+pub(super) fn row_copies<'a>(
+    texture: &'a wgpu::Texture,
+    runs: &'a [Range<u32>],
+    bytes_of: impl Fn(Range<u32>) -> &'a [u8] + Clone,
+) -> impl Iterator<Item = RowCopy<'a>> + Clone {
+    runs.iter().map(move |run| RowCopy {
+        texture,
+        origin: UVec2::new(0, run.start),
+        size: UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start),
+        rows: bytes_of(run.clone()),
+    })
 }
 
 impl GpuGradientAtlas {
@@ -112,7 +78,8 @@ impl GpuGradientAtlas {
     }
 
     /// Syncs the LUT atlas to the GPU if anything changed: the dirty runs stage once in the
-    /// belt and copy one per run, on the frame's encoder ahead of every pass. A grown atlas
+    /// belt and copy one per run ([`GpuCtx::copy_rows`]), on the frame's encoder ahead of every
+    /// pass. A grown atlas
     /// replaces the texture and bind group first, and the new texture takes the old one's rows
     /// by a copy on the GPU, as resident rows keep their ids. Called from `WgpuBackend::submit`.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>) {
@@ -136,9 +103,7 @@ impl GpuGradientAtlas {
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 *bind_group = binding.bind_group(ctx.gpu, &view, "palantir.gradient.bg");
             }
-            stage_rows(ctx, texture, rows.runs, rows.len_bytes() as u64, |run| {
-                rows.bytes(run)
-            });
+            ctx.copy_rows(row_copies(texture, rows.runs, move |run| rows.bytes(run)));
         });
     }
 }

@@ -169,11 +169,6 @@ Each item needs your answer before its batch starts.
 4. **"A `Response` borrows the `Ui`"** (UI-10). The borrow makes the owned twins
    `ResponseSnapshot` and `ValueEdges`, and puts `'a` on every response type. No measurement
    supports the lazy probe. The proposal is to measure an eager `Response` first.
-5. **"A staging buffer moves an image in fixed bands"** (GB-16). wgpu-core keeps each band's
-   staging until submit, so the peak is still the whole image. You can stream the bands
-   through one buffer with a submit between them, or correct the text.
-6. **"Scratch decays"** is written as a rule, but only the blur follows it (R3). The proposal
-   applies it in the shared primitive. That is batch 5.
 
 ## Batches
 
@@ -181,20 +176,6 @@ The order is by impact: user-visible bugs and panics first, then perf with wide 
 the reduction of complexity. Each batch stays inside one system, so one review covers it. A
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
-
-### Batch 5b. GPU construction and shared atlases (`gpu/pipeline`, `gpu/resource`, `gpu/backdrop`)
-
-What Batch 5 left. The decay policy, the display-frame clock and the oversize staging landed.
-
-- Build pipelines lazily: the backdrop composites, the shadow forms and the stencil-test twins,
-  on the first frame that draws one. This needs a census of the frame's draws before its passes
-  record, as the passes borrow the pipelines (GB-01).
-- Build the composite's sampler and spectrum buffer with `PaneResources` (GB-21).
-- Put the cutout tables in the shared atlas at stable `(r, σ)` placements, with `ShelfPacker`
-  and deallocation. Plan only the spans per window (GB-03, GB-12).
-- One atlas type with a soft and a hard budget (GB-11). One helper for row uploads on `GpuCtx`
-  (GB-22).
-- Decide on image bands (decision 5) (GB-16).
 
 ### Batch 6. Widget behavior parity (`widgets`, the text editor)
 
@@ -408,7 +389,6 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 5b | GB-01, GB-03, GB-11, GB-12, GB-16, GB-21, GB-22 |
 | 6 | WG-01 ✔, WG-02, WG-03 ✔, WG-04, WG-05, WG-06, WG-07, WG-08, WG-19, WG-20, WG-21, WG-26 |
 | 7 | GB-15, LT-14 |
 | 8 | SC-04, SC-05, SC-11, LT-04, RD-03, RD-04, RD-06, RD-08, RD-09, RD-19, RD-20 |

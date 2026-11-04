@@ -16,6 +16,7 @@ use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::upload_staging::UploadStaging;
+use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::pipeline::stencil_variant::StencilMode;
@@ -43,7 +44,7 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
 const WARM_SCALE_CYCLE: u32 = 5;
 
-/// Rungs the churn arms cycle through, enough to put the mask atlas past `RasterAtlasConfig::eager_growth_bytes`, where it recycles rectangles (`RasterAtlas::evict_for`); eviction begins between rung 250 and 500. The only arm coverage of that regime, which `Fixture::assert_evicting` checks.
+/// Rungs the churn arms cycle through, enough to put the mask atlas past `RasterAtlasConfig::budget_bytes`, where it recycles rectangles (`RasterAtlas::evict_for`); eviction begins between rung 250 and 500. The only arm coverage of that regime, which `Fixture::assert_evicting` checks.
 const CHURN_SCALE_CYCLE: u32 = 512;
 const CHURN_IDX_STRIDE: u32 = 37;
 
@@ -182,9 +183,18 @@ impl Fixture {
         let mut store = RecordStore::default();
         let runs = make_runs(&mut store, &shaper);
         let program = RasterProgram::new(&g.gpu);
+        let mut pipelines = RasterVariants::NONE;
+        program.ensure(
+            &mut pipelines,
+            &g.gpu,
+            VariantTarget {
+                format: TARGET_FORMAT.get(),
+                mode: StencilMode::Off,
+            },
+        );
         Self {
             backend: TextBackend::new(&g.gpu, &program, shaper),
-            pipelines: program.build_variants(&g.gpu, TARGET_FORMAT.get()),
+            pipelines,
             program,
             belt: UploadStaging::new(&g.gpu.device, 1 << 20),
             store,

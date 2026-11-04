@@ -12,7 +12,9 @@ pub(crate) mod bench;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantRecipe};
+use crate::gpu::pipeline::instanced_pipeline::{
+    InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
+};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
@@ -94,17 +96,18 @@ impl CurvePipeline {
         }
     }
 
-    pub(super) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> StencilVariant {
-        self.family.build_variants(
+    pub(super) fn ensure(&self, variant: &mut StencilVariant, gpu: &Gpu, target: VariantTarget) {
+        self.family.ensure(
+            variant,
             gpu,
-            format,
+            target,
             VariantRecipe {
                 label: "palantir.curve.pipeline",
                 stencil_label: "palantir.curve.pipeline.stencil_test",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
-        )
+        );
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {

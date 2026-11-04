@@ -67,8 +67,8 @@ impl TextBackend {
                         // 16 MiB lands on an exact power-of-two side: a 4096^2 mask or 2048^2
                         // color atlas, ~4x the largest `text_atlas/cache_churn` set.
                         max_bytes: 16 << 20,
-                        // 4 MiB is a 2048^2 mask or 1024^2 color atlas; see `eager_growth_bytes`.
-                        eager_growth_bytes: 4 << 20,
+                        // 4 MiB is a 2048^2 mask or 1024^2 color atlas; see `budget_bytes`.
+                        budget_bytes: 4 << 20,
                     },
                     initial_instances: 4096,
                 },

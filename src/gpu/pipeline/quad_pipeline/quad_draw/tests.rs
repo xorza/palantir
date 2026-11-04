@@ -36,7 +36,18 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
     ];
     let solid = QuadDraw::Form(QuadForm::Solid);
     let mut draws = Vec::new();
-    quad_draw::fill(&mut draws, &quads, &entries, true);
+    let taken = quad_draw::fill(&mut draws, &quads, &entries, true);
+    assert_eq!(taken.iter().len(), 4);
+    assert_eq!(
+        taken.iter().collect::<Vec<_>>(),
+        [
+            solid,
+            QuadDraw::Form(QuadForm::Triangle),
+            QuadDraw::Shadow(ShadowEntry::Tables),
+            QuadDraw::Shadow(ShadowEntry::TablesWide),
+        ],
+        "each draw taken once, in `QuadDraw::ALL` order"
+    );
     assert_eq!(
         draws,
         [
@@ -64,8 +75,12 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
         ]
     );
 
-    quad_draw::fill(&mut draws, &quads, &entries, false);
+    let taken = quad_draw::fill(&mut draws, &quads, &entries, false);
     let general = QuadDraw::Shadow(ShadowEntry::General);
+    assert_eq!(
+        taken.iter().collect::<Vec<_>>(),
+        [solid, QuadDraw::Form(QuadForm::Triangle), general]
+    );
     assert_eq!(
         draws[1..4],
         [general; 3],

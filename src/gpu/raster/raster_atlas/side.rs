@@ -8,7 +8,7 @@ use crate::primitives::paint::content_type::ContentType;
 /// One per-content-type backing store, indexed by `ContentType as usize`.
 #[derive(Debug)]
 pub(super) struct Side {
-    /// The texture and its packer, grown by doubling up to the side's byte budget.
+    /// The texture and its packer, grown by doubling up to the side's budgets.
     pub(super) atlas: PackedAtlas,
     /// The frame a full clock rotation over this side last came up empty on.
     ///
@@ -32,6 +32,7 @@ impl Side {
             format: texture_format(content),
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             ceiling: gpu.max_texture_dim().get(),
+            budget_bytes: config.budget_bytes,
             max_bytes: config.max_bytes,
         };
         Self {

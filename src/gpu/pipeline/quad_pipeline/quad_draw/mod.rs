@@ -14,6 +14,33 @@ pub(crate) enum QuadDraw {
 }
 
 impl QuadDraw {
+    /// Every draw, in [`Self::idx`] order.
+    pub(crate) const ALL: [Self; 9] = [
+        Self::Form(QuadForm::Solid),
+        Self::Form(QuadForm::Gradient),
+        Self::Form(QuadForm::Triangle),
+        Self::Form(QuadForm::Backdrop),
+        Self::Form(QuadForm::BackdropLens),
+        Self::Form(QuadForm::BackdropSpectrum),
+        Self::Shadow(ShadowEntry::General),
+        Self::Shadow(ShadowEntry::Tables),
+        Self::Shadow(ShadowEntry::TablesWide),
+    ];
+
+    /// This draw's place in [`Self::ALL`], its bit in a [`QuadDraws`].
+    const fn idx(self) -> u32 {
+        match self {
+            Self::Form(form) => form as u32,
+            Self::Shadow(ShadowEntry::General) => 6,
+            Self::Shadow(ShadowEntry::Tables) => 7,
+            Self::Shadow(ShadowEntry::TablesWide) => 8,
+        }
+    }
+
+    const fn bit(self) -> u16 {
+        1 << self.idx()
+    }
+
     /// The timing bucket a run of this draw lands in.
     pub(crate) const fn batch_kind(self) -> BatchKind {
         match self {
@@ -23,10 +50,79 @@ impl QuadDraw {
     }
 }
 
+/// A set of [`QuadDraw`]s: the ones a frame's quads take, which its pipelines are built for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct QuadDraws(u16);
+
+impl QuadDraws {
+    /// This set and `draw`.
+    #[must_use]
+    pub(crate) const fn with(self, draw: QuadDraw) -> Self {
+        Self(self.0 | draw.bit())
+    }
+
+    /// The draws in the set, in [`QuadDraw::ALL`] order.
+    pub(crate) const fn iter(self) -> QuadDrawsIter {
+        QuadDrawsIter { left: self.0 }
+    }
+}
+
+impl FromIterator<QuadDraw> for QuadDraws {
+    fn from_iter<T: IntoIterator<Item = QuadDraw>>(draws: T) -> Self {
+        draws.into_iter().fold(Self::default(), Self::with)
+    }
+}
+
+impl<const N: usize> From<[QuadDraw; N]> for QuadDraws {
+    fn from(draws: [QuadDraw; N]) -> Self {
+        draws.into_iter().collect()
+    }
+}
+
+impl IntoIterator for &QuadDraws {
+    type Item = QuadDraw;
+    type IntoIter = QuadDrawsIter;
+
+    fn into_iter(self) -> QuadDrawsIter {
+        self.iter()
+    }
+}
+
+/// The draws of a [`QuadDraws`], lowest bit first.
+#[derive(Clone, Debug)]
+pub(crate) struct QuadDrawsIter {
+    left: u16,
+}
+
+impl Iterator for QuadDrawsIter {
+    type Item = QuadDraw;
+
+    fn next(&mut self) -> Option<QuadDraw> {
+        if self.left == 0 {
+            return None;
+        }
+        let at = self.left.trailing_zeros();
+        self.left &= self.left - 1;
+        Some(QuadDraw::ALL[at as usize])
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let left = self.left.count_ones() as usize;
+        (left, Some(left))
+    }
+}
+
+impl ExactSizeIterator for QuadDrawsIter {}
+
 /// Write each of `quads`' draws into `draws`: a shadow through its `entries` row, every one
 /// through the general entry where the shadows draw as one cell (`grid` off), any other quad
-/// through its form.
-pub(crate) fn fill(draws: &mut Vec<QuadDraw>, quads: &[Quad], entries: &[ShadowEntry], grid: bool) {
+/// through its form. Returns the draws taken.
+pub(crate) fn fill(
+    draws: &mut Vec<QuadDraw>,
+    quads: &[Quad],
+    entries: &[ShadowEntry],
+    grid: bool,
+) -> QuadDraws {
     draws.clear();
     draws.extend(quads.iter().enumerate().map(|(i, quad)| {
         if !quad.fill_kind.is_shadow() {
@@ -37,6 +133,7 @@ pub(crate) fn fill(draws: &mut Vec<QuadDraw>, quads: &[Quad], entries: &[ShadowE
             QuadDraw::Shadow(ShadowEntry::General)
         }
     }));
+    draws.iter().copied().collect()
 }
 
 #[cfg(test)]

@@ -59,9 +59,13 @@ common → primitives → {animation, text, input, display, window, clipboard, i
   blur textures, every `DynamicBuffer` and a window's stencil. A display frame is a round in
   which each live window submits once (`DisplayFrames`), so a second window does not halve the
   window. An upload past the staging belt's chunk stages in a buffer of its own, as the belt
-  keeps every chunk it makes. A cache shrinks back to its budget once its live set fits; a
-  staging buffer moves an image in fixed bands. Refused: growth to a high-water mark the window
-  keeps for life, which one 4K glass pane put at about 240 MiB.
+  keeps every chunk it makes. A cache shrinks back to its budget once its live set fits. A
+  translucent image premultiplies through a CPU buffer of fixed bands, so no buffer keeps an
+  image's size for the session; wgpu stages each `write_texture` in a buffer of its own until the
+  submit (wgpu-core `Queue::write_texture`), so an upload holds the image's size in staging until
+  the GPU copies it. Refused: growth to a high-water mark the window keeps for life, which one
+  4K glass pane put at about 240 MiB; streaming an image's bands through one buffer, a wait on
+  the GPU per band to bound a peak that lasts one submit.
 
 ## Swapchain
 

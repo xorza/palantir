@@ -754,6 +754,7 @@ mod cutout_census_tests {
     use crate::damage::Damage;
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::host::window_driver::{
         DriverConfig, FrameDepth, PresentPath, PresentStrategy, WindowDriver,
@@ -792,7 +793,7 @@ mod cutout_census_tests {
         );
         driver.attach(RenderStream::detached(
             driver.render_owner(),
-            CutoutMode::Bake,
+            CutoutMode::Bake(SharedCutoutPlacements::default()),
         ));
         let display = FrameStamp::new(
             Display::from_physical(UVec2::new(600, 200), 1.0),
