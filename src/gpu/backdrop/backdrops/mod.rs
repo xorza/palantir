@@ -27,6 +27,7 @@ use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -552,10 +553,10 @@ impl Backdrops {
     }
 
     /// Drop the results of `owner`'s panes not in `live`, the panes its frame painted or kept.
-    fn evict(&mut self, owner: RenderOwnerId, live: &[PaneKey]) {
+    fn evict(&mut self, owner: RenderOwnerId, live: &PaneKeys) {
         let resources = &mut self.resources;
         self.cache.retain(|&(at, key), cached| {
-            let keep = at != owner || live.contains(&key);
+            let keep = at != owner || live.contains(key);
             if !keep && let Kept::Slot(slot) = cached.kept {
                 release(resources, slot);
             }
@@ -565,7 +566,7 @@ impl Backdrops {
 
     /// Drop every result of `owner`, whose window closed.
     pub(crate) fn retire(&mut self, owner: RenderOwnerId) {
-        self.evict(owner, &[]);
+        self.evict(owner, &PaneKeys::default());
         self.forget_evicted(owner);
     }
 

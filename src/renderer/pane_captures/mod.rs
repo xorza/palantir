@@ -191,7 +191,19 @@ impl PaneCaptures {
     /// Whether a pane of the last tickets may capture: the frame built from them captures at
     /// most these.
     pub(crate) fn may_capture(&self) -> bool {
-        self.tickets.iter().flatten().any(|ticket| ticket.captures)
+        self.capturing().next().is_some()
+    }
+
+    /// The physical footprint of each pane the last tickets may capture.
+    pub(crate) fn capture_footprints(&self) -> impl Iterator<Item = URect> + '_ {
+        self.capturing().map(|ticket| ticket.capture.footprint)
+    }
+
+    fn capturing(&self) -> impl Iterator<Item = &PaneTicket> {
+        self.tickets
+            .iter()
+            .flatten()
+            .filter(|ticket| ticket.captures)
     }
 
     /// Record what the frame `buffer` holds, built from the last tickets, took: each pane that
@@ -200,7 +212,7 @@ impl PaneCaptures {
     /// drops its own.
     pub(crate) fn settle(&mut self, buffer: &RenderBuffer) {
         let live = &buffer.live_panes;
-        self.held.retain(|key, _| live.contains(key));
+        self.held.retain(|&key, _| live.contains(key));
         for ticket in self
             .tickets
             .iter()

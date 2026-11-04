@@ -182,7 +182,11 @@ impl PlaneCtx<'_, '_> {
         };
         let at = self.next_pane + ahead;
         self.next_pane = at + 1;
-        self.tickets[at]
+        let ticket = self.tickets[at];
+        if let Some(ticket) = ticket {
+            debug_assert_eq!(ticket.capture.key, key, "a pane's ticket is its own");
+        }
+        ticket
     }
 
     #[inline]

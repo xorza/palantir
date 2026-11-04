@@ -6,7 +6,7 @@ use crate::common::hash::Hasher;
 use crate::scene::tree::root_slot::RootSlot;
 use std::hash::Hasher as _;
 
-/// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run) reads. Equal keys skip the run; keys agreeing on structure refresh geometry and paint in place.
+/// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run) reads. Equal keys skip the run; how much else two keys share picks what the run keeps ([`CascadeReuse`]).
 ///
 /// Folds every plane in paint order, so a key stays a fixed size however deep overlays nest; each plane's own rect hash, which the incremental walk compares plane by plane, is kept on its [`PlaneCascade`](crate::cascade::plane_cascade::PlaneCascade).
 ///
@@ -17,7 +17,8 @@ pub(crate) struct CascadeKey {
     scale: u32,
     /// [`CascadeSource::font_epoch`].
     font_epoch: u32,
-    /// Each plane's `TreeFingerprint::cascade_static` and `TreeFingerprint::paint_counts`, and each root's requested layer, which the root rows carry: the structural tables' source; a moved row count is a full rebuild.
+    /// Each plane and its `TreeFingerprint::cascade_static`, and each root's requested layer,
+    /// which the root rows carry: the structural tables' source.
     structure: ContentHash,
     /// Each plane's `PlaneLayout::rect_hash`.
     rects: ContentHash,
@@ -40,7 +41,6 @@ impl CascadeKey {
             structure.write_u8(plane.layer.idx() as u8);
             structure.write_u8(plane.depth);
             structure.write_u64(tree.fingerprint.cascade_static.0);
-            structure.write_u64(tree.fingerprint.paint_counts.0);
             rects.write_u64(layout[plane].rect_hash().0);
             // Destructured, so a new root input fails to compile until the key names it.
             for &RootSlot {
@@ -65,10 +65,29 @@ impl CascadeKey {
         }
     }
 
-    /// Whether `self`'s structural tables stay valid under `live`, so the rest refreshes in place.
-    pub(crate) fn keeps_structure(&self, live: &Self) -> bool {
-        self.scale == live.scale
-            && self.font_epoch == live.font_epoch
-            && self.structure == live.structure
+    /// What of a cascade built under `self` stays valid under `live`.
+    pub(crate) fn reuse(&self, live: &Self) -> CascadeReuse {
+        if self.structure != live.structure {
+            CascadeReuse::Nothing
+        } else if self.scale == live.scale && self.font_epoch == live.font_epoch {
+            CascadeReuse::Rows
+        } else {
+            CascadeReuse::Structure
+        }
     }
+}
+
+/// What a run keeps of the cascade it updates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CascadeReuse {
+    /// A structural table moved: every table is built again.
+    Nothing,
+    /// The structural tables hold, but the scale or the fonts moved, which reach rows a node's
+    /// own inputs do not name: every node is walked again and each plane's paint arena laid out
+    /// afresh.
+    Structure,
+    /// The structural tables hold, and each node's rows follow from its own inputs: a plane whose
+    /// row counts held is patched in place, skipping each node whose inputs held, and the rest
+    /// are laid out afresh.
+    Rows,
 }

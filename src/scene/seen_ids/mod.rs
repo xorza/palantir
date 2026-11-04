@@ -61,11 +61,11 @@ impl IdSlot {
     }
 }
 
+/// An id a pass handed out, and where it opened, if it did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LastFrame {
-    At(Endpoint),
-    Absent,
-    Unknown,
+pub(crate) struct ResolvedRow {
+    pub(crate) id: WidgetId,
+    pub(crate) endpoint: Option<Endpoint>,
 }
 
 /// An id [`SeenIds::resolve`] handed out this pass, with its entry's index.
@@ -144,13 +144,6 @@ impl IdTable {
         self.slot(id).and_then(IdSlot::endpoint).is_some()
     }
 
-    #[inline]
-    fn recorded_entries(&self) -> impl Iterator<Item = (WidgetId, Endpoint)> + '_ {
-        self.entries
-            .iter()
-            .filter_map(|entry| Some((entry.id, entry.slot.endpoint()?)))
-    }
-
     fn clear(&mut self) {
         self.index.clear();
         self.entries.clear();
@@ -182,8 +175,8 @@ pub(crate) struct SeenIds {
     /// pass leaves step.
     counters: WidgetIdMap<u32>,
     /// Every id this pass handed out, with the endpoint of each that has opened.
-    /// Reserved entries feed neither the [`Self::rollover`] diff nor the
-    /// [`crate::cascade::Cascade::by_id`] snapshot.
+    /// Reserved entries feed neither the [`Self::rollover`] diff nor the cascade's
+    /// [`by_id`](crate::cascade::Cascade::by_id) index.
     cur: IdTable,
     /// How many of `cur`'s entries match `prev`'s once the pass leaves step; `None`
     /// while all match.
@@ -202,19 +195,9 @@ pub(crate) struct SeenIds {
     /// them. Ids `prev` holds stay out (the diff reports them), keeping this empty on
     /// a settling second pass.
     discarded: WidgetIdSet,
-    /// Whether the cascade the frame reads is the one last painted, so an endpoint of
-    /// `prev` names a row of it: set by [`Self::rollover`], cleared by
-    /// [`Self::cascade_ran`] when a record pass runs the cascade over this frame's tree.
-    cascade_paired: bool,
 }
 
 impl SeenIds {
-    /// The cascade ran over this frame's tree, so `prev`'s endpoints no longer name its rows
-    /// until [`Self::rollover`] makes this frame the last painted one.
-    pub(crate) const fn cascade_ran(&mut self) {
-        self.cascade_paired = false;
-    }
-
     /// Reset per-frame state at the top of a record pass. `prev` is untouched, since a
     /// discarded pass never reaches `rollover`. A non-empty `cur` here is a discarded
     /// pass: ids `prev` has never seen move to `discarded`.
@@ -251,31 +234,19 @@ impl SeenIds {
         entry.slot.endpoint()
     }
 
-    /// Where the last painted frame recorded `id`, in the cascade that frame painted, when
-    /// known without a probe (the newest entry of a pass in step, the usual case). Otherwise
-    /// [`LastFrame::Unknown`], also while the cascade is this frame's.
+    /// Every id this pass handed out, in resolve order, with the endpoint of each that opened.
     #[inline]
-    pub(crate) fn last_frame_endpoint(&self, id: WidgetId) -> LastFrame {
-        let newest = self.cur.entries.len().wrapping_sub(1);
-        if !self.cascade_paired
-            || self.split.is_some()
-            || self
-                .cur
-                .entries
-                .get(newest)
-                .is_none_or(|entry| entry.id != id)
-        {
-            return LastFrame::Unknown;
-        }
-        match self.prev.entries[newest].slot.endpoint() {
-            Some(endpoint) => LastFrame::At(endpoint),
-            None => LastFrame::Absent,
-        }
+    pub(crate) fn resolved(&self) -> impl ExactSizeIterator<Item = ResolvedRow> + '_ {
+        self.cur.entries.iter().map(|entry| ResolvedRow {
+            id: entry.id,
+            endpoint: entry.slot.endpoint(),
+        })
     }
 
+    /// How many ids this pass handed out: the newest's position in resolve order plus one.
     #[inline]
-    pub(crate) fn recorded(&self) -> impl Iterator<Item = (WidgetId, Endpoint)> + '_ {
-        self.cur.recorded_entries()
+    pub(crate) const fn resolved_count(&self) -> usize {
+        self.cur.entries.len()
     }
 
     #[inline]
@@ -510,7 +481,6 @@ impl SeenIds {
     /// Populate `self.removed` with widgets in `prev` but not `cur`, then swap. Returns
     /// a borrow of `self.removed`, which stays populated until the next `rollover`.
     pub(crate) fn rollover(&mut self) -> &WidgetIdSet {
-        self.cascade_paired = true;
         self.removed.clear();
         let matched = self.split.unwrap_or(self.cur.entries.len());
         for (at, last) in self.prev.entries.iter().enumerate() {
@@ -572,7 +542,11 @@ pub(crate) mod internals {
     impl SeenIds {
         /// The ids the last finished frame recorded, with their endpoints.
         pub(crate) fn last_frame(&self) -> WidgetIdMap<Endpoint> {
-            self.prev.recorded_entries().collect()
+            self.prev
+                .entries
+                .iter()
+                .filter_map(|entry| Some((entry.id, entry.slot.endpoint()?)))
+                .collect()
         }
 
         /// [`Self::resolve`] then [`Self::record_endpoint`], as a widget's resolve and open

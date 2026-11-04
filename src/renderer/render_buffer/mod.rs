@@ -3,7 +3,7 @@
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
@@ -71,7 +71,7 @@ pub(crate) struct RenderBuffer {
     pub(crate) backdrops: Vec<BackdropRow>,
     /// Every pane of the frame, drawn or not: the backend's roster, which keeps an unchanged
     /// pane's cached blur while it stays out of the frame's damage.
-    pub(crate) live_panes: Vec<PaneKey>,
+    pub(crate) live_panes: PaneKeys,
     /// Clear fold: an unclipped opaque solid sharp quad covering the viewport discards everything composed before it and is dropped, its fill recorded here for the backend to clear to.
     pub(crate) clear_override: Option<RgbaF16>,
     /// The display this buffer was composed for, held whole so every reader sees the viewport the compose session used.
@@ -96,7 +96,7 @@ impl RenderBuffer {
             curves: Vec::new(),
             rounded_clips: Vec::new(),
             backdrops: Vec::new(),
-            live_panes: Vec::new(),
+            live_panes: PaneKeys::default(),
             clear_override: None,
             display: Display::default(),
             time: Duration::ZERO,

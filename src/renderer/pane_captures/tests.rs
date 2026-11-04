@@ -78,7 +78,7 @@ fn frame(
     let tickets: Vec<PaneTicket> = captures.tickets().iter().flatten().copied().collect();
     let mut buffer = RenderBuffer::new();
     buffer.display = display();
-    buffer.live_panes.extend(panes.iter().map(|pane| pane.key));
+    buffer.live_panes.refill(panes.iter().map(|pane| pane.key));
     buffer
         .backdrops
         .extend(tickets.iter().enumerate().map(|(i, ticket)| {
@@ -272,7 +272,7 @@ fn a_pane_off_screen_drops_its_capture() {
     // The frame's scene still holds the pane, which its draws leave out.
     let mut culled = RenderBuffer::new();
     culled.display = display();
-    culled.live_panes.push(on.key);
+    culled.live_panes.refill([on.key]);
     captures.settle(&culled);
     assert_eq!(
         frame(&mut captures, &[on], partial, Drawn::Captured),

@@ -212,7 +212,7 @@ impl PlaneWalk<'_> {
                     ord: self.ord,
                     span,
                 },
-                pane_rows: &self.frame.cascade.panes,
+                pane_rows: &self.frame.cascade.pane_rows,
             },
         );
         // The node's own rects from here on: the whole of it, from its first row.

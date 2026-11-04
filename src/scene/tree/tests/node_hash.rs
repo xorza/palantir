@@ -463,7 +463,7 @@ fn one_shape_change_only_flips_its_own_hash() {
     assert_ne!(h0_b, h1_b, "changed shape 1 must flip its hash");
 }
 
-/// Nesting reaches `cascade_static`, so re-parenting alone invalidates a retained cascade: same ids, per-node configuration and node count, only two siblings versus one nested, so nothing but `subtree_end` differs. The fold spares `CascadeKey::keeps_structure` an O(nodes) `subtree_ends` comparison; dropping it would let a re-parent keep the stale cascade.
+/// Nesting reaches `cascade_static`, so re-parenting alone invalidates a retained cascade: same ids, per-node configuration and node count, only two siblings versus one nested, so nothing but `subtree_end` differs. The fold spares `CascadeKey::reuse` an O(nodes) `subtree_ends` comparison; dropping it would let a re-parent keep the stale cascade.
 #[test]
 fn nesting_alone_changes_cascade_static() {
     let leaf = |ui: &mut Ui, name: &'static str| {

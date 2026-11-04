@@ -2,12 +2,11 @@
 //! that captures.
 
 use crate::damage::Damage;
-use crate::damage::region::DAMAGE_RECT_CAP;
+use crate::damage::region::{CollapsedDamage, DAMAGE_RECT_CAP};
+use crate::display::Display;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::pane_captures::PaneCaptures;
-use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::renderer::render_plan::RenderPlan;
 use std::{iter, slice};
 use tinyvec::ArrayVec;
@@ -28,55 +27,79 @@ impl RepaintScissors {
         matches!(self, Self::Partial(_))
     }
 
-    /// The physical-px repaint shape of `damage`: `Full`, or `Partial` with the footprint of each pane that captures, as the target there still holds the last frame's pane, then the damage scissors after scaling, AA padding and clamping. Footprints go first, as a pane's damage, its own rect and what changed under it, lies inside its footprint and then adds no piece. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
+    /// The physical-px repaint shape of `damage` on `display`: `Full`, or `Partial` with each of
+    /// `footprints`, the physical footprint of each pane the frame may capture, as the target
+    /// there still holds the last frame's pane, then the damage scissors after scaling, AA
+    /// padding and clamping. Footprints go first, as a pane's damage, its own rect and what
+    /// changed under it, lies inside its footprint and then adds no piece. Regions arrive
+    /// non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw
+    /// list disagree and must not degrade to a full clear.
+    ///
+    /// Decided from the ledger's tickets before the frame builds, so a frame past the cap builds
+    /// once, whole. A ticket that captures may end as a pane that holds, clears or hides; its
+    /// footprint then repaints what the encoder kept under it, overdraw and no more. Refused:
+    /// the footprints of the built frame's capturing rows, which a frame past the cap learned
+    /// only by building twice.
     ///
     /// The scissors are disjoint: each keeps only the pixels the ones before it left, split into
     /// at most four rects. The main pass replays the groups once per scissor, and after a pane's
     /// barrier it replays them without a clear, so a pixel two scissors share would composite
     /// every translucent draw past the barrier twice, as a padded damage rect inside a footprint
     /// did. `None` when the pieces outgrow [`SCISSOR_CAP`]: the frame then paints whole.
-    pub(crate) fn new(damage: Damage, buffer: &RenderBuffer) -> Option<Self> {
-        match damage {
-            Damage::Full => Some(Self::Full),
-            Damage::Partial(damage) => {
-                let mut rects: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
-                let damage_rects = damage
-                    .region
-                    .iter_rects()
-                    .filter_map(|r| logical_rect_to_physical_scissor(r, buffer));
-                let footprints = buffer
-                    .backdrops
-                    .iter()
-                    .filter(|row| matches!(row.source, PaneSource::Capture { .. }))
-                    .map(|row| row.capture.footprint);
-                for scissor in footprints.chain(damage_rects) {
-                    let mut pieces: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
-                    pieces.push(scissor);
-                    for &kept in &rects {
-                        let mut left: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
-                        for piece in pieces {
-                            for rest in piece.minus(kept) {
-                                // `try_push` hands back what did not fit.
-                                if left.try_push(rest).is_some() {
-                                    return None;
-                                }
-                            }
-                        }
-                        pieces = left;
-                    }
-                    for piece in pieces {
-                        if rects.try_push(piece).is_some() {
+    pub(crate) fn new(
+        damage: Damage,
+        display: &Display,
+        footprints: impl IntoIterator<Item = URect>,
+    ) -> Option<Self> {
+        let Damage::Partial(damage) = damage else {
+            return Some(Self::Full);
+        };
+        let mut held: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
+        for footprint in footprints {
+            if held.try_push(footprint).is_some() {
+                return None;
+            }
+        }
+        Self::partial_of(damage, display, &held)
+    }
+
+    /// [`Self::new`]'s partial shape, over `footprints` that fit the cap.
+    fn partial_of(
+        damage: CollapsedDamage,
+        display: &Display,
+        footprints: &[URect],
+    ) -> Option<Self> {
+        let mut rects: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
+        let damage_rects = damage
+            .region
+            .iter_rects()
+            .filter_map(|r| logical_rect_to_physical_scissor(r, display));
+        for scissor in footprints.iter().copied().chain(damage_rects) {
+            let mut pieces: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
+            pieces.push(scissor);
+            for &kept in &rects {
+                let mut left: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
+                for piece in pieces {
+                    for rest in piece.minus(kept) {
+                        // `try_push` hands back what did not fit.
+                        if left.try_push(rest).is_some() {
                             return None;
                         }
                     }
                 }
-                debug_assert!(
-                    !rects.is_empty(),
-                    "Partial plan produced no damage scissors"
-                );
-                Some(Self::Partial(PartialScissors { rects }))
+                pieces = left;
+            }
+            for piece in pieces {
+                if rects.try_push(piece).is_some() {
+                    return None;
+                }
             }
         }
+        debug_assert!(
+            !rects.is_empty(),
+            "Partial plan produced no damage scissors"
+        );
+        Some(Self::Partial(PartialScissors { rects }))
     }
 }
 
@@ -111,10 +134,10 @@ impl<'a> IntoIterator for &'a PartialScissors {
 }
 
 /// Convert a logical-px damage rect to a physical-px scissor, padded by [`RenderPlan::AA_PADDING`] and clamped to the viewport; `None` if it clamps to zero area.
-fn logical_rect_to_physical_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
-    let scaled = r.scaled_by(buffer.display.scale_factor(), EdgeRounding::WholePixels);
+fn logical_rect_to_physical_scissor(r: Rect, display: &Display) -> Option<URect> {
+    let scaled = r.scaled_by(display.scale_factor(), EdgeRounding::WholePixels);
     let padded = scaled.inflated(RenderPlan::AA_PADDING as f32);
-    let physical = buffer.display.physical;
+    let physical = display.physical;
     URect::covering(padded).intersect(URect::new(0, 0, physical.x, physical.y))
 }
 

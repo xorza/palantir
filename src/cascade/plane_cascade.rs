@@ -74,6 +74,9 @@ pub(crate) struct PlaneCascade {
     /// overwrite this column, and sharing would need a hash probe on the
     /// repair path.
     pub(super) arena_hashes: Vec<ContentHash>,
+    /// The tree's `TreeFingerprint::paint_counts` the paint arena was laid out for: a refresh
+    /// patches the arena in place only while it holds.
+    pub(super) paint_counts: ContentHash,
     /// Per-node index of the node's row in
     /// [`Cascade::hits`](crate::cascade::Cascade::hits), if it holds one. Which
     /// nodes hold a row is structural, so the incremental walk rewrites a moved
@@ -85,6 +88,9 @@ pub(crate) struct PlaneCascade {
     /// The plane's backdrop panes in paint order, rebuilt after every walk from the tree's panes
     /// and the rows above.
     pub(crate) panes: Vec<PaneRow>,
+    /// The rows of [`Self::panes`], sorted, for a search by row: the panes are in paint order,
+    /// where an ancestor's shape painted after its children has a lower row than theirs.
+    pub(crate) pane_rows: Vec<u32>,
     /// Offset of this plane's first `EntryRow` in
     /// [`Cascade::entries`](crate::cascade::Cascade::entries), fixed for the
     /// plane's run and set at `reset_for`. A full rebuild pushes one entry per

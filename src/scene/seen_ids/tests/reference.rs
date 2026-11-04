@@ -63,10 +63,6 @@ impl Reference {
         self.cur.endpoint(id)
     }
 
-    pub(super) fn last_frame_endpoint(&self, id: WidgetId) -> Option<Endpoint> {
-        self.prev.endpoint(id)
-    }
-
     pub(super) fn recorded(&self) -> Vec<(WidgetId, Endpoint)> {
         self.cur.recorded().collect()
     }

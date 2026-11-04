@@ -21,10 +21,10 @@ in step.
 
 - **Where a widget was last frame:** `SeenIds` (current and previous tables, plus the
   positional route with `cascade_paired`), `Cascade::by_id`, the 64-bit identity fold in
-  `MeasureSnapshot`, and the damage `prev` (SC-05, LT-04).
+  `MeasureSnapshot`, and the damage `prev` (SC-05, LT-04) ✔.
 - **Which panes are live:** `PaneWalk.keys`, `RenderBuffer.live_panes`, `PaneCaptures.held`
   and the `Backdrops` cache. Each is rebuilt or scanned linearly (RD-03, RD-08, RD-09,
-  RD-19).
+  RD-19) ✔.
 - **The frame descriptor:** `FrameSpec`, `TargetKey`, `HostDisplay`, `Display` and
   `FrameStamp`. `pixel_snap` passes through five hops (HS-07).
 - **Whether the harness paints:** `depth`, `target` and `core.device` (HS-08).
@@ -44,7 +44,7 @@ is the source of the silent correctness bugs:
   replays the old arrangement after an axis change.
 - `CascadeKey` leaves out the root layer (SC-03).
 - The exact rect hash and the quantized per-node hash disagree (SC-19).
-- A hash fold stands in for an exact identity in `MeasureSnapshot` (LT-04) and in
+- A hash fold stands in for an exact identity in `MeasureSnapshot` (LT-04) ✔ and in
   `TextProbe::text_hash` (LT-15).
 
 The shape hashes destructure every field, so the compiler forces a decision. The layout tail
@@ -92,7 +92,7 @@ Each resource has its own copy of a shared rule:
   (HS-02).
 - Settle treats every timed wake as settled (HS-22).
 - One `keeps_structure` gate covers two kinds of validity, so each keystroke rebuilds the
-  whole cascade (SC-04).
+  whole cascade ✔ (SC-04).
 
 ### R6. One mechanism with two meanings
 
@@ -146,7 +146,7 @@ and some `Result` paths panic:
 
 ### R11. Test seams in production state
 
-- `PaneWalk.on` (RD-04).
+- `PaneWalk.on` ✔ (RD-04).
 - `shadow_grid: bool` (GB-20).
 - `#[cfg(test)]` stencil usage (GA-07).
 - `WgpuBackend.pass_traffic` mirror (GA-11).
@@ -181,23 +181,6 @@ API").
 What Batch 6 left: a radio group with one Tab stop whose arrow keys move focus and the pick
 together, as the APG radio group does. It needs a group container or `arrow_focus` that writes
 the pick, which is new public surface (WG-08).
-
-### Batch 8. One owner for widget and pane identity (`scene`, `cascade`, `layout`, `damage`, `renderer`)
-
-Root cause R1. Structural perf, and removal of duplicate maps.
-
-- `SeenIds` keeps the table of the pass the cascade was built from. Remove `Cascade::by_id`,
-  or remove the positional route with `cascade_paired` (SC-05).
-- The measure snapshot keys by last frame's endpoint. Remove the identity fold (LT-04).
-- Compute the frame's pane keys once, as a sorted set. The damage engine, `PaneCaptures`,
-  `RenderBuffer` and the `Backdrops` eviction share it. That replaces the linear `contains`
-  and `retain` (RD-03, RD-09, Backdrops `evict`). Add a key check per pane ticket (RD-19).
-  Derive `PaneWalk.on` (RD-04). Clear `dirty_panes` once (RD-20).
-- Split `keeps_structure`. The structural tables follow `cascade_static`, and a change in the
-  paint count only packs the paint arena again (SC-04). This removes the full rebuild on each
-  keystroke that PERF.md records.
-- Decide the scissors before the build, so no frame builds twice (RD-06). Walk the roots in
-  order (SC-11).
 
 ### Batch 9. GPU frame plan as types (`wgpu_backend`, `gpu/frame`, `gpu/pipeline`, `gpu/raster`)
 
@@ -371,7 +354,6 @@ Prefixes:
 | Batch | Findings |
 |---|---|
 | 6b | WG-08 |
-| 8 | SC-04, SC-05, SC-11, LT-04, RD-03, RD-04, RD-06, RD-08, RD-09, RD-19, RD-20 |
 | 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-05, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11 | HS-05 to HS-09, HS-23, HS-11 to HS-13, HS-15, HS-17 to HS-20, HS-24 to HS-26 |
@@ -395,79 +377,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Why it matters:** the APG radio group has one Tab stop, and the arrows move focus and check together (selection follows focus). The color picker's model switch (`color_picker/mod.rs:569-580`) inherits this.
 - **Direction:** add a group container, or make a focused radio's arrow keys write the neighbouring value. This needs a group notion.
 - Confidence: high on behavior, medium on direction · public API change: likely · root cause: no group abstraction for discrete picks.
-
-### Batch 8
-
-**SC-04 · perf/complexity · `src/cascade/cascade_key.rs:41-42,60-64`, `src/cascade/engine.rs:274-327`.** A shape-count change rebuilds tables that did not change.
-- `structure` folds `paint_counts` together with `cascade_static`. A paint-row count change is a full `rebuild`: hits, scopes, tab stops, roots and arrow groups, and a refill of `by_id` (one hash insert per node).
-- PERF.md says every keystroke in a TextEdit does this. Yet when `cascade_static` holds, the structural tables and `by_id` are provably unchanged; only the paint arena and spans need re-packing.
-- Direction: split the gate. `cascade_static` decides the structural tables and `by_id`; `paint_counts` (and an incremental bail) re-packs only the plane's `paint_arena`.
-- Confidence: med. Public API: no. Root cause: one boolean `keeps_structure` stands for two independent kinds of validity.
-
-**SC-05 · complexity · `src/cascade/mod.rs:51`, `src/cascade/engine.rs:325-326`, `src/scene/seen_ids/mod.rs:205-274`, `ui/mod.rs:1169-1181`.** Three routes answer "where is id X recorded".
-- `SeenIds::endpoint` covers this pass.
-- `SeenIds::last_frame_endpoint` is a positional fast path, guarded by the `cascade_paired` flag and the three-state `LastFrame`.
-- `Cascade::by_id` is a second `WidgetIdMap<Endpoint>` copied from `SeenIds.cur` on each rebuild.
-- `Ui::last_frame_location` picks among them and debug-asserts that they agree.
-- Direction: keep one owner, for example SeenIds retaining the table of the pass the cascade was built from, and drop either `by_id` or the positional route plus `cascade_paired`.
-- Confidence: med. Public API: no. Root cause: identity lookup is split between record-time and cascade-time owners.
-
-**SC-11 · perf · `src/scene/tree/mod.rs:140-146`, `src/cascade/engine.rs:94`.** Root layer is found by linear search.
-- `root_layer` scans `roots` linearly for each root node in `TreeSink::emit`, which is O(roots²) per plane.
-- Direction: walk `tree.roots` in order, since roots are in pre-order, or carry the layer in the walk.
-- Confidence: high. Low impact. Public API: no. Root cause: the root slots and the node walk are separate sequences.
-
-**LT-04 · perf / precision · `cache/measure_snapshot.rs:415-426, 450-477`, `cache/mod.rs:303-304`** — conf: med · public API: no · root cause: identity approximated by a hash fold
-- **What's wrong:**
-  - Whether the retained `WidgetIdMap` still fits is decided by a 64-bit fold over the id sequence (`desc_identity`).
-  - On a release-build collision, `desc()` indexes `self.descs[idx]` built for another sequence: either an out-of-bounds panic or another widget's descriptor, which only `subtree_hash` then filters. The doc calls this "survivable".
-  - Any structural change rebuilds the whole map in that one frame (n inserts), the per-frame worst case.
-  - SeenIds already tracks the same thing ("in step" / `split`), and so does `Cascade::by_id`.
-- **Direction:** Key the snapshot by last frame's position (an Endpoint from SeenIds' previous table) and index the columns directly. At minimum, compare the retained id vector exactly.
-
-**RD-03 · perf/complexity · `damage/pane_walk.rs:68-75,146`, `frontend/mod.rs:79-82`, `pane_captures/mod.rs:202-203`**
-- **What:** the frame's pane-key list is derived twice per frame: `PaneWalk::start_frame` collects it into `keys`, and `Frontend::build` collects it again into `RenderBuffer::live_panes`.
-- **Lookups against those lists are linear:**
-  - `PaneCaptures::settle` runs `self.held.retain(|key, _| live.contains(key))`, which is O(held × live).
-  - `walk_panes` falls back to `self.held.contains(&pane.key)`, which is O(P²).
-- **Why it matters:** the number of panes has no bound (only dirty panes are capped at 8).
-- **Direction:** compute the frame's pane keys once, sorted or as a set, and share that list between the damage engine, the ledger and the backend roster.
-- **Confidence:** high. **Public API:** no. **Root cause:** pane identity tracked by each stage on its own.
-
-**RD-04 · complexity · `damage/pane_walk.rs:39,75,202`**
-- **What:** `on: bool` stores `!self.keys.is_empty()`. It is stored rather than derived only so the bench constructor `marking()` can turn marking on with no keys.
-- **Why it matters:** this is state that can be derived, kept for a bench hook, and the two can disagree.
-- **Direction:** derive it from `keys`, and have the bench seed a key.
-- **Confidence:** high. **Public API:** no. **Root cause:** test or bench convenience leaking into production state.
-
-**RD-06 · complexity · `scheduling scissor overflow`: `repaint_scissors/mod.rs:38-80`, caller `host/window_driver/mod.rs:467-479`**
-- **What:** when `RepaintScissors::new` returns `None`, the host builds the frame a second time, whole. The pane_captures module doc explicitly refuses a design that "built a frame twice past the cap".
-- **Related caps:** there are now three escalation caps on related quantities:
-  - `DirtyPanes::CAP` (8) makes the damage `Full`.
-  - `PaneCaptures::PARTIAL_CAP` (= `DirtyPanes::CAP`) gives `Settled::Overflow`.
-  - `SCISSOR_CAP` (40) makes the scissors `None`, which triggers the rebuild.
-- **Direction:** decide the scissors from the tickets before the build, taking every `ticket.captures` footprint. This is safe: the encoder's `CullRegion` already keeps every draw under those footprints, so repainting a footprint whose pane ended up `Clear` or `Hidden` is only extra overdraw. That removes the second build for the scissor case.
-- **Confidence:** med. **Public API:** no. **Root cause:** a cap checked after compose.
-
-**RD-08 · perf · `damage/pane_walk.rs:161-177`**
-- **What:** `touched_before` scans every raw rect for every pane, O(panes × raw rects). After a large change there are thousands of unmerged raw rects.
-- **Direction:** a per-mark bounding-box pre-reject, or pre-merged runs per position.
-- **Confidence:** med. **Public API:** no. **Root cause:** linear scan over a set with no stated bound.
-
-**RD-09 · perf · `damage/row_matcher.rs:272`**
-- **What:** `places.pane_rows.iter().any(|pane| pane.row == row)` runs for every gone or moved row, O(gone rows × panes). `PaneRow`s are in row order.
-- **Direction:** binary search.
-- **Confidence:** high. **Public API:** no. **Root cause:** same as RD-08.
-
-**RD-19 · robustness · `encoder/plane_ctx.rs:171-185`**
-- **What:** tickets are matched to the cascade's pane rows by index across modules. `pane_ticket` returns `self.tickets[at]` without checking `ticket.capture.key == key`; the only check is a `debug_assert_eq!` on the total count at the end of `encode`.
-- **Direction:** a `debug_assert` on the key per pane.
-- **Confidence:** high. **Public API:** no. **Root cause:** parallel arrays across stages.
-
-**RD-20 · complexity · `damage/engine.rs:103`, `pane_walk.rs:120`**
-- **What:** `dirty_panes` is cleared both in `compute` and inside `walk`. The first clear is only needed because the force-full path returns before `walk`.
-- **Direction:** clear once, at `start_frame`.
-- **Confidence:** high. **Public API:** no. **Root cause:** two exit paths.
 
 ### Batch 9
 

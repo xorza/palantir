@@ -1,5 +1,6 @@
 //! The per-node rows the walk fills, and what each covers.
 
+use crate::cascade::WidgetLocation;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -209,4 +210,42 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
         base,
         "the hash must be a pure function of the arranged rects",
     );
+}
+
+/// `locate_at` answers as `locate` at every position it is given: at the id's own position from
+/// the pass's table, elsewhere and past the end through the index. An id the pass never
+/// resolved answers none at every position.
+#[test]
+fn locate_at_answers_as_locate_at_every_position() {
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    h.frame(|ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            for name in ["a", "b", "c"] {
+                Panel::hstack()
+                    .id(WidgetId::from_hash(name))
+                    .size(Sizing::fixed(20.0))
+                    .show(ui, |_| {});
+            }
+        });
+    });
+    let cascade = h.ui().cascade();
+    let found = |loc: Option<WidgetLocation>| loc.map(|loc| (loc.entry_idx, loc.endpoint));
+    let count = cascade.resolved.len();
+    assert!(count >= 4, "the stack and its three panels resolved");
+    for row in &cascade.resolved {
+        let want = found(cascade.locate(row.id));
+        assert!(want.is_some(), "{:?} recorded", row.id);
+        for at in 0..=count {
+            assert_eq!(
+                found(cascade.locate_at(row.id, at)),
+                want,
+                "{:?} at {at}",
+                row.id
+            );
+        }
+    }
+    let missing = WidgetId::from_hash("missing");
+    for at in 0..=count {
+        assert_eq!(found(cascade.locate_at(missing, at)), None, "at {at}");
+    }
 }

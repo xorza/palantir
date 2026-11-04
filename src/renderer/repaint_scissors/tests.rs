@@ -1,28 +1,18 @@
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
 use crate::display::Display;
-use crate::display::frame_stamp::FrameStamp;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::repaint_scissors::RepaintScissors;
-use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
-use std::time::Duration;
 
-fn buffer() -> RenderBuffer {
-    let mut buffer = RenderBuffer::new();
-    buffer.start_frame(FrameStamp::new(
-        Display::from_physical(UVec2::new(100, 100), 2.0),
-        Duration::ZERO,
-    ));
-    buffer
+fn display() -> Display {
+    Display::from_physical(UVec2::new(100, 100), 2.0)
 }
 
 #[test]
 fn full_repaint_has_no_partial_scissors() {
-    let repaint = RepaintScissors::new(Damage::Full, &buffer());
+    let repaint = RepaintScissors::new(Damage::Full, &display(), []);
     assert!(matches!(repaint, Some(RepaintScissors::Full)));
 }
 
@@ -35,19 +25,14 @@ fn scissors_past_the_cap_fit_no_partial_repaint() {
         .collect();
     let damage = DamageRegion::collapse_from(&strips, 0.0, Rect::new(0.0, 0.0, 50.0, 50.0));
     assert_eq!(damage.region.iter_rects().count(), 8);
-    let mut buffer = buffer();
-    buffer.backdrops.extend((0..8).map(|j| BackdropRow {
-        source: PaneSource::Capture { barrier: j + 1 },
-        ..BackdropRow::fixture(j, URect::new(0, 12 * j, 100, 6), BlurPlan::new(2.0))
-    }));
-    assert!(RepaintScissors::new(Damage::Partial(damage), &buffer).is_none());
+    let footprints = (0..8).map(|j| URect::new(0, 12 * j, 100, 6));
+    assert!(RepaintScissors::new(Damage::Partial(damage), &display(), footprints).is_none());
 }
 
-/// A partial repaint takes the footprint of each pane that captures, as the target there holds
-/// the last frame's pane, then each damage rect, scaled, padded and clamped, less what the
+/// A partial repaint takes the footprint of each pane that may capture, as the target there
+/// holds the last frame's pane, then each damage rect, scaled, padded and clamped, less what the
 /// footprints already cover: no pixel lies under two scissors, and damage inside a footprint
-/// adds no piece. A pane that keeps its result or shows the clear reads no pixel of the target,
-/// so its footprint adds none.
+/// adds no piece.
 #[test]
 fn partial_repaint_preserves_padded_physical_scissors() {
     let damage = DamageRegion::collapse_from(
@@ -59,22 +44,12 @@ fn partial_repaint_preserves_padded_physical_scissors() {
         0.0,
         Rect::new(0.0, 0.0, 50.0, 50.0),
     );
-    // Three panes, one capturing: its footprint, already physical, joins the scissors first.
-    let mut buffer = buffer();
-    let pane = |shape, footprint, source| BackdropRow {
-        source,
-        ..BackdropRow::fixture(shape, footprint, BlurPlan::new(2.0))
-    };
-    buffer.backdrops.extend([
-        pane(0, URect::new(0, 80, 20, 20), PaneSource::Clear),
-        pane(
-            1,
-            URect::new(30, 30, 40, 20),
-            PaneSource::Capture { barrier: 1 },
-        ),
-        pane(2, URect::new(0, 60, 20, 20), PaneSource::Held),
-    ]);
-    let repaint = RepaintScissors::new(Damage::Partial(damage), &buffer);
+    // One capturing pane: its footprint, already physical, joins the scissors first.
+    let repaint = RepaintScissors::new(
+        Damage::Partial(damage),
+        &display(),
+        [URect::new(30, 30, 40, 20)],
+    );
     let Some(RepaintScissors::Partial(rects)) = repaint else {
         panic!("partial plan produced a full repaint");
     };
@@ -94,7 +69,7 @@ fn partial_repaint_preserves_padded_physical_scissors() {
     // Their bounds: x from 8 to 82, y from 8 to 52.
     assert_eq!(rects.bounds(), URect::new(8, 8, 74, 44));
     assert!(matches!(
-        RepaintScissors::new(Damage::Full, &buffer),
+        RepaintScissors::new(Damage::Full, &display(), [URect::new(30, 30, 40, 20)]),
         Some(RepaintScissors::Full)
     ));
 }
@@ -108,6 +83,7 @@ fn partial_repaint_preserves_padded_physical_scissors() {
 fn partial_repaint_rejects_scissors_clamped_outside_viewport() {
     RepaintScissors::new(
         Damage::Partial(DamageRegion::from(Rect::new(200.0, 200.0, 10.0, 10.0)).unmeasured()),
-        &buffer(),
+        &display(),
+        [],
     );
 }

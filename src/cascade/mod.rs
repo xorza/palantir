@@ -26,12 +26,14 @@ use crate::cascade::rows::tab_stop_row::{TabEnd, TabStopRow};
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::endpoint::Endpoint;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::per_plane::PerPlane;
 use crate::scene::plane::Plane;
+use crate::scene::seen_ids::ResolvedRow;
 use glam::Vec2;
 use std::time::Duration;
 
@@ -51,7 +53,17 @@ pub(crate) struct Cascade {
     pub(crate) roots: Vec<RootRow>,
     /// Arrow groups in record order — see [`ArrowGroupRow`].
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
-    /// `WidgetId → Endpoint` lookup. **Invariant: equals the recorded entries of `SeenIds.cur` at the end of the latest `CascadeEngine::run`.** A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record` cleared `cur`, and a relayout's second pass must still see pass A's entries; `seen.prev` holds the previous frame, not pass.
+    /// The key of every plane's panes, listed after each run.
+    pub(crate) pane_keys: PaneKeys,
+    /// The ids of the pass this cascade was built from, in resolve order: [`Self::locate_at`]
+    /// reads a reading pass's id at its own position here first, as passes mostly resolve
+    /// alike. A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record`
+    /// cleared `cur`, and a relayout's second pass must still see pass A's entries;
+    /// `SeenIds`' `prev` holds the previous frame, not pass. Refused: a positional read of
+    /// `SeenIds`' `prev`, a second owner that agreed with this one only while a flag said the
+    /// cascade was last frame's.
+    resolved: Vec<ResolvedRow>,
+    /// `WidgetId → Endpoint` index over the recorded rows of [`Self::resolved`].
     by_id: WidgetIdMap<Endpoint>,
     /// The inputs this cascade was built from; `None` before the first run.
     pub(crate) key: Option<CascadeKey>,
@@ -157,6 +169,18 @@ impl Cascade {
     #[inline]
     pub(crate) fn locate(&self, id: WidgetId) -> Option<WidgetLocation> {
         Some(self.location(*self.by_id.get(&id)?))
+    }
+
+    /// [`Self::locate`], answered with no probe when this cascade's pass resolved `id` at `at`,
+    /// the position the reading pass resolved it at. An id names one entry of a pass, so a match
+    /// there is the answer, an endpoint or none.
+    #[inline]
+    pub(crate) fn locate_at(&self, id: WidgetId, at: usize) -> Option<WidgetLocation> {
+        let endpoint = match self.resolved.get(at) {
+            Some(row) if row.id == id => row.endpoint,
+            _ => self.by_id.get(&id).copied(),
+        };
+        endpoint.map(|endpoint| self.location(endpoint))
     }
 
     /// [`Self::locate`] for an endpoint already known, with no probe.

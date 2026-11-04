@@ -9,6 +9,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint_animation::PaintAnimation;
@@ -305,6 +306,60 @@ fn a_pane_whose_row_moves_is_stale() {
     frame(&mut h, record(false));
     assert!(
         !h.engines_mut().damage.dirty_panes().contains(moved),
+        "still"
+    );
+}
+
+/// A canvas paints a pane after a child canvas that paints its own pane: the outer pane paints
+/// last, though its row comes before the child's rows. The walk meets the panes out of position
+/// order and stays quiet on a frame that changes nothing.
+#[test]
+fn panes_out_of_row_order_walk_quietly() {
+    const INNER: Rect = Rect::new(20.0, 20.0, 20.0, 20.0);
+    const SQUARE: Rect = Rect::new(100.0, 100.0, 10.0, 10.0);
+    const OUTER: Rect = Rect::new(90.0, 90.0, 40.0, 40.0);
+    let record = |ui: &mut Ui| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("outer"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::canvas()
+                    .id(WidgetId::from_hash("inner"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        ui.add_shape(
+                            Shape::rect()
+                                .at(INNER)
+                                .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                        );
+                        ui.add_shape(Shape::rect().at(SQUARE).fill(BLUE));
+                    });
+                ui.add_shape(
+                    Shape::rect()
+                        .at(OUTER)
+                        .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                );
+            });
+    };
+    let mut h = Harness::mono(DISPLAY.physical);
+    frame(&mut h, record);
+    let panes = &h.ui().cascade().planes[Plane::MAIN].panes;
+    let rows: Vec<u32> = panes.iter().map(|pane| pane.row).collect();
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows[1] < rows[0],
+        "the outer pane paints last at a lower row: {rows:?}"
+    );
+    let outer = panes[1].key;
+    let inner = panes[0].key;
+
+    frame(&mut h, record);
+    assert!(
+        !h.engines_mut().damage.dirty_panes().contains(outer),
+        "still"
+    );
+    assert!(
+        !h.engines_mut().damage.dirty_panes().contains(inner),
         "still"
     );
 }

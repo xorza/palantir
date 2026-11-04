@@ -32,7 +32,6 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::layer::Layer;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
@@ -138,15 +137,6 @@ impl Tree {
     #[inline]
     pub(crate) fn subtree_has_grid(&self, i: usize) -> bool {
         self.records.subtree_end()[i].has_grid()
-    }
-
-    /// The layer the root at `root` asked for.
-    pub(crate) fn root_layer(&self, root: NodeId) -> Layer {
-        self.roots
-            .iter()
-            .find(|slot| slot.first_node == root)
-            .expect("a root node has its slot")
-            .layer
     }
 
     pub(crate) fn pre_record(&mut self) {

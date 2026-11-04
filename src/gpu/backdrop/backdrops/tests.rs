@@ -53,7 +53,7 @@ fn prepare(
     buffer.backdrops.extend_from_slice(rows);
     buffer
         .live_panes
-        .extend(rows.iter().map(|row| row.capture.key));
+        .refill(rows.iter().map(|row| row.capture.key));
     gpu.frame(|ctx| {
         backdrops.prepare(
             ctx,

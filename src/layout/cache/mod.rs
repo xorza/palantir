@@ -300,8 +300,6 @@ impl MeasureCache {
                 Span::default()
             };
             let widget_id = tree.records.widget_id()[idx];
-            self.cur.desc_identity = (self.cur.desc_identity.rotate_left(5) ^ widget_id.0)
-                .wrapping_mul(0x517c_c1b7_2722_0a95);
             self.cur.descs.push(ArenaSnapshot {
                 subtree_hash: tree.rollups.layout_subtree[idx],
                 available: available[idx],

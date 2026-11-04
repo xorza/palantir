@@ -19,16 +19,31 @@ use crate::cascade::pane_row::PaneRow;
 use crate::common::span::Span;
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::scene::forest::Forest;
 use std::mem;
+use std::ops::Range;
+use tinyvec::ArrayVec;
 
 /// Where raw rects stand in paint order: the rects from `start` up to the next mark came from
 /// paint at `position` or later.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct RawMark {
     start: u32,
     position: u64,
+}
+
+/// The raw rects of one mark, as the walk reads them: ordered by `key`, with their bounds, so a
+/// footprint far from a run skips its rects.
+#[derive(Clone, Debug)]
+struct MarkRun {
+    /// The mark's position plus one, or `0` for the rects before every mark, which stand before
+    /// every pane: a run counts for a pane at `position` when `key <= position`.
+    key: u64,
+    rects: Range<u32>,
+    bounds: Rect,
+    /// The bounds of this run and every run before it in key order.
+    prefix_bounds: Rect,
 }
 
 /// The paint-order positions of a frame's raw rects, and the forward walk over its panes that
@@ -36,11 +51,14 @@ struct RawMark {
 #[derive(Debug, Default)]
 pub(super) struct PaneWalk {
     marks: Vec<RawMark>,
-    on: bool,
-    /// The last frame's pane keys, in paint order.
-    held: Vec<PaneKey>,
-    /// This frame's pane keys, in paint order.
-    keys: Vec<PaneKey>,
+    /// Walk scratch: the marks as runs, sorted by key.
+    runs: Vec<MarkRun>,
+    /// The last frame's pane keys.
+    held: PaneKeys,
+    /// This frame's pane keys.
+    keys: PaneKeys,
+    /// The panes this frame's damage left stale.
+    dirty: DirtyPanes,
 }
 
 impl PaneWalk {
@@ -61,25 +79,18 @@ impl PaneWalk {
         }
     }
 
-    /// Start a frame: hold the last frame's pane keys and take this frame's, and mark from here
-    /// on only if some plane of `cascade` has a pane. Every frame starts here, a whole one too,
-    /// so the keys held are the last frame's whatever it painted.
-    pub(super) fn start_frame(&mut self, cascade: &Cascade, forest: &Forest) {
-        self.marks.clear();
-        self.next_keys(
-            forest
-                .trees
-                .iter_paint_order()
-                .flat_map(|(plane, _)| cascade.planes[plane].panes.iter().map(|pane| pane.key)),
-        );
-        self.on = !self.keys.is_empty();
+    /// Start a frame: hold the last frame's pane keys, take `cascade`'s, and drop the last
+    /// frame's marks and stale panes. Every frame starts here, a whole one too, so the keys held
+    /// are the last frame's whatever it painted, and a whole frame reports no stale pane.
+    pub(super) fn start_frame(&mut self, cascade: &Cascade) {
+        self.next_keys(&cascade.pane_keys);
     }
 
-    /// Hold the keys taken last and take `keys`, this frame's in paint order.
-    fn next_keys(&mut self, keys: impl Iterator<Item = PaneKey>) {
+    fn next_keys(&mut self, keys: &PaneKeys) {
+        self.marks.clear();
+        self.dirty.clear();
         mem::swap(&mut self.held, &mut self.keys);
-        self.keys.clear();
-        self.keys.extend(keys);
+        self.keys.clone_from(keys);
     }
 
     /// The position of a row a node no longer paints: just before its first current row, as it
@@ -88,14 +99,19 @@ impl PaneWalk {
         Self::position(ord, span.start).saturating_sub(1)
     }
 
-    /// Whether the plane has panes, so the rects pushed take marks.
+    /// Whether the frame has panes, so the rects pushed take marks.
     pub(super) const fn is_on(&self) -> bool {
-        self.on
+        !self.keys.is_empty()
+    }
+
+    /// The panes this frame's damage left stale.
+    pub(super) const fn dirty(&self) -> &DirtyPanes {
+        &self.dirty
     }
 
     /// Note that the rects pushed from `rects` on come from paint at `position` or later.
     pub(super) fn mark(&mut self, rects: usize, position: u64) {
-        if !self.on {
+        if !self.is_on() {
             return;
         }
         let start = rects as u32;
@@ -108,17 +124,15 @@ impl PaneWalk {
 
     /// Walk the panes in paint order: a pane the last frame did not hold, or whose footprint a
     /// rect painted before it touches, has a stale capture, so its rect joins the damage, at its
-    /// own position for the panes above it, and its key joins `dirty`. Returns `false` when more
-    /// panes went stale than `dirty` holds.
+    /// own position for the panes above it, and its key joins [`Self::dirty`]. Returns `false`
+    /// when more panes went stale than it holds.
     pub(super) fn walk(
         &mut self,
         cascade: &Cascade,
         forest: &Forest,
         rects: &mut Vec<Rect>,
-        dirty: &mut DirtyPanes,
     ) -> bool {
-        dirty.clear();
-        if !self.on {
+        if !self.is_on() {
             return true;
         }
         let panes = forest
@@ -131,81 +145,114 @@ impl PaneWalk {
                     .iter()
                     .map(move |pane| (Self::position(ord, pane.row), pane))
             });
-        self.walk_panes(panes, rects, dirty)
+        self.walk_panes(panes, rects)
     }
 
     /// [`Self::walk`] over `panes`, each at its position, in paint order.
+    ///
+    /// A position only approximates paint order: an ancestor's shape painted after its children
+    /// has a lower row than theirs, so the walk meets positions in any order. The rects before
+    /// the walk are sorted into runs by position once, with the bounds of each prefix, so the
+    /// runs before a pane are the prefix a binary search finds, and that prefix's bounds reject
+    /// a footprint far from all of it. The pane rects the walk pushes, at most
+    /// [`DirtyPanes::CAP`], are read at their own positions. Cost: each pane reads the bounds of
+    /// each run before it whose prefix its footprint touches, and the rects of a run whose own
+    /// bounds it touches.
     fn walk_panes<'a>(
         &mut self,
         panes: impl Iterator<Item = (u64, &'a PaneRow)>,
         rects: &mut Vec<Rect>,
-        dirty: &mut DirtyPanes,
     ) -> bool {
-        for (i, (position, pane)) in panes.enumerate() {
-            // A pane mostly keeps its place among the panes, so its own slot answers first.
-            let held = self.held.get(i) == Some(&pane.key) || self.held.contains(&pane.key);
-            if held && !self.touched_before(rects, position, pane.footprint) {
+        self.sort_runs(rects);
+        let mut walked: ArrayVec<[RawMark; DirtyPanes::CAP]> = ArrayVec::new();
+        for (position, pane) in panes {
+            let fp = pane.footprint;
+            let ready = self.runs.partition_point(|run| run.key <= position);
+            let before = ready
+                .checked_sub(1)
+                .is_some_and(|last| self.runs[last].prefix_bounds.intersects(fp))
+                && self.runs[..ready].iter().any(|run| {
+                    run.bounds.intersects(fp)
+                        && rects[run.rects.start as usize..run.rects.end as usize]
+                            .iter()
+                            .any(|r| r.intersects(fp))
+                });
+            let walked_before = walked
+                .iter()
+                .any(|mark| mark.position < position && rects[mark.start as usize].intersects(fp));
+            if self.held.contains(pane.key) && !before && !walked_before {
                 continue;
             }
-            self.mark(rects.len(), position);
-            rects.push(pane.rect);
-            if !dirty.push(pane.key) {
+            if !self.dirty.push(pane.key) {
                 return false;
             }
+            walked.push(RawMark {
+                start: rects.len() as u32,
+                position,
+            });
+            rects.push(pane.rect);
         }
         true
     }
 
-    /// Whether a rect from paint before `position` touches `footprint`. Rects before the first
-    /// mark have no position, so they count as before every pane.
-    fn touched_before(&self, rects: &[Rect], position: u64, footprint: Rect) -> bool {
+    /// Lay the marks over `rects` as runs sorted by key, the rects before the first mark first,
+    /// each with the bounds of the runs up to it.
+    fn sort_runs(&mut self, rects: &[Rect]) {
+        let bounds = |range: Range<usize>| {
+            rects[range]
+                .iter()
+                .fold(Rect::ZERO, |bounds, r| bounds.union(*r))
+        };
+        self.runs.clear();
         let first = self.marks.first().map_or(rects.len(), |m| m.start as usize);
-        if rects[..first].iter().any(|r| r.intersects(footprint)) {
-            return true;
-        }
-        self.marks.iter().enumerate().any(|(i, mark)| {
+        self.runs.push(MarkRun {
+            key: 0,
+            rects: 0..first as u32,
+            bounds: bounds(0..first),
+            prefix_bounds: Rect::ZERO,
+        });
+        for (i, mark) in self.marks.iter().enumerate() {
             let end = self
                 .marks
                 .get(i + 1)
                 .map_or(rects.len(), |next| next.start as usize);
-            mark.position < position
-                && rects[mark.start as usize..end]
-                    .iter()
-                    .any(|r| r.intersects(footprint))
-        })
+            self.runs.push(MarkRun {
+                key: mark.position + 1,
+                rects: mark.start..end as u32,
+                bounds: bounds(mark.start as usize..end),
+                prefix_bounds: Rect::ZERO,
+            });
+        }
+        self.runs.sort_unstable_by_key(|run| run.key);
+        let mut prefix = Rect::ZERO;
+        for run in &mut self.runs {
+            prefix = prefix.union(run.bounds);
+            run.prefix_bounds = prefix;
+        }
     }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::cascade::pane_row::PaneRow;
-    use crate::damage::dirty_panes::DirtyPanes;
     use crate::damage::pane_walk::PaneWalk;
     #[cfg(test)]
     use crate::internals::scratch_report;
     use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::identity::pane_keys::PaneKeys;
 
     impl PaneWalk {
         #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             scratch_report::vec_bytes(&self.marks)
-                + scratch_report::vec_bytes(&self.held)
-                + scratch_report::vec_bytes(&self.keys)
+                + scratch_report::vec_bytes(&self.runs)
+                + self.held.scratch_bytes()
+                + self.keys.scratch_bytes()
         }
 
-        /// Clear the marks, keeping the walk on.
-        pub(crate) fn reset(&mut self) {
-            self.marks.clear();
-        }
-
-        /// A walk that marks, as on a frame with panes.
-        pub(crate) const fn marking() -> Self {
-            Self {
-                marks: Vec::new(),
-                on: true,
-                held: Vec::new(),
-                keys: Vec::new(),
-            }
+        /// [`Self::start_frame`] over `keys`, for a bench without a cascade.
+        pub(crate) fn start_over(&mut self, keys: &PaneKeys) {
+            self.next_keys(keys);
         }
 
         /// [`Self::walk`] over `panes` at their positions, for a bench without a cascade.
@@ -213,11 +260,103 @@ pub(crate) mod internals {
             &mut self,
             panes: &[(u64, PaneRow)],
             rects: &mut Vec<Rect>,
-            dirty: &mut DirtyPanes,
         ) -> bool {
-            dirty.clear();
-            self.next_keys(panes.iter().map(|(_, pane)| pane.key));
-            self.walk_panes(panes.iter().map(|(at, pane)| (*at, pane)), rects, dirty)
+            self.walk_panes(panes.iter().map(|(at, pane)| (*at, pane)), rects)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cascade::pane_row::PaneRow;
+    use crate::damage::dirty_panes::DirtyPanes;
+    use crate::damage::pane_walk::PaneWalk;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::identity::pane_key::PaneKey;
+    use crate::primitives::identity::pane_keys::PaneKeys;
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::shape::paint::blur_plan::BlurPlan;
+
+    /// Panes `a`, `b` and `c` at positions 10, 20 and 30, each a 10 px square 100 px from the
+    /// next, its footprint the square itself.
+    fn panes() -> Vec<(u64, PaneRow)> {
+        (0..3u32)
+            .map(|i| {
+                let rect = Rect::new(i as f32 * 100.0, 0.0, 10.0, 10.0);
+                let pane = PaneRow {
+                    key: PaneKey {
+                        owner: WidgetId::from_hash(u64::from(i)),
+                        shape: 0,
+                    },
+                    row: 5 * (i + 1),
+                    rect,
+                    plan: BlurPlan::new(1.0),
+                    footprint: rect,
+                };
+                (10 * u64::from(i + 1), pane)
+            })
+            .collect()
+    }
+
+    /// The panes `marked` leaves stale on a frame that holds all three, where each `(position,
+    /// x)` lays a 4 px rect at `x` painted at `position`, `None` before every mark.
+    fn stale(marked: &[(Option<u64>, f32)]) -> DirtyPanes {
+        let panes = panes();
+        let mut keys = PaneKeys::default();
+        keys.refill(panes.iter().map(|(_, pane)| pane.key));
+        let mut walk = PaneWalk::default();
+        walk.start_over(&keys);
+        walk.start_over(&keys);
+        let mut rects = Vec::new();
+        for &(position, x) in marked {
+            if let Some(position) = position {
+                walk.mark(rects.len(), position);
+            }
+            rects.push(Rect::new(x, 2.0, 4.0, 4.0));
+        }
+        assert!(walk.walk_over(&panes, &mut rects));
+        *walk.dirty()
+    }
+
+    /// A rect stales the pane under it only when painted before it, whatever order the marks
+    /// came in: at 25 over `a` (at 10) it is after `a`, at 5 over `b` (at 20) before `b`, at 15
+    /// over `c` (at 30) before `c`. A rect before every mark is before every pane. A held pane
+    /// nothing touches stays clean.
+    #[test]
+    fn a_rect_stales_only_the_panes_painted_after_it() {
+        let key = |i: usize| panes()[i].1.key;
+        assert_eq!(stale(&[]), DirtyPanes::default());
+        assert_eq!(stale(&[(Some(25), 2.0)]), DirtyPanes::default(), "after a");
+        assert_eq!(
+            stale(&[(Some(25), 2.0), (Some(5), 102.0), (Some(15), 202.0)]),
+            DirtyPanes::from_iter([key(1), key(2)]),
+        );
+        assert_eq!(
+            stale(&[(None, 2.0), (Some(25), 102.0)]),
+            DirtyPanes::from_iter([key(0)]),
+            "before every mark",
+        );
+    }
+
+    /// A pane the last frame did not hold is stale, and its rect stands before every later pane:
+    /// `a`, new, grown to reach `b`'s footprint, stales `b` too.
+    #[test]
+    fn a_new_panes_rect_stales_the_panes_above_it() {
+        let mut panes = panes();
+        panes[0].1.rect = Rect::new(0.0, 0.0, 105.0, 10.0);
+        let mut held = PaneKeys::default();
+        held.refill(panes[1..].iter().map(|(_, pane)| pane.key));
+        let mut keys = PaneKeys::default();
+        keys.refill(panes.iter().map(|(_, pane)| pane.key));
+        let mut walk = PaneWalk::default();
+        walk.start_over(&held);
+        walk.start_over(&keys);
+        let mut rects = Vec::new();
+        assert!(walk.walk_over(&panes, &mut rects));
+        assert_eq!(
+            *walk.dirty(),
+            DirtyPanes::from_iter([panes[0].1.key, panes[1].1.key])
+        );
+        assert_eq!(rects, [panes[0].1.rect, panes[1].1.rect]);
     }
 }

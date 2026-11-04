@@ -76,10 +76,7 @@ impl Frontend {
                 .begin(scene.stamp, &scene.forest.record_store, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
         drop(sink);
-        self.buffer.live_panes.clear();
-        self.buffer
-            .live_panes
-            .extend(scene.panes().map(|pane| pane.key));
+        self.buffer.live_panes.clone_from(&scene.cascade.pane_keys);
     }
 }
 

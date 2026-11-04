@@ -480,10 +480,8 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     for frame in 0..8 {
         render(&mut h, frame % 2 == 0);
     }
-    // Only non-leaf nodes earn a descriptor, so adding and dropping a leaf leaves the id sequence, and
-    // its `desc_identity`, the same every frame. Steady-state oscillation must reuse the retained
-    // map, not refill it. Counted because the `debug_assert` in the reuse branch is vacuous on a frame
-    // that rebuilt instead.
+    // Only non-leaf nodes earn a descriptor, so adding and dropping a leaf leaves the id sequence the
+    // same every frame. Steady-state oscillation must reuse the retained map, not refill it.
     let rebuilds_after_warmup = h.engines_mut().layout.cache.snapshot_rebuilds.count();
     let mut node_capacities = [
         h.engines_mut().layout.cache.prev.nodes.desired.capacity(),

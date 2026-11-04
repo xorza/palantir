@@ -4,3 +4,4 @@
 - `Gpu::wait_until` spins with no bound once the device wait has drained.
 - `Staging::unpad_into` unmaps the buffer and leaves its `MapState` mapped.
 - `SingleQuadBuffer::is_uploaded` stays true after the first upload, so the `bind_clear` assert cannot catch a missed upload.
+- A pane's paint-order position is its paint row (`PaneWalk::position`), but a node's shape recorded after its children has a lower row than every row of those children, though it paints after them (`PaneRow::row`'s doc says otherwise). A canvas whose backdrop shape follows a child canvas never goes stale when the child's content under its footprint changes, so it shows a capture of the old content (`damage::tests::panes::panes_out_of_row_order_walk_quietly`'s scene, with the child's square recolored).

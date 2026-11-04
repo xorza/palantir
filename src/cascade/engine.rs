@@ -2,7 +2,7 @@
 
 use crate::cascade::Cascade;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
-use crate::cascade::cascade_key::CascadeKey;
+use crate::cascade::cascade_key::{CascadeKey, CascadeReuse};
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::counters::CascadeCounters;
 use crate::cascade::paint::Paint;
@@ -76,6 +76,9 @@ struct TreeSink<'a> {
     arrow_groups: &'a mut Vec<ArrowGroupRow>,
     plane: Plane,
     root: WidgetId,
+    /// The slot in `tree.roots` of the next root the walk meets: roots are recorded in
+    /// pre-order, as the walk visits them.
+    next_root: usize,
 }
 
 impl RowSink for TreeSink<'_> {
@@ -88,10 +91,17 @@ impl RowSink for TreeSink<'_> {
         let attrs = tree.records.attrs()[iu];
         let plane = self.plane;
         if rows.root {
+            let slot = &tree.roots[self.next_root];
+            debug_assert_eq!(
+                slot.first_node,
+                NodeId(iu as u32),
+                "roots are walked in their slots' order"
+            );
+            self.next_root += 1;
             self.root = id;
             self.roots.push(RootRow {
                 plane,
-                layer: tree.root_layer(NodeId(iu as u32)),
+                layer: slot.layer,
                 id,
             });
         }
@@ -145,15 +155,26 @@ impl RowSink for TreeSink<'_> {
     }
 }
 
-/// The rows a repair rewrites in place: one plane's block of [`Cascade::entries`] and the hit table; the key proved every other table unchanged.
+/// The rows a refresh rewrites in place: one plane's block of [`Cascade::entries`] and the hit
+/// table; the key proved every other table unchanged. `INCREMENTAL` patches the plane's paint
+/// arena in place; without it the walk lays the arena out afresh.
 #[derive(Debug)]
-struct TreePatch<'a> {
+struct TreePatch<'a, const INCREMENTAL: bool> {
     entries: &'a mut [EntryRow],
     hits: &'a mut [HitRow],
 }
 
-impl RowSink for TreePatch<'_> {
-    const INCREMENTAL: bool = true;
+/// How [`CascadeEngine::refresh`] rewrites the paint arena.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Refresh {
+    /// In place, skipping each node whose inputs held, on each plane whose row counts held.
+    Patch,
+    /// Afresh, every node walked.
+    Repack,
+}
+
+impl<const I: bool> RowSink for TreePatch<'_, I> {
+    const INCREMENTAL: bool = I;
 
     /// Only the rect and inherited transform are rewritten.
     #[inline]
@@ -235,7 +256,8 @@ pub(crate) struct CascadeEngine {
 }
 
 impl CascadeEngine {
-    /// Brings the frozen cascade up to `source`'s key: an unchanged key skips, unchanged structure refreshes in place, else rebuild.
+    /// Brings the frozen cascade up to `source`'s key: an unchanged key skips, and a moved one
+    /// keeps what [`CascadeKey::reuse`] says still holds.
     pub(crate) fn run(&mut self, source: CascadeSource<'_>, cascade: &mut Cascade) {
         tracy::zone!();
         let key = CascadeKey::new(source);
@@ -244,39 +266,67 @@ impl CascadeEngine {
         if !ran {
             return;
         }
-        if !cascade.key.is_some_and(|built| built.keeps_structure(&key)) {
-            self.rebuild(source, key, cascade);
-            return;
+        match cascade
+            .key
+            .map_or(CascadeReuse::Nothing, |built| built.reuse(&key))
+        {
+            CascadeReuse::Nothing => self.rebuild(source, cascade),
+            CascadeReuse::Structure => self.refresh(source, cascade, Refresh::Repack),
+            CascadeReuse::Rows => self.refresh(source, cascade, Refresh::Patch),
         }
-        debug_assert_retained_fits(source.forest, cascade);
+        seal(source.forest, key, cascade);
+    }
 
+    /// Rewrite `cascade`, whose structural tables hold, in place, plane by plane: patched while
+    /// `how` and the plane's row counts allow, else repacked, as is a plane whose patch meets a
+    /// paint span that changed length.
+    fn refresh(&mut self, source: CascadeSource<'_>, cascade: &mut Cascade, how: Refresh) {
+        debug_assert_retained_fits(source.forest, cascade);
         for (plane, tree) in source.forest.trees.iter_paint_order() {
             let n = tree.records.len();
-            let base = cascade.planes[plane].entries_base as usize;
+            let tree_source = TreeSource {
+                tree,
+                layout: &source.layout[plane],
+                display_scale: source.display.scale_factor(),
+            };
+            let lc = &mut cascade.planes[plane];
+            let base = lc.entries_base as usize;
+            let entries = &mut cascade.entries[base..base + n];
+            let counts = tree.fingerprint.paint_counts;
+            let patch = how == Refresh::Patch && lc.paint_counts == counts;
+            lc.paint_counts = counts;
+            if patch {
+                self.stack.clear();
+                let patched = self.run_tree(
+                    tree_source,
+                    lc,
+                    &mut TreePatch::<true> {
+                        entries: &mut *entries,
+                        hits: &mut cascade.hits,
+                    },
+                );
+                if patched {
+                    continue;
+                }
+                self.counters.abandoned_incremental();
+            }
+            self.counters.repack();
+            lc.paint_arena.reset_for(n);
             self.stack.clear();
-            let incremental_complete = self.run_tree(
-                TreeSource {
-                    tree,
-                    layout: &source.layout[plane],
-                    display_scale: source.display.scale_factor(),
-                },
-                &mut cascade.planes[plane],
-                &mut TreePatch {
-                    entries: &mut cascade.entries[base..base + n],
+            let complete = self.run_tree(
+                tree_source,
+                lc,
+                &mut TreePatch::<false> {
+                    entries,
                     hits: &mut cascade.hits,
                 },
             );
-            if !incremental_complete {
-                self.counters.abandoned_incremental();
-                // Restarts at the first plane: `rebuild` assigns per-plane bases into one flat `entries` table as it walks, so it has no mid-way entry. Costs one extra paint repair.
-                self.rebuild(source, key, cascade);
-                return;
-            }
+            debug_assert!(complete, "a walk that skips nothing completes");
+            lc.arena_hashes.copy_from_slice(&tree.rollups.subtree);
         }
-        cascade.key = Some(key);
     }
 
-    fn rebuild(&mut self, source: CascadeSource<'_>, key: CascadeKey, cascade: &mut Cascade) {
+    fn rebuild(&mut self, source: CascadeSource<'_>, cascade: &mut Cascade) {
         self.counters.full_rebuild();
         let forest = source.forest;
         let total = forest.total_nodes();
@@ -311,12 +361,13 @@ impl CascadeEngine {
                     arrow_groups: &mut cascade.arrow_groups,
                     plane,
                     root: WidgetId::default(),
+                    next_root: 0,
                 },
             );
             debug_assert!(full_complete);
-            cascade.planes[plane]
-                .arena_hashes
-                .copy_from_slice(&tree.rollups.subtree);
+            let lc = &mut cascade.planes[plane];
+            lc.arena_hashes.copy_from_slice(&tree.rollups.subtree);
+            lc.paint_counts = tree.fingerprint.paint_counts;
             debug_assert_eq!(
                 cascade.entries.len() as u32 - entries_base,
                 n as u32,
@@ -327,10 +378,30 @@ impl CascadeEngine {
         // `SeenIds::pre_record` clears `cur` before a relayout pass can query the preceding pass's responses.
         //
         // Refilled, not `clone_from`: `cur` and `prev` swap every frame and hashbrown's `clone_from` reallocates when bucket counts differ.
+        cascade.resolved.clear();
+        cascade.resolved.extend(forest.ids.resolved());
         cascade.by_id.clear();
-        cascade.by_id.extend(forest.ids.recorded());
-        cascade.key = Some(key);
+        cascade.by_id.extend(
+            cascade
+                .resolved
+                .iter()
+                .filter_map(|row| Some((row.id, row.endpoint?))),
+        );
     }
+}
+
+/// Stamp `cascade`, now built from `forest`, with `key`, and list its panes' keys.
+fn seal(forest: &Forest, key: CascadeKey, cascade: &mut Cascade) {
+    cascade.key = Some(key);
+    let Cascade {
+        planes, pane_keys, ..
+    } = cascade;
+    pane_keys.refill(
+        forest
+            .trees
+            .iter_paint_order()
+            .flat_map(|(plane, _)| planes[plane].panes.iter().map(|pane| pane.key)),
+    );
 }
 
 /// A cascade whose key keeps its structure still has one entry per node and one arena column per plane, in `forest`'s paint order.
@@ -515,7 +586,8 @@ impl CascadeEngine {
     }
 }
 
-/// Rebuild `lc.panes` from the panes `tree` recorded, each at its paint row and that row's screen.
+/// Rebuild `lc.panes` from the panes `tree` recorded, each at its paint row and that row's screen,
+/// and `lc.pane_rows` from them.
 fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_scale: f32) {
     lc.panes.clear();
     let widget_ids = tree.records.widget_id();
@@ -557,6 +629,9 @@ fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_
             ),
         });
     }
+    lc.pane_rows.clear();
+    lc.pane_rows.extend(lc.panes.iter().map(|pane| pane.row));
+    lc.pane_rows.sort_unstable();
 }
 
 /// The narrowest side, in logical px, of a pane drawn whole at `rect` on the screen, which a lens
@@ -589,7 +664,7 @@ pub(crate) mod internals {
     use crate::cascade::Cascade;
     use crate::cascade::cascade_key::CascadeKey;
     use crate::cascade::cascade_source::CascadeSource;
-    use crate::cascade::engine::CascadeEngine;
+    use crate::cascade::engine::{CascadeEngine, seal};
     #[cfg(test)]
     use crate::cascade::paint::Paint;
     #[cfg(test)]
@@ -598,7 +673,8 @@ pub(crate) mod internals {
     impl CascadeEngine {
         /// Rebuilds every row from `source`, whatever the cascade holds.
         pub(crate) fn run_full(&mut self, source: CascadeSource<'_>, cascade: &mut Cascade) {
-            self.rebuild(source, CascadeKey::new(source), cascade);
+            self.rebuild(source, cascade);
+            seal(source.forest, CascadeKey::new(source), cascade);
         }
 
         /// The last node's rows the incremental walk recomputed.

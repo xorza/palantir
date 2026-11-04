@@ -265,7 +265,6 @@ impl<'a> FrameCycle<'a> {
             },
             &mut self.ui.cascade,
         );
-        self.ui.forest.ids.cascade_ran();
     }
 
     /// Paint half of the frame: diffs seen ids against the last painted frame, fans `removed` out to per-widget caches, runs input and damage. Once per [`Self::run`], so a widget vanishing in pass A and returning in pass B keeps its state.

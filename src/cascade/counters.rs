@@ -6,13 +6,15 @@
 
 use crate::common::counters::TestOnly;
 
-/// What the cascade did, for tests. Both paths end in the same cascade, so the pair is what separates "`CascadeKey::keeps_structure` said no" from "the incremental walk gave up halfway".
+/// What the cascade did, for tests. Every path ends in the same cascade, so these are what tell a rebuild, a repack the key foresaw and a patch that gave up halfway apart.
 #[derive(Debug, Default)]
 pub(crate) struct CascadeCounters {
     /// Full rebuilds performed.
     full_rebuilds: TestOnly<u32>,
-    /// Incremental walks that gave up partway, duplicating the full rebuild they started.
+    /// Incremental walks that gave up partway, so their plane was repacked after them.
     abandoned_incrementals: TestOnly<u32>,
+    /// Planes whose paint arena a refresh laid out afresh, keeping the structural tables.
+    repacks: TestOnly<u32>,
     /// Nodes an incremental walk recomputed rather than kept; tells a repair inside the changed subtree from a full-tree walk.
     refreshed_nodes: TestOnly<u32>,
     /// Whether the last run did work rather than skip on an unchanged key.
@@ -28,6 +30,11 @@ impl CascadeCounters {
     #[inline]
     pub(crate) fn abandoned_incremental(&mut self) {
         self.abandoned_incrementals.bump();
+    }
+
+    #[inline]
+    pub(crate) fn repack(&mut self) {
+        self.repacks.bump();
     }
 
     #[inline]
@@ -53,6 +60,10 @@ pub(crate) mod internals {
 
         pub(crate) fn abandoned_incrementals(&self) -> u32 {
             self.abandoned_incrementals.count()
+        }
+
+        pub(crate) fn repacks(&self) -> u32 {
+            self.repacks.count()
         }
 
         pub(crate) fn refreshed_nodes(&self) -> u32 {

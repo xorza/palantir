@@ -461,23 +461,34 @@ impl WindowDriver {
                     self.decide_panes(plan);
                 }
             }
+            // The disjoint scissors outgrow their cap: the frame paints whole, known before it
+            // builds.
+            let display = self.ui.frame_scene().stamp.display;
+            let scissors = if let Some(scissors) = RepaintScissors::new(
+                plan.damage,
+                &display,
+                self.pane_captures.capture_footprints(),
+            ) {
+                scissors
+            } else {
+                plan = plan.to_full();
+                mode = path(Some(plan), self.stream.is_backbuffer_fresh());
+                self.decide_panes(plan);
+                RepaintScissors::Full
+            };
             self.build(frontend, plan);
-            // The disjoint scissors outgrow their cap, or the pixels this partial frame keeps show
-            // a cutout form the frame no longer picks: it paints whole.
-            let scissors = RepaintScissors::new(plan.damage, &frontend.buffer);
-            match scissors {
-                Some(scissors) if self.plan_cutouts(&frontend.buffer, &scissors) == Census::Cur => {
-                    self.scissors = scissors;
-                }
-                _ => {
-                    let full = plan.to_full();
-                    mode = path(Some(full), self.stream.is_backbuffer_fresh());
-                    self.decide_panes(full);
-                    self.build(frontend, full);
-                    let census = self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full);
-                    debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
-                    self.scissors = RepaintScissors::Full;
-                }
+            // The pixels this partial frame keeps show a cutout form the frame no longer picks:
+            // it paints whole.
+            if self.plan_cutouts(&frontend.buffer, &scissors) == Census::Cur {
+                self.scissors = scissors;
+            } else {
+                let full = plan.to_full();
+                mode = path(Some(full), self.stream.is_backbuffer_fresh());
+                self.decide_panes(full);
+                self.build(frontend, full);
+                let census = self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full);
+                debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
+                self.scissors = RepaintScissors::Full;
             }
             self.pane_captures.settle(&frontend.buffer);
             mode = self.capture_path(mode, &frontend.buffer);

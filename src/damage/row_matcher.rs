@@ -1,7 +1,6 @@
 //! Pairing one node's paint rows against last frame's, and turning the unpaired into damage.
 
 use crate::cascade::paint::Paint;
-use crate::cascade::pane_row::PaneRow;
 use crate::common::block_arena::BlockArena;
 use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
@@ -33,7 +32,8 @@ impl NodeRows {
 pub(super) struct RowPlaces<'a> {
     pub(super) panes: &'a mut PaneWalk,
     pub(super) of: NodeRows,
-    pub(super) pane_rows: &'a [PaneRow],
+    /// The rows of the plane's panes, sorted.
+    pub(super) pane_rows: &'a [u32],
 }
 
 /// Result of [`RowMatcher::diff_changed_leg`].
@@ -269,7 +269,7 @@ impl RowMatcher {
     fn gone_place(&self, prow: u32, places: &RowPlaces<'_>) -> u64 {
         let of = places.of;
         let row = of.span.start + prow;
-        if prow < of.span.len && places.pane_rows.iter().any(|pane| pane.row == row) {
+        if prow < of.span.len && places.pane_rows.binary_search(&row).is_ok() {
             return of.row(prow);
         }
         self.last_matched_before[prow as usize]

@@ -41,10 +41,9 @@ pub(crate) struct DamageEngine {
 
     root_order: RootOrder,
 
-    /// Where the raw rects stand in paint order, and the walk over the panes they reach.
+    /// Where the raw rects stand in paint order, the walk over the panes they reach, and the
+    /// panes it left stale.
     panes: PaneWalk,
-    /// The panes this frame's damage left stale.
-    dirty_panes: DirtyPanes,
 
     pub(super) counters: DamageCounters,
 }
@@ -100,8 +99,7 @@ impl DamageEngine {
 
         // Pass 1: every source (structural diff, order inversions, predamaged anim rects, removed eviction tail) pushes into `raw_rects` unmerged.
         self.raw_rects.clear();
-        self.dirty_panes.clear();
-        self.panes.start_frame(cascade, forest);
+        self.panes.start_frame(cascade);
 
         for (ord, (plane, tree)) in forest.trees.iter_paint_order().enumerate() {
             let frame = PlaneFrame {
@@ -156,10 +154,7 @@ impl DamageEngine {
             }
         }
 
-        if !self
-            .panes
-            .walk(cascade, forest, &mut self.raw_rects, &mut self.dirty_panes)
-        {
+        if !self.panes.walk(cascade, forest, &mut self.raw_rects) {
             return self.note_presented(baseline, Some(Damage::Full));
         }
         let damage = self.finish_region(surface);
@@ -168,7 +163,7 @@ impl DamageEngine {
 
     /// The panes the last frame's damage left stale.
     pub(crate) const fn dirty_panes(&self) -> &DirtyPanes {
-        &self.dirty_panes
+        self.panes.dirty()
     }
 
     /// Stamps the baseline a frame presents under and hands its damage back. Only a painted frame presents; stamping a skipped one would adopt a clear color no pixel was painted under.
@@ -201,14 +196,12 @@ impl DamageEngine {
             "a paint-only frame under a moved baseline: the frame plan must have recorded",
         );
         self.raw_rects.clear();
-        self.panes.start_frame(input.cascade, input.forest);
+        self.panes.start_frame(input.cascade);
         self.extend_predamaged(&input);
-        if !self.panes.walk(
-            input.cascade,
-            input.forest,
-            &mut self.raw_rects,
-            &mut self.dirty_panes,
-        ) {
+        if !self
+            .panes
+            .walk(input.cascade, input.forest, &mut self.raw_rects)
+        {
             return self.note_presented(input.baseline, Some(Damage::Full));
         }
         let damage = self.finish_region(input.surface);
@@ -285,7 +278,6 @@ pub(crate) mod internals {
                 inversions,
                 root_order,
                 panes,
-                dirty_panes: _,
                 counters: _,
             } = self;
             matcher.scratch_bytes()

@@ -246,7 +246,7 @@ enum Resolve {
 /// every observable must agree.
 #[test]
 fn matches_the_per_pass_tables_over_random_frames() {
-    let (mut in_step, mut out_of_step, mut positional) = (0, 0, 0);
+    let (mut in_step, mut out_of_step) = (0, 0);
     for seed in 1..=8_u64 {
         let mut rng = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15);
         let mut next = move |n: usize| {
@@ -337,17 +337,6 @@ fn matches_the_per_pass_tables_over_random_frames() {
                         }
                     };
                     assert_eq!(got, want, "resolve, {at}");
-                    let last = ids.last_frame_endpoint(got.id());
-                    if last != LastFrame::Unknown {
-                        positional += 1;
-                        assert_eq!(
-                            last,
-                            model
-                                .last_frame_endpoint(got.id())
-                                .map_or(LastFrame::Absent, LastFrame::At),
-                            "last frame's endpoint by position, {at}",
-                        );
-                    }
                     if !open.contains(&got) {
                         open.push(got);
                     }
@@ -363,7 +352,11 @@ fn matches_the_per_pass_tables_over_random_frames() {
                         );
                     }
                 }
-                assert_eq!(ids.recorded().collect::<Vec<_>>(), model.recorded(), "{at}");
+                let recorded: Vec<_> = ids
+                    .resolved()
+                    .filter_map(|row| Some((row.id, row.endpoint?)))
+                    .collect();
+                assert_eq!(recorded, model.recorded(), "{at}");
                 for &id in &probes {
                     assert_eq!(ids.endpoint(id), model.endpoint(id), "endpoint, {at}");
                 }
@@ -387,9 +380,8 @@ fn matches_the_per_pass_tables_over_random_frames() {
         }
     }
     assert!(
-        in_step > 500 && out_of_step > 500 && positional > 5000,
-        "both paths run: {in_step} frames in step, {out_of_step} out, \
-         {positional} last-frame endpoints by position",
+        in_step > 500 && out_of_step > 500,
+        "both paths run: {in_step} frames in step, {out_of_step} out",
     );
 }
 

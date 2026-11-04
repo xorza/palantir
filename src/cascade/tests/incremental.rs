@@ -287,9 +287,10 @@ fn incremental_scroll_matches_full() {
     assert_cascades_match_full(h.ui(), "scroll");
 }
 
-/// A widget that adds a shape without moving goes straight to the full
-/// rebuild: the incremental walk only discovers a changed row count mid-tree,
-/// after duplicating work. Only the counter tells the paths apart.
+/// A widget that adds a shape without moving goes straight to a repack of its
+/// plane's paint arena: the incremental walk only discovers a changed row
+/// count mid-tree, after duplicating work, and the structural tables hold, so
+/// nothing is rebuilt. Only the counters tell the paths apart.
 #[test]
 fn adding_a_shape_skips_the_doomed_incremental_walk() {
     fn build(ui: &mut Ui, extra_shape: bool) {
@@ -314,13 +315,21 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
 
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| build(ui, false));
-    let baseline = h.engines_mut().cascade.counters.abandoned_incrementals();
+    let counters = |h: &mut Harness| {
+        let counters = &h.engines_mut().cascade.counters;
+        [
+            counters.abandoned_incrementals(),
+            counters.full_rebuilds(),
+            counters.repacks(),
+        ]
+    };
+    let [abandoned, rebuilds, repacks] = counters(&mut h);
 
     h.frame(|ui| build(ui, true));
     assert_eq!(
-        h.engines_mut().cascade.counters.abandoned_incrementals(),
-        baseline,
-        "a row-count change must be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
+        counters(&mut h),
+        [abandoned, rebuilds, repacks + 1],
+        "a row-count change must be caught by `CascadeKey::reuse` and repack the one plane",
     );
 
     let rows = h.ui().cascade().planes[Plane::MAIN]
@@ -391,6 +400,9 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
     enum Path {
         /// A structural table changed: everything is rebuilt.
         Rebuild,
+        /// The structural tables hold, but what the walk cannot foresee moved: every node is
+        /// walked again and the paint arenas laid out afresh.
+        Repack,
         /// Only geometry or paint changed: rows are rewritten in place.
         Refresh,
     }
@@ -433,7 +445,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         ("root layer", Path::Rebuild, |h| {
             h.frame(|ui| scene(ui, RE_LAYERED));
         }),
-        ("font load", Path::Rebuild, |h| {
+        ("font load", Path::Repack, |h| {
             h.ui().load_font(INTER).expect("the bundled Inter loads");
             h.frame(|ui| scene(ui, BASE));
         }),
@@ -444,6 +456,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         h.frame(|ui| scene(ui, BASE));
         let base_key = h.ui().cascade().key;
         let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
+        let repacks = h.engines_mut().cascade.counters.repacks();
         let abandoned = h.engines_mut().cascade.counters.abandoned_incrementals();
 
         mutate(&mut h);
@@ -453,20 +466,19 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
             h.ui().cascade().key,
             "`{label}` left the key unmoved — the frame would reuse a stale cascade",
         );
-        let rebuilt = h.engines_mut().cascade.counters.full_rebuilds() > rebuilds;
+        let counters = &h.engines_mut().cascade.counters;
+        let taken = if counters.full_rebuilds() > rebuilds {
+            Path::Rebuild
+        } else if counters.repacks() > repacks {
+            Path::Repack
+        } else {
+            Path::Refresh
+        };
+        assert_eq!(taken, path, "`{label}` took the wrong path");
         assert_eq!(
-            if rebuilt {
-                Path::Rebuild
-            } else {
-                Path::Refresh
-            },
-            path,
-            "`{label}` took the wrong path",
-        );
-        assert_eq!(
-            h.engines_mut().cascade.counters.abandoned_incrementals(),
+            counters.abandoned_incrementals(),
             abandoned,
-            "`{label}` should be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
+            "`{label}` should be caught by `CascadeKey::reuse`, not discovered mid-walk",
         );
         assert_cascades_match_full(h.ui(), label);
     }

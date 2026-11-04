@@ -78,7 +78,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::scrollbars_def::ScrollbarsDef;
-use crate::scene::seen_ids::{LastFrame, ResolvedId};
+use crate::scene::seen_ids::ResolvedId;
 use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
@@ -1179,22 +1179,12 @@ impl Ui {
         }
     }
 
-    /// Where the most recent cascade run put `id`; uses
-    /// [`SeenIds::last_frame_endpoint`](crate::scene::seen_ids::SeenIds::last_frame_endpoint)
-    /// when valid, else `Cascade::by_id`.
+    /// Where the most recent cascade run put `id`, which a widget reads as it resolves: the
+    /// newest id of this pass, so its position is the last one.
     #[inline]
     fn last_frame_location(&self, id: WidgetId) -> Option<WidgetLocation> {
-        let endpoint = match self.forest.ids.last_frame_endpoint(id) {
-            LastFrame::At(endpoint) => Some(endpoint),
-            LastFrame::Absent => None,
-            LastFrame::Unknown => return self.cascade.locate(id),
-        };
-        debug_assert_eq!(
-            endpoint,
-            self.cascade.endpoint(id),
-            "the positional read of {id:?} left the cascade's row",
-        );
-        endpoint.map(|endpoint| self.cascade.location(endpoint))
+        let newest = self.forest.ids.resolved_count().wrapping_sub(1);
+        self.cascade.locate_at(id, newest)
     }
 
     /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored. Creates

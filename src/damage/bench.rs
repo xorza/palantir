@@ -12,6 +12,7 @@ use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
@@ -491,11 +492,12 @@ fn backdrop_walk(group: &mut CaseGroup<'_>) {
                         (PaneWalk::position(0, pane.row), pane)
                     })
                     .collect();
-                let mut walk = PaneWalk::marking();
+                let mut keys = PaneKeys::default();
+                keys.refill(rows.iter().map(|(_, pane)| pane.key));
+                let mut walk = PaneWalk::default();
                 let mut raw = Vec::new();
-                let mut dirty = DirtyPanes::default();
                 let fill = |walk: &mut PaneWalk, raw: &mut Vec<Rect>| {
-                    walk.reset();
+                    walk.start_over(&keys);
                     raw.clear();
                     for r in 0..rects {
                         walk.mark(raw.len(), PaneWalk::position(0, 2 * (r % panes)));
@@ -504,13 +506,13 @@ fn backdrop_walk(group: &mut CaseGroup<'_>) {
                 };
                 // The first walk holds no pane, so every one is new and stale.
                 fill(&mut walk, &mut raw);
-                let _ = walk.walk_over(&rows, &mut raw, &mut dirty);
+                let _ = walk.walk_over(&rows, &mut raw);
                 fill(&mut walk, &mut raw);
-                assert!(walk.walk_over(&rows, &mut raw, &mut dirty));
-                assert_eq!(dirty, DirtyPanes::default(), "no pane goes stale");
+                assert!(walk.walk_over(&rows, &mut raw));
+                assert_eq!(*walk.dirty(), DirtyPanes::default(), "no pane goes stale");
                 b.iter(|| {
                     fill(&mut walk, &mut raw);
-                    black_box(walk.walk_over(&rows, &mut raw, &mut dirty))
+                    black_box(walk.walk_over(&rows, &mut raw))
                 });
             });
         }
