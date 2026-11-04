@@ -7,7 +7,7 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::combo_box::ComboBox;
+use crate::widgets::combo_box::{ComboBox, ComboBoxList};
 use crate::widgets::menu::Menu;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
@@ -84,7 +84,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         h.click(combo());
         h.frame(|ui| record(ui, opener, &mut selected));
 
-        let list = Menu::menu_id(combo());
+        let list = ComboBoxList::menu_id(combo());
         let rows = h
             .rect(list)
             .unwrap_or_else(|| panic!("{opener:?}: the list opened"));

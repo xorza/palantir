@@ -123,7 +123,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse {
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
-        let list = Menu::menu_id(id);
+        let list = ComboBoxList::menu_id(id);
         let shown = self
             .options
             .iter()
@@ -201,6 +201,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
         // A dropdown is at least as wide as its trigger, an explicit set that outranks
         // `MenuTheme::min_width`.
         let resp = Menu::below(&response)
+            .id(list)
             .style(self.menu_style)
             .landing(landing)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
@@ -230,12 +231,19 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
 
 /// The list of a [`ComboBox`], driven from outside by the combo's id: the row its open state
 /// keeps, and the functions that open and close it. A type of its own, not generic over the
-/// combo's options, so a call names no option type. The list is the combo's menu, so its id is
-/// [`Menu::menu_id`] of the combo's.
+/// combo's options, so a call names no option type. The list records under
+/// [`Self::menu_id`] of the combo's.
 #[derive(Debug)]
 pub struct ComboBoxList;
 
 impl ComboBoxList {
+    /// The list of the combo box `combo`. Its own derivation, not [`Menu::menu_id`] of the combo's,
+    /// which a context menu an app puts on the combo takes: the two overlays open together and
+    /// record under two ids.
+    pub fn menu_id(combo: WidgetId) -> WidgetId {
+        combo.with("combo-list")
+    }
+
     /// Open the list of the combo box `id`, e.g. from a keyboard shortcut; it records on the
     /// combo's next `show`.
     pub fn open(ui: &mut Ui, id: WidgetId) {

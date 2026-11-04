@@ -128,7 +128,11 @@ impl PaintSink for ComposeSession<'_> {
                 corners: logical_radius.fit_to(physical.size, scale_physical),
             };
             // A rounded push nested in rounded ancestors stacks: child chain = ancestor chain + own
-            // mask. Re-pushing the innermost mask adds no depth.
+            // mask, copied whole, as the backend reads each chain as one contiguous span. Re-pushing
+            // the innermost mask adds no depth. The pool grows by the sum of the depths, a few
+            // masks a clip at a UI's two to four rounded levels. Refused until a profile shows deep
+            // nesting: WebRender's clip-chain nodes with parent links, which the backend would walk
+            // back into a span at each draw.
             if self.out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
                 parent_chain
             } else {

@@ -144,7 +144,9 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     );
 
     let trigger = h.rect(id).expect("combo trigger arranged");
-    let list = h.rect(Menu::menu_id(id)).expect("combo list arranged");
+    let list = h
+        .rect(ComboBoxList::menu_id(id))
+        .expect("combo list arranged");
     assert_eq!(list.min.x, trigger.min.x, "list starts at trigger left");
     assert_eq!(
         list.max().y,
@@ -307,7 +309,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
         h.frame(&mut build);
         ComboBoxList::open(h.ui_mut(), id);
         h.frame(&mut build);
-        h.rect(Menu::menu_id(id))
+        h.rect(ComboBoxList::menu_id(id))
             .expect("combo list arranged")
             .size
             .h
@@ -327,7 +329,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
 fn disabling_an_open_trigger_closes_its_list() {
     static OPTIONS: [&str; 3] = ["One", "Two", "Three"];
     let combo = WidgetId::from_hash("combo");
-    let list = Menu::menu_id(combo);
+    let list = ComboBoxList::menu_id(combo);
     let mut selected = &OPTIONS[0];
     let record = |h: &mut Harness, disabled: bool, selected: &mut &'static &'static str| {
         h.frame(|ui| {
@@ -434,7 +436,7 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
     ComboBoxList::open(h.ui_mut(), id);
     frame(&mut h, &mut selected);
     assert!(ComboBoxList::is_open(h.ui(), id), "an outside open records");
-    assert!(h.rect(Menu::menu_id(id)).is_some());
+    assert!(h.rect(ComboBoxList::menu_id(id)).is_some());
 }
 
 /// Keyboard path: Enter on the focused combo opens it with focus on the first row; Tab and arrows walk the rows in the list it traps; Enter picks and closes; focus returns to the combo.
@@ -510,4 +512,44 @@ fn a_callers_justify_wins_over_the_space_between() {
     };
     assert_eq!(justify(plain), Justify::SpaceBetween);
     assert_eq!(justify(centered), Justify::Center);
+}
+
+/// A combo's list and a context menu an app puts on the same combo are two overlays: both open
+/// at once, each records under an id of its own, and no two nodes collide.
+#[test]
+fn the_list_and_a_context_menu_on_the_combo_do_not_collide() {
+    use crate::widgets::menu::menu_item::MenuItem;
+
+    static OPTIONS: [&str; 2] = ["A", "B"];
+    let id = WidgetId::from_hash("combo-with-menu");
+    let mut selected = &OPTIONS[0];
+    let record = |ui: &mut Ui, selected: &mut &'static &'static str| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let combo = ComboBox::new(selected, &OPTIONS).id(id).show(ui);
+                Menu::context(&combo.response).show(ui, |ui| {
+                    MenuItem::new("Reset").show(ui);
+                });
+            });
+    };
+    let mut h = Harness::mono(SURFACE);
+    h.frame(|ui| record(ui, &mut selected));
+    ComboBoxList::open(h.ui_mut(), id);
+    Menu::open(h.ui_mut(), id, Vec2::new(200.0, 200.0));
+    h.frame(|ui| record(ui, &mut selected));
+    h.frame(|ui| record(ui, &mut selected));
+    assert!(ComboBoxList::is_open(h.ui(), id));
+    assert!(Menu::is_open(h.ui(), id));
+    assert_eq!(h.ui().forest().collisions.len(), 0, "two overlays, two ids");
+    assert!(
+        h.rect(ComboBoxList::menu_id(id)).is_some(),
+        "the list records"
+    );
+    assert!(
+        h.rect(Menu::menu_id(id)).is_some(),
+        "the context menu records"
+    );
+    assert_ne!(ComboBoxList::menu_id(id), Menu::menu_id(id));
 }

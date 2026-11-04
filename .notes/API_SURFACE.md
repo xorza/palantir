@@ -406,6 +406,7 @@ ComboBox
 
 ComboBoxList
     struct ComboBoxList: Debug
+        pub fn menu_id(combo: WidgetId) -> WidgetId
         pub fn open(ui: &mut Ui, id: WidgetId)
         pub fn close(ui: &mut Ui, id: WidgetId)
         pub fn is_open(ui: &Ui, id: WidgetId) -> bool
