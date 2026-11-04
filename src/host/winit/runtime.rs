@@ -19,7 +19,7 @@ use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::QueryTask;
 use crate::host::winit::system_preferences;
 use crate::host::winit::wake_latch::WakeLatch;
-use crate::host::winit::window::{FramePresent, OpenedWindow, Window};
+use crate::host::winit::window::{OpenedWindow, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
@@ -201,16 +201,17 @@ impl<T: App + 'static> WinitRuntime<T> {
             self.recover()?;
         }
         let single_window = self.windows.len() == 1;
-        let win = self.windows.at(slot);
-        let due = win.next;
-        let now = Instant::now();
         // A hidden window skips its frame and runs nothing of the app, so none follows it.
-        if let Some(ran) = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands) {
-            self.frames.record(win.driver.token, ran.summary);
-            if due.leads(now, ran.ran_app) {
-                self.windows.follow(slot, Instant::now());
-            }
-        }
+        self.windows.run(
+            slot,
+            Instant::now(),
+            |win| {
+                let ran = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)?;
+                self.frames.record(win.driver.token, ran.summary);
+                Some(ran.ran_app)
+            },
+            Instant::now,
+        );
         let win = self.windows.at(slot);
         if self.core.device.gpu().is_lost() {
             // Lost before the frame or found by its submit or present: every window shows its last
@@ -258,10 +259,8 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// backed off.
     fn wake_for_recovery(&mut self) {
         let now = Instant::now();
-        let at = now + self.recovery.wait_left(now).unwrap_or_default();
-        for win in &mut self.windows {
-            win.next = FramePresent::At(at);
-        }
+        self.windows
+            .hold_until(now + self.recovery.wait_left(now).unwrap_or_default());
     }
 
     /// Attach a new device in place of the lost one, through the steps startup took: the first
@@ -333,13 +332,9 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
     }
 
-    /// Fold every window's [`FramePresent`] into one [`ControlFlow`]; the nearest deadline wins.
+    /// Fold every window's next frame into one [`ControlFlow`]; the nearest deadline wins.
     pub(super) fn schedule(&self, event_loop: &ActiveEventLoop, now: Instant) {
-        let earliest = earliest_wake(
-            self.windows.iter().map(|win| (win, win.next.resolve(now))),
-            |win| win.window.request_redraw(),
-        );
-        event_loop.set_control_flow(match earliest {
+        event_loop.set_control_flow(match self.windows.wake(now) {
             Some(at) => ControlFlow::WaitUntil(at),
             None => ControlFlow::Wait,
         });
@@ -412,72 +407,5 @@ impl<T: App + 'static> WinitRuntime<T> {
 fn renew_surface(surfaces: &SurfaceManager, win: &mut Window, max_texture_dim: NonZeroU32) {
     if let Err(error) = surfaces.renew(&win.window, &mut win.surface, max_texture_dim) {
         tracing::error!(token = ?win.driver.token, %error, "window surface not made again");
-    }
-}
-
-/// The nearest future deadline among `presents`; windows wanting a frame now go to `redraw`.
-fn earliest_wake<W>(
-    presents: impl IntoIterator<Item = (W, FramePresent)>,
-    mut redraw: impl FnMut(W),
-) -> Option<Instant> {
-    let mut earliest: Option<Instant> = None;
-    for (window, present) in presents {
-        match present {
-            FramePresent::Immediate | FramePresent::Follow => redraw(window),
-            FramePresent::At(at) => earliest = Some(earliest.map_or(at, |best| best.min(at))),
-            FramePresent::Idle => {}
-        }
-    }
-    earliest
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::host::winit::runtime::earliest_wake;
-    use crate::host::winit::window::FramePresent;
-    use std::time::{Duration, Instant};
-
-    #[test]
-    fn the_nearest_deadline_wins_and_immediates_redraw() {
-        let t0 = Instant::now();
-        let at = |ms| FramePresent::At(t0 + Duration::from_millis(ms));
-        for (label, presents, redrawn, wake) in [
-            ("none", vec![], vec![], None),
-            ("idle", vec![FramePresent::Idle], vec![], None),
-            (
-                "nearest of three",
-                vec![at(30), at(10), at(20)],
-                vec![],
-                Some(t0 + Duration::from_millis(10)),
-            ),
-            (
-                "mixed",
-                vec![
-                    FramePresent::Immediate,
-                    at(40),
-                    FramePresent::Idle,
-                    FramePresent::Immediate,
-                ],
-                vec![0, 3],
-                Some(t0 + Duration::from_millis(40)),
-            ),
-            (
-                "all immediate",
-                vec![FramePresent::Immediate; 2],
-                vec![0, 1],
-                None,
-            ),
-            (
-                "a follow redraws as an immediate does",
-                vec![FramePresent::Idle, FramePresent::Follow, at(5)],
-                vec![1],
-                Some(t0 + Duration::from_millis(5)),
-            ),
-        ] {
-            let mut got = Vec::new();
-            let earliest = earliest_wake(presents.into_iter().enumerate(), |i| got.push(i));
-            assert_eq!(got, redrawn, "{label}: redrawn");
-            assert_eq!(earliest, wake, "{label}: wake");
-        }
     }
 }

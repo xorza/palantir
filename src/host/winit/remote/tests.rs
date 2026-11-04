@@ -259,15 +259,18 @@ fn a_remote_plays_and_reads_a_live_window() {
         Err(PlayError::Disconnected)
     );
 
-    // A query slower than a 50 ms wait gives up after it.
+    // A query that outlasts a 50 ms wait gives up after it: the query holds the window's thread
+    // until the test lets it go, so no sleep of the test's sets how long it takes.
     let short = handle
         .remote(WINDOW)
         .with_tick(TICK)
         .with_wait(Duration::from_millis(50));
+    let (release, held_until) = mpsc::channel::<()>();
     assert!(matches!(
-        short.query(|_, _| thread::sleep(Duration::from_millis(300))),
+        short.query(move |_, _| held_until.recv().ok()),
         Err(PlayError::NoFrame { waited }) if waited >= Duration::from_millis(50)
     ));
+    release.send(()).ok();
 
     // A query gives up at once while the window's thread is held, and never runs.
     let held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);

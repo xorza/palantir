@@ -27,6 +27,7 @@ use crate::host::winit::remote::{QueryTask, ShotAsk};
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
 use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
 use crate::host::winit::window::visibility::Visibility;
+use crate::host::winit::window_set::Paced;
 use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -500,6 +501,20 @@ impl Window {
         if self.surface.set_vsync(vsync) {
             self.next = FramePresent::Immediate;
         }
+    }
+}
+
+impl Paced for Window {
+    fn next(&self) -> FramePresent {
+        self.next
+    }
+
+    fn set_next(&mut self, next: FramePresent) {
+        self.next = next;
+    }
+
+    fn request_redraw(&self) {
+        self.window.request_redraw();
     }
 }
 

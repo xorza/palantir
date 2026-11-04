@@ -208,14 +208,10 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   for `TabbedView` (WG-16). Dress `Menu::context` only when it is open (WG-22).
   `TextEdit.text` is not an `Option` (WG-23).
 
-### Batch 11b. Host tests (`host`)
+### Batch 11b. Wayland clipboard (`clipboard`) **dependency**
 
-The API part of Batch 11b is done. What is left:
+The rest of Batch 11 is done.
 
-- A test of `WinitRuntime`'s scheduling (draw, follow, recover) on a fake loop and clock, and
-  `Remote` on a clock it is handed in place of real sleeps (HS-23). The runtime half needs a
-  seam first: each window's next frame moves out of `Window` into one pacing column of
-  `WindowSet`, with no winit type, which a test drives on a clock of its own.
 - Enable the Wayland clipboard (HS-15): a feature with new dependencies, so it waits for an ask.
 
 ### Batch 13b. Gradient atlas index (`renderer`) **dependency**
@@ -244,7 +240,7 @@ Prefixes:
 | Batch | Findings |
 |---|---|
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
-| 11b | HS-23, HS-15 |
+| 11b | HS-15 |
 | 13b | RD-17 |
 
 These findings are kept as they are, with no change: SC-20 (the `SeenIds` size is justified
@@ -424,9 +420,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 - Confidence: medium · public API change: yes · root cause: none named.
 
 ### Batch 11b
-
-**HS-23 · test · `src/host/winit/runtime.rs:423-472`; `src/host/winit/remote/tests.rs:258, 298`; `src/host/harness/tests/play.rs:372`**
-Nothing tests `WinitRuntime` scheduling (`draw`, follow, `schedule`, `recover`); only pure helpers are covered (`earliest_wake`, `FramePresent::followed`), which is how HS-01 passes. Remote reads `Instant::now()` and `thread::sleep` directly, so its tests sleep for real (a 300 ms query, 4 ticks), against "no real sleep where the code takes a clock". *Conf:* high. *API:* no. *Root cause:* no seam for the clock or the event loop.
 
 **HS-15 · hygiene/bug · `Cargo.toml:90-92`; `src/clipboard/mod.rs:344-350`**
 `arboard` is built with `default-features = false, features = ["image-data"]`, so without `wayland-data-control`. On a Wayland session the system clipboard either goes through XWayland's X11 selection or `Clipboard::new()` fails and the host quietly uses memory only. egui-winit uses `smithay-clipboard` with the window's Wayland display on Wayland.
