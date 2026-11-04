@@ -195,6 +195,38 @@ fn the_arrows_move_between_menus_and_wrap() {
     }
 }
 
+/// On a focused title, Down opens its menu on the first row and Up on the last, as the APG
+/// menubar does: "Quit", where Up lands, sits below "New", where Down lands.
+#[test]
+fn down_and_up_open_a_title_on_its_first_and_last_row() {
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, |ui| {
+        build(ui);
+    });
+    h.key(Key::Tab);
+    frame(&mut h);
+    assert_eq!(h.ui().focus(), Some(title(0)));
+    let mut landed = Vec::new();
+    for key in [Key::ArrowDown, Key::ArrowUp] {
+        h.key(key);
+        frame(&mut h);
+        frame(&mut h);
+        assert_eq!(open(&h), Some(0), "{key:?} opens the menu");
+        let row = h.ui().focus().expect("a row takes focus");
+        assert!(
+            h.ui().is_focus_within(MenuBar::menu_id(title(0))),
+            "{key:?}: focus is in the menu"
+        );
+        landed.push(h.rect(row).expect("the row is arranged").min.y);
+        h.key(Key::Escape);
+        frame(&mut h);
+        frame(&mut h);
+        assert_eq!(open(&h), None, "{key:?}: Escape closes");
+        assert_eq!(h.ui().focus(), Some(title(0)), "{key:?}: focus returns");
+    }
+    assert!(landed[1] > landed[0], "Up lands below Down: {landed:?}");
+}
+
 /// A picked row reports and closes the menu; Esc and a click outside close it too.
 #[test]
 fn a_pick_escape_or_an_outside_click_closes_the_menu() {

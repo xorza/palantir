@@ -2,6 +2,7 @@
 //! undo builds.
 
 use std::collections::VecDeque;
+use std::time::Duration;
 
 /// Caret + anchor as one comparable unit, stored either side of an edit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,14 +49,29 @@ pub(super) enum HistoryStep {
 /// Cap on retained undo entries; the oldest is dropped past it.
 const UNDO_LIMIT: usize = 128;
 
+/// The pause that closes a group, so a typed paragraph undoes in runs, not whole: Zed's
+/// `Buffer::group_interval`, 300 ms.
+const GROUP_PAUSE: Duration = Duration::from_millis(300);
+
 /// The buffer's undo and redo stacks, and the group a next edit may extend.
+///
+/// A group of typing or deletes grows while its edits abut, come within [`GROUP_PAUSE`] of each
+/// other and, for typing, stay inside one word and the space after it: a word typed after a
+/// space starts its own, as VS Code's and GTK's undo stop at a word. Refused: a group that grows
+/// until the caret moves, which undid a typed paragraph in one step.
 #[derive(Clone, Default, Debug)]
 pub(super) struct History {
     undo: VecDeque<EditDelta>,
     redo: Vec<EditDelta>,
-    /// Kind of the last recorded edit, for coalescing; `None` once anything but an edit
-    /// of that kind came between.
-    last_kind: Option<EditKind>,
+    /// The last recorded edit, for coalescing; `None` once anything but an edit came between.
+    last: Option<LastEdit>,
+}
+
+/// The kind of the last recorded edit and when it came.
+#[derive(Clone, Copy, Debug)]
+struct LastEdit {
+    kind: EditKind,
+    at: Duration,
 }
 
 impl EditDelta {
@@ -77,7 +93,9 @@ impl EditDelta {
         }
         let merged = match kind {
             EditKind::Typing
-                if next.removed.is_empty() && next.start == self.start + self.inserted.len() =>
+                if next.removed.is_empty()
+                    && next.start == self.start + self.inserted.len()
+                    && !starts_word(&self.inserted, next.inserted) =>
             {
                 self.inserted.push_str(next.inserted);
                 true
@@ -108,11 +126,20 @@ impl EditDelta {
     }
 }
 
+/// Whether `next`, typed after `typed`, starts a word: a word character after a space.
+fn starts_word(typed: &str, next: &str) -> bool {
+    typed.chars().next_back().is_some_and(char::is_whitespace)
+        && next.chars().next().is_some_and(|c| !c.is_whitespace())
+}
+
 impl History {
-    /// Fold one edit in, coalescing into the open group when it abuts one of the same
-    /// kind. Redo is cleared either way.
-    pub(super) fn record(&mut self, parts: EditParts<'_>, kind: EditKind) {
-        let coalesced = self.last_kind == Some(kind)
+    /// Fold one edit, made `at`, in, coalescing into the open group when it abuts one of the
+    /// same kind within [`GROUP_PAUSE`]. Redo is cleared either way.
+    pub(super) fn record(&mut self, parts: EditParts<'_>, kind: EditKind, at: Duration) {
+        let open = self
+            .last
+            .is_some_and(|last| last.kind == kind && at.saturating_sub(last.at) < GROUP_PAUSE);
+        let coalesced = open
             && self
                 .undo
                 .back_mut()
@@ -124,20 +151,20 @@ impl History {
             self.undo.push_back(EditDelta::from_parts(parts));
         }
         self.redo.clear();
-        self.last_kind = Some(kind);
+        self.last = Some(LastEdit { kind, at });
     }
 
     /// Close the open group, so the next edit starts its own: caret motion, a selection,
     /// a no-op replace, a history step.
     pub(super) const fn break_group(&mut self) {
-        self.last_kind = None;
+        self.last = None;
     }
 
     /// Forget every edit: the buffer they describe is gone.
     pub(super) fn clear(&mut self) {
         self.undo.clear();
         self.redo.clear();
-        self.last_kind = None;
+        self.last = None;
     }
 
     /// Take the delta `step` replays: the newest edit for an undo, the newest undone one
@@ -157,7 +184,7 @@ impl History {
             // It came off the undo stack, so the stack has room for it.
             HistoryStep::Redo => self.undo.push_back(delta),
         }
-        self.last_kind = None;
+        self.last = None;
     }
 }
 
@@ -174,8 +201,8 @@ pub(crate) mod internals {
             self.redo.len()
         }
 
-        pub(crate) const fn last_kind(&self) -> Option<EditKind> {
-            self.last_kind
+        pub(crate) fn last_kind(&self) -> Option<EditKind> {
+            self.last.map(|last| last.kind)
         }
     }
 }

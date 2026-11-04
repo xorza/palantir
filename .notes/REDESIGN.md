@@ -177,21 +177,11 @@ the reduction of complexity. Each batch stays inside one system, so one review c
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
 
-### Batch 6. Widget behavior parity (`widgets`, the text editor)
+### Batch 6b. Radio group (`widgets`) **API**
 
-Root cause R10. Each item is small and visible to the user.
-
-| Widget | Changes |
-|---|---|
-| `bound_num` | Under a grid, the grid point is the value, with no decimals rounding after it ✔ (WG-01). Add a test with a step finer than the decimals. |
-| Text editor | Goal column (WG-02). Triple-click selects the hard line in multi-line ✔ (WG-03). Ctrl+Y on non-mac (WG-19). Undo groups break on a pause or a word boundary (WG-20). |
-| Tooltip | Hide on a press or Escape until the pointer leaves (WG-05). |
-| Dock | One `DockState` predicate decides both the drop wash and `move_tab` (WG-04). |
-| Menubar | Down/Up open on the first or last item (WG-07). |
-| Scroll | Keys, and reveal of the focused descendant (WG-06). |
-| Radio | A group with arrow keys, so selection follows focus. This needs `arrow_focus` support (WG-08, **API**). |
-| Splitter | Keep the grab offset (WG-21). |
-| Checkbox | One clamp, and a shared `boxed` (WG-26). |
+What Batch 6 left: a radio group with one Tab stop whose arrow keys move focus and the pick
+together, as the APG radio group does. It needs a group container or `arrow_focus` that writes
+the pick, which is new public surface (WG-08).
 
 ### Batch 7. Text quality (`gpu/raster` shader, `text/cosmic`)
 
@@ -389,7 +379,7 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 6 | WG-01 ✔, WG-02, WG-03 ✔, WG-04, WG-05, WG-06, WG-07, WG-08, WG-19, WG-20, WG-21, WG-26 |
+| 6b | WG-08 |
 | 7 | GB-15, LT-14 |
 | 8 | SC-04, SC-05, SC-11, LT-04, RD-03, RD-04, RD-06, RD-08, RD-09, RD-19, RD-20 |
 | 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-05, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |

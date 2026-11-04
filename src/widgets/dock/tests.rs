@@ -1007,6 +1007,39 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
     assert!(h.rect(wash).is_some(), "but a wash");
 }
 
+/// The lone tab of a pane carried over its own pane promises no drop: no wash over its content,
+/// whose join or split the move would refuse, and a release there leaves the dock as it was.
+#[test]
+fn a_lone_tab_over_its_own_pane_washes_nothing() {
+    let mut d = seeded();
+    let primary = d.primary().id;
+    split_off(&mut d, viewer(1), primary, SplitSide::Right);
+    let lone = d.focused();
+    let before = d.clone();
+    let mut tabs = Labels;
+    let mut h = Harness::mono(SURFACE);
+    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    let strip = DockView::strip_id(dock(), lone);
+    let wash = dock().with("preview");
+
+    h.press(
+        TabStrip::chip_id(strip, DockView::tab_key(viewer(1))),
+        PointerButton::Left,
+    );
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    let pane = h
+        .rect(DockView::pane_id(dock(), lone))
+        .expect("the lone pane is arranged");
+    for at in [pane.center(), pane.min + Vec2::new(4.0, pane.size.h - 4.0)] {
+        h.drag_to(at);
+        h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+        assert!(h.rect(wash).is_none(), "no wash at {at:?}");
+    }
+    h.release(PointerButton::Left);
+    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    assert_eq!(d, before, "the release moves nothing");
+}
+
 /// A chip click goes through the navigation scan, so the new pane draws on
 /// the frame of the click.
 #[test]

@@ -1,6 +1,5 @@
 use crate::ui::frame_report::FramePaint;
 use crate::widgets::text_edit::tests::*;
-use std::time::Duration;
 
 /// "Painted" means the caret rect is present and its `PaintAnimation` (if any)
 /// samples visible now. On a focused, unselected editor the caret is the only

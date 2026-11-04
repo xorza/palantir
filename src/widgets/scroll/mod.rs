@@ -32,6 +32,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
+use crate::widgets::axis_keys::{AxisEnd, AxisKeys};
 use crate::widgets::scroll::bars::{BarMode, Bars};
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
 use crate::widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
@@ -320,6 +321,49 @@ impl<'a> Scroll<'a> {
         self.add_sense(Sense::PINCH)
     }
 
+    /// The pan this frame's keys ask of a scroll with focus within it: on each panned axis a line
+    /// a step, the wheel's line, a page a page, and the end keys past the farthest offset, which
+    /// the clamp lands on. A page is Chromium's `ScrollableArea::PageStep`, the larger of 87.5 %
+    /// of the view and the view less 40 px.
+    ///
+    /// Read as presses no scope on the focus path claims, so a focused field or arrow group keeps
+    /// its arrows. Refused: a scope of the scroll's own, which takes a key class whole and so
+    /// swallowed an app's Alt+arrow chords whenever focus sat inside a scroll.
+    fn key_pan(&mut self, ui: &mut Ui, geometry: ScrollGeometry) -> Vec2 {
+        let line_px = ui.theme().text.font().line_height;
+        let viewport = geometry.bounds().viewport;
+        let zoom = geometry.bars.zoom;
+        let [left, top, right, bottom] = self.content_margin.to_array();
+        let mut pan = Vec2::ZERO;
+        for axis in [Axis::X, Axis::Y] {
+            if !self.axes.pans(axis) {
+                continue;
+            }
+            let keys = match axis {
+                Axis::Y => AxisKeys::SCROLL_Y,
+                Axis::X if self.axes.pans(Axis::Y) => AxisKeys::SCROLL_X,
+                Axis::X => AxisKeys::SCROLL_X_ALONE,
+            };
+            let travel = keys.read(&mut self.widget, ui);
+            let view = axis.main(viewport);
+            let margins = match axis {
+                Axis::X => left + right,
+                Axis::Y => top + bottom,
+            };
+            let reach = axis.main(geometry.content) * zoom + view + margins;
+            let along = match travel.end {
+                Some(AxisEnd::Start) => -reach,
+                Some(AxisEnd::End) => reach,
+                None => {
+                    let page = (view * 0.875).max(view - 40.0).max(1.0);
+                    travel.steps as f32 * line_px + travel.pages as f32 * page
+                }
+            };
+            pan += axis.compose_point(along, 0.0);
+        }
+        pan
+    }
+
     /// Route this frame's wheel / trackpad / pinch input into a pan delta and zoom
     /// step. The wheel pans or zooms, never both: a matching modifier turns notches
     /// into a zoom factor (positive `notches.y` zooms out) and suppresses the pan.
@@ -469,6 +513,23 @@ impl<'a> Scroll<'a> {
         let scroll_id = Self::viewport_id(id);
 
         let geometry = self.measure(ui, id, &response);
+        // Keyboard focus that moves to a descendant reveals it once, as GTK's `ScrolledWindow`
+        // and WinUI's `BringIntoView` do, so Tab never lands on a widget out of view; a click
+        // that focuses a widget half in view leaves the content where the pointer found it.
+        let focus = ui
+            .focus()
+            .filter(|&focused| focused != id && ui.is_focus_within(id));
+        let focus_seen = ui
+            .state::<ScrollState>(id)
+            .and_then(|state| state.focus_seen);
+        if self.reveal.is_none() && focus != focus_seen && ui.is_focus_visible() {
+            self.reveal = focus;
+        }
+        let innermost = focus.is_some() && FocusedScroll::innermost(ui, id);
+        if !response.disabled && innermost {
+            let keyed = self.key_pan(ui, geometry);
+            self.pan_request += keyed;
+        }
         if let Some(child) = self.reveal
             && let (Some(outer), Some(rect)) =
                 (response.layout_rect, ui.response_for(child).layout_rect)
@@ -496,6 +557,7 @@ impl<'a> Scroll<'a> {
             .then(|| Bars::read(ui, &snapshot, self.bars_theme(ui)));
 
         let state = ui.with_state::<ScrollState, _>(id, |_, state| {
+            state.focus_seen = focus;
             self.apply_input(state, input, geometry);
             if let Some(bars) = &bars {
                 bars.drive(state, geometry);
@@ -544,6 +606,34 @@ impl<'a> Scroll<'a> {
             ),
             inner: inner_value,
         }
+    }
+}
+
+/// The innermost scroll that holds focus, which alone takes the scroll keys, as a browser
+/// scrolls the innermost scroller around focus. Nested scrolls record outer first, so each
+/// that holds focus overwrites [`Self::cur`] and the innermost is the last; a read sees the
+/// frame before's, as the frame's own is complete only once every scroll recorded.
+#[derive(Clone, Copy, Debug, Default)]
+struct FocusedScroll {
+    /// The render frame [`Self::cur`] is being built in.
+    frame: u64,
+    cur: Option<WidgetId>,
+    last: Option<WidgetId>,
+}
+
+impl FocusedScroll {
+    /// Note `scroll`, which holds focus this frame, and whether it was the innermost to hold
+    /// it the frame before.
+    fn innermost(ui: &mut Ui, scroll: WidgetId) -> bool {
+        let frame = ui.render_frame_id();
+        ui.with_singleton::<Self, _>(|_, focused| {
+            if focused.frame != frame {
+                focused.last = focused.cur.take();
+                focused.frame = frame;
+            }
+            focused.cur = Some(scroll);
+            focused.last == Some(scroll)
+        })
     }
 }
 

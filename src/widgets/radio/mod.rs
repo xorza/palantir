@@ -2,7 +2,6 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
@@ -13,7 +12,6 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
-use crate::widget_core::widget::Widget;
 use crate::widgets::toggle_row::{Settled, ToggleKind, ToggleRow};
 
 /// One option in a radio group: selected when `*cur == value`, and clicking assigns `value` into
@@ -97,18 +95,13 @@ impl<T: PartialEq> ToggleKind for Pip<'_, T> {
         &theme.radio
     }
 
-    fn boxed(slot: &ToggleTheme) -> Widget {
-        let side = Sizing::fixed(domain::length_at_least(slot.box_size, 1.0));
-        Widget::leaf().size((side, side))
-    }
-
     fn pill(slot: &ToggleTheme) -> Option<f32> {
-        Some(domain::length_at_least(slot.box_size, 1.0) * 0.5)
+        Some(slot.box_side() * 0.5)
     }
 
     fn paint(ui: &mut Ui, _: WidgetId, slot: &ToggleTheme, _: &Chrome, checked: bool) {
         if checked {
-            let pip = domain::length_at_least(slot.box_size, 1.0);
+            let pip = slot.box_side();
             let inset = domain::length_at_least(slot.indicator_inset, 0.0);
             let dot = domain::length_at_least(pip - 2.0 * inset, 0.0);
             ui.add_shape(

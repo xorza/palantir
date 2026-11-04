@@ -6,6 +6,8 @@ use crate::ui::frame_report::FrameProcessing;
 
 use crate::host::harness::Harness;
 use crate::input::interaction::response_state::ResponseState;
+use crate::input::keyboard::key::Key;
+use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -240,7 +242,7 @@ fn empty_label_records_no_bubble() {
         !empty
             .ui()
             .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
-            .is_some_and(|state| state.visible),
+            .is_some_and(TooltipState::is_visible),
         "an empty tooltip must never become visible",
     );
 
@@ -249,7 +251,7 @@ fn empty_label_records_no_bubble() {
         shown
             .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
             .unwrap()
-            .visible,
+            .is_visible(),
         "control: the same fixture with text turns its row visible",
     );
     assert_eq!(
@@ -286,15 +288,25 @@ fn tooltip_delay_keeps_subsecond_precision_after_long_uptime() {
         h.ui()
             .state::<TooltipState>(trigger_id)
             .unwrap()
-            .hover_started_at,
+            .hover_started_at(),
         Some(started_at),
     );
 
     record_at(&mut h, started_at + Duration::from_millis(249));
-    assert!(!h.ui().state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(
+        !h.ui()
+            .state::<TooltipState>(trigger_id)
+            .unwrap()
+            .is_visible()
+    );
 
     record_at(&mut h, started_at + Duration::from_millis(250));
-    assert!(h.ui().state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(
+        h.ui()
+            .state::<TooltipState>(trigger_id)
+            .unwrap()
+            .is_visible()
+    );
 }
 
 #[test]
@@ -383,11 +395,11 @@ fn delay_gates_visibility() {
     record_at_secs(&mut h, 0.1, &mut captured);
     let early = *h.state::<TooltipState>(trigger_id).unwrap();
     assert!(
-        !early.visible,
+        !early.is_visible(),
         "tooltip must stay hidden before delay elapses"
     );
     assert_eq!(
-        early.hover_started_at,
+        early.hover_started_at(),
         Some(Duration::from_secs_f32(0.05)),
         "the hover begins on the frame the pointer first reached the trigger",
     );
@@ -401,7 +413,7 @@ fn delay_gates_visibility() {
         t += 0.1;
         h.hover(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
-        if first_visible.is_none() && h.state::<TooltipState>(trigger_id).unwrap().visible {
+        if first_visible.is_none() && h.state::<TooltipState>(trigger_id).unwrap().is_visible() {
             first_visible = Some(tick);
         }
     }
@@ -410,7 +422,7 @@ fn delay_gates_visibility() {
         Some(2),
         "the first visible frame is the 0.4 s one"
     );
-    assert!(h.state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(h.state::<TooltipState>(trigger_id).unwrap().is_visible());
     assert_eq!(
         h.ui().tree(Layer::Tooltip).records.len(),
         2,
@@ -421,13 +433,21 @@ fn delay_gates_visibility() {
     t += 0.1;
     h.hover(Vec2::new(350.0, 250.0));
     record_at_secs(&mut h, t, &mut captured);
-    assert!(!h.ui().state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(
+        !h.ui()
+            .state::<TooltipState>(trigger_id)
+            .unwrap()
+            .is_visible()
+    );
 
     t += 0.1;
     h.hover(trigger_id);
     record_at_secs(&mut h, t, &mut captured);
     assert!(
-        !h.ui().state::<TooltipState>(trigger_id).unwrap().visible,
+        !h.ui()
+            .state::<TooltipState>(trigger_id)
+            .unwrap()
+            .is_visible(),
         "zero warmup must not bypass the delay on a new hover",
     );
 }
@@ -468,7 +488,7 @@ fn hover_clears_after_tooltip_visible() {
     }
     let state = *h.state::<TooltipState>(trigger_id).unwrap();
     assert!(
-        state.visible,
+        state.is_visible(),
         "precondition: tooltip visible while hovering"
     );
 
@@ -483,7 +503,7 @@ fn hover_clears_after_tooltip_visible() {
         Some(trigger_id),
         "the pointer left the trigger"
     );
-    assert!(!state.visible, "tooltip must hide after move-away");
+    assert!(!state.is_visible(), "tooltip must hide after move-away");
 }
 
 /// A tooltip on a trigger *inside* a popup body must record into the `Tooltip`
@@ -538,9 +558,8 @@ fn tooltip_inside_popup_records_without_panic() {
 
     let state = *h.state::<TooltipState>(trigger_id).unwrap();
     assert!(
-        state.visible,
-        "tooltip on a popup-nested trigger must become visible after the delay (started_at={:?})",
-        state.hover_started_at,
+        state.is_visible(),
+        "tooltip on a popup-nested trigger must become visible after the delay ({state:?})",
     );
 
     // The bubble records into the Tooltip layer, a root distinct from the Popup.
@@ -592,7 +611,7 @@ fn when_disabled_reaches_a_disabled_trigger() {
         // `true` row is the control that the id is the one a visible tooltip writes.
         h.ui()
             .state::<TooltipState>(trigger_id)
-            .is_some_and(|state| state.visible)
+            .is_some_and(TooltipState::is_visible)
     };
 
     assert!(
@@ -625,5 +644,48 @@ fn an_authored_min_above_the_themed_max_width_wins() {
             .min_size((300.0, 0.0))
             .show(ui);
     });
-    assert!(h.state::<TooltipState>(trigger_id).unwrap().visible);
+    assert!(h.state::<TooltipState>(trigger_id).unwrap().is_visible());
+}
+
+/// A press or Escape hides a shown bubble, and it stays hidden while the pointer rests on the
+/// trigger; once the pointer leaves, a return shows it again. Under a zero delay each case shows
+/// the bubble on its first frame.
+#[test]
+fn a_press_or_escape_dismisses_until_the_pointer_leaves() {
+    let trigger_id = WidgetId::from_hash("dismissed-trigger");
+    let snapshot = |pointer_over: bool| ResponseSnapshot {
+        id: trigger_id,
+        state: ResponseState {
+            rect: Some(Rect::new(100.0, 100.0, 40.0, 24.0)),
+            pointer_over,
+            ..ResponseState::default()
+        },
+    };
+    let show = |h: &mut Harness, pointer_over: bool| {
+        let shown = snapshot(pointer_over);
+        let mut visible = false;
+        h.frame(|ui| {
+            visible = Tooltip::on(&shown, "tip")
+                .delay(Duration::ZERO)
+                .show(ui)
+                .visible;
+        });
+        visible
+    };
+    for dismiss in ["press", "escape"] {
+        let mut h = Harness::mono(SURFACE);
+        assert!(show(&mut h, true), "{dismiss}: shown");
+        if dismiss == "press" {
+            h.press(Vec2::new(120.0, 112.0), PointerButton::Left);
+        } else {
+            h.key(Key::Escape);
+        }
+        assert!(!show(&mut h, true), "{dismiss}: hidden");
+        assert!(
+            !show(&mut h, true),
+            "{dismiss}: still hidden on the trigger"
+        );
+        assert!(!show(&mut h, false), "{dismiss}: the pointer left");
+        assert!(show(&mut h, true), "{dismiss}: shown on the return");
+    }
 }

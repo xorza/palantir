@@ -20,6 +20,38 @@ fn undo_redo_round_trips_typed_chars() {
     assert_eq!(state.caret, 3);
 }
 
+/// Typing undoes a word at a time: "hi you" typed at once undoes to "hi " and then to "", as a
+/// word after a space starts its own group; the space joins the word before it.
+#[test]
+fn a_typed_word_after_a_space_starts_its_own_group() {
+    let mut s = String::new();
+    let mut state = EditState::default();
+    for c in "hi you".chars() {
+        apply_key(&mut s, &mut state, press(Key::Char(c)));
+    }
+    apply_key(&mut s, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(s, "hi ");
+    apply_key(&mut s, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(s, "");
+}
+
+/// A pause closes a group: "ab" typed 10 ms apart is one group, and a "c" 300 ms after the "b",
+/// the pause that closes it, starts its own; 299 ms after, it joins.
+#[test]
+fn a_pause_closes_the_typing_group() {
+    for (gap_ms, after_undo) in [(300, "ab"), (299, "")] {
+        let mut keys = FieldKeys::new(Clipboard::memory());
+        let mut s = String::new();
+        let mut state = EditState::default();
+        for (c, at_ms) in [('a', 0), ('b', 10), ('c', 10 + gap_ms)] {
+            keys.now = Duration::from_millis(at_ms);
+            keys.apply(&mut s, &mut state, press(Key::Char(c)));
+        }
+        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
+        assert_eq!(s, after_undo, "a gap of {gap_ms} ms");
+    }
+}
+
 #[test]
 fn arrow_breaks_typing_coalesce_into_two_undo_groups() {
     let mut s = String::new();
@@ -84,6 +116,7 @@ fn redo_stack_changes_only_on_real_edit() {
             multiline: false,
             max_chars: Some(1),
         },
+        Duration::ZERO,
     );
     apply_editor_key(&mut editor, press(Key::Char('x')), NAV);
     assert!(!editor.edited());
@@ -110,6 +143,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
                 multiline: false,
                 max_chars: Some(1),
             },
+            Duration::ZERO,
         ),
         press(Key::Backspace),
         NAV,
@@ -125,6 +159,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
                 multiline: false,
                 max_chars: Some(1),
             },
+            Duration::ZERO,
         ),
         press(Key::Char('x')),
         NAV,
@@ -141,6 +176,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
                 multiline: false,
                 max_chars: Some(1),
             },
+            Duration::ZERO,
         ),
         press(Key::Backspace),
         NAV,
@@ -180,4 +216,21 @@ fn external_replacement_discards_unrelated_history() {
     assert_eq!(text, "hos!t value");
     apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
     assert_eq!(text, "host value", "new edits start fresh history");
+}
+
+/// Redo is Ctrl+Shift+Z on every platform (Cmd+Shift+Z on macOS), and Ctrl+Y is no chord: the
+/// undone "a" stays undone after it.
+#[test]
+fn redo_is_ctrl_shift_z_alone() {
+    for platform in [Platform::Windows, Platform::Linux, Platform::Mac] {
+        let keys = FieldKeys::on(platform);
+        let mut s = String::new();
+        let mut state = EditState::default();
+        keys.apply(&mut s, &mut state, press(Key::Char('a')));
+        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
+        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('y')));
+        assert_eq!(s, "", "{platform:?}: Ctrl+Y redoes nothing");
+        keys.apply(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
+        assert_eq!(s, "a", "{platform:?}: Ctrl+Shift+Z redoes");
+    }
 }

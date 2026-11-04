@@ -275,8 +275,15 @@ fn a_step_grid_snaps_from_min_inside_the_bounds() {
     assert_eq!(grid(0.0, 10.0, 4.0).snapped(-3.0), 0.0);
     assert_eq!(grid(10.0, 0.0, 4.0).snapped(-1.0), 2.0);
     assert_eq!(grid(10.0, 0.0, 4.0).snapped(11.0), 10.0);
-    // `0.3 / 0.1` divides to just under 3, and 0.3 is still the third step, not the second.
-    assert_eq!(grid(0.0, 0.3, 0.1).snapped(0.3), 3.0 * 0.1);
+    // `0.3 / 0.1` divides to just under 3, and 0.3 is still the third step, not the second; the
+    // point is the decimal 0.3, not `3.0 * 0.1 = 0.30000000000000004`. A step no decimals end
+    // keeps its own digits.
+    assert_eq!(grid(0.0, 0.3, 0.1).snapped(0.3), 0.3);
+    assert_ne!(3.0 * 0.1, 0.3);
+    assert_eq!(
+        grid(0.0, 1.0, 1.0 / 3.0).snapped(0.3),
+        0.333_333_333_333_333
+    );
     // That allowance is an ulp of the span, not of the count: half a step past `1e12` whole
     // steps is no whole count, so the last grid value is `1e12`, not `1e12 + 1` past the end.
     assert_eq!(grid(0.0, 1e12 + 0.5, 1.0).snapped(2e12), 1e12);
@@ -289,7 +296,8 @@ fn a_step_grid_snaps_from_min_inside_the_bounds() {
 }
 
 /// Every write lands on the grid: a scrub of an integer by 2.6 from 10 under a grid of 5 is
-/// 12.6, nearest 15; a typed 23 is 25 and a typed 2.4 on a float is 2.5.
+/// 12.6, nearest 15; a typed 23 is 25 and a typed 2.4 on a float is 2.5. No decimals round a
+/// float off the grid.
 #[test]
 fn every_write_lands_on_the_step_grid() {
     let by_five = StoreRule::new(0.0, 100.0, 2).step(Some(5.0));
@@ -303,6 +311,16 @@ fn every_write_lands_on_the_step_grid() {
         "an integer parses whole"
     );
     assert_eq!(i, 25);
+
+    // A step finer than the decimals keeps its point: by 0.125 at 2 decimals a scrub to 0.12
+    // and a typed 0.13 both store 0.125, which rounding to 2 decimals took off the grid to 0.13.
+    let by_eighth = StoreRule::new(0.0, 1.0, 2).step(Some(0.125));
+    let mut fine = 0.0_f64;
+    assert!(BoundNum::from(&mut fine).commit_drag(Num::F64(0.0), 0.12, by_eighth));
+    assert_eq!(fine, 0.125);
+    let mut fine_f32 = 0.0_f32;
+    assert!(BoundNum::from(&mut fine_f32).parse_from("0.13", by_eighth));
+    assert_eq!(fine_f32, 0.125);
 
     let mut f = 0.0_f64;
     let by_half = StoreRule::new(-INF, INF, 2).step(Some(0.5));

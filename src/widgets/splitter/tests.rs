@@ -135,6 +135,21 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     assert_eq!((settled.len(), *settled.a()), (1, QUIET));
 }
 
+/// A press off the seam's center keeps its grab offset: pressed 2 px right of the center at
+/// 200.5 and dragged 100 px, the seam moves the 100 px to 300.5, ratio 0.75, where a seam that
+/// jumped to the pointer would sit at 302.5, ratio 0.755.
+#[test]
+fn a_divider_drag_keeps_the_grab_offset() {
+    let mut h = Harness::mono(SURFACE);
+    let mut ratio = 0.5;
+    frame_with(&mut h, &mut ratio);
+    frame_with(&mut h, &mut ratio);
+    h.press(Vec2::new(202.5, 50.0), PointerButton::Left);
+    h.drag_to(Vec2::new(302.5, 50.0));
+    frame_with(&mut h, &mut ratio);
+    assert_eq!(ratio, 0.75);
+}
+
 #[test]
 fn divider_drag_is_scale_invariant() {
     for scale in [0.5, 1.0, 2.0] {

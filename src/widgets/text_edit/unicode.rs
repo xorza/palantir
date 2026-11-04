@@ -106,6 +106,15 @@ pub(super) fn prev_word_boundary(text: &str, from: usize) -> usize {
     scan_run(text[..from].split_word_bound_indices().rev(), |i, _| i).unwrap_or(0)
 }
 
+/// The hard line holding `byte`, from the `\n` before it to the one after, neither included: what
+/// a triple-click selects in a multi-line field, as in cosmic-text and Firefox's `<textarea>`.
+pub(super) fn line_range_at(text: &str, byte: usize) -> ops::Range<usize> {
+    let byte = byte.min(text.len());
+    let start = text[..byte].rfind('\n').map_or(0, |at| at + 1);
+    let end = text[byte..].find('\n').map_or(text.len(), |at| byte + at);
+    start..end
+}
+
 /// The run surrounding `byte` for double-click; whitespace collapses to `byte..byte`, a trailing edge selects the run behind.
 pub(super) fn word_range_at(text: &str, byte: usize) -> ops::Range<usize> {
     let byte = byte.min(text.len());

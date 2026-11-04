@@ -50,12 +50,16 @@ pub struct Splitter<'a> {
     style: Option<&'a SplitterTheme>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct SplitterState {
     sync_ratio_next_record: bool,
     /// A double-click reset the ratio; the binding takes its arranged result on the
     /// next record, which commits it.
     commit_on_sync: bool,
+    /// The seam's center along the axis, in the splitter's px, when the live drag latched: the
+    /// seam follows the drag's travel from it, so a press off the seam's center keeps its grab
+    /// offset, as a scroll thumb's drag does.
+    drag_from: Option<f32>,
 }
 
 impl<'a> Splitter<'a> {
@@ -179,17 +183,23 @@ impl<'a> Splitter<'a> {
         let mut layout_ratio = ratio;
         let mut resizing = false;
         let mut reset = false;
+        let mut drag_from = None;
+        // The seam's center along the axis for a splitter `extent` px long.
+        let center = |extent: f32| ratio * (extent - rule_thickness) + rule_thickness * 0.5;
         if !response.disabled {
-            if divider.left.drag.is_live()
-                && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
+            if let Some(travel) = divider.left.drag.delta()
+                && let Some(rect) = response.layout_rect
             {
+                let extent = axis.main(rect.size);
                 let seam = Seam {
-                    extent: axis.main(rect.size),
+                    extent,
                     reserved: rule_thickness,
                     min_pane: self.min_pane,
                     min_ratio: self.min_ratio,
                 };
-                layout_ratio = seam.ratio_at(axis.main_v(local));
+                let from = state.drag_from.unwrap_or_else(|| center(extent));
+                drag_from = Some(from);
+                layout_ratio = seam.ratio_at(from + axis.main_v(travel));
                 resizing = true;
             }
             if divider.double_clicked() {
@@ -204,7 +214,7 @@ impl<'a> Splitter<'a> {
                 && let Some(rect) = response.layout_rect
             {
                 let extent = axis.main(rect.size);
-                let at = ratio * (extent - rule_thickness) + rule_thickness * 0.5;
+                let at = center(extent);
                 let keys = match axis {
                     Axis::X => KEYS_X,
                     Axis::Y => KEYS_Y,
@@ -239,6 +249,7 @@ impl<'a> Splitter<'a> {
         let next = SplitterState {
             sync_ratio_next_record: resizing || (sync_pending && !synced),
             commit_on_sync: reset || (state.commit_on_sync && !synced),
+            drag_from,
         };
         if next != state {
             ui.with_state::<SplitterState, _>(id, |_, s| *s = next);

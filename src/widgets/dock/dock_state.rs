@@ -264,23 +264,11 @@ impl<T: DockTab> DockState<T> {
     /// destination takes the tab as active and gains focus. Degenerate moves (splitting
     /// a lone tab off its own group) leave the tree unchanged.
     fn move_tab(&mut self, tab: T, drop: DockDrop) {
-        let Some(source) = self.find_tab(tab) else {
-            return;
-        };
-        let target = match drop {
-            DockDrop::Into { group, .. } | DockDrop::Split { group, .. } => group,
-        };
-        if self.group(target).is_none() {
+        // Checked before any mutation, so a refused split can't lose the tab.
+        if !self.accepts_move(tab, drop) {
             return;
         }
-        let source_len = self.group(source.group).expect("source exists").tabs.len();
-        if source.group == target && source_len == 1 {
-            return;
-        }
-        // Depth cap, checked before any mutation so a refused split can't lose the tab.
-        if matches!(drop, DockDrop::Split { .. }) && !self.can_split(target) {
-            return;
-        }
+        let source = self.find_tab(tab).expect("an accepted tab is held");
 
         self.group_mut(source.group)
             .expect("source exists")
@@ -344,6 +332,27 @@ impl<T: DockTab> DockState<T> {
             }
         }
         self.normalize();
+    }
+
+    /// Whether moving `tab` to `drop` changes the tree: the tab and the target are held, a lone
+    /// tab neither splits off nor moves within its own group, and a split stays under the
+    /// [`Self::with_max_depth`] cap. The one rule [`Self::apply`] moves by and a dock's drag
+    /// shows its drop by, so no wash promises a move the release refuses.
+    pub(crate) fn accepts_move(&self, tab: T, drop: DockDrop) -> bool {
+        let Some(source) = self.find_tab(tab) else {
+            return false;
+        };
+        let target = match drop {
+            DockDrop::Into { group, .. } | DockDrop::Split { group, .. } => group,
+        };
+        if self.group(target).is_none() {
+            return false;
+        }
+        let source_len = self.group(source.group).expect("source exists").tabs.len();
+        if source.group == target && source_len == 1 {
+            return false;
+        }
+        !matches!(drop, DockDrop::Split { .. }) || self.can_split(target)
     }
 
     /// Whether a [`DockDrop::Split`] on `group` takes effect: `false` for a group at the

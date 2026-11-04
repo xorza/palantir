@@ -91,6 +91,43 @@ impl AxisKeys {
         }),
     };
 
+    /// A vertical scroll's keys, as a browser scrolls a page: Up and Down a line, Page Up and Down
+    /// a page, Home and End to either end.
+    pub(crate) const SCROLL_Y: Self = Self {
+        steps: &[KeyPair {
+            back: Key::ArrowUp,
+            forward: Key::ArrowDown,
+        }],
+        page: Some(KeyPair {
+            back: Key::PageUp,
+            forward: Key::PageDown,
+        }),
+        ends: Some(KeyPair {
+            back: Key::Home,
+            forward: Key::End,
+        }),
+    };
+
+    /// A horizontal scroll's keys beside a vertical one: Left and Right a line.
+    pub(crate) const SCROLL_X: Self = Self {
+        steps: &[KeyPair {
+            back: Key::ArrowLeft,
+            forward: Key::ArrowRight,
+        }],
+        page: None,
+        ends: None,
+    };
+
+    /// A horizontal scroll's keys alone: Left and Right a line, Home and End to either end.
+    pub(crate) const SCROLL_X_ALONE: Self = Self {
+        steps: Self::SCROLL_X.steps,
+        page: None,
+        ends: Some(KeyPair {
+            back: Key::Home,
+            forward: Key::End,
+        }),
+    };
+
     /// What a widget walking an axis takes from an enclosing scope: the arrows, Home and End
     /// (`CARET`), and Page Up and Down (`PAGE`).
     pub(crate) const SCOPE: KeyFilter = KeyFilter::CARET.union(KeyFilter::PAGE);

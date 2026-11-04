@@ -7,8 +7,8 @@ use crate::widgets::text_edit::input_pass::{
 };
 use crate::widgets::text_edit::text_nav::TextNav;
 use crate::widgets::text_edit::unicode::{
-    next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
-    word_range_at,
+    line_range_at, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
+    prev_word_boundary, word_range_at,
 };
 
 use crate::clipboard::Clipboard;
@@ -29,6 +29,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
 use std::iter;
+use std::time::Duration;
 
 /// The build's own chords, for the cases that do not test them.
 const NAV: TextNav = TextNav::new(PLATFORM);
@@ -43,6 +44,8 @@ fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
 struct FieldKeys {
     clipboard: Clipboard,
     platform: Platform,
+    /// The frame clock the keys land at.
+    now: Duration,
 }
 
 impl FieldKeys {
@@ -51,6 +54,7 @@ impl FieldKeys {
         Self {
             clipboard,
             platform: PLATFORM,
+            now: Duration::ZERO,
         }
     }
 
@@ -58,6 +62,7 @@ impl FieldKeys {
         Self {
             clipboard: Clipboard::memory(),
             platform,
+            now: Duration::ZERO,
         }
     }
 
@@ -70,6 +75,7 @@ impl FieldKeys {
                 multiline: false,
                 max_chars: None,
             },
+            self.now,
         );
         let blur = match EditAction::from_keypress(kp) {
             Some(action) => {

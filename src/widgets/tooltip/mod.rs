@@ -1,7 +1,10 @@
 //! The hover tooltip: the widget, its per-trigger hover clock, and the app-global
 //! state letting a second tooltip skip the delay.
 
+use crate::input::keyboard::key::Key;
+use crate::input::pointer::PointerEvent;
 use crate::input::sense::Sense;
+use crate::input::watch::PointerWake;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
@@ -21,12 +24,21 @@ use crate::widgets::text::Text;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// Per-trigger state; `hover_started_at` is Ui-time, immune to the `MAX_DT` clamp
-/// on idle wakes.
+/// Per-trigger state; times are Ui-time, immune to the `MAX_DT` clamp on idle wakes.
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
-struct TooltipState {
-    hover_started_at: Option<Duration>,
-    visible: bool,
+enum TooltipState {
+    /// The pointer is off the trigger.
+    #[default]
+    Idle,
+    /// The pointer rests on the trigger, since then, and the delay is not over.
+    Hovering {
+        since: Duration,
+    },
+    Visible,
+    /// A press or Escape hid the bubble, which stays hidden until the pointer leaves, as Qt's,
+    /// Win32's and a browser's `title` tooltips hide on a press, and WCAG 1.4.13 asks a tooltip
+    /// to dismiss without a pointer move.
+    Dismissed,
 }
 
 /// Singleton holding when any tooltip was last visible; a cold tooltip within
@@ -130,34 +142,42 @@ impl<'a> Tooltip<'a> {
             .state::<TooltipState>(trigger_id)
             .copied()
             .unwrap_or_default();
-        let mut state = prev;
-
-        if active_trigger {
+        // Read on every frame the pointer rests on the trigger, so the button watch it places
+        // delivers the next frame's press.
+        let dismissed = active_trigger && dismissed(ui, trigger_id);
+        let state = if !active_trigger {
+            TooltipState::Idle
+        } else if dismissed && matches!(prev, TooltipState::Hovering { .. } | TooltipState::Visible)
+        {
+            TooltipState::Dismissed
+        } else {
             let warmup_active = ui
                 .singleton::<TooltipGlobal>()
                 .and_then(|global| global.last_visible_at)
                 .is_some_and(|t| now.saturating_sub(t) < warmup);
-            let started = if let Some(t) = state.hover_started_at {
-                t
-            } else {
-                state.hover_started_at = Some(now);
-                // One wake at the threshold is enough; a stale one is a cheap no-op
-                // frame.
-                ui.request_repaint_after(delay);
-                now
+            let since = match prev {
+                TooltipState::Dismissed | TooltipState::Visible => None,
+                TooltipState::Hovering { since } => Some(since),
+                TooltipState::Idle => Some(now),
             };
-            let elapsed = now.saturating_sub(started);
-            if warmup_active || elapsed >= delay {
-                state.visible = true;
+            match since {
+                None => prev,
+                Some(since) if warmup_active || now.saturating_sub(since) >= delay => {
+                    TooltipState::Visible
+                }
+                Some(since) => {
+                    if prev == TooltipState::Idle {
+                        // One wake at the threshold is enough; a stale one is a cheap no-op
+                        // frame.
+                        ui.request_repaint_after(delay);
+                    }
+                    TooltipState::Hovering { since }
+                }
             }
-        } else {
-            state.hover_started_at = None;
-            state.visible = false;
-        }
+        };
+        let visible = state == TooltipState::Visible;
 
-        if state.visible
-            && let Some(trigger_rect) = trigger_rect
-        {
+        if visible && let Some(trigger_rect) = trigger_rect {
             ui.with_singleton::<TooltipGlobal, _>(|_, global| global.last_visible_at = Some(now));
             let anchor = Anchor::below(trigger_rect).with_gap(gap);
             let label = self.label;
@@ -190,10 +210,19 @@ impl<'a> Tooltip<'a> {
         if state != prev {
             ui.with_state::<TooltipState, _>(trigger_id, |_, s| *s = state);
         }
-        TooltipResponse {
-            visible: state.visible,
-        }
+        TooltipResponse { visible }
     }
+}
+
+/// Whether a press while the pointer rests on the trigger, or an Escape granted to its scope,
+/// dismisses the bubble this frame. Read only while the pointer rests on the trigger, so the
+/// button watch wakes no frame elsewhere.
+fn dismissed(ui: &mut Ui, trigger_id: WidgetId) -> bool {
+    let pressed = ui
+        .pointer_events(PointerWake::BUTTONS)
+        .iter()
+        .any(|event| matches!(event, PointerEvent::Pressed { .. }));
+    pressed || ui.key_pressed_as(trigger_id, Key::Escape)
 }
 
 impl Tooltip<'_> {
@@ -249,6 +278,26 @@ impl Configure for Tooltip<'_> {
 pub struct TooltipResponse {
     /// The bubble recorded this frame.
     pub visible: bool,
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::widgets::tooltip::TooltipState;
+    use std::time::Duration;
+
+    impl TooltipState {
+        pub(crate) const fn is_visible(&self) -> bool {
+            matches!(self, Self::Visible)
+        }
+
+        /// When the pointer came to rest, while the delay runs.
+        pub(crate) const fn hover_started_at(&self) -> Option<Duration> {
+            match self {
+                Self::Hovering { since } => Some(*since),
+                Self::Idle | Self::Visible | Self::Dismissed => None,
+            }
+        }
+    }
 }
 
 #[cfg(test)]

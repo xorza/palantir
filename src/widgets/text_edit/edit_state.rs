@@ -19,6 +19,10 @@ pub(super) struct EditState {
     /// The press that focused the field selects everything on its release, unless it
     /// selected something itself (a drag, a double click).
     pub(super) select_all_on_release: bool,
+    /// The x a run of vertical moves aims at, so a pass through a short line does not drag the
+    /// column left, as every editor keeps a goal column (cosmic-text's `Cursor::x_opt`, a
+    /// browser's `<textarea>`).
+    pub(super) goal: Option<GoalColumn>,
     pub(super) history: History,
     pub(super) expected_hash: Option<NonZeroU64>,
     pub(super) local_edit_pending: bool,
@@ -27,7 +31,22 @@ pub(super) struct EditState {
     pub(super) char_count: Option<usize>,
 }
 
+/// The x a vertical move aims at, and the caret it left: a caret anything else moved, or an edit,
+/// ends the run.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct GoalColumn {
+    pub(super) x: f32,
+    pub(super) caret: usize,
+}
+
 impl EditState {
+    /// The goal x of the run of vertical moves the caret is in, or `None` outside one.
+    pub(super) fn goal_x(&self) -> Option<f32> {
+        self.goal
+            .filter(|goal| goal.caret == self.caret)
+            .map(|goal| goal.x)
+    }
+
     /// Wipe the history if `text_hash` is not the buffer it describes, then adopt it.
     fn adopt_text_hash(&mut self, text_hash: NonZeroU64) {
         if !self.local_edit_pending
@@ -110,6 +129,7 @@ mod tests {
     use crate::text::shaping_font::ShapingFont;
     use crate::widgets::text_edit::edit_state::EditState;
     use crate::widgets::text_edit::history::{EditKind, EditParts, SelectionState};
+    use std::time::Duration;
 
     /// Both entry points must mint a buffer's identity alike; a mismatch reads as a
     /// host replacement and wipes undo. `content_hash` maps a raw zero to one, so a
@@ -186,6 +206,7 @@ mod tests {
                 after: at,
             },
             EditKind::Typing,
+            Duration::ZERO,
         );
         state.observe_text_hash(Some(EditState::text_hash("replaced by the host")));
         assert_eq!(

@@ -184,8 +184,10 @@ impl<'a, T: DockTab> DockView<'a, T> {
         let carried = DockView::drag(ui, id);
         // Classified before the walk, so the strip it lands in records its caret, and kept for
         // the scan that sees the release: the drop lands where the frame showed it.
-        let drop = carried
-            .and_then(|_| DockView::drop_target(ui, id, state, allowed_splits, edge_fraction));
+        let drop = carried.and_then(|tab| {
+            DockView::drop_target(ui, id, state, allowed_splits, edge_fraction)
+                .filter(|target| state.accepts_move(tab, target.drop()))
+        });
         if carried.is_some() {
             ui.with_state::<TabDrag<T>, _>(id, |_, s| s.target = drop);
         }
@@ -312,7 +314,7 @@ impl<T: DockTab> DockView<'_, T> {
         ui.with_state::<TabDrag<T>, _>(dock, |_, s| *s = TabDrag { tab, target: None });
     }
 
-    /// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels.
+    /// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels, as it does over a drop [`DockState::accepts_move`] refuses.
     fn drop_target(
         ui: &mut Ui,
         dock: WidgetId,

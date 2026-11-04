@@ -5,7 +5,7 @@ use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-/// The tick is themed: `ToggleTheme::check_points` holds it in unit space and `check_polyline` scales it by `box_size`, so the drawn polyline tracks both.
+/// The tick is themed: `ToggleTheme::check_points` holds it in unit space and `check_polyline` scales it by the box's side, `box_size` held to a pixel, so the drawn polyline tracks both and stays inside the box.
 #[test]
 fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     use crate::scene::layer::Layer;
@@ -63,6 +63,22 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
             Vec2::new(7.0, 17.0),
             Vec2::new(14.0, 24.0),
             Vec2::new(25.0, 9.0),
+        ],
+    );
+
+    // A box below a pixel paints at a pixel, and the tick scales by that pixel, inside the box:
+    // `3.5 / 16`, `7 / 16` and `12.5 / 16` of one px, not of the quarter px the theme asks.
+    let tiny = ToggleTheme {
+        box_size: 0.25,
+        ..stock.clone()
+    };
+    assert_eq!(tiny.box_side(), 1.0);
+    assert_eq!(
+        drawn(tiny),
+        vec![
+            Vec2::new(3.5 / 16.0, 8.5 / 16.0),
+            Vec2::new(7.0 / 16.0, 12.0 / 16.0),
+            Vec2::new(12.5 / 16.0, 4.5 / 16.0),
         ],
     );
 

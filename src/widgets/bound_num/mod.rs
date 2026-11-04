@@ -90,7 +90,8 @@ impl StoreRule {
 
     /// `value` on the grid point nearest it inside the bounds, so a span that is no multiple of
     /// the step ends on its last grid value (`0..=10` by 4 takes 10 to 8); no grid passes the
-    /// value through.
+    /// value through. The point is rounded to the digits the step and the anchor hold, so the
+    /// third step of 0.1 is 0.3, not `3.0 * 0.1`, as Blink's `StepRange` steps in decimal.
     fn snapped(self, value: f64) -> f64 {
         let Some(step) = self.step else {
             return value;
@@ -98,7 +99,8 @@ impl StoreRule {
         let first = self.steps_to(self.lo, step, f64::ceil);
         let last = self.steps_to(self.hi, step, f64::floor);
         let k = ((value - self.anchor) / step).round().clamp(first, last);
-        self.anchor + k * step
+        let digits = decimal_digits(step).max(decimal_digits(self.anchor));
+        round_to_decimals(self.anchor + k * step, digits)
     }
 
     /// The whole count of `step`s from the anchor to `bound`, rounded by `inward` unless the
@@ -150,8 +152,9 @@ impl BoundNum<'_> {
 
     /// Commit a scrubbed value: `anchor` moved by `offset`, stored under `rule`. The
     /// integer target adds the nearest whole step; the float target snaps to
-    /// `rule.decimals` (`1.98457…` at 3 → `1.985`). Under a step grid the sum lands on the grid
-    /// first, in `f64`. Returns whether the stored value changed.
+    /// `rule.decimals` (`1.98457…` at 3 → `1.985`). Under a step grid the sum lands on the grid,
+    /// in `f64`, and the grid point is the value: no decimals round it off the grid (a step of
+    /// 0.125 at 2 decimals keeps 0.125). Returns whether the stored value changed.
     pub(crate) fn commit_drag(&mut self, anchor: Num, offset: f64, rule: StoreRule) -> bool {
         let (anchor, offset) = match rule.step {
             Some(_) => (Num::F64(rule.snapped(anchor.widen() + offset)), 0.0),
@@ -161,7 +164,10 @@ impl BoundNum<'_> {
             Num::I64(a) => a.saturating_add(whole_step(offset)),
             Num::F64(a) => whole_step(a + offset),
         };
-        let snapped = || round_to_decimals(anchor.widen() + offset, rule.decimals);
+        let snapped = || match rule.step {
+            Some(_) => anchor.widen(),
+            None => round_to_decimals(anchor.widen() + offset, rule.decimals),
+        };
         match self {
             BoundNum::I32(v) => store_int(*v, whole(), rule, I32_RANGE),
             BoundNum::I64(v) => store_int(*v, whole(), rule, I64_RANGE),
@@ -341,6 +347,14 @@ fn round_to_decimals(v: f64, decimals: usize) -> f64 {
     } else {
         v
     }
+}
+
+/// The fewest decimals that write `v` back exactly, at most [`MAX_DECIMALS`]: 1 for 0.1, 3 for
+/// 0.125, 0 for a whole number, and the most for a value no decimals end, as 1/3.
+fn decimal_digits(v: f64) -> usize {
+    (0..MAX_DECIMALS)
+        .find(|&decimals| round_to_decimals(v, decimals) == v)
+        .unwrap_or(MAX_DECIMALS)
 }
 
 /// `10^decimals`; `decimals` is at most [`MAX_DECIMALS`].

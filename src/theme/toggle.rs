@@ -4,6 +4,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
@@ -64,9 +65,16 @@ pub struct ToggleTheme {
 }
 
 impl ToggleTheme {
-    /// [`Self::check_points`] scaled to [`Self::box_size`], in box-local pixels.
+    /// [`Self::box_size`] as the box paints it: a pixel at least, so a box too small to see still
+    /// takes a hit and paints its mark inside itself.
+    pub(crate) const fn box_side(&self) -> f32 {
+        domain::length_at_least(self.box_size, 1.0)
+    }
+
+    /// [`Self::check_points`] scaled to the [box's side](Self::box_side), in box-local pixels.
     pub(crate) fn check_polyline(&self) -> [Vec2; 3] {
-        self.check_points.map(|p| p * self.box_size)
+        let side = self.box_side();
+        self.check_points.map(|p| p * side)
     }
 
     /// The recipe for `kind` over `p` and `m`; [`ToggleKind`] names each one's geometry.

@@ -98,6 +98,37 @@ fn multiline_selection_crosses_newline() {
 /// Soft-wrapped motions on three 15-letter words that each take a row of the 200 px field, whatever
 /// the face: one word fits, two do not. Rows start at bytes 0, 16 and 32, a row ends before its
 /// space, and every glyph is an `a`, so a column keeps its x from row to row.
+/// Vertical moves keep a goal column. In "abcdef", "ab", "abcdef" with the caret at 5, Down
+/// lands on the short line's end, 9, and Down again on column 5 of the third, 15, not column 2;
+/// Up and Up come back through 9 to 5. A horizontal move ends the run: Left from 9 to 8, then
+/// Down lands on column 1, 11.
+#[test]
+fn vertical_moves_keep_a_goal_column() {
+    let ed_id = WidgetId::from_hash("ml-ed");
+    let mut h = Harness::new(UVec2::new(300, 200));
+    let mut buf = "abcdef\nab\nabcdef".to_owned();
+    h.set_focus(ed_id);
+    h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
+        st.edit.caret = 5;
+    });
+    h.frame(Field::MULTILINE.scene(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
+    for (key, after) in [
+        (Key::ArrowDown, 9),
+        (Key::ArrowDown, 15),
+        (Key::ArrowUp, 9),
+        (Key::ArrowUp, 5),
+        (Key::ArrowDown, 9),
+        (Key::ArrowLeft, 8),
+        (Key::ArrowDown, 11),
+    ] {
+        h.key(key);
+        h.frame(Field::MULTILINE.scene(&mut buf));
+        let caret = h.state::<TextEditState>(ed_id).unwrap().edit.caret;
+        assert_eq!(caret, after, "{key:?}");
+    }
+}
+
 #[test]
 fn soft_wrapped_motions_move_by_visual_row() {
     let word = "a".repeat(15);

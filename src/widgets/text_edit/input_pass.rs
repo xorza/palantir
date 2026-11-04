@@ -84,7 +84,7 @@ impl InputPass<'_> {
         // Repair persisted byte offsets: application code may have replaced
         // `*text` with a string whose UTF-8 boundaries differ.
         edit.normalize(text);
-        let mut ed = Editor::new(text, edit, rules);
+        let mut ed = Editor::new(text, edit, rules, ui.now());
         ed.enforce_single_line();
 
         // A press that lands focus places the caret first, so its release selects all; a
@@ -162,7 +162,8 @@ impl InputPass<'_> {
                     break;
                 }
                 KeyOutcome::Probe(probe) => probe.apply(&mut ed, ui, ctx),
-                KeyOutcome::None => {}
+                // A horizontal move ends a run of vertical ones, even one the text's edge stops.
+                KeyOutcome::None => ed.clear_goal(),
             }
         }
 
@@ -256,9 +257,9 @@ pub(super) struct ProbeMotion {
 /// Where on the shaped layout a multi-line caret move lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ProbeTarget {
-    /// The visual line above, at the caret's x; the first line goes to the start.
+    /// The visual line above, at the goal column; the first line goes to the start.
     Above,
-    /// The visual line below, at the caret's x.
+    /// The visual line below, at the goal column.
     Below,
     /// Home in a multi-line editor: the visual line's leading edge.
     RowStart,
@@ -268,23 +269,32 @@ pub(super) enum ProbeTarget {
 
 impl ProbeMotion {
     /// Move the caret to the byte [`ProbeTarget::byte`] picks from its current
-    /// position. Both queries share one `probe_text` borrow and cache dispatch.
+    /// position. Both queries share one `probe_text` borrow and cache dispatch. A vertical
+    /// move aims at the goal column of the run it continues, or starts one at the caret's x.
     fn apply(self, editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx) {
-        let byte = {
+        let goal = editor.goal_x();
+        let (byte, x) = {
             let probe = ui.probe_text(ctx.run(editor.text()));
             let pos = probe.caret_at(editor.caret());
-            self.target.byte(&probe, pos)
+            let x = goal.unwrap_or(pos.x);
+            (self.target.byte(&probe, pos, x), x)
         };
         editor.move_caret(byte, self.motion);
+        if matches!(self.target, ProbeTarget::Above | ProbeTarget::Below) {
+            editor.keep_goal(x);
+        } else {
+            editor.clear_goal();
+        }
     }
 }
 
 impl ProbeTarget {
-    fn byte(self, probe: &TextProbe<'_>, pos: Caret) -> usize {
+    /// The byte this target lands on from `pos`, a vertical move at the goal `x`.
+    fn byte(self, probe: &TextProbe<'_>, pos: Caret, x: f32) -> usize {
         match self {
             Self::Above if pos.y_top <= 0.5 => 0,
-            Self::Above => probe.byte_at(Vec2::new(pos.x, pos.y_top - 1.0)),
-            Self::Below => probe.byte_at(Vec2::new(pos.x, pos.y_top + pos.line_height + 1.0)),
+            Self::Above => probe.byte_at(Vec2::new(x, pos.y_top - 1.0)),
+            Self::Below => probe.byte_at(Vec2::new(x, pos.y_top + pos.line_height + 1.0)),
             // A soft-wrapped line has no `\n` to scan for, so hit-test past each end
             // of the caret's row, which `byte_at` clamps. Mid-row, so the hit cannot
             // fall to a neighboring line.

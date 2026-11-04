@@ -8,6 +8,7 @@ use crate::primitives::geometry::rect::EdgeRounding;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::math::domain;
@@ -28,6 +29,9 @@ pub(crate) struct ScrollState {
     zoom: f32,
     /// The live thumb drag's origin, or `None` between drags.
     drag_anchor: Option<DragAnchor>,
+    /// The descendant that held focus last frame, so focus that moves to another one reveals it
+    /// once and a scroll away from it stays.
+    pub(super) focus_seen: Option<WidgetId>,
 }
 
 /// Where a live thumb drag started, so cumulative drag deltas compose against
@@ -46,6 +50,7 @@ impl Default for ScrollState {
             offset: Vec2::ZERO,
             zoom: 1.0,
             drag_anchor: None,
+            focus_seen: None,
         }
     }
 }

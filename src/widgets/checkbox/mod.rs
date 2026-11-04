@@ -1,7 +1,6 @@
 //! The box-and-label boolean toggle and its pair of click responses.
 
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
@@ -14,7 +13,6 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
-use crate::widget_core::widget::Widget;
 use crate::widgets::toggle_row::{Settled, ToggleKind, ToggleRow};
 
 /// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
@@ -73,11 +71,6 @@ impl ToggleKind for Check<'_> {
 
     fn slot(theme: &Theme) -> &ToggleTheme {
         &theme.checkbox
-    }
-
-    fn boxed(slot: &ToggleTheme) -> Widget {
-        let side = Sizing::fixed(domain::length_at_least(slot.box_size, 1.0));
-        Widget::leaf().size((side, side))
     }
 
     fn pill(_: &ToggleTheme) -> Option<f32> {

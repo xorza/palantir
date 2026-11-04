@@ -4,6 +4,7 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::Theme;
@@ -38,8 +39,12 @@ pub(crate) trait ToggleKind {
     fn settle(self, activated: bool) -> Settled;
     /// The slot read when the caller set no style.
     fn slot(theme: &Theme) -> &ToggleTheme;
-    /// The box child, sized from `slot`; [`ToggleRow::show`] stamps its id and chrome onto it.
-    fn boxed(slot: &ToggleTheme) -> Widget;
+    /// The box child, sized from `slot`; [`ToggleRow::show`] stamps its id and chrome onto it. A
+    /// square of the [box's side](ToggleTheme::box_side) unless the toggle draws another shape.
+    fn boxed(slot: &ToggleTheme) -> Widget {
+        let side = Sizing::fixed(slot.box_side());
+        Widget::leaf().size((side, side))
+    }
     /// The corner radius forced onto the box chrome, so the radio pip and the switch track read
     /// as pills whatever radius a theme sets; `None` keeps the theme's.
     fn pill(slot: &ToggleTheme) -> Option<f32>;

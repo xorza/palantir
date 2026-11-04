@@ -491,7 +491,7 @@ impl<'a> TextEdit<'a> {
         // history once. A disabled editor offers no menu; not recording it closes any open
         // one, else Cut / Paste / Clear would keep executing.
         let menu_edited = !response.disabled && {
-            let mut editor = Editor::new(text, &mut state.edit, rules);
+            let mut editor = Editor::new(text, &mut state.edit, rules, ui.now());
             editor.show_menu(ui, &response, filter)
         };
         let preedit = if is_focused && !response.disabled {
@@ -502,7 +502,7 @@ impl<'a> TextEdit<'a> {
         let CompositionPass { started, cursor } = state.composition.roll(preedit);
         let composing = cursor.is_some();
         let cleared = started && {
-            let mut editor = Editor::new(text, &mut state.edit, rules);
+            let mut editor = Editor::new(text, &mut state.edit, rules, ui.now());
             let had_selection = editor.has_selection();
             if had_selection {
                 editor.replace_selection("", EditKind::Delete);

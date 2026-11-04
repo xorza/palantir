@@ -355,6 +355,9 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
 - **Frosted glass holds its ink at WCAG 4.5:1**; palantir owns the math, as it depends on its
   dither. Refused: `Chrome::with_frost` and a `Chrome` setter per `BackdropFilter` constructor
   ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).
+- **Redo is Ctrl+Shift+Z on every platform**, Cmd+Shift+Z on macOS, beside Undo's Ctrl+Z.
+  Refused: Ctrl+Y on Windows and Linux, as Win32's edit control binds it, a second chord for
+  one action that takes a key the app could bind.
 - **Activation.** Space and Enter fold into one left click; a toggle takes Space alone, as
   WAI-ARIA leaves Enter to the form. Each is a `KeyClass` of its own, so a focused widget's scope
   takes those keys and no letter, as a Qt or GTK button accepts only the keys it acts on.

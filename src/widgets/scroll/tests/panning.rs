@@ -3,6 +3,7 @@
 use crate::display::Display;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
+use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::primitives::geometry::size::Size;
@@ -12,6 +13,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
+use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
@@ -606,4 +608,100 @@ fn a_pan_lands_on_whole_physical_pixels() {
         );
         assert_eq!(state.offset().y, offset);
     }
+}
+
+/// Ten 30 px buttons in a 100 px vertical viewport: 300 of content, so the offset runs to 200.
+fn buttons(ui: &mut Ui) {
+    Panel::vstack()
+        .id(WidgetId::from_hash("root"))
+        .show(ui, |ui| {
+            Scroll::vertical()
+                .id(WidgetId::from_hash("scroll"))
+                .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+                .show(ui, |ui| {
+                    for i in 0..10 {
+                        Button::new()
+                            .id(WidgetId::from_hash(("row", i)))
+                            .size((Sizing::fixed(180.0), Sizing::fixed(30.0)))
+                            .show(ui);
+                    }
+                });
+        });
+}
+
+/// With focus on a button inside, the keys a button does not take scroll the viewport: Down a
+/// line, the theme's line height; Page Down a page, the larger of 87.5 % of 100 and 100 − 40,
+/// so 87.5; End to the last offset, 200; Home back to 0; Page Up at the top stays.
+#[test]
+fn the_keys_scroll_a_viewport_with_focus_within() {
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, buttons);
+    h.set_focus(WidgetId::from_hash(("row", 0)));
+    h.prime(2, buttons);
+    let line = h.ui().theme().text.font().line_height;
+    for (key, want) in [
+        (Key::ArrowDown, line),
+        (Key::PageDown, line + 87.5),
+        (Key::End, 200.0),
+        (Key::Home, 0.0),
+        (Key::PageUp, 0.0),
+    ] {
+        h.key(key);
+        h.prime(2, buttons);
+        assert_eq!(read_state(&h).offset().y, want, "{key:?}");
+    }
+}
+
+/// Keyboard focus that moves to a button out of view reveals it once: Tab walks to the eighth
+/// row, 210..240, and the offset follows to 140, where its end meets the view's; Home then
+/// scrolls away, and the offset stays at 0 while focus holds still. A click that focuses the
+/// fourth row, 90..120 and half out of view, moves nothing.
+#[test]
+fn keyboard_focus_that_moves_in_reveals_its_widget_once() {
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, buttons);
+    for _ in 0..8 {
+        h.key(Key::Tab);
+        h.prime(2, buttons);
+    }
+    assert_eq!(h.ui().focus(), Some(WidgetId::from_hash(("row", 7))));
+    assert_eq!(read_state(&h).offset().y, 140.0, "revealed");
+    h.key(Key::Home);
+    h.prime(3, buttons);
+    assert_eq!(read_state(&h).offset().y, 0.0, "a scroll away stays");
+
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, buttons);
+    h.click(WidgetId::from_hash(("row", 3)));
+    h.prime(2, buttons);
+    assert_eq!(h.ui().focus(), Some(WidgetId::from_hash(("row", 3))));
+    assert_eq!(read_state(&h).offset().y, 0.0, "a click reveals nothing");
+}
+
+/// Of two nested scrolls, the inner one around focus takes the keys: Down moves the inner offset
+/// a line and leaves the outer at 0.
+#[test]
+fn the_innermost_scroll_around_focus_takes_the_keys() {
+    let nested = |ui: &mut Ui| {
+        Scroll::vertical()
+            .id(WidgetId::from_hash("outer"))
+            .size((Sizing::fixed(220.0), Sizing::fixed(120.0)))
+            .show(ui, |ui| {
+                buttons(ui);
+                fixed_block(ui, WidgetId::from_hash("below"), 200.0, 300.0);
+            });
+    };
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, nested);
+    h.set_focus(WidgetId::from_hash(("row", 0)));
+    h.prime(2, nested);
+    h.key(Key::ArrowDown);
+    h.prime(2, nested);
+    let line = h.ui().theme().text.font().line_height;
+    assert_eq!(read_state(&h).offset().y, line, "the inner scroll");
+    let outer = h
+        .ui()
+        .state::<ScrollState>(WidgetId::from_hash("outer"))
+        .map_or(Vec2::ZERO, ScrollState::offset);
+    assert_eq!(outer.y, 0.0, "the outer holds");
 }

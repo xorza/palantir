@@ -2,6 +2,7 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
@@ -20,6 +21,7 @@ use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::{InnerResponse, Response};
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, TriggerState};
 use glam::Vec2;
@@ -279,8 +281,22 @@ impl MenuBarMenus<'_> {
         let title = MenuBar::title_id(self.bar, ui.text(label));
         self.titles.push(title);
         let mut widget = Widget::leaf().id(title).sense(Sense::CLICK).focusable(true);
-        let response = widget.activation_response(ui, Activation::Button);
+        let mut response = widget.activation_response(ui, Activation::Button);
         let here = self.open.filter(|open| open.title == title);
+        // The APG menubar's title keys: Down opens the menu on its first item, Up on its last
+        // (https://www.w3.org/WAI/ARIA/apg/patterns/menubar/). Read as the bar, whose arrow scope
+        // takes the arrows and walks the titles with Left and Right.
+        let mut landing = MenuLanding::First;
+        if !response.disabled && here.is_none() && ui.is_focus_within(title) {
+            let down = ui.shortcut_pressed(Shortcut::key(Key::ArrowDown));
+            let up = ui.shortcut_pressed(Shortcut::key(Key::ArrowUp));
+            if up {
+                landing = MenuLanding::Last;
+            }
+            if (down || up) && !response.clicked() {
+                response.state.activate();
+            }
+        }
         let plan = self.style.plan(
             &response.state,
             MenuState::from(here.is_some()),
@@ -295,6 +311,7 @@ impl MenuBarMenus<'_> {
         let settled = Menu::below(&response)
             .id(MenuBar::menu_id(title))
             .style(self.menu_style)
+            .landing(landing)
             .settle(
                 ui,
                 here.map_or_else(TriggerState::default, |open| open.trigger),

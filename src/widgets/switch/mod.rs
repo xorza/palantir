@@ -138,7 +138,7 @@ struct KnobGeometry {
 impl SwitchTrack {
     const fn from_slot(slot: &ToggleTheme) -> Self {
         Self {
-            height: domain::length_at_least(slot.box_size, 1.0),
+            height: slot.box_side(),
             inset: domain::length_at_least(slot.indicator_inset, 0.0),
             aspect: slot.track_aspect,
         }

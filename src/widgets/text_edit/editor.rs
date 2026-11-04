@@ -10,17 +10,18 @@ use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::menu::menu_separator::MenuSeparator;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
-use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::text_edit::edit_state::{EditState, GoalColumn};
 use crate::widgets::text_edit::history::{
     EditDelta, EditKind, EditParts, HistoryStep, SelectionState,
 };
 use crate::widgets::text_edit::unicode::{
-    next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
-    sanitize_single_line, word_range_at,
+    line_range_at, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
+    prev_word_boundary, sanitize_single_line, word_range_at,
 };
 use std::borrow::Cow;
 use std::mem;
 use std::ops;
+use std::time::Duration;
 
 /// What the builder configured about the buffer an [`Editor`] edits.
 #[derive(Clone, Copy, Debug)]
@@ -56,6 +57,8 @@ pub(super) struct Editor<'a> {
     text: &'a mut String,
     state: &'a mut EditState,
     rules: EditRules,
+    /// The frame clock's time, which each edit's undo group compares with the last.
+    now: Duration,
     history_checked: bool,
     /// The buffer was mutated this session, set at the mutation choke points so a
     /// same-length overwrite still reports.
@@ -67,11 +70,13 @@ impl<'a> Editor<'a> {
         text: &'a mut String,
         state: &'a mut EditState,
         rules: EditRules,
+        now: Duration,
     ) -> Self {
         Self {
             text,
             state,
             rules,
+            now,
             history_checked: false,
             edited: false,
         }
@@ -146,6 +151,24 @@ impl<'a> Editor<'a> {
         self.state.caret
     }
 
+    /// The goal x of the run of vertical moves the caret is in.
+    pub(super) fn goal_x(&self) -> Option<f32> {
+        self.state.goal_x()
+    }
+
+    /// End the run of vertical moves: the next starts at the caret's own x.
+    pub(super) const fn clear_goal(&mut self) {
+        self.state.goal = None;
+    }
+
+    /// Keep `x` as the goal column of the vertical move that just placed the caret.
+    pub(super) const fn keep_goal(&mut self, x: f32) {
+        self.state.goal = Some(GoalColumn {
+            x,
+            caret: self.state.caret,
+        });
+    }
+
     pub(super) fn has_selection(&self) -> bool {
         self.state.selection_range().is_some()
     }
@@ -159,7 +182,8 @@ impl<'a> Editor<'a> {
     }
 
     /// Place the caret for a pointer press: one click places it and arms the drag,
-    /// two take the word, three or more everything. A multi-click leaves the drag
+    /// two take the word, three or more the hard line in a multi-line field and everything in
+    /// a single-line one. A multi-click leaves the drag
     /// disarmed. An extending (Shift) single press keeps the anchor, so the drag
     /// grows the selection from where it began.
     pub(super) fn press(&mut self, at: usize, clicks: u8, motion: CaretMove) {
@@ -178,6 +202,10 @@ impl<'a> Editor<'a> {
                 } else {
                     self.select_range(word.start, word.end);
                 }
+            }
+            3.. if self.multiline() => {
+                let line = line_range_at(self.text, at);
+                self.select_range(line.start, line.end);
             }
             3.. => self.select_all(),
             _ => self.arm_drag(at),
@@ -225,6 +253,7 @@ impl<'a> Editor<'a> {
 
     const fn mark_local_edit(&mut self) {
         self.state.local_edit_pending = true;
+        self.state.goal = None;
     }
 
     fn replace_range(&mut self, range: ops::Range<usize>, replacement: &str, kind: EditKind) {
@@ -260,6 +289,7 @@ impl<'a> Editor<'a> {
                 after,
             },
             kind,
+            self.now,
         );
         self.text.replace_range(range, replacement);
         self.state.caret = after.caret;

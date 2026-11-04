@@ -71,6 +71,51 @@ fn word_range_at_picks_anchor_kind() {
     }
 }
 
+/// A triple-click's hard line in "one\ntwo\n\nthree": inside the second line, on its first byte
+/// and on its last edge, all 4..7; the empty third line is 8..8; the last line runs to the end;
+/// the first starts at 0.
+#[test]
+fn line_range_at_takes_the_hard_line() {
+    let text = "one\ntwo\n\nthree";
+    for (byte, want) in [
+        (5, 4..7),
+        (4, 4..7),
+        (7, 4..7),
+        (8, 8..8),
+        (10, 9..14),
+        (14, 9..14),
+        (1, 0..3),
+    ] {
+        assert_eq!(line_range_at(text, byte), want, "at {byte}");
+    }
+    assert_eq!(line_range_at("", 0), 0..0);
+}
+
+/// A triple-click selects the hard line in a multi-line field and the whole buffer in a
+/// single-line one.
+#[test]
+fn a_triple_click_selects_the_line_in_a_multi_line_field() {
+    for (multiline, want) in [(true, (4, 7)), (false, (0, 13))] {
+        let mut text = String::from("one\ntwo\nthree");
+        let mut state = EditState::default();
+        let mut editor = Editor::new(
+            &mut text,
+            &mut state,
+            EditRules {
+                multiline,
+                max_chars: None,
+            },
+            Duration::ZERO,
+        );
+        editor.press(5, 3, CaretMove::Collapse);
+        assert_eq!(
+            (state.selection, state.caret),
+            (Some(want.0), want.1),
+            "multiline {multiline}"
+        );
+    }
+}
+
 #[test]
 fn apply_key_word_nav_cases() {
     fn word_nav(key: Key) -> KeyPress {
