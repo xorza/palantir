@@ -35,6 +35,7 @@ pub struct Button<'a> {
     label_align: Align,
     label_wrap: TextWrap,
     selection: Selection,
+    activation: Activation,
 }
 
 impl<'a> Button<'a> {
@@ -48,6 +49,7 @@ impl<'a> Button<'a> {
             label_align: Align::CENTER,
             label_wrap: TextWrap::Truncate,
             selection: Selection::Unselected,
+            activation: Activation::Button,
         }
     }
 
@@ -72,6 +74,13 @@ impl<'a> Button<'a> {
     /// Label position inside the button's rect (unlike [`Configure::align`], which places the button).
     pub const fn text_align(mut self, a: Align) -> Self {
         self.label_align = a;
+        self
+    }
+
+    /// The keys that activate it when focused; default [`Activation::Button`]. A segment of a
+    /// radio group takes [`Activation::Toggle`], as a radio does.
+    pub(crate) const fn activation(mut self, activation: Activation) -> Self {
+        self.activation = activation;
         self
     }
 
@@ -101,7 +110,7 @@ impl<'a> Button<'a> {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &TextStyle) -> R,
     ) -> InnerResponse<'_, R> {
-        let response = self.widget.activation_response(ui, Activation::Button);
+        let response = self.widget.activation_response(ui, self.activation);
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.button);
         let plan = slot.plan(&response, self.selection, theme.text);

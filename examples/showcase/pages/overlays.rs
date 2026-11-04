@@ -9,8 +9,8 @@ use crate::support::{Dialog, Kit, Section};
 use palantir::{
     Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, ClickOutside, CloseHandle,
     Configure, Justify, Key, Menu, MenuBar, MenuItem, MenuSeparator, MenuTheme, Metrics, Modal,
-    Panel, Popup, PopupTrigger, RadioButton, ResponseSnapshot, Sense, Shortcut, Sizing, Slider,
-    Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
+    Panel, Popup, PopupTrigger, ResponseSnapshot, Sense, Shortcut, Sizing, Slider, Spacing, Text,
+    Theme, Tooltip, Ui, WidgetId, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -132,30 +132,26 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
                  side. This one lets outside clicks pass through, so it stays open while you \
                  change the controls.",
             );
-            support::row(ui, |ui| {
+            support::radio_row(ui, &mut s.side, |ui, options| {
                 for (value, label) in [
                     (Side::Below, "below"),
                     (Side::Above, "above"),
                     (Side::LeftOf, "left_of"),
                     (Side::RightOf, "right_of"),
                 ] {
-                    RadioButton::new(&mut s.side, value)
-                        .id_salt(label)
-                        .label(label)
-                        .show(ui);
+                    options.option(value).label(label).show(ui);
                 }
             });
             support::row(ui, |ui| {
-                for (value, label) in [
-                    (AnchorAlign::Start, "Start"),
-                    (AnchorAlign::Center, "Center"),
-                    (AnchorAlign::End, "End"),
-                ] {
-                    RadioButton::new(&mut s.align, value)
-                        .id_salt(label)
-                        .label(label)
-                        .show(ui);
-                }
+                support::radio_row(ui, &mut s.align, |ui, options| {
+                    for (value, label) in [
+                        (AnchorAlign::Start, "Start"),
+                        (AnchorAlign::Center, "Center"),
+                        (AnchorAlign::End, "End"),
+                    ] {
+                        options.option(value).label(label).show(ui);
+                    }
+                });
                 Checkbox::new(&mut s.anchored).label("show").show(ui);
             });
             Panel::hstack()

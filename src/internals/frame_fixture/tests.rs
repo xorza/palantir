@@ -19,7 +19,7 @@ const COVERED: &[&str] = &[
     "panel",
     "popup",
     "progress_bar",
-    "radio",
+    "radio_group",
     "scroll",
     "separator",
     "slider",

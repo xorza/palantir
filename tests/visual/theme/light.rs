@@ -6,9 +6,10 @@ use palantir::{
     AnimationSpec, ButtonTheme, Chrome, ClipMode, CloseShown, ColorPickerTheme, ComboBoxTheme,
     Corners, DockTheme, DragValueTheme, ExpanderTheme, FocusRingTheme, FontFamily, FontSlant,
     FontWeight, MenuBarTheme, MenuItemTheme, MenuTheme, ModalTheme, PopupTheme, ProgressBarTheme,
-    RgbaF32, ScrollbarTheme, SeparatorTheme, Shadow, Size, SliderColors, SliderTheme, SlotDefaults,
-    Spacing, SpinnerTheme, SplitterTheme, StatefulLook, Stroke, TabsTheme, TextEditTheme,
-    TextStyle, TextStyleOverrides, Theme, ToggleTheme, TooltipTheme, WidgetLook,
+    RgbaF32, ScrollbarTheme, SegmentedTheme, SeparatorTheme, Shadow, Size, SliderColors,
+    SliderTheme, SlotDefaults, Spacing, SpinnerTheme, SplitterTheme, StatefulLook, Stroke,
+    TabsTheme, TextEditTheme, TextStyle, TextStyleOverrides, Theme, ToggleTheme, TooltipTheme,
+    WidgetLook,
 };
 
 /// The light theme, with no motion, so its widgets show at rest.
@@ -201,6 +202,81 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+            },
+        },
+        segmented: SegmentedTheme {
+            track: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(4.0)),
+            track_padding: Spacing::all(2.0),
+            segment: ButtonTheme {
+                unselected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(2.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x5f6873)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xd9dbdd), Corners::all(2.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x3d4248)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xfcfcfc), Corners::all(2.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x3d4248)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hexa(0x00000000), Corners::all(2.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x9aa1aa)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                },
+                selected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xfcfcfc), Corners::all(2.0))
+                            .with_border(Stroke::new(RgbaF32::hexa(0x5f68732e), 1.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x3d4248)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xfcfcfc), Corners::all(2.0))
+                            .with_border(Stroke::new(RgbaF32::hexa(0x5f68732e), 1.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x3d4248)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xfcfcfc), Corners::all(2.0))
+                            .with_border(Stroke::new(RgbaF32::hexa(0x5f68732e), 1.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x3d4248)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0xfcfcfc), Corners::all(2.0))
+                            .with_border(Stroke::new(RgbaF32::hexa(0x5f68732e), 1.0)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0x9aa1aa)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                },
+                defaults: SlotDefaults {
+                    padding: Spacing::xy(8.0, 2.0),
+                    margin: Spacing::all(0.0),
+                    transition: AnimationSpec::SNAP,
+                },
             },
         },
         switch: ToggleTheme {

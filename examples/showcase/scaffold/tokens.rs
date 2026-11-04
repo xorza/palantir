@@ -22,10 +22,6 @@ pub(crate) struct Tokens {
     pub(crate) ground: RgbaF32,
     pub(crate) surround: RgbaF32,
     pub(crate) raised: RgbaF32,
-    /// Resting chrome for an interactive surface, and the track a control runs on.
-    pub(crate) control: RgbaF32,
-    /// The emphasis a control's hover and press reach for.
-    pub(crate) control_strong: RgbaF32,
     pub(crate) border: RgbaF32,
     pub(crate) hairline: RgbaF32,
     pub(crate) ink: RgbaF32,
@@ -40,8 +36,6 @@ impl Tokens {
             ground: p.window_bg,
             surround: p.surround,
             raised: p.element,
-            control: p.element_mid,
-            control_strong: p.element_strong,
             border: p.border_mid(),
             hairline: p.border_soft(),
             ink: p.text,

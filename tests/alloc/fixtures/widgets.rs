@@ -9,7 +9,7 @@ use palantir::glam::Vec2;
 use palantir::{
     Anchor, AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorPicker,
     ColorScheme, Configure, Easing, Expander, ExpanderTheme, Menu, MenuItem, Modal, Panel, Popup,
-    ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
+    ProgressBar, RadioGroup, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
     Spinner, SwatchRow, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
 };
 
@@ -246,7 +246,11 @@ fn value_and_toggle_widgets_alloc_free() {
                     .show(ui);
                 Switch::new(&mut on).id_salt("switch").show(ui);
                 Checkbox::new(&mut on).id_salt("check").show(ui);
-                RadioButton::new(&mut choice, 1u8).id_salt("radio").show(ui);
+                RadioGroup::new(&mut choice)
+                    .id_salt("radio")
+                    .show(ui, |ui, options| {
+                        options.option(1u8).show(ui);
+                    });
             });
     });
 }

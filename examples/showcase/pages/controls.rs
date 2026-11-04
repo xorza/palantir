@@ -6,9 +6,9 @@ use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
-    Align, Animated, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ColorScheme, ComboBox,
-    Configure, Corners, DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar,
-    RadioButton, RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
+    Align, Animated, AnimationSpec, Axis, Button, ButtonTheme, Checkbox, Chrome, ColorScheme,
+    ComboBox, Configure, Corners, DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar,
+    RadioGroup, RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
     Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
 };
 
@@ -192,18 +192,18 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
 
             Separator::horizontal().show(ui);
             group(ui, k, "UPDATES");
-            Panel::hstack().gap(M.space.md).show(ui, |ui| {
-                for (value, label) in [
-                    (Updates::Automatic, "Automatic"),
-                    (Updates::Ask, "Ask"),
-                    (Updates::Never, "Never"),
-                ] {
-                    RadioButton::new(&mut s.updates, value)
-                        .id_salt(label)
-                        .label(label)
-                        .show(ui);
-                }
-            });
+            RadioGroup::new(&mut s.updates)
+                .axis(Axis::X)
+                .gap(M.space.md)
+                .show(ui, |ui, options| {
+                    for (value, label) in [
+                        (Updates::Automatic, "Automatic"),
+                        (Updates::Ask, "Ask"),
+                        (Updates::Never, "Never"),
+                    ] {
+                        options.option(value).label(label).show(ui);
+                    }
+                });
 
             Separator::horizontal().show(ui);
             group(ui, k, "AUDIO & VIDEO");

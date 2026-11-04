@@ -47,6 +47,14 @@ impl Configurator<'_> {
         self
     }
 
+    /// True while the caller set no id: no [`Self::id`], [`Self::id_salt`] or resolve yet.
+    pub(crate) const fn has_auto_id(&self) -> bool {
+        matches!(
+            self.widget.ident,
+            Ident::Recipe(IdRecipe::Scoped(ScopedRecipe::Auto(_)))
+        )
+    }
+
     /// See [`Configure::auto_id`](crate::widget_core::configure::Configure::auto_id).
     #[track_caller]
     #[inline]

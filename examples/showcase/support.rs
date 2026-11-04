@@ -12,10 +12,10 @@ use std::ops::RangeInclusive;
 use std::panic::Location;
 
 use palantir::{
-    Align, Block, Checkbox, Chrome, CloseHandle, ColorCoords, ColorModel, ColorScheme, Configure,
-    Corners, Expander, FontWeight, Justify, Metrics, Modal, OverlayResponse, Palette, Panel,
-    RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
-    fmt,
+    Align, Axis, Block, Checkbox, Chrome, CloseHandle, ColorCoords, ColorModel, ColorScheme,
+    Configure, Corners, Expander, FontWeight, Justify, Metrics, Modal, OverlayResponse, Palette,
+    Panel, RadioGroup, RadioOptions, RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle,
+    TextWrap, Ui, VAlign, WidgetId, fmt,
 };
 
 use crate::scaffold::chip::Chip;
@@ -257,6 +257,21 @@ pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
+        .gap(ROW_GAP)
+        .child_align(Align::v(VAlign::Center))
+        .show(ui, body);
+}
+
+/// A [`RadioGroup`] laid out as a [`row`]: its options left to right, spaced alike.
+#[track_caller]
+pub(crate) fn radio_row<T: PartialEq>(
+    ui: &mut Ui,
+    cur: &mut T,
+    body: impl FnOnce(&mut Ui, &mut RadioOptions<'_, T>),
+) {
+    RadioGroup::new(cur)
+        .auto_id()
+        .axis(Axis::X)
         .gap(ROW_GAP)
         .child_align(Align::v(VAlign::Center))
         .show(ui, body);

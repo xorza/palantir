@@ -20,7 +20,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use std::rc::Rc;
 
-/// What [`Checkbox`](crate::Checkbox), [`RadioButton`](crate::RadioButton) and
+/// What [`Checkbox`](crate::Checkbox), the options of a [`RadioGroup`](crate::RadioGroup) and
 /// [`Switch`](crate::Switch) share: one click target over a box and a label, its label and its
 /// theme override. Each widget owns one and finishes through [`Self::show`] with its
 /// [`ToggleKind`].

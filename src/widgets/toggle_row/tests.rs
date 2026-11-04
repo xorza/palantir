@@ -6,8 +6,9 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::checkbox::Checkbox;
-use crate::widgets::radio::RadioButton;
+use crate::widgets::radio_group::{self, RadioGroup};
 use crate::widgets::switch::Switch;
 use glam::{UVec2, Vec2};
 
@@ -52,6 +53,7 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
             } else {
                 (padding, margin, gap, true)
             };
+            let id = row_id(kind, id);
             let node = h.ui().forest().node_for_widget_id(Layer::Main, id);
             let layout = h.ui().tree(Layer::Main).records.layout()[node.idx()];
             let label = format!("{kind:?} explicit {explicit}");
@@ -84,8 +86,8 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
 
 /// One `kind` 120 px tall under `id`; `explicit` sets every spacing the theme supplies.
 fn record_spaced(ui: &mut Ui, kind: Toggle, id: WidgetId, value: &mut bool, explicit: bool) {
-    fn spaced<C: Configure>(row: C, id: WidgetId, explicit: bool) -> C {
-        let row = row.id(id).size((Sizing::HUG, Sizing::fixed(120.0)));
+    fn spaced<C: Configure>(row: C, explicit: bool) -> C {
+        let row = row.size((Sizing::HUG, Sizing::fixed(120.0)));
         if explicit {
             row.padding(Spacing::ZERO)
                 .margin(Spacing::ZERO)
@@ -96,10 +98,30 @@ fn record_spaced(ui: &mut Ui, kind: Toggle, id: WidgetId, value: &mut bool, expl
         }
     }
     match kind {
-        Toggle::Checkbox => spaced(Checkbox::new(value).label("t"), id, explicit).show(ui),
-        Toggle::Radio => spaced(RadioButton::new(value, true).label("t"), id, explicit).show(ui),
-        Toggle::Switch => spaced(Switch::new(value).label("t"), id, explicit).show(ui),
-    };
+        Toggle::Checkbox => {
+            spaced(Checkbox::new(value).label("t"), explicit)
+                .id(id)
+                .show(ui);
+        }
+        Toggle::Radio => {
+            RadioGroup::new(value).id(id).show(ui, |ui, options| {
+                spaced(options.option(true).label("t"), explicit).show(ui);
+            });
+        }
+        Toggle::Switch => {
+            spaced(Switch::new(value).label("t"), explicit)
+                .id(id)
+                .show(ui);
+        }
+    }
+}
+
+/// The row of `kind` recorded under `id`: a radio's is its group's one option.
+fn row_id(kind: Toggle, id: WidgetId) -> WidgetId {
+    match kind {
+        Toggle::Radio => radio_group::option_id(id, 0),
+        Toggle::Checkbox | Toggle::Switch => id,
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -113,24 +135,33 @@ enum Toggle {
 fn record_toggle(ui: &mut Ui, kind: Toggle, value: &mut bool, disabled: bool) -> [bool; 2] {
     let id = WidgetId::from_hash("toggle");
     let before = *value;
-    let r = match kind {
-        Toggle::Checkbox => Checkbox::new(value)
-            .id(id)
-            .label("t")
-            .disabled(disabled)
-            .show(ui),
-        Toggle::Switch => Switch::new(value)
-            .id(id)
-            .label("t")
-            .disabled(disabled)
-            .show(ui),
-        Toggle::Radio => RadioButton::new(value, true)
-            .id(id)
-            .label("t")
-            .disabled(disabled)
-            .show(ui),
+    let edges = |r: ValueResponse<'_>| (r.response.left.clicked(), r.changed, r.committed);
+    let (clicked, changed, committed) = match kind {
+        Toggle::Checkbox => edges(
+            Checkbox::new(value)
+                .id(id)
+                .label("t")
+                .disabled(disabled)
+                .show(ui),
+        ),
+        Toggle::Switch => edges(
+            Switch::new(value)
+                .id(id)
+                .label("t")
+                .disabled(disabled)
+                .show(ui),
+        ),
+        Toggle::Radio => {
+            let mut got = None;
+            RadioGroup::new(value)
+                .id(id)
+                .disabled(disabled)
+                .show(ui, |ui, options| {
+                    got = Some(edges(options.option(true).label("t").show(ui)));
+                });
+            got.expect("the group records its option")
+        }
     };
-    let (clicked, changed, committed) = (r.response.left.clicked(), r.changed, r.committed);
     assert_eq!(changed, *value != before, "{kind:?}: changed is the move");
     assert_eq!(committed, changed, "{kind:?}: a pick commits at once");
     [clicked, changed]
@@ -149,7 +180,7 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
             });
             assert_eq!(
                 h.hit_at(at),
-                Some(WidgetId::from_hash("toggle")),
+                Some(row_id(kind, WidgetId::from_hash("toggle"))),
                 "{kind:?} disabled {disabled}: the click lands",
             );
 
@@ -210,7 +241,8 @@ fn space_activates_a_focused_toggle() {
                 record(ui);
             });
             if focused {
-                h.ui_mut().set_focus(WidgetId::from_hash("toggle"));
+                h.ui_mut()
+                    .set_focus(row_id(kind, WidgetId::from_hash("toggle")));
             }
             h.key(key);
             let (edges, app_got) = h.frame_value(&mut record);

@@ -3,6 +3,7 @@
 
 use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -28,7 +29,7 @@ use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
-use crate::widgets::radio::RadioButton;
+use crate::widgets::radio_group::RadioGroup;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use std::fmt::Write as _;
@@ -566,16 +567,14 @@ impl Rows<'_> {
     fn model_switch(&mut self, ui: &mut Ui, gap: f32) {
         let id = self.id;
         let mut model = self.state.coords.model();
-        Panel::hstack()
+        RadioGroup::new(&mut model)
+            .axis(Axis::X)
             .id(id.with("models"))
             .gap(gap)
             .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| {
+            .show(ui, |ui, options| {
                 for choice in ColorModel::ALL {
-                    RadioButton::new(&mut model, choice)
-                        .label(model_label(choice))
-                        .id(id.with(model_label(choice)))
-                        .show(ui);
+                    options.option(choice).label(model_label(choice)).show(ui);
                 }
             });
         self.state.coords = self.state.coords.with_model(model);

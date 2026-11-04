@@ -951,12 +951,11 @@ mod tests {
             )
         );
 
-        // The motion row's "Full", then one arrow right to its "Less", which Space presses.
+        // The motion row's "Full", then one arrow right, which moves the pick to its "Less".
         h.click(Locator::from("Full").nth(0));
         h.settle(&mut shell).expect("the frames settle");
         assert_eq!(h.ui().motion_preference(), ReducePreference::Full);
         h.key(Key::ArrowRight);
-        h.key(Key::Char(' '));
         h.settle(&mut shell).expect("the frames settle");
         assert_eq!(
             prefs(&h),

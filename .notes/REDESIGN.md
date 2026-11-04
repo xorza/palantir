@@ -140,7 +140,7 @@ and some `Result` paths panic:
 | Area | Findings |
 |---|---|
 | Text editing | No goal column (WG-02). Triple-click selects all in multi-line (WG-03) ✔. No Ctrl+Y (WG-19). Undo groups with no bound (WG-20). |
-| Keyboard | Scroll takes no keys and does not reveal focus (WG-06). Menubar Down/Up do nothing (WG-07). Radio groups (WG-08). Shift+Space is swallowed (UI-21). |
+| Keyboard | Scroll takes no keys and does not reveal focus (WG-06). Menubar Down/Up do nothing (WG-07). Radio groups (WG-08) ✔. Shift+Space is swallowed (UI-21). |
 | Pointer | Tooltip does not hide on a press or Escape (WG-05). Splitter drops the grab offset (WG-21). Dock shows a drop it refuses (WG-04). |
 | Platform | Wayland clipboard (HS-15). Tiler detection on DXGI and GLES (GA-01) ✔. |
 
@@ -172,12 +172,6 @@ The order is by impact: user-visible bugs and panics first, then perf with wide 
 the reduction of complexity. Each batch stays inside one system, so one review covers it. A
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
-
-### Batch 6b. Radio group (`widgets`) **API**
-
-What Batch 6 left: a radio group with one Tab stop whose arrow keys move focus and the pick
-together, as the APG radio group does. It needs a group container or `arrow_focus` that writes
-the pick, which is new public surface (WG-08).
 
 ### Batch 9b. GPU public surface (`gpu`) **API**
 
@@ -270,7 +264,6 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 6b | WG-08 |
 | 9b | GA-16, GA-17 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
@@ -285,14 +278,6 @@ profile shows them). `.notes/ISSUES.md` already logs the `Staging::abort` race.
 
 Each open finding as its reviewer wrote it, grouped by the batch that takes it. A batch reads
 its own findings here; the line numbers are from the review and drift as the code moves.
-
-### Batch 6b
-
-**WG-08 · bug (APG) · `radio/mod.rs`, `toggle_row/mod.rs:78`**
-- **What's wrong:** every RadioButton is its own Tab stop and ignores the arrow keys. A caller's `arrow_focus` on the container only moves focus; it does not check the radio.
-- **Why it matters:** the APG radio group has one Tab stop, and the arrows move focus and check together (selection follows focus). The color picker's model switch (`color_picker/mod.rs:569-580`) inherits this.
-- **Direction:** add a group container, or make a focused radio's arrow keys write the neighbouring value. This needs a group notion.
-- Confidence: high on behavior, medium on direction · public API change: likely · root cause: no group abstraction for discrete picks.
 
 ### Batch 9b
 

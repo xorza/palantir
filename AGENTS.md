@@ -364,6 +364,13 @@ driver serves that command alone; the drive table's `version` names it
 - **A color chip wears a button's slot**: `ColorPickerTheme::chip` frames the color in a
   `ButtonTheme`'s look for each state through `wear`, and the color fills the chip inside the
   frame's border.
+- **One pick from a few is a `RadioGroup`**, whatever it looks like: a pip list or a segmented
+  track is a `RadioLook`, as SwiftUI's `pickerStyle` restyles one `Picker`, and Ark UI's segment
+  group and Mantine's segmented control are radio groups. The group is one Tab stop and an arrow
+  moves focus and the pick together ([APG radio group](https://www.w3.org/WAI/ARIA/apg/patterns/radio/)).
+  Its body records the options, so they take any layout and a tooltip. Refused: a free-standing
+  radio button, which answers no arrow; options from a slice, which leave no option's response;
+  a segmented control of its own, a second widget for one pick.
 - **One key map per role**: a slider takes the APG slider's keys, arrows both ways, Page and the
   ends ([APG slider](https://www.w3.org/WAI/ARIA/apg/patterns/slider/)); a drag value the APG spin
   button's, Up and Down, Page and a bounded end, leaving Left and Right to the text

@@ -5,6 +5,7 @@ use crate::internals::frame_fixture::card::Card;
 use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::Align;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -24,7 +25,7 @@ use crate::widgets::expander::Expander;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::progress_bar::ProgressBar;
-use crate::widgets::radio::RadioButton;
+use crate::widgets::radio_group::RadioGroup;
 use crate::widgets::separator::Separator;
 use crate::widgets::slider::Slider;
 use crate::widgets::switch::Switch;
@@ -55,12 +56,15 @@ pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
                     .label("enabled")
                     .show(ui);
                 state.probes.enabled = Some(enabled.response.id);
-                for v in 0u8..3 {
-                    RadioButton::new(&mut state.role, v)
-                        .id_salt(("role", v))
-                        .label(["read", "write", "admin"][v as usize])
-                        .show(ui);
-                }
+                RadioGroup::new(&mut state.role)
+                    .axis(Axis::X)
+                    .id_salt("role")
+                    .gap(8.0)
+                    .show(ui, |ui, options| {
+                        for (v, label) in ["read", "write", "admin"].into_iter().enumerate() {
+                            options.option(v as u8).label(label).show(ui);
+                        }
+                    });
                 let submit = Button::new().id_salt("submit").label("Submit").show(ui);
                 state.probes.submit = Some(submit.id);
             });

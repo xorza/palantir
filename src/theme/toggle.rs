@@ -21,7 +21,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle_kind::ToggleKind;
 use glam::Vec2;
 
-/// Visuals for [`crate::Checkbox`], [`crate::RadioButton`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
+/// Visuals for [`crate::Checkbox`], the pips of [`crate::RadioGroup`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
 #[derive(
     Clone,
     Debug,
@@ -50,7 +50,7 @@ pub struct ToggleTheme {
     /// The check polyline's three points (Checkbox only) as fractions of [`Self::box_size`], so the tick keeps its proportions at any size.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::offset_points3")]
     pub check_points: [Vec2; 3],
-    /// Inset of the filled dot inside the pip (RadioButton); dot side is `box_size - 2 * indicator_inset`.
+    /// Inset of the filled dot inside a radio pip; dot side is `box_size - 2 * indicator_inset`.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub indicator_inset: f32,
     /// Gap between box and label.

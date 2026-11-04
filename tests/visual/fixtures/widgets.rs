@@ -4,10 +4,10 @@ use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
-    AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel,
+    AnimationSpec, Axis, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel,
     ColorPicker, ColorScheme, ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key,
-    KeyText, Modal, Panel, ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner,
-    SrgbaU8, Stroke, SwatchRow, Switch, Text, TextEdit, Ui,
+    KeyText, Modal, Panel, ProgressBar, RadioGroup, RadioLook, Rect, RgbaF32, Sizing, Slider,
+    Spinner, SrgbaU8, Stroke, SwatchRow, Switch, Text, TextEdit, Ui,
 };
 
 use crate::fixtures;
@@ -285,11 +285,24 @@ fn light_theme_widgets_match_golden() {
                             Checkbox::new(&mut on).id_salt(salt).label(salt).show(ui);
                         }
                         let mut pick = 0;
-                        RadioButton::new(&mut pick, 0)
+                        RadioGroup::new(&mut pick)
                             .id_salt("radio")
-                            .label("radio")
-                            .show(ui);
+                            .show(ui, |ui, options| {
+                                options.option(0).label("radio").show(ui);
+                            });
                     });
+                    let mut segment = 1;
+                    RadioGroup::new(&mut segment)
+                        .axis(Axis::X)
+                        .look(RadioLook::Segment)
+                        .id_salt("segments")
+                        .size((Sizing::fixed(240.0), Sizing::HUG))
+                        .show(ui, |ui, options| {
+                            for (value, label) in ["Auto", "Light", "Dark"].into_iter().enumerate()
+                            {
+                                options.option(value).label(label).show(ui);
+                            }
+                        });
                     Panel::hstack().auto_id().gap(12.0).show(ui, |ui| {
                         for (salt, mut on) in [("on", true), ("off", false)] {
                             Switch::new(&mut on).id_salt(salt).label(salt).show(ui);

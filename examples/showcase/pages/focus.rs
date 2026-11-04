@@ -7,7 +7,7 @@ use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
-    FocusRingTheme, Grid, Metrics, Modal, Panel, PopupTrigger, RadioButton, Sizing, Slider, Switch,
+    FocusRingTheme, Grid, Metrics, Modal, Panel, PopupTrigger, RadioGroup, Sizing, Slider, Switch,
     Text, TextEdit, Track, Ui, WidgetId,
 };
 
@@ -187,20 +187,17 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 .grid_cell((4, 1))
                 .show(ui);
             seen.note("Volume", r.response.focused);
-            Panel::hstack()
+            RadioGroup::new(&mut s.size)
+                .axis(Axis::X)
                 .gap(M.space.md)
-                .arrow_focus(Axis::X)
                 .grid_cell((5, 1))
-                .show(ui, |ui| {
+                .show(ui, |ui, options| {
                     for (value, label) in [
                         (Size::Small, "Small"),
                         (Size::Medium, "Medium"),
                         (Size::Large, "Large"),
                     ] {
-                        let r = RadioButton::new(&mut s.size, value)
-                            .id_salt(label)
-                            .label(label)
-                            .show(ui);
+                        let r = options.option(value).label(label).show(ui);
                         seen.note(label, r.response.focused);
                     }
                 });
@@ -435,15 +432,12 @@ fn policy(ui: &mut Ui, k: Kit, s: &mut State) {
                 "What a press on nothing focusable does to focus. The shell puts the default \
                  back on every other page, so the choice here stays on this page.",
             );
-            support::row(ui, |ui| {
+            support::radio_row(ui, &mut s.policy, |ui, options| {
                 for (value, label) in [
                     (FocusPolicy::ClearOnMiss, "ClearOnMiss — drop focus"),
                     (FocusPolicy::PreserveOnMiss, "PreserveOnMiss — keep it"),
                 ] {
-                    RadioButton::new(&mut s.policy, value)
-                        .id_salt(label)
-                        .label(label)
-                        .show(ui);
+                    options.option(value).label(label).show(ui);
                 }
             });
         });

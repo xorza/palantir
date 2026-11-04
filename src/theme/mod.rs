@@ -23,6 +23,7 @@ pub(crate) mod popup;
 pub(crate) mod progress_bar;
 pub(crate) mod scheme_preference;
 pub(crate) mod scrollbar;
+pub(crate) mod segmented;
 pub(crate) mod selection;
 pub(crate) mod separator;
 pub(crate) mod slider;
@@ -60,6 +61,7 @@ use crate::theme::palette::Palette;
 use crate::theme::popup::PopupTheme;
 use crate::theme::progress_bar::ProgressBarTheme;
 use crate::theme::scrollbar::ScrollbarTheme;
+use crate::theme::segmented::SegmentedTheme;
 use crate::theme::separator::SeparatorTheme;
 use crate::theme::slider::SliderTheme;
 use crate::theme::spinner::SpinnerTheme;
@@ -110,8 +112,11 @@ pub struct Theme {
     pub button: ButtonTheme,
     /// Toggle widgets share a theme type, not a slot.
     pub checkbox: ToggleTheme,
-    /// See [`Self::checkbox`].
+    /// The pips of a [`crate::RadioGroup`]; see [`Self::checkbox`].
     pub radio: ToggleTheme,
+    /// The track and segments of a [`crate::RadioGroup`] in
+    /// [`RadioLook::Segment`](crate::RadioLook::Segment).
+    pub segmented: SegmentedTheme,
     /// See [`Self::checkbox`].
     pub switch: ToggleTheme,
     /// Track, thumb and gutter of every [`crate::Scroll`].
@@ -303,6 +308,7 @@ impl Theme {
             button: _,
             checkbox: _,
             radio: _,
+            segmented: _,
             switch: _,
             scrollbar: _,
             text_edit: _,
@@ -384,6 +390,7 @@ impl Theme {
             button: ButtonTheme::from_parts(p, m),
             checkbox: ToggleTheme::from_parts(ToggleKind::Checkbox, p, m),
             radio: ToggleTheme::from_parts(ToggleKind::Radio, p, m),
+            segmented: SegmentedTheme::from_parts(p, m),
             switch: ToggleTheme::from_parts(ToggleKind::Switch, p, m),
             scrollbar: ScrollbarTheme::from_parts(p, m),
             text_edit: TextEditTheme::from_parts(p, m),
@@ -427,6 +434,7 @@ struct UncheckedTheme {
     button: ButtonTheme,
     checkbox: ToggleTheme,
     radio: ToggleTheme,
+    segmented: SegmentedTheme,
     switch: ToggleTheme,
     scrollbar: ScrollbarTheme,
     text_edit: TextEditTheme,
@@ -464,6 +472,7 @@ impl TryFrom<UncheckedTheme> for Theme {
             button,
             checkbox,
             radio,
+            segmented,
             switch,
             scrollbar,
             text_edit,
@@ -493,6 +502,7 @@ impl TryFrom<UncheckedTheme> for Theme {
             button,
             checkbox,
             radio,
+            segmented,
             switch,
             scrollbar,
             text_edit,

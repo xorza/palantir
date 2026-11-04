@@ -31,7 +31,7 @@ pub(crate) mod modal;
 pub(crate) mod panel;
 pub(crate) mod popup;
 pub(crate) mod progress_bar;
-pub(crate) mod radio;
+pub(crate) mod radio_group;
 pub(crate) mod scroll;
 pub(crate) mod separator;
 pub(crate) mod slider;

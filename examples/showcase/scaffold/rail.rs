@@ -5,9 +5,9 @@
 
 use palantir::{
     Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Grid,
-    GridCell, Metrics, Panel, ReducePreference, RgbaF32, SchemePreference, Scroll, Sizing,
-    SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyleOverrides, Theme, Tooltip, Track,
-    Ui, VAlign, WidgetId, WidgetLook,
+    GridCell, Metrics, Panel, RadioGroup, RadioLook, ReducePreference, SchemePreference, Scroll,
+    SegmentedTheme, Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme,
+    Tooltip, Track, Ui, VAlign, WidgetId, WidgetLook,
 };
 
 use crate::scaffold::tokens::Tokens;
@@ -17,7 +17,7 @@ const M: Metrics = Metrics::DEFAULT;
 /// The rail's width: room for a preference row's name beside its [`Segmented`] track, as the
 /// longest name, "Transparency", takes 78 px at the caption size. The track takes the rest,
 /// 256 − 3 × [`INSET`] − 78 − [`NAME_GAP`] = 134 px: three segments of 43.3 px inside its
-/// [`TRACK_PAD`], which leave the widest choice, "Light" at 32 px, 5.7 px each side.
+/// 2 px padding, which leave the widest choice, "Light" at 32 px, 5.7 px each side.
 pub(crate) const WIDTH: f32 = 256.0;
 /// The inset of the rail's blocks from its edges, and of an item's text from its pill.
 pub(crate) const INSET: f32 = M.space.md;
@@ -222,69 +222,39 @@ const fn follows_reduction(reduced: bool) -> &'static str {
 
 /// The space between a preference's name and its track.
 const NAME_GAP: f32 = M.space.sm;
-/// A segment's height, inside the track's [`TRACK_PAD`].
+/// A segment's height, inside the track's padding.
 const SEGMENT: f32 = 20.0;
-/// The track's inset around its segments.
-const TRACK_PAD: f32 = 2.0;
 
-/// A segmented control: one track, its choices flat on it and the picked one on a pill of the
-/// ground, as the open tab chip wears the ground and Radix's tabs put the active trigger on the
-/// background over a muted list. Refused: a gapped row of buttons, whose picked one showed only as
-/// a ring a focus ring also draws; a raised pill of the `element` rungs, which reads raised in a
-/// dark scheme and sunk in a light one, where the rungs step darker
-/// ([Apple HIG, Segmented controls](https://developer.apple.com/design/human-interface-guidelines/segmented-controls),
-/// [Radix Tabs](https://www.radix-ui.com/themes/docs/components/tabs)).
+/// The preference rows' track: the stock segmented look at the caption size, with no padding in a
+/// segment, so the widest choice fits its third of the track.
 #[derive(Debug)]
 struct Segmented {
-    theme: ButtonTheme,
-    track: Chrome,
+    style: SegmentedTheme,
     t: Tokens,
 }
 
 impl Segmented {
     fn new(theme: &Theme, t: Tokens) -> Self {
-        let corners = Corners::all(M.radius.control - TRACK_PAD);
-        let look = |fill: RgbaF32, ink| WidgetLook {
-            chrome: Chrome::rounded(fill, corners),
-            text: TextStyleOverrides::NONE
-                .with_font_size(M.text.caption)
-                .with_color(ink),
-        };
-        let pill = WidgetLook {
-            chrome: Chrome::rounded(t.ground, corners)
-                .with_border(Stroke::new(t.hairline, M.stroke.hairline)),
-            ..look(t.ground, t.ink)
-        };
-        let rest = look(RgbaF32::TRANSPARENT, t.ink_dim);
-        Self {
-            theme: ButtonTheme {
-                selected: StatefulLook {
-                    normal: pill.clone(),
-                    hovered: pill.clone(),
-                    active: pill.clone(),
-                    disabled: pill,
-                },
-                unselected: StatefulLook {
-                    normal: rest.clone(),
-                    hovered: look(t.control_strong, t.ink),
-                    // A press shows the pill's ground before the release moves the pill there.
-                    active: look(t.ground, t.ink),
-                    disabled: rest,
-                },
-                defaults: SlotDefaults {
-                    padding: Spacing::ZERO,
-                    ..theme.button.defaults
-                },
-            },
-            track: Chrome::rounded(t.control, Corners::all(M.radius.control)),
-            t,
+        let mut style = theme.segmented.clone();
+        let segment = &mut style.segment;
+        for pack in [&mut segment.selected, &mut segment.unselected] {
+            for look in [
+                &mut pack.normal,
+                &mut pack.hovered,
+                &mut pack.active,
+                &mut pack.disabled,
+            ] {
+                look.text = look.text.with_font_size(M.text.caption);
+            }
         }
+        segment.defaults.padding = Spacing::ZERO;
+        Self { style, t }
     }
 
-    /// Grid row `row` of `label` beside a segment per choice, `current`'s on the pill; the choice
-    /// pressed this frame, else `current`. The track is one arrow group, so one Tab lands in it,
-    /// as a radio group takes one (WAI-ARIA APG, Radio Group). The first segment follows the
-    /// system, and its tooltip, `follows`, says what that shows now, as the segment alone cannot.
+    /// Grid row `row` of `label` beside a segment per choice, `current`'s checked; the choice
+    /// picked this frame, else `current`. The track is a radio group, so one Tab lands in it and
+    /// an arrow picks (WAI-ARIA APG, Radio Group). The first segment follows the system, and its
+    /// tooltip, `follows`, says what that shows now, as the segment alone cannot.
     fn row<T: Copy + PartialEq>(
         &self,
         ui: &mut Ui,
@@ -302,27 +272,23 @@ impl Segmented {
             .grid_cell(GridCell::at(row, 0))
             .align(Align::v(VAlign::Center))
             .show(ui);
-        Panel::hstack()
+        RadioGroup::new(&mut next)
+            .look(RadioLook::Segment)
+            .segmented_style(&self.style)
+            .axis(Axis::X)
             .id_salt((label, "track"))
             .grid_cell(GridCell::at(row, 1))
             .size((Sizing::FILL, Sizing::HUG))
-            .padding(TRACK_PAD)
-            .chrome(self.track.clone())
-            .arrow_focus(Axis::X)
-            .show(ui, |ui| {
+            .show(ui, |ui, options| {
                 for (idx, (choice, text)) in choices.into_iter().enumerate() {
-                    let segment = Button::new()
-                        .id_salt(text)
+                    let segment = options
+                        .option(choice)
                         .label(text)
-                        .style(&self.theme)
-                        .selected(current == choice)
                         .size((Sizing::FILL, Sizing::fixed(SEGMENT)))
-                        .show(ui);
-                    if segment.clicked() {
-                        next = choice;
-                    }
+                        .show(ui)
+                        .response
+                        .snapshot();
                     if idx == 0 {
-                        let segment = segment.snapshot();
                         Tooltip::on(&segment, follows).show(ui);
                     }
                 }

@@ -75,7 +75,7 @@ use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::progress_bar::ProgressBar;
-use crate::widgets::radio::RadioButton;
+use crate::widgets::radio_group::RadioGroup;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::separator::Separator;
 use crate::widgets::slider::Slider;
@@ -168,7 +168,7 @@ const PINS: &[Pin] = &[
         8,
     ),
     pin::<DragValue<'static>>("widgets::DragValue", 232, 8),
-    pin::<RadioButton<'static, u8>>("widgets::RadioButton<u8>", 176, 8),
+    pin::<RadioGroup<'static, u8>>("widgets::RadioGroup<u8>", 160, 8),
     pin::<TextEdit<'static>>("widgets::TextEdit", 320, 8),
     pin::<Text<'static>>("widgets::Text", 272, 8),
     pin::<Slider<'static>>("widgets::Slider", 192, 8),
