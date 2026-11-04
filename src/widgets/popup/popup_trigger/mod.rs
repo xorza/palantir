@@ -1,6 +1,5 @@
 //! A popup a trigger widget opens and closes by clicking.
 
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::popup::PopupTheme;
@@ -39,10 +38,9 @@ use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct PopupTrigger<'a> {
-    for_id: WidgetId,
-    /// The trigger's state as it showed: its click toggles the
-    /// popup, its rect anchors it, its disabled flag closes it.
-    trigger: ResponseState,
+    /// What the trigger did as it showed: its click toggles the popup, its rect anchors it, its
+    /// disabled flag closes it.
+    frame: TriggerFrame,
     /// The popup this trigger drops; anchored below the trigger at `show`.
     popup: Popup<'a>,
 }
@@ -51,8 +49,7 @@ impl<'a> PopupTrigger<'a> {
     /// Attach a popup to the trigger whose response is `trigger`.
     pub fn on(trigger: &Response) -> Self {
         Self {
-            for_id: trigger.id,
-            trigger: trigger.state,
+            frame: TriggerFrame::below(trigger),
             popup: Popup::new().default_id(PopupTrigger::popup_id(trigger.id)),
         }
     }
@@ -111,14 +108,7 @@ impl<'a> PopupTrigger<'a> {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
-        let resp = TriggerFrame {
-            for_id: self.for_id,
-            toggled: self.trigger.clicked(),
-            opened: None,
-            disabled: self.trigger.disabled,
-            rect: self.trigger.rect,
-        }
-        .show::<K, R>(ui, |_| self.popup, body);
+        let resp = self.frame.show::<K, R>(ui, |_| self.popup, body);
         MenuLanding::First.land(ui, resp.as_ref());
         resp
     }

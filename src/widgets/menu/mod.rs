@@ -115,16 +115,7 @@ impl<'a> Menu<'a> {
     /// it and a second closes it. It hangs from the trigger's rect each frame and flips above it
     /// when it does not fit below.
     pub fn below(trigger: &Response) -> Self {
-        Self::on_trigger(
-            TriggerFrame {
-                for_id: trigger.id,
-                toggled: trigger.clicked(),
-                opened: None,
-                disabled: trigger.disabled,
-                rect: trigger.rect,
-            },
-            false,
-        )
+        Self::on_trigger(TriggerFrame::below(trigger), false)
     }
 
     /// A menu at surface-space `point` whose open state the caller keeps: it shows on every

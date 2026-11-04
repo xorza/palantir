@@ -6,6 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::Ui;
 use crate::widget_core::overlay_response::OverlayResponse;
+use crate::widget_core::response::Response;
 use crate::widgets::popup::Popup;
 use glam::Vec2;
 use std::marker::PhantomData;
@@ -127,6 +128,18 @@ pub(crate) struct TriggerFrame {
 }
 
 impl TriggerFrame {
+    /// The frame of a popup dropped below `trigger`, as a dropdown's is: the trigger's click
+    /// toggles it and its rect anchors it.
+    pub(crate) fn below(trigger: &Response) -> Self {
+        Self {
+            for_id: trigger.id,
+            toggled: trigger.clicked(),
+            opened: None,
+            disabled: trigger.disabled,
+            rect: trigger.rect,
+        }
+    }
+
     /// Settle the open state, record `popup` with `body` while open, and keep the row. Every close
     /// gives the popup's input scope back: one from inside withdraws it there, one by the trigger
     /// here.
