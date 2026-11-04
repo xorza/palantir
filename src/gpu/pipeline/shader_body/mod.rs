@@ -21,14 +21,14 @@ pub(crate) struct ShaderBody {
     /// Shared WGSL the body reads, put between the prelude and the body.
     pub(crate) includes: &'static [&'static str],
     /// The numbers the body declares as markers.
-    pub(crate) constants: fn() -> Vec<ShaderConstant>,
+    pub(crate) constants: &'static [ShaderConstant],
 }
 
 impl ShaderBody {
     /// The complete source: [`PRELUDE`] in front, every constant substituted.
     fn specialize(self) -> String {
         let body: String = self.includes.iter().copied().chain([self.wgsl]).collect();
-        specialize_source(&body, &(self.constants)())
+        specialize_source(&body, self.constants)
     }
 
     /// The shader module for this body.
@@ -41,45 +41,60 @@ impl ShaderBody {
     }
 }
 
-/// A number substituted for its marker, `/*{MARKER}*/`, in a shader body.
-#[derive(Debug)]
+/// A number substituted for its marker, `/*{MARKER}*/`, in a shader body: static data, written
+/// out as WGSL when the body is specialized.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct ShaderConstant {
     marker: &'static str,
-    value: String,
+    value: ConstantValue,
+}
+
+/// A [`ShaderConstant`]'s number, in the WGSL type it takes.
+#[derive(Clone, Copy, Debug)]
+enum ConstantValue {
+    Uint(u32),
+    Float(f32),
 }
 
 impl ShaderConstant {
-    pub(crate) fn uint(marker: &'static str, value: u32) -> Self {
+    pub(crate) const fn uint(marker: &'static str, value: u32) -> Self {
         Self {
             marker,
-            value: format!("{value}u"),
+            value: ConstantValue::Uint(value),
         }
     }
 
-    pub(crate) fn float(marker: &'static str, value: f32) -> Self {
-        assert!(value.is_finite());
+    pub(crate) const fn float(marker: &'static str, value: f32) -> Self {
+        assert!(value.is_finite(), "a WGSL constant is finite");
         Self {
             marker,
-            value: format!("{value:?}"),
+            value: ConstantValue::Float(value),
+        }
+    }
+
+    /// The number as WGSL writes it: a `u` suffix on an unsigned, a float with its point.
+    fn wgsl(self) -> String {
+        match self.value {
+            ConstantValue::Uint(value) => format!("{value}u"),
+            ConstantValue::Float(value) => format!("{value:?}"),
         }
     }
 }
 
 /// The constants [`PRELUDE`] declares, substituted into every shader.
-fn prelude_constants() -> [ShaderConstant; 1] {
-    [ShaderConstant::float("AA_HALF_WIDTH", AA_HALF_WIDTH)]
-}
+const PRELUDE_CONSTANTS: [ShaderConstant; 1] =
+    [ShaderConstant::float("AA_HALF_WIDTH", AA_HALF_WIDTH)];
 
 fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
     let mut specialized = format!("{PRELUDE}{body}");
-    for constant in prelude_constants().iter().chain(constants) {
+    for &constant in PRELUDE_CONSTANTS.iter().chain(constants) {
         let marker = format!("/*{{{}}}*/", constant.marker);
         assert_eq!(
             specialized.matches(&marker).count(),
             1,
             "WGSL marker {marker} must occur exactly once",
         );
-        specialized = specialized.replace(&marker, &constant.value);
+        specialized = specialized.replace(&marker, &constant.wgsl());
     }
     assert!(
         !specialized.contains("/*{"),

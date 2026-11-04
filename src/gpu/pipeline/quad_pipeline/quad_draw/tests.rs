@@ -1,12 +1,12 @@
 use crate::common::span::Span;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
-use crate::gpu::pipeline::quad_pipeline::quad_draw::{self, QuadDraw};
+use crate::gpu::pipeline::quad_pipeline::quad_draw::{self, QuadDraw, ShadowCells};
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::runs::{Run, Runs};
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::quad::Quad;
 
-/// One draw per quad: a shadow takes its entry, or the general one with the grid off, any
+/// One draw per quad: a shadow takes its entry, or the general one drawn whole, any
 /// other quad its form. A group's span splits into one run per draw, so a drop and an inset
 /// shadow of one entry share a run, and two entries do not; `Solid Shadow Solid` stays three.
 #[test]
@@ -36,7 +36,7 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
     ];
     let solid = QuadDraw::Form(QuadForm::Solid);
     let mut draws = Vec::new();
-    let taken = quad_draw::fill(&mut draws, &quads, &entries, true);
+    let taken = quad_draw::fill(&mut draws, &quads, &entries, ShadowCells::Grid);
     assert_eq!(taken.iter().len(), 4);
     assert_eq!(
         taken.iter().collect::<Vec<_>>(),
@@ -75,7 +75,7 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
         ]
     );
 
-    let taken = quad_draw::fill(&mut draws, &quads, &entries, false);
+    let taken = quad_draw::fill(&mut draws, &quads, &entries, ShadowCells::Whole);
     let general = QuadDraw::Shadow(ShadowEntry::General);
     assert_eq!(
         taken.iter().collect::<Vec<_>>(),

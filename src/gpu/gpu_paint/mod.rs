@@ -10,11 +10,13 @@
 //! up by owner as it paints. The window driver fills `RenderBuffer::live_targets` from the whole
 //! store (recorded, not painted) so a culled unchanged view keeps its texture.
 
+pub(crate) mod gpu_frame_ctx;
+pub(crate) mod gpu_init_ctx;
 pub(crate) mod gpu_paint_ref;
 pub(crate) mod gpu_views;
 
-use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
-use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
+use crate::gpu::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+use crate::gpu::gpu_paint::gpu_init_ctx::GpuInitCtx;
 
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView). `'static`

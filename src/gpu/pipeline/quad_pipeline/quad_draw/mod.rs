@@ -28,7 +28,7 @@ impl QuadDraw {
     ];
 
     /// This draw's place in [`Self::ALL`], its bit in a [`QuadDraws`].
-    const fn idx(self) -> u32 {
+    pub(crate) const fn idx(self) -> u32 {
         match self {
             Self::Form(form) => form as u32,
             Self::Shadow(ShadowEntry::General) => 6,
@@ -114,23 +114,34 @@ impl Iterator for QuadDrawsIter {
 
 impl ExactSizeIterator for QuadDrawsIter {}
 
+/// How a shadow draws: the grid of cells around its hole, or one cell of the full form, the
+/// reference the grid is compared with, which only internals pick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShadowCells {
+    Grid,
+    #[cfg(feature = "internals")]
+    Whole,
+}
+
 /// Write each of `quads`' draws into `draws`: a shadow through its `entries` row, every one
-/// through the general entry where the shadows draw as one cell (`grid` off), any other quad
+/// through the general entry where the shadows draw [`ShadowCells::Whole`], any other quad
 /// through its form. Returns the draws taken.
 pub(crate) fn fill(
     draws: &mut Vec<QuadDraw>,
     quads: &[Quad],
     entries: &[ShadowEntry],
-    grid: bool,
+    cells: ShadowCells,
 ) -> QuadDraws {
     draws.clear();
     draws.extend(quads.iter().enumerate().map(|(i, quad)| {
-        if !quad.fill_kind.is_shadow() {
-            QuadDraw::Form(QuadForm::of(quad.fill_kind))
-        } else if grid {
-            QuadDraw::Shadow(entries[i])
+        if quad.fill_kind.is_shadow() {
+            match cells {
+                ShadowCells::Grid => QuadDraw::Shadow(entries[i]),
+                #[cfg(feature = "internals")]
+                ShadowCells::Whole => QuadDraw::Shadow(ShadowEntry::General),
+            }
         } else {
-            QuadDraw::Shadow(ShadowEntry::General)
+            QuadDraw::Form(QuadForm::of(quad.fill_kind))
         }
     }));
     draws.iter().copied().collect()

@@ -7,9 +7,9 @@
     reason = "the view paints through wgpu, which only the gpu module names elsewhere"
 )]
 
-use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
-use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
 use crate::gpu::gpu_paint::GpuPaint;
+use crate::gpu::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+use crate::gpu::gpu_paint::gpu_init_ctx::GpuInitCtx;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::test_gpu::{
     HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,

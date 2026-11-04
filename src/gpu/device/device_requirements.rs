@@ -33,9 +33,9 @@ impl DeviceRequirements {
     /// instruments the GPU timeline.
     ///
     /// Each degrades on its own: [`Self::negotiate`] intersects them with the
-    /// adapter, and `WgpuBackend::new` tests each bit to decide how much
-    /// attribution to offer. Every caller must ask for this same set, or the
-    /// backend reads a bit nobody requested.
+    /// adapter, and `WgpuBackend::new` tests each bit the device granted
+    /// (`Device::features`) to decide how much attribution to offer, so a bit
+    /// no caller asked for reads as absent.
     pub const GPU_TIMING_FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY
         .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES)
         .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)

@@ -1,7 +1,7 @@
 //! [`InstancedPipeline`]: what the mesh, image and curve families share.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
@@ -41,7 +41,6 @@ pub(crate) struct VariantTarget {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VariantRecipe<'a> {
     pub(crate) label: &'static str,
-    pub(crate) stencil_label: &'static str,
     pub(crate) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub(crate) topology: wgpu::PrimitiveTopology,
 }
@@ -72,7 +71,6 @@ impl<I: bytemuck::Pod> InstancedPipeline<I> {
                 topology: recipe.topology,
                 ..PipelineRecipe::color(recipe.label, &self.shader, &self.layout, target.format)
             },
-            recipe.stencil_label,
         );
     }
 
@@ -84,9 +82,5 @@ impl<I: bytemuck::Pod> InstancedPipeline<I> {
     /// The buffer of this frame's instances.
     pub(crate) const fn instances(&self) -> &wgpu::Buffer {
         &self.instances.buffer
-    }
-
-    pub(crate) const fn layout(&self) -> &wgpu::PipelineLayout {
-        &self.layout
     }
 }

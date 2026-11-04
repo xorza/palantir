@@ -9,6 +9,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
@@ -209,12 +210,15 @@ impl HostCore {
 const NO_DEVICE: &str = "a host that paints builds its core with a device";
 
 impl BackendSpec {
-    /// The device half on `gpu`, at startup and after a loss alike: the image store holds
-    /// textures on it, the CPU resources take its limit, and the backend is built over both. On a
+    /// The device half on `gpu`, at startup and after a loss alike: the group-0 texture binding
+    /// is made with the device, the image store holds textures on it, the CPU resources take its
+    /// limit, and the backend is built over them. Refused: the binding made by the image store,
+    /// which pipelines took from it only because the store attached first. On a
     /// first attach the store and the gradient atlas hold nothing yet, so the same steps do
     /// nothing extra.
     fn open(&self, gpu: Gpu, resources: &UiResources) -> WgpuBackend {
-        self.image_store.attach(&gpu);
+        let texture_binding = TextureBinding::new(&gpu);
+        self.image_store.attach(&gpu, texture_binding.clone());
         resources.attach_device(TextureLimit::from_device(gpu.max_texture_dim()));
         WgpuBackend::new(
             gpu,
@@ -223,6 +227,7 @@ impl BackendSpec {
                 image_store: &self.image_store,
                 icons: resources.icons(),
                 gradient_atlas: resources.gradient_atlas(),
+                texture_binding,
             },
             self.timing,
         )
@@ -231,6 +236,7 @@ impl BackendSpec {
 
 #[cfg(test)]
 mod tests {
+    use crate::damage::Damage;
     use crate::display::system_scale::SystemScale;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::surface::owned_target::OwnedTarget;
@@ -240,7 +246,9 @@ mod tests {
     use crate::host::core::HostCore;
     use crate::host::host_options::HostOptions;
     use crate::host::window_driver::WindowDriver;
-    use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentStrategy};
+    use crate::host::window_driver::{
+        CpuFrame, FrameDepth, FrameSpec, PresentPath, PresentStrategy,
+    };
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
@@ -249,6 +257,7 @@ mod tests {
     use crate::ui::Ui;
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
+    use crate::widgets::panel::Panel;
     use crate::window::window_token::WindowToken;
     use glam::UVec2;
     use std::time::Duration;
@@ -338,6 +347,83 @@ mod tests {
         core.attach(second.handles(), windows.iter_mut());
         for (window, fill) in windows.iter_mut().zip(FILLS) {
             assert_eq!(paint(&mut core, window, &second, fill), fill);
+        }
+    }
+
+    /// Two windows of one backend take turns, each painting a partial frame between the other's:
+    /// the backend's one quad stream, with its pre-clear, and its pipelines serve each window's
+    /// frame alone, so each target shows its own fill around its own block, never the other's.
+    #[test]
+    fn two_windows_take_turns_on_one_backend() {
+        const FILLS: [u32; 2] = [0xd2_3f7a, 0x2f_6fd0];
+        const BLOCKS: [[u32; 2]; 2] = [[0x10_a050, 0xe0_c020], [0x60_20e0, 0x20_e0e0]];
+        let size = UVec2::splat(32);
+        let gpu = isolated_headless_test_gpu();
+        let mut core = HostCore::new(gpu.handles(), &OPTIONS, TextShaper::test_mono());
+        let mut windows = [
+            core.open(WindowToken(0), PresentStrategy::BackbufferCopy),
+            core.open(WindowToken(1), PresentStrategy::BackbufferCopy),
+        ];
+        let targets = [0, 1].map(|_| {
+            OwnedTarget::window(
+                &gpu,
+                "palantir.test.core.turns",
+                size,
+                TargetFormat::RGBA8_SRGB,
+            )
+        });
+        let rgb = |target: &OwnedTarget, x: u32, y: u32| {
+            let [r, g, b, _] = target.read_back().get_pixel(x, y).0;
+            u32::from_be_bytes([0, r, g, b])
+        };
+        for round in 0..3 {
+            for (i, (window, target)) in windows.iter_mut().zip(&targets).enumerate() {
+                let block = (round > 0).then(|| BLOCKS[i][round - 1]);
+                let mut app = |ui: &mut Ui| {
+                    Panel::canvas()
+                        .id_salt("fill")
+                        .size(Sizing::FILL)
+                        .chrome(Chrome::fill(RgbaF32::hex(FILLS[i])))
+                        .show(ui, |ui| {
+                            if let Some(block) = block {
+                                Block::new()
+                                    .id_salt("block")
+                                    .at((2.0, 2.0))
+                                    .size(4.0)
+                                    .chrome(Chrome::fill(RgbaF32::hex(block)))
+                                    .show(ui);
+                            }
+                        });
+                };
+                let spec = FrameSpec {
+                    physical: size,
+                    format: TargetFormat::RGBA8_SRGB,
+                    gives_copy: target.as_target().gives_copy(),
+                    system_scale: SystemScale::ONE,
+                    refresh_millihertz: None,
+                    now: Duration::ZERO,
+                };
+                let CpuFrame { mode, .. } = core.record(window, spec, &mut app, FrameDepth::Paint);
+                if round == 2 {
+                    assert!(
+                        matches!(mode, PresentPath::ViaBackbuffer(plan) if matches!(plan.damage, Damage::Partial(_))),
+                        "window {i} repaints its block alone: {mode:?}"
+                    );
+                }
+                core.submit(window, target.as_target(), mode);
+                assert_eq!(
+                    rgb(target, 20, 20),
+                    FILLS[i],
+                    "window {i} round {round}: its fill"
+                );
+                if let Some(block) = block {
+                    assert_eq!(
+                        rgb(target, 3, 3),
+                        block,
+                        "window {i} round {round}: its block"
+                    );
+                }
+            }
         }
     }
 }

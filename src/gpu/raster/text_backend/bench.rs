@@ -14,8 +14,8 @@ use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::upload_staging::UploadStaging;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
@@ -168,7 +168,6 @@ struct Batch<'a> {
 #[derive(Debug)]
 struct Fixture {
     backend: TextBackend,
-    program: RasterProgram,
     pipelines: RasterVariants,
     belt: UploadStaging,
     store: RecordStore,
@@ -195,7 +194,6 @@ impl Fixture {
         Self {
             backend: TextBackend::new(&g.gpu, &program, shaper),
             pipelines,
-            program,
             belt: UploadStaging::new(&g.gpu.device, 1 << 20),
             store,
             runs,
@@ -262,7 +260,6 @@ impl Fixture {
             let pipelines = RasterPipelines {
                 flat: self.pipelines.flat.select(StencilMode::Off),
                 spun: self.pipelines.spun.select(StencilMode::Off),
-                layout: self.program.pipeline_layout(),
             };
             for idx in 0..batches.len() {
                 self.backend.render_batch(&mut rec, idx, pipelines);

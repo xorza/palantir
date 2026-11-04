@@ -7,9 +7,9 @@ mod view_target;
 use crate::common::tracy;
 use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
-use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
+use crate::gpu::gpu_paint::gpu_init_ctx::GpuInitCtx;
 use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::gpu::resource::gpu_view_targets::view_target::{AllocatedTarget, ViewTarget};
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -144,6 +144,8 @@ impl GpuViewTargets {
                     target.view = allocated.view;
                     target.bind_group = allocated.bind_group;
                     target.size = size;
+                    // A new texture holds no paint, whatever stamp the last one was painted at.
+                    target.painted = None;
                 }
                 target
             }

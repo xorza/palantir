@@ -42,7 +42,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
     let arena_after_warmup = rig.backend.encoder.cache().arena_len();
     rig.backend.tick_frame();
     assert!(
-        !rig.backend.pass.atlas.cache.is_empty(),
+        !rig.backend.pass.atlas.cache().is_empty(),
         "warmup should have rasterized at least one glyph",
     );
 
@@ -54,14 +54,14 @@ fn cached_run_keeps_its_atlas_slots_live() {
     rig.frame(2.0, &[&runs]);
     drop(shaper_borrow);
 
-    let cf = rig.backend.pass.atlas.cur_frame;
+    let cf = rig.backend.pass.atlas.frame();
     let stale: Vec<u64> = rig
         .backend
         .pass
         .atlas
-        .cache
+        .cache()
         .values()
-        .map(|&i| rig.backend.pass.atlas.slots[i as usize].last_use)
+        .map(|&i| rig.backend.pass.atlas.slots()[i as usize].last_use)
         .filter(|&lu| lu != cf)
         .collect();
     assert!(
@@ -72,7 +72,8 @@ fn cached_run_keeps_its_atlas_slots_live() {
         for glyph in rig.backend.encoder.cache().templates(span) {
             let idx = glyph.atlas_slot;
             assert_eq!(
-                rig.backend.pass.atlas.slots[idx as usize].last_use, cf,
+                rig.backend.pass.atlas.slots()[idx as usize].last_use,
+                cf,
                 "recorded slab index {idx} not refreshed on hit",
             );
         }
@@ -121,7 +122,7 @@ fn slot_generation_invalidates_only_referencing_run() {
         .expect("test runs must use disjoint atlas slots");
     let arena_before = rig.backend.encoder.cache().arena_len();
 
-    let slot = &mut rig.backend.pass.atlas.slots[invalidated_slot as usize];
+    let slot = &mut rig.backend.pass.atlas.slots_mut()[invalidated_slot as usize];
     slot.generation = slot
         .generation
         .checked_add(1)
@@ -130,7 +131,7 @@ fn slot_generation_invalidates_only_referencing_run() {
     rig.frame(2.0, &[&runs]);
 
     assert_eq!(
-        rig.backend.pass.instances.len(),
+        rig.backend.pass.instances().len(),
         6,
         "the rolled-back hit must not leak its partially emitted glyphs",
     );
@@ -186,7 +187,7 @@ fn deferred_upload_keeps_batches_distinct() {
 
     rig.frame(1.0, &[slice::from_ref(&run_a), slice::from_ref(&run_b)]);
 
-    let n = rig.backend.pass.instances.len() / 2;
+    let n = rig.backend.pass.instances().len() / 2;
     assert_eq!(n, 4, "'File' shapes to one glyph per character");
     assert_eq!(rig.backend.pass.batch_span(0), Span::new(0, n as u32));
     assert_eq!(
@@ -194,9 +195,9 @@ fn deferred_upload_keeps_batches_distinct() {
         Span::new(n as u32, n as u32)
     );
 
-    for (ga, gb) in rig.backend.pass.instances[..n]
+    for (ga, gb) in rig.backend.pass.instances()[..n]
         .iter()
-        .zip(&rig.backend.pass.instances[n..2 * n])
+        .zip(&rig.backend.pass.instances()[n..2 * n])
     {
         assert_eq!(ga.color, color_a);
         assert_eq!(gb.color, color_b);
@@ -225,7 +226,7 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
     };
 
     rig.frame(1.0, &[slice::from_ref(&flat)]);
-    let unturned = rig.backend.pass.instances.clone();
+    let unturned = rig.backend.pass.instances().to_vec();
     assert_eq!(
         unturned.len(),
         4,
@@ -235,7 +236,10 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
     rig.backend.tick_frame();
 
     rig.frame(1.0, &[slice::from_ref(&turned)]);
-    assert!(rig.backend.pass.instances.is_empty(), "nothing stays flat");
+    assert!(
+        rig.backend.pass.instances().is_empty(),
+        "nothing stays flat"
+    );
     let rotor = Vec2::from_angle(0.5);
     assert_eq!(rig.backend.pass.spun.len(), unturned.len());
     for (spun, quad) in rig.backend.pass.spun.iter().zip(&unturned) {
@@ -276,7 +280,7 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
     rig.backend.tick_frame();
 
     rig.frame(1.0, &[slice::from_ref(&flat)]);
-    assert_eq!(rig.backend.pass.instances.len(), unturned.len());
+    assert_eq!(rig.backend.pass.instances().len(), unturned.len());
     assert!(rig.backend.pass.spun.is_empty());
     rig.backend.tick_frame();
 }
@@ -296,7 +300,7 @@ fn partially_culled_run_is_not_cached() {
     // Frame 1: clipped encode gives 3 instances and no cache entry.
     rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(
-        rig.backend.pass.instances.len(),
+        rig.backend.pass.instances().len(),
         3,
         "only line 0's 3 glyphs survive the cull"
     );
@@ -308,7 +312,7 @@ fn partially_culled_run_is_not_cached() {
     rig.backend.tick_frame();
 
     rig.frame(1.0, &[slice::from_ref(&run)]);
-    assert_eq!(rig.backend.pass.instances.len(), 3);
+    assert_eq!(rig.backend.pass.instances().len(), 3);
     assert_eq!(rig.backend.encoder.cache().rows(), 0);
     rig.backend.tick_frame();
 
@@ -316,7 +320,7 @@ fn partially_culled_run_is_not_cached() {
     // frames (why those must not insert).
     run.bounds = URect::new(0, 0, PHYSICAL.x, PHYSICAL.y);
     rig.frame(1.0, &[slice::from_ref(&run)]);
-    assert_eq!(rig.backend.pass.instances.len(), 9);
+    assert_eq!(rig.backend.pass.instances().len(), 9);
     assert_eq!(rig.backend.encoder.cache().rows(), 1);
     let (_, cached) = rig
         .backend
@@ -333,7 +337,7 @@ fn partially_culled_run_is_not_cached() {
     rig.backend.tick_frame();
 
     rig.frame(1.0, &[slice::from_ref(&run)]);
-    assert_eq!(rig.backend.pass.instances.len(), 9);
+    assert_eq!(rig.backend.pass.instances().len(), 9);
     assert_eq!(rig.backend.encoder.cache().rows(), 1);
     assert_eq!(
         rig.backend.encoder.cache().arena_len(),
@@ -369,7 +373,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
             "a text-free frame must still advance the shared clock",
         );
         assert_eq!(
-            rig.backend.pass.atlas.cur_frame,
+            rig.backend.pass.atlas.frame(),
             rig.shaper.frame(),
             "the atlas must track the shaper's clock, not its own count",
         );
@@ -407,15 +411,15 @@ fn swept_empty_glyph_reinserts() {
     let empties = |b: &TextBackend| {
         b.pass
             .atlas
-            .cache
+            .cache()
             .values()
-            .filter(|&&i| b.pass.atlas.slots[i as usize].placement().is_none())
+            .filter(|&&i| b.pass.atlas.slots()[i as usize].placement().is_none())
             .count()
     };
 
     rig.frame(1.0, &[&runs]);
     assert!(
-        rig.backend.pass.instances.is_empty(),
+        rig.backend.pass.instances().is_empty(),
         "whitespace prepares a text batch without drawable glyphs",
     );
     assert_eq!(
@@ -423,10 +427,10 @@ fn swept_empty_glyph_reinserts() {
         1,
         "the space rasterizes to one zero-area entry"
     );
-    let first_frame = rig.backend.pass.atlas.cur_frame;
+    let first_frame = rig.backend.pass.atlas.frame();
     rig.backend.tick_frame();
     assert_eq!(
-        rig.backend.pass.atlas.cur_frame,
+        rig.backend.pass.atlas.frame(),
         first_frame + 1,
         "a prepared zero-instance batch must still advance cache aging",
     );
@@ -434,7 +438,7 @@ fn swept_empty_glyph_reinserts() {
     // The space was rasterized on frame 0, so its ticket falls due at
     // `unallocated_dies_at(0)`; advance one frame past it with text frames that
     // never touch the space.
-    while rig.backend.pass.atlas.cur_frame < unallocated_dies_at(0) + 1 {
+    while rig.backend.pass.atlas.frame() < unallocated_dies_at(0) + 1 {
         rig.frame(1.0, &[&[]]);
         rig.backend.tick_frame();
     }

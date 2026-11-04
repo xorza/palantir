@@ -54,16 +54,15 @@ impl OwnedTarget {
             size.min_element() > 0 && size.max_element() <= max,
             "a target's size is 1..={max} physical pixels per side, got {size}",
         );
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: texel::extent(size),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        });
+        let texture = texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label,
+                size,
+                format,
+                usage,
+            },
+        );
         Self {
             texture,
             gpu: gpu.clone(),
@@ -137,7 +136,7 @@ impl OwnedTarget {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::device::gpu_wait::GpuWait;
-    use crate::gpu::surface::capture::{self, Capture};
+    use crate::gpu::surface::capture::TexelOrder;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::texel_readback::TexelReadback;
     use image::RgbaImage;
@@ -154,8 +153,9 @@ pub(crate) mod internals {
         pub fn read_back(&self) -> RgbaImage {
             const COPIED: &str = "the read-back copy comes back";
             let format = self.texture.format();
+            let order = TexelOrder::of(format);
             assert!(
-                !Capture::needs_blit(format),
+                order != TexelOrder::Blit,
                 "a read-back of a {format:?} texture"
             );
             let size = self.size();
@@ -166,12 +166,7 @@ pub(crate) mod internals {
                 &mut pixels,
             );
             assert_eq!(waited, GpuWait::Done, "{COPIED}");
-            if matches!(
-                format,
-                wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm
-            ) {
-                capture::swap_bgra(&mut pixels);
-            }
+            order.to_rgba(&mut pixels);
             RgbaImage::from_raw(size.x, size.y, pixels)
                 .expect("one RGBA pixel per texel of the texture")
         }

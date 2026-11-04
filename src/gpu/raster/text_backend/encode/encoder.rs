@@ -69,7 +69,7 @@ impl TextEncoder {
             placement,
             key: run_key,
         } = run;
-        let cur_frame = pass.atlas.cur_frame;
+        let cur_frame = pass.atlas.frame();
         let Self {
             cache,
             placed,
@@ -99,13 +99,13 @@ impl TextEncoder {
                     }
                 }
             };
-            let slot = pass.atlas.slots[idx as usize];
+            let slot = pass.atlas.slot(idx);
             let Some(placement) = slot.placement() else {
                 continue;
             };
 
             let quad = placement.quad(g.physical, color);
-            pass.instances.push(quad);
+            pass.push(quad);
             cache.stage(EncodedGlyph {
                 instance: RasterQuad {
                     pos: quad.pos - run_key.pixel,

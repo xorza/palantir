@@ -1,7 +1,6 @@
-use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep};
+use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::GroupSpan;
-use crate::gpu::frame::submission::Route;
 
 const fn main(segment: MainSegment, from: u32, barrier: Option<u32>, load: ColorLoad) -> PassStep {
     PassStep::Main {
@@ -22,14 +21,13 @@ fn each_frame_shape_plans_its_passes_in_order() {
     use ColorLoad::{Clear, Load};
     use MainSegment::{First, Inner, Last, Whole};
     let direct_whole = FrameShape {
-        route: Route::Direct,
+        target: TargetKind::Direct,
         partial: false,
-        canvas: false,
         dims_undamaged: false,
         outlines_damage: false,
     };
     let partial = FrameShape {
-        route: Route::ViaBackbuffer,
+        target: TargetKind::Backbuffer,
         partial: true,
         ..direct_whole
     };
@@ -51,7 +49,7 @@ fn each_frame_shape_plans_its_passes_in_order() {
         (
             "a partial frame on a damage canvas, outlined",
             FrameShape {
-                canvas: true,
+                target: TargetKind::Canvas,
                 outlines_damage: true,
                 ..partial
             },
@@ -83,7 +81,7 @@ fn each_frame_shape_plans_its_passes_in_order() {
         (
             "a direct partial frame, dimmed, on a target that keeps its pixels",
             FrameShape {
-                route: Route::Direct,
+                target: TargetKind::Direct,
                 dims_undamaged: true,
                 ..partial
             },
@@ -107,7 +105,7 @@ fn each_frame_shape_plans_its_passes_in_order() {
         (
             "a break at the first group",
             FrameShape {
-                route: Route::ViaBackbuffer,
+                target: TargetKind::Backbuffer,
                 ..direct_whole
             },
             &[0],
@@ -123,6 +121,6 @@ fn each_frame_shape_plans_its_passes_in_order() {
         let mut passes = FramePasses::default();
         passes.plan(shape, barriers.iter().copied());
         assert_eq!(passes.steps(), want, "{label}");
-        assert_eq!(passes.writes_target(shape.route), writes_target, "{label}");
+        assert_eq!(passes.writes_target(shape.target), writes_target, "{label}");
     }
 }

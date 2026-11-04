@@ -11,12 +11,12 @@
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
+use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -54,7 +54,7 @@ impl MeshPipeline {
         label: "palantir.mesh.shader",
         wgsl: include_str!("shader.wgsl"),
         includes: &[],
-        constants: Vec::new,
+        constants: &[],
     };
 
     /// Format-independent mesh resources; pipelines come from
@@ -87,7 +87,6 @@ impl MeshPipeline {
             target,
             VariantRecipe {
                 label: "palantir.mesh.pipeline",
-                stencil_label: "palantir.mesh.pipeline.stencil_test",
                 vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
@@ -121,10 +120,10 @@ impl MeshPipeline {
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
+        pipeline: &'a Pipeline,
         MeshBatch { draws, items }: MeshBatch<'_>,
     ) {
-        rec.pipeline(pipeline, self.family.layout());
+        rec.pipeline(pipeline);
         rec.vertex(0, &self.vertex_buffer.buffer);
         rec.vertex(1, self.family.instances());
         rec.index(&self.idx_buffer.buffer, wgpu::IndexFormat::Uint32);

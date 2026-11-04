@@ -2,7 +2,6 @@
 
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::GroupSpan;
-use crate::gpu::frame::submission::Route;
 
 /// One step of a frame's passes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,15 +35,25 @@ pub(crate) enum ColorLoad {
     Load,
 }
 
+/// Where a frame's main pass paints.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TargetKind {
+    /// Into the target itself.
+    Direct,
+    /// Into the backbuffer, then onto the target.
+    Backbuffer,
+    /// A partial frame's damage into a damage canvas
+    /// ([`DamageCanvas`](crate::gpu::surface::damage_canvas::DamageCanvas)), from a clear, then
+    /// into the backbuffer, then onto the target.
+    Canvas,
+}
+
 /// What [`FramePasses::plan`] reads of a frame.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameShape {
-    pub(crate) route: Route,
+    pub(crate) target: TargetKind,
     /// Whether the frame repaints inside rects and keeps the pixels around them.
     pub(crate) partial: bool,
-    /// Whether the partial frame paints into a damage canvas
-    /// ([`DamageCanvas`](crate::gpu::surface::damage_canvas::DamageCanvas)), from a clear.
-    pub(crate) canvas: bool,
     pub(crate) dims_undamaged: bool,
     pub(crate) outlines_damage: bool,
 }
@@ -61,11 +70,17 @@ impl FramePasses {
     /// outline.
     pub(crate) fn plan(&mut self, shape: FrameShape, barriers: impl IntoIterator<Item = u32>) {
         self.steps.clear();
-        debug_assert!(
-            !shape.canvas
-                || (shape.partial && shape.route == Route::ViaBackbuffer && !shape.dims_undamaged),
-            "a damage canvas holds a partial frame's damage on its way to the backbuffer",
-        );
+        let canvas = shape.target == TargetKind::Canvas;
+        if canvas {
+            debug_assert!(
+                shape.partial,
+                "a damage canvas holds a partial frame's damage"
+            );
+            debug_assert!(
+                !shape.dims_undamaged,
+                "a damage canvas keeps no pixel to dim"
+            );
+        }
         if shape.dims_undamaged {
             debug_assert!(shape.partial, "only a partial frame keeps pixels to dim");
             self.steps.push(PassStep::Dim);
@@ -89,11 +104,11 @@ impl FramePasses {
             MainSegment::Whole
         };
         self.push_main(shape, segment, from, None);
-        if shape.canvas {
+        if canvas {
             debug_assert!(!broken, "a damage canvas holds no pane's capture");
             self.steps.push(PassStep::CanvasOut);
         }
-        if shape.route == Route::ViaBackbuffer {
+        if shape.target != TargetKind::Direct {
             self.steps.push(PassStep::BackbufferOut);
         }
         if shape.outlines_damage {
@@ -108,7 +123,7 @@ impl FramePasses {
         from: u32,
         barrier: Option<u32>,
     ) {
-        let load = if segment.opens() && (!shape.partial || shape.canvas) {
+        let load = if segment.opens() && (!shape.partial || shape.target == TargetKind::Canvas) {
             ColorLoad::Clear
         } else {
             ColorLoad::Load
@@ -126,9 +141,9 @@ impl FramePasses {
 
     /// Whether a pass writes the target through a view the frame makes: a direct main or dim
     /// pass, the outline. The backbuffer makes its own where it draws onto the target.
-    pub(crate) fn writes_target(&self, route: Route) -> bool {
+    pub(crate) fn writes_target(&self, target: TargetKind) -> bool {
         self.steps.iter().any(|step| match step {
-            PassStep::Main { .. } | PassStep::Dim => route == Route::Direct,
+            PassStep::Main { .. } | PassStep::Dim => target == TargetKind::Direct,
             PassStep::Overlay => true,
             PassStep::Break { .. } | PassStep::CanvasOut | PassStep::BackbufferOut => false,
         })

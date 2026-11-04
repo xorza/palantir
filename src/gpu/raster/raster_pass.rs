@@ -7,7 +7,7 @@
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
@@ -91,7 +91,7 @@ struct SpunCut {
 #[derive(Debug)]
 pub(super) struct RasterPass<K> {
     pub(super) atlas: RasterAtlas<K>,
-    pub(super) instances: Vec<RasterQuad>,
+    instances: Vec<RasterQuad>,
     /// Where each batch's quads start in [`Self::instances`]; the next entry (or
     /// the instance count) is where they end.
     starts: Vec<u32>,
@@ -169,10 +169,21 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
             label = self.stem,
             mask_px = self.atlas.side_px(ContentType::Mask),
             color_px = self.atlas.side_px(ContentType::Color),
-            live_rasters = self.atlas.cache.len(),
+            live_rasters = self.atlas.cached_len(),
             "atlas is full and cannot grow further; affected batches drop \
              rasters and re-encode every frame until pressure clears",
         );
+    }
+
+    /// Add `quad` to the batch open.
+    pub(super) fn push(&mut self, quad: RasterQuad) {
+        self.instances.push(quad);
+    }
+
+    /// The quads pushed this frame, where the next lands: the start a
+    /// [`Self::turn_since`] takes.
+    pub(super) const fn instance_count(&self) -> usize {
+        self.instances.len()
     }
 
     pub(super) fn open_batch(&mut self, batch_idx: usize) {
@@ -269,7 +280,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
                 RasterDraw::Flat(span) => (pipelines.flat, &self.vbuf.buffer, span),
                 RasterDraw::Spun(span) => (pipelines.spun, &self.spun_vbuf.buffer, span),
             };
-            rec.pipeline(pipeline, pipelines.layout);
+            rec.pipeline(pipeline);
             self.atlas.draw_span(rec, vbuf, span);
         });
     }
@@ -290,6 +301,19 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.cuts.clear();
         self.cut_starts.clear();
         self.starvation.end_frame();
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
+    use crate::gpu::raster::raster_pass::RasterPass;
+
+    impl<K> RasterPass<K> {
+        /// The unturned quads pushed this frame.
+        pub(crate) fn instances(&self) -> &[RasterQuad] {
+            &self.instances
+        }
     }
 }
 

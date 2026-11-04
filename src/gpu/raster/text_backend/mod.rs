@@ -16,7 +16,7 @@ mod encode;
 mod encoded_counters;
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
@@ -94,7 +94,7 @@ impl TextBackend {
         for r in runs {
             let run_key = EncodedRunKey::for_row(r, scale);
             let text = interned_text.resolve(r.text.span);
-            let start = self.pass.instances.len();
+            let start = self.pass.instance_count();
             if !self.encoder.try_emit_cached(&mut self.pass, &run_key, text) {
                 let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
                 self.encoder.encode_run(

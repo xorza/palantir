@@ -2,9 +2,17 @@
 
 use crate::gpu::device::gpu::Gpu;
 
+/// How a shader reads a texture: through a filtering sampler, or texel by texel, which a format
+/// that no filter reads, as the cutouts' `R32Float`, needs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Filtering {
+    Filtered,
+    Loaded,
+}
+
 /// The group-0 layout every sampled texture binds through, with its sampler: gradient LUT atlas, registered images, `GpuView` targets, and the backbuffer when drawn onto a no-copy target.
 ///
-/// Built once, by the host's image store, which the backend takes its copy from. `Clone` shares `wgpu`'s ref-counted handles, so every pipeline composes over the same layout and a group built for one binds in any.
+/// Built once per device, by the host as it opens the backend, which hands a copy to the image store. `Clone` shares `wgpu`'s ref-counted handles, so every pipeline composes over the same layout and a group built for one binds in any.
 #[derive(Clone, Debug)]
 pub(crate) struct TextureBinding {
     layout: wgpu::BindGroupLayout,
@@ -18,41 +26,10 @@ impl TextureBinding {
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("palantir.texture.bgl"),
-                entries: &[
-                    Self::texture_entry(0),
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
+                entries: &[texture_entry(0, Filtering::Filtered), sampler_entry(1)],
             });
-        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir.texture.sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
+        let sampler = sampler(gpu, "palantir.texture.sampler");
         Self { layout, sampler }
-    }
-
-    /// One fragment-visible, filterable 2D float texture entry, the only texture shape any shader declares. Shared because the raster atlases (two textures, no sampler) have their own layout, and sharing the entry keeps `filterable` / `view_dimension` changes in step.
-    pub(crate) const fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
-        wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        }
     }
 
     pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
@@ -80,5 +57,51 @@ impl TextureBinding {
                 },
             ],
         })
+    }
+}
+
+/// The backend's one sampler shape: linear within a mip, nearest between, clamped on every
+/// axis. Every sampling shader takes it, so its description lives here alone.
+pub(crate) fn sampler(gpu: &Gpu, label: &str) -> wgpu::Sampler {
+    gpu.device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(label),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+        ..Default::default()
+    })
+}
+
+/// One fragment-visible 2D float texture entry, the only texture shape any shader declares,
+/// read through a sampler or loaded texel by texel as `filtering` says, so every layout
+/// spells it alike.
+pub(crate) const fn texture_entry(
+    binding: u32,
+    filtering: Filtering,
+) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float {
+                filterable: matches!(filtering, Filtering::Filtered),
+            },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+/// A fragment-visible filtering sampler entry, beside a [`texture_entry`].
+pub(crate) const fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
     }
 }

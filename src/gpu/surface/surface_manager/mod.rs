@@ -249,9 +249,10 @@ pub(super) const fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
     }
 }
 
-/// Which [`Vsync`] state `mode` paces like. Total over the driver's modes
-/// because a surface reports the mode it resolved to. Free to keep
-/// graphics-API types out of `crate::window`.
+/// Which [`Vsync`] state `mode` paces like. A configuration holds only the
+/// two modes [`swapchain_mode`] writes; the match names every mode, so none
+/// reads as either through a catch-all arm. Free to keep graphics-API types out
+/// of `crate::window`.
 pub(super) const fn vsync_of(mode: wgpu::PresentMode) -> Vsync {
     match mode {
         wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => {

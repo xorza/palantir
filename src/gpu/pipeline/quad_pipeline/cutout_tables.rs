@@ -1,7 +1,7 @@
 //! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept on each window's render stream, which places its tables through the atlas's shared placements.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
@@ -9,6 +9,10 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::texture_binding::{self, Filtering};
+use crate::gpu::surface::owned_target::TargetSpec;
+use crate::gpu::texel;
+use glam::UVec2;
 use pollster::FutureExt;
 use std::mem::offset_of;
 
@@ -88,37 +92,21 @@ impl CutoutTables {
             ),
             CutoutMode::Shade => (1, wgpu::TextureUsages::TEXTURE_BINDING),
         };
-        let atlas = gpu
-            .device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("palantir.quad.cutouts"),
-                size: wgpu::Extent3d {
-                    width: side,
-                    height: side,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
+        let atlas = texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label: "palantir.quad.cutouts",
+                size: UVec2::splat(side),
                 format: Self::FORMAT,
                 usage,
-                view_formats: &[],
-            })
-            .create_view(&wgpu::TextureViewDescriptor::default());
+            },
+        )
+        .create_view(&wgpu::TextureViewDescriptor::default());
         let layout = gpu
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("palantir.quad.cutouts.bgl"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                }],
+                entries: &[texture_binding::texture_entry(0, Filtering::Loaded)],
             });
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("palantir.quad.cutouts.bg"),
@@ -143,7 +131,8 @@ impl CutoutTables {
                 Self::FORMAT,
             )
         }
-        .build(gpu);
+        .build(gpu)
+        .pipeline;
         Self {
             mode,
             atlas,
@@ -164,20 +153,15 @@ impl CutoutTables {
     /// asks.
     fn renders_atlas(gpu: &Gpu) -> bool {
         let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let _ = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.quad.cutouts.probe"),
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
+        let _ = texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label: "palantir.quad.cutouts.probe",
+                size: UVec2::ONE,
+                format: Self::FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: Self::FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
+        );
         scope.pop().block_on().is_none()
     }
 

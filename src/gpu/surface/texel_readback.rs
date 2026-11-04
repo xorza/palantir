@@ -5,7 +5,6 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::staging::Staging;
 use crate::gpu::texel;
-use glam::UVec2;
 use std::iter;
 
 /// A staging buffer sized for one texture's texels. Its owner keeps it, so a recording that copies
@@ -13,7 +12,6 @@ use std::iter;
 #[derive(Debug)]
 pub(crate) struct TexelReadback {
     staging: Staging,
-    size: UVec2,
 }
 
 impl TexelReadback {
@@ -37,10 +35,8 @@ impl TexelReadback {
         let texel = format
             .block_copy_size(None)
             .expect("a color format has one aspect");
-        let size = texel::size(texture);
         Self {
-            staging: Staging::new(gpu, "palantir.texel_readback", size, texel),
-            size,
+            staging: Staging::new(gpu, "palantir.texel_readback", texel::size(texture), texel),
         }
     }
 
@@ -48,9 +44,10 @@ impl TexelReadback {
     /// `texels` takes the rows top down with no padding between them. Returns how the wait ended;
     /// `texels` is left empty unless [`GpuWait::Done`].
     pub(crate) fn read(&self, gpu: &Gpu, texture: &wgpu::Texture, texels: &mut Vec<u8>) -> GpuWait {
+        let size = self.staging.size();
         debug_assert_eq!(
             texel::size(texture),
-            self.size,
+            size,
             "a readback reads the texture it was made for"
         );
         texels.clear();
@@ -62,7 +59,7 @@ impl TexelReadback {
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),
             self.staging.copy_info(),
-            texel::extent(self.size),
+            texel::extent(size),
         );
         gpu.queue.submit(iter::once(encoder.finish()));
         self.staging.map_read();
@@ -80,5 +77,64 @@ impl TexelReadback {
         }
         self.staging.unpad_into(texels);
         GpuWait::Done
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::device::gpu_wait::GpuWait;
+    use crate::gpu::surface::owned_target::TargetSpec;
+    use crate::gpu::surface::texel_readback::TexelReadback;
+    use crate::gpu::test_gpu::isolated_headless_test_gpu;
+    use crate::gpu::texel;
+    use glam::UVec2;
+    use std::iter;
+
+    /// A readback reads, unmaps and leaves its map idle, so the next read of the kept buffer
+    /// maps it again and reads the texels written since: a 3 × 2 texture cleared to red, then
+    /// to blue, reads six red then six blue texels.
+    #[test]
+    fn a_kept_readback_reads_again_from_an_idle_map() {
+        let gpu = isolated_headless_test_gpu();
+        let texture = texel::texture_2d(
+            &gpu,
+            TargetSpec {
+                label: "palantir.test.readback",
+                size: UVec2::new(3, 2),
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            },
+        );
+        let clear = |color: wgpu::Color| {
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = gpu
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(color),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            gpu.queue.submit(iter::once(encoder.finish()));
+        };
+        let readback = TexelReadback::new(&gpu, &texture);
+        let mut texels = Vec::new();
+        for (color, texel) in [
+            (wgpu::Color::RED, [255, 0, 0, 255]),
+            (wgpu::Color::BLUE, [0, 0, 255, 255]),
+        ] {
+            clear(color);
+            assert_eq!(readback.read(&gpu, &texture, &mut texels), GpuWait::Done);
+            assert_eq!(texels, texel.repeat(6));
+            assert!(readback.staging.map().is_idle(), "unmapped and idle");
+        }
     }
 }

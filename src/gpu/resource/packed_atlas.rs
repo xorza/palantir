@@ -3,6 +3,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
+use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use glam::{U16Vec2, UVec2};
@@ -49,16 +50,15 @@ impl AtlasSpec {
     }
 
     fn create(&self, gpu: &Gpu, edge: u32) -> wgpu::Texture {
-        gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&self.label),
-            size: texel::extent(UVec2::splat(edge)),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: self.format,
-            usage: self.usage | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        })
+        texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label: &self.label,
+                size: UVec2::splat(edge),
+                format: self.format,
+                usage: self.usage | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+            },
+        )
     }
 }
 

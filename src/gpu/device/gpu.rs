@@ -9,7 +9,7 @@ use std::iter;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// How long [`Gpu::wait_until`] waits for the device before it gives up, as Zed's headless readback
 /// does. It bounds only a hang no system resets: Windows (TDR) and amdgpu reset a GPU job that runs
@@ -17,6 +17,16 @@ use std::time::Duration;
 /// the work is done when it is not, so the bound sits far above a slow drain, such as a test's on
 /// software Vulkan.
 const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// What [`Gpu::create_filled_buffer`] makes: `size` bytes, a multiple of
+/// [`wgpu::COPY_BUFFER_ALIGNMENT`], for `usage`. Mapped at creation by the call, so the flag is
+/// not the caller's.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FilledBuffer<'a> {
+    pub(crate) label: &'a str,
+    pub(crate) size: u64,
+    pub(crate) usage: wgpu::BufferUsages,
+}
 
 /// A graphics device and its queue.
 ///
@@ -81,29 +91,40 @@ impl Gpu {
             .expect("device texture dimension limit is zero")
     }
 
-    /// A buffer as `desc` describes, created holding `bytes` at its start. On a device lost before
-    /// or inside the call, wgpu hands back an invalid buffer whose range does not map: it comes
-    /// back unfilled, as every call on a lost device is dropped. Refused: `create_buffer_init`
-    /// and an `expect` on the mapped range, which end the process on a loss no call has reported
-    /// yet.
-    ///
-    /// `desc.mapped_at_creation` is ignored; its size must be a multiple of
-    /// [`wgpu::COPY_BUFFER_ALIGNMENT`] and hold `bytes` rounded up to one.
+    /// A buffer as `spec` describes, created holding `parts` one after another at its start. On a
+    /// device lost before or inside the call, wgpu hands back an invalid buffer whose range does
+    /// not map: it comes back unfilled, as every call on a lost device is dropped. Refused:
+    /// `create_buffer_init` and an `expect` on the mapped range, which end the process on a loss
+    /// no call has reported yet.
     pub(crate) fn create_filled_buffer(
         &self,
-        desc: &wgpu::BufferDescriptor<'_>,
-        bytes: &[u8],
+        spec: FilledBuffer<'_>,
+        parts: &[&[u8]],
     ) -> wgpu::Buffer {
+        let FilledBuffer { label, size, usage } = spec;
+        let len: usize = parts.iter().map(|part| part.len()).sum();
         // A mapped range spans whole `COPY_BUFFER_ALIGNMENT` units.
-        let mapped = (bytes.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
-        debug_assert!(mapped <= desc.size, "a filled buffer holds its bytes");
+        let mapped = (len as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
+        debug_assert!(mapped <= size, "a filled buffer holds its bytes");
+        debug_assert!(
+            size.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+            "a mapped buffer is whole copy units"
+        );
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size,
+            usage,
             mapped_at_creation: true,
-            ..desc.clone()
         });
         if mapped != 0 {
             match buffer.slice(..mapped).get_mapped_range_mut() {
-                Ok(mut view) => view.slice(..bytes.len()).copy_from_slice(bytes),
+                Ok(mut view) => {
+                    let mut at = 0;
+                    for part in parts {
+                        view.slice(at..at + part.len()).copy_from_slice(part);
+                        at += part.len();
+                    }
+                }
                 Err(error) => debug_assert!(self.is_lost(), "a healthy device maps: {error}"),
             }
         }
@@ -181,12 +202,13 @@ impl Gpu {
     /// returns, as [`Self::wait_until`] says; wait for one there.
     #[cfg(feature = "internals")]
     pub(crate) fn wait(&self) {
-        let _ = self.drain();
+        let _ = self.drain(WAIT_TIMEOUT);
     }
 
-    /// Block until the device has finished every submission made before the call, a wait of at
-    /// most [`WAIT_TIMEOUT`], then until `landed` holds: the wait for a map callback, whose result
-    /// `landed` reads. Returns how the wait ended.
+    /// Block until the device has finished every submission made before the call, then until
+    /// `landed` holds: the wait for a map callback, whose result `landed` reads. The two waits
+    /// share one bound, [`WAIT_TIMEOUT`] from the call, so a `landed` that never holds, a map no
+    /// one started, times out rather than spinning a core for ever. Returns how the wait ended.
     ///
     /// Once the device's wait returns, every map of a finished submission is collected, by the
     /// wait's own poll or an earlier one on another thread, which runs the callback outside
@@ -194,13 +216,24 @@ impl Gpu {
     /// finished work for the callbacks run missed one map in 20,000 with four threads polling
     /// (high-end NVIDIA GPU, Vulkan), and two in three when a callback slept 1 ms.
     pub(crate) fn wait_until(&self, landed: &dyn Fn() -> bool) -> GpuWait {
-        let drained = self.drain();
+        self.wait_until_within(landed, WAIT_TIMEOUT)
+    }
+
+    /// [`Self::wait_until`] under the bound `timeout`, which the callback's spin takes what the
+    /// device's wait left of.
+    fn wait_until_within(&self, landed: &dyn Fn() -> bool, timeout: Duration) -> GpuWait {
+        let deadline = Instant::now() + timeout;
+        let drained = self.drain(timeout);
         if drained != GpuWait::Done {
             return drained;
         }
         while !landed() {
             if self.is_lost() {
                 return GpuWait::DeviceLost;
+            }
+            if Instant::now() >= deadline {
+                tracing::warn!("a map callback did not land in {timeout:?}");
+                return GpuWait::TimedOut;
             }
             thread::yield_now();
         }
@@ -217,19 +250,19 @@ impl Gpu {
         clippy::disallowed_methods,
         reason = "the one blocking wait, behind the health check"
     )]
-    fn drain(&self) -> GpuWait {
+    fn drain(&self, timeout: Duration) -> GpuWait {
         if self.is_lost() {
             return GpuWait::DeviceLost;
         }
         let waited = self.device.poll(wgpu::PollType::Wait {
             submission_index: None,
-            timeout: Some(WAIT_TIMEOUT),
+            timeout: Some(timeout),
         });
         if self.is_lost() {
             return GpuWait::DeviceLost;
         }
         if let Err(error) = waited {
-            tracing::warn!(%error, "the device did not finish its work in {WAIT_TIMEOUT:?}");
+            tracing::warn!(%error, "the device did not finish its work in {timeout:?}");
             return GpuWait::TimedOut;
         }
         GpuWait::Done
@@ -239,8 +272,15 @@ impl Gpu {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::device::pass_traffic::PassTraffic;
 
     impl Gpu {
+        /// This handle reads as a device whose passes move `traffic`, whatever the device is;
+        /// other clones keep the device's own.
+        pub(crate) const fn paint_as(&mut self, traffic: PassTraffic) {
+            self.pass_traffic = traffic;
+        }
+
         /// Lose the device, as a GPU hang does: `Device::destroy` makes every later call a no-op,
         /// as wgpu's own device-loss tests use it, and the wait runs the lost callback, as a real
         /// loss runs it inside the call that finds the loss.
@@ -254,7 +294,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::device::gpu::{FilledBuffer, Gpu};
     use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::surface::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
@@ -333,6 +373,16 @@ mod tests {
         gpu.poll();
     }
 
+    /// A predicate that never holds, a map no one started, ends the wait at its bound, 20 ms
+    /// here, as timed out; one that holds ends it done.
+    #[test]
+    fn a_wait_for_what_never_lands_times_out() {
+        let gpu = isolated_headless_test_gpu();
+        let bound = Duration::from_millis(20);
+        assert_eq!(gpu.wait_until_within(&|| false, bound), GpuWait::TimedOut);
+        assert_eq!(gpu.wait_until_within(&|| true, bound), GpuWait::Done);
+    }
+
     /// `wait_until` returns once a copy's map callback ran, though four other threads poll the
     /// device all along and collect callbacks themselves. Each callback sleeps 1 ms before it
     /// records, so one a poller runs lands after the wait's own work-done callback: a wait that
@@ -387,29 +437,28 @@ mod tests {
         }
     }
 
-    /// A healthy device's filled buffer holds the bytes at its start, padded to whole
-    /// `COPY_BUFFER_ALIGNMENT` units; a lost device's comes back unfilled and the call returns,
+    /// A healthy device's filled buffer holds its parts one after another at its start, an empty
+    /// one adding nothing, padded to whole `COPY_BUFFER_ALIGNMENT` units; a lost device's comes back unfilled and the call returns,
     /// where an `expect` on the mapped range panics.
     #[test]
     fn a_filled_buffer_holds_its_bytes_and_a_lost_device_returns_one_unfilled() {
-        let desc = wgpu::BufferDescriptor {
-            label: Some("palantir.test.filled"),
-            size: 8,
+        let spec = FilledBuffer {
+            label: "palantir.test.filled",
+            size: 12,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
         };
         let gpu = isolated_headless_test_gpu();
-        let healthy = gpu.create_filled_buffer(&desc, &[1, 2, 3, 4, 5, 6]);
+        let healthy = gpu.create_filled_buffer(spec, &[&[1, 2, 3, 4, 5, 6], &[], &[7, 8, 9]]);
         let map = MapState::new();
         map.map_read(&healthy);
         assert_eq!(gpu.wait_until(&|| !map.is_pending()), GpuWait::Done);
         assert!(map.is_mapped());
         assert_eq!(
             &*healthy.slice(..).get_mapped_range().unwrap(),
-            &[1, 2, 3, 4, 5, 6, 0, 0]
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0]
         );
         gpu.lose();
-        let lost = gpu.create_filled_buffer(&desc, &[1, 2, 3, 4]);
-        assert_eq!(lost.size(), desc.size);
+        let lost = gpu.create_filled_buffer(spec, &[&[1, 2, 3, 4]]);
+        assert_eq!(lost.size(), spec.size);
     }
 }

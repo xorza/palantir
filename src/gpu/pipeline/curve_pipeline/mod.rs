@@ -10,13 +10,13 @@
 pub(crate) mod bench;
 
 use crate::common::span::Span;
-use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::gpu::{FilledBuffer, Gpu};
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
+use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -66,19 +66,18 @@ impl CurvePipeline {
         label: "palantir.curve.shader",
         wgsl: include_str!("shader.wgsl"),
         includes: &[GRADIENT],
-        constants: shader_constants,
+        constants: SHADER_CONSTANTS,
     };
 
     pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
         let idxs: &[u8] = bytemuck::cast_slice(&CURVE_IDXS);
         let idx_buffer = gpu.create_filled_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("palantir.curve.indices"),
+            FilledBuffer {
+                label: "palantir.curve.indices",
                 size: (idxs.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
                 usage: wgpu::BufferUsages::INDEX,
-                mapped_at_creation: true,
             },
-            idxs,
+            &[idxs],
         );
         Self {
             family: InstancedPipeline::new(
@@ -103,7 +102,6 @@ impl CurvePipeline {
             target,
             VariantRecipe {
                 label: "palantir.curve.pipeline",
-                stencil_label: "palantir.curve.pipeline.stencil_test",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
@@ -119,14 +117,14 @@ impl CurvePipeline {
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
+        pipeline: &'a Pipeline,
         gradient_bind_group: &'a wgpu::BindGroup,
         instances: Span,
     ) {
         if instances.len == 0 {
             return;
         }
-        rec.pipeline(pipeline, self.family.layout());
+        rec.pipeline(pipeline);
         rec.group(0, gradient_bind_group);
         rec.vertex(0, self.family.instances());
         rec.index(&self.idx_buffer, wgpu::IndexFormat::Uint16);
@@ -205,24 +203,22 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 );
 
 /// The numbers [`CurvePipeline::SHADER`] takes from the Rust types that own them.
-fn shader_constants() -> Vec<ShaderConstant> {
-    vec![
-        ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
-        ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
-        ShaderConstant::uint("CAP_MASK", CurveCaps::CAP_MASK),
-        ShaderConstant::uint("CAP_AT_START", CurveCaps::AT_START),
-        ShaderConstant::uint("CAP_AT_END", CurveCaps::AT_END),
-        ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
-        ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
-        ShaderConstant::uint("KIND_ARC", CurveKind::ARC.bits()),
-        ShaderConstant::uint("KIND_SEGMENT", CurveKind::SEGMENT.bits()),
-        ShaderConstant::uint("KIND_JOIN_ROUND", CurveKind::JOIN_ROUND.bits()),
-        ShaderConstant::uint("KIND_JOIN_BEVEL", CurveKind::JOIN_BEVEL.bits()),
-        ShaderConstant::uint("KIND_JOIN_MITER", CurveKind::JOIN_MITER.bits()),
-        ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
-        ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
-    ]
-}
+const SHADER_CONSTANTS: &[ShaderConstant] = &[
+    ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
+    ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
+    ShaderConstant::uint("CAP_MASK", CurveCaps::CAP_MASK),
+    ShaderConstant::uint("CAP_AT_START", CurveCaps::AT_START),
+    ShaderConstant::uint("CAP_AT_END", CurveCaps::AT_END),
+    ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
+    ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
+    ShaderConstant::uint("KIND_ARC", CurveKind::ARC.bits()),
+    ShaderConstant::uint("KIND_SEGMENT", CurveKind::SEGMENT.bits()),
+    ShaderConstant::uint("KIND_JOIN_ROUND", CurveKind::JOIN_ROUND.bits()),
+    ShaderConstant::uint("KIND_JOIN_BEVEL", CurveKind::JOIN_BEVEL.bits()),
+    ShaderConstant::uint("KIND_JOIN_MITER", CurveKind::JOIN_MITER.bits()),
+    ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
+    ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
+];
 
 #[cfg(test)]
 mod tests {

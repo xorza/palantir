@@ -1,8 +1,9 @@
 //! The per-window stencil attachment the rounded-clip pipelines stamp and test, in the format
-//! and under the states [`ClipStencil`] gives them.
+//! and under the states [`crate::gpu::pipeline::clip_stencil`] gives them.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::stencil_variant::ClipStencil;
+use crate::gpu::pipeline::clip_stencil;
+use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use glam::UVec2;
 
@@ -23,7 +24,7 @@ impl Stencil {
 
     /// Whether the attachment is `size` physical px.
     pub(crate) fn fits(&self, size: UVec2) -> bool {
-        self.texture.size() == texel::extent(size)
+        texel::size(&self.texture) == size
     }
 
     /// A stencil attachment of `size` physical px, its texels written to 0 by a copy before any
@@ -33,18 +34,15 @@ impl Stencil {
     pub(crate) fn new(gpu: &Gpu, size: UVec2) -> Self {
         let extent = texel::extent(size);
         let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST;
-        #[cfg(test)]
-        let usage = usage | wgpu::TextureUsages::COPY_SRC;
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.renderer.stencil"),
-            size: extent,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: ClipStencil::FORMAT,
-            usage,
-            view_formats: &[],
-        });
+        let texture = texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label: "palantir.renderer.stencil",
+                size,
+                format: clip_stencil::FORMAT,
+                usage,
+            },
+        );
         gpu.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &texture,

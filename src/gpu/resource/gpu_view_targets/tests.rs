@@ -1,5 +1,5 @@
-use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::gpu_paint::GpuPaint;
+use crate::gpu::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::gpu::gpu_paint::gpu_views::{GpuViews, RecordedView, ViewContent};
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};

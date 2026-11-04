@@ -59,6 +59,11 @@ impl Staging {
         &self.map
     }
 
+    /// The texels the buffer holds, per side.
+    pub(crate) const fn size(&self) -> UVec2 {
+        self.size
+    }
+
     /// Abort a map still in flight, so the next can map the buffer again.
     pub(crate) fn abort(&self) {
         if self.map.is_pending() {
@@ -66,7 +71,8 @@ impl Staging {
         }
     }
 
-    /// The mapped rows into `out`, top down with the padding dropped, then unmap.
+    /// The mapped rows into `out`, top down with the padding dropped, then unmap, leaving the map
+    /// idle for the next read.
     ///
     /// # Panics
     ///
@@ -86,6 +92,7 @@ impl Staging {
             }
         }
         self.buffer.unmap();
+        self.map.clear();
     }
 }
 

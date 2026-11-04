@@ -10,7 +10,7 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::host_display::HostDisplay;
 use crate::display::system_scale::SystemScale;
-use crate::gpu::frame::submission::{FrameOverlay, Route, Submission};
+use crate::gpu::frame::submission::{self, FrameOverlay, Route, Submission};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode};
 use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
@@ -669,7 +669,7 @@ impl WindowDriver {
                 store: self.ui.record_store(),
                 buffer,
                 gpu_views: self.ui.gpu_views(),
-                clear: plan.clear,
+                clear: submission::frame_clear(plan.clear, buffer),
                 scissors: &self.scissors,
                 route,
                 overlay: FrameOverlay {

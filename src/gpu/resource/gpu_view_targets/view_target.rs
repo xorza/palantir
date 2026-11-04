@@ -3,6 +3,7 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::renderer::render_buffer::render_target_draw::ViewStamp;
 use crate::renderer::render_owner_id::RenderOwnerId;
@@ -30,16 +31,16 @@ pub(super) struct AllocatedTarget {
 
 impl AllocatedTarget {
     pub(super) fn new(gpu: &Gpu, binding: &TextureBinding, size: UVec2) -> Self {
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.gpu_view.target"),
-            size: texel::extent(size),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TARGET_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
+        let texture = texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label: "palantir.gpu_view.target",
+                size,
+                format: TARGET_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+            },
+        );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = binding.bind_group(gpu, &view, "palantir.gpu_view.tex.bg");
         Self { view, bind_group }

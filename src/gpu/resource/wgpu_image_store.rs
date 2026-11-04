@@ -3,6 +3,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
@@ -40,9 +41,7 @@ pub(crate) struct WgpuImageStore {
 #[derive(Debug)]
 struct AttachedStore {
     gpu: Gpu,
-    /// The group-0 layout and sampler every pipeline of the backend composes over. Built here
-    /// because the host attaches this store before it builds the backend, which takes its copy
-    /// from [`WgpuImageStore::binding`].
+    /// The device's group-0 layout and sampler, which an image's group binds through.
     binding: TextureBinding,
     textures: FxHashMap<TextureId, ImageTexture>,
 }
@@ -73,19 +72,14 @@ impl Default for WgpuImageStore {
 }
 
 impl WgpuImageStore {
-    /// Hold textures on `gpu` from now on. The textures of an earlier device drop: every image
-    /// paints nothing until its next write.
-    pub(crate) fn attach(&self, gpu: &Gpu) {
+    /// Hold textures on `gpu` from now on, bound through `binding`, the device's. The textures
+    /// of an earlier device drop: every image paints nothing until its next write.
+    pub(crate) fn attach(&self, gpu: &Gpu, binding: TextureBinding) {
         *self.attached.borrow_mut() = Some(AttachedStore {
             gpu: gpu.clone(),
-            binding: TextureBinding::new(gpu),
+            binding,
             textures: FxHashMap::default(),
         });
-    }
-
-    /// The binding of the device attached now.
-    pub(crate) fn binding(&self) -> TextureBinding {
-        self.attached().binding.clone()
     }
 
     /// One borrow per render traversal, avoiding a `RefCell` probe per run.
@@ -111,16 +105,15 @@ fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> Im
     let raw_id = id.0;
     let texture_label = format!("palantir.image.tex.{raw_id:016x}");
     let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
-    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(&texture_label),
-        size: texel::extent(size),
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
+    let texture = texel::texture_2d(
+        gpu,
+        TargetSpec {
+            label: &texture_label,
+            size,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        },
+    );
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let bind_group = binding.bind_group(gpu, &view, &bind_group_label);
     ImageTexture {
@@ -284,6 +277,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::resource::wgpu_image_store::{
         STAGED_BYTES, WgpuImageStore, bands, premultiplied_bytes, premultiply_into,
     };
@@ -335,7 +329,7 @@ mod tests {
     fn a_gpu_texture_lives_exactly_as_long_as_its_handle() {
         let gpu = test_gpu::headless_test_gpu();
         let store = Rc::new(WgpuImageStore::default());
-        store.attach(&gpu);
+        store.attach(&gpu, TextureBinding::new(&gpu));
         let weak = Rc::downgrade(&store);
         let registry = ImageRegistry::new(Rc::clone(&store));
         assert!(!store.read().contains_key(&TextureId(1)));
@@ -361,7 +355,8 @@ mod tests {
         assert!(!store.read().contains_key(&TextureId(1)));
 
         let survivor = ImageHandle::new(TextureId(2), &image, registry);
-        store.attach(&test_gpu::headless_test_gpu());
+        let gpu = test_gpu::headless_test_gpu();
+        store.attach(&gpu, TextureBinding::new(&gpu));
         assert_eq!(
             store.resident(),
             0,
@@ -396,7 +391,7 @@ mod tests {
 
         let gpu = test_gpu::headless_test_gpu();
         let store = WgpuImageStore::default();
-        store.attach(&gpu);
+        store.attach(&gpu, TextureBinding::new(&gpu));
         let mut image = Image::blank(UVec2::new(1024, 300));
         image.texels_mut().fill(SrgbaU8 {
             a: 128,

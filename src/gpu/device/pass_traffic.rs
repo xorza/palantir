@@ -1,10 +1,10 @@
 //! What a device moves between memory and its tiles for a render pass, which decides what a
 //! partial frame costs.
 
-use crate::gpu::device::vendor;
+use crate::gpu::device::tiler_family::TilerFamily;
 
 /// What a render pass moves between memory and the device for its attachments. No API reports
-/// it, so it is read off the vendor, as ANGLE classifies Vulkan devices.
+/// it, so it is read off the device's family, as ANGLE classifies Vulkan devices.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PassTraffic {
     /// What the pass's draws touch: an immediate-mode GPU, and Apple's tile-based ones, on which
@@ -16,21 +16,13 @@ pub(crate) enum PassTraffic {
     WholeTarget,
 }
 
-/// Arm Mali, Imagination PowerVR, Qualcomm Adreno and Broadcom VideoCore.
-const WHOLE_TARGET_VENDORS: [u32; 4] = [
-    vendor::ARM,
-    vendor::IMAGINATION,
-    vendor::QUALCOMM,
-    vendor::BROADCOM,
-];
-
 impl PassTraffic {
-    /// What a pass on the adapter `info` describes moves.
+    /// What a pass on the adapter `info` describes moves: the whole target on a
+    /// [`TilerFamily`].
     pub(crate) fn of(info: &wgpu::AdapterInfo) -> Self {
-        if WHOLE_TARGET_VENDORS.contains(&info.vendor) {
-            Self::WholeTarget
-        } else {
-            Self::Drawn
+        match TilerFamily::of(info) {
+            Some(_) => Self::WholeTarget,
+            None => Self::Drawn,
         }
     }
 }
@@ -40,7 +32,8 @@ mod tests {
     use crate::gpu::device::pass_traffic::PassTraffic;
 
     /// Arm, Imagination, Qualcomm and Broadcom move the whole target; AMD, Nvidia, Intel, Apple
-    /// and a CPU device what is drawn, as does Metal, which reports no vendor.
+    /// and a CPU device what is drawn, as does Metal, which reports no vendor and a name of no
+    /// tiler. A GL Mali, known by its name alone, moves the whole target.
     #[test]
     fn the_vendor_decides_what_a_pass_moves() {
         let info = |backend, vendor| wgpu::AdapterInfo {
@@ -68,5 +61,10 @@ mod tests {
             PassTraffic::of(&info(wgpu::Backend::Metal, 0)),
             PassTraffic::Drawn
         );
+        let gl_mali = wgpu::AdapterInfo {
+            name: "Mali-G610".to_owned(),
+            ..info(wgpu::Backend::Gl, 0)
+        };
+        assert_eq!(PassTraffic::of(&gl_mali), PassTraffic::WholeTarget);
     }
 }

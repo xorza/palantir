@@ -20,8 +20,8 @@ pub(crate) struct Submission<'a> {
     pub(crate) buffer: &'a RenderBuffer,
     /// The window's `GpuView`s, whose callbacks paint the buffer's view targets.
     pub(crate) gpu_views: &'a GpuViews,
-    /// The plan's clear color, which a root quad folded into the clear overrides.
-    pub(crate) clear: RgbaF32,
+    /// The opaque clear the frame paints ([`frame_clear`]).
+    pub(crate) clear: RgbaF16,
     /// What the frame repaints inside, which the CPU half fitted to the draw list: a partial
     /// frame loads the target and repaints the rects.
     pub(crate) scissors: &'a RepaintScissors,
@@ -48,14 +48,15 @@ pub(crate) struct FrameOverlay {
 }
 
 impl Submission<'_> {
-    /// The opaque clear the frame paints: the buffer's override, else the plan's.
-    pub(crate) fn clear(&self) -> RgbaF16 {
-        let clear = self.buffer.clear_override.map_or(self.clear, RgbaF32::from);
-        RgbaF32 { a: 1.0, ..clear }.to_f16()
-    }
-
     /// Whether the frame dims what it does not repaint: only a partial frame keeps any.
     pub(crate) const fn dims_undamaged(&self) -> bool {
         self.overlay.dim_undamaged && self.scissors.is_partial()
     }
+}
+
+/// The opaque clear a frame of `buffer` paints: the override a root quad folded in, else the
+/// plan's `plan_clear`, made opaque. Resolved once, where the submission is built.
+pub(crate) fn frame_clear(plan_clear: RgbaF32, buffer: &RenderBuffer) -> RgbaF16 {
+    let clear = buffer.clear_override.map_or(plan_clear, RgbaF32::from);
+    RgbaF32 { a: 1.0, ..clear }.to_f16()
 }

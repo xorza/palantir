@@ -53,13 +53,13 @@ mod gpu {
         let set = load(&icons);
         draw(&mut backend, &set);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
-        assert_eq!(backend.pass.atlas.cache.len(), 1);
+        assert_eq!(backend.pass.atlas.cached_len(), 1);
 
         // Held: the set stays loaded across submits.
         tick(&mut backend, &mut frame);
         tick(&mut backend, &mut frame);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
-        assert_eq!(backend.pass.atlas.cache.len(), 1);
+        assert_eq!(backend.pass.atlas.cached_len(), 1);
 
         // Dropped: queued now, forgotten at the next submit, the backend's only point to touch caches.
         drop(set);
@@ -74,7 +74,7 @@ mod gpu {
             0,
             "the parsed SVG went with the set",
         );
-        assert_eq!(backend.pass.atlas.cache.len(), 0, "and so did its raster");
+        assert_eq!(backend.pass.atlas.cached_len(), 0, "and so did its raster");
         assert!(
             icons.resident_ids().is_empty(),
             "and the registry freed the slot",
@@ -101,12 +101,12 @@ mod gpu {
             IconSetId::new(0, 1),
             "the fixture only proves anything if the slot was reused",
         );
-        assert_eq!(backend.pass.atlas.cache.len(), 0, "nothing carried over");
+        assert_eq!(backend.pass.atlas.cached_len(), 0, "nothing carried over");
 
         draw(&mut backend, &second);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(
-            backend.pass.atlas.cache.len(),
+            backend.pass.atlas.cached_len(),
             1,
             "one raster, freshly made"
         );
@@ -131,7 +131,7 @@ mod gpu {
             assert_eq!(
                 (
                     backend.rasterizer.parsed_count(),
-                    backend.pass.atlas.cache.len()
+                    backend.pass.atlas.cached_len()
                 ),
                 (1, 1),
                 "frame {frame} retained a dead set's caches",
@@ -147,7 +147,7 @@ mod gpu {
         assert_eq!(
             (
                 backend.rasterizer.parsed_count(),
-                backend.pass.atlas.cache.len()
+                backend.pass.atlas.cached_len()
             ),
             (0, 0),
             "and the last one goes when its set does",

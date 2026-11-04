@@ -45,8 +45,8 @@ impl RasterQuad {
     );
 }
 
-/// Bits of `uv_and_kind` that hold `u`, and the shift the flags sit at. Both
-/// atlases fit in 12; everything else, including the shader's copy
+/// Bits of `uv_and_kind` that hold `u`, and the shift the flags sit at. An atlas side grows no
+/// wider than `1 << U_BITS`; everything else, including the shader's copy
 /// (`RasterProgram::SHADER`), derives from this.
 pub(crate) const U_BITS: u32 = 14;
 

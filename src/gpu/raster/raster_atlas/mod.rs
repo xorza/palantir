@@ -22,11 +22,11 @@ use crate::common::expiry_wheel::ExpiryWheel;
 use crate::common::span::Span;
 use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::{GpuCtx, RowCopy};
+use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
-use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
+use crate::gpu::raster::raster_atlas::bound_sides::BoundSides;
 use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
 use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
 use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
@@ -91,12 +91,12 @@ pub(super) struct RasterAtlas<K> {
     /// Dense slot slab; `cache` maps each key to an index. Encoded-run caches record
     /// indices; safe because every recorded index carries the slot generation eviction
     /// advances before reuse.
-    pub(super) slots: Vec<AtlasSlot>,
+    slots: Vec<AtlasSlot>,
     /// Key held by each slab entry, parallel to [`Self::slots`], so eviction can drop
     /// the victim's map entry by slab position. A separate column because the slot is
     /// hot and the key cold. Only meaningful for an index [`Self::cache`] still maps.
     slot_keys: Vec<K>,
-    pub(super) cache: FxHashMap<K, u32>,
+    cache: FxHashMap<K, u32>,
     free: FreeSlots,
     /// Rotating eviction cursor over [`Self::slots`]; persists so the victim search resumes instead
     /// of rescanning.
@@ -104,7 +104,7 @@ pub(super) struct RasterAtlas<K> {
     /// Latest reading of the shared text clock, mirrored by [`Self::advance_to`].
     /// Counting submits here would make `RENDERED_RUN_KEEP_FRAMES`'s two windows drift
     /// (a drawless recorded frame ages buffers only; a `PaintOnly` frame the atlas only).
-    pub(super) cur_frame: u64,
+    cur_frame: u64,
     /// Deadlines for non-drawing entries (see [`ExpiryWheel`]); `touch` files nothing.
     unallocated_expiry: ExpiryWheel<K>,
     /// Everything group 0 needs to read [`Self::sides`]; see [`BoundSides`]. Rebinding where a grow
@@ -158,7 +158,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             batch_upload: format!("{} atlas batch upload", config.label),
         };
 
-        let bound = BoundSides::new(gpu, SidesLayout::new(program, config.label), &sides);
+        let bound = BoundSides::new(gpu, program, config.label, &sides);
 
         Self {
             sides,
@@ -203,6 +203,34 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         let &idx = self.cache.get(key)?;
         self.slots[idx as usize].last_use = self.cur_frame;
         Some(idx)
+    }
+
+    /// Draw slot `idx` this frame, which a cached run took at `generation`: stamped, so no
+    /// eviction this frame reclaims it, and its placement, or `None` when an eviction reused the
+    /// slot since, or it holds no rectangle. The one stamp beside [`Self::touch`]: the clock's
+    /// "drawn this frame is never evicted" holds through these two alone.
+    pub(super) fn touch_slot(&mut self, idx: u32, generation: u32) -> Option<SlotPlacement> {
+        let slot = &mut self.slots[idx as usize];
+        if slot.generation != generation {
+            return None;
+        }
+        slot.last_use = self.cur_frame;
+        slot.placement()
+    }
+
+    /// Slot `idx`, as an insert or a touch named it.
+    pub(super) fn slot(&self, idx: u32) -> AtlasSlot {
+        self.slots[idx as usize]
+    }
+
+    /// The keys the atlas holds a slot for.
+    pub(super) fn cached_len(&self) -> usize {
+        self.cache.len()
+    }
+
+    /// The shared text clock's reading this atlas ages against.
+    pub(super) const fn frame(&self) -> u64 {
+        self.cur_frame
     }
 
     /// Insert a freshly rasterized glyph, queueing its pixels for
@@ -572,8 +600,29 @@ const fn unallocated_dies_at(last_use: u64) -> u64 {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::gpu::raster::raster_atlas::RasterAtlas;
+    use crate::gpu::raster::raster_atlas::atlas_slot::AtlasSlot;
+    use rustc_hash::FxHashMap;
+    use std::fmt::Debug;
+    use std::hash::Hash;
+
     pub(crate) const fn unallocated_dies_at(last_use: u64) -> u64 {
         super::unallocated_dies_at(last_use)
+    }
+
+    impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
+        pub(crate) fn slots(&self) -> &[AtlasSlot] {
+            &self.slots
+        }
+
+        /// The slots, for a test that stales one as an eviction would.
+        pub(crate) fn slots_mut(&mut self) -> &mut [AtlasSlot] {
+            &mut self.slots
+        }
+
+        pub(crate) const fn cache(&self) -> &FxHashMap<K, u32> {
+            &self.cache
+        }
     }
 }
 

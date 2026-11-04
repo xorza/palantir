@@ -6,7 +6,7 @@ use crate::gpu::device::gpu::Gpu;
 /// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend, optional depth-stencil); [`Self::build`] fills the project-wide defaults (single color target, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
 #[derive(Clone, Debug)]
 pub(crate) struct PipelineRecipe<'a> {
-    pub(crate) label: &'static str,
+    pub(crate) label: &'a str,
     pub(crate) shader: &'a wgpu::ShaderModule,
     pub(crate) layout: &'a wgpu::PipelineLayout,
     pub(crate) vertex_entry: &'static str,
@@ -26,7 +26,7 @@ impl<'a> PipelineRecipe<'a> {
     /// override constants or vertex buffers, a triangle list, every channel written, premultiplied
     /// blending, no stencil. A family overrides what it varies with struct update.
     pub(crate) const fn color(
-        label: &'static str,
+        label: &'a str,
         shader: &'a wgpu::ShaderModule,
         layout: &'a wgpu::PipelineLayout,
         color_format: wgpu::TextureFormat,
@@ -47,9 +47,10 @@ impl<'a> PipelineRecipe<'a> {
         }
     }
 
-    /// Build the pipeline. Sole source of the descriptor fields pipelines don't vary (sample count, multiview mask).
-    pub(crate) fn build(self, gpu: &Gpu) -> wgpu::RenderPipeline {
-        gpu.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    /// Build the pipeline, with the layout it is built over. Sole source of the descriptor fields
+    /// pipelines don't vary (sample count, multiview mask).
+    pub(crate) fn build(self, gpu: &Gpu) -> Pipeline {
+        let pipeline = gpu.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(self.label),
             layout: Some(self.layout),
             vertex: wgpu::VertexState {
@@ -82,8 +83,23 @@ impl<'a> PipelineRecipe<'a> {
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,
-        })
+        });
+        Pipeline {
+            pipeline,
+            layout: self.layout.clone(),
+        }
     }
+}
+
+/// A built render pipeline and the layout it was built over, which a pass binds as one: the
+/// viewport rides in immediate data, which wgpu clears when the layout changes, so the pass must
+/// know the layout of every pipeline it binds. Refused: the layout passed beside the pipeline,
+/// a pair nothing checked, where a mismatch drew with a zeroed viewport.
+#[derive(Clone, Debug)]
+pub(crate) struct Pipeline {
+    pub(crate) pipeline: wgpu::RenderPipeline,
+    /// A handle on the layout; wgpu compares handles by the object they name.
+    pub(crate) layout: wgpu::PipelineLayout,
 }
 
 /// Build the layout a recipe's [`PipelineRecipe::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by the prelude's `Immediates`.

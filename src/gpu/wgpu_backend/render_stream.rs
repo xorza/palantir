@@ -1,8 +1,10 @@
 //! One render owner's side of the device: what its frames keep there between them.
 
 use crate::gpu::backdrop::backdrop_blur::TargetSource;
+use crate::gpu::backdrop::backdrops::FrameBackbuffer;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::GpuTimings;
+use crate::gpu::frame::submission::Route;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
 use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -25,18 +27,18 @@ pub(crate) struct RenderStream {
     owner: RenderOwnerId,
     /// Off-screen target holding the last frame painted through it, for `LoadOp::Load` partial
     /// damage; made on the first such frame, and again for a new size or format.
-    pub(super) backbuffer: Option<Backbuffer>,
+    backbuffer: Option<Backbuffer>,
     /// The group a pane's blur reads [`Self::backbuffer`] through as its level 0, made on the
     /// first frame that blurs from it and dropped with it.
-    pub(super) blur_source: Option<TargetSource>,
+    blur_source: Option<TargetSource>,
     /// Whether [`Self::backbuffer`] holds what the target shows. A direct frame leaves it stale,
     /// as does a new target; the next partial resyncs it with one full repaint.
-    pub(super) backbuffer_fresh: bool,
+    backbuffer_fresh: bool,
     /// Rounded-clip stencil, made on the first frame with a rounded clip; apart from the
     /// backbuffer, so a direct frame needs none. Pure per-frame scratch, as each main pass clears
     /// it and discards it, so it goes at the end of an expiry window no frame stamped it in: at
     /// 7680 × 2160 it is 16 MiB.
-    pub(super) stencil: Option<Stencil>,
+    stencil: Option<Stencil>,
     /// The expiry window the stencil ages in, and whether a frame of it stamped the stencil.
     stencil_window: ExpiryWindow,
     stencil_used: bool,
@@ -46,7 +48,7 @@ pub(crate) struct RenderStream {
     cutouts: CutoutPlan,
     /// The owner's timestamp queries, where the backend times frames: a frame publishes late, so
     /// one set shared by every owner would publish a frame of another.
-    pub(super) timings: Option<GpuTimings>,
+    timings: Option<GpuTimings>,
 }
 
 impl RenderStream {
@@ -90,6 +92,41 @@ impl RenderStream {
         self.backbuffer_fresh = false;
     }
 
+    /// Note a frame painted by `route`: through the backbuffer it holds what the target shows; a
+    /// direct frame leaves it stale. The one writer of [`Self::is_backbuffer_fresh`] beside
+    /// [`Self::invalidate`].
+    pub(super) fn mark_painted(&mut self, route: Route) {
+        self.backbuffer_fresh = route == Route::ViaBackbuffer;
+    }
+
+    /// The backbuffer, made by a frame through it.
+    pub(super) const fn backbuffer(&self) -> Option<&Backbuffer> {
+        self.backbuffer.as_ref()
+    }
+
+    /// The backbuffer as a frame through it lends it to its panes, with the group they read it
+    /// through; `None` where none is made.
+    pub(super) fn frame_backbuffer(&mut self) -> Option<FrameBackbuffer<'_>> {
+        let backbuffer = self.backbuffer.as_ref()?;
+        Some(FrameBackbuffer {
+            backbuffer,
+            source: &mut self.blur_source,
+        })
+    }
+
+    /// The window's stencil view, which [`Self::age_stencil`] made for a frame that stamps it.
+    pub(super) fn stencil_view(&self) -> Option<&wgpu::TextureView> {
+        self.stencil.as_ref().map(Stencil::view)
+    }
+
+    pub(super) const fn timings(&self) -> Option<&GpuTimings> {
+        self.timings.as_ref()
+    }
+
+    pub(super) const fn timings_mut(&mut self) -> Option<&mut GpuTimings> {
+        self.timings.as_mut()
+    }
+
     /// Plan the shadow cutouts of the frame `buffer` holds, repainted inside `scissors`.
     pub(crate) fn plan_cutouts(
         &mut self,
@@ -105,7 +142,7 @@ impl RenderStream {
     }
 
     /// Make the backbuffer for `target` when there is none or it no longer
-    /// [`describes`](Backbuffer::describes) the target; `true` when it is new, which holds no
+    /// [`fits`](Backbuffer::fits) the target; `true` when it is new, which holds no
     /// pixel yet.
     pub(super) fn ensure_backbuffer(
         &mut self,
@@ -116,7 +153,7 @@ impl RenderStream {
         if self
             .backbuffer
             .as_ref()
-            .is_some_and(|held| !held.describes(target))
+            .is_some_and(|held| !held.fits(target))
         {
             self.backbuffer = None;
         }

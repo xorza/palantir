@@ -1,5 +1,7 @@
 //! The texel geometry a texture copy and a texture descriptor name.
 
+use crate::gpu::device::gpu::Gpu;
+use crate::gpu::surface::owned_target::TargetSpec;
 use glam::UVec2;
 
 /// A texture's first-layer size, in texels.
@@ -23,4 +25,25 @@ pub(crate) const fn origin(at: UVec2) -> wgpu::Origin3d {
         y: at.y,
         z: 0,
     }
+}
+
+/// A single-sample 2D texture of one mip level, as `spec` describes it: the shape every texture
+/// of the backend but the blur's mip chain takes.
+pub(crate) fn texture_2d(gpu: &Gpu, spec: TargetSpec<'_>) -> wgpu::Texture {
+    let TargetSpec {
+        label,
+        size,
+        format,
+        usage,
+    } = spec;
+    gpu.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: extent(size),
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage,
+        view_formats: &[],
+    })
 }

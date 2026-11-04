@@ -10,7 +10,7 @@
 //! frame without the icon.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
@@ -67,15 +67,18 @@ impl IconBackend {
             let Some(idx) = self.slot(row.key) else {
                 continue;
             };
-            let slot = self.pass.atlas.slots[idx as usize]
+            let slot = self
+                .pass
+                .atlas
+                .slot(idx)
                 .placement()
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
             let mut quad = slot.quad_sized(row.origin, row.size, row.color);
             if row.desaturate {
                 quad.uv_and_kind |= RasterQuad::DESATURATE;
             }
-            let start = self.pass.instances.len();
-            self.pass.instances.push(quad);
+            let start = self.pass.instance_count();
+            self.pass.push(quad);
             if let Some(spin) = row.spin {
                 self.pass.turn_since(start, spin);
             }

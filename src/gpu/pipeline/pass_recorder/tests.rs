@@ -58,8 +58,9 @@ impl PassState for Recorder {
 }
 
 /// A quad's form switch sets the pipeline alone; a shadow's switches the layout, so pushes
-/// the viewport, and adds its pair; a mask's buffer replaces the instance buffer; a group bound
-/// for one draw is bound again after it; the same binding twice is one call.
+/// the viewport, and adds its pair; another buffer at slot 0 replaces the instance buffer; a second
+/// handle on a bound layout pushes nothing; a group bound for one draw is bound again after it;
+/// the same binding twice is one call.
 #[test]
 fn a_switch_sets_only_what_changed() {
     let [solid, gradient, shadow, mask, mesh] = [1u8, 2, 3, 4, 5];
@@ -76,7 +77,7 @@ fn a_switch_sets_only_what_changed() {
     let take = |rec: &mut PassRecorder<'_, Recorder>| std::mem::take(&mut rec.pass.0);
 
     for pipeline in [&solid, &gradient, &gradient] {
-        rec.pipeline(pipeline, &quad_layout);
+        rec.bind(pipeline, &quad_layout);
         rec.group(0, &atlas);
         rec.vertex(0, &instances);
     }
@@ -92,7 +93,7 @@ fn a_switch_sets_only_what_changed() {
         "a form switch sets the pipeline alone, and the same run twice nothing"
     );
 
-    rec.pipeline(&shadow, &shadow_layout);
+    rec.bind(&shadow, &shadow_layout);
     rec.group(0, &atlas);
     rec.vertex(0, &instances);
     rec.group(1, &cutouts);
@@ -107,12 +108,22 @@ fn a_switch_sets_only_what_changed() {
         ]
     );
 
-    rec.pipeline(&mask, &quad_layout);
+    rec.bind(&mask, &quad_layout);
     rec.group(0, &atlas);
     rec.vertex(0, &masks);
     assert_eq!(
         take(&mut rec),
         [Call::Pipeline(4), Call::Viewport, Call::Vertex(0, 32)]
+    );
+
+    // Another handle on the quad layout, as a second pipeline over it holds: one layout, so the
+    // viewport stays.
+    let quad_layout_again = quad_layout;
+    rec.bind(&solid, &quad_layout_again);
+    assert_eq!(
+        take(&mut rec),
+        [Call::Pipeline(1)],
+        "one layout under two handles"
     );
 
     let image = 22u8;
@@ -125,7 +136,7 @@ fn a_switch_sets_only_what_changed() {
         "a group bound for one draw is bound again after it"
     );
 
-    rec.pipeline(&mesh, &mesh_layout);
+    rec.bind(&mesh, &mesh_layout);
     rec.vertex(0, &mesh_vertices);
     rec.index(&mesh_indices, wgpu::IndexFormat::Uint32);
     rec.index(&mesh_indices, wgpu::IndexFormat::Uint32);

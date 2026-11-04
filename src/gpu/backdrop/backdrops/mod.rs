@@ -17,12 +17,12 @@
 use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, TargetSource,
 };
-use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::gpu::{FilledBuffer, Gpu};
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
-use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::texture_binding::{self, Filtering};
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::primitives::geometry::urect::URect;
@@ -232,21 +232,15 @@ impl PaneResources {
     fn new(gpu: &Gpu, layout: &wgpu::BindGroupLayout, atlas: AtlasSpec) -> Self {
         let slot_buffer = DynamicBuffer::storage(gpu, "palantir.backdrop.slots", 4);
         let atlas = PackedAtlas::new(gpu, atlas, FIRST_SIDE);
-        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir.backdrop.composite.sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let sampler = texture_binding::sampler(gpu, "palantir.backdrop.composite.sampler");
         let spectrum_table = SpectrumCell::table();
         let spectrum = gpu.create_filled_buffer(
-            &wgpu::BufferDescriptor {
-                label: Some("palantir.backdrop.spectrum"),
+            FilledBuffer {
+                label: "palantir.backdrop.spectrum",
                 size: size_of_val(&spectrum_table) as u64,
                 usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
             },
-            bytemuck::cast_slice(&spectrum_table),
+            &[bytemuck::cast_slice(&spectrum_table)],
         );
         let group = composite_group(gpu, layout, &atlas, &slot_buffer, &sampler, &spectrum);
         Self {
@@ -291,7 +285,7 @@ fn composite_layout(gpu: &Gpu) -> wgpu::BindGroupLayout {
         .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.backdrop.composite.bgl"),
             entries: &[
-                TextureBinding::texture_entry(0),
+                texture_binding::texture_entry(0, Filtering::Filtered),
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,

@@ -5,7 +5,7 @@
 /// so a pane that closes and opens again within one gesture keeps its textures; a window that
 /// paints no frame keeps them until it paints again, as no frame runs to shrink them. Expire after
 /// idle, as Chromium's `cc::ResourcePool` and Flutter's `RasterCache` drop what recent frames did
-/// not use. Counted in display frames ([`GpuCtx::frame`](crate::gpu::device::gpu_ctx::GpuCtx)),
+/// not use. Counted in display frames ([`GpuCtx::frame`](crate::gpu::frame::gpu_ctx::GpuCtx)),
 /// so a second window does not halve it.
 pub(crate) const EXPIRY_FRAMES: u64 = 120;
 

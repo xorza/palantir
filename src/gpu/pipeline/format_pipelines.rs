@@ -1,14 +1,14 @@
 //! [`FormatPipelines`]: every format-dependent `wgpu::RenderPipeline` for one swapchain format, so shaders, buffers and atlases stay format-independent and shared (an sRGB and an HDR window differ only in which set they bind).
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
+use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
-use crate::gpu::pipeline::quad_pipeline::{QuadPass, QuadPipeline, QuadVariants};
+use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 
@@ -16,7 +16,7 @@ use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 ///
 /// Each is built on the first frame whose census asks for it ([`Self::ensure`]), before the
 /// frame's passes borrow the set; [`Self::new`] builds what nearly every frame draws, the plain
-/// halves of the solid, gradient and triangle quads and of every other family, and the blit. A
+/// halves of the solid, gradient and triangle quads and of every other family. A
 /// pane's forms, a shadow's forms, the stencil-test twins and the masks wait for a frame that
 /// draws one, as the backdrop blur's pipelines wait for a pane: an app with none pays for none.
 #[derive(Debug)]
@@ -28,8 +28,6 @@ pub(crate) struct FormatPipelines {
     pub(crate) curve: StencilVariant,
     /// Base + stencil-test pipelines for **both** raster tenants: glyph and icon quads share one shader and group-0 layout, binding whichever atlas the step names. See [`RasterProgram`].
     pub(crate) raster: RasterVariants,
-    /// Presents the retained backbuffer onto a target that can't be copied into. No stencil twin: it runs in its own pass after every clipped draw.
-    pub(crate) blit: wgpu::RenderPipeline,
 }
 
 /// The format-independent resources [`FormatPipelines::new`] reads shaders and layouts from, handed over as a set so a new pipeline kind is one field.
@@ -40,7 +38,6 @@ pub(crate) struct PipelineSources<'a> {
     pub(crate) image: &'a ImagePipeline,
     pub(crate) curve: &'a CurvePipeline,
     pub(crate) raster: &'a RasterProgram,
-    pub(crate) blit: &'a BlitPipeline,
 }
 
 /// What a frame draws through, which its pipelines are built for: the stencil mode of its passes,
@@ -87,7 +84,6 @@ impl FormatPipelines {
             image: StencilVariant::NONE,
             curve: StencilVariant::NONE,
             raster: RasterVariants::NONE,
-            blit: sources.blit.build(gpu, format),
         };
         pipelines.ensure(gpu, sources, PipelineCensus::common());
         pipelines
@@ -139,41 +135,37 @@ pub(crate) struct PassPipelines<'a> {
 }
 
 impl<'a> PassPipelines<'a> {
-    pub(crate) const fn quads(self) -> QuadPass<'a> {
-        QuadPass::new(&self.fmt.quad, self.stencil)
+    /// The pipeline a quad of `draw` draws through.
+    pub(crate) const fn quad(self, draw: QuadDraw) -> &'a Pipeline {
+        self.fmt.quad.select(draw, self.stencil)
     }
 
-    pub(crate) const fn quad(self, draw: QuadDraw) -> &'a wgpu::RenderPipeline {
-        self.quads().pipeline(draw)
-    }
-
-    pub(crate) const fn mesh(self) -> &'a wgpu::RenderPipeline {
+    pub(crate) const fn mesh(self) -> &'a Pipeline {
         self.fmt.mesh.select(self.stencil)
     }
 
-    pub(crate) const fn image(self) -> &'a wgpu::RenderPipeline {
+    pub(crate) const fn image(self) -> &'a Pipeline {
         self.fmt.image.select(self.stencil)
     }
 
-    pub(crate) const fn curve(self) -> &'a wgpu::RenderPipeline {
+    pub(crate) const fn curve(self) -> &'a Pipeline {
         self.fmt.curve.select(self.stencil)
     }
 
-    /// Both raster tenants' pipelines, over the program's `layout`.
-    pub(crate) const fn raster(self, layout: &'a wgpu::PipelineLayout) -> RasterPipelines<'a> {
+    /// Both raster tenants' pipelines.
+    pub(crate) const fn raster(self) -> RasterPipelines<'a> {
         RasterPipelines {
             flat: self.fmt.raster.flat.select(self.stencil),
             spun: self.fmt.raster.spun.select(self.stencil),
-            layout,
         }
     }
 
     /// The stencil-writing mask pipelines, which only a pass with the attachment binds.
-    pub(crate) const fn mask_stamp(self) -> &'a wgpu::RenderPipeline {
+    pub(crate) const fn mask_stamp(self) -> &'a Pipeline {
         self.fmt.quad.mask_stamp()
     }
 
-    pub(crate) const fn mask_clear(self) -> &'a wgpu::RenderPipeline {
+    pub(crate) const fn mask_clear(self) -> &'a Pipeline {
         self.fmt.quad.mask_clear()
     }
 }

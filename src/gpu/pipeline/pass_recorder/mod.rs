@@ -1,6 +1,7 @@
 //! A main pass and what it has bound, so each draw sets only the state that changed.
 
 use crate::gpu::debug_marker;
+use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::primitives::geometry::urect::URect;
 use std::ops::Range;
@@ -10,7 +11,8 @@ use std::ops::Range;
 /// testable on a recorder without a device.
 pub(crate) trait PassState {
     type Pipeline;
-    type Layout;
+    /// Compared by the object it names: two handles on one layout are one layout.
+    type Layout: PartialEq;
     type Group;
     type Buffer;
 
@@ -111,13 +113,14 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
         }
     }
 
-    /// Bind `pipeline`, built over `layout`, unless it is bound.
-    pub(crate) fn pipeline(&mut self, pipeline: &'a S::Pipeline, layout: &'a S::Layout) {
+    /// Bind `pipeline`, built over `layout`, unless it is bound, and push the viewport again when
+    /// the layout changes.
+    fn bind(&mut self, pipeline: &'a S::Pipeline, layout: &'a S::Layout) {
         if !same(self.pipeline, pipeline) {
             self.pass.set_pipeline(pipeline);
             self.pipeline = Some(pipeline);
         }
-        if !same(self.layout, layout) {
+        if self.layout != Some(layout) {
             self.pass.push_viewport(self.viewport);
             self.layout = Some(layout);
         }
@@ -185,6 +188,13 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
     /// The pass, for the calls that bind nothing a draw reads: timestamps and debug groups.
     pub(crate) const fn untracked(&mut self) -> &mut S {
         &mut self.pass
+    }
+}
+
+impl<'a> PassRecorder<'a> {
+    /// Bind `pipeline` over its own layout, unless it is bound.
+    pub(crate) fn pipeline(&mut self, pipeline: &'a Pipeline) {
+        self.bind(&pipeline.pipeline, &pipeline.layout);
     }
 }
 

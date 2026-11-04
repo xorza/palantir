@@ -13,13 +13,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::gpu::device::gpu::Gpu;
-#[cfg(test)]
-use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::requested_gpu::GpuRequest;
 #[cfg(test)]
 use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::error::GpuRequestError;
+#[cfg(test)]
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::surface::texel_readback::TexelReadback;

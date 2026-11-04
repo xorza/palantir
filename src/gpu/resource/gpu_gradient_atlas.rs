@@ -2,8 +2,9 @@
 //! and lent to the quad and curve pipelines.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::{GpuCtx, RowCopy};
+use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
@@ -35,18 +36,17 @@ pub(crate) struct GpuGradientAtlas {
 /// Allocates the LUT atlas texture at `rows` rows; shaders read the height via `textureDimensions`.
 /// It gives copies, so the texture that replaces it takes the rows it holds by a copy.
 fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
-    gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.gradient_atlas"),
-        size: texel::extent(UVec2::new(LUT_ROW_TEXELS as u32, rows)),
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba16Float,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    })
+    texel::texture_2d(
+        gpu,
+        TargetSpec {
+            label: "palantir.gradient_atlas",
+            size: UVec2::new(LUT_ROW_TEXELS as u32, rows),
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+        },
+    )
 }
 
 /// `runs`, each a range of `texture`'s rows whose bytes `bytes_of` gives, as one copy a run.

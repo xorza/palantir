@@ -49,8 +49,11 @@ impl<'a> GpuCtx<'a> {
     /// call on a lost device is.
     pub(crate) fn stage(&mut self, bytes: u64, alignment: u64) -> Option<Staged<'_>> {
         let size = wgpu::BufferSize::new(bytes)?;
-        let alignment =
-            wgpu::BufferSize::new(alignment).expect("a staging alignment is a power of two");
+        debug_assert!(
+            alignment.is_power_of_two(),
+            "a staging alignment is a power of two, not {alignment}"
+        );
+        let alignment = wgpu::BufferSize::new(alignment).expect("a power of two is not zero");
         let StagedBytes {
             view,
             buffer,
@@ -135,6 +138,10 @@ impl<'a> GpuCtx<'a> {
             offset.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
             "a buffer copy starts on a multiple of `COPY_BUFFER_ALIGNMENT`"
         );
+        debug_assert!(
+            bytes.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+            "a buffer copy is a multiple of `COPY_BUFFER_ALIGNMENT` long"
+        );
         let Staged {
             view,
             buffer,
@@ -187,7 +194,8 @@ pub(crate) struct Staged<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::device::gpu_ctx::RowCopy;
+    use crate::gpu::frame::gpu_ctx::RowCopy;
+    use crate::gpu::surface::owned_target::TargetSpec;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::texel;
     use glam::UVec2;
@@ -198,16 +206,15 @@ mod tests {
     #[test]
     fn copied_rows_land_at_their_rect_through_the_pitch() {
         let gpu = headless_test_gpu();
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("copy_rows"),
-            size: texel::extent(UVec2::new(4, 3)),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
-            usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let texture = texel::texture_2d(
+            &gpu,
+            TargetSpec {
+                label: "copy_rows",
+                size: UVec2::new(4, 3),
+                format: wgpu::TextureFormat::R8Unorm,
+                usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
+            },
+        );
         gpu.frame(|ctx| {
             ctx.copy_rows(
                 [

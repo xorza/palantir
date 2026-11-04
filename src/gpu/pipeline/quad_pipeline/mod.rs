@@ -8,19 +8,20 @@ pub(crate) mod quad_form;
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::clip_stencil;
+use crate::gpu::pipeline::format_pipelines::PassPipelines;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
-use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
+use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws, ShadowCells};
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
-use crate::gpu::pipeline::stencil_variant::{ClipStencil, StencilMode, StencilVariant};
+use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
-use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -32,147 +33,62 @@ use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::paint::spectrum_tables;
 use glam::Vec2;
 use std::mem::offset_of;
+use std::ops::Range;
 
-/// The labels of `draw`'s pipeline and its stencil-test twin.
-const fn draw_labels(draw: QuadDraw) -> (&'static str, &'static str) {
+/// The label of `draw`'s pipeline; its stencil-test twin takes it with `.stencil_test`.
+const fn draw_label(draw: QuadDraw) -> &'static str {
     match draw {
-        QuadDraw::Form(QuadForm::Solid) => (
-            "palantir.quad.pipeline.solid",
-            "palantir.quad.pipeline.solid.stencil_test",
-        ),
-        QuadDraw::Form(QuadForm::Gradient) => (
-            "palantir.quad.pipeline.gradient",
-            "palantir.quad.pipeline.gradient.stencil_test",
-        ),
-        QuadDraw::Form(QuadForm::Triangle) => (
-            "palantir.quad.pipeline.triangle",
-            "palantir.quad.pipeline.triangle.stencil_test",
-        ),
-        QuadDraw::Form(QuadForm::Backdrop) => (
-            "palantir.quad.pipeline.backdrop",
-            "palantir.quad.pipeline.backdrop.stencil_test",
-        ),
-        QuadDraw::Form(QuadForm::BackdropLens) => (
-            "palantir.quad.pipeline.backdrop_lens",
-            "palantir.quad.pipeline.backdrop_lens.stencil_test",
-        ),
-        QuadDraw::Form(QuadForm::BackdropSpectrum) => (
-            "palantir.quad.pipeline.backdrop_spectrum",
-            "palantir.quad.pipeline.backdrop_spectrum.stencil_test",
-        ),
-        QuadDraw::Shadow(ShadowEntry::General) => (
-            "palantir.quad.pipeline.shadow",
-            "palantir.quad.pipeline.shadow.stencil_test",
-        ),
-        QuadDraw::Shadow(ShadowEntry::Tables) => (
-            "palantir.quad.pipeline.shadow_tables",
-            "palantir.quad.pipeline.shadow_tables.stencil_test",
-        ),
-        QuadDraw::Shadow(ShadowEntry::TablesWide) => (
-            "palantir.quad.pipeline.shadow_tables_wide",
-            "palantir.quad.pipeline.shadow_tables_wide.stencil_test",
-        ),
+        QuadDraw::Form(QuadForm::Solid) => "palantir.quad.pipeline.solid",
+        QuadDraw::Form(QuadForm::Gradient) => "palantir.quad.pipeline.gradient",
+        QuadDraw::Form(QuadForm::Triangle) => "palantir.quad.pipeline.triangle",
+        QuadDraw::Form(QuadForm::Backdrop) => "palantir.quad.pipeline.backdrop",
+        QuadDraw::Form(QuadForm::BackdropLens) => "palantir.quad.pipeline.backdrop_lens",
+        QuadDraw::Form(QuadForm::BackdropSpectrum) => "palantir.quad.pipeline.backdrop_spectrum",
+        QuadDraw::Shadow(ShadowEntry::General) => "palantir.quad.pipeline.shadow",
+        QuadDraw::Shadow(ShadowEntry::Tables) => "palantir.quad.pipeline.shadow_tables",
+        QuadDraw::Shadow(ShadowEntry::TablesWide) => "palantir.quad.pipeline.shadow_tables_wide",
     }
 }
 
-/// Every quad pipeline one swapchain format needs: color per [`QuadForm`], shadows per edge form, and two stencil-writing mask variants.
+/// Every quad pipeline one swapchain format needs: one pair per [`QuadDraw`], a form of `fs` or
+/// a shadow's entry, and two stencil-writing mask variants.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
-    /// Color draws per [`QuadForm`], each the base and its stencil-test twin.
-    solid: StencilVariant,
-    gradient: StencilVariant,
-    triangle: StencilVariant,
-    /// Backdrop panes, `fs_backdrop` over [`QuadPipeline`]'s backdrop layout, and those of glass
-    /// of one index and of glass that spreads the spectrum.
-    backdrop: StencilVariant,
-    backdrop_lens: StencilVariant,
-    backdrop_spectrum: StencilVariant,
-    /// Drop and inset shadows, reading the baked cutouts ([`CutoutTables`]); apart from `fs` to keep the blur integral out of other quads.
-    shadow_general: StencilVariant,
-    /// Shadows whose every drawn corner reads a table (`fs_shadow_tables`).
-    shadow_tables: StencilVariant,
-    /// [`Self::shadow_tables`] with the series form of `filter_cdf`, for blurs from [`CutoutPlan::SERIES_MIN_SIGMA`] up.
-    shadow_tables_wide: StencilVariant,
+    /// Each draw's base and stencil-test twin, by [`QuadDraw::idx`]. The backdrop forms read
+    /// [`QuadPipeline`]'s backdrop layout; the shadows read the baked cutouts ([`CutoutTables`]),
+    /// apart from `fs` to keep the blur integral out of other quads.
+    draws: [StencilVariant; QuadDraw::ALL.len()],
     /// The stencil-writing masks, built on the first frame with a rounded clip.
-    mask_stamp: Option<wgpu::RenderPipeline>,
-    mask_clear: Option<wgpu::RenderPipeline>,
+    mask_stamp: Option<Pipeline>,
+    mask_clear: Option<Pipeline>,
 }
 
 impl QuadVariants {
     /// No pipeline built.
     pub(crate) const NONE: Self = Self {
-        solid: StencilVariant::NONE,
-        gradient: StencilVariant::NONE,
-        triangle: StencilVariant::NONE,
-        backdrop: StencilVariant::NONE,
-        backdrop_lens: StencilVariant::NONE,
-        backdrop_spectrum: StencilVariant::NONE,
-        shadow_general: StencilVariant::NONE,
-        shadow_tables: StencilVariant::NONE,
-        shadow_tables_wide: StencilVariant::NONE,
+        draws: [StencilVariant::NONE; QuadDraw::ALL.len()],
         mask_stamp: None,
         mask_clear: None,
     };
 
-    /// The pipelines a quad of `draw` draws through.
-    pub(crate) const fn of(&self, draw: QuadDraw) -> &StencilVariant {
-        match draw {
-            QuadDraw::Form(QuadForm::Solid) => &self.solid,
-            QuadDraw::Form(QuadForm::Gradient) => &self.gradient,
-            QuadDraw::Form(QuadForm::Triangle) => &self.triangle,
-            QuadDraw::Form(QuadForm::Backdrop) => &self.backdrop,
-            QuadDraw::Form(QuadForm::BackdropLens) => &self.backdrop_lens,
-            QuadDraw::Form(QuadForm::BackdropSpectrum) => &self.backdrop_spectrum,
-            QuadDraw::Shadow(ShadowEntry::Tables) => &self.shadow_tables,
-            QuadDraw::Shadow(ShadowEntry::TablesWide) => &self.shadow_tables_wide,
-            QuadDraw::Shadow(ShadowEntry::General) => &self.shadow_general,
-        }
-    }
-
-    const fn of_mut(&mut self, draw: QuadDraw) -> &mut StencilVariant {
-        match draw {
-            QuadDraw::Form(QuadForm::Solid) => &mut self.solid,
-            QuadDraw::Form(QuadForm::Gradient) => &mut self.gradient,
-            QuadDraw::Form(QuadForm::Triangle) => &mut self.triangle,
-            QuadDraw::Form(QuadForm::Backdrop) => &mut self.backdrop,
-            QuadDraw::Form(QuadForm::BackdropLens) => &mut self.backdrop_lens,
-            QuadDraw::Form(QuadForm::BackdropSpectrum) => &mut self.backdrop_spectrum,
-            QuadDraw::Shadow(ShadowEntry::Tables) => &mut self.shadow_tables,
-            QuadDraw::Shadow(ShadowEntry::TablesWide) => &mut self.shadow_tables_wide,
-            QuadDraw::Shadow(ShadowEntry::General) => &mut self.shadow_general,
-        }
+    /// The pipeline a quad of `draw` draws through in a pass of `stencil`, which the frame's
+    /// census built.
+    pub(crate) const fn select(&self, draw: QuadDraw, stencil: StencilMode) -> &Pipeline {
+        self.draws[draw.idx() as usize].select(stencil)
     }
 
     /// The mask that stamps a rounded clip into the stencil, which the frame's census built.
-    pub(crate) const fn mask_stamp(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn mask_stamp(&self) -> &Pipeline {
         self.mask_stamp
             .as_ref()
             .expect("a frame with a rounded clip builds its masks")
     }
 
     /// The mask that clears the stencil a stamp left, which the frame's census built.
-    pub(crate) const fn mask_clear(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn mask_clear(&self) -> &Pipeline {
         self.mask_clear
             .as_ref()
             .expect("a frame with a rounded clip builds its masks")
-    }
-}
-
-/// A format's quad pipelines for one pass: each draw picks its own, with the pass's stencil test.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct QuadPass<'a> {
-    variants: &'a QuadVariants,
-    stencil: StencilMode,
-}
-
-impl<'a> QuadPass<'a> {
-    pub(crate) const fn new(variants: &'a QuadVariants, stencil: StencilMode) -> Self {
-        Self { variants, stencil }
-    }
-
-    /// The pipeline a quad of `draw` draws through in this pass.
-    pub(crate) const fn pipeline(self, draw: QuadDraw) -> &'a wgpu::RenderPipeline {
-        self.variants.of(draw).select(self.stencil)
     }
 }
 
@@ -180,7 +96,7 @@ impl<'a> QuadPass<'a> {
 /// with the instance stream before any quad draw.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct QuadBinding<'a> {
-    pub(crate) pipeline: &'a wgpu::RenderPipeline,
+    pub(crate) pipeline: &'a Pipeline,
     pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
 }
 
@@ -188,34 +104,100 @@ impl<'a> QuadBinding<'a> {
     /// Bind the pipeline, the gradient group and `buffer` as the instance stream, for a pass of one
     /// draw, which has nothing bound to skip.
     pub(crate) fn bind(self, pass: &mut wgpu::RenderPass<'a>, buffer: &'a wgpu::Buffer) {
-        pass.set_pipeline(self.pipeline);
+        pass.set_pipeline(&self.pipeline.pipeline);
         pass.set_bind_group(0, self.gradient_bind_group, &[]);
         pass.set_vertex_buffer(0, buffer.slice(..));
     }
 
-    /// [`Self::bind`] over `layout` in the main pass, through `rec`, which skips what is bound.
-    fn bind_through(
-        self,
-        rec: &mut PassRecorder<'a>,
-        layout: &'a wgpu::PipelineLayout,
-        buffer: &'a wgpu::Buffer,
-    ) {
-        rec.pipeline(self.pipeline, layout);
+    /// [`Self::bind`] in the main pass, through `rec`, which skips what is bound.
+    fn bind_through(self, rec: &mut PassRecorder<'a>, buffer: &'a wgpu::Buffer) {
+        rec.pipeline(self.pipeline);
         rec.group(0, self.gradient_bind_group);
         rec.vertex(0, buffer);
     }
 }
 
-/// A run of quads of one [`QuadDraw`], the pass's pipelines it picks its own from, and the groups
-/// it reads.
+/// What every quad run of a pass reads: the pass's pipelines, of which a run picks its draw's,
+/// and the groups.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct QuadRun<'a> {
+pub(crate) struct QuadPass<'a> {
+    pub(crate) pipelines: PassPipelines<'a>,
+    pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
+    /// The frame's backdrop results, which a run of a backdrop form reads at group 2.
+    pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
+}
+
+/// A run of quads of one [`QuadDraw`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct QuadRun {
     pub(crate) draw: QuadDraw,
     pub(crate) instances: Span,
-    pub(crate) pipelines: QuadPass<'a>,
-    pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
-    /// The frame's backdrop results, which a run of [`QuadForm::Backdrop`] reads at group 2.
-    pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
+}
+
+/// What a frame draws through the quad pipeline besides its quads, laid out after them in the
+/// one instance stream, as each draws in a pass or step of its own. Refused: a buffer per kind,
+/// four in all, and a one-quad buffer that kept its quad across frames, so a frame that forgot
+/// its pre-clear drew the last one's.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct QuadExtras<'a> {
+    /// One quad per deduped rounded clip, stamped and cleared per mask.
+    pub(crate) masks: &'a [Quad],
+    /// The partial repaint's pre-clear, drawn first inside each damage scissor so `LoadOp::Load`
+    /// leaks no last-frame AA fringe.
+    pub(crate) clear: Option<Quad>,
+    /// The debug overlay's dim over what the frame keeps.
+    pub(crate) dim: Option<Quad>,
+    /// The debug overlay's damage outlines.
+    pub(crate) outlines: &'a [Quad],
+}
+
+/// Where the last upload put each of its [`QuadExtras`] in the instance stream.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ExtraSpans {
+    masks: Span,
+    clear: Option<u32>,
+    dim: Option<u32>,
+    outlines: Span,
+}
+
+impl ExtraSpans {
+    /// Lay `extras` into `tail`, which follows `base` quads in the stream, in a fixed order:
+    /// masks, clear, dim, outlines. An absent extra takes no instance and reads `None`.
+    fn lay(base: u32, extras: QuadExtras<'_>, tail: &mut Vec<Quad>) -> Self {
+        let QuadExtras {
+            masks,
+            clear,
+            dim,
+            outlines,
+        } = extras;
+        tail.clear();
+        let mut push = |items: &[Quad]| {
+            let span = Span::new(base + tail.len() as u32, items.len() as u32);
+            tail.extend_from_slice(items);
+            span
+        };
+        Self {
+            masks: push(masks),
+            clear: clear.map(|quad| push(&[quad]).start),
+            dim: dim.map(|quad| push(&[quad]).start),
+            outlines: push(outlines),
+        }
+    }
+}
+
+/// The partial repaint's pre-clear: full-viewport, opaque `color`, no stroke or rounding, so AA
+/// fringes blend over the clear color.
+pub(crate) fn pre_clear(viewport: Vec2, color: RgbaF16) -> Quad {
+    debug_assert!(
+        color.is_opaque(),
+        "a translucent pre-clear blends over last frame"
+    );
+    Quad {
+        rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
+        fill: color,
+        fill_kind: FillKind::SOLID.with_fast(),
+        ..Default::default()
+    }
 }
 
 /// Format-independent quad resources; per-format pipelines are [`QuadVariants`].
@@ -226,10 +208,10 @@ pub(crate) struct QuadPipeline {
     draws: Vec<QuadDraw>,
     /// The draws in [`Self::draws`].
     taken: QuadDraws,
-    /// Lazy buffer of one `Quad` per deduped rounded clip this frame; grows monotonically. `None` until the first stencil frame.
-    mask_buffer: Option<DynamicBuffer<Quad>>,
-    /// The partial-repaint pre-clear quad, drawn first inside the damage scissor so `LoadOp::Load` doesn't leak last frame's AA fringe.
-    clear: SingleQuadBuffer,
+    /// The frame's [`QuadExtras`], laid out after its quads in the instance buffer.
+    tail: Vec<Quad>,
+    /// Where the last upload put each extra.
+    extras: ExtraSpans,
     shader: wgpu::ShaderModule,
     /// Format-independent, so built once here rather than per format.
     pipeline_layout: wgpu::PipelineLayout,
@@ -240,8 +222,8 @@ pub(crate) struct QuadPipeline {
     backdrop_layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
-    /// Whether shadows draw as a grid of cells (`vs_shadow`). Off only in internals, which build the one-cell reference.
-    shadow_grid: bool,
+    /// How shadows draw (`vs_shadow`): [`ShadowCells::Whole`] only in internals, which build the one-cell reference.
+    shadow_cells: ShadowCells,
 }
 
 impl QuadPipeline {
@@ -250,53 +232,52 @@ impl QuadPipeline {
         label: "palantir.quad.shader",
         wgsl: include_str!("shader.wgsl"),
         includes: &[GRADIENT],
-        constants: shader_constants,
+        constants: SHADER_CONSTANTS,
     };
 
-    /// Upload the pre-clear quad: full-viewport, opaque `color`, no stroke or rounding, so AA fringes blend over the clear color.
-    pub(crate) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: RgbaF16) {
-        debug_assert!(
-            color.is_opaque(),
-            "a translucent pre-clear blends over last frame"
-        );
-        let q = Quad {
-            rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
-            fill: color,
-            fill_kind: FillKind::SOLID.with_fast(),
-            ..Default::default()
-        };
-        self.clear.upload(ctx, q);
-    }
-
-    /// Bind `binding` over the pre-clear quad. Under [`StencilMode::Test`], the test at reference 0 matches every pixel and leaves the stencil intact.
-    pub(crate) fn bind_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
-        debug_assert!(
-            self.clear.is_uploaded(),
-            "bind_clear without upload_clear this frame: the schedule's \
-             PreClear emit and submit's upload_clear guard have decorrelated"
-        );
+    /// Bind `binding` over the instance stream and draw the frame's pre-clear quad. Under
+    /// [`StencilMode::Test`], the test at reference 0 matches every pixel and leaves the stencil
+    /// intact.
+    pub(crate) fn draw_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
+        let at = self
+            .extras
+            .clear
+            .expect("a frame that pre-clears uploads its clear quad");
         // Sets no stencil reference: the schedule dedupes `SetStencilRef` assuming no draw arm sets one, and the ref is already 0.
-        binding.bind_through(rec, &self.pipeline_layout, self.clear.buffer());
+        binding.bind_through(rec, &self.instance_buffer.buffer);
+        rec.draw(0..4, at..at + 1);
     }
 
-    pub(crate) fn upload_masks(&mut self, ctx: &mut GpuCtx<'_>, masks: &[Quad]) {
-        if masks.is_empty() {
-            return;
-        }
-        let buf = self.mask_buffer.get_or_insert_with(|| {
-            DynamicBuffer::<Quad>::vertex(ctx.gpu, "palantir.quad.masks", 8)
-        });
-        buf.upload_instances(ctx, masks);
-    }
-
-    /// Bind a mask pipeline (stamp or clear) over the mask buffer; the caller sets `stencil_reference` per draw.
+    /// Bind a mask pipeline (stamp or clear) over the instance stream; the caller sets `stencil_reference` per draw.
     pub(crate) fn bind_mask<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
-        let buf = self.mask_buffer.as_ref().expect("upload_masks first");
-        binding.bind_through(rec, &self.pipeline_layout, &buf.buffer);
+        binding.bind_through(rec, &self.instance_buffer.buffer);
     }
 
+    /// Draw the frame's mask `mask_idx`, which [`QuadExtras::masks`] held.
     pub(crate) fn draw_mask(&self, rec: &mut PassRecorder<'_>, mask_idx: u32) {
-        rec.draw(0..4, mask_idx..mask_idx + 1);
+        let masks = self.extras.masks;
+        debug_assert!(mask_idx < masks.len, "mask {mask_idx} of {}", masks.len);
+        let at = masks.start + mask_idx;
+        rec.draw(0..4, at..at + 1);
+    }
+
+    /// The instance stream, the frame's quads and its extras.
+    pub(crate) const fn instances(&self) -> &wgpu::Buffer {
+        &self.instance_buffer.buffer
+    }
+
+    /// The instances of the frame's dim quad, which a frame that dims uploads.
+    pub(crate) const fn dim(&self) -> Range<u32> {
+        let at = self
+            .extras
+            .dim
+            .expect("a frame that dims uploads its dim quad");
+        at..at + 1
+    }
+
+    /// The instances of the frame's damage outlines.
+    pub(crate) const fn outlines(&self) -> Range<u32> {
+        self.extras.outlines.u32_range()
     }
 
     /// Build the format-independent quad resources; per-format pipelines come from [`Self::ensure_draw`] and [`Self::ensure_masks`].
@@ -314,8 +295,8 @@ impl QuadPipeline {
             instance_buffer,
             draws: Vec::new(),
             taken: QuadDraws::default(),
-            mask_buffer: None,
-            clear: SingleQuadBuffer::new(gpu, "palantir.quad.clear"),
+            tail: Vec::new(),
+            extras: ExtraSpans::default(),
             shader,
             // Gradient atlas at group 0. One layout serves all pipelines; stencil state and fragment entry are not part of it.
             pipeline_layout: pipeline_recipe::pipeline_layout(
@@ -334,7 +315,7 @@ impl QuadPipeline {
                 &[Some(textures.layout()), None, Some(backdrops)],
             ),
             cutouts,
-            shadow_grid: true,
+            shadow_cells: ShadowCells::Grid,
         }
     }
 
@@ -350,8 +331,8 @@ impl QuadPipeline {
     ) {
         let VariantTarget { format, mode } = target;
         let instance = [Some(INSTANCE_LAYOUT)];
-        let (label, stencil_label) = draw_labels(draw);
-        let variant = variants.of_mut(draw);
+        let label = draw_label(draw);
+        let variant = &mut variants.draws[draw.idx() as usize];
         match draw {
             QuadDraw::Form(form @ (QuadForm::Solid | QuadForm::Gradient | QuadForm::Triangle)) => {
                 variant.ensure(
@@ -363,7 +344,6 @@ impl QuadPipeline {
                         topology: wgpu::PrimitiveTopology::TriangleStrip,
                         ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
                     },
-                    stencil_label,
                 );
             }
             QuadDraw::Form(
@@ -385,7 +365,6 @@ impl QuadPipeline {
                         topology: wgpu::PrimitiveTopology::TriangleStrip,
                         ..PipelineRecipe::color(label, &self.shader, &self.backdrop_layout, format)
                     },
-                    stencil_label,
                 );
             }
             QuadDraw::Shadow(entry) => {
@@ -401,13 +380,15 @@ impl QuadPipeline {
                         vertex_entry: "vs_shadow",
                         fragment_entry,
                         constants: &[
-                            ("SHADOW_GRID", f64::from(u8::from(self.shadow_grid))),
+                            (
+                                "SHADOW_GRID",
+                                f64::from(u8::from(self.shadow_cells == ShadowCells::Grid)),
+                            ),
                             ("TABLES_SERIES", f64::from(u8::from(series))),
                         ],
                         vertex_buffers: &[Some(INSTANCE_LAYOUT), Some(CutoutTables::CORNER_LAYOUT)],
                         ..PipelineRecipe::color(label, &self.shader, &self.shadow_layout, format)
                     },
-                    stencil_label,
                 );
             }
         }
@@ -423,7 +404,7 @@ impl QuadPipeline {
         let instance = [Some(INSTANCE_LAYOUT)];
         // The mask pair writes stencil only: `fs_mask` discards outside the SDF, color writes are
         // off, the blend is inert.
-        let mask = |label: &'static str, depth_stencil: wgpu::DepthStencilState| {
+        let mask = |label: &'static str, depth_stencil: wgpu::DepthStencilState| -> Pipeline {
             PipelineRecipe {
                 vertex_buffers: &instance,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -438,21 +419,29 @@ impl QuadPipeline {
         variants.mask_stamp.get_or_insert_with(|| {
             mask(
                 "palantir.quad.pipeline.mask_stamp",
-                ClipStencil::stamp_state(),
+                clip_stencil::stamp_state(),
             )
         });
         variants.mask_clear.get_or_insert_with(|| {
             mask(
                 "palantir.quad.pipeline.mask_clear",
-                ClipStencil::clear_state(),
+                clip_stencil::clear_state(),
             )
         });
     }
 
-    /// Upload the frame's quads, and work out the draw each takes under `cutouts`.
-    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad], cutouts: &CutoutPlan) {
-        self.instance_buffer.upload_instances(ctx, quads);
-        self.taken = quad_draw::fill(&mut self.draws, quads, cutouts.entries(), self.shadow_grid);
+    /// Upload the frame's quads and, after them, its `extras`, and work out the draw each quad
+    /// takes under `cutouts`.
+    pub(crate) fn upload(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        quads: &[Quad],
+        cutouts: &CutoutPlan,
+        extras: QuadExtras<'_>,
+    ) {
+        self.extras = ExtraSpans::lay(quads.len() as u32, extras, &mut self.tail);
+        self.instance_buffer.upload_parts(ctx, &[quads, &self.tail]);
+        self.taken = quad_draw::fill(&mut self.draws, quads, cutouts.entries(), self.shadow_cells);
     }
 
     /// The draws the last uploaded frame's quads take.
@@ -480,37 +469,33 @@ impl QuadPipeline {
     /// reads, and draw it:
     /// a shadow reads the cutout tables and draws the eight cells around its hole, a backdrop pane
     /// reads the frame's results.
-    pub(crate) fn draw_run<'a>(&'a self, rec: &mut PassRecorder<'a>, run: QuadRun<'a>) {
-        let QuadRun {
-            draw,
-            instances,
-            pipelines,
-            gradient_bind_group,
-            backdrops,
-        } = run;
+    pub(crate) fn draw_run<'a>(
+        &'a self,
+        rec: &mut PassRecorder<'a>,
+        pass: QuadPass<'a>,
+        run: QuadRun,
+    ) {
+        let QuadRun { draw, instances } = run;
         if instances.len == 0 {
             return;
         }
-        let binding = QuadBinding {
-            pipeline: pipelines.pipeline(draw),
-            gradient_bind_group,
-        };
-        let buffer = &self.instance_buffer.buffer;
+        QuadBinding {
+            pipeline: pass.pipelines.quad(draw),
+            gradient_bind_group: pass.gradient_bind_group,
+        }
+        .bind_through(rec, &self.instance_buffer.buffer);
         match draw {
             QuadDraw::Form(
                 QuadForm::Backdrop | QuadForm::BackdropLens | QuadForm::BackdropSpectrum,
             ) => {
-                binding.bind_through(rec, &self.backdrop_layout, buffer);
-                let backdrops = backdrops.expect("a frame that draws a pane prepared its results");
+                let backdrops = pass
+                    .backdrops
+                    .expect("a frame that draws a pane prepared its results");
                 rec.group(2, backdrops);
                 rec.draw(0..4, instances.u32_range());
             }
-            QuadDraw::Form(_) => {
-                binding.bind_through(rec, &self.pipeline_layout, buffer);
-                rec.draw(0..4, instances.u32_range());
-            }
+            QuadDraw::Form(_) => rec.draw(0..4, instances.u32_range()),
             QuadDraw::Shadow(_) => {
-                binding.bind_through(rec, &self.shadow_layout, buffer);
                 self.cutouts.bind(rec);
                 rec.draw(0..SHADOW_GRID_VERTICES, instances.u32_range());
             }
@@ -558,55 +543,63 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 );
 
 /// The numbers [`QuadPipeline::SHADER`] takes from the Rust types that own them.
-fn shader_constants() -> Vec<ShaderConstant> {
-    vec![
-        ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
-        ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
-        ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
-        ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
-        ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
-        ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
-        ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
-        ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
-        ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
-        ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
-        ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
-        ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
-        ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
-        ShaderConstant::uint("QUAD_FORM_BACKDROP_LENS", QuadForm::BackdropLens as u32),
-        ShaderConstant::uint(
-            "QUAD_FORM_BACKDROP_SPECTRUM",
-            QuadForm::BackdropSpectrum as u32,
-        ),
-        // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
-        ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
-        ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
-        ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeometry::REACH_SIGMAS),
-        ShaderConstant::float("CUTOUT_MIN_SIGMA", CutoutPlan::MIN_SIGMA),
-        ShaderConstant::float("FILTER_SERIES_MIN_SIGMA", CutoutPlan::SERIES_MIN_SIGMA),
-        ShaderConstant::float("CUTOUT_TEXELS_PER_SIGMA", CutoutPlan::TEXELS_PER_SIGMA),
-        ShaderConstant::float("CUTOUT_ATLAS_SIZE", CutoutPlan::ATLAS_SIZE as f32),
-        ShaderConstant::uint("CUTOUT_CELL", CutoutPlan::CELL),
-        ShaderConstant::uint("NO_CUTOUT_TABLE", CutoutPlan::NONE),
-        ShaderConstant::uint("CUTOUT_NODES", CutoutPlan::SHADED_NODES),
-        ShaderConstant::uint("CUTOUT_BAKE_NODES", CutoutPlan::BAKED_NODES),
-        ShaderConstant::float("LINE_D", lens_optics::LINE_D),
-        ShaderConstant::float("LINE_F", lens_optics::LINE_F),
-        ShaderConstant::float("LINE_C", lens_optics::LINE_C),
-        ShaderConstant::float("SPECTRUM_RED", spectrum_tables::SPECTRUM_RED),
-        ShaderConstant::float("SPECTRUM_VIOLET", spectrum_tables::SPECTRUM_VIOLET),
-        ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
-    ]
-}
+const SHADER_CONSTANTS: &[ShaderConstant] = &[
+    ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
+    ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
+    ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
+    ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
+    ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
+    ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
+    ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
+    ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
+    ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
+    ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
+    ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
+    ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
+    ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
+    ShaderConstant::uint("QUAD_FORM_BACKDROP_LENS", QuadForm::BackdropLens as u32),
+    ShaderConstant::uint(
+        "QUAD_FORM_BACKDROP_SPECTRUM",
+        QuadForm::BackdropSpectrum as u32,
+    ),
+    // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
+    ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
+    ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
+    ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeometry::REACH_SIGMAS),
+    ShaderConstant::float("CUTOUT_MIN_SIGMA", CutoutPlan::MIN_SIGMA),
+    ShaderConstant::float("FILTER_SERIES_MIN_SIGMA", CutoutPlan::SERIES_MIN_SIGMA),
+    ShaderConstant::float("CUTOUT_TEXELS_PER_SIGMA", CutoutPlan::TEXELS_PER_SIGMA),
+    ShaderConstant::float("CUTOUT_ATLAS_SIZE", CutoutPlan::ATLAS_SIZE as f32),
+    ShaderConstant::uint("CUTOUT_CELL", CutoutPlan::CELL),
+    ShaderConstant::uint("NO_CUTOUT_TABLE", CutoutPlan::NONE),
+    ShaderConstant::uint("CUTOUT_NODES", CutoutPlan::SHADED_NODES),
+    ShaderConstant::uint("CUTOUT_BAKE_NODES", CutoutPlan::BAKED_NODES),
+    ShaderConstant::float("LINE_D", lens_optics::LINE_D),
+    ShaderConstant::float("LINE_F", lens_optics::LINE_F),
+    ShaderConstant::float("LINE_C", lens_optics::LINE_C),
+    ShaderConstant::float("SPECTRUM_RED", spectrum_tables::SPECTRUM_RED),
+    ShaderConstant::float("SPECTRUM_VIOLET", spectrum_tables::SPECTRUM_VIOLET),
+    ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
+];
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
     #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::QuadVariants;
+    #[cfg(test)]
+    use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
+    use crate::gpu::pipeline::quad_pipeline::quad_draw::ShadowCells;
+    #[cfg(test)]
+    use crate::gpu::pipeline::stencil_variant::StencilMode;
 
     #[cfg(test)]
     impl QuadVariants {
+        /// Whether the half of `draw`'s pipelines a pass of `mode` binds is built.
+        pub(crate) const fn is_built(&self, draw: QuadDraw, mode: StencilMode) -> bool {
+            self.draws[draw.idx() as usize].is_built(mode)
+        }
+
         /// Whether the stencil-writing masks are built.
         pub(crate) const fn has_masks(&self) -> bool {
             self.mask_stamp.is_some() && self.mask_clear.is_some()
@@ -622,7 +615,54 @@ pub(crate) mod internals {
 
         /// Draw every shadow as one cell of the full form, the reference the grid is compared with. Affects variants built afterwards.
         pub(crate) const fn disable_shadow_grid(&mut self) {
-            self.shadow_grid = false;
+            self.shadow_cells = ShadowCells::Whole;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::common::span::Span;
+    use crate::gpu::pipeline::quad_pipeline::{ExtraSpans, QuadExtras};
+    use crate::primitives::geometry::rect::Rect;
+    use crate::renderer::quad::Quad;
+
+    /// The extras follow the frame's 3 quads in order: masks at 3 and 4, the clear at 5, the
+    /// outline at 6; no dim takes no instance. A frame with none lays nothing and its clear reads
+    /// `None`, so a pre-clear it forgot cannot draw the last frame's.
+    #[test]
+    fn extras_follow_the_quads_in_order() {
+        let quad = |x: f32| Quad {
+            rect: Rect::new(x, 0.0, 1.0, 1.0),
+            ..Default::default()
+        };
+        let mut tail = Vec::new();
+        let spans = ExtraSpans::lay(
+            3,
+            QuadExtras {
+                masks: &[quad(1.0), quad(2.0)],
+                clear: Some(quad(3.0)),
+                dim: None,
+                outlines: &[quad(4.0)],
+            },
+            &mut tail,
+        );
+        assert_eq!(
+            spans,
+            ExtraSpans {
+                masks: Span::new(3, 2),
+                clear: Some(5),
+                dim: None,
+                outlines: Span::new(6, 1),
+            }
+        );
+        assert_eq!(
+            tail.iter().map(|q| q.rect.min.x).collect::<Vec<_>>(),
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        let spans = ExtraSpans::lay(3, QuadExtras::default(), &mut tail);
+        assert!(tail.is_empty());
+        assert_eq!(spans.clear, None);
+        assert_eq!(spans.masks.len, 0);
     }
 }

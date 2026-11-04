@@ -82,8 +82,7 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
             .backend()
             .format_pipelines(TargetFormat::RGBA8_SRGB)
             .quad
-            .of(draw)
-            .is_built(mode)
+            .is_built(draw, mode)
     };
     let masks = |host: &OffscreenHost| {
         host.core

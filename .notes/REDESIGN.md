@@ -69,7 +69,7 @@ Each resource has its own copy of a shared rule:
 ### R4. Bools and Options where an enum would hold the invariant
 
 - **Frame shape:** `FrameShape` holds four bools, and `submit` takes its resources back out
-  of `Option`s with `expect`/`unreachable!` (GA-05, GA-08).
+  of `Option`s with `expect`/`unreachable!` (GA-05, GA-08) ✔.
 - **Overlay spec:** `OverlaySpec` asserts a link between `Backdrop` and `ClickOutside` at run
   time (UI-09).
 - **Mixed states:**
@@ -78,7 +78,7 @@ Each resource has its own copy of a shared rule:
   - `TabDrag { tab: Option, target: Option }` (WG-18).
   - `HostCore` holds `Option<DeviceHalf>` (HS-08).
 - **Pairs that must agree:** a pipeline and its layout (GB-07), a depth used as a stencil mask
-  (GB-18), and a UV width that the atlas budget does not set (GB-19).
+  (GB-18), and a UV width that the atlas budget does not set (GB-19) ✔.
 
 ### R5. Change detection and scheduling watch inputs, not results
 
@@ -119,7 +119,7 @@ and some `Result` paths panic:
 
 - `CutoutPlan` is per window but packs into the shared `CutoutTables` atlas, so two windows
   thrash (GB-03).
-- `SingleQuadBuffer::is_uploaded` stays true after frame 1 (GB-05).
+- `SingleQuadBuffer::is_uploaded` stays true after frame 1 ✔ (GB-05).
 - The blur expiry clock counts prepares from every window, so it expires N times too fast
   (GB-23).
 - The gradient-atlas epoch across windows is not verified.
@@ -142,14 +142,14 @@ and some `Result` paths panic:
 | Text editing | No goal column (WG-02). Triple-click selects all in multi-line (WG-03) ✔. No Ctrl+Y (WG-19). Undo groups with no bound (WG-20). |
 | Keyboard | Scroll takes no keys and does not reveal focus (WG-06). Menubar Down/Up do nothing (WG-07). Radio groups (WG-08). Shift+Space is swallowed (UI-21). |
 | Pointer | Tooltip does not hide on a press or Escape (WG-05). Splitter drops the grab offset (WG-21). Dock shows a drop it refuses (WG-04). |
-| Platform | Wayland clipboard (HS-15). Tiler detection on DXGI and GLES (GA-01). |
+| Platform | Wayland clipboard (HS-15). Tiler detection on DXGI and GLES (GA-01) ✔. |
 
 ### R11. Test seams in production state
 
 - `PaneWalk.on` ✔ (RD-04).
-- `shadow_grid: bool` (GB-20).
-- `#[cfg(test)]` stencil usage (GA-07).
-- `WgpuBackend.pass_traffic` mirror (GA-11).
+- `shadow_grid: bool` ✔ (GB-20).
+- `#[cfg(test)]` stencil usage ✔ (GA-07).
+- `WgpuBackend.pass_traffic` mirror ✔ (GA-11).
 - The payload IR, whose second consumer is only for tests (RD-07).
 
 ## Decisions in AGENTS.md the reviewers dispute
@@ -182,42 +182,13 @@ What Batch 6 left: a radio group with one Tab stop whose arrow keys move focus a
 together, as the APG radio group does. It needs a group container or `arrow_focus` that writes
 the pick, which is new public surface (WG-08).
 
-### Batch 9. GPU frame plan as types (`wgpu_backend`, `gpu/frame`, `gpu/pipeline`, `gpu/raster`)
+### Batch 9b. GPU public surface (`gpu`) **API**
 
-Root causes R4 and R11. Internal only.
+What Batch 9 left, as each changes the public surface:
 
-- Make one `FrameTarget` enum (`Direct`, `Backbuffer`, `Canvas`) that carries its resources.
-  Derive the pass plan from it. `RenderStream` fields become private, with a
-  `mark_painted(route)` call (GA-05, GA-08, GA-21).
-- `PipelineRecipe::build` returns `Pipeline { pipeline, layout }`. Store `QuadVariants` as an
-  array indexed by `QuadDraw`. Derive the stencil label (GB-07, GB-08, GB-09).
-- `RasterAtlas` exposes operations, not fields: `touch_slot` and `RasterPass::push` (GB-04,
-  GB-27).
-- Put the clear quad and the masks in the quad stream as spans, and delete
-  `SingleQuadBuffer`, whose `is_uploaded` stays true past the first frame, so its
-  `bind_clear` assert catches no missed upload (GB-05, GB-06).
-- Merge or remove: `BoundSides`/`SidesLayout`, one sampler and one `texture_entry`,
-  `ClipStencil`, static shader constants, `capture_blit` into `pipelines[fmt].blit`, one
-  readback classifier, one 2D texture helper (GB-13, GB-14, GB-25, GB-26, GA-09, GA-10,
-  GA-19).
-- Remove the test seams: `shadow_grid`, the `#[cfg(test)]` stencil usage, the `pass_traffic`
-  mirror (GB-20, GA-07, GA-11).
-- Small fixes:
-  - Bound `wait_until` by `WAIT_TIMEOUT` (GA-02).
-  - Clear `MapState` on unmap (GA-12).
-  - Use the full stencil mask (GB-18).
-  - Make the UV-width check a release assert (GB-19).
-  - Reset `painted` on resize (GB-24).
-  - Tiler detection falls back to the adapter name (GA-01).
-  - `create_filled_buffer` takes the label, size and usage (GA-13).
-  - Add `From` for the errors (GA-16).
-  - Fix the two false doc reasons (GA-15).
-  - An `OwnedTarget` keeps its view, so an offscreen frame makes no view (GA-17).
-- Add tests: the content after a `DynamicBuffer` grows, and a shared backend with two windows
-  (GB-28).
-- Move the module placement: the contexts go beside `GpuPaint` and `GpuCtx` goes to `frame`
-  (GA-18). The device and queue get one access path (GA-22). `TextureBinding` is created with
-  the device (GB-17).
+- Add `From` for `GpuRequestError`'s sources, so `?` converts (GA-16).
+- An `OwnedTarget` keeps its view, so an offscreen frame makes no view; `RenderTarget` is public
+  (GA-17).
 
 ### Batch 10. Authoring surface and the overlay protocol (`widget_core`, `widgets`, `theme`) **API**
 
@@ -354,7 +325,7 @@ Prefixes:
 | Batch | Findings |
 |---|---|
 | 6b | WG-08 |
-| 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-05, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |
+| 9b | GA-16, GA-17 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11 | HS-05 to HS-09, HS-23, HS-11 to HS-13, HS-15, HS-17 to HS-20, HS-24 to HS-26 |
 | 12 | LT-02, LT-03, LT-06, LT-07, LT-08, LT-11 to LT-13, LT-15 to LT-20 |
@@ -378,81 +349,7 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Direction:** add a group container, or make a focused radio's arrow keys write the neighbouring value. This needs a group notion.
 - Confidence: high on behavior, medium on direction · public API change: likely · root cause: no group abstraction for discrete picks.
 
-### Batch 9
-
-**GA-01 — bug — `device/pass_traffic.rs:20-35`**
-- **What:** `PassTraffic::of` reads only `info.vendor` against `WHOLE_TARGET_VENDORS = [ARM, IMAGINATION, QUALCOMM(0x5143), BROADCOM]`.
-  - wgpu-hal DX12 passes `desc.VendorId` through raw (`dx12/adapter.rs:194`). DXGI reports Qualcomm as `0x4D4F4351` ("QCOM"; ANGLE has a separate `kVendorID_Qualcomm_DXGI` for it — that value is from memory).
-  - wgpu-hal GLES derives the vendor id by substring of the GL vendor string (`gles/adapter.rs:166-185`). Mesa drivers report "Mesa" or "freedreno", which map to `0x10005` or `0`. "Imagination Technologies" contains no "imgtec", so it maps to `0`.
-- **Why it matters:** Snapdragon on Windows, and Mali/Adreno/PowerVR under GL, are read as `Drawn`. On those devices a partial frame then loads and stores the whole target, which the doc puts at 3.8 ms against 32 µs.
-- **Direction:** Add the DXGI Qualcomm id, and fall back to `info.name` (Mali/Adreno/PowerVR/V3D) when the vendor id is `0` or Mesa's. Add test rows for both. `backdrop_blur`'s use of `vendor::BROADCOM` has the same hole.
-- **Confidence:** med · **Public API:** no · **Root cause:** a device fact inferred from one field that backends fill differently.
-
-**GA-02 — bug — `device/gpu.rs:201`**
-- **What:** `while !landed() { if self.is_lost() { return DeviceLost } thread::yield_now(); }` has no bound after the drain.
-- **Why it matters:** A predicate that can never hold on a healthy device spins one core at 100% forever. Examples: a caller waiting on a map it never started, or a work-done callback not yet registered. This breaks "everything has a bound"; `WAIT_TIMEOUT` already exists for exactly this.
-- **Direction:** Bound the spin by the remainder of `WAIT_TIMEOUT` and return `GpuWait::TimedOut`.
-- **Confidence:** med · **Public API:** no · **Root cause:** the bound covers the device wait but not the callback wait.
-
-**GA-05 — complexity — `wgpu_backend/mod.rs:367-592`, `frame/frame_passes/mod.rs:41-60`**
-- **What:** `submit` threads seven per-frame bundles: `Submission`, `FrameUpload`, `FrameShape`, `FrameDraw`, `MainPass`, `SegmentPass`, `DrawCtx`.
-  - Fields repeat across them: clear (3×), route (2×), `dims_undamaged` (2×), scissors (2×).
-  - `FrameShape` is four bools. `canvas ⇒ partial ∧ ViaBackbuffer ∧ ¬dims` is guarded only by `debug_assert` (frame_passes ~64).
-  - The steps then pull resources back out of `Option`s: `canvas.map(|_| stream.canvas().expect(..))`, `backbuffer.expect(..)`, `surface_view.expect(..)`, and `let (Some(canvas), Some(bb), Partial(rects)) = … else { unreachable!(…) }` (`mod.rs:560`).
-- **Why it matters:** Illegal frame shapes are representable, and every new path adds another `expect`.
-- **Direction:** Build one `FrameTarget` enum once — `Direct { view }`, `Backbuffer { bb }`, `Canvas { canvas, bb, origin, rects }` — carrying its resources. Derive the pass plan from it, and have each step read its own data.
-- **Confidence:** high · **Public API:** no · **Root cause:** frame shape stored as bools plus `Option`s, then re-checked at each use.
-
-**GA-07 — test — `surface/stencil/mod.rs:36-37`**
-- **What:** `#[cfg(test)] let usage = usage | COPY_SRC;` — production code gets a different usage only in test builds.
-- **Why it matters:** `a_stencil_on_memory_buffers_held_clears_to_zero` guards an NVIDIA memory-layout bug, but tests a texture made with a different descriptor than production's, and usage flags can change a driver's image layout. It is also a mid-file gate where a test-side route exists.
-- **Direction:** Check the clear without reading the stencil: draw a full-target quad with stencil test `Equal 0` into a color target, then read the color back.
-- **Confidence:** high on the fact, med on the impact · **Public API:** no · **Root cause:** a test seam that changes production state.
-
-**GA-08 — layering — `wgpu_backend/render_stream.rs:27-43`**
-- **What:** `backbuffer`, `blur_source`, `backbuffer_fresh`, `stencil` and `timings` are `pub(super)` and poked directly by the backend, beside `ensure_*`, `canvas()` and `invalidate()` methods.
-  - `stream.backbuffer.as_ref().expect(..)` appears four times (`mod.rs` ~459, 672, 985, 1006).
-  - `backbuffer_fresh` is set by the backend (`mod.rs:384`) and read by the host driver.
-- **Why it matters:** There are two routes to the same state, and no single owner of the "backbuffer holds the target" invariant.
-- **Direction:** Make the fields private. Give `RenderStream` methods that return the frame's resources (this ties in with GA-05) and a `mark_painted(route)` call.
-- **Confidence:** high · **Public API:** no · **Root cause:** no single owner of per-stream frame state.
-
-**GA-09 — complexity — `wgpu_backend/mod.rs:136,1010-1015`**
-- **What:** `capture_blit: Option<RenderPipeline>` is a lazily built blit into `Rgba8UnormSrgb`, beside `pipelines: FxHashMap<TargetFormat, FormatPipelines>`, each of which already holds a `blit` for its format.
-- **Why it matters:** Two caches of the same pipeline kind. When an `RGBA8_SRGB` set exists, the pipeline is built twice.
-- **Direction:** Look the blit up as `pipelines[RGBA8_SRGB].blit` (prepare that format on demand), or keep one blit map keyed by format.
-- **Confidence:** high · **Public API:** no · **Root cause:** two caches keyed by format.
-
-**GA-10 — complexity — `surface/capture.rs:106-109`, `surface/owned_target/mod.rs:163-174`, `test_gpu.rs` `read_texture`**
-- **What:** The BGRA check `matches!(format, Bgra8UnormSrgb | Bgra8Unorm)` and the `swap_bgra` call are written twice. `OwnedTarget::read_back` and `read_texture` each build a new `TexelReadback` (a new staging buffer) per call, while `copy_texels` caches one.
-- **Direction:** Have one function classify a format as copy-as-is, swap-BGRA or needs-blit; `needs_blit` already half does this. Route `read_back` through the cached readback.
-- **Confidence:** high · **Public API:** no · **Root cause:** parallel readback paths.
-
-**GA-11 — complexity — `surface/texel_readback.rs:16`, `surface/staging.rs:16`, `wgpu_backend/mod.rs:150,1143`**
-- **What:** Stored state that can be derived:
-  - `TexelReadback.size` duplicates `Staging.size`.
-  - `Staging.row` equals `size.x * texel`.
-  - `WgpuBackend.pass_traffic` copies `gpu.pass_traffic()` only so `paint_as` (test-only) can override it.
-- **Direction:** Drop the copies. Put the test override on the value `Gpu` hands out (or behind an internals constructor), not on a mirrored field.
-- **Confidence:** high · **Public API:** no · **Root cause:** state duplicated for convenience or a test seam.
-
-**GA-12 — bug (latent) — `surface/staging.rs:74-89`**
-- **What:** `unpad_into` unmaps the buffer but leaves `MapState` at `MAPPED`, so `is_mapped()` reads true on an unmapped buffer until the next `map_read` bumps the generation. `TexelReadback` is reused across reads, so the stale state persists between reads.
-- **Direction:** Call `self.map.clear()` after `unmap`, as the query tracer clears its states.
-- **Confidence:** high · **Public API:** no · **Root cause:** map state and buffer state updated in different places.
-
-**GA-13 — idiom — `device/gpu.rs:92-112`**
-- **What:** `create_filled_buffer(&self, desc: &wgpu::BufferDescriptor, bytes)` documents that `desc.mapped_at_creation` is ignored.
-- **Why it matters:** The parameter carries a field the function overrides, so a caller must know it.
-- **Direction:** Take `label`, `usage` and `size` (or a small struct without the flag).
-- **Confidence:** high · **Public API:** no · **Root cause:** a borrowed foreign type wider than the contract.
-
-**GA-15 — doc bug — `device/device_requirements.rs:37-38`, `surface/surface_manager/mod.rs:252-254`**
-- **What:** Two doc comments state reasons that are false:
-  - `GPU_TIMING_FEATURES` says "Every caller must ask for this same set, or the backend reads a bit nobody requested". The backend reads `device.features()`, which holds only granted bits.
-  - `vsync_of` is "Total … because a surface reports the mode it resolved to". The config is never read back from the surface; it only ever holds `AutoVsync`/`AutoNoVsync`.
-- **Direction:** Rewrite both reasons to match the code.
-- **Confidence:** high · **Public API:** doc only · **Root cause:** doc drift.
+### Batch 9b
 
 **GA-16 — idiom — `device/requested_gpu.rs:110,132,155`**
 - **What:** Three `.map_err(|source| GpuRequestError::X { source })` calls where `From` impls would let `?` convert. The source types are distinct, so `From` is unambiguous. `SurfaceStartError` already does it this way.
@@ -464,123 +361,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Why it matters:** This is unavoidable for a swapchain image, but an `OwnedTarget` an offscreen host renders into every frame could hold its view. That makes it a per-frame allocation the posture forbids.
 - **Direction:** Let `RenderTarget` optionally carry a view its owner keeps; the swapchain path keeps making one per frame.
 - **Confidence:** med · **Public API:** possibly (`RenderTarget` is public) · **Root cause:** the target type erases whether its owner can keep things.
-
-**GA-18 — layering — `device/gpu_ctx.rs`, `device/gpu_frame_ctx.rs`, `device/gpu_init_ctx.rs`**
-- **What:** `device/` ("opening the device") also holds the per-frame upload context (`GpuCtx`, belt plus encoder) and `GpuPaint`'s two contexts, while the trait itself lives in `gpu_paint/`.
-- **Direction:** Move `GpuFrameCtx`/`GpuInitCtx` beside `GpuPaint`, and `GpuCtx` to `frame/` or `resource/`.
-- **Confidence:** high · **Public API:** no (`lib.rs` paths only) · **Root cause:** `device` used as a catch-all.
-
-**GA-19 — complexity — `surface/{backbuffer,damage_canvas,owned_target,capture}.rs`, `surface/stencil/mod.rs`**
-- **What:**
-  - The 2D single-sample `TextureDescriptor` is written out 6 times.
-  - `DamageCanvas::copy_into` builds `Origin3d` by hand twice (lines 82, 92) beside `texel::origin`.
-  - Three spellings of "matches size/format": `Backbuffer::describes`, `DamageCanvas::fits`, `Stencil::fits`.
-- **Direction:** Add one `texel::texture_2d(gpu, label, size, format, usage)` helper, use `texel::origin`, and pick one name for the match check.
-- **Confidence:** high · **Public API:** no · **Root cause:** helper not extracted.
-
-**GA-20 — idiom — `device/gpu_ctx.rs:40,54-63`**
-- **What:** `BufferSize::new(alignment).expect("a staging alignment is a power of two")` checks non-zero, not power of two; the belt asserts that itself. `write_view` debug-asserts that the offset is aligned but not the length, which `copy_buffer_to_buffer` also requires.
-- **Direction:** Fix the message and add the length assert.
-- **Confidence:** high · **Public API:** no · **Root cause:** the asserts do not match the contract the doc states.
-
-**GA-21 — complexity — `frame/submission.rs:56,84`**
-- **What:** `Submission` has a field `clear: RgbaF32` (the plan's clear) and a method `clear() -> RgbaF16` (the override, made opaque). One name holds two values of different types.
-- **Direction:** Rename the field `plan_clear`, or resolve the clear once where the `Submission` is built.
-- **Confidence:** high · **Public API:** no · **Root cause:** a raw value and its derived form share a name.
-
-**GA-22 — complexity — `device/gpu.rs` fields vs. accessors**
-- **What:** `pub(crate) device` / `queue` fields sit beside `pub const fn device()` / `queue()`. The crate uses the fields in about 62 places and the accessors in 2.
-- **Direction:** Pick one spelling inside the crate. The fields are fine; then the accessors exist only for the public surface.
-- **Confidence:** high · **Public API:** no · **Root cause:** two routes to one handle.
-
-**GB-04 · layering/complexity · `raster/text_backend/encode/cache/mod.rs:150-161`, `encode/encoder.rs:102-108`, `icon_backend/mod.rs:70-78`, `raster_atlas/mod.rs:97,102,110`** · conf high · API no
-- **What's wrong:** the tenants reach into the atlas's internals. `EncodedCache::emit_cached` does `let slot = &mut pass.atlas.slots[..]; ... slot.last_use = cur_frame;`, a second way to stamp beside `RasterAtlas::touch`. The text and icon code push into `pass.instances` and read `pass.atlas.cur_frame`. `slots`, `cache` and `cur_frame` are `pub(super)` fields.
-- **Why it matters:** the eviction clock's invariant ("drawn this frame is never evicted") is written in three places.
-- **Direction:** add `RasterAtlas::touch_slot(idx, generation) -> Option<SlotPlacement>` (check the generation, stamp, return the placement) and `RasterPass::push(quad)`; make the fields private.
-- **Root cause:** RasterAtlas exposes its fields instead of operations.
-
-**GB-05 · bug (assert) · `resource/single_quad_buffer/mod.rs:38-40`, `quad_pipeline/mod.rs:183-189`** · conf high · API no
-- **What's wrong:** `is_uploaded()` is `self.held.is_some()`, which stays true forever after the first frame. `bind_clear`'s `debug_assert!(self.clear.is_uploaded(), "bind_clear without upload_clear this frame ...")` therefore cannot catch a missed upload after frame 1.
-- **Why it matters:** with the backend-wide `QuadPipeline`, a missed upload would draw another window's viewport-sized clear quad.
-- **Direction:** track uploads per frame (reset at end of frame), or drop the buffer (see GB-06).
-- **Root cause:** state that should be frame-scoped is kept on a long-lived owner.
-
-**GB-06 · complexity · `resource/single_quad_buffer/mod.rs`, `quad_pipeline/mod.rs:138-143`, `frame/debug_overlay.rs:62`** · conf med · API no
-- **What's wrong:** there are four Quad vertex buffers: `instance_buffer`, a lazy `mask_buffer: Option<DynamicBuffer<Quad>>`, `SingleQuadBuffer clear`, and the overlay's `dim`. `SingleQuadBuffer` is a type plus tests whose stated purpose is saving one ~64-byte belt write per frame. Its `upload -> bool` result is read only by tests.
-- **Direction:** append the pre-clear quad and the masks to the frame's quad stream as spans, and delete `SingleQuadBuffer`.
-- **Root cause:** a special case for each use of a quad.
-
-**GB-07 · robustness/api · `pipeline/pass_recorder/mod.rs:115-124`, `quad_pipeline/mod.rs:454-474`, `raster_pipeline/mod.rs:29-33`, `format_pipelines.rs:103`** · conf high · API no
-- **What's wrong:** `PassRecorder::pipeline(pipeline, layout)` takes the layout as a separate argument, and the viewport re-push is elided by comparing that argument, not the pipeline's real layout. Callers therefore carry layouts beside pipelines: `QuadPipeline` picks one of three layouts with a `match draw`, `RasterPipelines.layout`, and `PassPipelines::raster(layout)` asks the caller for it.
-- **Why it matters:** a mismatched pair draws with stale or zeroed immediates (viewport 0 means nothing draws), and nothing checks it. All current call sites match.
-- **Direction:** have `PipelineRecipe::build` return a `Pipeline { pipeline, layout }` (the recipe already holds the layout); `StencilVariant` holds those, and the recorder takes one value.
-- **Root cause:** a pair that must agree is passed as two values.
-
-**GB-08 · complexity · `format_pipelines.rs:82-113`, `quad_pipeline/mod.rs:36-95,121-129`** · conf high · API no
-- **What's wrong:** choosing a quad pipeline goes through five layers: `PassPipelines::quads()` → `QuadPass::new` → `QuadPass::pipeline` → `QuadVariants::of` (a 9-arm match over 9 named fields) → `StencilVariant::select`, beside a sixth spelling, `PassPipelines::quad(draw)`. `QuadRun` re-carries `pipelines` and `gradient_bind_group`, which are constant for the whole pass.
-- **Direction:** store `QuadVariants` as an array indexed by `QuadDraw`, with one `select(draw, stencil)`; pass the per-pass groups once.
-- **Root cause:** forwarding wrappers per stencil-mode selection.
-
-**GB-09 · complexity · `instanced_pipeline.rs:36-42`, `stencil_variant.rs:98-102`, `quad_pipeline/mod.rs:300-344`** · conf high · API no
-- **What's wrong:** every `StencilVariant::build` takes a `stencil_label` that is always `"{label}.stencil_test"`; 12 literal pairs spell it out.
-- **Direction:** derive the twin's label inside `build`.
-- **Root cause:** a derivable value is passed in.
-
-**GB-13 · complexity · `raster_atlas/bound_sides.rs`** · conf high · API no
-- **What's wrong:** two structs (`BoundSides { layout: SidesLayout, bind_group }` and `SidesLayout { layout, label }`) hold three fields with one `rebind`.
-- **Direction:** merge them into one struct.
-- **Root cause:** a thin wrapper.
-
-**GB-14 · complexity/perf · `resource/texture_binding.rs:31`, `backdrop/backdrops/mod.rs:286`, `backdrop/backdrop_blur/mod.rs:379,300-309`, `cutout_tables.rs:105-116`** · conf high · API no
-- **What's wrong:** there are three equivalent Linear/Linear clamp samplers. A sampled-texture layout entry is spelled three ways: `TextureBinding::texture_entry` (hardcodes `filterable: true`), the blur's own `texture_entry(filterable)` closure, and the cutout's hand-written unfilterable entry.
-- **Direction:** one `texture_entry(binding, filterable)` and one shared sampler.
-- **Root cause:** shared device vocabulary is not centralized.
-
-**GB-17 · layering · `resource/wgpu_image_store.rs:75-87`, `resource/texture_binding.rs:7`** · conf high · API no
-- **What's wrong:** the group-0 `TextureBinding` (layout and sampler every pipeline builds over) is created by `WgpuImageStore::attach`, and the backend clones it from the image store.
-- **Why it matters:** pipeline-wide device state is owned by an image cache because of attach ordering.
-- **Direction:** create it with the device (`Gpu` or a device-resources struct) and hand it to the store and the backend.
-- **Root cause:** ownership follows init order.
-
-**GB-18 · idiom · `stencil_variant.rs:38,61,70`** · conf high · API no
-- **What's wrong:** `MAX_ROUNDED_CLIP_DEPTH` is a depth count (255), used as the stencil `read_mask`/`write_mask`. It is correct only because 255 == 0xFF; lowering the depth limit would corrupt the masks.
-- **Direction:** use the format's full mask (`0xFF`) and keep the depth for counting.
-- **Root cause:** a count conflated with a bitmask.
-
-**GB-19 · bug-risk · `raster_pipeline/raster_quad.rs:51` with `raster_atlas/mod.rs` budgets** · conf med · API no
-- **What's wrong:** `U_BITS = 14` caps u at 16383, but nothing ties it to the atlas edge. `pack_uv` checks only with `debug_assert!`, and the edge is set by `max_bytes` and the device at run time.
-- **Why it matters:** raising the mask budget to 256 MiB (edge 16384) would silently set the DESATURATE/COLOR bits in release.
-- **Direction:** a release `assert!` in `RasterAtlas::new` (cold path) that the budget edge is at most `1 << U_BITS`.
-- **Root cause:** an encoding width is not derived from the budget.
-
-**GB-20 · complexity · `quad_pipeline/mod.rs:155,268,379`, `quad_draw/mod.rs:28`** · conf high · API no
-- **What's wrong:** the production `QuadPipeline` carries `shadow_grid: bool`, and `quad_draw::fill(.., grid: bool)` takes a matching `bool` that selects behavior. Both exist only for the internals-only one-cell reference (`disable_shadow_grid`).
-- **Direction:** keep the reference behind `internals`, e.g. a separate variant set or an enum.
-- **Root cause:** a test hook lives in production state.
-
-**GB-24 · robustness · `resource/gpu_view_targets/mod.rs:136-150`** · conf high · API no
-- **What's wrong:** on a resize the new texture keeps `target.painted`. This is correct only because `capacity()` derives from `used`/`full`, which are both in `ViewStamp`, an implicit coupling.
-- **Direction:** reset `painted = None` when the texture is replaced.
-- **Root cause:** an invariant held by coincidence.
-
-**GB-25 · idiom · `pipeline/stencil_variant.rs:12`** · conf high · API no
-- **What's wrong:** `ClipStencil` is a unit struct used only as a namespace for one const and three fns.
-- **Direction:** make it a module or consts on `StencilVariant`.
-- **Root cause:** a type used as a namespace.
-
-**GB-26 · idiom · `shader_body/mod.rs:22,47-70`** · conf med · API no
-- **What's wrong:** `constants: fn() -> Vec<ShaderConstant>`, holding a `String` per value, where every value is a `const`.
-- **Direction:** `&'static [ShaderConstant]` with an enum value (`Uint`/`Float`), formatted inside `specialize`.
-- **Root cause:** runtime construction of static data.
-
-**GB-27 · complexity · `text_backend/mod.rs:144-157`, `icon_backend/mod.rs:126-139`, `encode/encoder.rs:41-48`** · conf high · API no
-- **What's wrong:** pass-through `flush`/`render_batch` on both backends and `try_emit_cached` (forwards to `cache.emit_cached`).
-- **Direction:** acceptable alone; worth folding into the GB-04 API cleanup.
-- **Root cause:** forwarding layers.
-
-**GB-28 · test · scope-wide** · conf high
-- **What's good:** tests mostly check exact values and read texels back (packed atlas, HeldTables sequence, Runs, cutout plan, ShelfPacker).
-- **Gaps:** nothing tests the `DynamicBuffer` grow path's content (`create_filled_buffer`). Nothing tests shared-backend behavior with two windows (cutout atlas thrash, SingleQuadBuffer, expiry clock).
 
 ### Batch 10
 

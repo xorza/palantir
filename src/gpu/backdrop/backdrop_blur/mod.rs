@@ -2,13 +2,15 @@
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::device::vendor;
+use crate::gpu::device::tiler_family::TilerFamily;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
+use crate::gpu::resource::texture_binding::{self, Filtering};
+use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
@@ -36,8 +38,8 @@ pub(crate) enum ResidualLoop {
 
 impl ResidualLoop {
     /// One loop on Broadcom's VideoCore, two on every other device.
-    pub(crate) const fn of(info: &wgpu::AdapterInfo) -> Self {
-        if info.vendor == vendor::BROADCOM {
+    pub(crate) fn of(info: &wgpu::AdapterInfo) -> Self {
+        if TilerFamily::of(info) == Some(TilerFamily::VideoCore) {
             Self::One
         } else {
             Self::Windowed
@@ -268,7 +270,7 @@ impl BackdropBlur {
         label: "palantir.backdrop.blur.shader",
         wgsl: include_str!("blur.wgsl"),
         includes: &[],
-        constants: shader_constants,
+        constants: SHADER_CONSTANTS,
     };
 
     pub(crate) fn new(gpu: &Gpu) -> Self {
@@ -281,35 +283,20 @@ impl BackdropBlur {
             "ONE_LOOP",
             f64::from(u8::from(residual == ResidualLoop::One)),
         )];
-        let texture_entry = |filterable| wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        };
         let filtered_layout =
             gpu.device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("palantir.backdrop.blur.source.filtered.bgl"),
                     entries: &[
-                        texture_entry(true),
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
+                        texture_binding::texture_entry(0, Filtering::Filtered),
+                        texture_binding::sampler_entry(1),
                     ],
                 });
         let loaded_layout = gpu
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("palantir.backdrop.blur.source.loaded.bgl"),
-                entries: &[texture_entry(false)],
+                entries: &[texture_binding::texture_entry(0, Filtering::Loaded)],
             });
         let params_layout = gpu
             .device
@@ -341,6 +328,7 @@ impl BackdropBlur {
                     ..PipelineRecipe::color(label, &shader, &layout, LEVEL_FORMAT)
                 }
                 .build(gpu)
+                .pipeline
             };
             SourcePasses {
                 tent: pipeline("palantir.backdrop.blur.tent", tent_entry, &[]),
@@ -369,13 +357,9 @@ impl BackdropBlur {
                 LEVEL_FORMAT,
             )
         }
-        .build(gpu);
-        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir.backdrop.blur.sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        .build(gpu)
+        .pipeline;
+        let sampler = texture_binding::sampler(gpu, "palantir.backdrop.blur.sampler");
         let params = DynamicBuffer::uniform(gpu, "palantir.backdrop.blur.params", 16);
         let params_group = params_group(gpu, &params_layout, &params.buffer);
         let ceiling = gpu.max_texture_dim().get();
@@ -512,19 +496,18 @@ impl BackdropBlur {
         size: UVec2,
         filters: bool,
     ) -> Sampled {
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: texel::extent(size.max(UVec2::ONE)),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
+        let texture = texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label,
+                size: size.max(UVec2::ONE),
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST,
+            },
+        );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let group = self.source_group(gpu, &view, filters);
         Sampled {
@@ -1091,18 +1074,16 @@ fn levels_size(have: UVec2, want: UVec2, mips: u8, ceiling: u32) -> UVec2 {
 }
 
 /// The numbers [`BackdropBlur::SHADER`] takes from the Rust types that own them.
-fn shader_constants() -> Vec<ShaderConstant> {
-    vec![ShaderConstant::uint(
-        "TAP_VEC4S",
-        BlurPlan::MAX_TAPS.div_ceil(4) as u32,
-    )]
-}
+const SHADER_CONSTANTS: &[ShaderConstant] = &[ShaderConstant::uint(
+    "TAP_VEC4S",
+    BlurPlan::MAX_TAPS.div_ceil(4) as u32,
+)];
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob};
     use crate::gpu::device::gpu::Gpu;
-    use crate::gpu::device::gpu_ctx::GpuCtx;
+    use crate::gpu::frame::gpu_ctx::GpuCtx;
     #[cfg(test)]
     use crate::gpu::resource::shelf_packer::ShelfPacker;
     use crate::gpu::surface::render_target::TargetFormat;

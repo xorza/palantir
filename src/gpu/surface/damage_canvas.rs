@@ -3,6 +3,7 @@
 //! ([`PassTraffic::WholeTarget`](crate::gpu::device::pass_traffic::PassTraffic::WholeTarget)).
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
@@ -26,16 +27,15 @@ pub(crate) struct DamageCanvas {
 impl DamageCanvas {
     /// A canvas of `size` in `format`.
     pub(crate) fn new(gpu: &Gpu, format: wgpu::TextureFormat, size: UVec2) -> Self {
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.renderer.damage_canvas"),
-            size: texel::extent(size),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let texture = texel::texture_2d(
+            gpu,
+            TargetSpec {
+                label: "palantir.renderer.damage_canvas",
+                size,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            },
+        );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
@@ -79,21 +79,13 @@ impl DamageCanvas {
             wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
                 mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: at.x,
-                    y: at.y,
-                    z: 0,
-                },
+                origin: texel::origin(at),
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyTextureInfo {
                 texture: backbuffer,
                 mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: rect.min.x,
-                    y: rect.min.y,
-                    z: 0,
-                },
+                origin: texel::origin(rect.min),
                 aspect: wgpu::TextureAspect::All,
             },
             texel::extent(rect.size),

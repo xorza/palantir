@@ -135,7 +135,7 @@ impl EncodedCache {
         run_key: &EncodedRunKey,
         text: &str,
     ) -> bool {
-        let cur_frame = pass.atlas.cur_frame;
+        let cur_frame = pass.atlas.frame();
         let Some(entry) = self.map.get_mut(&run_key.key) else {
             return false;
         };
@@ -143,22 +143,21 @@ impl EncodedCache {
             return false;
         }
         let glyphs = &self.arena.slots[entry.span.range()];
-        let out_start = pass.instances.len();
-        pass.instances.reserve(glyphs.len());
-        let mut stale = false;
-        for glyph in glyphs {
-            let slot = &mut pass.atlas.slots[glyph.atlas_slot as usize];
-            if slot.generation != glyph.generation {
-                pass.instances.truncate(out_start);
-                stale = true;
-                break;
+        // Every slot is checked and stamped before any quad goes out, so a stale run pushes
+        // nothing; a stamp on a slot of a run that turns out stale only keeps it a frame longer.
+        let stale = !glyphs.iter().all(|glyph| {
+            pass.atlas
+                .touch_slot(glyph.atlas_slot, glyph.generation)
+                .is_some()
+        });
+        if !stale {
+            for glyph in glyphs {
+                let g = glyph.instance;
+                pass.push(RasterQuad {
+                    pos: g.pos + run_key.pixel,
+                    ..g
+                });
             }
-            let g = glyph.instance;
-            pass.instances.push(RasterQuad {
-                pos: g.pos + run_key.pixel,
-                ..g
-            });
-            slot.last_use = cur_frame;
         }
         if stale {
             // An eviction reused one of this run's slots, so the template is dead. Drop the

@@ -8,12 +8,12 @@
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
+use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
@@ -64,7 +64,7 @@ impl ImagePipeline {
         label: "palantir.image.shader",
         wgsl: include_str!("shader.wgsl"),
         includes: &[],
-        constants: shader_constants,
+        constants: SHADER_CONSTANTS,
     };
 
     /// Format-independent resources: shader and instance buffer. Pipelines come
@@ -94,7 +94,6 @@ impl ImagePipeline {
             target,
             VariantRecipe {
                 label: "palantir.image.pipeline",
-                stencil_label: "palantir.image.pipeline.stencil_test",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
@@ -116,11 +115,11 @@ impl ImagePipeline {
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
+        pipeline: &'a Pipeline,
         ImageBatch { ids, items }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
-        rec.pipeline(pipeline, self.family.layout());
+        rec.pipeline(pipeline);
         rec.vertex(0, self.family.instances());
         for run in Runs::new(items, |i| ids[i as usize]) {
             let Some(bind_group) = textures.bind_group(run.key) else {
@@ -178,16 +177,14 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 );
 
 /// The numbers [`ImagePipeline::SHADER`] takes from the Rust types that own them.
-fn shader_constants() -> Vec<ShaderConstant> {
-    vec![
-        ShaderConstant::uint("IMG_FLAG_TILED", ImageFlags::TILED.bits()),
-        ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", ImageFlags::MIN_NEAREST.bits()),
-        ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", ImageFlags::MAG_NEAREST.bits()),
-        ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", ImageFlags::TAPS_MEAN.bits()),
-        ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", ImageFlags::TAPS_PEAK.bits()),
-        ShaderConstant::uint("IMG_FLAG_CLAMP_TO_UV", ImageFlags::CLAMP_TO_UV.bits()),
-    ]
-}
+const SHADER_CONSTANTS: &[ShaderConstant] = &[
+    ShaderConstant::uint("IMG_FLAG_TILED", ImageFlags::TILED.bits()),
+    ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", ImageFlags::MIN_NEAREST.bits()),
+    ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", ImageFlags::MAG_NEAREST.bits()),
+    ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", ImageFlags::TAPS_MEAN.bits()),
+    ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", ImageFlags::TAPS_PEAK.bits()),
+    ShaderConstant::uint("IMG_FLAG_CLAMP_TO_UV", ImageFlags::CLAMP_TO_UV.bits()),
+];
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
