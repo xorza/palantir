@@ -907,7 +907,7 @@ GpuPassStats
 
 GpuRequestError
     #[non_exhaustive]
-    enum GpuRequestError: Debug, Display, Error
+    enum GpuRequestError: Debug, Display, Error, From<RequestAdapterError>, From<RequestDeviceError>, From<UnmetRequirements>
         NoBackend
         RequestAdapter { source: RequestAdapterError }
         Requirements { source: UnmetRequirements }
@@ -2792,6 +2792,7 @@ UnmetRequirements
     enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq
         Features { missing: Features }
         Limit { name: &'static str, required: u64, available: u64 }
+        impl From<UnmetRequirements> for GpuRequestError
 
 UserScale
     struct UserScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd

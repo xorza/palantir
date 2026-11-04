@@ -197,7 +197,10 @@ impl Fixture {
             belt: UploadStaging::new(&g.gpu.device, 1 << 20),
             store,
             runs,
-            target: g.target("palantir.text_atlas.target", PHYSICAL).view(),
+            target: g
+                .target("palantir.text_atlas.target", PHYSICAL)
+                .view()
+                .clone(),
             gpu: g.handles(),
         }
     }

@@ -93,6 +93,24 @@ impl Error for GpuRequestError {
     }
 }
 
+impl From<wgpu::RequestAdapterError> for GpuRequestError {
+    fn from(source: wgpu::RequestAdapterError) -> Self {
+        Self::RequestAdapter { source }
+    }
+}
+
+impl From<UnmetRequirements> for GpuRequestError {
+    fn from(source: UnmetRequirements) -> Self {
+        Self::Requirements { source }
+    }
+}
+
+impl From<wgpu::RequestDeviceError> for GpuRequestError {
+    fn from(source: wgpu::RequestDeviceError) -> Self {
+        Self::RequestDevice { source }
+    }
+}
+
 /// A native window surface Palantir cannot present through. Separate from
 /// [`GpuRequestError`] because a surface is per window.
 #[cfg(feature = "winit")]
@@ -162,5 +180,29 @@ impl Error for SurfaceError {
             Self::Create { source } => Some(source),
             Self::Incompatible | Self::MissingSrgb | Self::MissingUsages { .. } => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::error::{GpuRequestError, UnmetRequirements};
+
+    /// A source converts into its own case, so `?` lands the failure where `source` finds it. wgpu's
+    /// device error has private fields, so only wgpu builds one.
+    #[test]
+    fn each_source_converts_into_its_case() {
+        let missing = wgpu::Features::empty();
+        assert!(matches!(
+            GpuRequestError::from(UnmetRequirements::Features { missing }),
+            GpuRequestError::Requirements {
+                source: UnmetRequirements::Features { .. }
+            }
+        ));
+        assert!(matches!(
+            GpuRequestError::from(wgpu::RequestAdapterError::EnvNotSet),
+            GpuRequestError::RequestAdapter {
+                source: wgpu::RequestAdapterError::EnvNotSet
+            }
+        ));
     }
 }

@@ -502,9 +502,9 @@ impl WgpuBackend {
         };
         let outlines_damage = submission.overlay.damage.is_some();
         // At most one surface view, only where a pass writes it: a direct frame's main pass and
-        // the outline. The normal backbuffer path makes none.
-        let surface_view = (!via_backbuffer || outlines_damage)
-            .then(|| surface_texture.create_view(&wgpu::TextureViewDescriptor::default()));
+        // the outline. The normal backbuffer path takes none, and a target that keeps its view
+        // makes none.
+        let surface_view = (!via_backbuffer || outlines_damage).then(|| target.view());
         let frame_target = if via_backbuffer {
             let bb = stream
                 .backbuffer()

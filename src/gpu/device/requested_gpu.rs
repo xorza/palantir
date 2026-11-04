@@ -106,8 +106,7 @@ impl GpuRequest<'_> {
                 force_fallback_adapter: false,
                 apply_limit_buckets: false,
             })
-            .block_on()
-            .map_err(|source| GpuRequestError::RequestAdapter { source })?;
+            .block_on()?;
 
         // Which GPU won the `power_preference` sort decides a session's frame
         // times (a hybrid laptop's wrong pick means cross-adapter copies), and
@@ -128,8 +127,7 @@ impl GpuRequest<'_> {
     /// Pick an adapter and open a device on it.
     pub(crate) fn open(self, instance: &wgpu::Instance) -> Result<RequestedGpu, GpuRequestError> {
         let adapter = self.adapter(instance)?;
-        let requirements = DeviceRequirements::negotiate(&adapter, self.optional)
-            .map_err(|source| GpuRequestError::Requirements { source })?;
+        let requirements = DeviceRequirements::negotiate(&adapter, self.optional)?;
         self.open_with(adapter, requirements)
     }
 
@@ -151,8 +149,7 @@ impl GpuRequest<'_> {
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::Off,
             })
-            .block_on()
-            .map_err(|source| GpuRequestError::RequestDevice { source })?;
+            .block_on()?;
 
         Ok(RequestedGpu {
             adapter,

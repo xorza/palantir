@@ -173,14 +173,6 @@ the reduction of complexity. Each batch stays inside one system, so one review c
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
 
-### Batch 9b. GPU public surface (`gpu`) **API**
-
-What Batch 9 left, as each changes the public surface:
-
-- Add `From` for `GpuRequestError`'s sources, so `?` converts (GA-16).
-- An `OwnedTarget` keeps its view, so an offscreen frame makes no view; `RenderTarget` is public
-  (GA-17).
-
 ### Batch 10. Authoring surface and the overlay protocol (`widget_core`, `widgets`, `theme`) **API**
 
 Root causes R9 and R1. This batch removes the most code and changes the most public surface.
@@ -258,7 +250,6 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 9b | GA-16, GA-17 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
 | 13b | RD-17 |
@@ -271,19 +262,6 @@ profile shows them). `.notes/ISSUES.md` already logs the `Staging::abort` race.
 
 Each open finding as its reviewer wrote it, grouped by the batch that takes it. A batch reads
 its own findings here; the line numbers are from the review and drift as the code moves.
-
-### Batch 9b
-
-**GA-16 — idiom — `device/requested_gpu.rs:110,132,155`**
-- **What:** Three `.map_err(|source| GpuRequestError::X { source })` calls where `From` impls would let `?` convert. The source types are distinct, so `From` is unambiguous. `SurfaceStartError` already does it this way.
-- **Direction:** Add `From<RequestAdapterError>`, `From<UnmetRequirements>` and `From<RequestDeviceError>`.
-- **Confidence:** high · **Public API:** adds impls · **Root cause:** inconsistent error plumbing.
-
-**GA-17 — perf — `wgpu_backend/mod.rs:481-484`**
-- **What:** Each Direct-route or overlay frame calls `surface_texture.create_view(..)`: a new wgpu-core view (on Vulkan a `vkCreateImageView`) every frame. `RenderTarget` carries only `&Texture`.
-- **Why it matters:** This is unavoidable for a swapchain image, but an `OwnedTarget` an offscreen host renders into every frame could hold its view. That makes it a per-frame allocation the posture forbids.
-- **Direction:** Let `RenderTarget` optionally carry a view its owner keeps; the swapchain path keeps making one per frame.
-- **Confidence:** med · **Public API:** possibly (`RenderTarget` is public) · **Root cause:** the target type erases whether its owner can keep things.
 
 ### Batch 10
 

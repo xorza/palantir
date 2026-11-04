@@ -2,11 +2,18 @@
 
 use crate::gpu::texel;
 use glam::UVec2;
+use std::borrow::Cow;
 
 /// A texture Palantir renders a frame into; borrowed.
 #[derive(Clone, Copy, Debug)]
 pub struct RenderTarget<'a> {
     texture: &'a wgpu::Texture,
+    /// The texture's whole view, where its owner keeps one, as an [`OwnedTarget`] does; else a
+    /// frame that writes the texture makes one, as it must for a swapchain image, which lives one
+    /// frame.
+    ///
+    /// [`OwnedTarget`]: crate::gpu::surface::owned_target::OwnedTarget
+    view: Option<&'a wgpu::TextureView>,
 }
 
 impl<'a> RenderTarget<'a> {
@@ -24,7 +31,35 @@ impl<'a> RenderTarget<'a> {
             "a render target must allow RENDER_ATTACHMENT",
         );
         TargetFormat::new(texture.format());
-        Self { texture }
+        Self {
+            texture,
+            view: None,
+        }
+    }
+
+    /// [`Self::new`] with `view`, the default view of `texture` its owner keeps, so a frame makes
+    /// none.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub(crate) fn with_view(texture: &'a wgpu::Texture, view: &'a wgpu::TextureView) -> Self {
+        Self {
+            view: Some(view),
+            ..Self::new(texture)
+        }
+    }
+
+    /// The texture's whole view: the one its owner keeps, else a new one.
+    pub(crate) fn view(self) -> Cow<'a, wgpu::TextureView> {
+        match self.view {
+            Some(view) => Cow::Borrowed(view),
+            None => Cow::Owned(
+                self.texture
+                    .create_view(&wgpu::TextureViewDescriptor::default()),
+            ),
+        }
     }
 
     pub(crate) fn size(self) -> UVec2 {
@@ -98,6 +133,7 @@ mod tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::internals::panic_probe;
     use glam::UVec2;
+    use std::borrow::Cow;
 
     /// Panics when the format is not sRGB/float or usage lacks a render pass.
     #[test]
@@ -133,5 +169,29 @@ mod tests {
         panic_probe::assert_panics_with("must allow RENDER_ATTACHMENT", || {
             RenderTarget::new(sampled.texture())
         });
+    }
+
+    /// An owned target lends the view it keeps, so a frame into it makes none; a bare texture's
+    /// target makes one, as a swapchain image's must.
+    #[test]
+    fn an_owned_target_lends_its_kept_view() {
+        let gpu = headless_test_gpu();
+        let owned = OwnedTarget::new(
+            &gpu,
+            TargetSpec {
+                label: "target-view",
+                size: UVec2::splat(4),
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            },
+        );
+        match owned.as_target().view() {
+            Cow::Borrowed(view) => assert_eq!(view, owned.view(), "the kept view itself"),
+            Cow::Owned(_) => panic!("an owned target made a view"),
+        }
+        assert!(matches!(
+            RenderTarget::new(owned.texture()).view(),
+            Cow::Owned(_)
+        ));
     }
 }

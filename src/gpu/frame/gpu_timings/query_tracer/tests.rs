@@ -176,7 +176,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
         drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
@@ -234,7 +234,7 @@ fn a_break_between_passes_counts_in_no_kind() {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {

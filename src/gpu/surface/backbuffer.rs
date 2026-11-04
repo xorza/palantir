@@ -22,7 +22,7 @@ pub(crate) struct Backbuffer {
 impl Backbuffer {
     /// Put this backbuffer's pixels on `target`, which it must [`fit`](Self::fits):
     /// a copy where the target takes one, else a draw through `blit`, in a pass of its own as it
-    /// replaces the target, onto a view made for it.
+    /// replaces the target, onto the target's view.
     pub(crate) fn present_onto(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -41,10 +41,7 @@ impl Backbuffer {
                 self.texture.size(),
             );
         } else {
-            let view = target
-                .texture()
-                .create_view(&wgpu::TextureViewDescriptor::default());
-            blit_pipeline::draw(encoder, &self.bind_group, &view, blit);
+            blit_pipeline::draw(encoder, &self.bind_group, &target.view(), blit);
         }
     }
 

@@ -25,6 +25,8 @@ pub struct TargetSpec<'a> {
 #[derive(Debug)]
 pub struct OwnedTarget {
     texture: wgpu::Texture,
+    /// The texture's default view, made once, so a frame into this target makes none.
+    view: wgpu::TextureView,
     gpu: Gpu,
     /// The staging buffer of [`Self::copy_texels`], made by its first call.
     readback: Option<TexelReadback>,
@@ -63,8 +65,10 @@ impl OwnedTarget {
                 usage,
             },
         );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
+            view,
             gpu: gpu.clone(),
             readback: None,
         }
@@ -93,7 +97,7 @@ impl OwnedTarget {
     ///
     /// As [`RenderTarget::new`], for a texture that is not a render target.
     pub fn as_target(&self) -> RenderTarget<'_> {
-        RenderTarget::new(&self.texture)
+        RenderTarget::with_view(&self.texture, &self.view)
     }
 
     /// Physical pixels.
@@ -171,9 +175,8 @@ pub(crate) mod internals {
                 .expect("one RGBA pixel per texel of the texture")
         }
 
-        pub(crate) fn view(&self) -> wgpu::TextureView {
-            self.texture
-                .create_view(&wgpu::TextureViewDescriptor::default())
+        pub(crate) const fn view(&self) -> &wgpu::TextureView {
+            &self.view
         }
 
         #[cfg(test)]
