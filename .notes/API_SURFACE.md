@@ -656,7 +656,6 @@ DockView
             pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u>
         impl<T: DockTab> DockView<'_, T>
             pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, dock: WidgetId, state: &mut DockState<T>, tabs: &mut D)
-            pub fn tab_key(tab: T) -> u64
             pub fn scan(ui: &mut Ui, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
         impl DockView<'static, ()>
             pub fn pane_id(dock: WidgetId, group: TabGroupId) -> WidgetId
@@ -2316,12 +2315,17 @@ TabAddress
 TabChip
     struct TabChip: Clone, Copy, Debug
         pub slot: usize
-        pub key: u64
+        pub key: TabKey
         pub label: InternedStr
         pub selected: bool
         pub text: TextStyle
         pub id: WidgetId
         pub fn show_label(&self, ui: &mut Ui)
+
+TabEnd
+    enum TabEnd: Clone, Copy, Debug, Default, Eq, PartialEq
+        First
+        Last
 
 TabGroup
     struct TabGroup<T>
@@ -2341,11 +2345,15 @@ TabGroupId
 
 TabItem
     struct TabItem: Clone, Copy, Debug
-        pub key: u64
+        pub key: TabKey
         pub label: InternedStr
         pub closable: bool
         pub draggable: bool
-        pub const fn new(key: u64, label: InternedStr) -> Self
+        pub const fn new(key: TabKey, label: InternedStr) -> Self
+
+TabKey
+    struct TabKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+        pub fn of(value: impl Hash) -> Self
 
 TabMove
     struct TabMove: Clone, Copy, Debug, Eq, PartialEq
@@ -2367,8 +2375,8 @@ TabStrip
         pub const fn overflow(self, overflow: TabOverflow) -> Self
         pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
         pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-        pub fn chip_id(strip: WidgetId, key: u64) -> WidgetId
-        pub fn close_id(strip: WidgetId, key: u64) -> WidgetId
+        pub fn chip_id(strip: WidgetId, key: TabKey) -> WidgetId
+        pub fn close_id(strip: WidgetId, key: TabKey) -> WidgetId
         pub fn show(self, ui: &mut Ui, content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse<'_>
 
 TabStripFocus
@@ -2385,13 +2393,13 @@ TabStripResponse
         pub dragging: Option<usize>
 
 TabbedView
-    struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64>: ThemeDefaults (blanket)
+    struct TabbedView<'a, S, L, K = fn(usize, &S) -> TabKey>: ThemeDefaults (blanket)
         impl<'a, S: AsRef<str>> TabbedView<'a, S, fn(&S) -> &str>
             pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
         impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L>
             pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self
-            pub fn keyed<H: Hash>(self, key: impl Fn(&S) -> H) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> u64>
-        impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K>
+            pub fn keyed<H: Hash>(self, key: impl Fn(&S) -> H) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> TabKey>
+        impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, K>
             pub const fn closable(self, closable: bool) -> Self
             pub const fn draggable(self, draggable: bool) -> Self
             pub const fn overflow(self, overflow: TabOverflow) -> Self
@@ -2775,6 +2783,7 @@ Ui
         pub fn ime_preedit(&self) -> Option<ImePreedit<'_>>
         pub const fn is_focus_visible(&self) -> bool
         pub const fn focus_first_within(&mut self, ancestor: WidgetId)
+        pub const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd)
         pub const fn pointer_pos(&mut self) -> Option<Vec2>
         pub const fn modifiers(&mut self) -> Modifiers
         pub const fn peek_pointer_pos(&self) -> Option<Vec2>

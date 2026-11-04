@@ -156,12 +156,8 @@ and some `Result` paths panic:
 
 Each item needs your answer before its batch starts.
 
-1. **"A wrapper finishes the widget it wraps through its public setters, never a hook"**
-   (WG-15). The code breaks this rule eight times, because `DockView` needs a strip protocol.
-   You can amend the rule to allow `pub(crate)` protocol entry points, or make the hooks
-   public.
-2. **"A pick binds a reference"** (WG-16). `TabbedView` binds `&mut usize`, which is correct,
-   because close and reorder make a reference invalid. The rule needs a stated exception.
+1. Settled: the rule allows `pub(crate)` protocol entry points between crate widgets (WG-15).
+2. Settled: a pick over a list the widget reorders binds the index (WG-16).
 3. **"A `Response` borrows the `Ui`"** (UI-10). The borrow makes the owned twins
    `ResponseSnapshot` and `ValueEdges`, and puts `'a` on every response type. No measurement
    supports the lazy probe. The proposal is to measure an eager `Response` first.
@@ -199,14 +195,11 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   into one `Memory` with one `sweep(removed)`. Group the host seam (`window_requests`,
   `window_frame`, `gpu_pass_stats`, `waker`) into one struct (UI-16).
 - Decision 3: measure an eager `Response`, then decide (UI-10).
-- `Theme::lerp` still copies both ends each transition frame, for its text-axis hook to edit;
-  share the axes once when a run starts and blend the shared ends by reference (UI-20).
-- Remove the theme-transition spares (UI-19). Give each field of `FrameRuntime` one access
-  path (UI-26). State the bounds of `repaint_wakes`, the input queue and `Watches` (UI-27).
-  `faces_valid` takes `&self` (UI-28).
-- Smaller items: `focus_end_within` public (UI-23). A `TabKey` newtype (WG-25). Fix the doc
-  for `TabbedView` (WG-16). Dress `Menu::context` only when it is open (WG-22).
-  `TextEdit.text` is not an `Option` (WG-23).
+- State the bound of the input queue and decide what a full one does (the rest of UI-27).
+
+Done in this batch: decisions 1 and 2 (WG-15, WG-16), UI-20, UI-23, UI-26, UI-28, WG-17,
+WG-22, WG-23, WG-25, and the wake and watch bounds of UI-27. UI-19 is kept as it is: the
+`theme_transition_alloc_free` test holds a transition to the buffers it keeps.
 
 ## Findings index
 
@@ -297,30 +290,9 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **What:** each equals `Theme::stock(scheme).<slot>`. Every caller outside `src/theme/` is a test.
 - **Direction:** keep `from_parts` and drop the per-slot `stock`, or accept it as documented sugar.
 
-**UI-19 · complexity · low · no API change** — `src/ui/theme_transition.rs:21, 82-112, 158-163`
-- **What:** the two `spares` buffers plus the swap logic in `follow` save one `Rc<Theme>` allocation per theme change, not per frame. That is a lot of state machine for an event that happens rarely.
-- **Direction:** drop the spares, allocate a fresh `Rc` per run, and simplify the third-theme branch.
-- **Root cause:** applying the per-frame allocation rule to per-event work.
-
-**UI-20 · perf · low · no API change** — `src/ui/theme_transition.rs:144-149`
-- **What:** `Theme::lerp(Theme::clone(&run.from), Theme::clone(&run.to), t)` copies two whole themes each transition frame (no heap involved), then overwrites the third.
-- **Direction:** run `share_text_axes` once when the run starts, and lerp by reference into `run.shown`.
-
-**UI-23 · api · low · public API** — `src/ui/mod.rs:1454` vs `:1460`
-- **What:** `focus_first_within` is `pub` but `focus_end_within(…, TabEnd)` is crate-private, so an app can't land on the last stop (the "End opens on the last row" pattern).
-- **Direction:** export `TabEnd` and the general form.
-
-**UI-26 · idiom · low · no API change** — `src/ui/frame_runtime/mod.rs:116, 60`
-- **What:** `transparency`, `dt` and `render_frame_id` are `pub(super)` fields and also have getters. `FrameCycle` writes `frame_runtime.transparency =` directly (`frame_cycle.rs:56`) while `Ui` reads through `transparency()`.
-- **Direction:** pick one access path.
-
 **UI-27 · bound · low · no API change** — `src/ui/frame_runtime/mod.rs:100` (`repaint_wakes`), `src/input_state/input_queue/mod.rs:23` (`pending`), `src/input_state/watches.rs:13-15`
 - **What:** these grow without a stated limit. `Watches` pushes duplicates by design.
 - **Direction:** state a cap and decide what happens when it is reached.
-
-**UI-28 · idiom · low · no API change** — `src/theme/mod.rs:341`
-- **What:** `faces_valid(&mut self)` only reads, but needs `&mut` because `TextSlots` has only a mutable walk.
-- **Direction:** give the derive a read-only walk.
 
 **WG-09 · complexity · `color_picker/mod.rs:430-439, 469-483`**
 - **What's wrong:** the hex field hand-rolls a draft: `TextEdit::new(&mut self.state.hex)` plus "rewrite from the color when `ui.focus() != Some(hex_id)`" plus parse on `committed`.
@@ -357,23 +329,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Direction:** make `Menu::below` a dressed `PopupTrigger` (one `TriggerFrame` path), or document why the two rows must differ.
 - Confidence: medium · public API change: no · root cause: overlay-trigger protocol has parallel entry points.
 
-**WG-15 · layering/AGENTS conflict · crate-private wrapper hooks**
-- **Where:** `tabs/tab_strip.rs:176` (`dock_drag`), `:75` (`TabStripResponse::unscanned`), `:198`/`:220` (`scan`, `drop_slot`); `menu/mod.rs:185, 205` (`show_as`, `settle`); `popup_trigger/mod.rs:110` (`show_as`); `popup/mod.rs:211` (`menu_look`).
-- **What's wrong:** AGENTS says "A wrapper finishes the widget it wraps through its public setters, never a hook only the wrapper calls". These are exactly such hooks.
-- **Disagreement with AGENTS:** the code shows the rule is unworkable as written; DockView genuinely needs a strip protocol. Amend the rule to allow `pub(crate)` protocol entry points, or make the hooks public.
-- Confidence: high · public API change: maybe · root cause: rule written for theming, applied to protocols.
-
-**WG-16 · api/doc · `tabs/tabbed_view.rs:47-50, 76`**
-- **What's wrong:** the doc says TabbedView "Mirrors ComboBox (same binding …)", but it binds `&mut usize`, whereas ComboBox binds `&'o S`. AGENTS refuses index binding for a pick.
-- **Why it matters:** the index is defensible here, because close and reorder invalidate a reference, but then the doc is wrong and AGENTS needs a stated exception.
-- **Direction:** fix the doc and add the exception to AGENTS.
-- Confidence: high · public API change: no · root cause: rule/doc drift.
-
-**WG-17 · idiom/naming · `toggle_row/mod.rs:36` vs `theme/toggle_kind.rs:5`**
-- **What's wrong:** `pub(crate) trait ToggleKind` (impls Check/Pip/Knob) sits beside the public `enum palantir::ToggleKind {Checkbox, Radio, Switch}`. That is one concept represented twice under one name.
-- **Direction:** rename the trait (e.g. `ToggleFace`), or key `slot`/`pill` off the public enum.
-- Confidence: high · public API change: no · root cause: no single owner of "which toggle".
-
 **WG-18 · idiom (illegal states) · several state rows**
 - **Where:** `popup/mod.rs:182, 198` (`state::<Option<Landing>>`), `dock/dock_view.rs:531, 542` (`Option<TabMenuTarget<T>>`), `dock/tab_drag.rs:139-142`, `tabs/tab_strip.rs:89-92, 393-396`.
 - **What's wrong:**
@@ -383,28 +338,11 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Direction:** store `Landing` and `TabMenuTarget` directly, removing rows on close. Make `TabDrag { tab, target: Option<_> }` live inside `Option`. Merge the strip rows.
 - Confidence: high · public API change: no · root cause: none named.
 
-**WG-22 · perf (minor) · `menu/mod.rs:190-192`, `text_edit/mod.rs:493-496`, `editor.rs:91`, `input_pass.rs:210`**
-- **What's wrong:** `Menu::show_as` runs `dressed()` before it knows whether the menu is open: an `Rc` bump, `menu.panel.clone()` and five default setters. Every TextEdit calls `Menu::context(..).show` every frame and clones the `Clipboard` handle twice a frame. All of this is wasted while closed.
-- **Direction:** check `TriggerState` open first and dress only when open; take the clipboard only on a matching action.
-- Confidence: high on the code path, low on the cost · public API change: no · root cause: none named.
-
-**WG-23 · idiom · `text_edit/mod.rs:123, 318-321`**
-- **What's wrong:** `text: Option<Bound<'a>>` exists only so `show` can `.take().expect("taken once")`.
-- **Direction:** destructure `self` in `show`, or pass `Bound` beside the builder, so the type holds a non-optional field.
-- Confidence: high · public API change: no · root cause: none named.
-
 **WG-24 · api (low) · `combo_box/mod.rs:236-263`, `dock/dock_view.rs:347`**
 - **What's wrong:** associated "drive from outside" functions hang off dummy generic instances: `type Keyed = ComboBox<'static,'static,&'static str, fn(..)>` and `impl DockView<'static, ()>`.
 - **Why it matters:** this works only through inference quirks and puts odd types in the docs.
 - **Direction:** a non-generic marker type per widget for the `TriggerState` key and the id functions.
 - Confidence: medium · public API change: yes · root cause: none named.
-
-**WG-25 · api (low) · `dock_view.rs:242-244`, `tabbed_view.rs:125`, `tab_item.rs:306`**
-- **What's wrong:** tab identity is a raw `u64` made from `WidgetId::from_hash(x).0`, which exposes WidgetId internals. `TabItem.key: u64` invites collisions with hand-picked numbers.
-- **Direction:** a `TabKey` newtype from `impl Hash`.
-- Confidence: medium · public API change: yes · root cause: none named.
-
-### Kept as they are
 
 **RD-16 · perf · `composer/session.rs:136-141`**
 - **What:** each rounded clip push copies its whole ancestor chain into `rounded_clips` with `extend_from_within`. The pool grows by the sum of depths, bounded at 255 per chain.

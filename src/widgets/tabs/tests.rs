@@ -32,6 +32,7 @@ use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::tabs::reindex;
 use crate::widgets::tabs::tab_item::TabItem;
+use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_move::TabMove;
 use crate::widgets::tabs::tab_strip::internals::insertion_slot;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
@@ -51,7 +52,7 @@ fn items(ui: &mut Ui) -> Vec<TabItem> {
         .into_iter()
         .map(|(key, label)| TabItem {
             closable: true,
-            ..TabItem::new(key, ui.intern(label))
+            ..TabItem::new(TabKey::of(key), ui.intern(label))
         })
         .collect()
 }
@@ -78,7 +79,7 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
             .selected(0)
             .show(ui, |ui, chip| chip.show_label(ui));
     });
-    let alpha = TabStrip::chip_id(strip_id(), 10);
+    let alpha = TabStrip::chip_id(strip_id(), TabKey::of(10_u64));
     let before = h.rect(alpha).expect("alpha arranged");
 
     // Reversed; alpha keeps its id.
@@ -102,13 +103,13 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
         "the reorder moved it: {before:?} then {after:?}"
     );
     assert_eq!(
-        TabStrip::chip_id(strip_id(), 10),
+        TabStrip::chip_id(strip_id(), TabKey::of(10_u64)),
         alpha,
         "the derivation is a pure function of strip and key"
     );
     assert_ne!(
-        TabStrip::chip_id(strip_id(), 20),
-        TabStrip::chip_id(strip_id(), 30)
+        TabStrip::chip_id(strip_id(), TabKey::of(20_u64)),
+        TabStrip::chip_id(strip_id(), TabKey::of(30_u64))
     );
 }
 
@@ -117,7 +118,7 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
 #[test]
 fn the_content_records_inside_the_chip_before_its_close_button() {
     let mut h = Harness::mono(SURFACE);
-    let alpha = TabStrip::chip_id(strip_id(), 10);
+    let alpha = TabStrip::chip_id(strip_id(), TabKey::of(10_u64));
     let dot = alpha.with("dot");
     let mut handed = Vec::new();
     h.prime(2, |ui| {
@@ -129,7 +130,7 @@ fn the_content_records_inside_the_chip_before_its_close_button() {
             .show(ui, |ui, chip| {
                 handed.push((chip.slot, chip.key, chip.selected, chip.id));
                 chip.show_label(ui);
-                if chip.key == 10 {
+                if chip.key == TabKey::of(10_u64) {
                     Block::new()
                         .id(chip.id.with("dot"))
                         .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
@@ -140,15 +141,25 @@ fn the_content_records_inside_the_chip_before_its_close_button() {
     assert_eq!(
         handed,
         [
-            (0, 10, true, alpha),
-            (1, 20, false, TabStrip::chip_id(strip_id(), 20)),
-            (2, 30, false, TabStrip::chip_id(strip_id(), 30)),
+            (0, TabKey::of(10_u64), true, alpha),
+            (
+                1,
+                TabKey::of(20_u64),
+                false,
+                TabStrip::chip_id(strip_id(), TabKey::of(20_u64))
+            ),
+            (
+                2,
+                TabKey::of(30_u64),
+                false,
+                TabStrip::chip_id(strip_id(), TabKey::of(30_u64))
+            ),
         ],
     );
     let label = h.rect(alpha.with("label")).expect("the label recorded");
     let dot = h.rect(dot).expect("the content's own widget recorded");
     let close = h
-        .rect(TabStrip::close_id(strip_id(), 10))
+        .rect(TabStrip::close_id(strip_id(), TabKey::of(10_u64)))
         .expect("the close button recorded");
     let chip = h.rect(alpha).expect("arranged");
     let gap = h.ui().theme().tabs.label_gap;
@@ -177,7 +188,7 @@ fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
     assert_eq!((t.close_size, t.close_glyph_span), (16.0, 8.0), "premise");
     let stroke = t.close_glyph_width;
     let ink = t.close.normal.text.apply(&theme.text).color.to_f16();
-    let node = h.node_for_widget_id(TabStrip::close_id(strip_id(), 20));
+    let node = h.node_for_widget_id(TabStrip::close_id(strip_id(), TabKey::of(20_u64)));
     let tree = h.ui().tree(Layer::Main);
     let mut lines = Vec::new();
     for shape in tree.shapes_of(node) {
@@ -212,8 +223,8 @@ fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
 /// chip shows the button in that box.
 #[test]
 fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
-    let beta = TabStrip::chip_id(strip_id(), 20);
-    let close = TabStrip::close_id(strip_id(), 20);
+    let beta = TabStrip::chip_id(strip_id(), TabKey::of(20_u64));
+    let close = TabStrip::close_id(strip_id(), TabKey::of(20_u64));
     let slot = close.with("slot");
     let mut h = Harness::mono(SURFACE);
     h.ui_mut().theme_mut().tabs.close_shown = CloseShown::Always;
@@ -242,7 +253,8 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
         "the hidden button keeps the chip's width"
     );
     assert!(
-        h.rect(TabStrip::close_id(strip_id(), 10)).is_some(),
+        h.rect(TabStrip::close_id(strip_id(), TabKey::of(10_u64)))
+            .is_some(),
         "the selected chip shows its button",
     );
 
@@ -310,9 +322,11 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
     h.ui_mut().theme_mut().tabs.min_width = 160.0;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
-    let chip = TabStrip::chip_id(strip_id(), 10);
+    let chip = TabStrip::chip_id(strip_id(), TabKey::of(10_u64));
     let selected = h.rect(chip).expect("arranged");
-    let plain = h.rect(TabStrip::chip_id(strip_id(), 20)).expect("arranged");
+    let plain = h
+        .rect(TabStrip::chip_id(strip_id(), TabKey::of(20_u64)))
+        .expect("arranged");
     assert_eq!(
         selected.size.h, plain.size.h,
         "the cap grew the selected chip: {selected:?} against {plain:?}",
@@ -358,8 +372,12 @@ fn a_pinned_chip_is_as_tall_as_a_closable_one() {
                 .show(ui, |ui, chip| chip.show_label(ui));
         });
     }
-    let pinned = h.rect(TabStrip::chip_id(strip_id(), 10)).expect("arranged");
-    let closable = h.rect(TabStrip::chip_id(strip_id(), 20)).expect("arranged");
+    let pinned = h
+        .rect(TabStrip::chip_id(strip_id(), TabKey::of(10_u64)))
+        .expect("arranged");
+    let closable = h
+        .rect(TabStrip::chip_id(strip_id(), TabKey::of(20_u64)))
+        .expect("arranged");
     let t = &h.ui().theme().tabs;
     let [_, pad_t, _, pad_b] = t.chip_padding.to_array();
     // The close box sets the height: its 30 px between the chip's top and bottom insets.
@@ -378,7 +396,7 @@ fn a_close_click_reports_a_close_and_not_a_click() {
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
 
-    h.click(TabStrip::close_id(strip_id(), 20));
+    h.click(TabStrip::close_id(strip_id(), TabKey::of(20_u64)));
     let hit = h.frame_value(|ui| {
         let items = items(ui);
         let r = TabStrip::new(&items)
@@ -397,7 +415,7 @@ fn a_chip_click_reports_its_slot() {
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
 
-    h.click(TabStrip::chip_id(strip_id(), 30));
+    h.click(TabStrip::chip_id(strip_id(), TabKey::of(30_u64)));
     let hit = h.frame_value(|ui| {
         let items = items(ui);
         let r = TabStrip::new(&items)
@@ -520,7 +538,7 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
             .rect(strip_id().with("band"))
             .unwrap()
             .deflated_by(padding);
-        let chip = TabStrip::chip_id(strip_id(), 30);
+        let chip = TabStrip::chip_id(strip_id(), TabKey::of(30_u64));
         let full = h.transform(chip).apply_rect(h.arranged(chip).unwrap());
         full.min.x >= clip.min.x - EPS && full.max().x <= clip.max().x + EPS
     };
@@ -701,7 +719,7 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
         }
     };
     let extent = |h: &Harness, key: u64| {
-        let chip = TabStrip::chip_id(strip_id(), key);
+        let chip = TabStrip::chip_id(strip_id(), TabKey::of(key));
         h.transform(chip).apply_rect(h.arranged(chip).unwrap())
     };
     let clip = |h: &Harness| {
@@ -742,7 +760,7 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
     h.prime(2, build(0));
     let uncut = extent(&h, 10);
     let seen = h
-        .rect(TabStrip::chip_id(strip_id(), 10))
+        .rect(TabStrip::chip_id(strip_id(), TabKey::of(10_u64)))
         .expect("alpha shows in part");
     assert!(
         uncut.center().x < seen.center().x,
@@ -754,7 +772,10 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
         0,
         "the cut rect has not been passed"
     );
-    assert_eq!(TabStrip::drop_slot(h.ui(), strip_id(), [10, 20, 30], x), 1);
+    assert_eq!(
+        TabStrip::drop_slot(h.ui(), strip_id(), [10_u64, 20, 30].map(TabKey::of), x),
+        1
+    );
     assert_eq!(
         h.rect(caret),
         Some(mark(&h, clip(&h).min.x)),
@@ -809,7 +830,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     assert_eq!((page, drawn), (0, 0));
 
     let strip = view.with("strip");
-    h.click(TabStrip::chip_id(strip, 2));
+    h.click(TabStrip::chip_id(strip, TabKey::of(2_u64)));
     let action = h.frame_value(|ui| record(ui, &mut page, &mut drawn));
     assert_eq!(
         action,
@@ -825,7 +846,8 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
         "the binding moved and the body drew the new page on the same frame"
     );
     assert!(
-        h.rect(TabStrip::close_id(strip, 0)).is_none(),
+        h.rect(TabStrip::close_id(strip, TabKey::of(0_u64)))
+            .is_none(),
         "closable(false) records no close button",
     );
 }
@@ -866,7 +888,7 @@ fn a_stale_strip_selection_caps_the_last_chip() {
     strip_frame(&mut h, 9);
     let capped = |key: u64| {
         let node = h
-            .node_of(TabStrip::chip_id(strip_id(), key))
+            .node_of(TabStrip::chip_id(strip_id(), TabKey::of(key)))
             .expect("chip")
             .node;
         h.ui().tree(Layer::Main).chrome(node).is_some()
@@ -904,7 +926,7 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
         (
             "past the last center: the append",
             |h, strip| {
-                let onto = h.center_of(TabStrip::chip_id(strip, 2));
+                let onto = h.center_of(TabStrip::chip_id(strip, TabKey::of(2_u64)));
                 Vec2::new(onto.x + 4.0, onto.y)
             },
             reordered,
@@ -913,7 +935,7 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
         (
             "just past its own center: the gap beside it",
             |h, strip| {
-                let own = h.center_of(TabStrip::chip_id(strip, 0));
+                let own = h.center_of(TabStrip::chip_id(strip, TabKey::of(0_u64)));
                 Vec2::new(own.x + 4.0, own.y)
             },
             Edges::default(),
@@ -922,7 +944,7 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
         (
             "deep in the page: off the strip",
             |h, strip| {
-                let onto = h.center_of(TabStrip::chip_id(strip, 2));
+                let onto = h.center_of(TabStrip::chip_id(strip, TabKey::of(2_u64)));
                 Vec2::new(onto.x + 4.0, onto.y + 120.0)
             },
             Edges::default(),
@@ -935,7 +957,10 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
         h.prime(2, |ui| {
             record(ui, &mut page);
         });
-        h.press(TabStrip::chip_id(strip, 0), PointerButton::Left);
+        h.press(
+            TabStrip::chip_id(strip, TabKey::of(0_u64)),
+            PointerButton::Left,
+        );
         h.drag_to(release(&h, strip));
         h.frame(|ui| {
             record(ui, &mut page);
@@ -966,8 +991,11 @@ fn an_escape_cancels_a_view_drag_and_its_caret() {
     h.prime(2, |ui| {
         record(ui, &mut page);
     });
-    h.press(TabStrip::chip_id(strip, 0), PointerButton::Left);
-    let onto = h.center_of(TabStrip::chip_id(strip, 2));
+    h.press(
+        TabStrip::chip_id(strip, TabKey::of(0_u64)),
+        PointerButton::Left,
+    );
+    let onto = h.center_of(TabStrip::chip_id(strip, TabKey::of(2_u64)));
     h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
     h.prime(2, |ui| {
         record(ui, &mut page);
@@ -1027,7 +1055,7 @@ fn a_close_moves_the_binding_with_the_shown_page() {
         h.prime(2, |ui| {
             record(ui, &mut bound, &mut pages, &mut drawn);
         });
-        h.click(TabStrip::close_id(strip, u64::try_from(closed).unwrap()));
+        h.click(TabStrip::close_id(strip, TabKey::of(closed)));
         let action = h.frame_value(|ui| record(ui, &mut bound, &mut pages, &mut drawn));
         assert_eq!(
             action,
@@ -1050,7 +1078,7 @@ fn a_close_moves_the_binding_with_the_shown_page() {
 fn a_keyed_view_keeps_each_chip_with_its_page() {
     let view = WidgetId::from_hash("test.keyed");
     let strip = view.with("strip");
-    let chip = |name: &str| TabStrip::chip_id(strip, WidgetId::from_hash(name).0);
+    let chip = |name: &str| TabStrip::chip_id(strip, TabKey::of(name));
     let record = |ui: &mut Ui, page: &mut usize, pages: &[&str]| -> Edges {
         TabbedView::new(page, pages)
             .id(view)
@@ -1073,7 +1101,8 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     let geometry_before = h.rect(chip("Geometry")).expect("Geometry's chip");
     let color = h.rect(chip("Color")).expect("Color's chip");
     assert!(
-        h.rect(TabStrip::chip_id(strip, 1)).is_none(),
+        h.rect(TabStrip::chip_id(strip, TabKey::of(1_u64)))
+            .is_none(),
         "no index keys"
     );
     h.frame(|ui| {
@@ -1160,7 +1189,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         }
     };
     let chevron = strip_id().with("overflow");
-    let last = TabStrip::chip_id(strip_id(), 30);
+    let last = TabStrip::chip_id(strip_id(), TabKey::of(30_u64));
 
     // Wide enough for all three: no chip is cut, and no chevron.
     let mut h = Harness::mono(SURFACE);
@@ -1204,7 +1233,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // The chevron opens the menu; its row reports a menu pick, which `activated` merges.
     h.click(chevron);
     h.frame(build(half_way));
-    h.click(strip_id().with("overflow").with(30u64));
+    h.click(strip_id().with("overflow").with(TabKey::of(30_u64)));
     let picked = h.frame_value(|ui| {
         let items = items(ui);
         let r = TabStrip::new(&items)
@@ -1278,7 +1307,11 @@ fn the_overflow_menu_opens_on_the_selected_chip_in_its_menu_style() {
         (h.ui().focus(), height)
     };
     let (focus, plain) = open(false);
-    assert_eq!(focus, Some(chevron.with(20u64)), "the selected chip's row");
+    assert_eq!(
+        focus,
+        Some(chevron.with(TabKey::of(20_u64))),
+        "the selected chip's row"
+    );
     let (_, styled) = open(true);
     assert_eq!(styled - plain, 2.0 * 9.0);
 }

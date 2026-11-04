@@ -13,7 +13,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
-use crate::widgets::toggle_row::{Settled, ToggleKind, ToggleRow};
+use crate::widgets::toggle_row::{Settled, ToggleFace, ToggleRow};
 
 /// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
 ///
@@ -64,7 +64,7 @@ impl Configure for Checkbox<'_> {
 #[derive(Debug)]
 struct Check<'a>(&'a mut bool);
 
-impl ToggleKind for Check<'_> {
+impl ToggleFace for Check<'_> {
     fn settle(self, activated: bool) -> Settled {
         Settled::flip(self.0, activated)
     }

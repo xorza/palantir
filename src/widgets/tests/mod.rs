@@ -527,6 +527,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     use crate::widgets::slider::Slider;
     use crate::widgets::splitter::Splitter;
     use crate::widgets::tabs::tab_item::TabItem;
+    use crate::widgets::tabs::tab_key::TabKey;
     use crate::widgets::tabs::tab_strip::TabStrip;
     use crate::widgets::tabs::tabbed_view::TabbedView;
     use crate::widgets::text::Text;
@@ -567,7 +568,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                 TabbedView::new(&mut no_page, &no_tabs)
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |_, _| {});
-                let items = [TabItem::new(1, ui.intern("one"))];
+                let items = [TabItem::new(TabKey::of(1), ui.intern("one"))];
                 TabStrip::new(&items)
                     .selected(5)
                     .show(ui, |ui, chip| chip.show_label(ui));

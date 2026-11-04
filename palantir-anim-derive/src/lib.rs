@@ -213,11 +213,22 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
 fn expand_text_slots(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let fields = named_fields(input, "TextSlots")?
+    let fields: Vec<_> = named_fields(input, "TextSlots")?
         .iter()
-        .map(|f| f.ident.as_ref().expect("named fields have idents"));
+        .map(|f| f.ident.as_ref().expect("named fields have idents"))
+        .collect();
     Ok(quote! {
         impl #impl_generics crate::theme::TextSlots for #name #ty_generics #where_clause {
+            #[inline]
+            fn each_text<F>(&self, f: &mut F)
+            where
+                F: FnMut(crate::theme::ThemeTextRef<'_>),
+            {
+                #(
+                    crate::theme::TextSlots::each_text(&self.#fields, f);
+                )*
+            }
+
             #[inline]
             fn for_each_text<F>(&mut self, mut other: ::core::option::Option<&mut Self>, f: &mut F)
             where

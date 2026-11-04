@@ -167,7 +167,7 @@ impl InputState {
     }
 
     /// Move focus to the Tab stop at `end` under `ancestor` at the end of this frame.
-    pub(crate) const fn focus_end_within(&mut self, ancestor: WidgetId, end: TabEnd) {
+    pub(crate) const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
         self.focus.enter_within(FocusEntry {
             within: ancestor,
             end,

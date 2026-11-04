@@ -31,6 +31,7 @@ use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
+use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use ron::ser;
 use std::mem;
@@ -922,10 +923,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     }
 
     // Chip ids are the strip's, keyed on the tab, as the navigation scan polls.
-    let chip = TabStrip::chip_id(
-        DockView::strip_id(dock(), primary),
-        DockView::tab_key(Tab::Prefs),
-    );
+    let chip = TabStrip::chip_id(DockView::strip_id(dock(), primary), TabKey::of(Tab::Prefs));
     let chip_rect = h.rect(chip).expect("the Prefs chip arranged");
     let strip = h
         .rect(DockView::strip_id(dock(), primary))
@@ -991,11 +989,11 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
     let wash = dock().with("preview");
 
     h.press(
-        TabStrip::chip_id(strip, DockView::tab_key(Tab::Main)),
+        TabStrip::chip_id(strip, TabKey::of(Tab::Main)),
         PointerButton::Left,
     );
     h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
-    let last = h.center_of(TabStrip::chip_id(strip, DockView::tab_key(viewer(1))));
+    let last = h.center_of(TabStrip::chip_id(strip, TabKey::of(viewer(1))));
     h.drag_to(last + Vec2::new(4.0, 0.0));
     h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert!(h.rect(caret).is_some(), "over the strip, its caret");
@@ -1023,7 +1021,7 @@ fn a_lone_tab_over_its_own_pane_washes_nothing() {
     let wash = dock().with("preview");
 
     h.press(
-        TabStrip::chip_id(strip, DockView::tab_key(viewer(1))),
+        TabStrip::chip_id(strip, TabKey::of(viewer(1))),
         PointerButton::Left,
     );
     h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
@@ -1052,7 +1050,7 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
 
     let chip = TabStrip::chip_id(
         DockView::strip_id(dock(), d.primary().id),
-        DockView::tab_key(Tab::Prefs),
+        TabKey::of(Tab::Prefs),
     );
     h.click(chip);
     let content = h.frame_value(|ui| {
@@ -1078,7 +1076,7 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
 
     let strip = DockView::strip_id(dock(), d.primary().id);
-    let close = TabStrip::close_id(strip, DockView::tab_key(Tab::Prefs));
+    let close = TabStrip::close_id(strip, TabKey::of(Tab::Prefs));
     h.click(close);
     h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
 
@@ -1138,7 +1136,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     h.click(chevron);
     frame(&mut h, &mut d, &mut tabs);
 
-    let entry = strip.with("overflow").with(DockView::tab_key(viewer(1)));
+    let entry = strip.with("overflow").with(TabKey::of(viewer(1)));
     assert!(h.rect(entry).is_some(), "the menu lists every tab");
     h.click(entry);
     frame(&mut h, &mut d, &mut tabs);
@@ -1197,7 +1195,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     let mut h = Harness::mono(SURFACE);
     h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     let strip = DockView::strip_id(dock(), d.primary().id);
-    let chip = |tab| TabStrip::chip_id(strip, DockView::tab_key(tab));
+    let chip = |tab| TabStrip::chip_id(strip, TabKey::of(tab));
 
     let at = h
         .rect(chip(Tab::Main))
@@ -1294,7 +1292,7 @@ fn a_carried_tab_leaves_with_the_dock() {
     }
     let dock_id = dock();
     let strip = DockView::strip_id(dock_id, d.primary().id);
-    let chip = TabStrip::chip_id(strip, DockView::tab_key(Tab::Prefs));
+    let chip = TabStrip::chip_id(strip, TabKey::of(Tab::Prefs));
     let at = h.center_of(chip);
     h.press(at, PointerButton::Left);
     record(&mut h, &mut d, &mut tabs);
@@ -1332,7 +1330,7 @@ fn the_dock_restyles_its_strips_and_tab_menus() {
         let mut menu = Theme::stock(ColorScheme::Dark).menu;
         menu.padding = menu.padding + Spacing::all(9.0);
         let strip = DockView::strip_id(dock(), d.primary().id);
-        let chip = TabStrip::chip_id(strip, DockView::tab_key(Tab::Prefs));
+        let chip = TabStrip::chip_id(strip, TabKey::of(Tab::Prefs));
         let mut h = Harness::mono(SURFACE);
         let mut scene = |ui: &mut Ui| {
             DockView::new(dock(), &d, &mut ops)

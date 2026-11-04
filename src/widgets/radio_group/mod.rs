@@ -24,7 +24,7 @@ use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::button::Button;
-use crate::widgets::toggle_row::{Settled, ToggleKind, ToggleRow};
+use crate::widgets::toggle_row::{Settled, ToggleFace, ToggleRow};
 use std::rc::Rc;
 
 /// How a [`RadioGroup`]'s options draw. The keys work alike in each, so the look changes what the
@@ -386,7 +386,7 @@ impl<T: PartialEq> Pick<'_, T> {
     }
 }
 
-impl<T: PartialEq> ToggleKind for Pick<'_, T> {
+impl<T: PartialEq> ToggleFace for Pick<'_, T> {
     /// An option latches: picking the checked one moves nothing.
     fn settle(self, activated: bool) -> Settled {
         let checked = self.shows_checked();

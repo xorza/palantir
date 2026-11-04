@@ -1,6 +1,5 @@
 //! A strip over a content area, bound to the caller's page index.
 
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::theme::menu::MenuTheme;
@@ -13,6 +12,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::reindex;
 use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
+use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_move::TabMove;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use std::hash::Hash;
@@ -44,10 +44,10 @@ pub struct TabbedViewResponse<'a, R> {
     pub dragging: Option<usize>,
 }
 
-/// A tab strip over a content area, bound to a `&mut usize` page index. Mirrors
-/// [`ComboBox`](crate::ComboBox) (same binding, option slice and
-/// [`labeled`](Self::labeled) escape); for a docked pane tree use
-/// [`DockView`](crate::DockView).
+/// A tab strip over a content area, bound to a `&mut usize` page index. It takes an option slice
+/// and a [`labeled`](Self::labeled) escape as [`ComboBox`](crate::ComboBox) does, but binds the
+/// index, not a reference into the pages: closing or moving a tab would leave a reference stale
+/// or naming another page. For a docked pane tree use [`DockView`](crate::DockView).
 ///
 /// ```
 /// # use palantir::{Configure, TabbedView, Ui};
@@ -71,7 +71,7 @@ pub struct TabbedViewResponse<'a, R> {
 /// closes or reorders pages needs.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
-pub struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64> {
+pub struct TabbedView<'a, S, L, K = fn(usize, &S) -> TabKey> {
     widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
@@ -111,18 +111,17 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
     }
 
     /// Key each page's chip by `key(page)` rather than by index, so hover and
-    /// animation follow the page when pages close or reorder; hashed as
-    /// [`DockView::tab_key`](crate::DockView::tab_key) does, keys unique.
+    /// animation follow the page when pages close or reorder; keys unique.
     pub fn keyed<H: Hash>(
         self,
         key: impl Fn(&S) -> H,
-    ) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> u64> {
+    ) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> TabKey> {
         TabbedView {
             widget: self.widget,
             selected: self.selected,
             options: self.options,
             label: self.label,
-            key: move |_: usize, page: &S| WidgetId::from_hash(key(page)).0,
+            key: move |_: usize, page: &S| TabKey::of(key(page)),
             closable: self.closable,
             draggable: self.draggable,
             overflow: self.overflow,
@@ -132,7 +131,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
     }
 }
 
-impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> {
+impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, K> {
     /// Whether each chip carries a close button, reported as [`TabbedViewResponse::closed`].
     /// Default `false`: the caller removes the page.
     pub const fn closable(mut self, closable: bool) -> Self {
@@ -291,6 +290,6 @@ struct StripHit {
     dragging: Option<usize>,
 }
 
-const fn idx_key<S>(idx: usize, _: &S) -> u64 {
-    idx as u64
+fn idx_key<S>(idx: usize, _: &S) -> TabKey {
+    TabKey::of(idx)
 }

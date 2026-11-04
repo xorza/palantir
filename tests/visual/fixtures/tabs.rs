@@ -3,8 +3,8 @@
 use glam::UVec2;
 use palantir::internals::dock_fixture::DockFixture;
 use palantir::{
-    Block, Chrome, Configure, Corners, Panel, Sizing, TabItem, TabStrip, TabbedView, Text, Ui,
-    WidgetId,
+    Block, Chrome, Configure, Corners, Panel, Sizing, TabItem, TabKey, TabStrip, TabbedView, Text,
+    Ui, WidgetId,
 };
 
 use crate::golden_name::GoldenName;
@@ -18,7 +18,7 @@ fn tab_strip_matches_golden() {
             .enumerate()
             .map(|(i, label)| TabItem {
                 closable: true,
-                ..TabItem::new(i as u64, ui.intern(label))
+                ..TabItem::new(TabKey::of(i), ui.intern(label))
             })
             .collect();
         Panel::vstack()

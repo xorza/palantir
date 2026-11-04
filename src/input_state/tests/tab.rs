@@ -592,3 +592,25 @@ fn a_dialog_in_a_dialog_takes_focus_and_gives_it_back() {
         "closing gives focus back to its opener"
     );
 }
+
+/// `focus_within` enters a subtree at either end of its Tab order, as a list opened by Home or End
+/// lands: the first stop or the last, at the end of the frame that asks.
+#[test]
+fn focus_within_lands_on_either_end_of_a_subtree() {
+    use crate::cascade::rows::tab_stop_row::TabEnd;
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    let mut record = |ui: &mut Ui| {
+        stop(ui, "outside");
+        Panel::vstack().id(id("group")).show(ui, |ui| {
+            for name in ["x", "y", "z"] {
+                stop(ui, name);
+            }
+        });
+    };
+    h.frame(&mut record);
+    for (end, lands) in [(TabEnd::Last, "z"), (TabEnd::First, "x")] {
+        h.ui_mut().focus_within(id("group"), end);
+        h.frame(&mut record);
+        assert_eq!(h.ui().focus(), Some(id(lands)), "{end:?}");
+    }
+}

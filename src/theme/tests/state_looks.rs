@@ -346,7 +346,7 @@ fn a_drag_value_editor_wears_its_chips_looks() {
 /// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order, which is field order: the picker's mono 12 px values on the value chip and the hex field (four states each) and its mono 12 px captions; the tooltip's 12 px.
 #[test]
 fn bundled_text_inherits_every_axis_but_color() {
-    use crate::theme::{TextSlots, Theme, ThemeText};
+    use crate::theme::{TextSlots, Theme, ThemeText, ThemeTextRef};
 
     let mono = TextStyleOverrides {
         family: Some(FontFamily::MONO),
@@ -366,6 +366,17 @@ fn bundled_text_inherits_every_axis_but_color() {
         }
     });
     assert_eq!(named, expected);
+    // The read-only walk visits the same slots, in the same order.
+    let mut read = Vec::new();
+    theme.each_text(&mut |text| {
+        if let ThemeTextRef::Overrides(o) = text {
+            let past_color = TextStyleOverrides { color: None, ..*o };
+            if !past_color.is_empty() {
+                read.push(past_color);
+            }
+        }
+    });
+    assert_eq!(read, expected);
 
     // The reported case: an app at 13 px. An inactive tab names a muted color at rest and none when pressed; both shape at 13 px.
     theme.text = theme.text.with_font_size(13.0);

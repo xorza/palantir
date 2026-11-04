@@ -5,6 +5,7 @@
 pub(crate) mod reindex;
 pub(crate) mod tab_chip;
 pub(crate) mod tab_item;
+pub(crate) mod tab_key;
 pub(crate) mod tab_move;
 pub(crate) mod tab_strip;
 pub(crate) mod tabbed_view;

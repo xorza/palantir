@@ -375,7 +375,7 @@ impl Ui {
     /// turns. App-global.
     #[inline]
     pub const fn is_transparency_reduced(&self) -> bool {
-        self.frame_runtime.transparency().is_reduced()
+        self.frame_runtime.transparency.is_reduced()
     }
 
     /// Whether the system asks for less transparency, whatever the preference; `false` where
@@ -1443,13 +1443,14 @@ impl Ui {
     /// previous holder when `ancestor` leaves the tree.
     #[inline]
     pub const fn focus_first_within(&mut self, ancestor: WidgetId) {
-        self.input.focus_end_within(ancestor, TabEnd::First);
+        self.focus_within(ancestor, TabEnd::First);
     }
 
-    /// [`Self::focus_first_within`] at `end` of the Tab stops, as a list End opens lands on its
-    /// last row.
-    pub(crate) const fn focus_end_within(&mut self, ancestor: WidgetId, end: TabEnd) {
-        self.input.focus_end_within(ancestor, end);
+    /// Move focus at the end of this frame to the Tab stop at `end` under `ancestor`: the first,
+    /// as [`Self::focus_first_within`] does, or the last, as a list End opens lands on its last
+    /// row.
+    pub const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
+        self.input.focus_within(ancestor, end);
     }
 
     /// Pointer position in logical pixels (surface space), or `None` off-surface.

@@ -78,7 +78,6 @@ impl InputPass<'_> {
             filter,
         } = policy;
         let mut ended = None;
-        let clipboard = ui.clipboard();
 
         let was_focused = view.was_focused();
         // Repair persisted byte offsets: application code may have replaced
@@ -152,7 +151,8 @@ impl InputPass<'_> {
                 break;
             }
             if let Some(action) = EditAction::from_keypress(kp) {
-                action.execute(&mut ed, &clipboard);
+                // Taken on an action alone, so a frame of plain typing takes no handle.
+                action.execute(&mut ed, &ui.clipboard());
                 continue;
             }
             match apply_key(&mut ed, kp, TextNav::new(PLATFORM)) {

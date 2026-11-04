@@ -5,7 +5,8 @@ use crate::input::keyboard::key_press::KeyPress;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 
-/// Per-`Ui` wake-gate registry, re-declared by widgets during record.
+/// Per-`Ui` wake-gate registry, re-declared by widgets during record. Bounded by the reads one
+/// record makes, as each record starts from a clear one, its capacity kept.
 #[derive(Debug, Default)]
 pub(super) struct Watches {
     pub(super) pointer_mask: PointerWake,

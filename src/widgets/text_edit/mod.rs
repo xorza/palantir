@@ -118,9 +118,15 @@ impl TextEditState {
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct TextEdit<'a> {
+    /// The text the field edits.
+    text: Bound<'a>,
+    field: EditField<'a>,
+}
+
+/// Everything a [`TextEdit`] is but its text, which a pass runs on beside the text it edits.
+#[derive(Debug)]
+struct EditField<'a> {
     widget: Widget,
-    /// The text the field edits; `show` takes it.
-    text: Option<Bound<'a>>,
     style: Option<&'a TextEditTheme>,
     overrides: TextStyleOverrides,
     placeholder: TextInput<'a>,
@@ -176,16 +182,18 @@ impl<'a> TextEdit<'a> {
             .sense(Sense::CLICK | Sense::SCROLL)
             .focusable(true);
         Self {
-            widget,
-            text: Some(text),
-            style: None,
-            overrides: TextStyleOverrides::NONE,
-            placeholder: TextInput::Borrowed(""),
-            multiline: false,
-            text_align: None,
-            max_chars: None,
-            select_all_on_focus: false,
-            escape_falls_through: false,
+            text,
+            field: EditField {
+                widget,
+                style: None,
+                overrides: TextStyleOverrides::NONE,
+                placeholder: TextInput::Borrowed(""),
+                multiline: false,
+                text_align: None,
+                max_chars: None,
+                select_all_on_focus: false,
+                escape_falls_through: false,
+            },
         }
     }
 
@@ -194,7 +202,7 @@ impl<'a> TextEdit<'a> {
     /// font/leading/color live on the per-state `text` overrides
     /// ([`crate::TextStyleOverrides`]); unset axes inherit [`crate::Theme::text`].
     pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
-        self.style = s.into();
+        self.field.style = s.into();
         self
     }
 
@@ -205,7 +213,7 @@ impl<'a> TextEdit<'a> {
     /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
-        self.overrides.color = Some(domain::color(color));
+        self.field.overrides.color = Some(domain::color(color));
         self
     }
 
@@ -219,7 +227,7 @@ impl<'a> TextEdit<'a> {
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub const fn font_size(mut self, px: f32) -> Self {
-        self.overrides.font_size = Some(domain::length(px));
+        self.field.overrides.font_size = Some(domain::length(px));
         self
     }
 
@@ -232,37 +240,37 @@ impl<'a> TextEdit<'a> {
     /// Panics unless `factor` is [positive](crate::widget::domain::positive).
     #[track_caller]
     pub const fn line_height_factor(mut self, factor: f32) -> Self {
-        self.overrides.line_height_factor = Some(domain::positive(factor));
+        self.field.overrides.line_height_factor = Some(domain::positive(factor));
         self
     }
 
     /// Family to shape against, overriding the resolved look's.
     pub const fn family(mut self, family: FontFamily) -> Self {
-        self.overrides.family = Some(family);
+        self.field.overrides.family = Some(family);
         self
     }
 
     /// Weight to shape against, overriding the resolved look's.
     pub const fn weight(mut self, weight: FontWeight) -> Self {
-        self.overrides.weight = Some(weight);
+        self.field.overrides.weight = Some(weight);
         self
     }
 
     /// Upright or italic, overriding the resolved look's.
     pub const fn slant(mut self, slant: FontSlant) -> Self {
-        self.overrides.slant = Some(slant);
+        self.field.overrides.slant = Some(slant);
         self
     }
 
     /// Shape the buffer bold — [`Self::weight`] with [`FontWeight::BOLD`].
     pub const fn bold(mut self) -> Self {
-        self.overrides.weight = Some(FontWeight::BOLD);
+        self.field.overrides.weight = Some(FontWeight::BOLD);
         self
     }
 
     /// Shape the buffer italic via [`Self::slant`]; `.bold().italic()` is bold italic.
     pub const fn italic(mut self) -> Self {
-        self.overrides.slant = Some(FontSlant::Italic);
+        self.field.overrides.slant = Some(FontSlant::Italic);
         self
     }
 
@@ -270,7 +278,7 @@ impl<'a> TextEdit<'a> {
     /// the release, unless the press dragged a selection or double-clicked a word.
     /// Default off.
     pub const fn select_all_on_focus(mut self, select_all_on_focus: bool) -> Self {
-        self.select_all_on_focus = select_all_on_focus;
+        self.field.select_all_on_focus = select_all_on_focus;
         self
     }
 
@@ -279,14 +287,14 @@ impl<'a> TextEdit<'a> {
     /// default because for a rename or value editor Escape is the cancel and must not
     /// reach past the field.
     pub const fn escape_falls_through(mut self, escape_falls_through: bool) -> Self {
-        self.escape_falls_through = escape_falls_through;
+        self.field.escape_falls_through = escape_falls_through;
         self
     }
 
     /// Cap the buffer at `n` characters. Insertions are truncated; longer existing content is left
     /// alone. `n == 0` rejects every insertion.
     pub const fn max_chars(mut self, n: usize) -> Self {
-        self.max_chars = Some(n);
+        self.field.max_chars = Some(n);
         self
     }
 
@@ -294,37 +302,34 @@ impl<'a> TextEdit<'a> {
     /// single-line, `Align::TOP_LEFT` multi-line. Distinct from [`Configure::align`],
     /// which positions the widget in its parent's slot.
     pub const fn text_align(mut self, a: Align) -> Self {
-        self.text_align = Some(a);
+        self.field.text_align = Some(a);
         self
     }
 
     /// Switch to multi-line: Enter inserts `\n`, paste keeps newlines, text soft-wraps, and
     /// click/caret/selection use cosmic-text's 2D layout.
     pub const fn multiline(mut self, multiline: bool) -> Self {
-        self.multiline = multiline;
+        self.field.multiline = multiline;
         self
     }
 
     /// Text drawn in place of an empty buffer, focused or not; an empty `Hug` field sizes to it.
     pub fn placeholder(mut self, text: impl Into<TextInput<'a>>) -> Self {
-        self.placeholder = text.into();
+        self.field.placeholder = text.into();
         self
     }
 
     /// Record the editor and run one frame of editing over its text.
-    pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
-        self.widget.configure().default_clip(ClipMode::Rect);
-        let id = self.widget.resolve(ui);
-        let text = self
-            .text
-            .take()
-            .expect("a field's text is taken once, by `show`");
+    pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_> {
+        let Self { text, mut field } = self;
+        field.widget.configure().default_clip(ClipMode::Rect);
+        let id = field.widget.resolve(ui);
         // The state row is held for the whole pass because its stages are separated by
         // `&mut Ui` calls; `with_state` moves it out and back without allocating.
         let (PassOutcome { edges, response }, committed_text) =
             ui.with_state::<TextEditState, _>(id, |ui, state| match text {
-                Bound::Live(text) => (self.pass(ui, state, id, text), None),
-                Bound::Buffered(current) => self.buffered_pass(ui, state, id, &current),
+                Bound::Live(text) => (field.pass(ui, state, id, text), None),
+                Bound::Buffered(current) => field.buffered_pass(ui, state, id, &current),
             });
         let EditEdges {
             changed,
@@ -343,8 +348,10 @@ impl<'a> TextEdit<'a> {
             focus_lost,
         }
     }
+}
 
-    /// [`Self::pass`] over the draft of a [buffered](Self::buffered) field: filled from `current`
+impl EditField<'_> {
+    /// [`Self::pass`] over the draft of a [buffered](TextEdit::buffered) field: filled from `current`
     /// while idle and on Escape, and handed back on a commit that changed it.
     fn buffered_pass(
         self,
@@ -632,7 +639,7 @@ impl<'a> TextEdit<'a> {
 impl Configure for TextEdit<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
-        self.widget.configure()
+        self.field.widget.configure()
     }
 }
 

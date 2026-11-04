@@ -23,7 +23,7 @@ use std::rc::Rc;
 /// What [`Checkbox`](crate::Checkbox), the options of a [`RadioGroup`](crate::RadioGroup) and
 /// [`Switch`](crate::Switch) share: one click target over a box and a label, its label and its
 /// theme override. Each widget owns one and finishes through [`Self::show`] with its
-/// [`ToggleKind`].
+/// [`ToggleFace`].
 #[derive(Debug)]
 pub(crate) struct ToggleRow<'a> {
     pub(crate) widget: Widget,
@@ -34,7 +34,7 @@ pub(crate) struct ToggleRow<'a> {
 
 /// What sets one toggle apart from its siblings: how an activation moves its bound value, its
 /// slot, its box and what paints inside the box.
-pub(crate) trait ToggleKind {
+pub(crate) trait ToggleFace {
     /// Moves the bound value on this frame's activation.
     fn settle(self, activated: bool) -> Settled;
     /// The slot read when the caller set no style.
@@ -86,9 +86,9 @@ impl ToggleRow<'_> {
         }
     }
 
-    /// Records the row for `kind`. A click or Space activates it, and a move commits at once
+    /// Records the row for `face`. A click or Space activates it, and a move commits at once
     /// (`committed == changed`).
-    pub(crate) fn show<K: ToggleKind>(self, ui: &mut Ui, kind: K) -> ValueResponse<'_> {
+    pub(crate) fn show<F: ToggleFace>(self, ui: &mut Ui, face: F) -> ValueResponse<'_> {
         let Self {
             mut widget,
             label,
@@ -96,14 +96,14 @@ impl ToggleRow<'_> {
         } = self;
         let response = widget.activation_response(ui, Activation::Toggle);
         let id = response.id;
-        let Settled { checked, changed } = kind.settle(response.clicked());
+        let Settled { checked, changed } = face.settle(response.clicked());
 
         // An `Rc` bump, so the slot outlives the `&mut Ui` the record takes.
         let theme = Rc::clone(ui.theme());
-        let slot = style.unwrap_or_else(|| K::slot(&theme));
+        let slot = style.unwrap_or_else(|| F::slot(&theme));
         let plan = slot.plan(&response, CheckState::from(checked), theme.text);
         let mut look = widget.wear(ui, plan);
-        if let Some(radius) = K::pill(slot) {
+        if let Some(radius) = F::pill(slot) {
             look.chrome.corners = Corners::all(radius);
         }
         widget
@@ -112,10 +112,10 @@ impl ToggleRow<'_> {
             .default_child_align(Align::v(VAlign::Center));
 
         widget.record(ui, None, |ui| {
-            K::boxed(slot)
+            F::boxed(slot)
                 .id(id.with("box"))
                 .record(ui, Some(&look.chrome), |ui| {
-                    K::paint(ui, id, slot, &look.chrome, checked);
+                    F::paint(ui, id, slot, &look.chrome, checked);
                 });
             if !label.is_empty() {
                 Text::new(label)

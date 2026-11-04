@@ -16,7 +16,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::toggle_row::{Settled, ToggleKind, ToggleRow};
+use crate::widgets::toggle_row::{Settled, ToggleFace, ToggleRow};
 use glam::Vec2;
 
 /// Boolean toggle drawn as a pill track with a sliding knob; takes a `&mut bool` and a click flips it. Visuals come from `theme.switch` ([`crate::ToggleTheme`]). Layout and parts mirror [`crate::Checkbox`] (`HStack [track, label]`, one `Sense::CLICK` target), and the knob is `id.with("knob")`; the track is a `Canvas`, and one [`Ui::animate`] row from off to on places the knob and blends its ink.
@@ -66,7 +66,7 @@ impl Configure for Switch<'_> {
 #[derive(Debug)]
 struct Knob<'a>(&'a mut bool);
 
-impl ToggleKind for Knob<'_> {
+impl ToggleFace for Knob<'_> {
     fn settle(self, activated: bool) -> Settled {
         Settled::flip(self.0, activated)
     }

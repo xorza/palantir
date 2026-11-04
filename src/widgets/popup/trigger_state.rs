@@ -128,10 +128,10 @@ impl TriggerFrame {
     /// Settle the open state, record `popup` with `body` while open, and keep the row. Every close
     /// gives the popup's input scope back: one from inside withdraws it there, one by the trigger
     /// here.
-    pub(crate) fn show<K: 'static, R>(
+    pub(crate) fn show<'p, K: 'static, R>(
         self,
         ui: &mut Ui,
-        popup: Popup<'_>,
+        popup: impl FnOnce(&Ui) -> Popup<'p>,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> Option<OverlayResponse<R>> {
         let for_id = self.for_id;
@@ -145,11 +145,11 @@ impl TriggerFrame {
 
     /// [`Self::show`] over a `state` its owner keeps rather than the trigger's row, as a menu bar
     /// keeps one for the one menu it has open; the state to keep comes back.
-    pub(crate) fn settle<K, R>(
+    pub(crate) fn settle<'p, K, R>(
         self,
         ui: &mut Ui,
         state: TriggerState<K>,
-        popup: Popup<'_>,
+        popup: impl FnOnce(&Ui) -> Popup<'p>,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> Settled<K, R> {
         let mut open = state.open;
@@ -173,7 +173,8 @@ impl TriggerFrame {
         let mut resp = None;
         let mut shown = None;
         if let Some(anchor) = anchor {
-            let shown_now = popup.anchor(anchor).show(ui, body);
+            // Built only while open, so a closed trigger dresses no popup.
+            let shown_now = popup(ui).anchor(anchor).show(ui, body);
             if shown_now.closed() {
                 open = None;
             } else {

@@ -233,6 +233,7 @@ pub mod widget {
 pub use animation::animated::Animated;
 pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
+pub use cascade::rows::tab_stop_row::TabEnd;
 pub use clipboard::{Clipboard, ClipboardUnavailable};
 pub use common::platform::{PLATFORM, Platform};
 pub use common::span::Span;
@@ -452,6 +453,7 @@ pub use widgets::splitter::split_half::SplitHalf;
 pub use widgets::switch::Switch;
 pub use widgets::tabs::tab_chip::TabChip;
 pub use widgets::tabs::tab_item::TabItem;
+pub use widgets::tabs::tab_key::TabKey;
 pub use widgets::tabs::tab_move::TabMove;
 pub use widgets::tabs::tab_strip::{TabOverflow, TabStrip, TabStripResponse};
 pub use widgets::tabs::tabbed_view::{TabbedView, TabbedViewResponse};

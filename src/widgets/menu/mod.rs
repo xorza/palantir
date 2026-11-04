@@ -189,12 +189,14 @@ impl<'a> Menu<'a> {
     ) -> Option<OverlayResponse<R>> {
         let landing = self.landing;
         let opener = self.opener;
-        let popup = self.dressed(ui);
         let resp = match opener {
-            Opener::Trigger { frame, at_pointer } => {
-                Self::opened_frame(ui, frame, at_pointer).show::<K, R>(ui, popup, body)
-            }
-            Opener::Caller(point) => Some(popup.anchor(Anchor::at_point(point)).show(ui, body)),
+            Opener::Trigger { frame, at_pointer } => Self::opened_frame(ui, frame, at_pointer)
+                .show::<K, R>(ui, |ui| self.dressed(ui), body),
+            Opener::Caller(point) => Some(
+                self.dressed(ui)
+                    .anchor(Anchor::at_point(point))
+                    .show(ui, body),
+            ),
         };
         landing.land(ui, resp.as_ref());
         resp
@@ -212,8 +214,12 @@ impl<'a> Menu<'a> {
         let Opener::Trigger { frame, at_pointer } = self.opener else {
             unreachable!("a menu an owner settles hangs from its trigger");
         };
-        let popup = self.dressed(ui);
-        let settled = Self::opened_frame(ui, frame, at_pointer).settle(ui, state, popup, body);
+        let settled = Self::opened_frame(ui, frame, at_pointer).settle(
+            ui,
+            state,
+            |ui| self.dressed(ui),
+            body,
+        );
         landing.land(ui, settled.response.as_ref());
         settled
     }

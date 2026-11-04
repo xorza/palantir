@@ -94,9 +94,10 @@ impl<'a> Editor<'a> {
         snapshot: &ResponseSnapshot,
         filter: KeyFilter,
     ) -> bool {
-        let clipboard = ui.clipboard();
         let mut clicked_action = None;
         Menu::context(snapshot).show(ui, |ui, popup| {
+            // The body runs only while the menu is open, so a closed menu takes no handle.
+            let clipboard = ui.clipboard();
             for &keypress in ui.keyboard_events(KeyboardWake::NONE) {
                 if !filter.takes(keypress.class()) {
                     continue;
@@ -130,7 +131,7 @@ impl<'a> Editor<'a> {
             }
         });
         if let Some(action) = clicked_action {
-            action.execute(self, &clipboard);
+            action.execute(self, &ui.clipboard());
         }
         self.edited
     }

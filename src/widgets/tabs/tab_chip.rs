@@ -6,6 +6,7 @@ use crate::text::wrap::TextWrap;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::text::Text;
 
 /// One chip, as [`TabStrip::show`](crate::TabStrip::show) hands it to the content it records
@@ -16,7 +17,7 @@ pub struct TabChip {
     /// The chip's index in the strip's items.
     pub slot: usize,
     /// The tab's [`TabItem::key`](crate::TabItem::key).
-    pub key: u64,
+    pub key: TabKey,
     /// The tab's [`TabItem::label`](crate::TabItem::label).
     pub label: InternedStr,
     /// Whether the chip wears the selection cap.

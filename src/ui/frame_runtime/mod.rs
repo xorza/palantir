@@ -57,6 +57,11 @@ pub(super) struct FrameClassifyInput {
     pub(super) close_requested: bool,
 }
 
+/// The distinct wake deadlines a frame runtime holds. Each is one a widget asked for and none
+/// near it already covers; a UI holds a handful, a caret's blink and a few animations. Past it, a
+/// wake folds into one that fires no later.
+pub(super) const MAX_WAKES: usize = 64;
+
 /// Retained clock and scheduling state owned by [`Ui`](crate::Ui).
 #[derive(Debug, Default)]
 pub(crate) struct FrameRuntime {
@@ -93,7 +98,8 @@ pub(crate) struct FrameRuntime {
     /// touched by [`Self::tick_text_clock`].
     text_frame: Option<u64>,
     /// Pending absolute wake deadlines, sorted ascending and coalesced, with
-    /// merged [`WakeReasons`] so coincident wakes still force a full record.
+    /// merged [`WakeReasons`] so coincident wakes still force a full record. At most
+    /// [`MAX_WAKES`]; see [`Self::schedule_wake`] for one past it.
     repaint_wakes: Vec<Wake>,
     /// Whether the current frame needs one settling record pass; at most one
     /// per frame.
@@ -106,11 +112,6 @@ pub(crate) struct FrameRuntime {
 }
 
 impl FrameRuntime {
-    /// The transparency this frame paints with.
-    pub(crate) const fn transparency(&self) -> Reduction {
-        self.transparency
-    }
-
     /// Advance the shared text clock when this window frames again on the
     /// reading it last framed at.
     ///
@@ -293,6 +294,15 @@ impl FrameRuntime {
             self.repaint_wakes[pos - 1].deadline = deadline;
             self.repaint_wakes[pos - 1].reasons =
                 self.repaint_wakes[pos - 1].reasons.merge(reasons);
+            return;
+        }
+        if self.repaint_wakes.len() == MAX_WAKES {
+            // Full: fold into a neighbour that fires no later than asked, so no wake is late. One
+            // that fires early records a frame, whose widgets ask again.
+            let at = pos.min(MAX_WAKES - 1);
+            let wake = &mut self.repaint_wakes[at];
+            wake.deadline = wake.deadline.min(deadline);
+            wake.reasons = wake.reasons.merge(reasons);
             return;
         }
         self.repaint_wakes.insert(pos, Wake { deadline, reasons });

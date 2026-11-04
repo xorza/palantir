@@ -32,6 +32,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::splitter::Splitter;
 use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
+use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::text::Text;
 use crate::window::cursor_icon::CursorIcon;
@@ -240,11 +241,6 @@ impl<T: DockTab> DockView<'_, T> {
 }
 
 impl<T: DockTab> DockView<'_, T> {
-    /// The chip key a tab is drawn under; shared by the strip and callers polling responses.
-    pub fn tab_key(tab: T) -> u64 {
-        WidgetId::from_hash(tab).0
-    }
-
     /// Navigation-phase scan: focus follows a press into a pane, then chip responses (close beats activation, then drag arming), then the drag lifecycle.
     ///
     /// **Run before the record, and apply what it emits.**
@@ -265,7 +261,7 @@ impl<T: DockTab> DockView<'_, T> {
             let hits = TabStrip::scan(
                 ui,
                 DockView::strip_id(dock, group.id),
-                group.tabs.iter().map(|&tab| Self::tab_key(tab)),
+                group.tabs.iter().map(|&tab| TabKey::of(tab)),
             );
             let tab_at = |slot: Option<usize>| slot.map(|slot| group.tabs[slot]);
             if let Some(tab) = tab_at(hits.closed) {
@@ -292,7 +288,7 @@ impl<T: DockTab> DockView<'_, T> {
             Self::set_drag(ui, dock, None);
             return;
         }
-        let chip = TabStrip::chip_id(DockView::strip_id(dock, address.group), Self::tab_key(tab));
+        let chip = TabStrip::chip_id(DockView::strip_id(dock, address.group), TabKey::of(tab));
         if ui.response_for(chip).left.drag.stopped() {
             let shown = ui.state::<TabDrag<T>>(dock).and_then(|d| d.target);
             if let Some(target) = shown {
@@ -329,7 +325,7 @@ impl<T: DockTab> DockView<'_, T> {
         })?;
         let strip_id = DockView::strip_id(dock, group.id);
         let strip = ui.response_for(strip_id).rect?;
-        let keys = group.tabs.iter().map(|&tab| Self::tab_key(tab));
+        let keys = group.tabs.iter().map(|&tab| TabKey::of(tab));
         let geometry = PaneGeometry {
             group: group.id,
             pane,
@@ -408,10 +404,7 @@ struct TabMenuTarget<T> {
 impl<T: DockTab> TabMenuTarget<T> {
     /// The chip the menu opened from, which keys its open state.
     fn chip(&self, dock: WidgetId) -> WidgetId {
-        TabStrip::chip_id(
-            DockView::strip_id(dock, self.group),
-            DockView::tab_key(self.tab),
-        )
+        TabStrip::chip_id(DockView::strip_id(dock, self.group), TabKey::of(self.tab))
     }
 }
 
@@ -493,7 +486,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             for &tab in &group.tabs {
                 let label = self.tabs.label(ui, tab);
                 buf.items.push(TabItem {
-                    key: DockView::tab_key(tab),
+                    key: TabKey::of(tab),
                     label,
                     closable: self.tabs.closable(tab),
                     draggable: self.tabs.draggable(tab),
@@ -521,7 +514,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         // A right-click opens the tab's menu only where the app declares one, as an empty menu
         // would still eat the next click.
         for &tab in &group.tabs {
-            let chip = TabStrip::chip_id(strip_id, DockView::tab_key(tab));
+            let chip = TabStrip::chip_id(strip_id, TabKey::of(tab));
             if ui.response_for(chip).right.clicked()
                 && self.tabs.has_tab_menu(tab)
                 && let Some(p) = ui.pointer_pos()

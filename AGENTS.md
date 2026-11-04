@@ -328,7 +328,10 @@ driver serves that command alone; the drive table's `version` names it
   WAI-ARIA leaves Enter to the form. Each is a `KeyClass` of its own, so a focused widget's scope
   takes those keys and no letter, as a Qt or GTK button accepts only the keys it acts on.
 - **A wrapper finishes the widget it wraps through its public setters**, never a hook only the
-  wrapper calls.
+  wrapper calls. Widgets of the crate that cooperate, not restyle, do so through a `pub(crate)`
+  protocol entry point documented on the widget that offers it: the dock and its tab strip
+  (`dock_drag`, `scan`, `drop_slot`), a menu and its popup (`show_as`, `settle`, `menu_look`).
+  Refused: publishing those hooks, a protocol no app needs that each refactor would break.
 - **State between frames** lives in the state map under the widget's id, driven from outside by
   associated functions that take `ui` and the id (`open`, `close`, `is_open`).
 - **Responses.** `show` returns `Response`, or a `*Response` that holds `response` beside the
@@ -350,7 +353,9 @@ driver serves that command alone; the drive table's `version` names it
   pick clones nothing and `T` needs only `PartialEq`. Refused: an index, which each caller maps
   back to its value (egui's `show_index`); a bound value, which a caller that re-seeds the binding
   from its own state each frame clones each frame, as darkroom's const editor did against its
-  settled-frame allocation test.
+  settled-frame allocation test. The exception is a pick over a list the widget itself shortens or
+  reorders: `TabbedView` binds the page index, as closing or moving a tab would leave a reference
+  into the pages stale or naming another page.
 - **A bound number is any of the crate's scalars**: `BoundNum` takes `f32`, `f64`, `i32` and `i64`,
   a closed set and so an enum, where egui reaches the same set with its `Numeric` trait. An `f32`
   is snapped in `f64`, then rounded once to the nearest `f32`.

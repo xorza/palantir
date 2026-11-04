@@ -55,7 +55,7 @@ fn a_lerp_ends_on_either_theme() {
         let mut scaled = light.clone();
         scaled.scale_text(factor);
         for t in [0.25, 0.5, 0.75] {
-            let mut step = Theme::lerp(&dark.clone(), &scaled.clone(), t);
+            let step = Theme::lerp(&dark.clone(), &scaled.clone(), t);
             assert!(step.faces_valid(1.0), "{factor}× at {t}");
         }
     }

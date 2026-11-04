@@ -179,12 +179,24 @@ pub(crate) enum ThemeText<'a> {
     Overrides(&'a mut TextStyleOverrides),
 }
 
+/// [`ThemeText`] to read, as [`TextSlots::each_text`] hands it over.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ThemeTextRef<'a> {
+    Style(&'a TextStyle),
+    Overrides(&'a TextStyleOverrides),
+}
+
 /// A theme part's text slots: [`Self::for_each_text`] visits each, beside the same slot of
 /// `other` when one is given, in field order. [`Theme::faces_valid`], [`Theme::scale_text`] and
 /// [`Theme::share_text_axes`] drive it. A part derives it and walks every field, so each field's
 /// type implements it, a value that holds no text through `no_text_slots!`, and a field of a new
 /// type fails to compile until its type says whether it holds text.
 pub(crate) trait TextSlots {
+    /// Each text slot, in field order, to read.
+    fn each_text<F>(&self, f: &mut F)
+    where
+        F: FnMut(ThemeTextRef<'_>);
+
     fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
     where
         F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>);
@@ -194,6 +206,13 @@ pub(crate) trait TextSlots {
 macro_rules! no_text_slots {
     ($($ty:ty),* $(,)?) => {$(
         impl TextSlots for $ty {
+            #[inline]
+            fn each_text<F>(&self, _: &mut F)
+            where
+                F: FnMut(ThemeTextRef<'_>),
+            {
+            }
+
             #[inline]
             fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
             where
@@ -221,6 +240,13 @@ no_text_slots!(
 
 /// A whole style.
 impl TextSlots for TextStyle {
+    fn each_text<F>(&self, f: &mut F)
+    where
+        F: FnMut(ThemeTextRef<'_>),
+    {
+        f(ThemeTextRef::Style(self));
+    }
+
     fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
     where
         F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
@@ -231,6 +257,13 @@ impl TextSlots for TextStyle {
 
 /// A look's overrides, folded onto [`Theme::text`].
 impl TextSlots for TextStyleOverrides {
+    fn each_text<F>(&self, f: &mut F)
+    where
+        F: FnMut(ThemeTextRef<'_>),
+    {
+        f(ThemeTextRef::Overrides(self));
+    }
+
     fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
     where
         F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
@@ -342,18 +375,17 @@ impl Theme {
     /// Whether every text slot, its font sizes scaled by `factor`, makes a face the shaper accepts:
     /// a whole style alone, an override as the face it makes over the scaled [`Self::text`]. An
     /// override valid alone can make an invalid face, as a leading factor of 1e-6 over a 14 px
-    /// ambient makes a 1.4e-5 px line. Mutable only because [`TextSlots::for_each_text`] walks so;
-    /// nothing changes.
-    pub(crate) fn faces_valid(&mut self, factor: f32) -> bool {
+    /// ambient makes a 1.4e-5 px line.
+    pub(crate) fn faces_valid(&self, factor: f32) -> bool {
         let scale = |px: f32| px * factor;
         let ambient = self.text.with_font_size(scale(self.text.font_size));
         let mut valid = true;
-        self.for_each_text(None, &mut |text, _| {
+        self.each_text(&mut |text| {
             valid &= match text {
-                ThemeText::Style(style) => {
+                ThemeTextRef::Style(style) => {
                     style.with_font_size(scale(style.font_size)).metrics_valid()
                 }
-                ThemeText::Overrides(o) => TextStyleOverrides {
+                ThemeTextRef::Overrides(o) => TextStyleOverrides {
                     font_size: o.font_size.map(scale),
                     ..*o
                 }
@@ -386,7 +418,7 @@ impl Theme {
     /// When a text step of `m` makes a face the shaper refuses, as a `body` of 0 would.
     #[track_caller]
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        let mut theme = Self {
+        let theme = Self {
             button: ButtonTheme::from_parts(p, m),
             checkbox: ToggleTheme::from_parts(ToggleKind::Checkbox, p, m),
             radio: ToggleTheme::from_parts(ToggleKind::Radio, p, m),
@@ -498,7 +530,7 @@ impl TryFrom<UncheckedTheme> for Theme {
             panel_chrome,
             panel_clip,
         } = unchecked;
-        let mut theme = Self {
+        let theme = Self {
             button,
             checkbox,
             radio,

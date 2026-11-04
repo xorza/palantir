@@ -238,3 +238,27 @@ fn a_frame_spends_its_wall_delta_inside_the_animation_bound() {
         }
     }
 }
+
+/// Wakes past the cap fold into a neighbour that fires no later than asked: at 64 distinct
+/// deadlines a 65th, between two, pulls the later one forward to it, and one past them all
+/// rides the last. None fires late, and the count stays at the cap.
+#[test]
+fn wakes_past_the_cap_fold_without_firing_late() {
+    use crate::ui::frame_runtime::MAX_WAKES;
+    let mut runtime = FrameRuntime::default();
+    let ms = |n: u64| Duration::from_millis(n);
+    for n in 0..MAX_WAKES as u64 {
+        runtime.schedule_wake(ms(100 * (n + 1)), WakeReasons::REAL, None);
+    }
+    assert_eq!(runtime.repaint_wakes.len(), MAX_WAKES);
+    runtime.schedule_wake(ms(150), WakeReasons::REAL, None);
+    assert_eq!(runtime.repaint_wakes.len(), MAX_WAKES);
+    assert_eq!(runtime.repaint_wakes[1].deadline, ms(150), "pulled forward");
+    runtime.schedule_wake(ms(100_000), WakeReasons::REAL, None);
+    assert_eq!(runtime.repaint_wakes.len(), MAX_WAKES);
+    assert_eq!(
+        runtime.repaint_wakes[MAX_WAKES - 1].deadline,
+        ms(100 * MAX_WAKES as u64),
+        "rides the last, which fires before it"
+    );
+}

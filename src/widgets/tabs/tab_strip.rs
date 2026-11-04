@@ -39,6 +39,7 @@ use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::tabs::tab_chip::TabChip;
 use crate::widgets::tabs::tab_item::TabItem;
+use crate::widgets::tabs::tab_key::TabKey;
 use crate::widgets::tabs::tab_move::TabMove;
 use glam::Vec2;
 use std::rc::Rc;
@@ -88,7 +89,7 @@ enum ChipDrag {
 /// Escape.
 #[derive(Debug, Default)]
 struct CarriedChip {
-    key: Option<u64>,
+    key: Option<TabKey>,
 }
 
 /// A row of tab chips, the shared half of [`TabbedView`](crate::TabbedView) and [`DockView`](crate::DockView) (same [`TabsTheme`], chip ids and overflow). Alone it is a plain segmented selector.
@@ -179,12 +180,12 @@ impl<'a> TabStrip<'a> {
     }
 
     /// The chip id for `key` under a strip with id `strip`; the one derivation.
-    pub fn chip_id(strip: WidgetId, key: u64) -> WidgetId {
+    pub fn chip_id(strip: WidgetId, key: TabKey) -> WidgetId {
         strip.with(("tab", key))
     }
 
     /// The close-button id for `key`. See [`Self::chip_id`].
-    pub fn close_id(strip: WidgetId, key: u64) -> WidgetId {
+    pub fn close_id(strip: WidgetId, key: TabKey) -> WidgetId {
         strip.with(("tab_close", key))
     }
 
@@ -195,7 +196,11 @@ impl<'a> TabStrip<'a> {
 
     /// What the chips keyed `keys` under `strip` reported last frame, read before the strip records,
     /// as a caller that acts a phase early does. The same fold as [`TabStripResponse`]'s.
-    pub(crate) fn scan(ui: &Ui, strip: WidgetId, keys: impl IntoIterator<Item = u64>) -> ChipHits {
+    pub(crate) fn scan(
+        ui: &Ui,
+        strip: WidgetId,
+        keys: impl IntoIterator<Item = TabKey>,
+    ) -> ChipHits {
         let mut hits = ChipHits::default();
         for (slot, key) in keys.into_iter().enumerate() {
             let close = ui.response_for(Self::close_id(strip, key));
@@ -210,7 +215,7 @@ impl<'a> TabStrip<'a> {
 
     /// Where the chip keyed `key` would be uncut: its arranged rect under its transform, so a chip
     /// the band pans out of sight keeps its whole extent.
-    fn chip_extent(ui: &Ui, strip: WidgetId, key: u64) -> Option<Rect> {
+    fn chip_extent(ui: &Ui, strip: WidgetId, key: TabKey) -> Option<Rect> {
         let chip = ui.response_for(Self::chip_id(strip, key));
         chip.layout_rect.map(|rect| chip.transform.apply_rect(rect))
     }
@@ -220,7 +225,7 @@ impl<'a> TabStrip<'a> {
     pub(crate) fn drop_slot(
         ui: &Ui,
         strip: WidgetId,
-        keys: impl IntoIterator<Item = u64>,
+        keys: impl IntoIterator<Item = TabKey>,
         x: f32,
     ) -> usize {
         insertion_slot(
@@ -373,7 +378,7 @@ impl<'a> TabStrip<'a> {
 fn dropped_slot(
     ui: &mut Ui,
     strip: WidgetId,
-    keys: impl IntoIterator<Item = u64>,
+    keys: impl IntoIterator<Item = TabKey>,
 ) -> Option<usize> {
     let pointer = ui.pointer_pos()?;
     if !ui.response_for(strip).rect?.contains(pointer) {
@@ -392,7 +397,7 @@ impl Configure for TabStrip<'_> {
 /// A chip a keyboard move or menu pick selected, which the next frame pans into sight.
 #[derive(Debug, Default)]
 struct StripState {
-    reveal: Option<u64>,
+    reveal: Option<TabKey>,
 }
 
 /// The slot an insertion at `x` addresses: the count of chips whose center it has passed; `chips.len()` appends.

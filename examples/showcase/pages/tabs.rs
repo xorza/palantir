@@ -5,8 +5,8 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Metrics, Panel, Sizing, TabChip, TabItem, TabMove,
-    TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
+    Block, Button, Chrome, Configure, Corners, Metrics, Panel, Sizing, TabChip, TabItem, TabKey,
+    TabMove, TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -147,7 +147,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .show(ui, |ui| {
                         s.items.clear();
                         for (i, label) in MANY.iter().enumerate() {
-                            s.items.push(TabItem::new(i as u64, ui.intern(*label)));
+                            s.items.push(TabItem::new(TabKey::of(i), ui.intern(*label)));
                         }
                         let hit = TabStrip::new(&s.items)
                             .selected(s.overflowing)
@@ -168,12 +168,13 @@ fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
         for &key in &s.open {
             s.items.push(TabItem {
                 closable: true,
-                ..TabItem::new(key, fmt!(ui, "layer {key}"))
+                ..TabItem::new(TabKey::of(key), fmt!(ui, "layer {key}"))
             });
         }
+        let open = &s.open;
         let hit = TabStrip::new(&s.items)
             .selected(s.picked)
-            .show(ui, layer_chip);
+            .show(ui, |ui, chip| layer_chip(ui, chip, open[chip.slot]));
         if let Some(slot) = hit.closed
             && s.open.len() > 1
         {
@@ -187,10 +188,10 @@ fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
     support::readout(ui, k, "chips", line);
 }
 
-/// A layer's chip: its label, and a dot on the even layers in the chip's ink.
-fn layer_chip(ui: &mut Ui, chip: &TabChip) {
+/// The chip of `layer`: its label, and a dot on the even layers in the chip's ink.
+fn layer_chip(ui: &mut Ui, chip: &TabChip, layer: u64) {
     chip.show_label(ui);
-    if chip.key.is_multiple_of(2) {
+    if layer.is_multiple_of(2) {
         Block::new()
             .id(chip.id.with("dot"))
             .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))

@@ -31,8 +31,8 @@ impl MenuLanding {
             return;
         }
         match self {
-            Self::First => ui.focus_end_within(resp.id, TabEnd::First),
-            Self::Last => ui.focus_end_within(resp.id, TabEnd::Last),
+            Self::First => ui.focus_within(resp.id, TabEnd::First),
+            Self::Last => ui.focus_within(resp.id, TabEnd::Last),
             Self::Row(row) => ui.set_focus(row),
         }
     }

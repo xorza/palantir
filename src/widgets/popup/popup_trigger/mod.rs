@@ -119,7 +119,7 @@ impl<'a> PopupTrigger<'a> {
             disabled: self.trigger.disabled,
             rect: self.trigger.rect,
         }
-        .show::<K, R>(ui, self.popup, body);
+        .show::<K, R>(ui, |_| self.popup, body);
         MenuLanding::First.land(ui, resp.as_ref());
         resp
     }
