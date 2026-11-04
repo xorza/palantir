@@ -80,7 +80,7 @@ fn expander_alloc_free() {
 /// invalidates the measure cache each frame until its arenas have grown once.
 #[test]
 fn expander_mid_reveal_alloc_free() {
-    let base = ExpanderTheme::stock(ColorScheme::Dark);
+    let base = Theme::stock(ColorScheme::Dark).expander;
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
             transition: AnimationSpec::duration(Duration::from_secs(60), Easing::Linear),
@@ -162,7 +162,7 @@ fn open_context_menu_shortcuts_alloc_free() {
             Menu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
             needs_open = false;
         }
-        Menu::context(&trigger).show(ui, |ui, _| {
+        Menu::context(&trigger).show(ui, |ui| {
             MenuItem::new("Copy").shortcut(Shortcut::ctrl('C')).show(ui);
             MenuItem::new("Select all")
                 .shortcut(Shortcut::ctrl('A'))
@@ -347,10 +347,10 @@ fn overlays_alloc_free() {
                 Popup::new()
                     .anchor(Anchor::at_point(Vec2::new(40.0, 40.0)))
                     .id_salt("pop")
-                    .show(ui, |ui, _handle| {
+                    .show(ui, |ui| {
                         Text::new("popup body").id_salt("pop-text").show(ui);
                     });
-                Modal::new().id_salt("modal").show(ui, |ui, _| {
+                Modal::new().id_salt("modal").show(ui, |ui| {
                     Text::new("modal body").id_salt("modal-text").show(ui);
                 });
             });

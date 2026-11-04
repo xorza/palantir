@@ -250,7 +250,7 @@ impl<'a> FrameCycle<'a> {
             .forest
             .pre_record(self.ui.frame_runtime.transparency);
         self.ui.input.pre_record(&self.ui.cascade);
-        self.ui.window_requests.begin_pass();
+        self.ui.host.window_requests.begin_pass();
     }
 
     /// Record half of a pass: finalize hashes, measure, arrange, cascade. Cascade runs here so pass B of a `request_relayout` frame reads pass A's rects via [`Ui::response_for`]. Stale cache entries can't match live keys and are reaped in `finalize_frame`.
@@ -279,10 +279,8 @@ impl<'a> FrameCycle<'a> {
         let removed = self.ui.forest.ids.rollover();
         self.engines.layout.end_frame(removed);
         self.ui
-            .animation
-            .sweep(self.ui.frame_runtime.render_frame_id);
-        self.ui.state.sweep_removed(removed);
-        self.ui.gpu_views.sweep_removed(removed);
+            .memory
+            .sweep(removed, self.ui.frame_runtime.render_frame_id);
 
         self.ui.input.end_frame(&self.ui.cascade);
     }

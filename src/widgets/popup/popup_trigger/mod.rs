@@ -5,7 +5,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
-use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
@@ -16,7 +15,7 @@ use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 
 /// A [`Popup`] dropped below a trigger: a click opens it; a second click, an
-/// outside press, Escape or a [`CloseHandle`] closes it. The whole protocol of a
+/// outside press, Escape or a [`Ui::close_overlay`] in the body closes it. The whole protocol of a
 /// dropdown control ([`ComboBox`](crate::ComboBox),
 /// [`ColorButton`](crate::ColorButton), or an app's own panel):
 ///
@@ -24,7 +23,7 @@ use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 /// # use palantir::{Button, Configure, PopupTrigger, Text, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let trigger = Button::new().label("Filters").show(ui).snapshot();
-/// PopupTrigger::on(&trigger).show(ui, |ui, _| {
+/// PopupTrigger::on(&trigger).show(ui, |ui| {
 ///     Text::new("…").show(ui);
 /// });
 /// # }
@@ -100,7 +99,7 @@ impl<'a> PopupTrigger<'a> {
     pub fn show<R>(
         self,
         ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
         self.show_as::<PopupTrigger<'static>, R>(ui, body)
     }
@@ -110,7 +109,7 @@ impl<'a> PopupTrigger<'a> {
     pub(crate) fn show_as<K: 'static, R>(
         self,
         ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
         let resp = TriggerFrame {
             for_id: self.for_id,

@@ -299,8 +299,9 @@ fn set_edit_buffer(ui: &mut Ui, id: WidgetId, text: &str) {
 }
 
 /// A caller opens the editor without a click and ends it from outside: `start_editing` seeds the
-/// draft from the bound value, `stop_editing(Submitted)` commits the typed 72 once, and
-/// `stop_editing(Canceled)` restores the opening 5 and commits nothing.
+/// draft from the bound value, `stop_editing(Submitted)` blurs the editor, whose next frame
+/// commits the typed 72 once, and `stop_editing(Canceled)` restores the opening 5 and commits
+/// nothing.
 #[test]
 fn a_caller_starts_and_stops_the_edit() {
     use crate::widgets::text_edit::edit_end::EditEnd;
@@ -332,12 +333,29 @@ fn a_caller_starts_and_stops_the_edit() {
             frame(&mut h, &mut value);
         }
         DragValue::stop_editing(h.ui_mut(), id, end);
-        assert!(!DragValue::is_editing(h.ui(), id), "{end:?}");
+        assert_eq!(
+            DragValue::is_editing(h.ui(), id),
+            end == EditEnd::Submitted,
+            "{end:?}: a submit closes on the blur the next frame sees, a cancel at once"
+        );
         let edges = frame(&mut h, &mut value);
         assert_eq!((value, edges.committed), (want, committed), "{end:?}");
+        assert!(!DragValue::is_editing(h.ui(), id), "{end:?}: closed");
         assert!(
             !frame(&mut h, &mut value).committed,
             "{end:?}: one commit at most"
         );
     }
+
+    // An editor whose opening focus another widget took first closes on its frame, with no
+    // commit: no blur would come to close it.
+    let mut value = 5.0_f64;
+    DragValue::start_editing(h.ui_mut(), id);
+    h.ui_mut().set_focus(WidgetId::from_hash("dv-elsewhere"));
+    let edges = frame(&mut h, &mut value);
+    assert!(
+        !DragValue::is_editing(h.ui(), id),
+        "the focus went elsewhere"
+    );
+    assert_eq!((value, edges.committed), (5.0, false));
 }

@@ -32,7 +32,6 @@ use crate::widgets::panel::Panel;
 use crate::widgets::radio_group::RadioGroup;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
-use std::fmt::Write as _;
 use std::rc::Rc;
 
 mod history;
@@ -53,7 +52,7 @@ pub(crate) mod swatch_row;
 ///
 /// # Retained state
 ///
-/// The axes, hex text and history live in the response map keyed off this
+/// The axes and history live in the response map, and the hex field's draft in the field's own row, keyed off this
 /// widget's id. The axes are retained because black has no hue and gray no
 /// saturation; they are re-derived when the bound color changes from outside.
 #[derive(Debug)]
@@ -75,8 +74,6 @@ struct PickerState {
     /// The color this picker last wrote or seeded from. Any other value in the
     /// binding is an outside edit and re-seeds the axes.
     written: Option<RgbaF32>,
-    /// The hex field's buffer, rewritten from the color when unfocused.
-    hex: String,
     history: History,
 }
 
@@ -429,15 +426,10 @@ impl Rows<'_> {
         let gap = domain::length_at_least(theme.gap, 0.0);
         let quantized = shown.to_srgba8();
         let hex_id = id.with("hex");
-        if ui.focus() != Some(hex_id) {
-            self.state.hex.clear();
-            write!(
-                self.state.hex,
-                "#{:02X}{:02X}{:02X}",
-                quantized.r, quantized.g, quantized.b,
-            )
-            .ok();
-        }
+        let shown_hex = ui.fmt(format_args!(
+            "#{:02X}{:02X}{:02X}",
+            quantized.r, quantized.g, quantized.b,
+        ));
 
         let mut rgb = [
             i64::from(quantized.r),
@@ -467,15 +459,16 @@ impl Rows<'_> {
                             .style(&theme.label.apply(&ui.theme().text))
                             .id(id.with("hex-label"))
                             .show(ui);
-                        let hex = TextEdit::new(&mut self.state.hex)
+                        let hex = TextEdit::buffered(shown_hex)
                             .max_chars(7)
                             .style(&theme.hex)
                             .id(hex_id)
                             .size((Sizing::FILL, Sizing::HUG))
                             .show(ui);
-                        // A buffer parsing to the color already shown is no edit.
-                        if hex.committed
-                            && let Ok(parsed) = self.state.hex.trim().parse::<RgbaF32>()
+                        // A draft parsing to the color already shown is no edit, as `#0000ff`
+                        // under `#0000FF`.
+                        if let Some(typed) = hex.committed_text
+                            && let Ok(parsed) = typed.trim().parse::<RgbaF32>()
                             && !same_rgb(parsed.to_srgba8(), quantized)
                         {
                             self.writes.exact = Some(parsed.with_alpha(self.writes.alpha));

@@ -1,7 +1,6 @@
 //! What a slider wears: the two-tone track, and the knob that rides it.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -68,10 +67,5 @@ impl SliderTheme {
             knob_size: 18.0,
             track_thickness: 4.0,
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub const fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

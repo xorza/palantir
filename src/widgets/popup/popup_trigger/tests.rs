@@ -21,7 +21,7 @@ fn scene(ui: &mut Ui, disabled: bool) -> Option<OverlayResponse<i32>> {
         .disabled(disabled)
         .show(ui)
         .snapshot();
-    PopupTrigger::on(&trigger).show(ui, |_, _| 7)
+    PopupTrigger::on(&trigger).show(ui, |_| 7)
 }
 
 fn trigger_center(h: &Harness) -> Vec2 {
@@ -101,7 +101,7 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
             .label("open")
             .show(ui)
             .snapshot();
-        PopupTrigger::on(&trigger).show(ui, |ui, _| {
+        PopupTrigger::on(&trigger).show(ui, |ui| {
             Block::new().id(item).size(20.0).focusable(true).show(ui);
         });
     };
@@ -176,8 +176,8 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
             .label("open")
             .show(ui)
             .snapshot();
-        PopupTrigger::on(&trigger).show(ui, |_, _| ());
-        Menu::context(&trigger).show(ui, |_, _| ());
+        PopupTrigger::on(&trigger).show(ui, |_| ());
+        Menu::context(&trigger).show(ui, |_| ());
         main_read
     };
 

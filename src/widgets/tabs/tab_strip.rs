@@ -85,13 +85,6 @@ enum ChipDrag {
     Dock { caret: Option<usize> },
 }
 
-/// The chip a reorder drag is carrying, by key, kept on the strip's id until the release or an
-/// Escape.
-#[derive(Debug, Default)]
-struct CarriedChip {
-    key: Option<TabKey>,
-}
-
 /// A row of tab chips, the shared half of [`TabbedView`](crate::TabbedView) and [`DockView`](crate::DockView) (same [`TabsTheme`], chip ids and overflow). Alone it is a plain segmented selector.
 ///
 /// ```
@@ -261,7 +254,7 @@ impl<'a> TabStrip<'a> {
         let response = widget.response(ui);
         let id = response.id;
         let was_carried = match drag {
-            ChipDrag::Reorder => ui.state::<CarriedChip>(id).and_then(|c| c.key),
+            ChipDrag::Reorder => ui.state::<StripState>(id).and_then(|s| s.carried),
             ChipDrag::Dock { .. } => None,
         };
         let mut carried = was_carried;
@@ -357,7 +350,7 @@ impl<'a> TabStrip<'a> {
             }
             // Written only on a change, so a strip nobody drags mints no row.
             if carried != was_carried {
-                ui.with_state::<CarriedChip, _>(id, |_, c| c.key = carried);
+                ui.with_state::<StripState, _>(id, |_, s| s.carried = carried);
             }
         }
         let unscanned = keyed.or(menu_picked);
@@ -394,9 +387,12 @@ impl Configure for TabStrip<'_> {
     }
 }
 
-/// A chip a keyboard move or menu pick selected, which the next frame pans into sight.
+/// What a strip keeps on its id between frames, each part on its own clock.
 #[derive(Debug, Default)]
 struct StripState {
+    /// The chip a reorder drag is carrying, until the release or an Escape.
+    carried: Option<TabKey>,
+    /// A chip a keyboard move or menu pick selected, which the next frame pans into sight.
     reveal: Option<TabKey>,
 }
 
@@ -680,7 +676,7 @@ impl StripPass<'_> {
             .style(self.menu_style)
             .landing(landing)
             .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui, _| {
+            .show(ui, |ui| {
                 let mut picked = None;
                 for (i, item) in items.iter().enumerate() {
                     if MenuItem::new(item.label)

@@ -338,7 +338,7 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 PopupTrigger::on(&trigger)
                     .padding(M.space.md)
                     .gap(M.space.sm)
-                    .show(ui, |ui, close| {
+                    .show(ui, |ui| {
                         for (i, label) in ["Unread", "Starred", "Has files"].into_iter().enumerate()
                         {
                             Checkbox::new(&mut s.filters[i])
@@ -347,7 +347,7 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                                 .show(ui);
                         }
                         if Button::new().label("Done").show(ui).clicked() {
-                            close.close();
+                            ui.close_overlay();
                         }
                     });
             });
@@ -358,7 +358,7 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
 }
 
 fn dialog(ui: &mut Ui, k: Kit, s: &mut State) {
-    let resp = Modal::new().show(ui, |ui, close| {
+    let resp = Modal::new().show(ui, |ui| {
         Panel::vstack()
             .gap(M.space.md)
             .size((Sizing::fixed(300.0), Sizing::HUG))
@@ -370,10 +370,10 @@ fn dialog(ui: &mut Ui, k: Kit, s: &mut State) {
                     .show(ui);
                 support::row(ui, |ui| {
                     if Button::new().label("Cancel").show(ui).clicked() {
-                        close.close();
+                        ui.close_overlay();
                     }
                     if Button::new().label("Rename").show(ui).clicked() {
-                        close.close();
+                        ui.close_overlay();
                     }
                 });
             });

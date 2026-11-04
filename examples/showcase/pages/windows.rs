@@ -142,12 +142,12 @@ pub(crate) fn intercept(ui: &mut Ui, k: Kit, look: &Appearance) {
             title: "Close with unsaved changes?",
             body: "Save them first, or discard them and close.",
         }
-        .show(ui, k, |ui, close| {
+        .show(ui, k, |ui| {
             if Button::new().label("Cancel").show(ui).clicked() {
-                close.close();
+                ui.close_overlay();
             }
             if Button::new().label("Discard").show(ui).clicked() {
-                close.close();
+                ui.close_overlay();
                 ui.close_window(shell::MAIN_WINDOW);
             }
             if Button::new()
@@ -157,7 +157,7 @@ pub(crate) fn intercept(ui: &mut Ui, k: Kit, look: &Appearance) {
                 .clicked()
             {
                 exit.pretend_dirty = false;
-                close.close();
+                ui.close_overlay();
                 ui.close_window(shell::MAIN_WINDOW);
             }
         });

@@ -12,10 +12,10 @@ use std::ops::RangeInclusive;
 use std::panic::Location;
 
 use palantir::{
-    Align, Axis, Block, Checkbox, Chrome, CloseHandle, ColorCoords, ColorModel, ColorScheme,
-    Configure, Corners, Expander, FontWeight, Justify, Metrics, Modal, OverlayResponse, Palette,
-    Panel, RadioGroup, RadioOptions, RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle,
-    TextWrap, Ui, VAlign, WidgetId, fmt,
+    Align, Axis, Block, Checkbox, Chrome, ColorCoords, ColorModel, ColorScheme, Configure, Corners,
+    Expander, FontWeight, Justify, Metrics, Modal, OverlayResponse, Palette, Panel, RadioGroup,
+    RadioOptions, RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui,
+    VAlign, WidgetId, fmt,
 };
 
 use crate::scaffold::chip::Chip;
@@ -376,9 +376,9 @@ impl Dialog {
         self,
         ui: &mut Ui,
         k: Kit,
-        answers: impl FnOnce(&mut Ui, &CloseHandle),
+        answers: impl FnOnce(&mut Ui),
     ) -> OverlayResponse<()> {
-        Modal::new().auto_id().show(ui, |ui, close| {
+        Modal::new().auto_id().show(ui, |ui| {
             Panel::vstack()
                 .size((Sizing::fixed(DIALOG_W), Sizing::HUG))
                 .gap(M.space.md)
@@ -394,7 +394,7 @@ impl Dialog {
                         .margin((0.0, M.space.sm, 0.0, 0.0))
                         .gap(M.space.sm)
                         .justify(Justify::End)
-                        .show(ui, |ui| answers(ui, close));
+                        .show(ui, |ui| answers(ui));
                 });
         })
     }

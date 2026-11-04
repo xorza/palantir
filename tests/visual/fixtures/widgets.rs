@@ -380,7 +380,7 @@ fn modal_dialog_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .chrome(Chrome::fill(RgbaF32::srgb(0.35, 0.45, 0.65)))
             .show(ui, |_| {});
-        Modal::new().id_salt("m").show(ui, |ui, _| {
+        Modal::new().id_salt("m").show(ui, |ui| {
             Text::new("Confirm?").id_salt("mt").show(ui);
         });
     });

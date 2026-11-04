@@ -12,7 +12,6 @@ use crate::shape::paint_animation::curves;
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use glam::Vec2;
-use std::mem;
 use std::time::Duration;
 
 const BLINK_HALF: Duration = Duration::from_millis(500);
@@ -20,10 +19,13 @@ const BLINK_STOP_AFTER_IDLE: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Default, Debug)]
 pub(super) struct ViewState {
-    /// Focus as of the end of the previous pass, written only by
-    /// [`Self::roll_focus`], which also reads the edges out of it (a hand-written
-    /// update on one return path would report `focus_gained` again).
-    prev_focused: bool,
+    /// Focus as of the end of the field's last pass, and the record frame it ran in, written
+    /// only by [`Self::roll_focus`], which also reads the edges out of it (a hand-written update
+    /// on one return path would report `focus_gained` again). The frame makes a gap read as no
+    /// focus: a widget that shows the field under its own id only while it edits, as
+    /// [`DragValue`](crate::DragValue) does, keeps the row through the frames the field does not
+    /// record, and the bare flag would hand the next session the last one's focus.
+    last_pass: FocusPass,
     /// Where the text block is scrolled to: the same [`ScrollState`] a
     /// [`Scroll`](crate::Scroll) viewport keeps, since a field is a scrolling
     /// viewport over its own text.
@@ -41,16 +43,20 @@ pub(super) struct ViewState {
 }
 
 impl ViewState {
-    /// Focus as of the previous pass: the select-all-on-focus edge fires from the
-    /// input pass, before this frame's focus is final.
-    pub(super) const fn was_focused(&self) -> bool {
-        self.prev_focused
+    /// Whether the field's pass on the record frame before `frame` ended focused: the
+    /// select-all-on-focus edge fires from the input pass, before this frame's focus is final.
+    /// A field that did not record that frame was not focused then.
+    pub(super) const fn was_focused(&self, frame: u64) -> bool {
+        let FocusPass { focused, frame: at } = self.last_pass;
+        // A second pass of one frame reads the first's.
+        focused && (at == frame || at + 1 == frame)
     }
 
-    /// Roll onto `focused` and report the edges crossed; an edge is true only for
-    /// the frame the stored value changes.
-    pub(super) const fn roll_focus(&mut self, focused: bool) -> FocusEdges {
-        let was = mem::replace(&mut self.prev_focused, focused);
+    /// Roll onto `focused` as of record frame `frame` and report the edges crossed; an edge is
+    /// true only for the frame the focus changes.
+    pub(super) const fn roll_focus(&mut self, focused: bool, frame: u64) -> FocusEdges {
+        let was = self.was_focused(frame);
+        self.last_pass = FocusPass { focused, frame };
         FocusEdges {
             gained: focused && !was,
             lost: was && !focused,
@@ -169,9 +175,46 @@ pub(super) struct ViewUpdateInput {
     pub(super) now: Duration,
 }
 
+/// Whether a field's pass ended focused, and the record frame it ran in.
+#[derive(Clone, Copy, Debug, Default)]
+struct FocusPass {
+    focused: bool,
+    frame: u64,
+}
+
 /// Which way focus crossed this pass; see [`ViewState::roll_focus`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FocusEdges {
     pub(super) gained: bool,
     pub(super) lost: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::widgets::text_edit::view_state::ViewState;
+
+    /// Focus carries to the next record frame and to a second pass of the same one, and a frame
+    /// the field did not record reads as none: a session that resumes after a gap gains the focus
+    /// again, and one that resumes unfocused sees no blur.
+    #[test]
+    fn a_frame_the_field_skipped_reads_as_no_focus() {
+        let mut view = ViewState::default();
+        let gained = view.roll_focus(true, 5);
+        assert!(gained.gained && !gained.lost, "frame 5 gains");
+        assert!(view.was_focused(5), "a second pass of frame 5");
+        assert!(view.was_focused(6), "the next frame");
+        assert!(!view.was_focused(7), "after a skipped frame");
+
+        let resumed = view.roll_focus(true, 7);
+        assert!(
+            resumed.gained && !resumed.lost,
+            "focus after a gap is gained"
+        );
+        let mut view = ViewState::default();
+        view.roll_focus(true, 5);
+        let unseen = view.roll_focus(false, 9);
+        assert!(!unseen.gained && !unseen.lost, "no blur after a gap");
+        let kept = view.roll_focus(false, 10);
+        assert!(!kept.lost, "still none");
+    }
 }

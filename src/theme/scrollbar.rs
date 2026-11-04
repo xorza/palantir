@@ -1,7 +1,6 @@
 //! What a scroll's bars wear, reserved beside the content or floating over it.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -48,10 +47,5 @@ impl ScrollbarTheme {
             thumb_hovered: thumb(166),
             thumb_active: thumb(217),
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

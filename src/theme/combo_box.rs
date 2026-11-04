@@ -2,7 +2,6 @@
 
 use crate::primitives::geometry::arrow;
 use crate::primitives::geometry::size::Size;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use glam::Vec2;
@@ -37,11 +36,6 @@ impl ComboBoxTheme {
             arrow_size: Size::new(10.0, 6.0),
             arrow_width: m.stroke.fine,
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub const fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 
     /// The chevron's three points (`v`) in a box of [`Self::arrow_size`], origin top-left; the middle point is the tip.

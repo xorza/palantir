@@ -245,7 +245,7 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
             PopupTrigger::on(&trigger)
                 .padding((14.0, 10.0))
                 .chrome(frosted_chrome())
-                .show(ui, |ui, _| {
+                .show(ui, |ui| {
                     Text::new("a frosted popup").style(&k.t.body()).show(ui);
                 });
         })
@@ -253,7 +253,7 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
         .snapshot();
     let mut menu: MenuTheme = ui.theme().menu.clone();
     menu.panel = frosted_chrome();
-    Menu::context(&page).style(&menu).show(ui, |ui, _| {
+    Menu::context(&page).style(&menu).show(ui, |ui| {
         for label in ["Copy", "Paste", "Delete"] {
             MenuItem::new(label).id_salt(label).show(ui);
         }

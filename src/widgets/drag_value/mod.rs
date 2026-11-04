@@ -29,7 +29,9 @@ use crate::widgets::text_edit::text_layout;
 use std::mem;
 use std::ops::RangeInclusive;
 
-/// One exclusive interaction per [`DragValue`] id: a live [`Scrub`], or an edit whose draft outlives its focus until the chip resolves it.
+/// One exclusive interaction per [`DragValue`] id: a live [`Scrub`], or an open editor, which
+/// records until its own blur or Escape ends it, as [`EditableLabel`](crate::EditableLabel)'s
+/// does.
 #[derive(Debug, Default)]
 enum DragValueState {
     #[default]
@@ -38,12 +40,34 @@ enum DragValueState {
     /// [`DragValue::start_editing`] asked for the editor, which the next show seeds from the
     /// bound value.
     Opening,
+    /// The editor is open over `buffer`, which every frame parses into the binding, as egui's
+    /// `update_while_editing` and Qt's `keyboardTracking` default to
+    /// (<https://docs.rs/egui/latest/egui/widgets/struct.DragValue.html>). The draft stays the
+    /// widget's own: [`TextEdit::buffered`] hands its draft back only on the commit.
     Editing {
         buffer: String,
         original: Num,
-        /// How [`DragValue::stop_editing`] ended the edit, which the next chip frame resolves.
-        end: Option<EditEnd>,
     },
+    /// [`DragValue::stop_editing`] canceled the edit, so the next show restores `original`.
+    Canceling {
+        original: Num,
+    },
+}
+
+/// Whether the drag value `id` shows its editor, or opens it on its next show.
+fn is_editing(ui: &Ui, id: WidgetId) -> bool {
+    matches!(
+        ui.state::<DragValueState>(id),
+        Some(DragValueState::Opening | DragValueState::Editing { .. })
+    )
+}
+
+/// How the editor's frame ended the edit: committed, by Enter or the blur that ends the
+/// session, or canceled by Escape.
+#[derive(Clone, Copy, Debug)]
+struct EditClose {
+    committed: bool,
+    canceled: bool,
 }
 
 /// A live scrub: starting value (a [`Num`]), speed and travel. Travel is retained, not the produced value: the stop edge carries no distance, and a deferred caller may have re-seeded the stored value.
@@ -194,20 +218,21 @@ impl<'a> DragValue<'a> {
         let mut response = self.widget.response(ui);
         let id = response.id;
 
-        // Focused + editable + enabled: the editor owns the frame, given the chip's last pre-transform rect (`rect` is post-zoom) to hold its width. Disabled mid-edit falls to the chip path, which discards the draft.
+        // An open editor owns the frame until it ends, focused or not, so it sees its own blur;
+        // it takes the chip's last pre-transform rect (`rect` is post-zoom) to hold its width. A
+        // drag value that turns disabled or not editable mid-edit closes the editor without a
+        // commit, its focus given back.
         let focused = ui.focus() == Some(id);
-        if self.editable && focused {
-            if response.disabled {
-                ui.clear_focus();
-            } else {
-                let editing = matches!(
-                    ui.state::<DragValueState>(id),
-                    Some(DragValueState::Opening | DragValueState::Editing { end: None, .. })
-                );
-                if editing || typed(ui) {
-                    return self.show_editing(ui, id, response.layout_rect);
-                }
-            }
+        let editing = is_editing(ui, id);
+        let edits = self.editable && !response.disabled;
+        if edits && (editing || (focused && typed(ui))) {
+            return self.show_editing(ui, id, response.layout_rect);
+        }
+        if editing {
+            ui.with_state::<DragValueState, _>(id, |_, state| *state = DragValueState::Idle);
+        }
+        if focused && response.disabled {
+            ui.clear_focus();
         }
 
         let rule = self.rule();
@@ -220,24 +245,11 @@ impl<'a> DragValue<'a> {
         let drag_stopped = response.left.drag.stopped();
         if drag_started || ui.state::<DragValueState>(id).is_some() {
             ui.with_state::<DragValueState, _>(id, |_, state| {
-                match state {
-                    DragValueState::Editing {
-                        buffer,
-                        original,
-                        end,
-                    } => {
-                        if self.editable && !response.disabled {
-                            if *end == Some(EditEnd::Canceled) {
-                                changed = self.value.restore(*original);
-                            } else {
-                                changed = self.value.parse_from(buffer, rule);
-                                committed = true;
-                            }
-                        }
-                        *state = DragValueState::Idle;
+                if let DragValueState::Canceling { original } = *state {
+                    if edits {
+                        changed = self.value.restore(original);
                     }
-                    DragValueState::Opening => *state = DragValueState::Idle,
-                    DragValueState::Idle | DragValueState::Scrubbing(_) => {}
+                    *state = DragValueState::Idle;
                 }
 
                 if drag_started {
@@ -280,14 +292,13 @@ impl<'a> DragValue<'a> {
         }
 
         let enter = focused && self.widget.shortcut_pressed(ui, Key::Enter);
-        if self.editable && !response.disabled && (response.clicked() || enter) {
+        if edits && (response.clicked() || enter) {
             ui.set_focus(id);
             response.state.focused = true;
             ui.with_state::<DragValueState, _>(id, |_, s| {
                 *s = DragValueState::Editing {
                     buffer: self.value.edit_string(),
                     original: self.value.stored(),
-                    end: None,
                 }
             });
         }
@@ -334,7 +345,8 @@ impl<'a> DragValue<'a> {
         }
     }
 
-    /// Edit mode: the inline `TextEdit` over the same `id`, parsed back each frame, blurring on Enter. Escape restores the opening value; click-away leaves the draft for the chip path.
+    /// Edit mode: the inline `TextEdit` over the same `id`, parsed back each frame. Enter or the
+    /// blur that ends the session commits and closes it; Escape restores the opening value.
     fn show_editing(
         mut self,
         ui: &mut Ui,
@@ -351,16 +363,18 @@ impl<'a> DragValue<'a> {
         let sizes = self.widget.authored_size().unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
         let width = held_w.unwrap_or_else(|| sizes.w());
-        let (mut buffer, original) =
-            match ui.with_state::<DragValueState, _>(id, |_, s| mem::take(s)) {
-                DragValueState::Editing {
-                    buffer, original, ..
-                } => (buffer, original),
-                DragValueState::Idle | DragValueState::Scrubbing(_) | DragValueState::Opening => {
-                    (self.value.edit_string(), self.value.stored())
-                }
-            };
-        let ended = {
+        let (mut buffer, original) = match ui
+            .with_state::<DragValueState, _>(id, |_, s| mem::take(s))
+        {
+            DragValueState::Editing {
+                buffer, original, ..
+            } => (buffer, original),
+            DragValueState::Idle
+            | DragValueState::Scrubbing(_)
+            | DragValueState::Opening
+            | DragValueState::Canceling { .. } => (self.value.edit_string(), self.value.stored()),
+        };
+        let edited = {
             let edit = TextEdit::new(&mut buffer)
                 .id(id)
                 .text_align(self.text_align)
@@ -374,31 +388,34 @@ impl<'a> DragValue<'a> {
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
-            edit.adopt_placement(&self.widget).show(ui).ended
+            let edited = edit.adopt_placement(&self.widget).show(ui);
+            EditClose {
+                committed: edited.committed,
+                canceled: edited.ended == Some(EditEnd::Canceled),
+            }
         };
-        let changed = if ended == Some(EditEnd::Canceled) {
+        let changed = if edited.canceled {
             self.value.restore(original)
         } else {
             self.value.parse_from(&buffer, self.rule())
         };
+        // An editor without the focus after its frame never had it, as one whose opening focus
+        // another widget took first: no blur will come to close it.
+        let closed = edited.committed || edited.canceled || ui.focus() != Some(id);
         ui.with_state::<DragValueState, _>(id, |_, s| {
-            *s = if ended.is_some() {
+            *s = if closed {
                 DragValueState::Idle
             } else {
-                DragValueState::Editing {
-                    buffer,
-                    original,
-                    end: None,
-                }
+                DragValueState::Editing { buffer, original }
             }
         });
-        if ended == Some(EditEnd::Canceled) {
+        if edited.canceled {
             ui.set_focus(id);
         }
         ValueResponse {
             response: Response::lazy(id, ui),
             changed,
-            committed: ended == Some(EditEnd::Submitted),
+            committed: edited.committed,
         }
     }
 }
@@ -437,7 +454,7 @@ impl DragValue<'static> {
     /// chip.
     pub fn start_editing(ui: &mut Ui, id: WidgetId) {
         ui.with_state::<DragValueState, _>(id, |_, state| {
-            if !matches!(state, DragValueState::Editing { end: None, .. }) {
+            if !matches!(state, DragValueState::Editing { .. }) {
                 *state = DragValueState::Opening;
             }
         });
@@ -445,18 +462,21 @@ impl DragValue<'static> {
     }
 
     /// End the edit of the drag value `id` as `end` says: [`EditEnd::Submitted`] commits the
-    /// draft, as Enter does, and [`EditEnd::Canceled`] restores the value the edit opened on, as
-    /// Escape does. The drag value's next show resolves it. No-op for one that does not edit.
+    /// draft, as a blur does, and [`EditEnd::Canceled`] restores the value the edit opened on, as
+    /// Escape does. The drag value's next show resolves it, as an
+    /// [`EditableLabel`](crate::EditableLabel)'s does. No-op for one that does not edit.
     pub fn stop_editing(ui: &mut Ui, id: WidgetId, end: EditEnd) {
         if !Self::is_editing(ui, id) {
             return;
         }
         ui.with_state::<DragValueState, _>(id, |_, state| {
-            if let DragValueState::Editing { end: ended, .. } = state {
-                *ended = Some(end);
-            } else {
-                *state = DragValueState::Idle;
-            }
+            *state = match (end, mem::take(state)) {
+                (EditEnd::Canceled, DragValueState::Editing { original, .. }) => {
+                    DragValueState::Canceling { original }
+                }
+                (EditEnd::Canceled, _) => DragValueState::Idle,
+                (EditEnd::Submitted, kept) => kept,
+            };
         });
         if ui.focus() == Some(id) {
             ui.clear_focus();
@@ -466,10 +486,7 @@ impl DragValue<'static> {
     /// Whether the drag value `id` shows its editor, or opens it on its next show. Allocates no
     /// row.
     pub fn is_editing(ui: &Ui, id: WidgetId) -> bool {
-        matches!(
-            ui.state::<DragValueState>(id),
-            Some(DragValueState::Opening | DragValueState::Editing { end: None, .. })
-        )
+        is_editing(ui, id)
     }
 }
 

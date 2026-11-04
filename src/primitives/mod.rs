@@ -205,5 +205,6 @@ pub(crate) mod layout;
 pub(crate) mod math;
 pub(crate) mod packed;
 pub(crate) mod paint;
-pub(crate) mod reduce_preference;
+pub(crate) mod preference;
+pub(crate) mod reduction;
 pub(crate) mod text;

@@ -31,7 +31,7 @@ pub(super) struct BodyPass {
 }
 
 /// A clickable `Main` panel with a popup over it; read inside the record pass, where one-frame edges are live.
-pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
+pub(super) fn record_body(ui: &mut Ui, config: Option<ClickOutside>) -> BodyPass {
     let main_id = WidgetId::from_hash("main-bg");
     let mut dismissed = false;
     Panel::vstack()
@@ -44,7 +44,7 @@ pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
                 .id(WidgetId::from_hash("test-popup"))
                 .click_outside(config)
                 .padding(4.0)
-                .show(ui, |ui, _popup| {
+                .show(ui, |ui| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("popup-content"))
                         .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
@@ -60,6 +60,7 @@ pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
 }
 
 /// One frame of [`record_body`], pass A's observation.
-pub(super) fn frame_body(h: &mut Harness, config: ClickOutside) -> BodyPass {
+pub(super) fn frame_body(h: &mut Harness, config: impl Into<Option<ClickOutside>>) -> BodyPass {
+    let config = config.into();
     *h.frame_passes(|ui| record_body(ui, config)).a()
 }

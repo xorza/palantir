@@ -9,6 +9,7 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
+use serde::de::Error as _;
 
 /// Per-axis overrides folded onto a resolved [`TextStyle`].
 ///
@@ -20,8 +21,7 @@ use crate::theme::text_style::TextStyle;
 /// [`Theme::text`](crate::Theme) is one, so a disabled look that dims the ink
 /// keeps following its size and face. A `None` axis is omitted from theme
 /// files.
-#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(try_from = "UncheckedTextStyleOverrides")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
 #[must_use]
 pub struct TextStyleOverrides {
     /// Replaces [`TextStyle::color`].
@@ -232,8 +232,10 @@ fn switch_axis<T>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
     if t < 0.5 { a } else { b }
 }
 
-/// [`TextStyleOverrides`] as it arrives off the wire, before the metrics check.
+/// [`TextStyleOverrides`] as it arrives off the wire, read straight into a `TextStyleOverrides`
+/// by serde's remote derive before the metrics check, as [`TextStyle`] reads its own.
 #[derive(Debug, serde::Deserialize)]
+#[serde(remote = "TextStyleOverrides")]
 struct UncheckedTextStyleOverrides {
     color: Option<RgbaF32>,
     #[serde(
@@ -247,20 +249,11 @@ struct UncheckedTextStyleOverrides {
     slant: Option<FontSlant>,
 }
 
-impl TryFrom<UncheckedTextStyleOverrides> for TextStyleOverrides {
-    type Error = &'static str;
-
-    fn try_from(overrides: UncheckedTextStyleOverrides) -> Result<Self, Self::Error> {
-        let overrides = Self {
-            color: overrides.color,
-            font_size: overrides.font_size,
-            line_height_factor: overrides.line_height_factor,
-            family: overrides.family,
-            weight: overrides.weight,
-            slant: overrides.slant,
-        };
+impl<'de> serde::Deserialize<'de> for TextStyleOverrides {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let overrides = UncheckedTextStyleOverrides::deserialize(deserializer)?;
         if !overrides.metrics_valid() {
-            return Err(domain::FONT_LENGTH_RULE);
+            return Err(D::Error::custom(domain::FONT_LENGTH_RULE));
         }
         Ok(overrides)
     }

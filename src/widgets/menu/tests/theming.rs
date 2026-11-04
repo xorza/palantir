@@ -10,6 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
+use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::menu::MenuTheme;
@@ -28,7 +29,7 @@ use std::time::Duration;
 #[test]
 fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     fn menu(ui: &mut Ui) {
-        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+        Menu::for_id(trigger_id()).show(ui, |ui| {
             MenuItem::new("Copy").shortcut(Shortcut::ctrl('C')).show(ui);
             MenuItem::new("Paste").show(ui);
         });
@@ -61,7 +62,7 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
 
     // A caller's gap wins over the item theme's: `0.0` takes the whole themed gutter out.
     h.frame(|ui| {
-        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+        Menu::for_id(trigger_id()).show(ui, |ui| {
             MenuItem::new("Copy")
                 .shortcut(Shortcut::ctrl('C'))
                 .gap(0.0)
@@ -86,7 +87,7 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
             if let Some(g) = gap {
                 menu = menu.gap(g);
             }
-            menu.show(ui, |ui, _| {
+            menu.show(ui, |ui| {
                 MenuItem::new("Copy").show(ui);
                 MenuItem::new("Paste").show(ui);
             });
@@ -121,7 +122,7 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
 #[test]
 fn menu_separator_theme_drives_rule_geometry_and_color() {
     fn menu(ui: &mut Ui) {
-        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+        Menu::for_id(trigger_id()).show(ui, |ui| {
             MenuItem::new("Copy").show(ui);
             MenuSeparator::new().show(ui);
             MenuItem::new("Paste").show(ui);
@@ -173,7 +174,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
 fn a_disabled_rows_hint_dims_with_its_label() {
     let rows = [WidgetId::from_hash("live"), WidgetId::from_hash("dead")];
     let menu = |ui: &mut Ui| {
-        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+        Menu::for_id(trigger_id()).show(ui, |ui| {
             for (id, disabled) in rows.into_iter().zip([false, true]) {
                 MenuItem::new("Copy")
                     .id(id)
@@ -254,21 +255,21 @@ fn per_instance_style_overrides_global_menu_theme() {
             defaults: SlotDefaults {
                 padding: Spacing::all(9.0),
                 margin: Spacing::xy(2.0, 6.0),
-                ..MenuItemTheme::stock(ColorScheme::Dark).defaults
+                ..Theme::stock(ColorScheme::Dark).menu.item.defaults
             },
-            ..MenuItemTheme::stock(ColorScheme::Dark)
+            ..Theme::stock(ColorScheme::Dark).menu.item
         },
         separator: SeparatorTheme {
             thickness: 5.0,
-            ..SeparatorTheme::stock(ColorScheme::Dark)
+            ..Theme::stock(ColorScheme::Dark).separator
         },
-        ..MenuTheme::stock(ColorScheme::Dark)
+        ..Theme::stock(ColorScheme::Dark).menu
     };
 
     let mut h = Harness::mono(SURFACE);
     Menu::open(h.ui_mut(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(|ui| {
-        Menu::for_id(trigger_id()).style(&custom).show(ui, |ui, _| {
+        Menu::for_id(trigger_id()).style(&custom).show(ui, |ui| {
             MenuItem::new("Copy").style(&custom.item).show(ui);
             MenuSeparator::new().style(&custom.separator).show(ui);
             MenuItem::new("Bare")
@@ -316,7 +317,7 @@ fn per_instance_style_overrides_global_menu_theme() {
         "explicit row margin wins over the theme's 2/6"
     );
 
-    let default = MenuTheme::stock(ColorScheme::Dark);
+    let default = Theme::stock(ColorScheme::Dark).menu;
     let global = &h.ui().theme().menu;
     assert_eq!(global.padding, default.padding);
     assert_eq!(global.min_width, default.min_width);
@@ -335,7 +336,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
             .padding(Spacing::ZERO)
             .margin(Spacing::all(5.0))
             .min_size(Size::ZERO)
-            .show(ui, |_, _| {});
+            .show(ui, |_| {});
     });
 
     let derived = Menu::menu_id(trigger_id());
@@ -351,7 +352,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     let mut h = Harness::mono(SURFACE);
     Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
-        Menu::for_id(trigger_id()).id(explicit).show(ui, |_, _| {});
+        Menu::for_id(trigger_id()).id(explicit).show(ui, |_| {});
     });
     assert_eq!(
         h.node_of(explicit).map(|at| at.plane.layer),
@@ -391,7 +392,7 @@ fn separators_take_their_call_site_ids() {
 fn the_picked_row_wears_the_selected_look() {
     let rows = [WidgetId::from_hash("one"), WidgetId::from_hash("two")];
     let menu = |ui: &mut Ui| {
-        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+        Menu::for_id(trigger_id()).show(ui, |ui| {
             for (id, picked) in rows.into_iter().zip([false, true]) {
                 MenuItem::new("Row").id(id).selected(picked).show(ui);
             }

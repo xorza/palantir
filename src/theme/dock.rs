@@ -4,7 +4,6 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -48,10 +47,5 @@ impl DockTheme {
             ghost_padding: m.row_padding(),
             ghost_offset: Vec2::new(m.space.md, m.space.lg),
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

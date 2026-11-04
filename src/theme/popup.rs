@@ -2,7 +2,6 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -38,10 +37,5 @@ impl PopupTheme {
             panel: m.dress_float(p.popup_panel(m), p.text_muted),
             padding: Spacing::all(m.space.sm),
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

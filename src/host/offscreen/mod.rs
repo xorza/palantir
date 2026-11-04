@@ -21,7 +21,7 @@ use crate::host::headless_window::{
 use crate::host::window_driver::PresentStrategy;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
@@ -147,7 +147,7 @@ impl OffscreenHostBuilder {
     }
 
     /// The color scheme the system reports, as the winit host reports the desktop's; none by
-    /// default, so [`SchemePreference::System`](crate::SchemePreference::System) shows the
+    /// default, so [`Preference::System`](crate::Preference::System) shows the
     /// fallback. The host's [`set_system_color_scheme`](OffscreenHost::set_system_color_scheme) changes
     /// it later.
     pub const fn system_color_scheme(mut self, scheme: ColorScheme) -> Self {
@@ -263,7 +263,7 @@ impl OffscreenHost {
     }
 
     /// Report `scheme` as the system's, as the winit host reports the desktop's; `None`, the
-    /// start, reports nothing, so [`SchemePreference::System`](crate::SchemePreference::System)
+    /// start, reports nothing, so [`Preference::System`](crate::Preference::System)
     /// shows the fallback. The next frame shows the resolved scheme.
     pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
         self.window

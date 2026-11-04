@@ -3,7 +3,6 @@
 use crate::host::harness::Harness;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::ui::singletons::LENT_SINGLETON;
 use crate::ui::state::LENT_ROW;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
@@ -30,10 +29,8 @@ fn with_state_lends_the_row_out_and_back() {
             });
             assert_eq!(ui.state::<u32>(id), Some(&frame));
             ui.with_singleton::<Shared, _>(|ui, shared| {
-                panic_probe::assert_panics_with(LENT_SINGLETON, || {
-                    ui.singleton::<Shared>().is_some()
-                });
-                panic_probe::assert_panics_with(LENT_SINGLETON, || {
+                panic_probe::assert_panics_with(LENT_ROW, || ui.singleton::<Shared>().is_some());
+                panic_probe::assert_panics_with(LENT_ROW, || {
                     ui.with_singleton::<Shared, _>(|_, _| {});
                 });
                 shared.0 += 1;
@@ -130,7 +127,7 @@ fn with_state_returns_the_body_value() {
     assert_eq!(h.ui().state::<u32>(id), Some(&5));
 }
 
-/// A singleton is one value per type for the `Ui`'s life, never swept as no id owns it.
+/// A singleton is one value per type for the `Ui`'s life, never swept as no node records its id.
 #[test]
 fn a_singleton_is_lent_across_widget_calls_and_kept() {
     #[derive(Default, Debug, PartialEq)]

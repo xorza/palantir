@@ -4,33 +4,12 @@ use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
-use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
-use crate::theme::combo_box::ComboBoxTheme;
-use crate::theme::dock::DockTheme;
-use crate::theme::drag_value::DragValueTheme;
-use crate::theme::expander::ExpanderTheme;
-use crate::theme::focus_ring::FocusRingTheme;
 use crate::theme::look::WidgetLook;
-use crate::theme::menu::MenuTheme;
-use crate::theme::menu::menu_item::MenuItemTheme;
-use crate::theme::menu_bar::MenuBarTheme;
 use crate::theme::metrics::{FloatMaterial, Metrics};
-use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
-use crate::theme::popup::PopupTheme;
-use crate::theme::progress_bar::ProgressBarTheme;
-use crate::theme::scrollbar::ScrollbarTheme;
-use crate::theme::separator::SeparatorTheme;
-use crate::theme::slider::SliderTheme;
-use crate::theme::spinner::SpinnerTheme;
-use crate::theme::splitter::SplitterTheme;
-use crate::theme::tabs::TabsTheme;
 use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
-use crate::theme::toggle::ToggleTheme;
-use crate::theme::toggle_kind::ToggleKind;
-use crate::theme::tooltip::TooltipTheme;
 
 /// WCAG 1.4.3: text against what it sits on
 /// (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>).
@@ -192,52 +171,13 @@ fn stock_themes_wear_their_scheme_palette() {
     assert_ne!(light, dark);
 }
 
-/// Each part's `stock(scheme)` is the part `Theme::stock(scheme)` holds, in either scheme.
+/// The stock text is the text `Theme::stock(scheme)` holds, and the stock floats wear the
+/// stock material, in either scheme.
 #[test]
-fn each_parts_stock_is_the_stock_themes_part() {
+fn the_stock_text_and_floats_are_the_stock_themes() {
     for scheme in [ColorScheme::Dark, ColorScheme::Light] {
         let t = Theme::stock(scheme);
-        assert_eq!(ButtonTheme::stock(scheme), t.button, "{scheme:?}");
-        assert_eq!(ScrollbarTheme::stock(scheme), t.scrollbar, "{scheme:?}");
-        assert_eq!(TextEditTheme::stock(scheme), t.text_edit, "{scheme:?}");
-        assert_eq!(DragValueTheme::stock(scheme), t.drag_value, "{scheme:?}");
-        assert_eq!(MenuTheme::stock(scheme), t.menu, "{scheme:?}");
-        assert_eq!(MenuItemTheme::stock(scheme), t.menu.item, "{scheme:?}");
-        assert_eq!(MenuBarTheme::stock(scheme), t.menu_bar, "{scheme:?}");
-        assert_eq!(ComboBoxTheme::stock(scheme), t.combo_box, "{scheme:?}");
-        assert_eq!(ModalTheme::stock(scheme), t.modal, "{scheme:?}");
-        assert_eq!(PopupTheme::stock(scheme), t.popup, "{scheme:?}");
-        assert_eq!(
-            ColorPickerTheme::stock(scheme),
-            t.color_picker,
-            "{scheme:?}"
-        );
-        assert_eq!(TooltipTheme::stock(scheme), t.tooltip, "{scheme:?}");
-        assert_eq!(
-            ProgressBarTheme::stock(scheme),
-            t.progress_bar,
-            "{scheme:?}"
-        );
-        assert_eq!(SeparatorTheme::stock(scheme), t.separator, "{scheme:?}");
-        assert_eq!(SliderTheme::stock(scheme), t.slider, "{scheme:?}");
-        assert_eq!(SpinnerTheme::stock(scheme), t.spinner, "{scheme:?}");
-        assert_eq!(SplitterTheme::stock(scheme), t.splitter, "{scheme:?}");
-        assert_eq!(TabsTheme::stock(scheme), t.tabs, "{scheme:?}");
-        assert_eq!(DockTheme::stock(scheme), t.dock, "{scheme:?}");
-        assert_eq!(ExpanderTheme::stock(scheme), t.expander, "{scheme:?}");
-        assert_eq!(FocusRingTheme::stock(scheme), t.focus_ring, "{scheme:?}");
         assert_eq!(TextStyle::stock(scheme), t.text, "{scheme:?}");
-        for (kind, part) in [
-            (ToggleKind::Checkbox, &t.checkbox),
-            (ToggleKind::Radio, &t.radio),
-            (ToggleKind::Switch, &t.switch),
-        ] {
-            assert_eq!(
-                &ToggleTheme::stock(kind, scheme),
-                part,
-                "{kind:?} {scheme:?}"
-            );
-        }
         // The recipes hold each float for the ink the theme paints it in: dressing the stock
         // theme in its own material, as `dress_floats` reads the inks from it, changes nothing.
         let material = Metrics::DEFAULT.float_material.expect("the stock material");

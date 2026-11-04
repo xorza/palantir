@@ -5,9 +5,9 @@
 
 use palantir::{
     Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Grid,
-    GridCell, Metrics, Panel, RadioGroup, RadioLook, ReducePreference, SchemePreference, Scroll,
-    SegmentedTheme, Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme,
-    Tooltip, Track, Ui, VAlign, WidgetId, WidgetLook,
+    GridCell, Metrics, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme,
+    Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme, Tooltip, Track,
+    Ui, UiPreferences, VAlign, WidgetId, WidgetLook,
 };
 
 use crate::scaffold::tokens::Tokens;
@@ -154,61 +154,53 @@ pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
 
 /// The rows of [`preferences`], each set from the segment pressed this frame.
 fn preference_rows(ui: &mut Ui, track: &Segmented) {
-    let scheme = ui.scheme_preference();
+    let held = ui.preferences();
     let follows_scheme = match ui.system_color_scheme() {
         Some(ColorScheme::Light) => "Follows the system, light now",
         Some(ColorScheme::Dark) => "Follows the system, dark now",
         None => "Follows the system, which reports no scheme: dark until it does",
     };
-    let picked = track.row(
+    let scheme = track.row(
         ui,
         0,
         "Theme",
         [
-            (SchemePreference::System, "Auto"),
-            (SchemePreference::Light, "Light"),
-            (SchemePreference::Dark, "Dark"),
+            (Preference::System, "Auto"),
+            (Preference::Fixed(ColorScheme::Light), "Light"),
+            (Preference::Fixed(ColorScheme::Dark), "Dark"),
         ],
-        scheme,
+        held.scheme,
         follows_scheme,
     );
-    if picked != scheme {
-        ui.set_scheme_preference(picked);
-    }
-
-    let motion = ui.motion_preference();
-    let picked = track.row(
+    let motion = track.row(
         ui,
         1,
         "Motion",
         REDUCE,
-        motion,
+        held.motion,
         follows_reduction(ui.system_motion_reduced()),
     );
-    if picked != motion {
-        ui.set_motion_preference(picked);
-    }
-
-    let transparency = ui.transparency_preference();
-    let picked = track.row(
+    let transparency = track.row(
         ui,
         2,
         "Transparency",
         REDUCE,
-        transparency,
+        held.transparency,
         follows_reduction(ui.system_transparency_reduced()),
     );
-    if picked != transparency {
-        ui.set_transparency_preference(picked);
-    }
+    ui.set_preferences(UiPreferences {
+        scheme,
+        motion,
+        transparency,
+    });
 }
 
-/// The choices of a [`ReducePreference`] under the name of what it reduces: "Less", not "On"
+/// The choices of a [`Preference<Reduction>`] under the name of what it reduces: "Less", not "On"
 /// under a "Reduce …" name, so the segment says what it does without the name.
-const REDUCE: [(ReducePreference, &str); 3] = [
-    (ReducePreference::System, "Auto"),
-    (ReducePreference::Full, "Full"),
-    (ReducePreference::Reduced, "Less"),
+const REDUCE: [(Preference<Reduction>, &str); 3] = [
+    (Preference::System, "Auto"),
+    (Preference::Fixed(Reduction::Full), "Full"),
+    (Preference::Fixed(Reduction::Reduced), "Less"),
 ];
 
 /// What following the system shows now, where the system asks for a reduction or not.

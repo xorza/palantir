@@ -368,7 +368,7 @@ impl EditField<'_> {
             TextInput::Owned(text) => text,
             TextInput::Interned(text) => ui.text(*text),
         });
-        if !state.view.was_focused() && draft != shown {
+        if !state.view.was_focused(ui.record_frame_id()) && draft != shown {
             draft.clone_from(&shown);
         }
         let outcome = self.pass(ui, state, id, &mut draft);
@@ -424,7 +424,7 @@ impl EditField<'_> {
         // A face the shaper cannot be asked for shapes nothing (as `TextShape::is_noop`); caret and
         // selection derive from the face, so the layout below must not run.
         if !look.text.metrics_valid() {
-            let focus = state.view.roll_focus(is_focused);
+            let focus = state.view.roll_focus(is_focused, ui.record_frame_id());
             let committed = state.roll_commit(CommitPass {
                 focus,
                 changed: false,
@@ -492,7 +492,7 @@ impl EditField<'_> {
             is_focused = false;
             response.state.focused = false;
         }
-        let focus = state.view.roll_focus(is_focused);
+        let focus = state.view.roll_focus(is_focused, ui.record_frame_id());
 
         // One editing session for the whole menu pass, so one session reconciles undo
         // history once. A disabled editor offers no menu; not recording it closes any open
@@ -690,7 +690,17 @@ pub struct TextEditResponse<'a> {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::widgets::text_edit::{EditEdges, TextEditResponse};
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::ui::Ui;
+    use crate::widgets::text_edit::{EditEdges, TextEdit, TextEditResponse, TextEditState};
+
+    impl TextEdit<'static> {
+        /// The draft the [buffered](TextEdit::buffered) field `id` holds, `None` before it records.
+        pub(crate) fn draft(ui: &Ui, id: WidgetId) -> Option<&str> {
+            ui.state::<TextEditState>(id)
+                .map(|state| state.draft.as_str())
+        }
+    }
 
     impl TextEditResponse<'_> {
         /// The edges, copied out of the record pass whose `ui` borrow the response holds.

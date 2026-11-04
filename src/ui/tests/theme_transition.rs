@@ -225,7 +225,7 @@ fn a_change_snaps_where_nothing_should_move() {
 
     let (mut h, _) = running();
     h.ui_mut().set_theme_for(Dark, Rc::clone(&light));
-    h.ui_mut().window_frame.facts.shown_again = true;
+    h.ui_mut().host.window_frame.facts.shown_again = true;
     h.advance(QUARTER).frame(record);
     assert!(shows(&h, &light), "a frame after a hidden span");
 }

@@ -14,7 +14,6 @@ use crate::theme::menu::MenuTheme;
 use crate::theme::menu_bar::{MenuBarTheme, MenuState};
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
-use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
@@ -43,12 +42,12 @@ use std::rc::Rc;
 /// # use palantir::{MenuBar, MenuItem, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// MenuBar::new().show(ui, |bar| {
-///     bar.menu("File", |ui, _| {
+///     bar.menu("File", |ui| {
 ///         if MenuItem::new("Quit").show(ui).clicked() {
 ///             // …
 ///         }
 ///     });
-///     bar.menu("Edit", |ui, _| {
+///     bar.menu("Edit", |ui| {
 ///         MenuItem::new("Undo").show(ui);
 ///     });
 /// });
@@ -237,7 +236,7 @@ fn switch(ui: &mut Ui, row: &MenuBarRow, open: WidgetId) -> Switch {
     }) else {
         return Switch::Keep;
     };
-    let barrier = Popup::barrier_id(MenuBar::menu_id(open));
+    let barrier = Popup::barrier_id(Menu::menu_id(open));
     if ui.response_for(barrier).left.clicked() {
         if over == open {
             Switch::Close
@@ -266,15 +265,15 @@ pub struct MenuBarMenus<'u> {
 }
 
 impl MenuBarMenus<'_> {
-    /// Add a title reading `label`, and while its menu is open record `body` in it, which gets
-    /// the menu's [`CloseHandle`] for content that is not a [`MenuItem`](crate::MenuItem), as a
-    /// row closes the menu itself. Returns the menu's [`OverlayResponse`], `None` while the menu
+    /// Add a title reading `label`, and while its menu is open record `body` in it, where
+    /// [`Ui::close_overlay`] closes the menu, as an activated [`MenuItem`](crate::MenuItem) does.
+    /// Returns the menu's [`OverlayResponse`], `None` while the menu
     /// is closed. The label names the menu, so it is one of a kind
     /// in its bar.
     pub fn menu<'l, R>(
         &mut self,
         label: impl Into<TextInput<'l>>,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
         let ui = &mut *self.ui;
         let label = ui.intern(label.into());
@@ -309,14 +308,14 @@ impl MenuBarMenus<'_> {
 
         let mut step = 0;
         let settled = Menu::below(&response)
-            .id(MenuBar::menu_id(title))
+            .id(Menu::menu_id(title))
             .style(self.menu_style)
             .landing(landing)
             .settle(
                 ui,
                 here.map_or_else(TriggerState::default, |open| open.trigger),
-                |ui, close| {
-                    let inner = body(ui, close);
+                |ui| {
+                    let inner = body(ui);
                     if ui.key_pressed(Key::ArrowLeft) {
                         step = -1;
                     } else if ui.key_pressed(Key::ArrowRight) {
@@ -381,11 +380,6 @@ impl MenuBar<'static> {
     /// dropped before it leaves its hover, its look's animation and its open menu in place.
     pub fn title_id(bar: WidgetId, label: &str) -> WidgetId {
         bar.with(("menu-title", label))
-    }
-
-    /// The menu the title `title` opens.
-    pub fn menu_id(title: WidgetId) -> WidgetId {
-        title.with("menu")
     }
 }
 

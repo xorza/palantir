@@ -12,7 +12,6 @@ use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
-use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
@@ -23,7 +22,7 @@ use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
 /// The backdrop or Esc closes it as [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed)
-/// unless [`Self::click_outside`] blocks them; the body's [`CloseHandle`] closes it from inside.
+/// unless [`Self::click_outside`] blocks them; a [`Ui::close_overlay`] in the body closes it from inside.
 ///
 /// On the frame it opens, focus moves to its first Tab stop, however it was opened, as
 /// WAI-ARIA's dialog pattern asks (<https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/>),
@@ -76,27 +75,15 @@ impl<'a> Modal<'a> {
     /// What a press on the backdrop and Esc do: [`ClickOutside::Dismiss`], the default, closes it
     /// as [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed); [`ClickOutside::Block`]
     /// swallows both and stays open, for a dialog the user must answer, as a confirmation of
-    /// unsaved work is.
-    ///
-    /// # Panics
-    ///
-    /// Panics on [`ClickOutside::PassThrough`]: a modal blocks the layers below it by definition.
-    #[track_caller]
+    /// unsaved work is. A modal always blocks the layers below it; a [`Popup`](crate::Popup) is
+    /// the overlay presses pass through.
     pub const fn click_outside(mut self, click_outside: ClickOutside) -> Self {
-        assert!(
-            !matches!(click_outside, ClickOutside::PassThrough),
-            "a modal blocks the layers below it; use a popup for an overlay presses pass through"
-        );
         self.click_outside = click_outside;
         self
     }
 
-    /// Records the backdrop and the panel with `body` inside, handed a [`CloseHandle`].
-    pub fn show<R>(
-        mut self,
-        ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
-    ) -> OverlayResponse<R> {
+    /// Records the backdrop and the panel with `body` inside.
+    pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
         let root_id = self.widget.resolve(ui);
 
         // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
@@ -122,23 +109,14 @@ impl<'a> Modal<'a> {
         let spec = OverlaySpec {
             layer: Layer::Modal,
             anchor: None,
-            backdrop: Backdrop::Root,
-            click_outside: self.click_outside,
+            backdrop: Backdrop::Root(self.click_outside),
         };
         let scope = OverlayScope::claim(ui, spec, &mut root);
-        // A root with no rect from the last frame did not record then.
-        let opened = ui.response_for(root_id).rect.is_none();
-        let turn = scope.record(ui, |ui, handle| {
+        let response = scope.record(ui, |ui| {
             root.record(ui, Some(&dim), |ui| {
-                panel.record(ui, Some(panel_chrome), |ui| body(ui, handle))
+                panel.record(ui, Some(panel_chrome), body)
             })
         });
-        let response = OverlayResponse {
-            id: root_id,
-            opened,
-            close: turn.close,
-            inner: turn.inner,
-        };
         scope.finish(ui, response)
     }
 }

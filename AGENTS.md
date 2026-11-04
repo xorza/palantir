@@ -305,8 +305,10 @@ driver serves that command alone; the drive table's `version` names it
   hand, which an app's ramp cannot reach
   ([Fluent 2 typography](https://fluent2.microsoft.design/typography)).
 - **Reduced motion and reduced transparency are preferences on the `Ui`**, each a
-  `ReducePreference` (`System`, `Full`, `Reduced`) resolved against the system's setting, as
-  `SchemePreference` is: the host reports the system's answer, and the app's pick overrides it.
+  `Preference<Reduction>` (`System` or `Fixed`) resolved against the system's setting, as the
+  scheme's `Preference<ColorScheme>` is: the host reports the system's answer, and the app's pick
+  overrides it. The three are one `UiPreferences`, which `Ui::preferences` and
+  `Ui::set_preferences` read and write whole, as egui's `Context::options_mut` holds its options.
   One theme holds every transition and every frost; reduced motion snaps them and stops
   decorative paint motion, and reduced transparency paints every backdrop filter as its
   `fallback` or its fill made opaque, with no capture or blur, as WinUI's acrylic falls back to

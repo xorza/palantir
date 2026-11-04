@@ -193,7 +193,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
                 .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .snapshot();
-            Menu::context(&trigger).show(ui, |ui, _| {
+            Menu::context(&trigger).show(ui, |ui| {
                 let item = MenuItem::new("Copy");
                 let item = if hint {
                     item.shortcut_hint(Shortcut::ctrl('C'))
@@ -250,14 +250,14 @@ fn nested(ui: &mut Ui) {
             Popup::new()
                 .anchor(Anchor::below(Rect::new(10.0, 10.0, 100.0, 20.0)))
                 .id(WidgetId::from_hash("host"))
-                .show(ui, |ui, _| {
+                .show(ui, |ui| {
                     let trigger = Button::new()
                         .id(trigger_id())
                         .label("right click me")
                         .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .snapshot();
-                    Menu::context(&trigger).show(ui, |ui, _| {
+                    Menu::context(&trigger).show(ui, |ui| {
                         MenuItem::new("Copy").show(ui);
                     });
                 });
@@ -278,7 +278,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
             .show(ui)
             .snapshot();
         Menu::context(&trigger)
-            .show(ui, |ui, _| {
+            .show(ui, |ui| {
                 MenuItem::new("Copy").id(copy).show(ui);
                 MenuItem::new("Paste").show(ui);
             })
@@ -347,7 +347,7 @@ fn below_scene(top: f32) -> impl FnMut(&mut Ui) -> bool {
                     .show(ui)
                     .snapshot();
                 open = Menu::below(&trigger)
-                    .show(ui, |ui, _| {
+                    .show(ui, |ui| {
                         MenuItem::new("Copy").show(ui);
                     })
                     .is_some();
@@ -399,7 +399,7 @@ fn a_menu_at_a_point_shows_while_its_caller_keeps_it_open() {
     let scene = |ui: &mut Ui, open: &mut bool| {
         Button::new().id(trigger_id()).label("focus").show(ui);
         if *open {
-            let resp = Menu::at(Vec2::new(60.0, 70.0)).id(id).show(ui, |ui, _| {
+            let resp = Menu::at(Vec2::new(60.0, 70.0)).id(id).show(ui, |ui| {
                 MenuItem::new("Copy").id(row).show(ui);
             });
             *open = !resp.is_some_and(|resp| resp.closed());

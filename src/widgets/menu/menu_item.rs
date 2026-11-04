@@ -145,7 +145,7 @@ impl<'a> MenuItem<'a> {
         // Eager: `response` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
         if response.state.clicked() {
-            ui.overlays().close_innermost();
+            ui.close_overlay();
         }
         Response::new(ui, response)
     }

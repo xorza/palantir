@@ -1,7 +1,6 @@
 //! What a spinner wears, and how fast it turns.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use std::f32::consts;
@@ -50,10 +49,5 @@ impl SpinnerTheme {
             width_ratio: 0.12,
             min_stroke_width: m.stroke.fine,
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub const fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

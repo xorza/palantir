@@ -10,16 +10,17 @@ pub(crate) mod frame_input;
 pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
 mod frame_stats_readout;
+mod host_seam;
 pub(crate) mod inspected_widget;
 pub(crate) mod layer_scope;
+mod memory;
 pub(crate) mod resources;
-pub(crate) mod singletons;
 pub(crate) mod state;
 mod theme_pair;
 mod theme_transition;
+pub(crate) mod ui_preferences;
 mod window_theme;
 
-use crate::animation::AnimationMap;
 use crate::animation::animated::Animated;
 use crate::animation::animation_map_typed::AnimationClock;
 use crate::animation::animation_request::AnimationRequest;
@@ -68,7 +69,6 @@ use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
-use crate::primitives::reduce_preference::ReducePreference;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::frontend::FrameScene;
@@ -89,7 +89,6 @@ use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
-use crate::theme::scheme_preference::SchemePreference;
 use crate::ui::app::App;
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_engines::FrameEngines;
@@ -97,11 +96,12 @@ use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
+use crate::ui::host_seam::HostSeam;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::layer_scope::LayerScope;
+use crate::ui::memory::Memory;
 use crate::ui::resources::UiResources;
-use crate::ui::singletons::Singletons;
-use crate::ui::state::StateMap;
+use crate::ui::ui_preferences::UiPreferences;
 use crate::ui::window_theme::{Motion, WindowTheme};
 use crate::widget_core::overlay_stack::OverlayStack;
 use crate::window::cursor_icon::CursorIcon;
@@ -112,10 +112,8 @@ use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_directory::WindowDirectory;
 use crate::window::window_frame_state::WindowFacts;
-use crate::window::window_frame_state::WindowFrameState;
 use crate::window::window_geometry::WindowGeometry;
 use crate::window::window_output::WindowOutput;
-use crate::window::window_requests::WindowRequests;
 use crate::window::window_token::WindowToken;
 use glam::Vec2;
 use std::fmt;
@@ -131,32 +129,18 @@ pub struct Ui {
     forest: Forest,
     /// This window's theme for each scheme, the scheme it shows and the transition between them.
     window_theme: WindowTheme,
-    /// Cross-frame widget state, keyed by `WidgetId`.
-    state: StateMap,
-    /// State shared across all instances of a widget kind.
-    singletons: Singletons,
-    /// Live `GpuView`s. The shape records only the redraw epoch; the encoder
-    /// looks the view up by the node's `WidgetId`. Swept with [`StateMap`].
-    gpu_views: GpuViews,
+    /// What the widgets keep between frames.
+    memory: Memory,
     resources: UiResources,
     layout: Layout,
     /// Cascaded clip/disabled/invisible/transform per node plus the hit index.
     /// Written in the paint phase; read by the encoder, input dispatch and damage.
     cascade: Cascade,
     input: InputState,
-    animation: AnimationMap,
     /// Frame clock, wake queue, repaint/relayout flags and prior-frame validity.
     frame_runtime: FrameRuntime,
-    /// Recorder-to-host requests retained across frames.
-    window_requests: WindowRequests,
-    /// Host-to-recorder facts refreshed before each windowed frame.
-    window_frame: WindowFrameState,
-    /// This window's latest GPU timing sample, which the backend publishes into on each of the
-    /// window's submits: a window reads its own frames, not the last window's.
-    gpu_pass_stats: GpuPassStats,
-    /// Asks this window's host for a frame from any thread; the host sets it once the window
-    /// opens.
-    waker: Waker,
+    /// What this `Ui` and its host hand each other.
+    host: HostSeam,
     /// The overlay bodies recording now, and the close a row in each asked for.
     overlays: OverlayStack,
 }
@@ -183,30 +167,24 @@ impl Ui {
             forest: Forest::new(resources.text().family_keys()),
             window_theme: WindowTheme::new(resources.color_scheme()),
             resources,
-            state: StateMap::default(),
-            singletons: Singletons::default(),
-            gpu_views: GpuViews::default(),
+            memory: Memory::default(),
             layout: Layout::default(),
             cascade: Cascade::default(),
             input: InputState::default(),
-            animation: AnimationMap::default(),
             frame_runtime: FrameRuntime::default(),
-            window_requests: WindowRequests::default(),
-            window_frame: WindowFrameState::default(),
-            gpu_pass_stats: GpuPassStats::default(),
-            waker: Waker::new(|| {}),
+            host: HostSeam::default(),
             overlays: OverlayStack::default(),
         }
     }
 
     /// The window's host sets the waker its [`Self::waker`] hands out.
     pub(crate) fn set_waker(&mut self, waker: Waker) {
-        self.waker = waker;
+        self.host.waker = waker;
     }
 
     /// A handle that asks this window for a frame from any thread: see [`Waker`].
     pub fn waker(&self) -> Waker {
-        self.waker.clone()
+        self.host.waker.clone()
     }
 
     /// The theme this frame shows: the one of the scheme it shows ([`Self::color_scheme`]), or a
@@ -244,11 +222,14 @@ impl Ui {
     /// theme.
     ///
     /// ```
-    /// # use palantir::{ColorScheme, SchemePreference, Theme, Ui};
+    /// # use palantir::{ColorScheme, Preference, Theme, Ui, UiPreferences};
     /// # fn one_look(ui: &mut Ui) {
     /// // An app with one look sets it and pins its scheme.
     /// ui.set_theme_for(ColorScheme::Dark, Theme::stock(ColorScheme::Dark));
-    /// ui.set_scheme_preference(SchemePreference::Dark);
+    /// ui.set_preferences(UiPreferences {
+    ///     scheme: Preference::Fixed(ColorScheme::Dark),
+    ///     ..ui.preferences()
+    /// });
     /// # }
     /// ```
     #[inline]
@@ -299,26 +280,26 @@ impl Ui {
     /// shown point and finish late.
     #[inline]
     fn motion_snaps(&self) -> bool {
-        self.window_frame.facts.shown_again || self.is_motion_reduced()
+        self.host.window_frame.facts.shown_again || self.is_motion_reduced()
     }
 
-    /// The scheme the person picked; [`SchemePreference::System`] until set. App-global.
+    /// The person's picks over the system's answers; each
+    /// [`Preference::System`](crate::Preference::System) until set. App-global.
     #[inline]
-    pub fn scheme_preference(&self) -> SchemePreference {
-        self.resources.settings().scheme_preference()
+    pub fn preferences(&self) -> UiPreferences {
+        self.resources.settings().preferences()
     }
 
-    /// Follow the system's scheme, or hold one by hand. App-global: every window shows the
-    /// resolved scheme from its next frame, which this call asks for; this frame keeps its
-    /// scheme, so no frame mixes two. Persisting the pick is the app's.
-    pub fn set_scheme_preference(&mut self, preference: SchemePreference) {
-        if self.resources.settings().set_scheme_preference(preference) {
+    /// Hold the person's picks, each taking effect as its field says, and ask every window for a
+    /// frame when one moved. App-global. Persisting the picks is the app's.
+    pub fn set_preferences(&mut self, preferences: UiPreferences) {
+        if self.resources.settings().set_preferences(preferences) {
             self.frame_runtime.request_repaint();
         }
     }
 
-    /// The scheme this frame shows: the preference resolved against
-    /// [`Self::system_color_scheme`], or [`SchemePreference::FALLBACK`] where nothing reports one.
+    /// The scheme this frame shows: [`UiPreferences::scheme`] resolved against
+    /// [`Self::system_color_scheme`], or [`ColorScheme::FALLBACK`] where nothing reports one.
     #[inline]
     pub const fn color_scheme(&self) -> ColorScheme {
         self.window_theme.scheme()
@@ -331,7 +312,7 @@ impl Ui {
         self.resources.settings().system_color_scheme()
     }
 
-    /// Whether motion is reduced: the [motion preference](Self::motion_preference) resolved
+    /// Whether motion is reduced: [`UiPreferences::motion`] resolved
     /// against [`Self::system_motion_reduced`], read when a motion starts, so a theme set between
     /// two frames snaps as the setting stands. Then every [`Self::animate`] and theme
     /// transition snaps to its target, as CSS `prefers-reduced-motion` asks of transitions, and a
@@ -350,24 +331,8 @@ impl Ui {
         self.resources.settings().system_motion().is_reduced()
     }
 
-    /// The motion the person picked; [`ReducePreference::System`] until set. App-global.
-    #[inline]
-    pub fn motion_preference(&self) -> ReducePreference {
-        self.resources.settings().motion_preference()
-    }
-
-    /// Follow the system's ask for less motion, or hold full or reduced motion by hand, as an
-    /// app's own "Reduce motion" setting does. App-global, and at once: a motion that starts or
-    /// steps after this call runs under it, and every window is asked for a frame. Persisting the
-    /// pick is the app's.
-    pub fn set_motion_preference(&mut self, preference: ReducePreference) {
-        if self.resources.settings().set_motion_preference(preference) {
-            self.frame_runtime.request_repaint();
-        }
-    }
-
-    /// Whether this frame paints with transparency reduced: the
-    /// [transparency preference](Self::transparency_preference) resolved against
+    /// Whether this frame paints with transparency reduced: [`UiPreferences::transparency`]
+    /// resolved against
     /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then
     /// every [`BackdropFilter`](crate::BackdropFilter) paints as a solid fill, as CSS
     /// `prefers-reduced-transparency` asks and as WinUI's acrylic falls back to its
@@ -384,26 +349,6 @@ impl Ui {
     #[inline]
     pub fn system_transparency_reduced(&self) -> bool {
         self.resources.settings().system_transparency().is_reduced()
-    }
-
-    /// The transparency the person picked; [`ReducePreference::System`] until set. App-global.
-    #[inline]
-    pub fn transparency_preference(&self) -> ReducePreference {
-        self.resources.settings().transparency_preference()
-    }
-
-    /// Follow the system's ask for less transparency, or hold full or reduced transparency by
-    /// hand, as an app's "Transparency effects" or performance setting does. App-global: every
-    /// window paints the resolved transparency from its next frame, which this call asks for.
-    /// Persisting the pick is the app's.
-    pub fn set_transparency_preference(&mut self, preference: ReducePreference) {
-        if self
-            .resources
-            .settings()
-            .set_transparency_preference(preference)
-        {
-            self.frame_runtime.request_repaint();
-        }
     }
 
     /// At a frame's start, after its clock: move a theme transition one `dt` on, then adopt the
@@ -612,27 +557,27 @@ impl Ui {
     /// headless.
     #[inline]
     pub const fn request_cursor(&mut self, cursor: CursorIcon) {
-        self.window_requests.levels.cursor = cursor;
+        self.host.window_requests.levels.cursor = cursor;
     }
 
     /// The cursor requested so far this record pass. Frame-scoped, unlike
     /// [`Self::vsync`].
     #[inline]
     pub const fn cursor(&self) -> CursorIcon {
-        self.window_requests.levels.cursor
+        self.host.window_requests.levels.cursor
     }
 
     /// Set this window's presentation pacing, a retained level. Setting the mode in
     /// force is free; a real change recreates the swapchain after the frame.
     #[inline]
     pub const fn set_vsync(&mut self, vsync: Vsync) {
-        self.window_requests.levels.vsync = vsync;
+        self.host.window_requests.levels.vsync = vsync;
     }
 
     /// This window's presentation pacing, as last set or as the swapchain was opened.
     #[inline]
     pub const fn vsync(&self) -> Vsync {
-        self.window_requests.levels.vsync
+        self.host.window_requests.levels.vsync
     }
 
     /// Ask the host for another frame after this one. Cleared at the top of every `frame`.
@@ -673,7 +618,7 @@ impl Ui {
             return None;
         }
         self.frame_runtime.request_repaint();
-        Some(self.window_requests.ask_screenshot(region))
+        Some(self.host.window_requests.ask_screenshot(region))
     }
 
     /// The image the ask `id` of [`Self::request_screenshot`] got, during the one frame it lands
@@ -681,7 +626,8 @@ impl Ui {
     /// frame. Images land in the order they were asked for, one per frame, and the frame one
     /// lands in records.
     pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot> {
-        self.window_frame
+        self.host
+            .window_frame
             .screenshot
             .as_deref()
             .filter(|screenshot| screenshot.id() == id)
@@ -690,7 +636,7 @@ impl Ui {
     /// Move the images this frame asked for onto `into`, as the driver takes them once the frame
     /// is recorded.
     pub(crate) fn take_screenshot_requests(&mut self, into: &mut Vec<ScreenshotRequest>) {
-        into.append(&mut self.window_requests.screenshots);
+        into.append(&mut self.host.window_requests.screenshots);
     }
 
     /// Hand the next frame the image that landed for it, or none.
@@ -698,7 +644,7 @@ impl Ui {
         if screenshot.is_some() {
             self.frame_runtime.request_repaint();
         }
-        self.window_frame.screenshot = screenshot.map(Box::new);
+        self.host.window_frame.screenshot = screenshot.map(Box::new);
     }
 
     /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.
@@ -734,7 +680,7 @@ impl Ui {
     #[track_caller]
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
         config.validate();
-        self.window_requests.commands.open(token, config);
+        self.host.window_requests.commands.open(token, config);
     }
 
     /// Request that the window addressed by `token` close, deferred and ordered like
@@ -742,7 +688,7 @@ impl Ui {
     /// command, as [`Self::open_window`] says.
     #[inline]
     pub fn close_window(&mut self, token: WindowToken) {
-        self.window_requests.commands.close(token);
+        self.host.window_requests.commands.close(token);
     }
 
     /// `true` for the frame where the OS asked to close this window. It auto-closes
@@ -766,13 +712,13 @@ impl Ui {
     /// Always `false` headless.
     #[inline]
     pub const fn close_requested(&self) -> bool {
-        self.window_frame.facts.close_requested
+        self.host.window_frame.facts.close_requested
     }
 
     /// Veto the auto-close pending from [`Self::close_requested`].
     #[inline]
     pub const fn keep_open(&mut self) {
-        self.window_requests.close_vetoed = true;
+        self.host.window_requests.close_vetoed = true;
     }
 
     // The recorder-host seam: two methods the host writes before a frame, two it reads after.
@@ -782,10 +728,10 @@ impl Ui {
     #[cfg(feature = "winit")]
     pub(crate) fn set_window_facts(&mut self, facts: WindowFacts) {
         debug_assert!(
-            !self.window_requests.close_vetoed,
+            !self.host.window_requests.close_vetoed,
             "a veto outlived the frame that raised it",
         );
-        self.window_frame.facts = facts;
+        self.host.window_frame.facts = facts;
     }
 
     /// Seed the pacing level from the swapchain the host opened, so a control
@@ -793,19 +739,23 @@ impl Ui {
     #[cfg(feature = "winit")]
     #[inline]
     pub(crate) const fn seed_vsync(&mut self, vsync: Vsync) {
-        self.window_requests.levels.vsync = vsync;
+        self.host.window_requests.levels.vsync = vsync;
     }
 
-    /// Drain this frame's window scratch into `commands` and return the levels the
-    /// host applies afterwards; see [`WindowRequests::drain`].
+    /// Drain this frame's window scratch into `commands` and return the levels the host applies
+    /// afterwards; see
+    /// [`WindowRequests::drain`](crate::window::window_requests::WindowRequests::drain).
     pub(crate) fn drain_window_output(
         &mut self,
         token: WindowToken,
         commands: &mut WindowCommands,
     ) -> WindowOutput {
-        let close_requested = self.window_frame.facts.close_requested;
-        let levels = self.window_requests.drain(token, close_requested, commands);
-        self.window_frame.facts = WindowFacts::default();
+        let close_requested = self.host.window_frame.facts.close_requested;
+        let levels = self
+            .host
+            .window_requests
+            .drain(token, close_requested, commands);
+        self.host.window_frame.facts = WindowFacts::default();
         levels
     }
 
@@ -823,6 +773,7 @@ impl Ui {
     pub fn window_geometry(&self) -> WindowGeometry {
         let display = self.frame_runtime.stamp().display;
         let physical = self
+            .host
             .window_frame
             .facts
             .restored_size
@@ -836,7 +787,7 @@ impl Ui {
         let scale = display.system_scale.get();
         WindowGeometry {
             inner_size: Size::new(physical.x as f32 / scale, physical.y as f32 / scale),
-            placement: self.window_frame.facts.placement,
+            placement: self.host.window_frame.facts.placement,
         }
     }
 
@@ -867,7 +818,7 @@ impl Ui {
     /// This window's most recent GPU instrumentation sample, which the backend publishes and the
     /// debug overlay reads; empty unless the host collects GPU stats.
     pub const fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.gpu_pass_stats
+        &self.host.gpu_pass_stats
     }
 
     /// This frame's diagnostic counters, for the [`frame_stats`] overlay.
@@ -879,7 +830,7 @@ impl Ui {
             render_frame_id: self.frame_runtime.render_frame_id,
             fps: self.frame_runtime.fps_ema,
             settle_frames: self.frame_runtime.settle_frames(),
-            gpu: self.gpu_pass_stats.last_pass(),
+            gpu: self.host.gpu_pass_stats.last_pass(),
         }
     }
 
@@ -984,13 +935,13 @@ impl Ui {
     /// shape carrying the row's target and `epoch` to the active node.
     pub(crate) fn gpu_view(&mut self, view: RecordedView) {
         let frame = self.frame_runtime.render_frame_id;
-        let target = self.gpu_views.record(view, frame);
+        let target = self.memory.gpu_views.record(view, frame);
         self.forest.add_gpu_view(target.id, target.epoch);
     }
 
     /// Every `GpuView` this window records, which its frames paint through.
     pub(crate) const fn gpu_views(&self) -> &GpuViews {
-        &self.gpu_views
+        &self.memory.gpu_views
     }
 
     /// Format `args` into the record-pass text storage and return an arena-backed
@@ -1070,6 +1021,19 @@ impl Ui {
     /// The overlay bodies recording now.
     pub(crate) const fn overlays(&mut self) -> &mut OverlayStack {
         &mut self.overlays
+    }
+
+    /// Close the innermost overlay recording now: the [`Popup`](crate::Popup),
+    /// [`Modal`](crate::Modal) or menu whose body this call runs in, which reports
+    /// [`OverlayClose::Requested`](crate::OverlayClose::Requested) this frame. A dialog's button
+    /// and an activated [`MenuItem`](crate::MenuItem) close their overlay so, as egui's
+    /// `Ui::close` closes the innermost closable container
+    /// (<https://docs.rs/egui/latest/egui/struct.Ui.html#method.close>). A no-op outside every
+    /// overlay, where a row shown in the main tree has nothing to close. Refused: a close handle
+    /// passed into each body, a second route to the same close.
+    #[inline]
+    pub fn close_overlay(&mut self) {
+        self.overlays.close_innermost();
     }
 
     /// Withdraw an [`input_scope`](crate::Configure::input_scope) this pass recorded.
@@ -1174,7 +1138,7 @@ impl Ui {
     /// While the row is lent to a [`Self::with_state`] body, which holds it as `&mut S`.
     #[track_caller]
     pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
-        self.state.try_get::<S>(id)
+        self.memory.state.try_get::<S>(id)
     }
 
     /// Lend the cross-frame state row for `id` to `body` alongside the `Ui`
@@ -1208,25 +1172,49 @@ impl Ui {
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = self.state.lend::<S>(id).unwrap_or_default();
+        let mut value = self.memory.state.lend::<S>(id).unwrap_or_default();
         let out = body(self, &mut value);
         // Re-probed: `body` may have inserted rows of the same `S`, reallocating the store.
-        self.state.put(id, value);
+        self.memory.state.put(id, value);
         out
     }
 
-    /// The one `S` this `Ui` holds, or `None`. For state a widget kind shares across
-    /// instances; keyed by type, never swept.
+    /// Store `value` as `id`'s row of `S`, in place of any it had: for a row that holds a value
+    /// only while something is under way, as an open menu's target, so the map, not an `Option`
+    /// in the row, says when there is none.
+    ///
+    /// # Panics
+    ///
+    /// While the row is lent to a [`Self::with_state`] body.
+    #[track_caller]
+    pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S) {
+        self.memory.state.set(id, value);
+    }
+
+    /// Drop `id`'s row of `S`, returning its value; `None` when it has none.
+    ///
+    /// # Panics
+    ///
+    /// While the row is lent to a [`Self::with_state`] body.
+    #[track_caller]
+    pub fn remove_state<S: 'static>(&mut self, id: WidgetId) -> Option<S> {
+        self.memory.state.remove::<S>(id)
+    }
+
+    /// The one `S` this `Ui` holds, or `None`: the state row of `S` under an id of its type, which
+    /// no node records, so it is never swept. For state a widget kind shares across instances.
+    /// Sugar over [`Self::state`], as egui's `IdTypeMap` keeps a global under `Id::NULL`.
     ///
     /// # Panics
     ///
     /// While `S` is lent to a [`Self::with_singleton`] body.
     #[track_caller]
     pub fn singleton<S: 'static>(&self) -> Option<&S> {
-        self.singletons.get::<S>()
+        self.state::<S>(singleton_id::<S>())
     }
 
-    /// Lend the one `S` to `body` beside the `Ui`, `S::default()` on first use.
+    /// Lend the one `S` to `body` beside the `Ui`, `S::default()` on first use; sugar over
+    /// [`Self::with_state`] under the id of `S`.
     ///
     /// # Panics
     ///
@@ -1236,10 +1224,7 @@ impl Ui {
         &mut self,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = self.singletons.take::<S>();
-        let out = body(self, &mut value);
-        self.singletons.put(value);
-        out
+        self.with_state::<S, R>(singleton_id::<S>(), body)
     }
 
     /// Advance the animation row `request` names toward its target and return the current
@@ -1269,7 +1254,7 @@ impl Ui {
             dt: self.frame_runtime.dt,
             render_frame_id: self.frame_runtime.render_frame_id,
         };
-        let animated = self.animation.animate(request, spec, clock);
+        let animated = self.memory.animation.animate(request, spec, clock);
         if !animated.settled {
             self.frame_runtime.request_repaint();
         }
@@ -1413,7 +1398,7 @@ impl Ui {
     #[track_caller]
     pub const fn request_ime_area(&mut self, area: Rect) {
         area.validate();
-        self.window_requests.levels.ime_area = Some(area);
+        self.host.window_requests.levels.ime_area = Some(area);
     }
 
     /// The IME area requested so far this record pass, `None` for off. Frame-scoped, like
@@ -1421,7 +1406,7 @@ impl Ui {
     /// after a frame; the winit host does it itself.
     #[inline]
     pub const fn ime_area(&self) -> Option<Rect> {
-        self.window_requests.levels.ime_area
+        self.host.window_requests.levels.ime_area
     }
 
     /// The input method's uncommitted text, for the focused widget to draw at its
@@ -1547,6 +1532,11 @@ fn input_ctx<'a>(cascade: &'a Cascade, resources: &UiResources) -> InputCtx<'a> 
     }
 }
 
+/// The state-map id the one `S` of a `Ui` lives under: of its type, so no widget id meets it.
+fn singleton_id<S: 'static>() -> WidgetId {
+    WidgetId::from_hash(("palantir.singleton", std::any::TypeId::of::<S>()))
+}
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::theme::Theme;
@@ -1642,16 +1632,16 @@ pub(crate) mod internals {
 
         /// The animation rows, for tests that count what is resident.
         pub(crate) fn animation_mut(&mut self) -> &mut AnimationMap {
-            &mut self.animation
+            &mut self.memory.animation
         }
 
         pub(crate) fn window_requests(&self) -> &WindowRequests {
-            &self.window_requests
+            &self.host.window_requests
         }
 
         /// The facts a host publishes before a frame, for tests that act as the host.
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
-            &mut self.window_frame
+            &mut self.host.window_frame
         }
 
         /// [`Ui::pointer_events`] read between frames, where a read watches nothing.

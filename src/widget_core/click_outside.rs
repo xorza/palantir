@@ -1,20 +1,14 @@
 //! What a click outside an overlay does to it.
 
-/// What a press outside an overlay's body, and Escape, do.
-///
-/// `Block` and `Dismiss` are modal: a [`Backdrop`](crate::widget::Backdrop) swallows outside
-/// presses, and the overlay's layer takes the whole key scope. `PassThrough` does neither, so a
-/// permanently recorded overlay can't lock the host.
-///
-/// - `Block`: no dismissal signal; Esc is ignored.
-/// - `Dismiss`: an outside click or Esc closes it as `OverlayClose::Dismissed`.
-/// - `PassThrough`: presses and keys reach `Main`; never dismisses (toasts).
+/// What a press outside an overlay's body, and Escape, do to an overlay that holds the input
+/// of the layers below: its [`Backdrop`](crate::widget::Backdrop) swallows outside presses, and
+/// its layer takes the whole key scope. An overlay with no backdrop holds none, so presses and
+/// keys reach `Main` and nothing dismisses it, as a toast's do; a [`Popup`](crate::Popup) is one
+/// with `click_outside(None)`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ClickOutside {
-    /// Swallow the press and stay open. A modal overlay.
+    /// Swallow the press and stay open, and ignore Escape. A dialog the user must answer.
     Block,
-    /// Swallow the press and close. The default.
+    /// Swallow the press and close as `OverlayClose::Dismissed`, as Escape does. The default.
     Dismiss,
-    /// Let the press reach what is under the overlay, which stays open.
-    PassThrough,
 }

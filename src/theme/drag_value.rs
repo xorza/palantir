@@ -4,7 +4,6 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -61,11 +60,6 @@ impl DragValueTheme {
             selection: field.selection,
             placeholder: field.placeholder,
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 
     /// The text field the editor shows: these looks, with focus worn as hover, and the caret,

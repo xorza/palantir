@@ -9,7 +9,8 @@ use palantir::{
     Align, Animated, AnimationSpec, Axis, Button, ButtonTheme, Checkbox, Chrome, ColorScheme,
     ComboBox, Configure, Corners, DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar,
     RadioGroup, RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
-    Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
+    Switch, Text, TextEdit, TextStyleOverrides, Theme, Tooltip, Ui, VAlign, WidgetId, WidgetLook,
+    fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -97,7 +98,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
 
 /// The three things an [`Expander`] decides: whether it starts open, whether its reveal animates, and whether its body keeps recording while closed. In the second column, type into both fields, collapse and reopen: the upper resets because Palantir sweeps the state of unrecorded widgets, the lower doesn't because `keep_body` records it collapsed.
 fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
-    let base = ExpanderTheme::stock(ColorScheme::Dark);
+    let base = Theme::stock(ColorScheme::Dark).expander;
     let animated = ExpanderTheme {
         defaults: SlotDefaults {
             transition: AnimationSpec::MEDIUM,

@@ -150,7 +150,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
                     Popup::chrome,
                     Popup::default_chrome,
                 )
-                .show(ui, |_, _| {});
+                .show(ui, |_| {});
             },
             chrome_node: own_id,
             layer: Layer::Popup,
@@ -165,7 +165,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
                     PopupTrigger::chrome,
                     PopupTrigger::default_chrome,
                 )
-                .show(ui, |_, _| {});
+                .show(ui, |_| {});
             },
             chrome_node: || hovered_trigger().id.with("popup"),
             layer: Layer::Popup,
@@ -178,7 +178,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
                     Modal::chrome,
                     Modal::default_chrome,
                 )
-                .show(ui, |_, _| {});
+                .show(ui, |_| {});
             },
             chrome_node: || own_id().with("panel"),
             layer: Layer::Modal,
@@ -201,7 +201,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
             name: "Menu",
             record: |ui, c| {
                 c.apply(Menu::for_id(own_id()), Menu::chrome, Menu::default_chrome)
-                    .show(ui, |_, _| {});
+                    .show(ui, |_| {});
             },
             chrome_node: || Menu::menu_id(own_id()),
             layer: Layer::Menu,
@@ -630,7 +630,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     use crate::widgets::color_picker::ColorPicker;
     use crate::widgets::color_strip::ColorStrip;
     use crate::widgets::color_swatch::ColorSwatch;
-    use crate::widgets::combo_box::ComboBox;
+    use crate::widgets::combo_box::{ComboBox, ComboBoxList};
     use crate::widgets::expander::Expander;
     use crate::widgets::slider::Slider;
     use crate::widgets::splitter::Splitter;
@@ -705,7 +705,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
         under_root(ui, |ui| {
             ComboBox::new(&mut picked, &options).id(id).show(ui);
         });
-        listed |= ComboBox::is_open(ui, id);
+        listed |= ComboBoxList::is_open(ui, id);
     });
     assert!(
         listed && *picked == "a",

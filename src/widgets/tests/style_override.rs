@@ -31,18 +31,18 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
         button: ButtonTheme {
             defaults: SlotDefaults {
                 padding: Spacing::all(4.0),
-                ..ButtonTheme::stock(ColorScheme::Dark).defaults
+                ..Theme::stock(ColorScheme::Dark).button.defaults
             },
-            ..ButtonTheme::stock(ColorScheme::Dark)
+            ..Theme::stock(ColorScheme::Dark).button
         },
         ..Theme::stock(ColorScheme::Dark)
     };
     let wide = ButtonTheme {
         defaults: SlotDefaults {
             padding: Spacing::all(20.0),
-            ..ButtonTheme::stock(ColorScheme::Dark).defaults
+            ..Theme::stock(ColorScheme::Dark).button.defaults
         },
-        ..ButtonTheme::stock(ColorScheme::Dark)
+        ..Theme::stock(ColorScheme::Dark).button
     };
 
     let styled_id = WidgetId::from_hash("style-override-styled");

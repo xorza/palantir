@@ -9,3 +9,10 @@ pub enum ColorScheme {
     /// Light ink on a dark ground.
     Dark,
 }
+
+impl ColorScheme {
+    /// The scheme [`Preference::System`](crate::Preference::System) shows where nothing reports
+    /// one (a harness, an offscreen host, a desktop with no reader): dark, the look palantir had
+    /// before it read the system.
+    pub const FALLBACK: Self = Self::Dark;
+}

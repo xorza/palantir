@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::fmt;
 
-/// Spelled once rather than at each downcast site (here and [`Singletons`](crate::ui::singletons::Singletons)): the `TypeId` key means nothing but an `S` can be behind it.
+/// Spelled once rather than at each downcast site (here): the `TypeId` key means nothing but an `S` can be behind it.
 pub(crate) const DOWNCAST_ERROR: &str = "TypeId keys the entry, so the stored type is S";
 
 /// What a typed store owes its container: the end-of-frame sweep against what the frame left in
@@ -53,6 +53,15 @@ impl<F: ?Sized> TypedStores<F> {
         self.by_type.get(&TypeId::of::<S>()).map(|store| {
             (store.as_ref() as &dyn Any)
                 .downcast_ref::<S>()
+                .expect(DOWNCAST_ERROR)
+        })
+    }
+
+    /// The store for `S` to change, if one exists.
+    pub(crate) fn get_mut<S: TypedStore<F>>(&mut self) -> Option<&mut S> {
+        self.by_type.get_mut(&TypeId::of::<S>()).map(|store| {
+            (store.as_mut() as &mut dyn Any)
+                .downcast_mut::<S>()
                 .expect(DOWNCAST_ERROR)
         })
     }

@@ -2,7 +2,6 @@
 
 pub(crate) mod activation;
 pub(crate) mod click_outside;
-pub(crate) mod close_handle;
 pub(crate) mod configurator;
 pub(crate) mod configure;
 pub(crate) mod overlay_response;

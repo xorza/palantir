@@ -1,5 +1,6 @@
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::theme::Theme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
@@ -12,7 +13,6 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     use crate::shape::record::ShapeRecord;
     use crate::theme::color_scheme::ColorScheme;
     use crate::theme::toggle::ToggleTheme;
-    use crate::theme::toggle_kind::ToggleKind;
 
     fn drawn(theme: ToggleTheme) -> Vec<Vec2> {
         let mut h = Harness::mono(UVec2::new(200, 100));
@@ -41,7 +41,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     }
 
     // Stock 16 px box: unit coords land on the hand-tuned pixels (3.5/16 * 16 = 3.5).
-    let stock = ToggleTheme::stock(ToggleKind::Checkbox, ColorScheme::Dark);
+    let stock = Theme::stock(ColorScheme::Dark).checkbox;
     assert_eq!(stock.box_size, 16.0);
     assert_eq!(
         drawn(stock.clone()),

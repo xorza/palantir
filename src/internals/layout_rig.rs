@@ -14,7 +14,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::stroke::Stroke;
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::forest::Forest;
 use crate::scene::node::Node;

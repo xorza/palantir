@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::widgets::tabs::reindex;
 
 /// A [`TabGroup`]'s identity: the long-lived address of one pane.
@@ -11,6 +12,25 @@ use crate::widgets::tabs::reindex;
 /// structural operation ends with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TabGroupId(pub(super) u64);
+
+/// The ids of this group's parts in a [`DockView`](crate::DockView), derived from the view's id.
+impl TabGroupId {
+    /// This group's pane container (strip and content) in the dock `dock`; the rect drops key
+    /// off.
+    pub fn pane_id(self, dock: WidgetId) -> WidgetId {
+        dock.with(("pane", self))
+    }
+
+    /// This group's content area in the dock `dock`, where its tab's body records.
+    pub fn content_id(self, dock: WidgetId) -> WidgetId {
+        dock.with(("content", self))
+    }
+
+    /// This group's tab strip in the dock `dock`.
+    pub fn strip_id(self, dock: WidgetId) -> WidgetId {
+        dock.with(("strip", self))
+    }
+}
 
 /// One pane's tab strip: the open tabs plus which one is visible. Read-only outside the crate:
 /// [`DockState`](crate::DockState) keeps the strip non-empty and the visible index in range.

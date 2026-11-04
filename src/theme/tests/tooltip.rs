@@ -1,4 +1,5 @@
 use super::pretty;
+use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::spinner::SpinnerTheme;
 use crate::theme::tooltip::TooltipTheme;
@@ -6,7 +7,7 @@ use std::time::Duration;
 
 #[test]
 fn tooltip_theme_defaults() {
-    let theme = TooltipTheme::stock(ColorScheme::Dark);
+    let theme = Theme::stock(ColorScheme::Dark).tooltip;
     assert_eq!(theme.delay, Duration::from_millis(500));
     assert_eq!(theme.warmup, Duration::from_secs(1));
     assert_eq!(theme.max_size.w, 280.0);
@@ -16,7 +17,7 @@ fn tooltip_theme_defaults() {
 
 #[test]
 fn tooltip_timing_serde_stays_scalar_and_rejects_invalid_seconds() {
-    let serialized = pretty(&TooltipTheme::stock(ColorScheme::Dark));
+    let serialized = pretty(&Theme::stock(ColorScheme::Dark).tooltip);
     assert!(serialized.contains("delay: 0.5"));
     assert!(serialized.contains("warmup: 1.0"));
 
@@ -54,12 +55,12 @@ fn tooltip_timing_serde_stays_scalar_and_rejects_invalid_seconds() {
 fn durations_read_back_exactly_and_a_period_refuses_zero() {
     let tooltip = TooltipTheme {
         delay: Duration::from_millis(300),
-        ..TooltipTheme::stock(ColorScheme::Dark)
+        ..Theme::stock(ColorScheme::Dark).tooltip
     };
     let parsed = ron::from_str::<TooltipTheme>(&pretty(&tooltip)).expect("parse");
     assert_eq!(parsed.delay, Duration::from_millis(300));
 
-    let spinner = pretty(&SpinnerTheme::stock(ColorScheme::Dark));
+    let spinner = pretty(&Theme::stock(ColorScheme::Dark).spinner);
     assert!(spinner.contains("period: 1.4"), "{spinner}");
     for (bad, read) in [
         ("0.0", "0"),

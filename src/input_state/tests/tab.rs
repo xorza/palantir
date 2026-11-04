@@ -344,7 +344,7 @@ fn dialog_scene(open: bool, stops: bool) -> impl FnMut(&mut Ui) {
             stop(ui, "b");
         });
         if open {
-            Modal::new().id(id("dialog")).show(ui, |ui, _| {
+            Modal::new().id(id("dialog")).show(ui, |ui| {
                 if stops {
                     stop(ui, "m1");
                     stop(ui, "m2");

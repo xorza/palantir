@@ -5,7 +5,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::Ui;
-use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widgets::popup::Popup;
 use glam::Vec2;
@@ -21,7 +20,10 @@ pub(crate) enum Opening {
 }
 
 /// One trigger's overlay in the state map, keyed off the trigger's id. `K` is the widget that
-/// owns the row, so a trigger holding both a dropdown and a context menu keeps two.
+/// owns the row, so a trigger a [`PopupTrigger`](crate::PopupTrigger) drops a panel from and a
+/// [`Menu`](crate::Menu) raises a context menu on keeps two. A trigger has one menu row:
+/// [`Menu::context`](crate::Menu::context) and [`Menu::below`](crate::Menu::below) on one trigger
+/// share it, and [`Menu::menu_id`](crate::Menu::menu_id) with it.
 #[derive(Debug)]
 pub(crate) struct TriggerState<K> {
     open: Option<Opening>,
@@ -132,7 +134,7 @@ impl TriggerFrame {
         self,
         ui: &mut Ui,
         popup: impl FnOnce(&Ui) -> Popup<'p>,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
         let for_id = self.for_id;
         let state = TriggerState::<K>::of(ui, for_id);
@@ -150,7 +152,7 @@ impl TriggerFrame {
         ui: &mut Ui,
         state: TriggerState<K>,
         popup: impl FnOnce(&Ui) -> Popup<'p>,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Settled<K, R> {
         let mut open = state.open;
         if self.toggled {

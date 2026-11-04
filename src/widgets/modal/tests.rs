@@ -1,7 +1,6 @@
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
-use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -30,7 +29,7 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
             .chrome(Chrome::NONE)
             .padding(Spacing::ZERO)
             .min_size(Size::ZERO)
-            .show(ui, |_, _| {});
+            .show(ui, |_| {});
     });
 
     let panel_id = root_id.with("panel");
@@ -59,7 +58,7 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
                 Some(c) => modal.scrim(c),
                 None => modal,
             }
-            .show(ui, |_, _| {});
+            .show(ui, |_| {});
         });
 
         let backdrop = h.node_of(id).expect("modal backdrop recorded");
@@ -91,7 +90,7 @@ struct BackdropPass {
 
 /// A click on the backdrop and Esc each dismiss the modal under `Dismiss`, the default, and
 /// neither does under `Block`; the button under it hears nothing either way, as the backdrop
-/// covers the window and takes every pointer. `PassThrough` is no modal and panics.
+/// covers the window and takes every pointer.
 #[test]
 fn a_backdrop_click_or_escape_dismisses_unless_blocked() {
     for (click_outside, dismisses) in [(ClickOutside::Dismiss, true), (ClickOutside::Block, false)]
@@ -103,7 +102,7 @@ fn a_backdrop_click_or_escape_dismisses_unless_blocked() {
                 dismissed: Modal::new()
                     .id(WidgetId::from_hash("modal"))
                     .click_outside(click_outside)
-                    .show(ui, |_, _| {})
+                    .show(ui, |_| {})
                     .close
                     == Some(OverlayClose::Dismissed),
             };
@@ -124,9 +123,6 @@ fn a_backdrop_click_or_escape_dismisses_unless_blocked() {
             );
         }
     }
-    panic_probe::assert_panics_with("a modal blocks the layers below it", || {
-        Modal::new().click_outside(ClickOutside::PassThrough)
-    });
 }
 
 /// A modal paints above every popup, so it must also hear Escape, which holds
@@ -141,11 +137,11 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
                 Popup::new()
                     .anchor(Anchor::at_point(Vec2::ZERO))
                     .id(WidgetId::from_hash("under-modal"))
-                    .show(ui, |_ui, _handle| {});
+                    .show(ui, |_ui| {});
             }
             Modal::new()
                 .id(WidgetId::from_hash("modal-escape"))
-                .show(ui, |_, _| {})
+                .show(ui, |_| {})
                 .close
                 == Some(OverlayClose::Dismissed)
         };
@@ -184,7 +180,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
         if *open {
             *open = Modal::new()
                 .id(WidgetId::from_hash("closing-modal"))
-                .show(ui, |_, _| {})
+                .show(ui, |_| {})
                 .close
                 != Some(OverlayClose::Dismissed);
         }
@@ -224,12 +220,12 @@ fn escape_closes_only_the_topmost_overlay() {
         popup: Popup::new()
             .anchor(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("under-modal"))
-            .show(ui, |_ui, _handle| {})
+            .show(ui, |_ui| {})
             .close
             == Some(OverlayClose::Dismissed),
         modal: Modal::new()
             .id(WidgetId::from_hash("over-popup"))
-            .show(ui, |_, _| {})
+            .show(ui, |_| {})
             .close
             == Some(OverlayClose::Dismissed),
     };
@@ -261,7 +257,7 @@ fn an_authored_max_below_the_themed_min_width_wins() {
         Modal::new()
             .id(root_id)
             .max_size((240.0, 400.0))
-            .show(ui, |_, _| {});
+            .show(ui, |_| {});
     });
     let panel = h.arranged(root_id.with("panel"));
     assert_eq!(panel.unwrap().size.w, 240.0);
@@ -277,11 +273,11 @@ fn opened_marks_the_first_frame_an_overlay_shows() {
     let show = |h: &mut Harness, shown: bool| {
         h.frame_value(|ui| {
             shown.then(|| {
-                let modal = Modal::new().id(modal).show(ui, |_, _| {}).opened;
+                let modal = Modal::new().id(modal).show(ui, |_| {}).opened;
                 let popup = Popup::new()
                     .anchor(Anchor::at_point(Vec2::new(10.0, 10.0)))
                     .id(popup)
-                    .show(ui, |_, _| {})
+                    .show(ui, |_| {})
                     .opened;
                 [modal, popup]
             })
@@ -315,13 +311,13 @@ fn closing_from_outside_gives_the_input_back_at_once() {
                 if open {
                     match overlay {
                         Overlay::Modal => {
-                            Modal::new().id(id).show(ui, |_, _| {});
+                            Modal::new().id(id).show(ui, |_| {});
                         }
                         Overlay::Popup => {
                             Popup::new()
                                 .anchor(Anchor::at_point(Vec2::new(20.0, 20.0)))
                                 .id(id)
-                                .show(ui, |_, _| {});
+                                .show(ui, |_| {});
                         }
                     }
                     if ending {

@@ -34,8 +34,8 @@ pub struct OverlayResponse<R> {
 pub enum OverlayClose {
     /// The user asked from outside: an eaten outside press, or Escape.
     Dismissed,
-    /// The body asked: a [`CloseHandle::close`](crate::CloseHandle::close), or an activated
-    /// [`MenuItem`](crate::MenuItem). Wins over a dismissal in the same frame, as the body acted.
+    /// The body asked: [`Ui::close_overlay`](crate::Ui::close_overlay), as an activated
+    /// [`MenuItem`](crate::MenuItem) calls it. Wins over a dismissal in the same frame, as the body acted.
     Requested,
 }
 

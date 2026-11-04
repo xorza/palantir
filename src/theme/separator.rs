@@ -2,7 +2,6 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -37,11 +36,6 @@ impl SeparatorTheme {
             thickness: m.stroke.hairline,
             margin: Spacing::ZERO,
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub const fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 
     /// The [`crate::MenuSeparator`] recipe: the same rule, held off the rows around it.

@@ -20,8 +20,8 @@ use std::rc::Rc;
 ///
 /// The picker is configured as usual and handed over whole. Open state lives
 /// in the response map keyed off the trigger. Click outside or Esc closes it;
-/// there is no revert, since every gesture inside already committed. The popup is
-/// [`Self::popup_id`], and the picker defaults to `id.with("picker")`.
+/// there is no revert, since every gesture inside already committed. The popup is the
+/// trigger's [`PopupTrigger::popup_id`], and the picker defaults to `id.with("picker")`.
 ///
 /// ```
 /// # use palantir::{ColorButton, ColorPicker, RgbaF32, SwatchRow, Ui};
@@ -72,7 +72,7 @@ impl<'a> ColorButton<'a> {
         let picker = self.picker.default_id(response.id.with("picker"));
         let opened = PopupTrigger::on(&response)
             .style(&slot.popup)
-            .show_as::<ColorButton<'static>, _>(ui, |ui, _| picker.show(ui).edges());
+            .show_as::<ColorButton<'static>, _>(ui, |ui| picker.show(ui).edges());
         let ValueEdges { changed, committed } =
             opened.map(|opened| opened.inner).unwrap_or_default();
 
@@ -84,13 +84,8 @@ impl<'a> ColorButton<'a> {
     }
 }
 
-/// Driving a color button's panel from outside, by the button's id, and the id of the popup.
+/// Driving a color button's panel from outside, by the button's id.
 impl ColorButton<'static> {
-    /// The popup the color button `id` drops its panel in.
-    pub fn popup_id(id: WidgetId) -> WidgetId {
-        PopupTrigger::popup_id(id)
-    }
-
     /// Open the panel of the color button `id`, e.g. from a keyboard shortcut; it records on the
     /// button's next `show`.
     pub fn open(ui: &mut Ui, id: WidgetId) {

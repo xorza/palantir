@@ -19,7 +19,8 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::primitives::reduce_preference::ReducePreference;
+use crate::primitives::preference::Preference;
+use crate::primitives::reduction::Reduction;
 use crate::renderer::frontend::encoder;
 use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
@@ -27,11 +28,12 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
-use crate::theme::scheme_preference::SchemePreference;
+use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{self, SURFACE};
+use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::Vec2;
@@ -270,10 +272,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
     // A pending close request vetoes the fast path: the app reads `close_requested` only during record.
-    h.ui_mut().window_frame.facts.close_requested = true;
+    h.ui_mut().host.window_frame.facts.close_requested = true;
     let r3 = h.at(half * 3).frame(|ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
-    h.ui_mut().window_frame.facts.close_requested = false;
+    h.ui_mut().host.window_frame.facts.close_requested = false;
     let r4 = h.at(half * 4).frame(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 
@@ -610,13 +612,22 @@ fn an_app_global_setting_asks_for_a_frame_only_when_it_moves() {
             });
         }),
         ("scheme", |ui| {
-            ui.set_scheme_preference(SchemePreference::Light);
+            ui.set_preferences(UiPreferences {
+                scheme: Preference::Fixed(ColorScheme::Light),
+                ..ui.preferences()
+            });
         }),
         ("motion", |ui| {
-            ui.set_motion_preference(ReducePreference::Reduced);
+            ui.set_preferences(UiPreferences {
+                motion: Preference::Fixed(Reduction::Reduced),
+                ..ui.preferences()
+            });
         }),
         ("transparency", |ui| {
-            ui.set_transparency_preference(ReducePreference::Reduced);
+            ui.set_preferences(UiPreferences {
+                transparency: Preference::Fixed(Reduction::Reduced),
+                ..ui.preferences()
+            });
         }),
     ];
     for (name, set) in sets {

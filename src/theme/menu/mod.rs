@@ -4,7 +4,6 @@ pub(crate) mod menu_item;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -63,10 +62,5 @@ impl MenuTheme {
             item,
             separator: SeparatorTheme::menu(p, m),
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

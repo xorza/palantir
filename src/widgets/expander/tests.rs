@@ -1,5 +1,6 @@
 //! What the body costs while closed, who owns the open flag, the first-reveal snap, and the keys that toggle a header.
 
+use crate::theme::Theme;
 use glam::{UVec2, Vec2};
 
 use crate::animation::animation_spec::AnimationSpec;
@@ -260,7 +261,7 @@ fn open_close_and_is_open_drive_it_from_outside() {
 /// The first reveal snaps (no measured height to tween against); later ones animate.
 #[test]
 fn the_first_reveal_snaps_and_the_next_one_animates() {
-    let base = ExpanderTheme::stock(ColorScheme::Dark);
+    let base = Theme::stock(ColorScheme::Dark).expander;
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
             transition: AnimationSpec::MEDIUM,
@@ -309,7 +310,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
 /// goes only on the frame the spring rests at 0.
 #[test]
 fn a_spring_close_keeps_the_body_until_it_rests() {
-    let base = ExpanderTheme::stock(ColorScheme::Dark);
+    let base = Theme::stock(ColorScheme::Dark).expander;
     // Decay h = 3/s at ωd = sqrt(200 − 9) = 13.82 rad/s, from 1 at rest: x(t) = e^(−ht)(cos ωd·t +
     // (h/ωd) sin ωd·t) is −0.5051 at frame 14 (224 ms) and +0.2545 at frame 28 (448 ms). It
     // rests once x² + v²/k < EPS² = 1e-8: 1.063e-8 at frame 192, 0.878e-8 at frame 193.
@@ -408,7 +409,7 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         assert_close(got.y, want.y, 1e-6, residue);
     }
 
-    let t = ExpanderTheme::stock(ColorScheme::Dark);
+    let t = Theme::stock(ColorScheme::Dark).expander;
     assert_eq!(t.arrow_angle(0.0), t.arrow_closed_angle);
     assert_eq!(t.arrow_angle(1.0), t.arrow_open_angle);
     assert_eq!(
@@ -421,7 +422,7 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
 /// The reveal clips against the body's whole height even on the frame the tween settles, or the next collapse jumps.
 #[test]
 fn a_settling_reveal_stores_the_whole_height() {
-    let base = ExpanderTheme::stock(ColorScheme::Dark);
+    let base = Theme::stock(ColorScheme::Dark).expander;
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
             transition: AnimationSpec::MEDIUM,

@@ -20,13 +20,10 @@ use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, fra
 use glam::Vec2;
 
 /// Pointer gestures outside the popup body must be absorbed by the barrier, not
-/// leak to a `Main` widget. `PassThrough` is the control: the burst reaches `Main` there.
+/// leak to a `Main` widget. `None` is the control: the burst reaches `Main` there.
 #[test]
 fn outside_pointer_gestures_do_not_leak_to_main() {
-    for (mode, leaks) in [
-        (ClickOutside::Block, false),
-        (ClickOutside::PassThrough, true),
-    ] {
+    for (mode, leaks) in [(Some(ClickOutside::Block), false), (None, true)] {
         let mut h = Harness::mono(SURFACE);
         let bg_id = WidgetId::from_hash("scroll-bg");
         let scene = |ui: &mut Ui| {
@@ -40,7 +37,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(mode)
                         .padding(4.0)
-                        .show(ui, |ui, _| {
+                        .show(ui, |ui| {
                             Panel::vstack()
                                 .id(WidgetId::from_hash("popup-content"))
                                 .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
@@ -92,9 +89,9 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
 #[test]
 fn each_click_outside_mode_decides_whether_main_sees_the_press() {
     for (mode, reaches_main, signals) in [
-        (ClickOutside::Block, false, false),
-        (ClickOutside::Dismiss, false, true),
-        (ClickOutside::PassThrough, true, false),
+        (Some(ClickOutside::Block), false, false),
+        (Some(ClickOutside::Dismiss), false, true),
+        (None, true, false),
     ] {
         let mut h = Harness::mono(SURFACE);
         frame_body(&mut h, mode);
@@ -112,15 +109,15 @@ fn each_click_outside_mode_decides_whether_main_sees_the_press() {
     }
 }
 
-/// The key-scope claim is the other capture, and `PassThrough` drops it too:
+/// The key-scope claim is the other capture, and `None` drops it too:
 /// a host that can be clicked but not typed into is just as dead. The body holds a button, as a
 /// toast's Undo, whose own Space and Enter scope claims no layer.
 #[test]
 fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
     for (mode, main_reads_key) in [
-        (ClickOutside::Block, false),
-        (ClickOutside::Dismiss, false),
-        (ClickOutside::PassThrough, true),
+        (Some(ClickOutside::Block), false),
+        (Some(ClickOutside::Dismiss), false),
+        (None, true),
     ] {
         let mut h = Harness::mono(SURFACE);
         let scene = |ui: &mut Ui| {
@@ -134,7 +131,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                         .anchor(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(mode)
-                        .show(ui, |ui, _popup| {
+                        .show(ui, |ui| {
                             Panel::vstack()
                                 .id(WidgetId::from_hash("popup-content"))
                                 .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
@@ -176,7 +173,7 @@ fn text_edit_inside_a_popup_receives_typing() {
         Popup::new()
             .anchor(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("host"))
-            .show(ui, |ui, _handle| {
+            .show(ui, |ui| {
                 TextEdit::new(buf).id(field).show(ui);
             });
     };
@@ -221,7 +218,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                         .anchor(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("filter-popup"))
                         .click_outside(ClickOutside::Dismiss)
-                        .show(ui, |ui, _handle| {
+                        .show(ui, |ui| {
                             TextEdit::new(buf)
                                 .id(field)
                                 .escape_falls_through(falls_through)

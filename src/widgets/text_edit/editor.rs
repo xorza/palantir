@@ -95,19 +95,21 @@ impl<'a> Editor<'a> {
         filter: KeyFilter,
     ) -> bool {
         let mut clicked_action = None;
-        Menu::context(snapshot).show(ui, |ui, popup| {
+        Menu::context(snapshot).show(ui, |ui| {
             // The body runs only while the menu is open, so a closed menu takes no handle.
             let clipboard = ui.clipboard();
+            let mut closes = false;
             for &keypress in ui.keyboard_events(KeyboardWake::NONE) {
                 if !filter.takes(keypress.class()) {
                     continue;
                 }
                 if let Some(action) = EditAction::from_keypress(keypress) {
                     action.execute(self, &clipboard);
-                    if EditAction::MENU.iter().any(|item| item.action == action) {
-                        popup.close();
-                    }
+                    closes |= EditAction::MENU.iter().any(|item| item.action == action);
                 }
+            }
+            if closes {
+                ui.close_overlay();
             }
 
             let has_selection = self.has_selection();

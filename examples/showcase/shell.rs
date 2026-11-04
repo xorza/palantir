@@ -750,7 +750,7 @@ fn diagnostics(ui: &mut Ui) {
     PopupTrigger::on(&trigger)
         .padding(M.space.md)
         .gap(M.space.sm)
-        .show(ui, |ui, _| {
+        .show(ui, |ui| {
             Checkbox::new(&mut overlay.damage_rect)
                 .label("damage rects  F12")
                 .show(ui);
@@ -812,8 +812,8 @@ mod tests {
 
     use palantir::glam::UVec2;
     use palantir::{
-        AgentWindow, Harness, Key, Locator, ReducePreference, SchemePreference, Scroll, Shortcut,
-        ShortcutMods, WidgetId,
+        AgentWindow, ColorScheme, Harness, Key, Locator, Preference, Reduction, Scroll, Shortcut,
+        ShortcutMods, UiPreferences, WidgetId,
     };
 
     use crate::appearance::{SEEDS, accent_for};
@@ -922,20 +922,12 @@ mod tests {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
         let mut shell = Shell::open(0);
         h.session(&mut shell).settle().expect("the frames settle");
-        let all_system = (
-            SchemePreference::System,
-            ReducePreference::System,
-            ReducePreference::System,
+        let prefs = |h: &Harness| h.ui().preferences();
+        assert_eq!(
+            prefs(&h),
+            UiPreferences::default(),
+            "each follows the system"
         );
-        let prefs = |h: &Harness| {
-            let ui = h.ui();
-            (
-                ui.scheme_preference(),
-                ui.motion_preference(),
-                ui.transparency_preference(),
-            )
-        };
-        assert_eq!(prefs(&h), all_system);
 
         h.click("Dark");
         h.session(&mut shell).settle().expect("the frames settle");
@@ -944,26 +936,29 @@ mod tests {
         h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(
             prefs(&h),
-            (
-                SchemePreference::Dark,
-                ReducePreference::System,
-                ReducePreference::Reduced,
-            )
+            UiPreferences {
+                scheme: Preference::Fixed(ColorScheme::Dark),
+                motion: Preference::System,
+                transparency: Preference::Fixed(Reduction::Reduced),
+            }
         );
 
         // The motion row's "Full", then one arrow right, which moves the pick to its "Less".
         h.click(Locator::from("Full").nth(0));
         h.session(&mut shell).settle().expect("the frames settle");
-        assert_eq!(h.ui().motion_preference(), ReducePreference::Full);
+        assert_eq!(
+            h.ui().preferences().motion,
+            Preference::Fixed(Reduction::Full)
+        );
         h.key(Key::ArrowRight);
         h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(
             prefs(&h),
-            (
-                SchemePreference::Dark,
-                ReducePreference::Reduced,
-                ReducePreference::Reduced,
-            )
+            UiPreferences {
+                scheme: Preference::Fixed(ColorScheme::Dark),
+                motion: Preference::Fixed(Reduction::Reduced),
+                transparency: Preference::Fixed(Reduction::Reduced),
+            }
         );
     }
 

@@ -9,7 +9,6 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::check_state::CheckState;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -104,11 +103,6 @@ impl ToggleTheme {
                 t
             }
         }
-    }
-
-    /// The built-in look of `kind` in `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub fn stock(kind: ToggleKind, scheme: ColorScheme) -> Self {
-        Self::from_parts(kind, Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }
 

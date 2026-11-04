@@ -1,3 +1,4 @@
+use crate::theme::Theme;
 use glam::{UVec2, Vec2};
 
 use crate::host::harness::Harness;
@@ -8,7 +9,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
-use crate::theme::text_edit::TextEditTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::editable_label::EditableLabel;
@@ -69,7 +69,7 @@ fn open(h: &mut Harness, id: WidgetId, editable: bool) {
 #[test]
 fn the_label_and_its_editor_take_one_rect() {
     let flat = {
-        let mut theme = TextEditTheme::stock(ColorScheme::Dark);
+        let mut theme = Theme::stock(ColorScheme::Dark).text_edit;
         theme.defaults = SlotDefaults {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
@@ -184,6 +184,20 @@ fn a_caller_opens_the_editor() {
     let committed = h.frame_value(|ui| record(ui, id, true));
     assert_eq!(committed.committed_text.as_deref(), Some("Z"));
     assert!(!EditableLabel::is_editing(h.ui(), id));
+
+    // An editor whose opening focus another widget took first closes on its frame, with no
+    // commit: no blur would come to close it.
+    EditableLabel::start_editing(h.ui_mut(), id);
+    h.ui_mut().set_focus(WidgetId::from_hash("label-elsewhere"));
+    let unfocused = h.frame_value(|ui| record(ui, id, true));
+    assert!(
+        unfocused.editing && !unfocused.committed,
+        "the frame it records"
+    );
+    assert!(
+        !EditableLabel::is_editing(h.ui(), id),
+        "the focus went elsewhere"
+    );
 
     EditableLabel::start_editing(h.ui_mut(), id);
     assert!(!h.frame_value(|ui| record(ui, id, false)).editing);

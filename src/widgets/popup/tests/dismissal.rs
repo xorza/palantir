@@ -93,7 +93,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                         .anchor(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(ClickOutside::Dismiss)
-                        .show(ui, |ui, _popup| {
+                        .show(ui, |ui| {
                             Panel::vstack()
                                 .id(WidgetId::from_hash("popup-content"))
                                 .size((Sizing::fixed(100.0), Sizing::fixed(60.0)))
@@ -133,7 +133,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
                     .anchor(Anchor::at_point(ANCHOR))
                     .id(WidgetId::from_hash("test-popup"))
                     .click_outside(ClickOutside::Dismiss)
-                    .show(ui, |ui, _popup| {
+                    .show(ui, |ui| {
                         Panel::vstack()
                             .id(content)
                             .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
@@ -178,11 +178,11 @@ fn a_clicked_row_closes_the_overlay_it_sits_in() {
         let outer = Popup::new()
             .anchor(Anchor::at_point(Vec2::new(10.0, 10.0)))
             .id(WidgetId::from_hash("outer"))
-            .show(ui, |ui, _| {
+            .show(ui, |ui| {
                 Popup::new()
                     .anchor(Anchor::at_point(Vec2::new(200.0, 200.0)))
                     .id(WidgetId::from_hash("inner"))
-                    .show(ui, |ui, _| {
+                    .show(ui, |ui| {
                         MenuItem::new("Row").id(row).show(ui);
                     })
                     .close

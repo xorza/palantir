@@ -8,9 +8,9 @@ use palantir::widget::Shape;
 use palantir::{
     Align, App, BackdropFilter, Block, Brush, Button, Checkbox, Chrome, ClipMode, ColorScheme,
     ComboBox, Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify,
-    Layer, Lens, LinearGradient, Metrics, Palette, Panel, RgbaF32, SchemePreference, Scroll,
+    Layer, Lens, LinearGradient, Metrics, Palette, Panel, Preference, RgbaF32, Scroll,
     ScrollbarTheme, Shadow, Sizing, Slider, Stroke, Switch, Text, TextEdit, TextSteps, Theme, Ui,
-    WidgetId, WindowToken, ZoomConfig, fmt,
+    UiPreferences, WidgetId, WindowToken, ZoomConfig, fmt,
 };
 
 use crate::cube::{Cube, CubeHandle};
@@ -691,6 +691,9 @@ fn column(ui: &mut Ui, k: usize, name: &str, label: &str, sizing: Sizing, hex: u
 
 /// The window as the reel starts: the stock dark theme, the scheme held there.
 pub(crate) fn dress(ui: &mut Ui) {
-    ui.set_scheme_preference(SchemePreference::Dark);
+    ui.set_preferences(UiPreferences {
+        scheme: Preference::Fixed(ColorScheme::Dark),
+        ..ui.preferences()
+    });
     ui.set_theme_for(ColorScheme::Dark, Theme::stock(ColorScheme::Dark));
 }

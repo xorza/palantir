@@ -23,7 +23,7 @@ use crate::host::winit::window::{OpenedWindow, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
-use crate::theme::scheme_preference::SchemePreference;
+use crate::theme::color_scheme::ColorScheme;
 use crate::ui::app::App;
 use crate::window::waker::Waker;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
@@ -79,7 +79,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         // Read while the font scan runs, so the first window opens in the system's scheme; the
         // first frame moves the decorations if the app's factory picks another.
         let system = system_preferences::read();
-        let decorations = SchemePreference::default().resolve(system.color_scheme);
+        let decorations = system.color_scheme.unwrap_or(ColorScheme::FALLBACK);
         let window = native::create_window(event_loop, token, &config.window, decorations)?;
         let SurfaceStartup {
             surfaces,

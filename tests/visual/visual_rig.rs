@@ -9,8 +9,8 @@ use glam::UVec2;
 use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
-    ColorScheme, DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, RgbaF32,
-    SchemePreference, SystemScale, TextShaper, Ui,
+    ColorScheme, DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, Preference,
+    RgbaF32, SystemScale, TextShaper, Ui, UiPreferences,
 };
 
 use crate::fixtures::DARK_BG;
@@ -74,8 +74,11 @@ impl VisualRig {
             .pixel_snap(pixel_snap)
             .time(OffscreenTime::Manual)
             .build();
-        // Pinned, so neither the system's report nor `SchemePreference::FALLBACK` picks the scheme.
-        host.ui_mut().set_scheme_preference(SchemePreference::Dark);
+        // Pinned, so neither the system's report nor `ColorScheme::FALLBACK` picks the scheme.
+        host.ui_mut().set_preferences(UiPreferences {
+            scheme: Preference::Fixed(ColorScheme::Dark),
+            ..UiPreferences::default()
+        });
         for scheme in [ColorScheme::Dark, ColorScheme::Light] {
             host.ui_mut().set_theme_for(scheme, theme::fixture(scheme));
         }
@@ -120,11 +123,11 @@ impl VisualRig {
 
     /// The scheme every following frame shows, [`ColorScheme::Dark`] until set.
     pub(crate) fn color_scheme(&mut self, scheme: ColorScheme) -> &mut Self {
-        let preference = match scheme {
-            ColorScheme::Dark => SchemePreference::Dark,
-            ColorScheme::Light => SchemePreference::Light,
-        };
-        self.host.ui_mut().set_scheme_preference(preference);
+        let ui = self.host.ui_mut();
+        ui.set_preferences(UiPreferences {
+            scheme: Preference::Fixed(scheme),
+            ..ui.preferences()
+        });
         self
     }
 

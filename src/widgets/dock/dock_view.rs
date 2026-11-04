@@ -189,8 +189,8 @@ impl<'a, T: DockTab> DockView<'a, T> {
             DockView::drop_target(ui, id, state, allowed_splits, edge_fraction)
                 .filter(|target| state.accepts_move(tab, target.drop()))
         });
-        if carried.is_some() {
-            ui.with_state::<TabDrag<T>, _>(id, |_, s| s.target = drop);
+        if let Some(tab) = carried {
+            ui.set_state(id, TabDrag { tab, target: drop });
         }
         let mut cx = DockCtx {
             dock: id,
@@ -252,7 +252,7 @@ impl<T: DockTab> DockView<'_, T> {
     ) {
         if let Some(group) = state
             .groups()
-            .find(|g| g.id != state.focused() && ui.is_focus_within(DockView::pane_id(dock, g.id)))
+            .find(|g| g.id != state.focused() && ui.is_focus_within(g.id.pane_id(dock)))
         {
             operations.push(DockOperation::FocusPane { group: group.id });
         }
@@ -260,7 +260,7 @@ impl<T: DockTab> DockView<'_, T> {
         for group in state.groups() {
             let hits = TabStrip::scan(
                 ui,
-                DockView::strip_id(dock, group.id),
+                group.id.strip_id(dock),
                 group.tabs.iter().map(|&tab| TabKey::of(tab)),
             );
             let tab_at = |slot: Option<usize>| slot.map(|slot| group.tabs[slot]);
@@ -274,21 +274,21 @@ impl<T: DockTab> DockView<'_, T> {
                 && let Some(tab) = tab_at(hits.drag_started)
             {
                 dragged = Some(tab);
-                Self::set_drag(ui, dock, Some(tab));
+                Self::start_drag(ui, dock, tab);
             }
         }
         let Some(tab) = dragged else {
             return;
         };
         let Some(address) = state.find_tab(tab) else {
-            Self::set_drag(ui, dock, None);
+            Self::end_drag(ui, dock);
             return;
         };
         if ui.shortcut_pressed(Key::Escape) {
-            Self::set_drag(ui, dock, None);
+            Self::end_drag(ui, dock);
             return;
         }
-        let chip = TabStrip::chip_id(DockView::strip_id(dock, address.group), TabKey::of(tab));
+        let chip = TabStrip::chip_id(address.group.strip_id(dock), TabKey::of(tab));
         if ui.response_for(chip).left.drag.stopped() {
             let shown = ui.state::<TabDrag<T>>(dock).and_then(|d| d.target);
             if let Some(target) = shown {
@@ -297,17 +297,22 @@ impl<T: DockTab> DockView<'_, T> {
                     to: target.drop(),
                 });
             }
-            Self::set_drag(ui, dock, None);
+            Self::end_drag(ui, dock);
         }
     }
 
     fn drag(ui: &Ui, dock: WidgetId) -> Option<T> {
-        ui.state::<TabDrag<T>>(dock)?.tab
+        ui.state::<TabDrag<T>>(dock).map(|drag| drag.tab)
     }
 
-    /// Start carrying `tab`, or with `None` end the drag and forget its drop.
-    fn set_drag(ui: &mut Ui, dock: WidgetId, tab: Option<T>) {
-        ui.with_state::<TabDrag<T>, _>(dock, |_, s| *s = TabDrag { tab, target: None });
+    /// Start carrying `tab`, with no drop yet.
+    fn start_drag(ui: &mut Ui, dock: WidgetId, tab: T) {
+        ui.set_state(dock, TabDrag { tab, target: None });
+    }
+
+    /// End the drag and forget its drop.
+    fn end_drag(ui: &mut Ui, dock: WidgetId) {
+        ui.remove_state::<TabDrag<T>>(dock);
     }
 
     /// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels, as it does over a drop [`DockState::accepts_move`] refuses.
@@ -320,10 +325,10 @@ impl<T: DockTab> DockView<'_, T> {
     ) -> Option<DropTarget> {
         let p = ui.pointer_pos()?;
         let (group, pane) = state.groups().find_map(|g| {
-            let rect = ui.response_for(DockView::pane_id(dock, g.id)).rect?;
+            let rect = ui.response_for(g.id.pane_id(dock)).rect?;
             rect.contains(p).then_some((g, rect))
         })?;
-        let strip_id = DockView::strip_id(dock, group.id);
+        let strip_id = group.id.strip_id(dock);
         let strip = ui.response_for(strip_id).rect?;
         let keys = group.tabs.iter().map(|&tab| TabKey::of(tab));
         let geometry = PaneGeometry {
@@ -340,37 +345,10 @@ impl<T: DockTab> DockView<'_, T> {
     }
 }
 
-/// The ids of a dock's parts, derived from the view's own id; on one concrete instance, so a
-/// call names no tab type.
-impl DockView<'static, ()> {
-    /// The arranged size of a group's content area, `None` before its first layout.
-    fn content_size(ui: &Ui, dock: WidgetId, group: TabGroupId) -> Option<Size> {
-        let size = ui
-            .response_for(DockView::content_id(dock, group))
-            .layout_rect?
-            .size;
-        (size.w > 0.0 && size.h > 0.0).then_some(size)
-    }
-
-    /// A group's pane container (strip and content) in the dock `dock`; the rect drops key off.
-    pub fn pane_id(dock: WidgetId, group: TabGroupId) -> WidgetId {
-        dock.with(("pane", group))
-    }
-
-    /// A group's content area in the dock `dock`, where its tab's body records.
-    pub fn content_id(dock: WidgetId, group: TabGroupId) -> WidgetId {
-        dock.with(("content", group))
-    }
-
-    /// A group's tab strip in the dock `dock`.
-    pub fn strip_id(dock: WidgetId, group: TabGroupId) -> WidgetId {
-        dock.with(("strip", group))
-    }
-
-    /// The splitter of the split at `path` in the dock `dock`.
-    pub fn splitter_id(dock: WidgetId, path: DockPath) -> WidgetId {
-        dock.with(("splitter", path))
-    }
+/// The arranged size of a group's content area, `None` before its first layout.
+fn content_size(ui: &Ui, dock: WidgetId, group: TabGroupId) -> Option<Size> {
+    let size = ui.response_for(group.content_id(dock)).layout_rect?.size;
+    (size.w > 0.0 && size.h > 0.0).then_some(size)
 }
 
 impl<T> Configure for DockView<'_, T> {
@@ -404,7 +382,7 @@ struct TabMenuTarget<T> {
 impl<T: DockTab> TabMenuTarget<T> {
     /// The chip the menu opened from, which keys its open state.
     fn chip(&self, dock: WidgetId) -> WidgetId {
-        TabStrip::chip_id(DockView::strip_id(dock, self.group), TabKey::of(self.tab))
+        TabStrip::chip_id(self.group.strip_id(dock), TabKey::of(self.tab))
     }
 }
 
@@ -439,7 +417,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 };
                 // The split clamp floors the drag too, so a release keeps what the drag drew.
                 let hit = splitter
-                    .id(DockView::splitter_id(self.dock, path))
+                    .id(path.splitter_id(self.dock))
                     .min_pane(self.min_pane)
                     .min_ratio(RATIO_MIN)
                     .show(ui, |ui, half| {
@@ -462,23 +440,23 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
     fn group(&mut self, ui: &mut Ui, group: &TabGroup<T>) {
         let dock = self.dock;
         Panel::vstack()
-            .id(DockView::pane_id(dock, group.id))
+            .id(group.id.pane_id(dock))
             .size((Sizing::FILL, Sizing::FILL))
             .focusable(true)
             .show(ui, |ui| {
                 self.strip(ui, group);
-                let size = DockView::content_size(ui, dock, group.id);
+                let size = content_size(ui, dock, group.id);
                 let tab = group.active_tab();
                 let tabs = &mut *self.tabs;
                 Panel::vstack()
-                    .id(DockView::content_id(dock, group.id))
+                    .id(group.id.content_id(dock))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| tabs.body(ui, tab, size));
             });
     }
 
     fn strip(&mut self, ui: &mut Ui, group: &TabGroup<T>) {
-        let strip_id = DockView::strip_id(self.dock, group.id);
+        let strip_id = group.id.strip_id(self.dock);
         let focused = self.state.focused() == group.id;
         let activated = ui.with_state::<TabItemBuf, _>(strip_id, |ui, buf| {
             buf.items.clear();
@@ -523,9 +501,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     tab,
                     group: group.id,
                 };
-                ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| {
-                    *row = Some(target);
-                });
+                ui.set_state(self.dock, target);
                 Menu::open(ui, chip, p);
             }
         }
@@ -533,11 +509,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
 
     /// The open tab menu, if any: one per dock, recorded once the panes are.
     fn tab_menu(&mut self, ui: &mut Ui) {
-        let Some(target) = ui
-            .state::<Option<TabMenuTarget<T>>>(self.dock)
-            .copied()
-            .flatten()
-        else {
+        let Some(target) = ui.state::<TabMenuTarget<T>>(self.dock).copied() else {
             return;
         };
         let chip = target.chip(self.dock);
@@ -549,7 +521,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             .is_none_or(|at| at.group != target.group)
         {
             Menu::close(ui, chip);
-            ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| *row = None);
+            ui.remove_state::<TabMenuTarget<T>>(self.dock);
             return;
         }
         let operations = &mut *self.operations;
@@ -557,7 +529,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         Menu::for_id(chip)
             .style(self.menu_style)
             .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui, _| {
+            .show(ui, |ui| {
                 tabs.tab_menu(
                     ui,
                     DockTabMenu {
@@ -568,7 +540,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 );
             });
         if !Menu::is_open(ui, chip) {
-            ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| *row = None);
+            ui.remove_state::<TabMenuTarget<T>>(self.dock);
         }
     }
 

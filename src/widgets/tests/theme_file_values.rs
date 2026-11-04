@@ -92,7 +92,7 @@ fn numbers(ron: &str) -> Vec<Range<usize>> {
 fn probe(ui: &mut Ui, scene: &mut Scene) {
     scene.fixture.render(1, ui);
     scene.dock.record(ui);
-    Menu::for_id(menu_id()).show(ui, |ui, _| {
+    Menu::for_id(menu_id()).show(ui, |ui| {
         MenuItem::new("Copy").shortcut(Shortcut::ctrl('C')).show(ui);
         MenuSeparator::new().show(ui);
         MenuItem::new("Paste").show(ui);
@@ -114,7 +114,7 @@ fn probe(ui: &mut Ui, scene: &mut Scene) {
         .show(ui);
     Modal::new()
         .id(WidgetId::from_hash("probe-modal"))
-        .show(ui, |_, _| {});
+        .show(ui, |_| {});
 }
 
 fn menu_id() -> WidgetId {

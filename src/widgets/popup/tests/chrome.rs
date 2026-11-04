@@ -69,7 +69,7 @@ fn the_theme_popup_slot_is_the_last_resort() {
         theme.popup.padding = theme_padding;
         theme.panel_chrome = Some(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)));
         h.frame(|ui| {
-            build(Popup::new().anchor(Anchor::at_point(ANCHOR)).id(id), &style).show(ui, |_, _| {});
+            build(Popup::new().anchor(Anchor::at_point(ANCHOR)).id(id), &style).show(ui, |_| {});
         });
         let body = h.node_of(id).expect("popup body recorded");
         assert_eq!(body.plane.layer, Layer::Popup);

@@ -11,7 +11,7 @@ use mundy::{Interest, Preferences, Subscription};
 
 use crate::host::system_preferences::SystemPreferences;
 use crate::host::winit::platform;
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 
 /// How long the host waits at startup for the first read, before it opens a window in the
@@ -89,7 +89,7 @@ mod tests {
 
     use crate::host::system_preferences::SystemPreferences;
     use crate::host::winit::{platform, system_preferences};
-    use crate::primitives::reduce_preference::Reduction;
+    use crate::primitives::reduction::Reduction;
     use crate::theme::color_scheme::ColorScheme;
 
     /// A stated scheme passes through; no preference reports none; a zero or missing double-click

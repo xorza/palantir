@@ -1,6 +1,7 @@
 use crate::host::harness::Harness;
 use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
+use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use std::f32::consts::TAU;
 
@@ -45,7 +46,7 @@ fn arc_geometry_insets_by_half_width() {
     );
     assert_eq!(ArcGeometry::new(Vec2::splat(4.0), 4.0, 8.0).radius, 0.0);
     // The default sweep leaves a gap; a full turn would read as a static ring.
-    assert!(SpinnerTheme::stock(ColorScheme::Dark).sweep < TAU);
+    assert!(Theme::stock(ColorScheme::Dark).spinner.sweep < TAU);
 }
 
 /// Sweep, period and stroke come from `Theme::spinner`. Stroke is `diameter * width_ratio` floored at `min_stroke_width`.
@@ -102,7 +103,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
         }
     }
 
-    let stock = SpinnerTheme::stock(ColorScheme::Dark);
+    let stock = Theme::stock(ColorScheme::Dark).spinner;
     let Recorded {
         sweep,
         width,
@@ -133,7 +134,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
         sweep: 1.0,
         period: Duration::from_millis(700),
         width_ratio: 0.5,
-        ..SpinnerTheme::stock(ColorScheme::Dark)
+        ..Theme::stock(ColorScheme::Dark).spinner
     };
     let Recorded {
         sweep: sweep_b,
@@ -168,7 +169,7 @@ fn comet_fades_tail_to_head() {
 /// 30 × 40 draws a 30 px arc around (15, 20); `HUG` draws the theme's.
 #[test]
 fn a_fixed_size_sets_the_box_and_the_arc() {
-    let stock = SpinnerTheme::stock(ColorScheme::Dark);
+    let stock = Theme::stock(ColorScheme::Dark).spinner;
     let trio = SizeTrio::of((Sizing::fixed(30.0), Sizing::fixed(40.0)), |ui, size| {
         let mut spinner = Spinner::new();
         if let Some(size) = size {

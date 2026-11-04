@@ -1,7 +1,6 @@
 //! The ring drawn around the keyboard-focused widget.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -32,10 +31,5 @@ impl FocusRingTheme {
             color: p.accent,
             width: m.stroke.line,
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub const fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

@@ -22,7 +22,6 @@ use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::palette::Palette;
-use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -704,7 +703,7 @@ fn the_insertion_slot_counts_the_centers_passed() {
 /// the gutter before its slot's chip, and inside the band where that gutter is out of sight.
 #[test]
 fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
-    let theme = TabsTheme::stock(ColorScheme::Dark);
+    let theme = Theme::stock(ColorScheme::Dark).tabs;
     let (width, half_gap) = (theme.caret_width, theme.gap * 0.5);
     let caret = strip_id().with("caret");
     let build = |slot: usize| {

@@ -17,7 +17,7 @@ use crate::common::span::Span;
 use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::shape::record_store::recorded_gradients::RecordedGradients;
 use crate::shape::record_store::text_store::TextStore;
 use crate::text::family_keys::FamilyKeys;

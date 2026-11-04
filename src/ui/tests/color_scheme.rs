@@ -5,12 +5,13 @@ use glam::UVec2;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::preference::Preference;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme::{self, Dark, Light};
-use crate::theme::scheme_preference::SchemePreference;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::resources::UiResources;
+use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 
@@ -38,7 +39,10 @@ fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
 
     let mut shown = None;
     let report = h.frame(|ui| {
-        ui.set_scheme_preference(SchemePreference::Light);
+        ui.set_preferences(UiPreferences {
+            scheme: Preference::Fixed(Light),
+            ..ui.preferences()
+        });
         record(ui);
         shown = Some(ui.color_scheme());
     });
@@ -70,7 +74,12 @@ fn the_system_scheme_shows_under_system_only() {
     h.set_system_color_scheme(Some(Dark)).frame(record);
     assert_eq!(h.ui().color_scheme(), Dark);
 
-    h.frame(|ui| ui.set_scheme_preference(SchemePreference::Light));
+    h.frame(|ui| {
+        ui.set_preferences(UiPreferences {
+            scheme: Preference::Fixed(Light),
+            ..ui.preferences()
+        });
+    });
     h.frame(record);
     assert_eq!(h.ui().color_scheme(), Light);
     assert_eq!(h.ui().system_color_scheme(), Some(Dark));
@@ -87,9 +96,14 @@ fn a_pick_in_one_window_shows_in_another() {
     second.frame(record);
     assert_eq!(second.ui().color_scheme(), Dark);
 
-    first.frame(|ui| ui.set_scheme_preference(SchemePreference::Light));
+    first.frame(|ui| {
+        ui.set_preferences(UiPreferences {
+            scheme: Preference::Fixed(Light),
+            ..ui.preferences()
+        });
+    });
     second.frame(record);
-    assert_eq!(second.ui().scheme_preference(), SchemePreference::Light);
+    assert_eq!(second.ui().preferences().scheme, Preference::Fixed(Light));
     assert_eq!(second.ui().color_scheme(), Light);
     assert!(!Rc::ptr_eq(
         first.ui().theme_for(Light),
@@ -119,7 +133,12 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
     );
     assert!(Rc::ptr_eq(h.ui().theme_for(Light), &light));
 
-    h.frame(|ui| ui.set_scheme_preference(SchemePreference::Dark));
+    h.frame(|ui| {
+        ui.set_preferences(UiPreferences {
+            scheme: Preference::Fixed(Dark),
+            ..ui.preferences()
+        });
+    });
     h.frame(record);
     assert_eq!(
         h.ui().window_theme.epoch(),

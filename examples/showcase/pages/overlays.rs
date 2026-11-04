@@ -7,10 +7,10 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{Dialog, Kit, Section};
 use palantir::{
-    Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, ClickOutside, CloseHandle,
-    Configure, Justify, Key, Menu, MenuBar, MenuItem, MenuSeparator, MenuTheme, Metrics, Modal,
-    Panel, Popup, PopupTrigger, ResponseSnapshot, Sense, Shortcut, Sizing, Slider, Spacing, Text,
-    Theme, Tooltip, Ui, WidgetId, fmt,
+    Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, Configure, Justify, Key, Menu,
+    MenuBar, MenuItem, MenuSeparator, MenuTheme, Metrics, Modal, Panel, Popup, PopupTrigger,
+    ResponseSnapshot, Sense, Shortcut, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId,
+    fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -104,7 +104,7 @@ fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         .gap(gap)
                         .min_size((width, 0.0))
                         .arrow_focus(Axis::Y)
-                        .show(ui, |ui, _| {
+                        .show(ui, |ui| {
                             for label in ["Copy", "Paste", "Delete"] {
                                 if MenuItem::new(label).id_salt(label).show(ui).clicked() {
                                     s.choice = Some(label);
@@ -119,11 +119,7 @@ fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
 
 fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Anchors")
-        .apis(&[
-            api!(Anchor::below),
-            api!(Anchor::with_align),
-            api!(ClickOutside::PassThrough),
-        ])
+        .apis(&[api!(Anchor::below), api!(Anchor::with_align)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -176,9 +172,9 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         };
                         Popup::new()
                             .anchor(anchor.with_align(s.align).with_gap(6.0))
-                            .click_outside(ClickOutside::PassThrough)
+                            .click_outside(None)
                             .padding((10.0, 6.0))
-                            .show(ui, |ui, _| {
+                            .show(ui, |ui| {
                                 Text::new("popup").style(&k.t.caption()).show(ui);
                             });
                     }
@@ -188,7 +184,7 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
 
 fn modal_section(ui: &mut Ui, k: Kit, s: &mut State, look: &Appearance) {
     Section::new("Modal")
-        .apis(&[api!(Modal::new), api!(CloseHandle::close)])
+        .apis(&[api!(Modal::new), api!(Ui::close_overlay)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -214,7 +210,7 @@ fn modal_section(ui: &mut Ui, k: Kit, s: &mut State, look: &Appearance) {
         title: "Delete all the things?",
         body: "Every thing goes, and nothing brings it back.",
     }
-    .show(ui, k, |ui, close| {
+    .show(ui, k, |ui| {
         for (label, style) in [("Cancel", None), ("Delete", Some(&accent))] {
             if Button::new()
                 .id_salt(label)
@@ -224,7 +220,7 @@ fn modal_section(ui: &mut Ui, k: Kit, s: &mut State, look: &Appearance) {
                 .clicked()
             {
                 s.answer = Some(label);
-                close.close();
+                ui.close_overlay();
             }
         }
     });
@@ -373,7 +369,7 @@ fn menu_bar_section(ui: &mut Ui, k: Kit, s: &mut State) {
                             ("Edit", ["Undo", "Redo", "Copy"]),
                             ("View", ["Zoom In", "Zoom Out", "Fit"]),
                         ] {
-                            bar.menu(title, |ui, _| {
+                            bar.menu(title, |ui| {
                                 for row in rows {
                                     if MenuItem::new(row).id_salt(row).show(ui).clicked() {
                                         s.action = Some(row);
@@ -418,7 +414,7 @@ impl DemoMenu<'_> {
         if style.is_some() {
             menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
         }
-        menu.show(ui, |ui, _| {
+        menu.show(ui, |ui| {
             let item = style.map(|s| &s.item);
             let rule = style.map(|s| &s.separator);
             for (label, shortcut) in [

@@ -16,7 +16,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::shape::Shape;
 use crate::shape::lower::{PaneFill, brush, chrome, pane_fill, ramp};
 use crate::shape::paint::curve_ramp::CurveRamp;

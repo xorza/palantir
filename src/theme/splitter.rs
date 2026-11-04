@@ -1,7 +1,6 @@
 //! What a splitter's divider wears, and how wide it is to grab.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -40,10 +39,5 @@ impl SplitterTheme {
             rule_hovered: p.element_mid,
             rule_active: p.accent.with_alpha8(153),
         }
-    }
-
-    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
-    pub const fn stock(scheme: ColorScheme) -> Self {
-        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

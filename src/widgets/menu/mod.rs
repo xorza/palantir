@@ -11,7 +11,6 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::menu::MenuTheme;
 use crate::ui::Ui;
-use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
@@ -30,7 +29,10 @@ use std::rc::Rc;
 /// (<https://docs.rs/egui/latest/egui/containers/struct.Popup.html>):
 ///
 /// - [`Self::context`] opens it at the pointer on a right-click of its trigger;
-/// - [`Self::below`] drops it below its trigger, which a click toggles, as a menu button's menu.
+/// - [`Self::below`] drops it below its trigger, which a click toggles, as a menu button's menu:
+///   the frame a [`PopupTrigger`](crate::PopupTrigger) runs, in the menu look on [`Layer::Menu`].
+///
+/// A trigger has one menu, so the two placements on one trigger share its open state and its id.
 ///
 /// ```
 /// # use palantir::{Button, Menu, Configure, MenuItem, Ui};
@@ -38,7 +40,7 @@ use std::rc::Rc;
 /// let trigger = Button::new().label("…").show(ui).snapshot();
 /// Menu::context(&trigger)
 ///     .max_size((280.0, 400.0))
-///     .show(ui, |ui, _| { MenuItem::new("Delete").show(ui); });
+///     .show(ui, |ui| { MenuItem::new("Delete").show(ui); });
 /// # }
 /// ```
 ///
@@ -175,7 +177,7 @@ impl<'a> Menu<'a> {
     pub fn show<R>(
         self,
         ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
         self.show_as::<Menu<'static>, R>(ui, body)
     }
@@ -185,7 +187,7 @@ impl<'a> Menu<'a> {
     pub(crate) fn show_as<K: 'static, R>(
         self,
         ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Option<OverlayResponse<R>> {
         let landing = self.landing;
         let opener = self.opener;
@@ -208,7 +210,7 @@ impl<'a> Menu<'a> {
         self,
         ui: &mut Ui,
         state: TriggerState<K>,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+        body: impl FnOnce(&mut Ui) -> R,
     ) -> Settled<K, R> {
         let landing = self.landing;
         let Opener::Trigger { frame, at_pointer } = self.opener else {

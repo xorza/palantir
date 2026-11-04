@@ -529,7 +529,7 @@ fn tooltip_inside_popup_records_without_panic() {
                         .id(WidgetId::from_hash("popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .padding(4.0)
-                        .show(ui, |ui, _popup| {
+                        .show(ui, |ui| {
                             let r = Button::new()
                                 .id(WidgetId::from_hash("trig"))
                                 .label("hi")

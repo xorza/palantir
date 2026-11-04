@@ -79,7 +79,7 @@ impl InputPass<'_> {
         } = policy;
         let mut ended = None;
 
-        let was_focused = view.was_focused();
+        let was_focused = view.was_focused(ui.record_frame_id());
         // Repair persisted byte offsets: application code may have replaced
         // `*text` with a string whose UTF-8 boundaries differ.
         edit.normalize(text);

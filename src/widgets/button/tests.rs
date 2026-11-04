@@ -1,5 +1,6 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
+use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 
 use crate::primitives::geometry::spacing::Spacing;
@@ -17,9 +18,9 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
         defaults: SlotDefaults {
             padding: Spacing::all(8.0),
             margin: Spacing::all(4.0),
-            ..ButtonTheme::stock(ColorScheme::Dark).defaults
+            ..Theme::stock(ColorScheme::Dark).button.defaults
         },
-        ..ButtonTheme::stock(ColorScheme::Dark)
+        ..Theme::stock(ColorScheme::Dark).button
     };
     theme.unselected.normal.chrome = Chrome::NONE;
 
@@ -182,7 +183,7 @@ fn show_with_hands_the_body_its_states_ink() {
         selected: pack(0x200),
         defaults: SlotDefaults {
             transition: AnimationSpec::SNAP,
-            ..ButtonTheme::stock(ColorScheme::Dark).defaults
+            ..Theme::stock(ColorScheme::Dark).button.defaults
         },
     };
     let id = WidgetId::from_hash("button");

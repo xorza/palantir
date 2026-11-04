@@ -35,6 +35,26 @@ impl StateMap {
         self.stores.get_or_default::<Store<T>>().put(id, value);
     }
 
+    /// Store `value` as `id`'s, in place of the value its row holds or in a new row.
+    ///
+    /// # Panics
+    ///
+    /// While the row is lent out: the lend's [`Self::put`] would overwrite `value`.
+    #[track_caller]
+    pub(super) fn set<T: 'static>(&mut self, id: WidgetId, value: T) {
+        self.stores.get_or_default::<Store<T>>().set(id, value);
+    }
+
+    /// Drop `id`'s row of `T`, if it has one, returning its value.
+    ///
+    /// # Panics
+    ///
+    /// While the row is lent out.
+    #[track_caller]
+    pub(super) fn remove<T: 'static>(&mut self, id: WidgetId) -> Option<T> {
+        self.stores.get_mut::<Store<T>>()?.remove(id)
+    }
+
     /// # Panics
     ///
     /// While the row is lent out.
@@ -94,6 +114,42 @@ impl<T> Store<T> {
         }
     }
 
+    #[track_caller]
+    fn set(&mut self, id: WidgetId, value: T) {
+        match self.idx_of(id) {
+            Some(idx) => {
+                let row = &mut self.data[idx];
+                assert!(row.is_some(), "{LENT_ROW}");
+                *row = Some(value);
+            }
+            None => self.push(id, Some(value)),
+        }
+    }
+
+    #[track_caller]
+    fn remove(&mut self, id: WidgetId) -> Option<T> {
+        let idx = self.idx_of(id)?;
+        let value = self.data[idx].take().expect(LENT_ROW);
+        self.drop_row(id);
+        Some(value)
+    }
+
+    /// Drop `id`'s row, if it has one: `swap_remove` it, then patch the swapped neighbor's index
+    /// off `owners`.
+    fn drop_row(&mut self, id: WidgetId) {
+        let Some(idx) = self.map.remove(&id) else {
+            return;
+        };
+        let idx = idx as usize;
+        let last = self.data.len() - 1;
+        self.data.swap_remove(idx);
+        self.owners.swap_remove(idx);
+        if idx != last {
+            let moved = self.owners[idx];
+            self.map.insert(moved, idx as u32);
+        }
+    }
+
     fn push(&mut self, id: WidgetId, value: Option<T>) {
         let idx = self.data.len();
         debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");
@@ -104,24 +160,15 @@ impl<T> Store<T> {
 }
 
 impl<T: 'static> TypedStore<WidgetIdSet> for Store<T> {
-    /// `swap_remove` the row of each removed widget, then patch the swapped neighbor's index off `owners`.
+    /// Drop the row of each removed widget. A row lent out is dropped as it is: a sweep runs at
+    /// the end of a frame, when no body holds one.
     fn sweep(&mut self, removed: &WidgetIdSet) {
         #[expect(
             clippy::iter_over_hash_type,
             reason = "a fixed hasher, so the rows end in the same slots from run to run"
         )]
-        for id in removed {
-            let Some(idx) = self.map.remove(id) else {
-                continue;
-            };
-            let idx = idx as usize;
-            let last = self.data.len() - 1;
-            self.data.swap_remove(idx);
-            self.owners.swap_remove(idx);
-            if idx != last {
-                let moved = self.owners[idx];
-                self.map.insert(moved, idx as u32);
-            }
+        for &id in removed {
+            self.drop_row(id);
         }
     }
 

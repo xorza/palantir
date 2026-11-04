@@ -4,14 +4,13 @@ use crate::driver::agent_window::AgentWindow;
 use crate::host::harness::Harness;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::math::lerp::Lerp;
+use crate::theme::Theme;
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::palette::Palette;
-use crate::theme::toggle::ToggleTheme;
-use crate::theme::toggle_kind::ToggleKind;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::switch::{Switch, SwitchTrack};
@@ -163,7 +162,7 @@ fn the_knob_wears_the_ink_of_its_state() {
 /// into its 15 px travel, and its fill is the off ink 16 % of the way to the on ink.
 #[test]
 fn one_share_places_the_knob_and_blends_its_ink() {
-    let mut style = ToggleTheme::stock(ToggleKind::Switch, ColorScheme::Dark);
+    let mut style = Theme::stock(ColorScheme::Dark).switch;
     style.defaults.transition =
         AnimationSpec::duration(time::Duration::from_millis(100), Easing::Linear);
     let mut h = Harness::mono(UVec2::new(400, 400));

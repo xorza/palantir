@@ -233,7 +233,6 @@ ButtonTheme
         pub selected: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
         pub fn accent(p: &Palette, m: &Metrics) -> Self
         pub fn subtle(p: &Palette, m: &Metrics) -> Self
 
@@ -270,7 +269,6 @@ ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
         Block
         Dismiss
-        PassThrough
 
 ClipMode
     enum ClipMode: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Ord, PartialEq, PartialOrd, Serialize
@@ -289,11 +287,6 @@ Clipboard
 ClipboardUnavailable
     struct ClipboardUnavailable: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
-CloseHandle
-    struct CloseHandle: Debug, Default
-        pub fn close(&self)
-        pub const fn requested(&self) -> bool
-
 CloseShown
     enum CloseShown: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
         Always
@@ -304,7 +297,6 @@ ColorButton
         pub fn new(picker: ColorPicker<'a>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        pub fn popup_id(id: WidgetId) -> WidgetId
         pub fn open(ui: &mut Ui, id: WidgetId)
         pub fn close(ui: &mut Ui, id: WidgetId)
         pub fn is_open(ui: &Ui, id: WidgetId) -> bool
@@ -369,7 +361,6 @@ ColorPickerTheme
         pub hex: TextEditTheme
         pub label: TextStyleOverrides
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 ColorRamp
     struct ColorRamp: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -385,6 +376,7 @@ ColorScheme
     enum ColorScheme: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Light
         Dark
+        pub const FALLBACK: Self
 
 ColorStrip
     struct ColorStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -410,12 +402,13 @@ ComboBox
             pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl ComboBox<'static, 'static, &'static str, fn(&&'static str) -> &'static str>
-            pub fn menu_id(id: WidgetId) -> WidgetId
-            pub fn open(ui: &mut Ui, id: WidgetId)
-            pub fn close(ui: &mut Ui, id: WidgetId)
-            pub fn is_open(ui: &Ui, id: WidgetId) -> bool
         impl<'a, 'o, S: Debug, L: Debug> Debug for ComboBox<'a, 'o, S, L>
+
+ComboBoxList
+    struct ComboBoxList: Debug
+        pub fn open(ui: &mut Ui, id: WidgetId)
+        pub fn close(ui: &mut Ui, id: WidgetId)
+        pub fn is_open(ui: &Ui, id: WidgetId) -> bool
 
 ComboBoxTheme
     struct ComboBoxTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -423,7 +416,6 @@ ComboBoxTheme
         pub arrow_size: Size
         pub arrow_width: f32
         pub const fn from_parts(_p: &Palette, m: &Metrics) -> Self
-        pub const fn stock(scheme: ColorScheme) -> Self
 
 Configure
     trait Configure: Sized
@@ -586,6 +578,7 @@ DockOperation
 DockPath
     struct DockPath: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         pub const ROOT: Self
+        pub fn splitter_id(self, dock: WidgetId) -> WidgetId
         pub fn first(self) -> Self
         pub fn second(self) -> Self
 
@@ -640,7 +633,6 @@ DockTheme
         pub ghost_padding: Spacing
         pub ghost_offset: Vec2
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 DockView
     struct DockView<'a, T>: Configure, ThemeDefaults (blanket)
@@ -657,11 +649,6 @@ DockView
         impl<T: DockTab> DockView<'_, T>
             pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, dock: WidgetId, state: &mut DockState<T>, tabs: &mut D)
             pub fn scan(ui: &mut Ui, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
-        impl DockView<'static, ()>
-            pub fn pane_id(dock: WidgetId, group: TabGroupId) -> WidgetId
-            pub fn content_id(dock: WidgetId, group: TabGroupId) -> WidgetId
-            pub fn strip_id(dock: WidgetId, group: TabGroupId) -> WidgetId
-            pub fn splitter_id(dock: WidgetId, path: DockPath) -> WidgetId
         impl<'a, T: Debug> Debug for DockView<'a, T>
 
 Drag
@@ -700,7 +687,6 @@ DragValueTheme
         pub selection: RgbaF32
         pub placeholder: RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
         pub fn editor(&self) -> TextEditTheme
 
 Easing
@@ -783,7 +769,6 @@ ExpanderTheme
         pub body_padding: Spacing
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 FloatMaterial
     struct FloatMaterial: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -801,7 +786,6 @@ FocusRingTheme
         pub color: RgbaF32
         pub width: f32
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub const fn stock(scheme: ColorScheme) -> Self
 
 FontFamily
     struct FontFamily: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -1401,7 +1385,7 @@ Menu
         pub fn at(point: Vec2) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
         pub const fn landing(self, landing: MenuLanding) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<OverlayResponse<R>>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
         pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2)
         pub fn menu_id(trigger: WidgetId) -> WidgetId
         pub fn close(ui: &mut Ui, for_id: WidgetId)
@@ -1419,11 +1403,10 @@ MenuBar
         pub fn close(ui: &mut Ui, bar: WidgetId)
         pub fn is_open(ui: &Ui, bar: WidgetId) -> bool
         pub fn title_id(bar: WidgetId, label: &str) -> WidgetId
-        pub fn menu_id(title: WidgetId) -> WidgetId
 
 MenuBarMenus
     struct MenuBarMenus<'u>: Debug
-        pub fn menu<'l, R>(&mut self, label: impl Into<TextInput<'l>>, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<OverlayResponse<R>>
+        pub fn menu<'l, R>(&mut self, label: impl Into<TextInput<'l>>, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
 
 MenuBarTheme
     struct MenuBarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
@@ -1434,7 +1417,6 @@ MenuBarTheme
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 MenuItem
     struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1453,7 +1435,6 @@ MenuItemTheme
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 MenuLanding
     enum MenuLanding: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1481,7 +1462,6 @@ MenuTheme
         pub item: MenuItemTheme
         pub separator: SeparatorTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 Metrics
     struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -1500,7 +1480,7 @@ Modal
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
         pub const fn scrim(self, color: RgbaF32) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
         pub fn close(ui: &mut Ui, id: WidgetId)
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
@@ -1512,7 +1492,6 @@ ModalTheme
         pub padding: Spacing
         pub min_width: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 Modifiers
     struct Modifiers: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1724,10 +1703,10 @@ Popup
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn layer(self, layer: Layer) -> Self
-        pub const fn click_outside(self, click_outside: ClickOutside) -> Self
+        pub fn click_outside(self, click_outside: impl Into<Option<ClickOutside>>) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn close(ui: &mut Ui, id: WidgetId)
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
@@ -1736,7 +1715,6 @@ PopupTheme
         pub panel: Chrome
         pub padding: Spacing
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 PopupTrigger
     struct PopupTrigger<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1744,7 +1722,7 @@ PopupTrigger
         pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<OverlayResponse<R>>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> Option<OverlayResponse<R>>
         pub fn popup_id(trigger: WidgetId) -> WidgetId
         pub fn open(ui: &mut Ui, for_id: WidgetId)
         pub fn close(ui: &mut Ui, for_id: WidgetId)
@@ -1754,6 +1732,19 @@ PowerPreference
     enum PowerPreference: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<PowerPreference>, Hash, PartialEq
         LowPower
         HighPerformance
+
+Preference
+    enum Preference<T>: Default, DockTab (blanket)
+        System
+        Fixed(T)
+        impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
+        impl<T: Clone> Clone for Preference<T>
+        impl<T: Copy> Copy for Preference<T>
+        impl<T: Debug> Debug for Preference<T>
+        impl<T: Eq> Eq for Preference<T>
+        impl<T: Hash> Hash for Preference<T>
+        impl<T: PartialEq> PartialEq for Preference<T>
+        impl<T> Serialize where T: Serialize
 
 ProgressBar
     struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1767,7 +1758,6 @@ ProgressBarTheme
         pub fill: RgbaF32
         pub thickness: f32
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
-        pub const fn stock(scheme: ColorScheme) -> Self
 
 RadialGeometry
     struct RadialGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
@@ -1836,9 +1826,8 @@ Rect
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
 
-ReducePreference
-    enum ReducePreference: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
-        System
+Reduction
+    enum Reduction: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Full
         Reduced
 
@@ -1912,13 +1901,6 @@ RgbaF32
         pub const fn to_srgba8(self) -> SrgbaU8
         impl From<RgbaF32> for Brush
 
-SchemePreference
-    enum SchemePreference: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
-        System
-        Light
-        Dark
-        pub const FALLBACK: ColorScheme
-
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
         pub const fn image(&self) -> &Image
@@ -1969,7 +1951,6 @@ ScrollbarTheme
         pub thumb_hovered: RgbaF32
         pub thumb_active: RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 SegmentedTheme
     struct SegmentedTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -1977,7 +1958,6 @@ SegmentedTheme
         pub track_padding: Spacing
         pub segment: ButtonTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 Selection
     enum Selection: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
@@ -2020,7 +2000,6 @@ SeparatorTheme
         pub thickness: f32
         pub margin: Spacing
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub const fn stock(scheme: ColorScheme) -> Self
         pub fn menu(p: &Palette, m: &Metrics) -> Self
 
 Shadow
@@ -2128,7 +2107,6 @@ SliderTheme
         pub knob_size: f32
         pub track_thickness: f32
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
-        pub const fn stock(scheme: ColorScheme) -> Self
 
 SlotDefaults
     struct SlotDefaults: Clone, Copy, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -2187,7 +2165,6 @@ SpinnerTheme
         pub width_ratio: f32
         pub min_stroke_width: f32
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub const fn stock(scheme: ColorScheme) -> Self
 
 SplitDirection
     enum SplitDirection: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
@@ -2225,7 +2202,6 @@ SplitterTheme
         pub rule_hovered: RgbaF32
         pub rule_active: RgbaF32
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub const fn stock(scheme: ColorScheme) -> Self
 
 Spread
     enum Spread: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -2342,6 +2318,9 @@ TabGroup
 
 TabGroupId
     struct TabGroupId: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        pub fn pane_id(self, dock: WidgetId) -> WidgetId
+        pub fn content_id(self, dock: WidgetId) -> WidgetId
+        pub fn strip_id(self, dock: WidgetId) -> WidgetId
 
 TabItem
     struct TabItem: Clone, Copy, Debug
@@ -2448,7 +2427,6 @@ TabsTheme
         pub defaults: SlotDefaults
         pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 TargetFormat
     struct TargetFormat: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -2511,7 +2489,6 @@ TextEditTheme
         pub defaults: SlotDefaults
         pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
         pub fn flat(&self) -> Self
 
 TextInput
@@ -2640,7 +2617,6 @@ ToggleTheme
         pub track_aspect: f32
         pub defaults: SlotDefaults
         pub fn from_parts(kind: ToggleKind, p: &Palette, m: &Metrics) -> Self
-        pub fn stock(kind: ToggleKind, scheme: ColorScheme) -> Self
 
 Tooltip
     struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2667,7 +2643,6 @@ TooltipTheme
         pub warmup: Duration
         pub gap: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn stock(scheme: ColorScheme) -> Self
 
 Track
     struct Track: Clone, Copy, Debug, From<Sizing>, Hash, PartialEq
@@ -2706,18 +2681,14 @@ Ui
         pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>)
         pub const fn theme_transition(&self) -> AnimationSpec
         pub fn set_theme_transition(&mut self, spec: AnimationSpec)
-        pub fn scheme_preference(&self) -> SchemePreference
-        pub fn set_scheme_preference(&mut self, preference: SchemePreference)
+        pub fn preferences(&self) -> UiPreferences
+        pub fn set_preferences(&mut self, preferences: UiPreferences)
         pub const fn color_scheme(&self) -> ColorScheme
         pub fn system_color_scheme(&self) -> Option<ColorScheme>
         pub fn is_motion_reduced(&self) -> bool
         pub fn system_motion_reduced(&self) -> bool
-        pub fn motion_preference(&self) -> ReducePreference
-        pub fn set_motion_preference(&mut self, preference: ReducePreference)
         pub const fn is_transparency_reduced(&self) -> bool
         pub fn system_transparency_reduced(&self) -> bool
-        pub fn transparency_preference(&self) -> ReducePreference
-        pub fn set_transparency_preference(&mut self, preference: ReducePreference)
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
         pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
         pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
@@ -2757,10 +2728,13 @@ Ui
         pub fn text(&self, text: InternedStr) -> &str
         pub fn add_shape_animated(&mut self, shape: impl Lower, animation: PaintAnimation)
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
+        pub fn close_overlay(&mut self)
         pub fn withdraw_input_scope(&mut self, id: WidgetId)
         pub fn response_for(&self, id: WidgetId) -> ResponseState
         pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
         pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
+        pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S)
+        pub fn remove_state<S: 'static>(&mut self, id: WidgetId) -> Option<S>
         pub fn singleton<S: 'static>(&self) -> Option<&S>
         pub fn with_singleton<S: Default + 'static, R>(&mut self, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn animate<V: Animatable>(&mut self, request: AnimationRequest<V>, spec: AnimationSpec) -> Animated<V>
@@ -2792,6 +2766,12 @@ Ui
         pub const fn set_focus_policy(&mut self, p: FocusPolicy)
         pub const fn input_policy(&self) -> InputPolicy
         pub const fn set_input_policy(&mut self, p: InputPolicy)
+
+UiPreferences
+    struct UiPreferences: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        pub scheme: Preference<ColorScheme>
+        pub motion: Preference<Reduction>
+        pub transparency: Preference<Reduction>
 
 UnmetRequirements
     enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq
@@ -3037,8 +3017,8 @@ widget::AnimationSlot
 widget::Backdrop
     enum Backdrop: Clone, Copy, Debug
         None
-        Root
-        Barrier(WidgetId)
+        Root(ClickOutside)
+        Barrier(WidgetId, ClickOutside)
 
 widget::Caret
     struct Caret: Clone, Copy, Debug, PartialEq
@@ -3195,7 +3175,7 @@ widget::MeshShape
 widget::OverlayScope
     struct OverlayScope: Debug
         pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
-        pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayTurn<R>
+        pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
         pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R>
 
 widget::OverlaySpec
@@ -3203,13 +3183,6 @@ widget::OverlaySpec
         pub layer: Layer
         pub anchor: Option<Anchor>
         pub backdrop: Backdrop
-        pub click_outside: ClickOutside
-
-widget::OverlayTurn
-    struct OverlayTurn<R>
-        pub inner: R
-        pub close: Option<OverlayClose>
-        impl<R: Debug> Debug for OverlayTurn<R>
 
 widget::PaintAnimation
     struct PaintAnimation: Clone, Copy, Debug

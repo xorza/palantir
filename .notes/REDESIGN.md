@@ -178,27 +178,24 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   copies (UI-07, WG-11, WG-12).
 - One `authored() -> &AuthoredNode` view replaces 21 `authored_*` getters (UI-07). Remove
   `ThemeDefaults` from the builders the app sees (UI-08).
-- `ui.close_overlay()` replaces `CloseHandle` and the body parameter (UI-05). `OverlaySpec`
-  becomes `Backdrop::{None, Root(Capture), Barrier(WidgetId, Capture)}` (UI-09). `OverlayScope`
-  owns the `opened` probe.
-- One overlay trigger: `Menu::below` is a dressed `PopupTrigger` (WG-14). One id function for
-  each overlay kind (WG-13). A non-generic marker for the associated functions (WG-24).
-  Settle decision 1 (WG-15).
-- One draft protocol: the color-picker hex field and `DragValue` editing use
-  `TextEdit::buffered` (WG-09, WG-10).
-- Merge `Singletons` into the state map (UI-06).
-- Store a state row as `T`, not `Option<T>`. Merge the two `TabStrip` rows (WG-18).
-- `Preference<T> { System, Fixed(T) }` with `ui.preferences()` (UI-14). Use the serde remote
-  idiom for `UncheckedTheme`, with an error enum (UI-17). Remove the per-slot `stock` (UI-18).
-  Rename the private `ToggleKind` trait (WG-17).
-- Group the retained memory for each widget (`state`, `animation`, `gpu_views`, singletons)
-  into one `Memory` with one `sweep(removed)`. Group the host seam (`window_requests`,
-  `window_frame`, `gpu_pass_stats`, `waker`) into one struct (UI-16).
 - Decision 3: measure an eager `Response`, then decide (UI-10).
 - State the bound of the input queue and decide what a full one does (the rest of UI-27).
 
-Done in this batch: decisions 1 and 2 (WG-15, WG-16), UI-20, UI-23, UI-26, UI-28, WG-17,
-WG-22, WG-23, WG-25, and the wake and watch bounds of UI-27. UI-19 is kept as it is: the
+Done in this batch: decisions 1 and 2 (WG-15, WG-16), UI-05, UI-06, UI-09, UI-14, UI-16,
+UI-17, UI-18, UI-20, UI-23, UI-26, UI-28, WG-09, WG-10, WG-13, WG-14, WG-17, WG-18, WG-22, WG-23, WG-24, WG-25,
+and the wake and watch bounds of UI-27. UI-09 carries `ClickOutside`, now `Block` or `Dismiss`, in
+the backdrop, not a new `Capture`, a name the GPU capture holds; a pass-through popup is
+`click_outside(None)`. WG-14 keeps a row for each widget, as both placements run one
+`TriggerFrame`; a trigger has one menu row. WG-24 is `ComboBoxList` for the combo, and the dock's
+part ids are methods of `TabGroupId` and `DockPath`. `OverlayScope::record` answers the `OverlayResponse`, its
+`opened` probe included, which `OverlayTurn` was half of. WG-10 keeps `DragValue` writing on each keystroke, as
+egui and Qt default to, so it keeps its own draft; its editor now records until its own blur, and
+`stop_editing` acts as `EditableLabel`'s does. A field's focus memory carries the record frame it ran in, so a
+field its widget closed unseen reads no stale focus. UI-17 took serde's remote derive on a private twin (`#[serde(remote = "Theme")]`), not
+`remote = "Self"`: that derive adds a public inherent `Theme::deserialize` that skips the check.
+Its failure stays a rule text, as every `domain::file` rule is: serde carries only a message
+through `de::Error::custom`, so an enum no caller could match. UI-18 kept `TextStyle::stock`, a
+`const` base that `Theme::stock` cannot be. UI-19 is kept as it is: the
 `theme_transition_alloc_free` test holds a transition to the buffers it keeps.
 
 ## Findings index
@@ -232,18 +229,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 
 ### Batch 10
 
-**UI-05 · complexity · high · public API** — `src/widget_core/close_handle.rs`, `src/widget_core/overlay_stack.rs`
-- **What:** a body asks its overlay to close in two ways. Dialog content calls `CloseHandle::close()`, a `Cell<bool>` passed as `&CloseHandle` into every Popup, Modal, Menu and PopupTrigger body closure. `MenuItem` instead calls `ui.overlays().close_innermost()` (`widgets/menu/menu_item.rs:148`). `OverlayScope::record` ORs the two together.
-- **Why it matters:** two routes to one result, and every body signature carries an extra parameter.
-- **Direction:** keep the `OverlayStack` and expose a public `ui.close_overlay()`, as egui 0.32's `ui.close()` closes the innermost closable container. Then drop `CloseHandle` and the closure parameter.
-- **Root cause:** the same signal is implemented twice.
-
-**UI-06 · complexity · med · public API** — `src/ui/singletons.rs` vs `src/ui/state/mod.rs`
-- **What:** `Singletons` (a map from `TypeId` to `Box<dyn Any>` with its own `Slot::Lent` lending) behaves exactly like a `StateMap` row under an id no node records. `with_state` already documents that such a row "lives as long as the Ui".
-- **Why it matters:** two type-keyed stores, two lend/put protocols and two panic messages for one thing. egui's `IdTypeMap` covers both, with `Id::NULL` for globals.
-- **Direction:** implement `with_singleton::<S>` as `with_state::<S>` under a fixed per-type id, or drop it.
-- **Root cause:** the same signal is implemented twice.
-
 **UI-07 · complexity · med · public API** — `src/widget_core/configure.rs`, `src/widget_core/configurator.rs`, `src/widget_core/widget/mod.rs:301-433`
 - **What:** each node field is written four or five times:
   - the consuming `Configure` method (30),
@@ -261,52 +246,14 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Direction:** fix the doc. Better, keep `ThemeDefaults` off the app-facing builders (export it only through `widget::`) so apps have one setter.
 - **Root cause:** the authoring surface is mirrored per field.
 
-**UI-09 · idiom/types · med · public API** — `src/widget_core/overlay_scope.rs:96`
-- **What:** `assert_eq!(spec.backdrop.owns_input(), spec.click_outside != ClickOutside::PassThrough, …)` guards a combination the types allow, and two of the three `Backdrop` variants combine wrongly with one of the policies.
-- **Direction:** make `Backdrop::{None, Root(Capture), Barrier(WidgetId, Capture)}` with `Capture::{Block, Dismiss}`. `ClickOutside` stays on the builders and maps into it.
-- **Root cause:** the code asserts an invariant that the types could hold instead.
-
 **UI-10 · api/complexity · med · public API (flags an AGENTS decision)** — `src/widget_core/response.rs`
 - **What:** "A Response borrows the Ui immutably" so it can probe lazily. The borrow forces owned twins (`ResponseSnapshot`, `ValueEdges` in `value_response.rs`) and puts `'a` on `InnerResponse`, `ValueResponse` and every `*Response`. AGENTS cites no measurement for the lazy probe; egui's `Response` is owned and eager.
 - **Direction:** measure an eager `response_for` in `integration/frame/*`. If it costs only a few percent, make `Response` the owned snapshot and delete `ResponseSnapshot` and `ValueEdges`.
 - **Root cause:** the borrowed `Response` handle.
 
-**UI-14 · complexity · med · public API** — `src/ui/mod.rs:302-435`
-- **What:** three app-global preferences (scheme, motion, transparency), each with getter, setter, system getter, crate-private system setter and an `is_*`, add about 15 `Ui` methods. They forward to 18 `AppSettings` accessors. `SchemePreference` and `ReducePreference` are the same three-state enum shape. The three also snapshot differently: scheme and transparency are resolved once per frame, motion is read live (as documented).
-- **Direction:** one `Preference<T> { System, Fixed(T) }`, and one `ui.preferences()` / `set_preferences(...)` pair over a plain struct, as egui's `ctx.options_mut`.
-- **Root cause:** pass-throughs, with the surface mirrored per setting.
-
-**UI-16 · complexity · med · no API change** — `src/ui/mod.rs:129-161` (16 fields, 92 `pub` methods and about 50 `pub(crate)`)
-- **What:** `Ui` is the hub, and many methods forward two hops (`Ui::focus_policy` → `InputState::focus_policy` → field; the same for `set_input_policy`, `focused`, `modifiers`, `pointer_pos` and others). `finalize_frame` sweeps four per-widget stores one by one (`animation`, `state`, `gpu_views`, `text`).
-- **Direction:** group retained per-widget memory (`state`, `animation`, `gpu_views`, singletons) into one `Memory` with one `sweep(removed)`, as egui's `Memory` does. Group the host seam (`window_requests`, `window_frame`, `gpu_pass_stats`, `waker`) into one struct. Make `InputState`'s plain levels `pub(super)` fields instead of getters.
-- **Root cause:** `Ui` as an aggregation hub with pass-through layers.
-
-**UI-17 · idiom · med · no API change** — `src/theme/mod.rs:426-526`, `src/theme/text_style.rs:194`, `src/theme/text_style_overrides.rs:250`
-- **What:** `UncheckedTheme` repeats all 27 fields three times (the struct, the destructure, the rebuild) to validate on load. Its `type Error = &'static str` breaks the crate's "errors are enums" rule.
-- **Direction:** use serde's validation idiom: `#[serde(remote = "Self")]` on the derive plus a hand-written `Deserialize` that calls it and then `faces_valid`. Put the failures in an error enum.
-- **Root cause:** the surface is mirrored per field.
-
-**UI-18 · complexity · low · public API** — 16 per-slot `pub fn stock(scheme)` in `src/theme/*.rs` (for example `button.rs:98`)
-- **What:** each equals `Theme::stock(scheme).<slot>`. Every caller outside `src/theme/` is a test.
-- **Direction:** keep `from_parts` and drop the per-slot `stock`, or accept it as documented sugar.
-
 **UI-27 · bound · low · no API change** — `src/ui/frame_runtime/mod.rs:100` (`repaint_wakes`), `src/input_state/input_queue/mod.rs:23` (`pending`), `src/input_state/watches.rs:13-15`
 - **What:** these grow without a stated limit. `Watches` pushes duplicates by design.
 - **Direction:** state a cap and decide what happens when it is reached.
-
-**WG-09 · complexity · `color_picker/mod.rs:430-439, 469-483`**
-- **What's wrong:** the hex field hand-rolls a draft: `TextEdit::new(&mut self.state.hex)` plus "rewrite from the color when `ui.focus() != Some(hex_id)`" plus parse on `committed`.
-- **Why it matters:** this is exactly what `TextEdit::buffered` (`text_edit/mod.rs:164`) exists for, per AGENTS' "A field can edit a draft of its own". It is two ways to do one thing, and they can drift (focus test vs `was_focused`, the Escape path).
-- **Direction:** use `TextEdit::buffered(ui.fmt(..hex..))` and parse `committed_text`. That also drops `PickerState::hex`.
-- Confidence: high · public API change: no · root cause: draft protocol re-implemented per widget (see Themes).
-
-**WG-10 · complexity · `drag_value/mod.rs:33-46, 337-402` vs `editable_label/mod.rs:228-269`**
-- **What's wrong:** both widgets swap a chip for an inline editor, with `start_editing`/`stop_editing`/`is_editing` under GTK names, but they implement it differently:
-  - DragValue keeps its own `Editing { buffer, original, end }` and re-parses into the binding every frame.
-  - EditableLabel uses `TextEdit::buffered`.
-  - `stop_editing(Submitted)` means "set `end`" in one and "clear focus and let the blur commit" in the other.
-- **Direction:** one swap-to-editor helper over `TextEdit::buffered`. DragValue would keep only `original` for its live-write mode, or parse only on commit, which is Qt's `keyboardTracking(false)`.
-- Confidence: medium · public API change: no · root cause: draft protocol duplicated.
 
 **WG-11 · complexity/api · `text.rs:85-144`, `text_edit/mod.rs:207-267`, `editable_label/mod.rs:86-144` + `with_overrides` 314-342**
 - **What's wrong:** the same eight typography setters (`color`, `font_size`, `line_height_factor`, `family`, `weight`, `slant`, `bold`, `italic`) are hand-copied three times. EditableLabel then forwards them axis by axis through a 30-line `with_overrides`.
@@ -318,31 +265,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **What's wrong:** 18 identical bodies, kept in step by a test (`widgets/tests/mod.rs:93`).
 - **Disagreement with AGENTS:** a test that polices duplication is the symptom; the canonical fix is one implementation. Since `const fn` rules out a trait, a declarative macro (or a `ChromeSlot` value type with both setters) is justified bulk reduction.
 - Confidence: high · public API change: no (if done by macro) · root cause: const setters can't be trait-provided.
-
-**WG-13 · complexity/api · `menu/mod.rs:249`, `menu_bar/mod.rs:370`, `combo_box/mod.rs:243`, `color_button/mod.rs:90`**
-- **What's wrong:** `Menu::menu_id`, `MenuBar::menu_id` and `ComboBox::menu_id` are all `trigger.with("menu")`. `ColorButton::popup_id` is `PopupTrigger::popup_id`. These are pass-throughs that publish the same derivation four times.
-- **Direction:** keep one canonical id function per overlay kind and document which one each wrapper uses.
-- Confidence: high · public API change: yes · root cause: per-wrapper driving surface (AGENTS "State between frames") applied to pure functions too.
-
-**WG-14 · complexity · `menu/mod.rs:115-126` vs `popup/popup_trigger/mod.rs:100-125`**
-- **What's wrong:** `Menu::below(trigger)` is `PopupTrigger::on(trigger)` plus `menu_look` and `Layer::Menu`, with a separate `TriggerState<Menu>` row. Both toggle on click, hang below, land focus with `MenuLanding::First`, and expose open/close/is_open.
-- **Direction:** make `Menu::below` a dressed `PopupTrigger` (one `TriggerFrame` path), or document why the two rows must differ.
-- Confidence: medium · public API change: no · root cause: overlay-trigger protocol has parallel entry points.
-
-**WG-18 · idiom (illegal states) · several state rows**
-- **Where:** `popup/mod.rs:182, 198` (`state::<Option<Landing>>`), `dock/dock_view.rs:531, 542` (`Option<TabMenuTarget<T>>`), `dock/tab_drag.rs:139-142`, `tabs/tab_strip.rs:89-92, 393-396`.
-- **What's wrong:**
-  - `Option<T>` is stored as the state type, although the map already expresses absence.
-  - `TabDrag { tab: Option<T>, target: Option<DropTarget> }` allows a target with no tab.
-  - `TabStrip` keeps two rows on one id (`CarriedChip`, `StripState`), each just an `Option<u64>`.
-- **Direction:** store `Landing` and `TabMenuTarget` directly, removing rows on close. Make `TabDrag { tab, target: Option<_> }` live inside `Option`. Merge the strip rows.
-- Confidence: high · public API change: no · root cause: none named.
-
-**WG-24 · api (low) · `combo_box/mod.rs:236-263`, `dock/dock_view.rs:347`**
-- **What's wrong:** associated "drive from outside" functions hang off dummy generic instances: `type Keyed = ComboBox<'static,'static,&'static str, fn(..)>` and `impl DockView<'static, ()>`.
-- **Why it matters:** this works only through inference quirks and puts odd types in the docs.
-- **Direction:** a non-generic marker type per widget for the `TriggerState` key and the id functions.
-- Confidence: medium · public API change: yes · root cause: none named.
 
 **RD-16 · perf · `composer/session.rs:136-141`**
 - **What:** each rounded clip push copies its whole ancestor chain into `rounded_clips` with `extend_from_within`. The pool grows by the sum of depths, bounded at 255 per chain.

@@ -7,6 +7,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
+use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
 use crate::theme::check_state::CheckState;
 use crate::theme::color_scheme::ColorScheme;
@@ -18,12 +19,8 @@ use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::selection::Selection;
 use crate::theme::tab_strip_focus::TabStripFocus;
-use crate::theme::tabs::TabsTheme;
-use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::theme::toggle::ToggleTheme;
-use crate::theme::toggle_kind::ToggleKind;
 use std::ptr;
 
 /// A response hovered, pressed and disabled as the flags say.
@@ -48,7 +45,7 @@ fn response(pointer_over: bool, pressed: bool, disabled: bool) -> ResponseState 
 /// resting pack at rest and under the pointer.
 #[test]
 fn button_theme_pick_precedence() {
-    let theme = ButtonTheme::stock(ColorScheme::Dark);
+    let theme = Theme::stock(ColorScheme::Dark).button;
     for (selection, pack) in [
         (Selection::Unselected, &theme.unselected),
         (Selection::Selected, &theme.selected),
@@ -87,7 +84,7 @@ fn button_theme_pick_precedence() {
 
 #[test]
 fn text_edit_theme_pick_precedence() {
-    let theme = TextEditTheme::stock(ColorScheme::Dark);
+    let theme = Theme::stock(ColorScheme::Dark).text_edit;
     let state = |focused, pointer_over, disabled| ResponseState {
         pointer_over,
         disabled,
@@ -137,7 +134,7 @@ fn text_edit_theme_pick_precedence() {
 /// selection and every state's text.
 #[test]
 fn a_flat_text_edit_keeps_only_its_text_and_caret() {
-    let field = TextEditTheme::stock(ColorScheme::Dark);
+    let field = Theme::stock(ColorScheme::Dark).text_edit;
     let flat = field.flat();
     assert_eq!(flat.defaults.padding, Spacing::ZERO);
     assert_eq!(flat.defaults.margin, Spacing::ZERO);
@@ -166,7 +163,7 @@ fn a_flat_text_edit_keeps_only_its_text_and_caret() {
 /// [`ToggleTheme`]'s pick needs an input the response can't supply: `Pick = CheckState` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on the check state, the precedence within each, and that the packs never resolve to the same slot (so `Pick` is load-bearing).
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
-    let theme = ToggleTheme::stock(ToggleKind::Checkbox, ColorScheme::Dark);
+    let theme = Theme::stock(ColorScheme::Dark).checkbox;
     let cases: &[(ResponseState, CheckState, &WidgetLook, &str)] = &[
         (
             response(false, false, false),
@@ -229,7 +226,7 @@ fn toggle_theme_pick_selects_pack_then_state() {
 /// strip's focus picks the cap color.
 #[test]
 fn tabs_theme_pick_selects_pack_then_state_and_cap() {
-    let theme = TabsTheme::stock(ColorScheme::Dark);
+    let theme = Theme::stock(ColorScheme::Dark).tabs;
     let idle = ResponseState::default();
     let pressed = response(true, true, false);
     let cases: &[(&ResponseState, Selection, &WidgetLook, &str)] = &[

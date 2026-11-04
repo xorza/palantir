@@ -53,7 +53,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                         .padding(0.0)
                         .chrome(Chrome::NONE)
                         .size((sw, sh))
-                        .show(ui, |ui, _popup| {
+                        .show(ui, |ui| {
                             Panel::vstack()
                                 .id(WidgetId::from_hash("popup-content"))
                                 .size((Sizing::fixed(100.0), Sizing::fixed(60.0)))
@@ -93,7 +93,7 @@ fn popup_near_bottom_flips_upward() {
                     .padding(0.0)
                     .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui, _popup| {
+                    .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("flip-content"))
                             .size((Sizing::fixed(content.w), Sizing::fixed(content.h)))
@@ -136,7 +136,7 @@ fn popup_too_tall_for_both_sides_takes_the_roomier_one() {
                     .padding(0.0)
                     .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::FILL))
-                    .show(ui, |ui, _popup| {
+                    .show(ui, |ui| {
                         Scroll::vertical()
                             .id(WidgetId::from_hash("tall-scroll"))
                             .size((Sizing::HUG, Sizing::fill(1.0)))
@@ -173,7 +173,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
                     .padding(0.0)
                     .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui, _popup| {
+                    .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("cascade-flip-content"))
                             .size((Sizing::fixed(content.w), Sizing::fixed(content.h)))
@@ -218,7 +218,7 @@ fn popup_with_scroll_settles_in_one_frame() {
                     .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
                     .max_size((f32::INFINITY, 100.0))
-                    .show(ui, |ui, _| {
+                    .show(ui, |ui| {
                         Scroll::vertical()
                             .id(WidgetId::from_hash("popup-scroll"))
                             .size((Sizing::HUG, Sizing::fill(1.0)))
@@ -277,7 +277,7 @@ fn popup_placement_is_stable_across_frames() {
                     .padding(0.0)
                     .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui, _popup| {
+                    .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("stable-content"))
                             .size((Sizing::fixed(content.w), Sizing::fixed(content.h)))
@@ -352,7 +352,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
                     .id(body_id)
                     .padding(0.0)
                     .chrome(Chrome::default())
-                    .show(ui, |ui, _| {
+                    .show(ui, |ui| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("dynamic-content"))
                             .size((Sizing::fixed(size.w), Sizing::fixed(size.h)))
@@ -414,7 +414,7 @@ fn an_open_popup_stays_where_it_landed() {
                 .padding(0.0)
                 .chrome(Chrome::NONE)
                 .margin(6.0)
-                .show(ui, |ui, _popup| {
+                .show(ui, |ui| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("landed-content"))
                         .size((Sizing::fixed(120.0), Sizing::fixed(height)))

@@ -40,7 +40,7 @@
 //! - **The default themes frost their floats, and reduced transparency paints every pane
 //!   solid.** The stock menus, popups, tooltips and modal wear `Metrics::float_material`, as
 //!   WinUI's flyouts wear acrylic. While transparency is reduced, by the system's setting or
-//!   `Ui::set_transparency_preference`, a pane paints its `fallback` or its fill made opaque, and
+//!   `UiPreferences::transparency`, a pane paints its `fallback` or its fill made opaque, and
 //!   no capture or blur runs, as WinUI's acrylic falls back to its `FallbackColor` when
 //!   transparency effects or Battery Saver turn it off
 //!   (<https://learn.microsoft.com/windows/apps/design/style/acrylic>). Refused: opaque

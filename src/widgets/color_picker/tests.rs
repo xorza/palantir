@@ -1,4 +1,5 @@
 use crate::host::harness::Harness;
+use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain::internals::assert_close;
@@ -6,12 +7,14 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::theme::Theme;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueEdges;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::color_picker::swatch_row::SwatchRow;
+use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
 
 fn harness() -> Harness {
@@ -163,7 +166,7 @@ struct Measured {
 /// not stock, and a caller's `.gap(..)` wins over either.
 #[test]
 fn the_style_reaches_the_panel_and_a_caller_gap_wins() {
-    let stock = ColorPickerTheme::stock(ColorScheme::Dark);
+    let stock = Theme::stock(ColorScheme::Dark).color_picker;
     let custom = ColorPickerTheme {
         field_height: stock.field_height + 30.0,
         swatch_size: stock.swatch_size + 7.0,
@@ -213,14 +216,16 @@ fn the_style_reaches_the_panel_and_a_caller_gap_wins() {
 /// Readouts show the bound color, not the axes' clamped reading, and a channel edit keeps the others.
 #[test]
 fn the_readouts_and_channel_edits_start_from_the_bound_color() {
-    use crate::widgets::color_picker::PickerState;
-
     let id = WidgetId::from_hash("picker-bound-readout");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x0000ff);
     frame(&mut h, id, &mut color);
     frame(&mut h, id, &mut color);
-    assert_eq!(h.state::<PickerState>(id).unwrap().hex, "#0000FF");
+    assert_eq!(
+        TextEdit::draft(h.ui(), id.with("hex")),
+        Some("#0000FF"),
+        "the hex field shows the bound color"
+    );
 
     let r_value = h.center_of(id.with("R").with("value"));
     h.press(id.with("R").with("value"), PointerButton::Left);
@@ -265,7 +270,6 @@ fn the_swatch_row_shows_only_when_asked() {
 /// Keyboard nudges commit but stay out of the history.
 #[test]
 fn keyboard_nudges_leave_the_history_alone() {
-    use crate::input::keyboard::key::Key;
     use crate::widgets::color_picker::PickerState;
 
     let id = WidgetId::from_hash("picker-nudges");
@@ -296,20 +300,57 @@ fn keyboard_nudges_leave_the_history_alone() {
     assert_eq!(h.state::<PickerState>(id).unwrap().history.peek(), &*row);
 }
 
+/// The hex field edits a draft of its own: a blur on the shown text, or on a text spelling the
+/// shown color, commits nothing; Enter on another color writes it at once; Escape drops the draft
+/// and shows the color again.
 #[test]
-fn an_unchanged_hex_field_commits_nothing_on_blur() {
-    let id = WidgetId::from_hash("picker-hex-blur");
+fn the_hex_field_commits_a_typed_color_and_nothing_else() {
+    let id = WidgetId::from_hash("picker-hex-draft");
+    let hex = id.with("hex");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
     frame(&mut h, id, &mut color);
-    h.ui_mut().set_focus(id.with("hex"));
+    h.ui_mut().set_focus(hex);
     frame(&mut h, id, &mut color);
     h.ui_mut().clear_focus();
-    assert_eq!(
-        frame(&mut h, id, &mut color),
-        ValueEdges {
-            changed: false,
-            committed: false,
+    let nothing = ValueEdges {
+        changed: false,
+        committed: false,
+    };
+    assert_eq!(frame(&mut h, id, &mut color), nothing, "an unchanged blur");
+
+    let retype = |h: &mut Harness, color: &mut RgbaF32, text: &str, end: Key| {
+        h.ui_mut().set_focus(hex);
+        frame(h, id, color);
+        h.key(Key::End);
+        for _ in 0..7 {
+            h.key(Key::Backspace);
         }
+        h.type_text(text);
+        frame(h, id, color);
+        h.key(end);
+        frame(h, id, color)
+    };
+    assert_eq!(
+        retype(&mut h, &mut color, "#4cd3ff", Key::Enter),
+        nothing,
+        "the shown color in lower case"
+    );
+    assert_eq!(color, RgbaF32::hex(0x4cd3ff));
+
+    assert!(retype(&mut h, &mut color, "#ff8800", Key::Enter).committed);
+    assert_eq!(color.to_srgba8(), RgbaF32::hex(0xff8800).to_srgba8());
+
+    assert_eq!(
+        retype(&mut h, &mut color, "#0000ff", Key::Escape),
+        nothing,
+        "Escape"
+    );
+    assert_eq!(color.to_srgba8(), RgbaF32::hex(0xff8800).to_srgba8());
+    frame(&mut h, id, &mut color);
+    assert_eq!(
+        TextEdit::draft(h.ui(), hex),
+        Some("#FF8800"),
+        "the draft dropped"
     );
 }

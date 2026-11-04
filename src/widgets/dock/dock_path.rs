@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::widgets::splitter::split_half::SplitHalf;
 
 /// A split's address: the turns from the root packed into one `Copy` byte, a leading sentinel bit then one bit per level (`0` first child, `1` second). The root is the bare sentinel. Capacity is 7 levels, beyond what [`DockState::with_max_depth`](crate::DockState::with_max_depth) allows. Stable only between structural changes; a stale path that no longer lands on a split is ignored.
@@ -15,6 +16,11 @@ impl DockPath {
 
     /// The most levels the packed byte can address.
     pub(super) const CAPACITY: u32 = 7;
+
+    /// The splitter of the split at this address in the [`DockView`](crate::DockView) `dock`.
+    pub fn splitter_id(self, dock: WidgetId) -> WidgetId {
+        dock.with(("splitter", self))
+    }
 
     /// The address of `self`'s first (left or top) child.
     pub fn first(self) -> Self {

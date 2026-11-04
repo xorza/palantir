@@ -15,7 +15,6 @@ use crate::theme::menu::MenuTheme;
 use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
-use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
@@ -31,10 +30,9 @@ use std::rc::Rc;
 /// The layer is a field because this is the engine under every anchored
 /// overlay; a context menu is a popup on [`Layer::Menu`].
 ///
-/// Outside clicks follow [`ClickOutside`]. Under the modal pair (`Block` /
-/// `Dismiss`, the default) a full-surface barrier sits under the body and
-/// the popup owns keyboard and pointer watches for everything below it.
-/// Focus is unchanged. Use [`ClickOutside::PassThrough`] to take neither.
+/// Outside clicks follow [`ClickOutside`], [`ClickOutside::Dismiss`] by default: a full-surface
+/// barrier sits under the body and the popup owns keyboard and pointer watches for everything
+/// below it. Focus is unchanged. `click_outside(None)` takes neither.
 ///
 /// A popup the caller shows is open while it records. Stop recording it only on the frame its
 /// response reads [`closed`](OverlayResponse::closed), or after [`Self::close`]: a popup that
@@ -45,7 +43,7 @@ use std::rc::Rc;
 #[must_use = "a widget records nothing until `show`"]
 pub struct Popup<'a> {
     anchor: Option<Anchor>,
-    click_outside: ClickOutside,
+    click_outside: Option<ClickOutside>,
     layer: Layer,
     widget: Widget,
     chrome: Option<Chrome>,
@@ -59,7 +57,7 @@ impl<'a> Popup<'a> {
     pub fn new() -> Self {
         Self {
             anchor: None,
-            click_outside: ClickOutside::Dismiss,
+            click_outside: Some(ClickOutside::Dismiss),
             layer: Layer::Popup,
             widget: Widget::vstack().sense(Sense::CLICK),
             chrome: None,
@@ -82,9 +80,10 @@ impl<'a> Popup<'a> {
         self
     }
 
-    /// What a press outside the overlay does. Default [`ClickOutside::Dismiss`].
-    pub const fn click_outside(mut self, click_outside: ClickOutside) -> Self {
-        self.click_outside = click_outside;
+    /// What a press outside the overlay does. Default [`ClickOutside::Dismiss`]; `None` lays no
+    /// barrier and takes no keys, so presses and keys reach the layers below, as a toast lets them.
+    pub fn click_outside(mut self, click_outside: impl Into<Option<ClickOutside>>) -> Self {
+        self.click_outside = click_outside.into();
         self
     }
 
@@ -96,17 +95,13 @@ impl<'a> Popup<'a> {
 
     /// Close the popup `id` from outside, as a caller does when it stops showing it for a reason
     /// of its own: the input the popup took from the layers below goes back at once. No-op for a
-    /// popup that holds none ([`ClickOutside::PassThrough`]), or one its response already closed.
+    /// popup that holds none (`click_outside(None)`), or one its response already closed.
     pub fn close(ui: &mut Ui, id: WidgetId) {
         ui.withdraw_input_scope(id);
     }
 
-    /// Record the overlay and its `body`, which gets a [`CloseHandle`].
-    pub fn show<R>(
-        self,
-        ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
-    ) -> OverlayResponse<R> {
+    /// Record the overlay and its `body`; a [`Ui::close_overlay`] in it closes the popup.
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
         let Self {
             anchor,
             click_outside,
@@ -122,35 +117,23 @@ impl<'a> Popup<'a> {
         let anchor = anchor.map(|anchor| Self::landed(ui, id, anchor, margin));
         let barrier_id = Self::barrier_id(id);
         // Takes the pointer and the keys from lower layers together, or neither.
-        let backdrop = if click_outside == ClickOutside::PassThrough {
-            Backdrop::None
-        } else {
-            Backdrop::Barrier(barrier_id)
+        let backdrop = match click_outside {
+            Some(click_outside) => Backdrop::Barrier(barrier_id, click_outside),
+            None => Backdrop::None,
         };
         let spec = OverlaySpec {
             layer,
             anchor,
             backdrop,
-            click_outside,
         };
         let scope = OverlayScope::claim(ui, spec, &mut widget);
-        // A body with no rect from the last frame did not record then.
-        let opened = ui.response_for(id).rect.is_none();
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
         let slot = style.unwrap_or(&theme.popup);
         widget.configure().default_padding(slot.padding);
         let chrome = chrome.as_ref().unwrap_or(&slot.panel);
-        let turn = scope.record(ui, |ui, handle| {
-            widget.record(ui, Some(chrome), |ui| body(ui, handle))
-        });
-        let response = OverlayResponse {
-            id,
-            opened,
-            close: turn.close,
-            inner: turn.inner,
-        };
+        let response = scope.record(ui, |ui| widget.record(ui, Some(chrome), body));
         scope.finish(ui, response)
     }
 }
@@ -179,9 +162,8 @@ impl Popup<'_> {
             return asked;
         }
         let held = ui
-            .state::<Option<Landing>>(id)
+            .state::<Landing>(id)
             .copied()
-            .flatten()
             .filter(|landing| landing.asked == asked);
         let landed = match held {
             Some(Landing {
@@ -195,9 +177,7 @@ impl Popup<'_> {
                 .map(|rect| rect.inflated_by(margin).min),
             None => None,
         };
-        ui.with_state::<Option<Landing>, _>(id, |_, landing| {
-            *landing = Some(Landing { asked, landed });
-        });
+        ui.set_state(id, Landing { asked, landed });
         landed.map_or(asked, Anchor::at_point)
     }
 

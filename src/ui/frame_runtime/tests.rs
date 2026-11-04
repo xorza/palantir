@@ -1,4 +1,4 @@
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use std::time::Duration;
 
 use glam::UVec2;

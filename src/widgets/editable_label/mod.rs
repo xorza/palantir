@@ -252,7 +252,9 @@ impl<'a> EditableLabel<'a> {
         let snapshot = edited.response.snapshot();
         let (committed, ended) = (edited.committed, edited.ended);
         let committed_text = edited.committed_text;
-        let closed = committed || ended == Some(EditEnd::Canceled);
+        // An editor without the focus after its frame never had it, as one whose opening focus
+        // another widget took first: no blur will come to close it.
+        let closed = committed || ended == Some(EditEnd::Canceled) || ui.focus() != Some(id);
         if closed {
             ui.with_state::<EditableLabelState, _>(id, |_, state| state.editing = false);
             if ui.focus() == Some(id) {

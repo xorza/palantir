@@ -12,6 +12,7 @@ use crate::text::key::TextShapeKey;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
+use serde::de::Error as _;
 
 /// Default [`TextStyle::line_height_factor`]. A widget convention; the shaper
 /// takes resolved pixels and never sees a multiplier.
@@ -30,11 +31,9 @@ pub(crate) const LINE_HEIGHT_FACTOR: f32 = 1.2;
     Debug,
     PartialEq,
     serde::Serialize,
-    serde::Deserialize,
     palantir_anim_derive::Lerp,
     palantir_anim_derive::Animatable,
 )]
-#[serde(try_from = "UncheckedTextStyle")]
 #[must_use]
 pub struct TextStyle {
     /// Default font size in logical px; [`crate::Text`] and
@@ -77,7 +76,9 @@ impl TextStyle {
         }
     }
 
-    /// The built-in body text of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    /// The built-in body text of `scheme`: its built-in palette over [`Metrics::DEFAULT`], as
+    /// [`Theme::stock`](crate::Theme::stock) holds it in `text`. The one slot with a `stock` of its
+    /// own: a `const` base an app's styles build on, where the theme's is built whole at run time.
     pub const fn stock(scheme: ColorScheme) -> Self {
         Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
@@ -176,10 +177,12 @@ impl TextStyle {
     }
 }
 
-/// [`TextStyle`] as it arrives off the wire, before the metrics check.
-/// A theme file is untrusted: a non-finite or non-positive size would reach
-/// the shaper as a face it cannot resolve.
+/// [`TextStyle`] as it arrives off the wire, read straight into a `TextStyle` by serde's remote
+/// derive before the metrics check, as [`Theme`](crate::Theme) reads its own. A theme file is
+/// untrusted: a non-finite or non-positive size would reach the shaper as a face it cannot
+/// resolve.
 #[derive(Debug, serde::Deserialize)]
+#[serde(remote = "TextStyle")]
 struct UncheckedTextStyle {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
     font_size: f32,
@@ -190,20 +193,11 @@ struct UncheckedTextStyle {
     slant: FontSlant,
 }
 
-impl TryFrom<UncheckedTextStyle> for TextStyle {
-    type Error = &'static str;
-
-    fn try_from(style: UncheckedTextStyle) -> Result<Self, Self::Error> {
-        let style = Self {
-            font_size: style.font_size,
-            color: style.color,
-            line_height_factor: style.line_height_factor,
-            family: style.family,
-            weight: style.weight,
-            slant: style.slant,
-        };
+impl<'de> serde::Deserialize<'de> for TextStyle {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let style = UncheckedTextStyle::deserialize(deserializer)?;
         if !style.metrics_valid() {
-            return Err(domain::FONT_LENGTH_RULE);
+            return Err(D::Error::custom(domain::FONT_LENGTH_RULE));
         }
         Ok(style)
     }

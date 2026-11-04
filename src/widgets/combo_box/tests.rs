@@ -7,13 +7,12 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::Theme;
-use crate::theme::button::ButtonTheme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::combo_box::ComboBoxTheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
-use crate::widgets::combo_box::ComboBox;
+use crate::widgets::combo_box::{ComboBox, ComboBoxList};
 use crate::widgets::menu::Menu;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -136,7 +135,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             });
     };
     h.frame(|ui| build(ui, &mut selected));
-    ComboBox::open(h.ui_mut(), id);
+    ComboBoxList::open(h.ui_mut(), id);
 
     assert_eq!(
         h.frame(|ui| build(ui, &mut selected)).processing,
@@ -145,7 +144,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     );
 
     let trigger = h.rect(id).expect("combo trigger arranged");
-    let list = h.rect(ComboBox::menu_id(id)).expect("combo list arranged");
+    let list = h.rect(Menu::menu_id(id)).expect("combo list arranged");
     assert_eq!(list.min.x, trigger.min.x, "list starts at trigger left");
     assert_eq!(
         list.max().y,
@@ -213,7 +212,7 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     let instance = ComboBoxTheme {
         arrow_size: Size::new(20.0, 14.0),
         gap: 30.0,
-        ..ComboBoxTheme::stock(ColorScheme::Dark)
+        ..Theme::stock(ColorScheme::Dark).combo_box
     };
     let c = measure(Size::new(10.0, 6.0), 12.0, Some(&instance), None);
     assert_eq!(c, b, "`style` overrides the slot's arrow_size and gap");
@@ -227,10 +226,11 @@ fn trigger_chrome_follows_button_style() {
     let options = ["One"];
     let id = WidgetId::from_hash("styled-combo");
     let custom = RgbaF32::srgb(0.9, 0.2, 0.1);
-    let mut restyled = ButtonTheme::stock(ColorScheme::Dark);
+    let mut restyled = Theme::stock(ColorScheme::Dark).button;
     restyled.unselected.normal.chrome.fill = custom.into();
     assert_ne!(
-        ButtonTheme::stock(ColorScheme::Dark)
+        Theme::stock(ColorScheme::Dark)
+            .button
             .unselected
             .normal
             .chrome
@@ -305,9 +305,9 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
                 });
         };
         h.frame(&mut build);
-        ComboBox::open(h.ui_mut(), id);
+        ComboBoxList::open(h.ui_mut(), id);
         h.frame(&mut build);
-        h.rect(ComboBox::menu_id(id))
+        h.rect(Menu::menu_id(id))
             .expect("combo list arranged")
             .size
             .h
@@ -327,7 +327,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
 fn disabling_an_open_trigger_closes_its_list() {
     static OPTIONS: [&str; 3] = ["One", "Two", "Three"];
     let combo = WidgetId::from_hash("combo");
-    let list = ComboBox::menu_id(combo);
+    let list = Menu::menu_id(combo);
     let mut selected = &OPTIONS[0];
     let record = |h: &mut Harness, disabled: bool, selected: &mut &'static &'static str| {
         h.frame(|ui| {
@@ -416,7 +416,7 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
             h.key(key);
             assert_eq!(frame(&mut h, &mut selected), (false, false), "{what}");
             h.hold_modifiers(Modifiers::NONE);
-            assert!(ComboBox::is_open(h.ui(), id), "{what} opens it");
+            assert!(ComboBoxList::is_open(h.ui(), id), "{what} opens it");
             assert!(
                 !Menu::is_open(h.ui(), id),
                 "{what}: the combo's row is its own, not a menu's"
@@ -424,17 +424,17 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
             frame(&mut h, &mut selected);
             assert_eq!(h.ui().focus(), row(&h, lands), "{what} lands on {lands}");
             assert!(h.ui().focus().is_some(), "{what}: a row holds focus");
-            ComboBox::close(h.ui_mut(), id);
+            ComboBoxList::close(h.ui_mut(), id);
             frame(&mut h, &mut selected);
         }
         assert_eq!(selected, start, "no key changed the pick");
     }
 
     let mut selected = &OPTIONS[1];
-    ComboBox::open(h.ui_mut(), id);
+    ComboBoxList::open(h.ui_mut(), id);
     frame(&mut h, &mut selected);
-    assert!(ComboBox::is_open(h.ui(), id), "an outside open records");
-    assert!(h.rect(ComboBox::menu_id(id)).is_some());
+    assert!(ComboBoxList::is_open(h.ui(), id), "an outside open records");
+    assert!(h.rect(Menu::menu_id(id)).is_some());
 }
 
 /// Keyboard path: Enter on the focused combo opens it with focus on the first row; Tab and arrows walk the rows in the list it traps; Enter picks and closes; focus returns to the combo.
@@ -456,7 +456,7 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
 
     h.key(Key::Enter);
     frame(&mut h, &mut selected);
-    assert!(ComboBox::is_open(h.ui(), id));
+    assert!(ComboBoxList::is_open(h.ui(), id));
     let first = h.ui().focus().expect("focus moved into the list");
     assert_ne!(first, id);
 
@@ -476,7 +476,10 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
     let changed = frame(&mut h, &mut selected);
     assert!(changed && *selected == "B", "Enter picks the second row");
     frame(&mut h, &mut selected);
-    assert!(!ComboBox::is_open(h.ui(), id), "the pick closes the list");
+    assert!(
+        !ComboBoxList::is_open(h.ui(), id),
+        "the pick closes the list"
+    );
     assert_eq!(h.ui().focus(), Some(id), "focus goes back to the combo box");
 }
 

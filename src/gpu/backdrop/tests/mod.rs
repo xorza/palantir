@@ -558,7 +558,7 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
                         .layer(Layer::Menu)
                         .chrome(chrome)
                         .size((Sizing::fixed(260.0), Sizing::fixed(h)))
-                        .show(ui, |ui, _| {
+                        .show(ui, |ui| {
                             Panel::canvas()
                                 .id_salt("backdrop-grow-row")
                                 .size((Sizing::fixed(30.0), Sizing::fixed(10.0)))

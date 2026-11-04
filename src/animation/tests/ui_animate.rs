@@ -10,13 +10,15 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::reduce_preference::ReducePreference;
+use crate::primitives::preference::Preference;
+use crate::primitives::reduction::Reduction;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::selection::Selection;
 use crate::ui::Ui;
+use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::widgets::block::Block;
@@ -298,22 +300,28 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
         });
         (value, report.repaint_requested)
     };
-    let retarget = |system_reduced: bool, preference: ReducePreference| {
+    let retarget = |system_reduced: bool, preference: Preference<Reduction>| {
         let AnimationUi { mut h, id } = support::setup_animation_ui("reduced");
         h.set_system_motion_reduced(system_reduced);
-        h.ui_mut().set_motion_preference(preference);
+        h.ui_mut().set_preferences(UiPreferences {
+            motion: preference,
+            ..UiPreferences::default()
+        });
         step(&mut h, id, 0.0);
         let moved = step(h.at(Duration::from_millis(16)), id, 1.0);
         (h, id, moved)
     };
-    assert_eq!(retarget(true, ReducePreference::System).2, (1.0, false));
-    assert_eq!(retarget(false, ReducePreference::Reduced).2, (1.0, false));
-    let (value, repaint) = retarget(true, ReducePreference::Full).2;
+    assert_eq!(retarget(true, Preference::System).2, (1.0, false));
+    assert_eq!(
+        retarget(false, Preference::Fixed(Reduction::Reduced)).2,
+        (1.0, false)
+    );
+    let (value, repaint) = retarget(true, Preference::Fixed(Reduction::Full)).2;
     assert!(
         value < 1.0 && repaint,
         "a pick of full motion moves: {value}"
     );
-    let (mut h, id, (value, repaint)) = retarget(false, ReducePreference::System);
+    let (mut h, id, (value, repaint)) = retarget(false, Preference::System);
     assert!(value < 1.0 && repaint, "{value}");
 
     h.ui_mut().window_frame_mut().facts.shown_again = true;

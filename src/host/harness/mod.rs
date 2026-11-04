@@ -77,7 +77,7 @@ use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::capture::DRAG_THRESHOLD;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::app::App;
@@ -392,7 +392,7 @@ impl Harness {
     }
 
     /// Report `scheme` as the system's, as the winit host reports the desktop's; `None`, the
-    /// start, reports nothing, so [`SchemePreference::System`](crate::SchemePreference::System)
+    /// start, reports nothing, so [`Preference::System`](crate::Preference::System)
     /// shows the fallback. The next frame shows the resolved scheme.
     pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
         self.window

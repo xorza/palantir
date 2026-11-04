@@ -87,3 +87,34 @@ fn sweep_patches_swapped_index() {
     assert_eq!(map.try_get::<u32>(widget_id(1)), Some(&1));
     assert_eq!(map.try_get::<u32>(widget_id(3)), Some(&3));
 }
+
+/// `set` replaces a row's value or makes the row, and `remove` hands the value back and drops the
+/// row, patching the neighbour it swaps in, as a sweep does; a removed row reads `None`, and a
+/// remove of no row is `None`. Both refuse a lent row, as its lend's `put` would undo them.
+#[test]
+fn set_and_remove_replace_and_drop_a_row() {
+    let mut map = StateMap::default();
+    for n in 1..=3 {
+        map.set(widget_id(n), n as u32);
+    }
+    map.set(widget_id(1), 10u32);
+    assert_eq!(map.try_get::<u32>(widget_id(1)), Some(&10));
+    assert_eq!(map.remove::<u32>(widget_id(2)), Some(2));
+    assert_eq!(map.try_get::<u32>(widget_id(2)), None);
+    assert_eq!(
+        map.try_get::<u32>(widget_id(3)),
+        Some(&3),
+        "the swapped row"
+    );
+    assert_eq!(map.remove::<u32>(widget_id(2)), None);
+    assert_eq!(
+        map.remove::<String>(widget_id(1)),
+        None,
+        "no store of the type"
+    );
+
+    let lent = map.lend::<u32>(widget_id(1));
+    panic_probe::assert_panics_with(LENT_ROW, || map.set(widget_id(1), 0u32));
+    panic_probe::assert_panics_with(LENT_ROW, || map.remove::<u32>(widget_id(1)).is_some());
+    map.put(widget_id(1), lent.expect("the row held a value"));
+}

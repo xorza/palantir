@@ -8,9 +8,11 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::reduce_preference::ReducePreference;
+use crate::primitives::preference::Preference;
+use crate::primitives::reduction::Reduction;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 
@@ -47,16 +49,23 @@ fn reduced_transparency_records_every_pane_solid() {
     assert!(h.ui().system_transparency_reduced());
     assert!(!filtered(&h), "the system's ask");
 
-    h.ui_mut()
-        .set_transparency_preference(ReducePreference::Full);
+    h.ui_mut().set_preferences(UiPreferences {
+        transparency: Preference::Fixed(Reduction::Full),
+        ..UiPreferences::default()
+    });
     h.frame(record);
     assert!(!h.ui().is_transparency_reduced());
     assert!(filtered(&h), "a pick of full over the system's ask");
 
     h.set_system_transparency_reduced(false);
-    h.ui_mut()
-        .set_transparency_preference(ReducePreference::Reduced);
+    h.ui_mut().set_preferences(UiPreferences {
+        transparency: Preference::Fixed(Reduction::Reduced),
+        ..UiPreferences::default()
+    });
     h.frame(record);
-    assert_eq!(h.ui().transparency_preference(), ReducePreference::Reduced);
+    assert_eq!(
+        h.ui().preferences().transparency,
+        Preference::Fixed(Reduction::Reduced)
+    );
     assert!(!filtered(&h), "a pick of reduced");
 }

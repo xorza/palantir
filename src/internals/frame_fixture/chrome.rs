@@ -24,7 +24,6 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
-use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::button::Button;
@@ -207,7 +206,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
     );
     Popup::new()
         .anchor(Anchor::above(anchor))
-        .click_outside(ClickOutside::PassThrough)
+        .click_outside(None)
         .chrome(Chrome {
             fill: tokens::CARD_BG.into(),
             border: Stroke::new(tokens::BORDER, 1.0),
@@ -219,7 +218,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
             ),
             backdrop_filter: BackdropFilter::NONE,
         })
-        .show(ui, |ui, _handle| {
+        .show(ui, |ui| {
             Text::new("Capture written to disk")
                 .id_salt("popup-label")
                 .style(&tokens::caption_style())

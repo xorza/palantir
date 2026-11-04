@@ -375,7 +375,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     let press_point = Vec2::new(50.0, 50.0);
     let with_modal = |ui: &mut Ui| {
         empty_watch_buttons(ui);
-        Modal::new().show(ui, |_, _| {});
+        Modal::new().show(ui, |_| {});
     };
     let plain_layer = |ui: &mut Ui| {
         empty_watch_buttons(ui);

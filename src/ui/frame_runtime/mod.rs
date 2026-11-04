@@ -10,7 +10,7 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::math::domain::EPS;
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::text::shaper::TextShaper;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};

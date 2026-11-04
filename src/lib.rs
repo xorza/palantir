@@ -59,7 +59,7 @@
 //! Three doors, widest first.
 //!
 //! - **[`Theme`]** is the whole style tree, one per [`ColorScheme`]
-//!   ([`Ui::set_theme_for`](Ui::set_theme_for) swaps one; [`Ui::set_scheme_preference`]
+//!   ([`Ui::set_theme_for`](Ui::set_theme_for) swaps one; [`UiPreferences::scheme`]
 //!   picks which shows; [`Ui::set_theme_transition`] blends a change), with per-widget bundles
 //!   ([`Theme::button`], [`Theme::slider`]).
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
@@ -225,7 +225,7 @@ pub mod widget {
     pub use crate::widget_core::activation::Activation;
     pub use crate::widget_core::configurator::Configurator;
     pub use crate::widget_core::configure::ThemeDefaults;
-    pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec, OverlayTurn};
+    pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
     pub use crate::widget_core::widget::Widget;
     pub use palantir_anim_derive::{Animatable, Lerp};
 }
@@ -334,7 +334,8 @@ pub use primitives::paint::image::icon_fit::IconFit;
 pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::paint::shadow::Shadow;
 pub use primitives::paint::stroke::Stroke;
-pub use primitives::reduce_preference::ReducePreference;
+pub use primitives::preference::Preference;
+pub use primitives::reduction::Reduction;
 pub use primitives::text::interned_str::InternedStr;
 pub use primitives::text::text_input::TextInput;
 pub use scene::layer::Layer;
@@ -376,7 +377,6 @@ pub use theme::modal::ModalTheme;
 pub use theme::palette::Palette;
 pub use theme::popup::PopupTheme;
 pub use theme::progress_bar::ProgressBarTheme;
-pub use theme::scheme_preference::SchemePreference;
 pub use theme::scrollbar::ScrollbarTheme;
 pub use theme::segmented::SegmentedTheme;
 pub use theme::selection::Selection;
@@ -397,8 +397,8 @@ pub use ui::app::App;
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::inspected_widget::InspectedWidget;
 pub use ui::layer_scope::LayerScope;
+pub use ui::ui_preferences::UiPreferences;
 pub use widget_core::click_outside::ClickOutside;
-pub use widget_core::close_handle::CloseHandle;
 pub use widget_core::configure::Configure;
 pub use widget_core::overlay_response::{OverlayClose, OverlayResponse};
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
@@ -413,7 +413,7 @@ pub use widgets::color_picker::ColorPicker;
 pub use widgets::color_picker::swatch_row::SwatchRow;
 pub use widgets::color_strip::ColorStrip;
 pub use widgets::color_swatch::ColorSwatch;
-pub use widgets::combo_box::ComboBox;
+pub use widgets::combo_box::{ComboBox, ComboBoxList};
 pub use widgets::dock::allowed_splits::AllowedSplits;
 pub use widgets::dock::dock_layout::DockLayout;
 pub use widgets::dock::dock_operation::{DockDrop, DockOperation};

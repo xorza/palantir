@@ -11,6 +11,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::theme::Theme;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::popup::PopupTheme;
@@ -54,7 +55,7 @@ fn the_chip_toggles_its_panel() {
 
     click_chip(&mut h, |h| frame(h, &mut color));
     assert!(
-        h.rect(ColorButton::popup_id(id)).is_some(),
+        h.rect(PopupTrigger::popup_id(id)).is_some(),
         "the click opened this chip's panel"
     );
 
@@ -72,7 +73,7 @@ fn the_chip_toggles_its_panel() {
     ColorButton::open(h.ui_mut(), id);
     frame(&mut h, &mut color);
     assert!(
-        h.rect(ColorButton::popup_id(id)).is_some(),
+        h.rect(PopupTrigger::popup_id(id)).is_some(),
         "open shows the panel"
     );
     ColorButton::close(h.ui_mut(), id);
@@ -134,7 +135,7 @@ fn panel_settings_reach_the_picker() {
         frame(&mut h);
         click_chip(&mut h, &mut frame);
         assert!(
-            h.rect(ColorButton::popup_id(id)).is_some(),
+            h.rect(PopupTrigger::popup_id(id)).is_some(),
             "{label}: premise"
         );
         assert_eq!(
@@ -203,7 +204,7 @@ fn open_with(button: Option<&ColorPickerTheme>, picker: Option<&ColorPickerTheme
     frame(&mut h);
     click_chip(&mut h, &mut frame);
 
-    let body_id = ColorButton::popup_id(id);
+    let body_id = PopupTrigger::popup_id(id);
     let body = h.node_of(body_id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
     let chrome = h
@@ -224,7 +225,7 @@ fn open_with(button: Option<&ColorPickerTheme>, picker: Option<&ColorPickerTheme
 /// stock: the button's style adds the gained padding, the picker's the chip growth.
 #[test]
 fn the_button_styles_the_popup_and_the_picker_keeps_its_own() {
-    let stock = ColorPickerTheme::stock(ColorScheme::Dark);
+    let stock = Theme::stock(ColorScheme::Dark).color_picker;
     let custom = ColorPickerTheme {
         // Same stroke as stock, so the folded band matches on both sides.
         popup: PopupTheme {

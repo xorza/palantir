@@ -1,5 +1,6 @@
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
+use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::{LINE_HEIGHT_FACTOR, TextStyle};
 use crate::theme::text_style_overrides::TextStyleOverrides;
@@ -285,11 +286,11 @@ fn textedit_style_override_replaces_default_theme() {
             looks: StatefulLook {
                 normal: WidgetLook {
                     text: TextStyleOverrides::NONE.with_line_height_factor(factor),
-                    ..TextEditTheme::stock(ColorScheme::Dark).looks.normal
+                    ..Theme::stock(ColorScheme::Dark).text_edit.looks.normal
                 },
-                ..TextEditTheme::stock(ColorScheme::Dark).looks
+                ..Theme::stock(ColorScheme::Dark).text_edit.looks
             },
-            ..TextEditTheme::stock(ColorScheme::Dark)
+            ..Theme::stock(ColorScheme::Dark).text_edit
         };
         let leaf = h.frame_value(|ui| {
             Panel::hstack()
@@ -484,11 +485,11 @@ fn line_height_override_changes_caret_rect_height() {
         looks: StatefulLook {
             active: WidgetLook {
                 text: TextStyleOverrides::NONE.with_line_height_factor(2.0),
-                ..TextEditTheme::stock(ColorScheme::Dark).looks.active
+                ..Theme::stock(ColorScheme::Dark).text_edit.looks.active
             },
-            ..TextEditTheme::stock(ColorScheme::Dark).looks
+            ..Theme::stock(ColorScheme::Dark).text_edit.looks
         },
-        ..TextEditTheme::stock(ColorScheme::Dark)
+        ..Theme::stock(ColorScheme::Dark).text_edit
     }));
     let canonical_default: f32 = (16.0 * LINE_HEIGHT_FACTOR * 64.0).round() / 64.0;
     assert_eq!(

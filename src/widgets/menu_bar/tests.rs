@@ -39,7 +39,7 @@ fn build_some(ui: &mut Ui, idxs: &[usize]) -> Option<&'static str> {
     let mut picked = None;
     MenuBar::new().id(bar()).show(ui, |menus| {
         for (label, rows) in idxs.iter().map(|&idx| MENUS[idx]) {
-            menus.menu(label, |ui, _| {
+            menus.menu(label, |ui| {
                 for row in rows {
                     if MenuItem::new(row).id_salt(row).show(ui).clicked() {
                         picked = Some(row);
@@ -68,7 +68,7 @@ fn recorded(h: &Harness, idx: u16) -> bool {
         .tree(Layer::Menu)
         .records
         .widget_id()
-        .contains(&MenuBar::menu_id(title(idx)))
+        .contains(&Menu::menu_id(title(idx)))
 }
 
 /// One click opens a title's menu, one on another title moves to its menu without a click to close
@@ -187,7 +187,7 @@ fn the_arrows_move_between_menus_and_wrap() {
             assert!(recorded(&h, want), "{opened_by} {key:?}: its menu records");
             if opened_by == "keyboard" {
                 assert!(
-                    h.ui().is_focus_within(MenuBar::menu_id(title(want))),
+                    h.ui().is_focus_within(Menu::menu_id(title(want))),
                     "{opened_by} {key:?}: the menu's row takes focus"
                 );
             }
@@ -214,7 +214,7 @@ fn down_and_up_open_a_title_on_its_first_and_last_row() {
         assert_eq!(open(&h), Some(0), "{key:?} opens the menu");
         let row = h.ui().focus().expect("a row takes focus");
         assert!(
-            h.ui().is_focus_within(MenuBar::menu_id(title(0))),
+            h.ui().is_focus_within(Menu::menu_id(title(0))),
             "{key:?}: focus is in the menu"
         );
         landed.push(h.rect(row).expect("the row is arranged").min.y);
@@ -308,7 +308,7 @@ fn a_menu_dropped_before_the_open_one_leaves_it_open() {
 /// closed one; a closed title picks from [`MenuBarTheme::title`] by state.
 #[test]
 fn the_open_title_wears_the_open_look() {
-    let theme = MenuBarTheme::stock(ColorScheme::Dark);
+    let theme = Theme::stock(ColorScheme::Dark).menu_bar;
     let rest = ResponseState::default();
     assert_eq!(theme.look(&rest, MenuState::Open), &theme.open);
     assert_eq!(theme.look(&rest, MenuState::Closed), &theme.title.normal);
@@ -353,7 +353,7 @@ fn menu_style_restyles_the_menus() {
                 .id(bar())
                 .menu_style(styled.then_some(&menu))
                 .show(ui, |menus| {
-                    menus.menu("File", |ui, _| {
+                    menus.menu("File", |ui| {
                         MenuItem::new("New").show(ui);
                     });
                 });
@@ -363,7 +363,7 @@ fn menu_style_restyles_the_menus() {
         let at = h.center_of(title(0));
         h.click(at);
         h.frame(&mut scene);
-        h.rect(MenuBar::menu_id(title(0)))
+        h.rect(Menu::menu_id(title(0)))
             .expect("the menu is open")
             .size
             .h

@@ -120,7 +120,7 @@ fn popup_barrier_does_not_force_full_repaint() {
             .anchor(Anchor::at_point(anchor))
             .id(WidgetId::from_hash("p"))
             .chrome(Chrome::fill(BLUE))
-            .show(ui, |ui, _popup| {
+            .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("body-leaf"))
                     .size(60.0)

@@ -21,7 +21,6 @@ pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod popup;
 pub(crate) mod progress_bar;
-pub(crate) mod scheme_preference;
 pub(crate) mod scrollbar;
 pub(crate) mod segmented;
 pub(crate) mod selection;
@@ -73,6 +72,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
 use crate::theme::toggle_kind::ToggleKind;
 use crate::theme::tooltip::TooltipTheme;
+use ::serde::de::Error as _;
 use glam::Vec2;
 use std::time::Duration;
 
@@ -101,11 +101,9 @@ use std::time::Duration;
     Debug,
     PartialEq,
     ::serde::Serialize,
-    ::serde::Deserialize,
     palantir_anim_derive::Lerp,
     palantir_anim_derive::TextSlots,
 )]
-#[serde(try_from = "UncheckedTheme")]
 #[animate(before_lerp = Self::share_text_axes)]
 pub struct Theme {
     /// What every [`crate::Button`] wears; [`crate::ComboBox`] and [`crate::DragValue`] derive from it.
@@ -458,10 +456,15 @@ impl Theme {
     }
 }
 
-/// [`Theme`] as a file holds it, before the check of the whole theme: each slot checks itself
-/// as it reads, and [`Theme::faces_valid`] then checks each override as the face it makes over
-/// [`Theme::text`], which no slot alone can see.
+/// [`Theme`] as a file holds it, read straight into a `Theme` by serde's remote derive
+/// (<https://serde.rs/remote-derive.html>), so the fields are listed once more and the compiler
+/// holds the list whole. Each slot checks itself as it reads, and [`Theme`]'s `Deserialize` then
+/// checks each override as the face it makes over [`Theme::text`] ([`Theme::faces_valid`]),
+/// which no slot alone can see. Refused: `#[serde(remote = "Self")]` on `Theme`, whose derive adds
+/// a public inherent `Theme::deserialize` that skips the check, and that the call
+/// `Theme::deserialize(d)` picks over the trait's.
 #[derive(Debug, ::serde::Deserialize)]
+#[serde(remote = "Theme")]
 struct UncheckedTheme {
     button: ButtonTheme,
     checkbox: ToggleTheme,
@@ -496,72 +499,11 @@ struct UncheckedTheme {
     panel_clip: ClipMode,
 }
 
-impl TryFrom<UncheckedTheme> for Theme {
-    type Error = &'static str;
-
-    fn try_from(unchecked: UncheckedTheme) -> Result<Self, Self::Error> {
-        let UncheckedTheme {
-            button,
-            checkbox,
-            radio,
-            segmented,
-            switch,
-            scrollbar,
-            text_edit,
-            drag_value,
-            menu,
-            menu_bar,
-            combo_box,
-            modal,
-            popup,
-            color_picker,
-            tooltip,
-            progress_bar,
-            separator,
-            slider,
-            spinner,
-            splitter,
-            tabs,
-            dock,
-            expander,
-            focus_ring,
-            text,
-            window_bg,
-            panel_chrome,
-            panel_clip,
-        } = unchecked;
-        let theme = Self {
-            button,
-            checkbox,
-            radio,
-            segmented,
-            switch,
-            scrollbar,
-            text_edit,
-            drag_value,
-            menu,
-            menu_bar,
-            combo_box,
-            modal,
-            popup,
-            color_picker,
-            tooltip,
-            progress_bar,
-            separator,
-            slider,
-            spinner,
-            splitter,
-            tabs,
-            dock,
-            expander,
-            focus_ring,
-            text,
-            window_bg,
-            panel_chrome,
-            panel_clip,
-        };
+impl<'de> ::serde::Deserialize<'de> for Theme {
+    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let theme = UncheckedTheme::deserialize(deserializer)?;
         if !theme.faces_valid(1.0) {
-            return Err(FACES_ERROR);
+            return Err(D::Error::custom(FACES_ERROR));
         }
         Ok(theme)
     }

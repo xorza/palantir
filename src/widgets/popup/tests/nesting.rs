@@ -42,24 +42,20 @@ fn record(ui: &mut Ui, opener: Opener, selected: &mut &'static &'static str) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| match opener {
             Opener::Modal => {
-                Modal::new()
-                    .auto_id()
-                    .show(ui, |ui, _| dropdown(ui, selected));
+                Modal::new().auto_id().show(ui, |ui| dropdown(ui, selected));
             }
             Opener::Popup => {
                 Popup::new()
                     .anchor(Anchor::at_point(Vec2::new(20.0, 20.0)))
                     .auto_id()
-                    .show(ui, |ui, _| dropdown(ui, selected));
+                    .show(ui, |ui| dropdown(ui, selected));
             }
             Opener::Menu => {
-                Menu::for_id(menu_trigger()).show(ui, |ui, _| dropdown(ui, selected));
+                Menu::for_id(menu_trigger()).show(ui, |ui| dropdown(ui, selected));
             }
             Opener::ModalInModal => {
-                Modal::new().auto_id().show(ui, |ui, _| {
-                    Modal::new()
-                        .auto_id()
-                        .show(ui, |ui, _| dropdown(ui, selected));
+                Modal::new().auto_id().show(ui, |ui| {
+                    Modal::new().auto_id().show(ui, |ui| dropdown(ui, selected));
                 });
             }
         });
@@ -88,7 +84,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         h.click(combo());
         h.frame(|ui| record(ui, opener, &mut selected));
 
-        let list = ComboBox::menu_id(combo());
+        let list = Menu::menu_id(combo());
         let rows = h
             .rect(list)
             .unwrap_or_else(|| panic!("{opener:?}: the list opened"));

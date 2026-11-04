@@ -2,7 +2,7 @@
 //! them: the winit host reads them from the desktop, a headless host takes them from its builder
 //! and its setters.
 
-use crate::primitives::reduce_preference::Reduction;
+use crate::primitives::reduction::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::resources::UiResources;
 use std::time::Duration;
@@ -51,7 +51,7 @@ impl SystemPreferences {
 mod tests {
     use crate::host::system_preferences::SystemPreferences;
     use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
-    use crate::primitives::reduce_preference::Reduction;
+    use crate::primitives::reduction::Reduction;
     use crate::theme::color_scheme::ColorScheme;
     use crate::ui::resources::UiResources;
     use std::time::Duration;

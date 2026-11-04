@@ -36,8 +36,8 @@ use std::rc::Rc;
 /// `selectable_value` binds a value, so the caller keeps its own type rather than an index; the
 /// binding is a reference into `options`, so an option that owns text or a record is never
 /// cloned, and a frame that picks nothing allocates nothing.
-/// Open state lives in the state map keyed off the combo's id; [`Self::open`],
-/// [`Self::close`] and [`Self::is_open`] drive it from outside.
+/// Open state lives in the state map keyed off the combo's id; [`ComboBoxList::open`],
+/// [`ComboBoxList::close`] and [`ComboBoxList::is_open`] drive it from outside.
 ///
 /// A `*selected` no option equals shows its own label and marks no row; it is rewritten only
 /// when the user picks an option it does not equal.
@@ -152,7 +152,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
             }
             if (opens_pick || opens_first || opens_last)
                 && !response.clicked()
-                && !TriggerState::<Keyed>::is_open(ui, id)
+                && !TriggerState::<ComboBoxList>::is_open(ui, id)
             {
                 response.state.activate();
             }
@@ -205,7 +205,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
             .style(self.menu_style)
             .landing(landing)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
-            .show_as::<Keyed, _>(ui, |ui, _| {
+            .show_as::<ComboBoxList, _>(ui, |ui| {
                 let mut picked = false;
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(label(opt));
@@ -229,19 +229,14 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
     }
 }
 
-/// The instance that keys a combo box's row and holds the functions that drive it, so a call
-/// names no option type.
-type Keyed = ComboBox<'static, 'static, &'static str, fn(&&'static str) -> &'static str>;
+/// The list of a [`ComboBox`], driven from outside by the combo's id: the row its open state
+/// keeps, and the functions that open and close it. A type of its own, not generic over the
+/// combo's options, so a call names no option type. The list is the combo's menu, so its id is
+/// [`Menu::menu_id`] of the combo's.
+#[derive(Debug)]
+pub struct ComboBoxList;
 
-/// Driving a combo box's list from outside, by the combo's id, and the id of the list. The
-/// functions sit on one concrete instance, [`ComboBox::open`] and its siblings, so a call names no
-/// generics.
-impl Keyed {
-    /// The list of the combo box `id`, a menu.
-    pub fn menu_id(id: WidgetId) -> WidgetId {
-        Menu::menu_id(id)
-    }
-
+impl ComboBoxList {
     /// Open the list of the combo box `id`, e.g. from a keyboard shortcut; it records on the
     /// combo's next `show`.
     pub fn open(ui: &mut Ui, id: WidgetId) {
