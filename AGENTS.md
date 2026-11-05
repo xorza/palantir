@@ -87,7 +87,8 @@ Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
   lock, state with no owner; a shader per thread through distinct entry points
   ([photocraft#9182](https://github.com/storytold/photocraft/pull/9182)), a rule every new
   shader must keep; DXC, a DLL each app must ship. Cost: builds on a shared device run one at a
-  time on every backend.
+  time on every backend. The turn guards no data, so it alone passes on poison; every other lock
+  panics on it through `crate::common::sync`.
 
 ## Device loss
 

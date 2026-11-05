@@ -1,6 +1,7 @@
 //! [`WakeSignal`]: the wake a host with no event loop keeps for its next frame.
 
-use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use crate::common::sync::{CondvarExt, MutexExt};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
 use crate::window::waker::Waker;
@@ -38,15 +39,14 @@ impl WakeSignal {
     /// Block until a wake waits or `deadline` passes; whether one waits.
     pub(crate) fn wait(&self, deadline: Instant) -> bool {
         let timeout = deadline.saturating_duration_since(Instant::now());
-        let (woken, _) = self
+        let woken = self
             .wakes
-            .wait_timeout_while(self.woken(), timeout, |woken| !*woken)
-            .unwrap_or_else(PoisonError::into_inner);
+            .wait_timeout_while_unpoisoned(self.woken(), timeout, |woken| !*woken);
         *woken
     }
 
     fn woken(&self) -> std::sync::MutexGuard<'_, bool> {
-        self.woken.lock().unwrap_or_else(PoisonError::into_inner)
+        self.woken.lock_unpoisoned()
     }
 }
 

@@ -1,5 +1,6 @@
 //! Shared headless GPU lifecycle for feature-gated tests.
 
+use crate::common::sync::MutexExt;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
@@ -10,7 +11,7 @@ use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem::ManuallyDrop;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -231,9 +232,8 @@ static REGISTRY: Mutex<Registry> = Mutex::new(Registry {
     failed: None,
 });
 
-/// [`REGISTRY`], whatever a panicking open left in it.
 fn registry() -> MutexGuard<'static, Registry> {
-    REGISTRY.lock().unwrap_or_else(PoisonError::into_inner)
+    REGISTRY.lock_unpoisoned()
 }
 
 impl Registry {

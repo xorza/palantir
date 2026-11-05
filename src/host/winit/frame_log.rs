@@ -1,5 +1,6 @@
 //! [`FrameLog`]: each open window's last frame, shared between the event loop and its handles.
 
+use crate::common::sync::{CondvarExt, MutexExt};
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
@@ -27,24 +28,24 @@ struct LoggedFrame {
 
 impl FrameLog {
     pub(super) fn record(&self, token: WindowToken, summary: FrameSummary) {
-        Self::entry(&mut self.windows.lock().unwrap(), token).summary = Some(summary);
+        Self::entry(&mut self.windows.lock_unpoisoned(), token).summary = Some(summary);
         self.changed.notify_all();
     }
 
     /// Block until the next write, or for `timeout` at most.
     pub(super) fn wait(&self, timeout: Duration) {
-        let windows = self.windows.lock().unwrap();
-        drop(self.changed.wait_timeout(windows, timeout).unwrap());
+        let windows = self.windows.lock_unpoisoned();
+        drop(self.changed.wait_timeout_unpoisoned(windows, timeout));
     }
 
     /// Note whether `token`'s window is hidden, which holds its frames until it shows.
     pub(super) fn set_hidden(&self, token: WindowToken, hidden: bool) {
-        Self::entry(&mut self.windows.lock().unwrap(), token).hidden = hidden;
+        Self::entry(&mut self.windows.lock_unpoisoned(), token).hidden = hidden;
         self.changed.notify_all();
     }
 
     pub(super) fn get(&self, token: WindowToken) -> Option<FrameSummary> {
-        let windows = self.windows.lock().unwrap();
+        let windows = self.windows.lock_unpoisoned();
         windows
             .iter()
             .find(|logged| logged.token == token)
@@ -52,7 +53,7 @@ impl FrameLog {
     }
 
     pub(super) fn is_hidden(&self, token: WindowToken) -> bool {
-        let windows = self.windows.lock().unwrap();
+        let windows = self.windows.lock_unpoisoned();
         windows
             .iter()
             .any(|logged| logged.token == token && logged.hidden)
@@ -76,15 +77,14 @@ impl FrameLog {
 
     pub(super) fn remove(&self, token: WindowToken) {
         self.windows
-            .lock()
-            .unwrap()
+            .lock_unpoisoned()
             .retain(|logged| logged.token != token);
         self.changed.notify_all();
     }
 
     /// Forget every window, as the event loop ends and closes them all.
     pub(super) fn clear(&self) {
-        self.windows.lock().unwrap().clear();
+        self.windows.lock_unpoisoned().clear();
         self.changed.notify_all();
     }
 }

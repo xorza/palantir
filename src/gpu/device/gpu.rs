@@ -167,8 +167,14 @@ impl Gpu {
         self.device.create_compute_pipeline(desc)
     }
 
-    /// The device's pipeline turn. A build that panicked, as the uncaptured-error handler does on
-    /// a validation error, leaves nothing half-done behind the lock, so poison is ignored.
+    /// The device's pipeline turn. The one lock that passes on poison: a turn guards no data,
+    /// so a build that panicked, as the uncaptured-error handler does on a validation error,
+    /// leaves nothing half-changed, and a shared test device's turn must not fail every later
+    /// test.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a turn guards no data, so its poison carries nothing"
+    )]
     fn take_pipeline_turn(&self) -> MutexGuard<'_, ()> {
         self.pipeline_turn
             .lock()
@@ -294,13 +300,14 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::sync::MutexExt;
     use crate::gpu::device::gpu::{FilledBuffer, Gpu};
     use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::surface::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
     use crate::internals::panic_probe;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, TryLockError};
     use std::thread;
     use std::time::Duration;
 
@@ -341,10 +348,7 @@ mod tests {
         let clone = gpu.handles();
         let turn = gpu.take_pipeline_turn();
         assert!(
-            matches!(
-                clone.pipeline_turn.try_lock(),
-                Err(TryLockError::WouldBlock)
-            ),
+            clone.pipeline_turn.try_lock_unpoisoned().is_none(),
             "a clone waits for the turn its device holds"
         );
         drop(turn);

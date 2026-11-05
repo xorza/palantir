@@ -11,5 +11,6 @@ pub(crate) mod id_counter;
 pub(crate) mod non_max;
 pub(crate) mod platform;
 pub(crate) mod span;
+pub(crate) mod sync;
 pub(crate) mod time;
 pub(crate) mod tracy;
