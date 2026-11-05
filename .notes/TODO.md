@@ -12,6 +12,7 @@
 - wid from hash - const
 - behavior differences in release and debug
 - migrate frame bench to showcase
+- separate input processing stage to avoid relayouts?
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
