@@ -9,7 +9,6 @@
 - build-in colors
 - rich text edit
 - audit hot structs for compact opportunities
-- behavior differences in release and debug
 - separate input processing stage to avoid relayouts?
 
 - table widget: sortable header, virtual rows over a fixed row height
