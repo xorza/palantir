@@ -308,7 +308,7 @@ impl Tree {
                     "the flag word and visibility overrun the Tab bit",
                 );
             }
-            cascade_static_hasher.write_u64(widget_ids[i].0.get());
+            cascade_static_hasher.write_u64(widget_ids[i].as_u64());
             cascade_static_hasher.write_u64(
                 u64::from(subtree_ends[i].end())
                     | (u64::from(attrs[i].bits()) << 32)
@@ -353,7 +353,7 @@ impl Tree {
                     TreeItem::Child(c) => {
                         for hasher in [&mut lh, &mut ph] {
                             hasher.write_u8(0xFF);
-                            hasher.write_u64(widget_ids[c.id.idx()].0.get());
+                            hasher.write_u64(widget_ids[c.id.idx()].as_u64());
                         }
                         sh.write_u64(subtree_out[c.id.idx()].0);
                         lsh.write_u64(layout_subtree_out[c.id.idx()].0);

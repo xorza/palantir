@@ -12,6 +12,6 @@ pub struct TabKey(u64);
 impl TabKey {
     /// The key of `value`, by its hash: equal values give equal keys.
     pub fn of(value: impl Hash) -> Self {
-        Self(WidgetId::from_hash(value).0.get())
+        Self(WidgetId::from_hash(value).as_u64())
     }
 }

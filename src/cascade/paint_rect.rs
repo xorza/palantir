@@ -206,7 +206,7 @@ impl PaintRectCtx<'_> {
                 let (idx, s) = match item {
                     TreeItem::ShapeRecord(idx, s) => (idx, s),
                     TreeItem::Child(c) => {
-                        span.push_unpainted(ContentHash(widget_ids[c.id.idx()].0.get()));
+                        span.push_unpainted(ContentHash(widget_ids[c.id.idx()].as_u64()));
                         continue;
                     }
                 };

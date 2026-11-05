@@ -85,7 +85,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
     );
     assert_eq!(
         marker.hash.0,
-        WidgetId::from_hash("kid").0.get(),
+        WidgetId::from_hash("kid").as_u64(),
         "child marker hash must be the child's WidgetId bits",
     );
 }

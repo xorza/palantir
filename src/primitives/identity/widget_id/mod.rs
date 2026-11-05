@@ -41,11 +41,17 @@ pub(crate) type WidgetIdSet = HashSet<WidgetId, BuildHasherDefault<IdHasher>>;
 /// Never zero, so `Option<WidgetId>` takes 8 B, as std's `ThreadId` does.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::NoUninit)]
-pub struct WidgetId(pub(crate) NonZeroU64);
+pub struct WidgetId(NonZeroU64);
 
 impl WidgetId {
-    /// Id of the `Layer::Main` synthetic viewport root. Hard-coded so refactors of `ui/mod.rs` don't shift it; a top-level `id_salt("k")` resolves to `VIEWPORT.with(from_hash("k").0)`.
+    /// Id of the `Layer::Main` synthetic viewport root. Hard-coded so refactors of `ui/mod.rs` don't shift it; a top-level `id_salt("k")` resolves to `VIEWPORT.with(from_hash("k").as_u64())`.
     pub(crate) const VIEWPORT: Self = Self(NonZeroU64::MAX);
+
+    /// The id's bits, for a hash or an order that mixes them in.
+    #[inline]
+    pub(crate) const fn as_u64(self) -> u64 {
+        self.0.get()
+    }
 
     /// An id from anything hashable, with no parent mixed in; [`Self::with`] derives a child.
     pub fn from_hash(h: impl Hash) -> Self {
@@ -108,6 +114,19 @@ impl WidgetId {
         hasher.write_u32(site.line());
         hasher.write_u32(site.column());
         Self::finalize(hasher.finish())
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::primitives::identity::widget_id::WidgetId;
+    use std::num::NonZeroU64;
+
+    impl WidgetId {
+        /// The id of these bits, for a test that needs an order among ids.
+        pub(crate) const fn of_bits(bits: u64) -> Self {
+            Self(NonZeroU64::new(bits).expect("an id is not zero"))
+        }
     }
 }
 

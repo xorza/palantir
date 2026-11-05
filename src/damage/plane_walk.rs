@@ -107,7 +107,7 @@ impl PlaneWalk<'_> {
     /// The `parent_key` node `i` sits under: its parent's `WidgetId` bits, or the plane's layer and depth for a root, so a subtree changing planes cannot read as unchanged.
     fn parent_key(&self, i: usize) -> u64 {
         if let Some(parent) = self.frame.tree.parent_of(i) {
-            return self.frame.tree.records.widget_id()[parent.idx()].0.get();
+            return self.frame.tree.records.widget_id()[parent.idx()].as_u64();
         }
         let plane = self.frame.plane;
         (u64::from(plane.layer as u8) << 8) | u64::from(plane.depth)

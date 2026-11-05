@@ -78,11 +78,10 @@ mod tests {
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::identity::pane_keys::PaneKeys;
     use crate::primitives::identity::widget_id::WidgetId;
-    use std::num::NonZeroU64;
 
     fn key(owner: u64, shape: u32) -> PaneKey {
         PaneKey {
-            owner: WidgetId(NonZeroU64::new(owner).unwrap()),
+            owner: WidgetId::of_bits(owner),
             shape,
         }
     }
