@@ -958,6 +958,26 @@ pub(crate) mod internals {
         }
 
         #[cfg(test)]
+        pub(crate) fn entries_capacity(&self) -> usize {
+            self.cache.entries_capacity()
+        }
+
+        #[cfg(test)]
+        pub(crate) fn kept_capacity(&self) -> usize {
+            self.cache.kept_capacity()
+        }
+
+        #[cfg(test)]
+        pub(crate) fn recycle_pool_capacity(&self) -> usize {
+            self.cache.recycle_pool_capacity()
+        }
+
+        #[cfg(test)]
+        pub(crate) fn kept_len(&self) -> usize {
+            self.cache.kept_len()
+        }
+
+        #[cfg(test)]
         pub(crate) fn cache_counts(&self) -> CacheCounts {
             self.cache.counts()
         }

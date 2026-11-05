@@ -395,6 +395,9 @@ pub struct Shell {
 }
 
 impl Shell {
+    /// How many pages the tour has.
+    pub const PAGE_COUNT: usize = PAGES.len();
+
     /// The tour on the page at `page`, an index into `Self::page_labels`, its item scrolled into
     /// view, in the stock look.
     pub fn open(page: usize) -> Self {

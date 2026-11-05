@@ -36,7 +36,6 @@ use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
-use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Range;
@@ -572,10 +571,9 @@ impl<K: Copy + Eq + Hash + Debug> Slab<'_, K> {
     /// Settle one drained non-drawing ticket: `Some(due)` to re-file, `None` once
     /// reclaimed or no longer this wheel's business.
     fn retire_unallocated(&mut self, key: K, frame: u64) -> Option<u64> {
-        let Entry::Occupied(entry) = self.cache.entry(key) else {
-            return None;
-        };
-        let idx = *entry.get();
+        // `get`, not `entry`, which reserves on a vacant key and could rehash the map on a frame that
+        // rasterizes nothing.
+        let idx = *self.cache.get(&key)?;
         let slot = &self.slots[idx as usize];
         // Allocated entries are the clock's to reclaim. Defensive: every path allocating over a slab
         // index removes the old key first.
@@ -586,7 +584,7 @@ impl<K: Copy + Eq + Hash + Debug> Slab<'_, K> {
         if dies_at > frame {
             return Some(dies_at);
         }
-        entry.remove();
+        self.cache.remove(&key);
         self.free.release(self.slots, self.sides, idx);
         None
     }

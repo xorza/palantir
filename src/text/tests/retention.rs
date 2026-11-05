@@ -133,6 +133,73 @@ fn fill_distinct_widths(c: &mut CosmicMeasure, n: u32) -> Vec<TextShapeKey> {
         .collect()
 }
 
+/// An expiry moves buffers into room the shaping frames reserved. 200 distinct texts reserve room
+/// for 200 kept and 200 pooled. They expire into the store a probation window later, 5 frames, and
+/// on to the pool a kept shape's window after that, 121 frames, with no room grown on the way.
+#[test]
+fn an_expiry_grows_no_room() {
+    let mut c = CosmicMeasure::default();
+    for i in 0..200 {
+        c.measure(&format!("text {i}"), shape(14.0).leading(18.0));
+    }
+    assert_eq!(c.cache_len(), 200);
+    let kept_room = c.kept_capacity();
+    let pool_room = c.recycle_pool_capacity();
+    assert!(kept_room >= 200, "kept room {kept_room}");
+    assert!(pool_room >= 200, "pool room {pool_room}");
+
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES + 1);
+    assert_eq!(c.cache_len(), 0);
+    assert_eq!(c.kept_len(), 200);
+    assert_eq!(c.kept_capacity(), kept_room);
+    assert_eq!(c.recycle_pool_capacity(), pool_room);
+
+    idle_frames(&mut c, RENDERED_RUN_KEEP_FRAMES + 1);
+    assert_eq!(c.kept_len(), 0);
+    assert_eq!(c.recycle_pool_len(), 200);
+    assert_eq!(c.recycle_pool_capacity(), pool_room);
+}
+
+/// A ticket that fires for a gone entry leaves the full map as it is. `HashMap::entry` reserves on
+/// a vacant key, which would double this map on a frame that shapes nothing. A promoted entry's
+/// ticket re-files out to its protected deadline, a supersede evicts the entry before then, and the
+/// map fills to its capacity, so that ticket finds no entry and no room.
+#[test]
+fn a_stale_ticket_grows_no_map() {
+    let mut c = CosmicMeasure::default();
+    let mut keys = fill_distinct_widths(&mut c, 8);
+    let hit_all = |c: &mut CosmicMeasure, keys: &[TextShapeKey]| {
+        for key in keys {
+            c.ensure_buffer(TextShapeRequest::for_key(BODY, *key).unwrap());
+        }
+    };
+    hit_all(&mut c, &keys);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES + 1);
+
+    let stale = keys.remove(0);
+    c.supersede(stale);
+    for _ in 0..=PROBATION_KEEP_FRAMES {
+        hit_all(&mut c, &keys);
+        idle_frames(&mut c, 1);
+    }
+    assert_eq!(c.cache_len(), keys.len(), "the supersede evicted it");
+
+    let mut next = 8;
+    while c.cache_len() < c.entries_capacity() {
+        keys.push(c.measure(BODY, distinct_width_shape(next)).buffer_key());
+        next += 1;
+    }
+    let room = c.entries_capacity();
+    hit_all(&mut c, &keys);
+
+    for _ in 0..=RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK {
+        hit_all(&mut c, &keys);
+        idle_frames(&mut c, 1);
+    }
+    assert_eq!(c.cache_len(), room, "the map stayed full");
+    assert_eq!(c.entries_capacity(), room);
+}
+
 fn idle_frames(c: &mut CosmicMeasure, n: u64) {
     for _ in 0..n {
         c.tick_frame();

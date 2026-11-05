@@ -197,17 +197,17 @@ impl EncodedCache {
         // fires is live.
         self.expiry.retire(cur_frame, |key, _| {
             // Gone already: `emit_cached` drops a row whose slot was reused, leaving its ticket.
-            let Entry::Occupied(slot) = map.entry(key) else {
-                return None;
-            };
+            // `get`, not `entry`, which reserves on a vacant key and could rehash the map on a
+            // frame that encodes nothing.
+            let row = map.get(&key)?;
             // A hit files no ticket; re-read the real `last_use` and re-file a live row.
-            let dies_at = dies_at(slot.get().last_use);
+            let dies_at = dies_at(row.last_use);
             if dies_at > cur_frame {
                 probe.refiles.bump();
                 return Some(dies_at);
             }
             probe.expiries.bump();
-            let dead = slot.remove();
+            let dead = map.remove(&key).expect("read above");
             arena.release(dead.span);
             texts.release(dead.text);
             None

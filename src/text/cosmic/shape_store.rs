@@ -101,6 +101,11 @@ impl ShapeStore {
         None
     }
 
+    /// Room for `leaving` more kept buffers.
+    pub(super) fn reserve_kept(&mut self, leaving: usize) {
+        self.kept.reserve(leaving);
+    }
+
     /// How many buffers are kept.
     pub(super) fn kept_len(&self) -> usize {
         self.kept.len()
@@ -110,13 +115,13 @@ impl ShapeStore {
     pub(super) fn tick(&mut self, frame: u64, mut release: impl FnMut(Recycled)) {
         let kept = &mut self.kept;
         self.expiry.retire(frame, |identity, _| {
-            let Entry::Occupied(shape) = kept.entry(identity) else {
-                return None;
-            };
-            if shape.get().dies_at > frame {
-                return Some(shape.get().dies_at);
+            // `get`, not `entry`, which reserves on a vacant key and could rehash the map on a frame
+            // that shapes nothing.
+            let shape = kept.get(&identity)?;
+            if shape.dies_at > frame {
+                return Some(shape.dies_at);
             }
-            release(shape.remove().recycled);
+            release(kept.remove(&identity).expect("read above").recycled);
             None
         });
     }
@@ -132,5 +137,17 @@ impl ShapeStore {
             release(kept.recycled);
         }
         self.expiry.clear();
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use super::*;
+
+    impl ShapeStore {
+        /// The buffers the store has room to keep.
+        pub(crate) fn kept_capacity(&self) -> usize {
+            self.kept.capacity()
+        }
     }
 }

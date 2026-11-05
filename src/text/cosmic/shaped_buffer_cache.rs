@@ -197,6 +197,16 @@ impl ShapedBufferCache {
             displaced.is_none(),
             "every caller checks residency first, so a key is inserted once",
         );
+        self.reserve_for_expiry();
+    }
+
+    /// Room for every resident buffer to expire into the store and on to the pool, charged to a
+    /// frame that shapes, as an expiry comes on a later frame that need not.
+    fn reserve_for_expiry(&mut self) {
+        let resident = self.entries.len();
+        self.shapes.reserve_kept(resident);
+        self.recycle_pool
+            .reserve_for(resident + self.shapes.kept_len());
     }
 
     /// The frame an entry filed into the probation window is first dead.
@@ -235,22 +245,21 @@ impl ShapedBufferCache {
         let counters = &mut self.counters;
         self.expiry.retire(frame, |key, seq| {
             // Retired already: a demote leaves two tickets outstanding, and the first may have
-            // evicted this entry.
-            let Entry::Occupied(slot) = entries.entry(key) else {
-                return None;
-            };
+            // evicted this entry. `get`, not `entry`, which reserves on a vacant key and could
+            // rehash the map on a frame that shapes nothing.
+            let entry = entries.get(&key)?;
             // Supplanted by a later `supersede`: the live ticket is still outstanding, so
             // this one dies. Re-filing it would grow the ticket count for as long as the entry
             // lived.
-            if seq != slot.get().ticket_seq {
+            if seq != entry.ticket_seq {
                 return None;
             }
-            if slot.get().dies_at > frame {
+            if entry.dies_at > frame {
                 // Re-filed under the same serial, so the entry's stamp still names it.
-                return Some(slot.get().dies_at);
+                return Some(entry.dies_at);
             }
             counters.expiries.bump();
-            let entry = slot.remove();
+            let entry = entries.remove(&key).expect("read above");
             let whole = entry.shaped.cut.is_none();
             let recycled = Recycled::of(entry);
             if !whole {
@@ -258,16 +267,14 @@ impl ShapedBufferCache {
                 return None;
             }
             shapes.left(key);
-            match shapes.keep(key, recycled, frame) {
-                Some(recycled) => recycle_pool.push(recycled),
-                None => recycle_pool.reserve_for(shapes.kept_len()),
+            if let Some(recycled) = shapes.keep(key, recycled, frame) {
+                recycle_pool.push(recycled);
             }
             None
         });
         let recycle_pool = &mut self.recycle_pool;
-        self.shapes.tick(frame, |recycled| {
-            recycle_pool.push_within_capacity(recycled);
-        });
+        self.shapes
+            .tick(frame, |recycled| recycle_pool.push(recycled));
         self.recycle_pool.tick(frame);
     }
 
@@ -293,7 +300,9 @@ impl ShapedBufferCache {
 
     /// Hand back allocations that never became an entry (the ellipsis probe's).
     pub(super) fn recycle(&mut self, recycled: Recycled) {
+        self.recycle_pool.reserve_for(1);
         self.recycle_pool.push(recycled);
+        self.reserve_for_expiry();
     }
 }
 
@@ -317,24 +326,18 @@ struct RecyclePool {
 }
 
 impl RecyclePool {
+    /// Pool `recycled` in the room [`Self::reserve_for`] made, so an expiry allocates nothing.
     fn push(&mut self, recycled: Recycled) {
+        debug_assert!(
+            self.buffers.len() < self.buffers.capacity(),
+            "the frame that shaped this buffer reserved its room in the pool",
+        );
         self.buffers.push(recycled);
     }
 
-    /// Room for `count` more buffers than the pool holds, every buffer a [`ShapeStore`] keeps, so
-    /// the pool grows in the frame a buffer leaves the cache for one, as it would without the
-    /// shape, and not in a later frame that shapes nothing.
+    /// Room for `count` more buffers than the pool holds.
     fn reserve_for(&mut self, count: usize) {
         self.buffers.reserve(count);
-    }
-
-    /// Pool `recycled` where the pool has room for it, else free it: a buffer back from
-    /// [`ShapeStore`] can come on top of the most the cache ever pooled, and growing the pool for
-    /// it would allocate in a frame that shapes nothing.
-    fn push_within_capacity(&mut self, recycled: Recycled) {
-        if self.buffers.len() < self.buffers.capacity() {
-            self.buffers.push(recycled);
-        }
     }
 
     fn pop(&mut self) -> Option<Recycled> {
@@ -365,6 +368,26 @@ pub(crate) mod internals {
     use crate::text::extent::TextExtent;
 
     impl ShapedBufferCache {
+        /// The entries the map has room for before it grows.
+        pub(crate) fn entries_capacity(&self) -> usize {
+            self.entries.capacity()
+        }
+
+        /// The buffers the store has room to keep.
+        pub(crate) fn kept_capacity(&self) -> usize {
+            self.shapes.kept_capacity()
+        }
+
+        /// The buffers the pool has room to hold.
+        pub(crate) fn recycle_pool_capacity(&self) -> usize {
+            self.recycle_pool.buffers.capacity()
+        }
+
+        /// How many buffers the store keeps.
+        pub(crate) fn kept_len(&self) -> usize {
+            self.shapes.kept_len()
+        }
+
         /// The run resident under `key`, whatever text it holds, for a test that watches
         /// residency.
         pub(crate) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
