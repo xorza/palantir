@@ -271,3 +271,24 @@ fn a_float_whose_ink_no_floor_holds_keeps_its_panel() {
     );
     let _ = Theme::from_parts(&palette, &m);
 }
+
+/// An opaque modal wears the popup panel, a rung under the buttons it holds, `element` against
+/// their `element_mid`, so a button shows by its fill and not by its hairline alone.
+#[test]
+fn a_modal_sits_a_rung_under_its_buttons() {
+    use crate::theme::button::ButtonTheme;
+    use crate::theme::modal::ModalTheme;
+    let m = Metrics {
+        float_material: None,
+        ..Metrics::DEFAULT
+    };
+    for scheme in [ColorScheme::Dark, ColorScheme::Light] {
+        let p = Palette::for_scheme(scheme);
+        let panel = ModalTheme::from_parts(p, &m).panel;
+        assert_eq!(panel, p.popup_panel(&m), "{scheme:?}");
+        assert_eq!(panel.fill, p.element.into(), "{scheme:?}");
+        let button = ButtonTheme::from_parts(p, &m).unselected.normal.chrome.fill;
+        assert_eq!(button, p.element_mid.into(), "{scheme:?}");
+        assert_ne!(panel.fill, button, "{scheme:?}");
+    }
+}

@@ -1,10 +1,8 @@
 //! What a modal wears: the dialog surface and the scrim that dims what is behind it.
 
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -34,14 +32,13 @@ pub struct ModalTheme {
 }
 
 impl ModalTheme {
-    /// A floating panel over a half-opaque black scrim, in [`Metrics::float_material`] held for the
-    /// ambient ink, as the modal's content is the app's.
+    /// [`Palette::popup_panel`] over a half-opaque black scrim, in [`Metrics::float_material`]
+    /// held for the ambient ink, as the modal's content is the app's. The panel sits a rung under
+    /// the controls it holds, as every surface does, so a button shows by its fill. Refused:
+    /// `element_mid`, a button's own fill, which left a button its hairline alone.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        let panel = Chrome::rounded(p.element_mid, Corners::all(m.radius.float))
-            .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
-            .with_shadow(p.float_shadow(m));
         Self {
-            panel: m.dress_float(panel, p.text),
+            panel: m.dress_float(p.popup_panel(m), p.text),
             scrim: RgbaF32::BLACK.with_alpha8(128),
             padding: Spacing::all(m.space.xl),
             min_width: 280.0,

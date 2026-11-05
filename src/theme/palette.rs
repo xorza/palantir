@@ -126,7 +126,7 @@ impl Palette {
         Shadow::drop(self.shadow, m.float_shadow.offset, m.float_shadow.blur)
     }
 
-    /// Chrome for a body a [`crate::Popup`] drops from a trigger, one recipe so context menu, combo list and picker read as one system. It rounds and casts as every floating surface does; the shadow separates it from what it opened over, since its fill matches the panels beneath.
+    /// Chrome for a body a [`crate::Popup`] drops from a trigger and for a [`crate::Modal`]'s panel, one recipe so context menu, combo list, picker and dialog read as one system. It rounds and casts as every floating surface does; the shadow separates it from what it opened over, since its fill matches the panels beneath.
     pub fn popup_panel(&self, m: &Metrics) -> Chrome {
         Chrome::rounded(self.element, Corners::all(m.radius.float))
             .with_border(Stroke::new(self.border_mid(), m.stroke.hairline))
