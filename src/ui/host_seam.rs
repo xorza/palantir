@@ -15,8 +15,9 @@ pub(super) struct HostSeam {
     /// Host-to-recorder facts refreshed before each windowed frame.
     pub(super) window_frame: WindowFrameState,
     /// This window's latest GPU timing sample, which the backend publishes into on each of the
-    /// window's submits: a window reads its own frames, not the last window's.
-    pub(super) gpu_pass_stats: GpuPassStats,
+    /// window's submits: a window reads its own frames, not the last window's. Boxed, as every
+    /// pass walks `&mut Ui` and the sample is cold (`internals::hot_struct_sizes`).
+    pub(super) gpu_pass_stats: Box<GpuPassStats>,
     /// Asks this window's host for a frame from any thread; the host sets it once the window
     /// opens.
     pub(super) waker: Waker,
@@ -27,7 +28,7 @@ impl Default for HostSeam {
         Self {
             window_requests: WindowRequests::default(),
             window_frame: WindowFrameState::default(),
-            gpu_pass_stats: GpuPassStats::default(),
+            gpu_pass_stats: Box::default(),
             waker: Waker::new(|| {}),
         }
     }

@@ -110,7 +110,7 @@ impl GpuTimings {
 
     /// Open the timing of the main pass's `segment` inside it. Call right after
     /// `begin_render_pass`.
-    pub(crate) fn segment_begin(&self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
+    pub(crate) fn segment_begin(&mut self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
         match self {
             Self::Queries(t) => t.segment_begin(pass, segment),
             Self::WallClock(t) => t.segment_begin(pass, segment),
@@ -118,7 +118,7 @@ impl GpuTimings {
     }
 
     /// Mark the start of a `kind` of batch inside the main pass.
-    pub(crate) fn mark(&self, rec: &mut PassRecorder<'_>, kind: BatchKind) {
+    pub(crate) fn mark(&mut self, rec: &mut PassRecorder<'_>, kind: BatchKind) {
         let pass = rec.untracked();
         match self {
             Self::Queries(t) => t.mark(pass, kind),
@@ -127,7 +127,7 @@ impl GpuTimings {
     }
 
     /// Close the timing of the main pass's `segment` inside it.
-    pub(crate) fn segment_end(&self, rec: &mut PassRecorder<'_>, segment: MainSegment) {
+    pub(crate) fn segment_end(&mut self, rec: &mut PassRecorder<'_>, segment: MainSegment) {
         let pass = rec.untracked();
         match self {
             Self::Queries(t) => t.segment_end(pass, segment),
@@ -136,7 +136,7 @@ impl GpuTimings {
     }
 
     /// Timestamp `mark` between passes.
-    pub(crate) fn encoder_mark(&self, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
+    pub(crate) fn encoder_mark(&mut self, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
         match self {
             Self::Queries(t) => t.encoder_mark(encoder, mark),
             Self::WallClock(t) => t.encoder_mark(encoder, mark),
@@ -153,7 +153,7 @@ impl GpuTimings {
 
     /// After `queue.submit` on `gpu`: start reading the frame back, and publish into `sink` each
     /// earlier frame that landed.
-    pub(crate) fn after_submit(&mut self, gpu: &Gpu, sink: &GpuPassStats) {
+    pub(crate) fn after_submit(&mut self, gpu: &Gpu, sink: &mut GpuPassStats) {
         match self {
             Self::Queries(t) => t.after_submit(gpu, sink),
             Self::WallClock(t) => t.after_submit(gpu, sink),

@@ -56,6 +56,7 @@ mod tests {
     use crate::damage::Damage;
     use crate::display::system_scale::SystemScale;
     use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -65,9 +66,12 @@ mod tests {
     use crate::host::window_driver::TargetKey;
     use crate::host::window_driver::WindowDriver;
     use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, PresentStrategy};
+    use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::shape::Shape;
     use crate::text::font_scope::FontScope;
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
@@ -117,6 +121,57 @@ mod tests {
             .submit(&mut core.cpu, &mut drawn, target.as_target(), mode);
         assert!(drawn.ui.gpu_pass_stats().last_main_pass_cpu().is_some());
         assert_eq!(idle.ui.gpu_pass_stats().last_main_pass_cpu(), None);
+    }
+
+    /// A closing window gives back to the backend the cutout cells its plan holds, and only its own:
+    /// two windows each plan a 400 × 300 shadow, radius 8 and blur 16, which pays for a table, so
+    /// each holds a use of the one key; once the first closes, the second's use alone is left.
+    #[test]
+    fn a_closing_window_gives_back_its_cutout_cells() {
+        let gpu = headless_test_gpu();
+        let mut core = HostCore::new(gpu.handles(), &OPTIONS, TextShaper::test_mono());
+        if core.device.backend().cutout_mode() == CutoutMode::Shade {
+            return;
+        }
+        let size = UVec2::splat(512);
+        let spec = FrameSpec {
+            target: TargetKey {
+                physical: size,
+                format: TargetFormat::RGBA8_SRGB,
+                gives_copy: true,
+            },
+            system_scale: SystemScale::ONE,
+            refresh_millihertz: None,
+            now: Duration::ZERO,
+        };
+        let mut app = |ui: &mut Ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::shadow(Shadow {
+                            color: RgbaF32::BLACK,
+                            blur: 16.0,
+                            ..Shadow::NONE
+                        })
+                        .at(Rect::new(50.0, 50.0, 400.0, 300.0))
+                        .corners(8.0),
+                    );
+                });
+        };
+        let mut windows = [
+            core.open(WindowToken(0), PresentStrategy::BackbufferCopy),
+            core.open(WindowToken(1), PresentStrategy::BackbufferCopy),
+        ];
+        for window in &mut windows {
+            let _ = core.device.record(&mut core.cpu, window, spec, &mut app);
+        }
+        let uses = |core: &mut HostCore| core.device.backend_mut().cutout_placements_mut().uses();
+        assert_eq!(uses(&mut core), 2, "a use of the one key a window");
+        let [first, _second] = windows;
+        core.device.close(first);
+        assert_eq!(uses(&mut core), 1, "the second window's use alone");
     }
 
     /// A recovery reaches every window of a host, as the windowed host attaches all of them: after

@@ -1,6 +1,6 @@
 //! Which shadow corners get a baked cutout table this frame, and where in the atlas each goes.
 //!
-//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`, at the cells [`SharedCutoutPlacements`] keeps for its key across frames and windows, and the atlas keeps what it baked, so a table a frame needs again is not baked again (`CutoutTables`).
+//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`, at the cells [`CutoutPlacements`] keeps for its key across frames and windows, and the atlas keeps what it baked, so a table a frame needs again is not baked again (`CutoutTables`).
 //!
 //! A key gets a table only when its corners' shown area costs more to shade ([`CutoutPlan::SHADED_NODES`] per pixel) than to bake ([`CutoutPlan::BAKED_NODES`] per texel, `(10 / σ)²` texels per pixel). A frame bakes only the texels its repainted pixels read ([`BakeTable`]).
 //!
@@ -8,7 +8,7 @@
 //!
 //! A shadow whose shown corners all read tables draws through the cheaper `fs_shadow_tables` ([`ShadowEntry`]), else `fs_shadow`.
 
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -178,13 +178,22 @@ struct CensusShadow {
 }
 
 /// How shadow corners get their cutout.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CutoutMode {
     /// From tables baked where they pay, at the placements of the backend's atlas; only where the
     /// backend can render to it.
-    Bake(SharedCutoutPlacements),
+    Bake,
     /// Shaded per pixel, which is right on any device.
     Shade,
+}
+
+/// The frame a [`CutoutPlan`] is built for: its quads, repainted inside `repaint` of a
+/// physical-pixel `viewport`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CutoutFrame<'a> {
+    pub(crate) quads: &'a [Quad],
+    pub(crate) repaint: &'a RepaintScissors,
+    pub(crate) viewport: UVec2,
 }
 
 #[must_use]
@@ -247,13 +256,17 @@ impl CutoutPlan {
         }
     }
 
-    /// Plans the tables for `quads` repainting inside `repaint` of a physical-pixel `viewport`; the census supplies shadows a partial frame doesn't redraw. On [`Census::Stale`] the outputs are void.
+    /// Plans the tables of `frame`, at cells of `placements`; the census supplies shadows a partial frame doesn't redraw. On [`Census::Stale`] the outputs are void.
     pub(crate) fn build(
         &mut self,
-        quads: &[Quad],
-        repaint: &RepaintScissors,
-        viewport: UVec2,
+        frame: CutoutFrame<'_>,
+        placements: &mut CutoutPlacements,
     ) -> Census {
+        let CutoutFrame {
+            quads,
+            repaint,
+            viewport,
+        } = frame;
         self.tables.clear();
         self.corners.clear();
         self.entries.clear();
@@ -296,7 +309,7 @@ impl CutoutPlan {
                 self.next.push(shadow);
             }
         }
-        self.decide();
+        self.decide(placements);
         if partial.is_some() {
             let last = &self.last_tabled;
             let moved = self
@@ -315,7 +328,7 @@ impl CutoutPlan {
         }
         mem::swap(&mut self.census, &mut self.next);
         mem::swap(&mut self.tabled, &mut self.last_tabled);
-        self.release_untabled();
+        self.release_untabled(placements);
         if !quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
             return Census::Cur;
         }
@@ -380,7 +393,7 @@ impl CutoutPlan {
         Census::Cur
     }
 
-    fn decide(&mut self) {
+    fn decide(&mut self, placements: &mut CutoutPlacements) {
         self.keys.clear();
         self.keys.extend(
             self.next
@@ -401,7 +414,7 @@ impl CutoutPlan {
             }
         }
         self.keys.truncate(merged);
-        self.place();
+        self.place(placements);
         self.tabled.clear();
         self.tabled.extend(
             self.keys
@@ -455,10 +468,12 @@ impl CutoutPlan {
     /// The paying tables' cells in the shared atlas, tallest first, as a shelf fills best: a key
     /// this plan holds keeps its placement, a new one takes a use of its key's. A key that does not
     /// pay or find room keeps [`Self::NONE`].
-    fn place(&mut self) {
-        let CutoutMode::Bake(placements) = &self.mode else {
-            unreachable!("a plan that shades places no table");
-        };
+    fn place(&mut self, placements: &mut CutoutPlacements) {
+        debug_assert_eq!(
+            self.mode,
+            CutoutMode::Bake,
+            "a plan that shades places no table"
+        );
         self.codes.clear();
         self.codes.resize(self.keys.len(), Self::NONE);
         self.order.clear();
@@ -485,12 +500,17 @@ impl CutoutPlan {
         }
     }
 
-    /// Give back the placements of the keys this plan holds and its committed frame no longer
+    /// Give back to `placements` every key this plan holds, as the window whose frames it planned
+    /// closes on the device that holds them.
+    pub(crate) fn release_all(&mut self, placements: &mut CutoutPlacements) {
+        for key in self.held.drain(..) {
+            placements.release(key);
+        }
+    }
+
+    /// Give back to `placements` the keys this plan holds and its committed frame no longer
     /// tables.
-    fn release_untabled(&mut self) {
-        let CutoutMode::Bake(placements) = &self.mode else {
-            return;
-        };
+    fn release_untabled(&mut self, placements: &mut CutoutPlacements) {
         let tabled = &self.last_tabled;
         self.held.retain(|&key| {
             let keep = tabled.binary_search(&key).is_ok();
@@ -548,17 +568,6 @@ impl CutoutPlan {
             corner(2, hi.x, -1.0, hi.y, -1.0),
             corner(3, lo.x, 1.0, hi.y, -1.0),
         ])
-    }
-}
-
-impl Drop for CutoutPlan {
-    /// Give back every placement, as the window whose frames this plan planned is gone.
-    fn drop(&mut self) {
-        if let CutoutMode::Bake(placements) = &self.mode {
-            for &key in &self.held {
-                placements.release(key);
-            }
-        }
     }
 }
 

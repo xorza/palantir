@@ -4,22 +4,18 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutKey, CutoutPlan};
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
-use std::cell::RefCell;
-use std::rc::Rc;
 
-/// The cells each cutout key holds in the backend's one atlas, shared by every window's
-/// [`CutoutPlan`] on the main thread.
+/// The cells each cutout key holds in the backend's one atlas, which the backend lends each
+/// window's [`CutoutPlan`] for the frame it plans, as glyphon lends one `TextAtlas` to each
+/// `TextRenderer::prepare`.
 ///
 /// A placement stays while any plan tables its key, so a table keeps its cells across frames and
 /// windows and the atlas bakes it once. A key no plan tables keeps its cells too, until a new key
 /// needs the room: the least recently released goes first. Refused: packing each window's tables
 /// afresh every frame, which moved a table whenever a key before it came or went and made two
 /// windows with different shadows bake over each other every frame.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct SharedCutoutPlacements(Rc<RefCell<CutoutPlacements>>);
-
 #[derive(Debug)]
-struct CutoutPlacements {
+pub(crate) struct CutoutPlacements {
     /// Places rectangles of whole cells, in texels.
     packer: ShelfPacker,
     keys: FxHashMap<CutoutKey, Placement>,
@@ -47,23 +43,22 @@ impl Default for CutoutPlacements {
     }
 }
 
-impl SharedCutoutPlacements {
+impl CutoutPlacements {
     /// Take a use of `key`'s table of `side` texels: its [`CutoutPlan::code`], placed now where it
     /// has none, after the keys no plan tables, least recently released first, give up their
     /// cells as needed. `None` when even then no room holds it.
-    pub(crate) fn acquire(&self, key: CutoutKey, side: u32) -> Option<u32> {
-        let mut placements = self.0.borrow_mut();
-        if let Some(placed) = placements.keys.get_mut(&key) {
+    pub(crate) fn acquire(&mut self, key: CutoutKey, side: u32) -> Option<u32> {
+        if let Some(placed) = self.keys.get_mut(&key) {
             placed.users += 1;
             return Some(placed.code);
         }
         let cells = side.div_ceil(CutoutPlan::CELL);
         let edge = u16::try_from(cells * CutoutPlan::CELL).ok()?;
         let origin = loop {
-            if let Some(origin) = placements.packer.allocate(U16Vec2::splat(edge)) {
+            if let Some(origin) = self.packer.allocate(U16Vec2::splat(edge)) {
                 break origin;
             }
-            if !placements.evict_released() {
+            if !self.evict_released() {
                 return None;
             }
         };
@@ -73,7 +68,7 @@ impl SharedCutoutPlacements {
             "a placement at {origin:?} off the cell grid"
         );
         let code = CutoutPlan::code(origin.as_uvec2() / CutoutPlan::CELL, side);
-        placements.keys.insert(
+        self.keys.insert(
             key,
             Placement {
                 code,
@@ -86,20 +81,14 @@ impl SharedCutoutPlacements {
 
     /// The [`CutoutPlan::code`] of `key`, which a plan holds a use of.
     pub(crate) fn code(&self, key: CutoutKey) -> u32 {
-        self.0
-            .borrow()
-            .keys
-            .get(&key)
-            .expect("a held key is placed")
-            .code
+        self.keys.get(&key).expect("a held key is placed").code
     }
 
     /// Give back one use of `key`, which [`Self::acquire`] placed.
-    pub(crate) fn release(&self, key: CutoutKey) {
-        let mut placements = self.0.borrow_mut();
-        placements.releases += 1;
-        let releases = placements.releases;
-        let placed = placements
+    pub(crate) fn release(&mut self, key: CutoutKey) {
+        self.releases += 1;
+        let releases = self.releases;
+        let placed = self
             .keys
             .get_mut(&key)
             .expect("a released key was acquired");
@@ -109,9 +98,7 @@ impl SharedCutoutPlacements {
             placed.released = releases;
         }
     }
-}
 
-impl CutoutPlacements {
     /// Free the cells of the least recently released key no plan tables; `false` when every
     /// placed key is in use.
     fn evict_released(&mut self) -> bool {
@@ -134,8 +121,26 @@ impl CutoutPlacements {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutKey;
+
+    impl CutoutPlacements {
+        /// The plans that hold a use of `key`, none where it is not placed.
+        pub(crate) fn users(&self, key: CutoutKey) -> u32 {
+            self.keys.get(&key).map_or(0, |placed| placed.users)
+        }
+
+        /// The uses every plan holds, of every key.
+        pub(crate) fn uses(&self) -> u32 {
+            self.keys.values().map(|placed| placed.users).sum()
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
-    use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutKey, CutoutPlan};
     use glam::UVec2;
 
@@ -151,7 +156,7 @@ mod tests {
     /// its own.
     #[test]
     fn placements_stay_until_a_new_key_needs_the_room() {
-        let placements = SharedCutoutPlacements::default();
+        let mut placements = CutoutPlacements::default();
         let at = |x: u32, y: u32| CutoutPlan::code(UVec2::new(x, y), 256);
         assert_eq!(placements.acquire(key(1.0), 256), Some(at(0, 0)));
         assert_eq!(placements.acquire(key(1.0), 256), Some(at(0, 0)), "shared");

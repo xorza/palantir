@@ -95,7 +95,8 @@ impl DeviceCore {
         self.backend.prepare_format(spec.target.format);
         driver.deliver_screenshot(&self.backend);
         driver.forget_evicted_panes(&mut self.backend);
-        cpu.record(driver, spec, app, FrameDepth::Paint)
+        let placements = self.backend.cutout_placements_mut();
+        cpu.record(driver, spec, app, FrameDepth::Paint(placements))
     }
 
     /// The GPU half: draw the frame recorded through `cpu` into `target` by `mode`.
@@ -110,17 +111,18 @@ impl DeviceCore {
     }
 
     /// Close a window: the backend drops what it keeps for its render owner, `GpuView` targets
-    /// that owner-scoped eviction would otherwise hold until shutdown, its render stream drops
-    /// with it, and the driver's `Drop` retires its directory entry.
+    /// that owner-scoped eviction would otherwise hold until shutdown and the cutout cells its
+    /// plan holds, its render stream drops with it, and the driver's `Drop` retires its directory
+    /// entry.
     #[cfg_attr(
-        not(feature = "winit"),
+        all(not(feature = "winit"), not(test)),
         expect(
             dead_code,
-            reason = "only the windowed host closes a window while it runs"
+            reason = "only the windowed host closes a window while it runs, and the tests"
         )
     )]
-    pub(super) fn close(&mut self, driver: WindowDriver) {
-        self.backend.retire_render_owner(driver.render_owner());
+    pub(super) fn close(&mut self, mut driver: WindowDriver) {
+        driver.retire(&mut self.backend);
         drop(driver);
     }
 }

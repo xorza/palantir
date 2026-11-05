@@ -14,6 +14,7 @@ use crate::gpu::pipeline::format_pipelines::PassPipelines;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws, ShadowCells};
@@ -455,8 +456,13 @@ impl QuadPipeline {
         self.cutouts.prepare(ctx, cutouts);
     }
 
-    pub(crate) fn cutout_mode(&self) -> CutoutMode {
+    pub(crate) const fn cutout_mode(&self) -> CutoutMode {
         self.cutouts.mode()
+    }
+
+    /// Where the shadow atlas places each key's table, for a window's plan to build in.
+    pub(crate) const fn cutout_placements_mut(&mut self) -> &mut CutoutPlacements {
+        self.cutouts.placements_mut()
     }
 
     /// The runs of `instances`, a group's quads, that each draw through one [`QuadDraw`], in

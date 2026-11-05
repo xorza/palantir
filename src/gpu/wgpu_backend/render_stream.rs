@@ -5,7 +5,10 @@ use crate::gpu::backdrop::backdrops::FrameBackbuffer;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::frame::submission::Route;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
+    Census, CutoutFrame, CutoutMode, CutoutPlan,
+};
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -49,6 +52,19 @@ pub(crate) struct RenderStream {
     /// The owner's timestamp queries, where the backend times frames: a frame publishes late, so
     /// one set shared by every owner would publish a frame of another.
     timings: Option<GpuTimings>,
+}
+
+/// What a frame's passes paint through, read, beside the timings they write, borrowed at once
+/// ([`RenderStream::passes`]).
+#[derive(Debug)]
+pub(super) struct StreamPasses<'a> {
+    pub(super) backbuffer: Option<&'a Backbuffer>,
+    /// The canvas [`RenderStream::ensure_canvas`] made ready last.
+    pub(super) canvas: Option<&'a DamageCanvas>,
+    /// The window's stencil view, which [`RenderStream::age_stencil`] made for a frame that
+    /// stamps it.
+    pub(super) stencil_view: Option<&'a wgpu::TextureView>,
+    pub(super) timings: Option<&'a mut GpuTimings>,
 }
 
 impl RenderStream {
@@ -114,27 +130,36 @@ impl RenderStream {
         })
     }
 
-    /// The window's stencil view, which [`Self::age_stencil`] made for a frame that stamps it.
-    pub(super) fn stencil_view(&self) -> Option<&wgpu::TextureView> {
-        self.stencil.as_ref().map(Stencil::view)
+    /// The backbuffer, the damage canvas and the stencil a frame's passes paint through, made
+    /// for the frame, and the timings they write.
+    pub(super) fn passes(&mut self) -> StreamPasses<'_> {
+        StreamPasses {
+            backbuffer: self.backbuffer.as_ref(),
+            canvas: self.canvases[0].as_ref(),
+            stencil_view: self.stencil.as_ref().map(Stencil::view),
+            timings: self.timings.as_mut(),
+        }
     }
 
-    pub(super) const fn timings(&self) -> Option<&GpuTimings> {
-        self.timings.as_ref()
-    }
-
-    pub(super) const fn timings_mut(&mut self) -> Option<&mut GpuTimings> {
-        self.timings.as_mut()
-    }
-
-    /// Plan the shadow cutouts of the frame `buffer` holds, repainted inside `scissors`.
+    /// Plan the shadow cutouts of the frame `buffer` holds, repainted inside `scissors`, at cells
+    /// of `placements`.
     pub(crate) fn plan_cutouts(
         &mut self,
         buffer: &RenderBuffer,
         scissors: &RepaintScissors,
+        placements: &mut CutoutPlacements,
     ) -> Census {
-        self.cutouts
-            .build(&buffer.quads, scissors, buffer.display.physical)
+        let frame = CutoutFrame {
+            quads: &buffer.quads,
+            repaint: scissors,
+            viewport: buffer.display.physical,
+        };
+        self.cutouts.build(frame, placements)
+    }
+
+    /// Give back to `placements` every cutout cell this stream's plan holds, as its window closes.
+    pub(super) fn release_cutouts(&mut self, placements: &mut CutoutPlacements) {
+        self.cutouts.release_all(placements);
     }
 
     pub(super) const fn cutouts(&self) -> &CutoutPlan {
@@ -165,8 +190,8 @@ impl RenderStream {
         made
     }
 
-    /// Make [`Self::canvas`] `size` in `format`: the one before it when it is, else a new one,
-    /// which the oldest gives way to.
+    /// Make the frame's canvas ([`StreamPasses::canvas`]) `size` in `format`: the one before it
+    /// when it is, else a new one, which the oldest gives way to.
     pub(super) fn ensure_canvas(&mut self, gpu: &Gpu, format: wgpu::TextureFormat, size: UVec2) {
         let fits = |canvas: &Option<DamageCanvas>| {
             canvas
@@ -182,17 +207,12 @@ impl RenderStream {
         }
     }
 
-    /// Give [`Self::canvas`] its stencil.
+    /// Give the frame's canvas ([`StreamPasses::canvas`]) its stencil.
     pub(super) fn ensure_canvas_stencil(&mut self, gpu: &Gpu) {
         self.canvases[0]
             .as_mut()
             .expect("a canvas made ready")
             .ensure_stencil(gpu);
-    }
-
-    /// The canvas [`Self::ensure_canvas`] made ready last.
-    pub(super) const fn canvas(&self) -> Option<&DamageCanvas> {
-        self.canvases[0].as_ref()
     }
 
     /// Age the stencil by display frame `frame`, whose main pass stamps one at `size` or none:
@@ -284,7 +304,7 @@ mod tests {
         let (a, b, c) = (UVec2::new(64, 64), UVec2::new(128, 64), UVec2::new(64, 128));
         let mut ready = |size, format| {
             stream.ensure_canvas(&gpu, format, size);
-            stream.canvas().unwrap().texture().clone()
+            stream.canvases[0].as_ref().unwrap().texture().clone()
         };
         let srgb = wgpu::TextureFormat::Rgba8UnormSrgb;
         let first_a = ready(a, srgb);

@@ -53,7 +53,7 @@
 //! publishes any earlier frame that landed.
 
 use crate::common::tracy;
-use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
+use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -72,6 +72,7 @@ use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PassPipelines, Pip
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{
@@ -93,7 +94,7 @@ use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
-use crate::gpu::wgpu_backend::render_stream::RenderStream;
+use crate::gpu::wgpu_backend::render_stream::{RenderStream, StreamPasses};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::paint::color::RgbaF32;
@@ -199,11 +200,6 @@ struct FrameDraw<'a> {
     masks: Option<&'a MaskPlan>,
     /// The frame's backdrop results, which its panes read; `None` before the first pane.
     backdrops: Option<&'a wgpu::BindGroup>,
-    /// The stream's timestamp queries, when timing is on.
-    timings: Option<&'a GpuTimings>,
-    /// Where the owner's samples publish. The CPU record time is written every frame, timing on
-    /// or off, as it costs two `Instant::now()` calls and a `RefCell` write.
-    stats: &'a GpuPassStats,
 }
 
 /// Where a frame's main pass paints, with what it paints through, built once per frame: the
@@ -259,12 +255,14 @@ struct MainPass<'a> {
 }
 
 /// One pass of the main pass, as the frame's plan sets it ([`PassStep::Main`]).
-#[derive(Clone, Copy, Debug)]
-struct SegmentPass<'a> {
+#[derive(Debug)]
+struct SegmentPass<'a, 't> {
     main: MainPass<'a>,
     segment: MainSegment,
     groups: GroupSpan,
     load: ColorLoad,
+    /// The stream's timestamp queries, when timing is on.
+    timings: Option<&'t mut GpuTimings>,
 }
 
 /// One pass's draws: the frame's, the pass's pipelines, and the recorder they record through.
@@ -273,12 +271,14 @@ struct DrawCtx<'a, 'p> {
     draw: FrameDraw<'a>,
     pipelines: PassPipelines<'a>,
     rec: &'p mut PassRecorder<'a>,
+    /// The stream's timestamp queries, when timing is on.
+    timings: Option<&'p mut GpuTimings>,
 }
 
 impl DrawCtx<'_, '_> {
     /// Record `body`, a batch of `kind`, under its timing mark and its debug group.
     fn batch(&mut self, kind: BatchKind, body: impl FnOnce(&mut Self)) {
-        if let Some(t) = self.draw.timings {
+        if let Some(t) = self.timings.as_deref_mut() {
             t.mark(self.rec, kind);
         }
         self.rec.push_marker(kind.label());
@@ -404,7 +404,6 @@ impl WgpuBackend {
     ) {
         tracy::zone!();
         let Submission {
-            stats,
             buffer,
             scissors: repaint_scissors,
             route,
@@ -502,13 +501,17 @@ impl WgpuBackend {
         // the outline. The normal backbuffer path takes none, and a target that keeps its view
         // makes none.
         let surface_view = (!via_backbuffer || outlines_damage).then(|| target.view());
+        let StreamPasses {
+            backbuffer,
+            canvas,
+            stencil_view,
+            mut timings,
+        } = stream.passes();
         let frame_target = if via_backbuffer {
-            let bb = stream
-                .backbuffer()
-                .expect("a frame through the backbuffer made it");
+            let bb = backbuffer.expect("a frame through the backbuffer made it");
             match canvas_cut {
                 Some((rect, rects)) => FrameTarget::Canvas {
-                    canvas: stream.canvas().expect("made for the frame"),
+                    canvas: canvas.expect("made for the frame"),
                     bb,
                     origin: rect.min,
                     rects,
@@ -522,7 +525,7 @@ impl WgpuBackend {
                     .expect("a direct frame makes the target's view"),
             }
         };
-        let stencil_view = stream.stencil_view().filter(|_| stencil);
+        let stencil_view = stencil_view.filter(|_| stencil);
         self.passes.plan(
             FrameShape {
                 target: frame_target.kind(),
@@ -572,8 +575,6 @@ impl WgpuBackend {
             origin,
             masks: stencil.then_some(&self.mask_plan),
             backdrops: self.backdrops.group(),
-            timings: stream.timings(),
-            stats,
         };
         let main = MainPass {
             color_view: match frame_target {
@@ -597,6 +598,7 @@ impl WgpuBackend {
             canvas: frame_target.kind() == TargetKind::Canvas,
         };
         let mut started = None;
+        let mut main_pass_cpu = None;
         for &step in self.passes.steps() {
             match step {
                 PassStep::Dim => self.run_dim_pass(draw, main.color_view, &mut encoder),
@@ -615,21 +617,35 @@ impl WgpuBackend {
                             segment,
                             groups,
                             load,
+                            timings: timings.as_deref_mut(),
                         },
                         &mut encoder,
                     );
                     if segment.closes() {
                         let started = started.expect("a main pass opens before it closes");
-                        draw.stats.record_main_pass_cpu(started.elapsed());
+                        main_pass_cpu = Some(started.elapsed());
                     }
                 }
                 PassStep::Break { at } => {
                     let breaks = &self.backdrops.breaks()[at];
-                    backdrop_mark(draw, &mut encoder, at, BackdropPhase::CaptureStart);
+                    let mark = |phase| Mark::Backdrop { at, phase };
+                    encoder_mark(
+                        timings.as_deref_mut(),
+                        &mut encoder,
+                        mark(BackdropPhase::CaptureStart),
+                    );
                     self.backdrops.copy_break(&mut encoder, breaks, main.color);
-                    backdrop_mark(draw, &mut encoder, at, BackdropPhase::BlurStart);
+                    encoder_mark(
+                        timings.as_deref_mut(),
+                        &mut encoder,
+                        mark(BackdropPhase::BlurStart),
+                    );
                     self.backdrops.blur_break(&mut encoder, breaks);
-                    backdrop_mark(draw, &mut encoder, at, BackdropPhase::BlurEnd);
+                    encoder_mark(
+                        timings.as_deref_mut(),
+                        &mut encoder,
+                        mark(BackdropPhase::BlurEnd),
+                    );
                 }
                 PassStep::CanvasOut => {
                     let FrameTarget::Canvas {
@@ -649,9 +665,9 @@ impl WgpuBackend {
                     let bb = frame_target
                         .backbuffer()
                         .expect("the plan puts a backbuffer out only through one");
-                    encoder_mark(draw, &mut encoder, Mark::CopyOutStart);
+                    encoder_mark(timings.as_deref_mut(), &mut encoder, Mark::CopyOutStart);
                     bb.present_onto(&mut encoder, target, draw.blit);
-                    encoder_mark(draw, &mut encoder, Mark::CopyOutEnd);
+                    encoder_mark(timings.as_deref_mut(), &mut encoder, Mark::CopyOutEnd);
                 }
                 PassStep::Overlay => {
                     let view = surface_view
@@ -662,12 +678,15 @@ impl WgpuBackend {
             }
         }
 
-        if let Some(t) = stream.timings_mut() {
+        if let Some(t) = timings.as_deref_mut() {
             t.finish(&mut encoder);
         }
         self.staging.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
-        if let Some(t) = stream.timings_mut() {
+        // Every frame, timing on or off, as it costs two `Instant::now()` calls.
+        let stats = submission.stats;
+        stats.record_main_pass_cpu(main_pass_cpu.expect("every frame closes its main pass"));
+        if let Some(t) = timings {
             t.after_submit(&self.gpu, stats);
         }
 
@@ -840,7 +859,7 @@ impl WgpuBackend {
     fn run_main_segment(
         &self,
         draw: FrameDraw<'_>,
-        segment_pass: SegmentPass<'_>,
+        segment_pass: SegmentPass<'_, '_>,
         encoder: &mut wgpu::CommandEncoder,
     ) {
         tracy::zone!();
@@ -849,6 +868,7 @@ impl WgpuBackend {
             segment,
             groups,
             load,
+            mut timings,
         } = segment_pass;
         let MainPass {
             color_view,
@@ -879,7 +899,7 @@ impl WgpuBackend {
         };
         // The descriptor covers basic mode; with `TIMESTAMP_QUERY_INSIDE_PASSES` we write inline
         // via `segment_begin` / `segment_end` for one gap-free stream.
-        let timestamp_writes = draw.timings.and_then(|t| t.pass_writes(segment));
+        let timestamp_writes = timings.as_deref().and_then(|t| t.pass_writes(segment));
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.main.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -896,7 +916,7 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        if let Some(t) = draw.timings {
+        if let Some(t) = timings.as_deref_mut() {
             t.segment_begin(&mut pass, segment);
         }
         if canvas {
@@ -923,6 +943,7 @@ impl WgpuBackend {
             draw,
             pipelines: draw.fmt.for_pass(stencil),
             rec: &mut rec,
+            timings: timings.as_deref_mut(),
         };
         let schedule = |damage_scissor| Schedule {
             buffer: draw.buffer,
@@ -940,7 +961,7 @@ impl WgpuBackend {
                 }
             }
         }
-        if let Some(t) = draw.timings {
+        if let Some(t) = timings {
             t.segment_end(&mut rec, segment);
         }
     }
@@ -1128,37 +1149,34 @@ impl WgpuBackend {
         self.backdrops.forget_evicted(owner);
     }
 
-    /// Release what the backend keeps for a retired render stream's owner, its `GpuView` targets
-    /// and pane results, as its window closes; the stream itself drops with the window.
-    /// Per-submit eviction is owner-scoped, so without this survivors would hold its textures
-    /// until shutdown.
+    /// Release what the backend keeps for `stream`'s owner, its `GpuView` targets and pane
+    /// results, and the cutout cells its plan holds, as its window closes; the stream itself drops
+    /// with the window. Per-submit eviction is owner-scoped, so without this survivors would hold
+    /// its textures until shutdown, and its tables' cells would stay out of the atlas's reach.
     #[cfg_attr(
-        not(feature = "winit"),
+        all(not(feature = "winit"), not(test)),
         expect(
             dead_code,
             reason = "not `cfg`: the winit host is only the current caller, and an embedding host needs this entry point too"
         )
     )]
-    pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
+    pub(crate) fn retire_stream(&mut self, stream: &mut RenderStream) {
+        let owner = stream.owner();
         self.frames.retire(owner);
         self.gpu_view_targets.retire_owner(owner);
         self.backdrops.retire(owner);
+        stream.release_cutouts(self.quad.cutout_placements_mut());
+    }
+
+    /// Where the shadow atlas places each key's table, which a frame's plan builds in.
+    pub(crate) const fn cutout_placements_mut(&mut self) -> &mut CutoutPlacements {
+        self.quad.cutout_placements_mut()
     }
 }
 
-/// Timestamp backdrop break `at`'s `phase`, where the frame is timed.
-fn backdrop_mark(
-    draw: FrameDraw<'_>,
-    encoder: &mut wgpu::CommandEncoder,
-    at: usize,
-    phase: BackdropPhase,
-) {
-    encoder_mark(draw, encoder, Mark::Backdrop { at, phase });
-}
-
 /// Timestamp `mark` between passes, where the frame is timed.
-fn encoder_mark(draw: FrameDraw<'_>, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
-    if let Some(t) = draw.timings {
+fn encoder_mark(timings: Option<&mut GpuTimings>, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
+    if let Some(t) = timings {
         t.encoder_mark(encoder, mark);
     }
 }
@@ -1205,6 +1223,8 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
     #[cfg(test)]
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
+    #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
@@ -1219,6 +1239,12 @@ pub(crate) mod internals {
             for format in formats {
                 self.prepare_format(format);
             }
+        }
+
+        /// How this device cuts shadow corners.
+        #[cfg(test)]
+        pub(crate) const fn cutout_mode(&self) -> CutoutMode {
+            self.quad.cutout_mode()
         }
 
         /// The glyph atlas's eviction and growth counts so far.

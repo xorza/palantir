@@ -16,7 +16,7 @@ use crate::gpu::frame::gpu_timings::{BackdropPhase, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::surface::map_state::MapState;
 use std::array;
-use std::cell::{Cell, RefCell};
+use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering::Acquire, Ordering::Release};
@@ -99,23 +99,57 @@ struct Slot {
     state: SlotState,
 }
 
-/// Interior-mutable per-frame state: `render_groups` holds `&self`, so `mark()` mutates through these.
+/// Where the frame being recorded stands in its queries.
 #[derive(Debug)]
-struct Inner {
-    next_idx: Cell<u32>,
+struct Cursor {
+    next_idx: u32,
     /// Kind in flight since the last timestamp; `None` before the first `mark()` (recorded as [`BatchKind::Setup`]).
-    cur_kind: Cell<Option<BatchKind>>,
-    segment_kinds: RefCell<Vec<Option<BatchKind>>>,
+    cur_kind: Option<BatchKind>,
+    segment_kinds: Vec<Option<BatchKind>>,
     /// The last pass ended at a break, whose end the next pass's start timestamps.
-    broken: Cell<bool>,
+    broken: bool,
     /// A break found no room for its timestamps, so the frame attributes no time by kind.
-    kinds_void: Cell<bool>,
-    copied_out: Cell<bool>,
+    kinds_void: bool,
+    copied_out: bool,
     /// The backdrop breaks timed this frame.
-    backdrop_breaks: Cell<u32>,
+    backdrop_breaks: u32,
     /// The passes that opened a pipeline-statistics query this frame, counting those past
     /// [`MAX_STATS_PASSES`].
-    stats_passes: Cell<u32>,
+    stats_passes: u32,
+}
+
+impl Cursor {
+    /// Timestamp the end of the segment since the last timestamp, of `kind`, into `set`.
+    fn write_segment_end(
+        &mut self,
+        pass: &mut wgpu::RenderPass<'_>,
+        set: &wgpu::QuerySet,
+        kind: Option<BatchKind>,
+    ) {
+        pass.write_timestamp(set, self.next_idx);
+        self.segment_kinds.push(kind);
+        self.next_idx += 1;
+    }
+
+    /// Open this pass's pipeline-statistics query in `set`, while the frame has one left.
+    fn begin_pipeline_stats(
+        &mut self,
+        pass: &mut wgpu::RenderPass<'_>,
+        set: Option<&wgpu::QuerySet>,
+    ) {
+        let idx = self.stats_passes;
+        self.stats_passes += 1;
+        if let Some(set) = set.filter(|_| idx < MAX_STATS_PASSES) {
+            pass.begin_pipeline_statistics_query(set, idx);
+        }
+    }
+
+    /// Close the query [`Self::begin_pipeline_stats`] opened, if it opened one.
+    fn end_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>, set: Option<&wgpu::QuerySet>) {
+        if set.is_some() && self.stats_passes <= MAX_STATS_PASSES {
+            pass.end_pipeline_statistics_query();
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -133,7 +167,7 @@ pub(crate) struct QueryTracer {
     /// The slot [`Self::finish`] closed, which `after_submit` hands the queue's work-done callback.
     submitted: Option<usize>,
     period_ns: f32,
-    inner: Inner,
+    cursor: Cursor,
 }
 
 impl QueryTracer {
@@ -204,22 +238,22 @@ impl QueryTracer {
             writing: Some(0),
             submitted: None,
             period_ns,
-            inner: Inner {
-                next_idx: Cell::new(0),
-                cur_kind: Cell::new(None),
-                segment_kinds: RefCell::new(Vec::with_capacity(MAX_TIMESTAMPS as usize)),
-                broken: Cell::new(false),
-                kinds_void: Cell::new(false),
-                copied_out: Cell::new(false),
-                backdrop_breaks: Cell::new(0),
-                stats_passes: Cell::new(0),
+            cursor: Cursor {
+                next_idx: 0,
+                cur_kind: None,
+                segment_kinds: Vec::with_capacity(MAX_TIMESTAMPS as usize),
+                broken: false,
+                kinds_void: false,
+                copied_out: false,
+                backdrop_breaks: 0,
+                stats_passes: 0,
             },
         }
     }
 
     /// The query set the frame being recorded writes into, `None` while it goes unmeasured.
     fn query_set(&self) -> Option<&wgpu::QuerySet> {
-        self.writing.map(|slot| &self.slots[slot].query_set)
+        writing_set(&self.slots, self.writing)
     }
 
     /// Descriptor for `timestamp_writes` in basic mode, for the main pass's `segment`: the first
@@ -241,98 +275,67 @@ impl QueryTracer {
 
     /// Open `segment`'s timing, right after `begin_render_pass`: the main pass's first timestamp
     /// where it opens, else the end of the break before it, and the pass's pipeline statistics.
-    pub(super) fn segment_begin(&self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
+    pub(super) fn segment_begin(&mut self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
+        let cursor = &mut self.cursor;
         if segment.opens() {
-            self.inner.next_idx.set(0);
-            self.inner.cur_kind.set(None);
-            self.inner.segment_kinds.borrow_mut().clear();
-            self.inner.broken.set(false);
-            self.inner.kinds_void.set(false);
+            cursor.next_idx = 0;
+            cursor.cur_kind = None;
+            cursor.segment_kinds.clear();
+            cursor.broken = false;
+            cursor.kinds_void = false;
         }
-        self.begin_pipeline_stats(pass);
-        let Some(set) = self.query_set().filter(|_| self.inside_passes) else {
+        cursor.begin_pipeline_stats(pass, stats_set(&self.slots, self.writing));
+        let Some(set) = writing_set(&self.slots, self.writing).filter(|_| self.inside_passes)
+        else {
             return;
         };
         if segment.opens() {
             pass.write_timestamp(set, 0);
-            self.inner.next_idx.set(1);
-        } else if self.inner.broken.replace(false) {
-            self.write_segment_end(pass, set, None);
+            cursor.next_idx = 1;
+        } else if mem::take(&mut cursor.broken) {
+            cursor.write_segment_end(pass, set, None);
         }
     }
 
     /// Marks a category boundary: no-op if `kind` is active, else writes a timestamp and records the closed segment. Once the set is full minus the pass-end slot, transitions fold into the current kind.
-    pub(super) fn mark(&self, pass: &mut wgpu::RenderPass<'_>, kind: BatchKind) {
-        let Some(set) = self.query_set().filter(|_| self.inside_passes) else {
+    pub(super) fn mark(&mut self, pass: &mut wgpu::RenderPass<'_>, kind: BatchKind) {
+        let Some(set) = writing_set(&self.slots, self.writing).filter(|_| self.inside_passes)
+        else {
             return;
         };
-        let cur = self.inner.cur_kind.get();
-        if cur == Some(kind) {
+        let cursor = &mut self.cursor;
+        let cur = cursor.cur_kind;
+        if cur == Some(kind) || cursor.next_idx >= MAX_TIMESTAMPS - 1 {
             return;
         }
-        let idx = self.inner.next_idx.get();
-        if idx >= MAX_TIMESTAMPS - 1 {
-            return;
-        }
-        self.write_segment_end(pass, set, Some(cur.unwrap_or(BatchKind::Setup)));
-        self.inner.cur_kind.set(Some(kind));
+        cursor.write_segment_end(pass, set, Some(cur.unwrap_or(BatchKind::Setup)));
+        cursor.cur_kind = Some(kind);
     }
 
     /// Close `segment`'s timing: the main pass's last timestamp where it closes, else the start of
     /// the break after it, while the set holds room for the break's end and the pass's last.
-    pub(super) fn segment_end(&self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
-        self.end_pipeline_stats(pass);
-        let Some(set) = self.query_set().filter(|_| self.inside_passes) else {
+    pub(super) fn segment_end(&mut self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
+        let cursor = &mut self.cursor;
+        cursor.end_pipeline_stats(pass, stats_set(&self.slots, self.writing));
+        let Some(set) = writing_set(&self.slots, self.writing).filter(|_| self.inside_passes)
+        else {
             return;
         };
-        let kind = Some(self.inner.cur_kind.get().unwrap_or(BatchKind::Setup));
+        let kind = Some(cursor.cur_kind.unwrap_or(BatchKind::Setup));
         if segment.closes() {
-            self.write_segment_end(pass, set, kind);
-        } else if self.inner.next_idx.get() + 2 < MAX_TIMESTAMPS {
-            self.write_segment_end(pass, set, kind);
-            self.inner.broken.set(true);
+            cursor.write_segment_end(pass, set, kind);
+        } else if cursor.next_idx + 2 < MAX_TIMESTAMPS {
+            cursor.write_segment_end(pass, set, kind);
+            cursor.broken = true;
         } else {
-            self.inner.kinds_void.set(true);
+            cursor.kinds_void = true;
         }
-    }
-
-    /// Timestamp the end of the segment since the last timestamp, of `kind`.
-    fn write_segment_end(
-        &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        set: &wgpu::QuerySet,
-        kind: Option<BatchKind>,
-    ) {
-        let idx = self.inner.next_idx.get();
-        pass.write_timestamp(set, idx);
-        self.inner.segment_kinds.borrow_mut().push(kind);
-        self.inner.next_idx.set(idx + 1);
-    }
-
-    /// Open this pass's pipeline-statistics query, while the frame has one left.
-    fn begin_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
-        let idx = self.inner.stats_passes.get();
-        self.inner.stats_passes.set(idx + 1);
-        if let Some(set) = self.stats_query_set().filter(|_| idx < MAX_STATS_PASSES) {
-            pass.begin_pipeline_statistics_query(set, idx);
-        }
-    }
-
-    /// Close the query [`Self::begin_pipeline_stats`] opened, if it opened one.
-    fn end_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
-        if self.stats_query_set().is_some() && self.inner.stats_passes.get() <= MAX_STATS_PASSES {
-            pass.end_pipeline_statistics_query();
-        }
-    }
-
-    /// The pipeline-statistics query the frame being recorded writes into, if any.
-    fn stats_query_set(&self) -> Option<&wgpu::QuerySet> {
-        self.slots[self.writing?].stats_query_set.as_ref()
     }
 
     /// Write `mark`'s timestamp between passes; nothing on a device that writes none there.
-    pub(super) fn encoder_mark(&self, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
-        let Some(set) = self.query_set().filter(|_| self.inside_encoders) else {
+    pub(super) fn encoder_mark(&mut self, encoder: &mut wgpu::CommandEncoder, mark: Mark) {
+        let Some(set) = writing_set(&self.slots, self.writing).filter(|_| self.inside_encoders)
+        else {
             return;
         };
         let idx = match mark {
@@ -343,7 +346,7 @@ impl QueryTracer {
             Mark::RunEnd => 1,
             Mark::CopyOutStart => COPY_OUT_IDX,
             Mark::CopyOutEnd => {
-                self.inner.copied_out.set(true);
+                self.cursor.copied_out = true;
                 COPY_OUT_IDX + 1
             }
             Mark::Backdrop { at, phase } => {
@@ -351,7 +354,7 @@ impl QueryTracer {
                     return;
                 };
                 if phase == BackdropPhase::BlurEnd {
-                    self.inner.backdrop_breaks.set(at + 1);
+                    self.cursor.backdrop_breaks = at + 1;
                 }
                 BACKDROP_IDX + 3 * at + phase as u32
             }
@@ -365,26 +368,25 @@ impl QueryTracer {
     /// value before it, so no slot resolves in the frame that wrote it. The next frame writes into
     /// a free slot, or goes unmeasured while every slot is busy.
     pub(super) fn finish(&mut self, encoder: &mut wgpu::CommandEncoder) {
-        let copied_out = self.inner.copied_out.replace(false);
-        let backdrop_breaks = self.inner.backdrop_breaks.replace(0);
-        let stats_passes = self.inner.stats_passes.replace(0);
+        let copied_out = mem::take(&mut self.cursor.copied_out);
+        let backdrop_breaks = mem::take(&mut self.cursor.backdrop_breaks);
+        let stats_passes = mem::take(&mut self.cursor.stats_passes);
         if let Some(at) = self.writing.take() {
             // Basic mode is 2 (the descriptor wrote 0/1); per-batch is what the segments and `mark()` accumulated.
             let count = if self.inside_passes {
-                self.inner.next_idx.get().clamp(2, MAX_TIMESTAMPS)
+                self.cursor.next_idx.clamp(2, MAX_TIMESTAMPS)
             } else {
                 2
             };
             let slot = &mut self.slots[at];
             slot.timestamps_count = count;
             slot.segment_kinds.clear();
-            let kinds = self.inner.segment_kinds.borrow();
-            if self.inner.kinds_void.get() {
+            let kinds = &self.cursor.segment_kinds;
+            if self.cursor.kinds_void {
                 slot.segment_kinds.resize(kinds.len(), None);
             } else {
                 slot.segment_kinds.extend(kinds.iter().copied());
             }
-            drop(kinds);
             slot.stats_passes = (stats_passes <= MAX_STATS_PASSES).then_some(stats_passes);
             slot.copied_out = copied_out;
             slot.backdrop_breaks = backdrop_breaks;
@@ -424,7 +426,7 @@ impl QueryTracer {
     /// After `queue.submit` on `gpu`: the frame [`Self::finish`] closed waits for the queue's
     /// work-done callback, the slots resolved in it start to map, and each slot whose readback
     /// landed publishes into `sink` and frees.
-    pub(super) fn after_submit(&mut self, gpu: &Gpu, sink: &GpuPassStats) {
+    pub(super) fn after_submit(&mut self, gpu: &Gpu, sink: &mut GpuPassStats) {
         if let Some(at) = self.submitted.take() {
             let done = Arc::clone(&self.slots[at].done);
             gpu.queue
@@ -435,7 +437,7 @@ impl QueryTracer {
                 slot.map();
             }
         }
-        let publisher = Publisher {
+        let mut publisher = Publisher {
             period_ns: self.period_ns,
             sink,
         };
@@ -449,7 +451,7 @@ impl QueryTracer {
             if slot.timestamps_map.has_failed() || slot.stats_map.has_failed() {
                 slot.discard();
             } else {
-                slot.consume(publisher);
+                slot.consume(&mut publisher);
             }
             slot.timestamps_map.clear();
             slot.stats_map.clear();
@@ -459,6 +461,17 @@ impl QueryTracer {
             self.writing = self.free_slot();
         }
     }
+}
+
+/// The timestamp query set of the slot the frame being recorded writes into, `None` while it goes
+/// unmeasured.
+fn writing_set(slots: &[Slot; SLOTS], writing: Option<usize>) -> Option<&wgpu::QuerySet> {
+    writing.map(|at| &slots[at].query_set)
+}
+
+/// The pipeline-statistics query set of the slot the frame being recorded writes into, if any.
+fn stats_set(slots: &[Slot; SLOTS], writing: Option<usize>) -> Option<&wgpu::QuerySet> {
+    slots[writing?].stats_query_set.as_ref()
 }
 
 /// Whether a slot's maps have landed, mapped or failed: its timestamps', which every map begins,
@@ -535,7 +548,7 @@ impl Slot {
     }
 
     /// Publish this slot's landed readback and unmap it.
-    fn consume(&self, publisher: Publisher<'_>) {
+    fn consume(&self, publisher: &mut Publisher<'_>) {
         let ts_range = self
             .timestamps_buffer
             .slice(..)
@@ -565,16 +578,16 @@ impl Slot {
 
 /// Where a landed readback goes, and the tick length that turns it into time; split from
 /// [`Slot::consume`] to test without wgpu buffers.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 struct Publisher<'a> {
     period_ns: f32,
-    sink: &'a GpuPassStats,
+    sink: &'a mut GpuPassStats,
 }
 
 impl Publisher<'_> {
     /// Parses `count` resolved timestamps and publishes pass and per-kind durations; a segment of
     /// no kind counts in none.
-    fn timestamps(self, ts: &[u8], segment_kinds: &[Option<BatchKind>], count: usize) {
+    fn timestamps(&mut self, ts: &[u8], segment_kinds: &[Option<BatchKind>], count: usize) {
         // Pass duration = last - first. The per-kind table clears on every measured frame, so a begin/end-only frame doesn't keep stale values.
         if count >= 2 {
             self.sink.record_pass(self.span(ts, 0, count - 1));
@@ -599,7 +612,7 @@ impl Publisher<'_> {
         }
     }
 
-    fn copy_out(self, ts: &[u8], copied_out: bool) {
+    fn copy_out(&mut self, ts: &[u8], copied_out: bool) {
         let begin = COPY_OUT_IDX as usize;
         let time = copied_out.then(|| self.span(ts, begin, begin + 1));
         self.sink.record_copy_out(time);
@@ -607,7 +620,7 @@ impl Publisher<'_> {
 
     /// The sums of `breaks` backdrop breaks' capture and blur times; a frame with none clears
     /// both.
-    fn backdrops(self, ts: &[u8], breaks: u32) {
+    fn backdrops(&mut self, ts: &[u8], breaks: u32) {
         let at = |at: u32, phase: u32| (BACKDROP_IDX + 3 * at + phase) as usize;
         let sum = |from: u32, to: u32| {
             (0..breaks)
@@ -623,7 +636,7 @@ impl Publisher<'_> {
 
     /// The sums of `passes` passes' counters, in `wgpu::PipelineStatisticsTypes` order; `None`
     /// publishes none, for a frame of more passes than the queries hold.
-    fn stats(self, bytes: &[u8], passes: Option<u32>) {
+    fn stats(&mut self, bytes: &[u8], passes: Option<u32>) {
         let Some(passes) = passes else {
             self.sink.record_pipeline_stats(None);
             return;
@@ -646,7 +659,7 @@ impl Publisher<'_> {
         clippy::cast_sign_loss,
         reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
     )]
-    fn span(self, ts: &[u8], from: usize, to: usize) -> Duration {
+    fn span(&self, ts: &[u8], from: usize, to: usize) -> Duration {
         Duration::from_nanos(
             (tick(ts, to).saturating_sub(tick(ts, from)) as f64 * f64::from(self.period_ns)) as u64,
         )

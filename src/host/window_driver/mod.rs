@@ -10,6 +10,7 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::system_scale::SystemScale;
 use crate::gpu::frame::submission::{self, FrameOverlay, Route, Submission};
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode};
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::surface::capture::Capture;
@@ -23,12 +24,12 @@ use crate::renderer::pane_captures::{PaneCaptures, PaneDamage, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::repaint_scissors::RepaintScissors;
-use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
+use crate::ui::{SubmitParts, Ui};
 use crate::window::screenshot::{Screenshot, ScreenshotRequest};
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
@@ -218,15 +219,16 @@ fn present_path(
 }
 
 /// How far a frame's CPU half runs, chosen by the host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum FrameDepth {
+#[derive(Debug)]
+pub(super) enum FrameDepth<'a> {
     /// Record through damage, and build no draw list: a host with no device and no pixels, as a
     /// unit test runs.
     Record,
     /// Build the draw list too, and submit nothing: the whole CPU pipeline, with no device.
     Compose,
-    /// Build the draw list a target is painted by.
-    Paint,
+    /// Build the draw list a target is painted by, and plan its shadow cutouts at cells of the
+    /// backend's placements.
+    Paint(&'a mut CutoutPlacements),
 }
 
 /// The CPU half's result: the report plus the [`PresentPath`] sealed at
@@ -354,7 +356,7 @@ impl WindowDriver {
         frontend: &mut Frontend,
         stamp: FrameStamp,
         app: &mut T,
-        depth: FrameDepth,
+        depth: FrameDepth<'_>,
     ) -> CpuFrame {
         tracy::zone!();
         let report = self.ui.frame(
@@ -363,12 +365,12 @@ impl WindowDriver {
             app,
         );
         match depth {
-            FrameDepth::Paint => self.finish_cpu_frame(frontend, report),
-            FrameDepth::Record | FrameDepth::Compose => {
+            FrameDepth::Paint(placements) => self.finish_cpu_frame(frontend, placements, report),
+            depth @ (FrameDepth::Record | FrameDepth::Compose) => {
                 self.ui
                     .take_screenshot_requests(&mut self.screenshot_requests);
                 self.screenshot_requests.clear();
-                if depth == FrameDepth::Compose
+                if matches!(depth, FrameDepth::Compose)
                     && let Some(plan) = report.plan
                 {
                     self.compose(frontend, plan);
@@ -431,7 +433,12 @@ impl WindowDriver {
         self.ui.set_screenshot_taken(landed);
     }
 
-    fn finish_cpu_frame(&mut self, frontend: &mut Frontend, mut report: FrameReport) -> CpuFrame {
+    fn finish_cpu_frame(
+        &mut self,
+        frontend: &mut Frontend,
+        placements: &mut CutoutPlacements,
+        mut report: FrameReport,
+    ) -> CpuFrame {
         self.ui
             .take_screenshot_requests(&mut self.screenshot_requests);
         // A screenshot reads the backbuffer, so its frame paints all of it there, whatever
@@ -490,14 +497,15 @@ impl WindowDriver {
             self.build(frontend, plan);
             // The pixels this partial frame keeps show a cutout form the frame no longer picks:
             // it paints whole.
-            if self.plan_cutouts(&frontend.buffer, &scissors) == Census::Cur {
+            if self.plan_cutouts(&frontend.buffer, &scissors, placements) == Census::Cur {
                 self.scissors = scissors;
             } else {
                 let full = plan.to_full();
                 mode = path(Some(full), self.stream.is_backbuffer_fresh());
                 self.decide_panes(full);
                 self.build(frontend, full);
-                let census = self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full);
+                let census =
+                    self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full, placements);
                 debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
                 self.scissors = RepaintScissors::Full;
             }
@@ -590,8 +598,18 @@ impl WindowDriver {
         }
     }
 
-    fn plan_cutouts(&mut self, buffer: &RenderBuffer, scissors: &RepaintScissors) -> Census {
-        self.stream.plan_cutouts(buffer, scissors)
+    fn plan_cutouts(
+        &mut self,
+        buffer: &RenderBuffer,
+        scissors: &RepaintScissors,
+        placements: &mut CutoutPlacements,
+    ) -> Census {
+        self.stream.plan_cutouts(buffer, scissors, placements)
+    }
+
+    /// Give back what `backend` keeps for this window, as it closes on that device.
+    pub(super) fn retire(&mut self, backend: &mut WgpuBackend) {
+        backend.retire_stream(&mut self.stream);
     }
 
     /// [`Ui::drain_window_output`] bound to this driver's token; the offscreen
@@ -673,15 +691,20 @@ impl WindowDriver {
         );
         let debug_overlay = self.ui.debug_overlay();
         self.target_outlined = debug_overlay.damage_rect;
+        let SubmitParts {
+            stats,
+            store,
+            gpu_views,
+        } = self.ui.submit_parts();
         backend.submit(
             &mut self.stream,
             target,
             Submission {
-                stats: self.ui.gpu_pass_stats(),
-                store: self.ui.record_store(),
+                stats,
+                store,
                 buffer,
                 gradients,
-                gpu_views: self.ui.gpu_views(),
+                gpu_views,
                 clear: submission::frame_clear(plan.clear, buffer),
                 scissors: &self.scissors,
                 route,

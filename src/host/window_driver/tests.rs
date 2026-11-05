@@ -177,6 +177,7 @@ mod present_mode_tests {
 
 mod output_validity_tests {
     use crate::display::system_scale::SystemScale;
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::host::window_driver::TargetKey;
     use crate::host::window_driver::tests::new_driver;
     use glam::UVec2;
@@ -373,6 +374,7 @@ mod output_validity_tests {
         driver.output_valid = true;
         let paint = driver.finish_cpu_frame(
             &mut frontend,
+            &mut CutoutPlacements::default(),
             report(Some(RenderPlan {
                 clear: RgbaF32::BLACK,
                 damage: Damage::Full,
@@ -388,7 +390,11 @@ mod output_validity_tests {
         // without one has no submit, so the SkipNoop precondition is set here.
         driver.output_valid = true;
 
-        let skip = driver.finish_cpu_frame(&mut frontend, report(None));
+        let skip = driver.finish_cpu_frame(
+            &mut frontend,
+            &mut CutoutPlacements::default(),
+            report(None),
+        );
         assert!(matches!(skip.mode, PresentPath::SkipNoop));
         assert!(
             driver.output_valid,
@@ -409,18 +415,30 @@ mod output_validity_tests {
             },
             scale: 1.0,
         });
-        let waiting = driver.finish_cpu_frame(&mut frontend, report(None));
+        let waiting = driver.finish_cpu_frame(
+            &mut frontend,
+            &mut CutoutPlacements::default(),
+            report(None),
+        );
         assert!(matches!(waiting.mode, PresentPath::SkipNoop));
         assert!(
             waiting.report.repaint_requested,
             "a pending screenshot asks for the next frame"
         );
         driver.captures.clear();
-        let landed = driver.finish_cpu_frame(&mut frontend, report(None));
+        let landed = driver.finish_cpu_frame(
+            &mut frontend,
+            &mut CutoutPlacements::default(),
+            report(None),
+        );
         assert!(!landed.report.repaint_requested);
 
         driver.strategy = PresentStrategy::BackbufferCopy;
-        let skip_copy = driver.finish_cpu_frame(&mut frontend, report(None));
+        let skip_copy = driver.finish_cpu_frame(
+            &mut frontend,
+            &mut CutoutPlacements::default(),
+            report(None),
+        );
         assert!(matches!(skip_copy.mode, PresentPath::SkipCopy));
         assert!(
             !driver.output_valid,
@@ -462,6 +480,7 @@ mod lifecycle_tests {
 }
 
 mod record_store_tests {
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::host::window_driver::tests::new_driver;
     use std::time::Duration;
 
@@ -583,7 +602,7 @@ mod record_store_tests {
                 Duration::ZERO,
             ),
             &mut app,
-            FrameDepth::Paint,
+            FrameDepth::Paint(&mut CutoutPlacements::default()),
         );
 
         assert_eq!(app.updates, [token], "update runs once");
@@ -671,7 +690,12 @@ mod record_store_tests {
             id: "window-a",
         };
         let mut app_a = |ui: &mut Ui| scene_a.record(ui);
-        let _ = window_a.cpu_frame(&mut frontend, display, &mut app_a, FrameDepth::Paint);
+        let _ = window_a.cpu_frame(
+            &mut frontend,
+            display,
+            &mut app_a,
+            FrameDepth::Paint(&mut CutoutPlacements::default()),
+        );
         window_a.output_valid = true;
         let retained = snapshot(&window_a);
         assert_eq!(retained.mesh_vertices.len(), 3);
@@ -686,11 +710,21 @@ mod record_store_tests {
             id: "window-b",
         };
         let mut app_b = |ui: &mut Ui| scene_b.record(ui);
-        let _ = window_b.cpu_frame(&mut frontend, display, &mut app_b, FrameDepth::Paint);
+        let _ = window_b.cpu_frame(
+            &mut frontend,
+            display,
+            &mut app_b,
+            FrameDepth::Paint(&mut CutoutPlacements::default()),
+        );
         window_b.output_valid = true;
         assert_eq!(snapshot(&window_a), retained);
 
-        let paint_only = window_a.cpu_frame(&mut frontend, display, &mut app_a, FrameDepth::Paint);
+        let paint_only = window_a.cpu_frame(
+            &mut frontend,
+            display,
+            &mut app_a,
+            FrameDepth::Paint(&mut CutoutPlacements::default()),
+        );
         assert_eq!(paint_only.report.processing, FrameProcessing::PaintOnly);
         assert_eq!(snapshot(&window_a), retained);
     }
@@ -780,7 +814,7 @@ mod cutout_census_tests {
     use crate::damage::Damage;
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
-    use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::render_owner_id::RenderOwners;
     use crate::host::window_driver::{
@@ -818,7 +852,7 @@ mod cutout_census_tests {
         let mut driver = WindowDriver::new(spec, &shared);
         driver.attach(RenderStream::detached(
             driver.render_owner(),
-            CutoutMode::Bake(SharedCutoutPlacements::default()),
+            CutoutMode::Bake,
         ));
         let display = FrameStamp::new(
             Display::from_physical(UVec2::new(600, 200), 1.0),
@@ -855,10 +889,12 @@ mod cutout_census_tests {
                         .show(ui);
                 });
         };
+        let mut placements = CutoutPlacements::default();
         let mut damage = |cards_now: usize, tick_now: bool| {
             cards.set(cards_now);
             tick.set(tick_now);
-            let frame = driver.cpu_frame(&mut frontend, display, &mut app, FrameDepth::Paint);
+            let depth = FrameDepth::Paint(&mut placements);
+            let frame = driver.cpu_frame(&mut frontend, display, &mut app, depth);
             driver.output_valid = true;
             match frame.mode {
                 PresentPath::ViaBackbuffer(plan) => plan.damage,
@@ -1153,6 +1189,7 @@ mod screenshot_tests {
 }
 
 mod capture_path_tests {
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::host::window_driver::TargetKey;
     use crate::host::window_driver::tests::new_driver;
     use crate::host::window_driver::tests::{config, spec};
@@ -1209,7 +1246,12 @@ mod capture_path_tests {
         };
         let stamp = driver.stamp(&spec);
         driver
-            .cpu_frame(&mut frontend, stamp, &mut app, FrameDepth::Paint)
+            .cpu_frame(
+                &mut frontend,
+                stamp,
+                &mut app,
+                FrameDepth::Paint(&mut CutoutPlacements::default()),
+            )
             .mode
     }
 

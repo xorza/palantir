@@ -1,7 +1,8 @@
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowBox, ShadowEntry, spread_radius,
+    BakeTable, Census, CornerTables, CutoutFrame, CutoutKey, CutoutMode, CutoutPlan, ShadowBox,
+    ShadowEntry, spread_radius,
 };
 use crate::primitives::geometry::corners::{self, Corners};
 use crate::primitives::geometry::rect::Rect;
@@ -36,21 +37,65 @@ fn inset_shadow(size: Size, radius: f32, sigma: f32) -> Quad {
 /// A viewport larger than any fixture here, so it hides nothing.
 const WIDE: UVec2 = UVec2::new(8192, 8192);
 
+/// One window's plan, baking, over a backend's placements of its own.
+#[derive(Debug)]
+struct Planner {
+    plan: CutoutPlan,
+    placements: CutoutPlacements,
+}
+
+impl Planner {
+    fn build(&mut self, quads: &[Quad], repaint: &RepaintScissors, viewport: UVec2) -> Census {
+        let frame = CutoutFrame {
+            quads,
+            repaint,
+            viewport,
+        };
+        self.plan.build(frame, &mut self.placements)
+    }
+
+    fn tables(&self) -> &[BakeTable] {
+        self.plan.tables()
+    }
+
+    fn corners(&self) -> &[CornerTables] {
+        self.plan.corners()
+    }
+
+    fn entries(&self) -> &[ShadowEntry] {
+        self.plan.entries()
+    }
+}
+
 /// `quads` planned as a full repaint of a `viewport`, with baking on.
-fn plan_in(quads: &[Quad], viewport: UVec2) -> CutoutPlan {
-    let mut plan = CutoutPlan::new(CutoutMode::Bake(SharedCutoutPlacements::default()));
+fn plan_in(quads: &[Quad], viewport: UVec2) -> Planner {
+    let mut plan = Planner {
+        plan: CutoutPlan::new(CutoutMode::Bake),
+        placements: CutoutPlacements::default(),
+    };
     full(&mut plan, quads, viewport);
     plan
 }
 
-fn plan(quads: &[Quad]) -> CutoutPlan {
+fn plan(quads: &[Quad]) -> Planner {
     plan_in(quads, WIDE)
 }
 
 /// `plan` rebuilt as a full repaint, which is never stale.
-fn full(plan: &mut CutoutPlan, quads: &[Quad], viewport: UVec2) {
+fn full(plan: &mut Planner, quads: &[Quad], viewport: UVec2) {
     let census = plan.build(quads, &RepaintScissors::Full, viewport);
     assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
+}
+
+/// `plan` rebuilt over the shared `placements` as a full repaint of [`WIDE`], as one of several
+/// windows on one backend.
+fn full_over(plan: &mut CutoutPlan, placements: &mut CutoutPlacements, quads: &[Quad]) {
+    let frame = CutoutFrame {
+        quads,
+        repaint: &RepaintScissors::Full,
+        viewport: WIDE,
+    };
+    assert_eq!(plan.build(frame, placements), Census::Cur);
 }
 
 /// `n` drop shadows 100 px square, radius 8, σ = 2, 120 px apart from `x`.
@@ -325,9 +370,12 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
     }
     let mut off = CutoutPlan::new(CutoutMode::Shade);
     let census = off.build(
-        &[drop_shadow(Size::new(400.0, 300.0), 8.0, 16.0)],
-        &RepaintScissors::Full,
-        WIDE,
+        CutoutFrame {
+            quads: &[drop_shadow(Size::new(400.0, 300.0), 8.0, 16.0)],
+            repaint: &RepaintScissors::Full,
+            viewport: WIDE,
+        },
+        &mut CutoutPlacements::default(),
     );
     assert_eq!(census, Census::Cur);
     assert!(off.tables().is_empty());
@@ -383,24 +431,25 @@ fn tables_pack_into_shelves_until_the_atlas_is_full() {
 /// sorts first. Planned alone, radius 8 takes the origin; a later frame that adds radius 14 leaves
 /// it there, where a fresh pack would have moved it behind the taller table. A second window with
 /// radius 11 lands beside both, and the first window's next frame finds its tables where they
-/// were. Once the first window closes, its keys keep their cells for the next window to use.
+/// were. Once the first window closes, it gives back each key it held, and its keys keep their
+/// cells for the next window to use.
 #[test]
 fn a_table_keeps_its_cells_across_frames_and_windows() {
     let shadow = |r: f32| drop_shadow(Size::new(400.0, 300.0), r, 16.0);
-    let placements = SharedCutoutPlacements::default();
-    let mut first = CutoutPlan::new(CutoutMode::Bake(placements.clone()));
+    let mut placements = CutoutPlacements::default();
+    let mut first = CutoutPlan::new(CutoutMode::Bake);
     let code = |plan: &CutoutPlan, at: usize| plan.corners()[at].0[0];
-    full(&mut first, &[shadow(8.0)], WIDE);
+    full_over(&mut first, &mut placements, &[shadow(8.0)]);
     let small = code(&first, 0);
     assert_eq!(small, CutoutPlan::code(UVec2::ZERO, 87));
 
-    full(&mut first, &[shadow(8.0), shadow(14.0)], WIDE);
+    full_over(&mut first, &mut placements, &[shadow(8.0), shadow(14.0)]);
     assert_eq!(code(&first, 0), small, "the taller key moves no table");
     let tall = code(&first, 1);
     assert_ne!(tall, CutoutPlan::NONE);
 
-    let mut second = CutoutPlan::new(CutoutMode::Bake(placements));
-    full(&mut second, &[shadow(11.0)], WIDE);
+    let mut second = CutoutPlan::new(CutoutMode::Bake);
+    full_over(&mut second, &mut placements, &[shadow(11.0)]);
     let other = code(&second, 0);
     assert!(
         [small, tall]
@@ -408,11 +457,19 @@ fn a_table_keeps_its_cells_across_frames_and_windows() {
             .all(|&held| !CutoutPlan::cells(held).intersects(CutoutPlan::cells(other))),
         "the second window's table takes cells of its own"
     );
-    full(&mut first, &[shadow(8.0), shadow(14.0)], WIDE);
+    full_over(&mut first, &mut placements, &[shadow(8.0), shadow(14.0)]);
     assert_eq!([code(&first, 0), code(&first, 1)], [small, tall]);
 
-    drop(first);
-    full(&mut second, &[shadow(11.0), shadow(8.0)], WIDE);
+    let [r8, r14] = [8.0, 14.0].map(|r| CutoutKey::new(r, 16.0));
+    assert_eq!([placements.users(r8), placements.users(r14)], [1, 1]);
+    first.release_all(&mut placements);
+    assert_eq!(
+        [placements.users(r8), placements.users(r14)],
+        [0, 0],
+        "a closing window gives back each key it held"
+    );
+    full_over(&mut second, &mut placements, &[shadow(11.0), shadow(8.0)]);
+    assert_eq!(placements.users(r8), 1, "the second window's use alone");
     assert_eq!(
         [code(&second, 0), code(&second, 1)],
         [other, small],

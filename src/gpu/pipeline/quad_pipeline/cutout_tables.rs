@@ -4,7 +4,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::SharedCutoutPlacements;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
@@ -22,6 +22,9 @@ pub(crate) struct CutoutTables {
     /// [`CutoutMode::Shade`] on a device that cannot render into `R32Float` (GL without
     /// `EXT_color_buffer_float`): corners keep the shaded cutout and the atlas is a 1×1 stand-in.
     mode: CutoutMode,
+    /// Where each key's table sits in the atlas, lent to each window's plan for the frame it
+    /// plans; empty under [`CutoutMode::Shade`].
+    placements: CutoutPlacements,
     atlas: wgpu::TextureView,
     layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -81,12 +84,12 @@ impl CutoutTables {
     /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
     pub(crate) fn new(gpu: &Gpu, shader: &wgpu::ShaderModule) -> Self {
         let mode = if Self::renders_atlas(gpu) {
-            CutoutMode::Bake(SharedCutoutPlacements::default())
+            CutoutMode::Bake
         } else {
             CutoutMode::Shade
         };
         let (side, usage) = match mode {
-            CutoutMode::Bake(_) => (
+            CutoutMode::Bake => (
                 CutoutPlan::ATLAS_SIZE,
                 wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             ),
@@ -135,6 +138,7 @@ impl CutoutTables {
         .pipeline;
         Self {
             mode,
+            placements: CutoutPlacements::default(),
             atlas,
             layout,
             bind_group,
@@ -165,10 +169,14 @@ impl CutoutTables {
         scope.pop().block_on().is_none()
     }
 
-    /// How this device cuts shadow corners, with the placements of its atlas: what every
-    /// window's [`CutoutPlan`] is built with.
-    pub(crate) fn mode(&self) -> CutoutMode {
-        self.mode.clone()
+    /// How this device cuts shadow corners: what every window's [`CutoutPlan`] is built with.
+    pub(crate) const fn mode(&self) -> CutoutMode {
+        self.mode
+    }
+
+    /// Where the atlas places each key's table, for a window's plan to build in.
+    pub(crate) const fn placements_mut(&mut self) -> &mut CutoutPlacements {
+        &mut self.placements
     }
 
     /// Group 1 of the shadow pipeline: the atlas.

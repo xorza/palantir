@@ -78,7 +78,7 @@ impl CpuCore {
         driver: &mut WindowDriver,
         spec: FrameSpec,
         app: &mut T,
-        depth: FrameDepth,
+        depth: FrameDepth<'_>,
     ) -> CpuFrame {
         driver.note_target(&spec);
         let stamp = driver.stamp(&spec);

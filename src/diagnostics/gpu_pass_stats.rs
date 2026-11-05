@@ -1,9 +1,7 @@
-//! Shared handle for the latest GPU instrumentation sample, written by the backend
-//! and read by the overlay and benches through clones of one `Rc<RefCell<_>>`. Each
-//! value is set independently as feature support permits.
+//! A window's latest GPU instrumentation sample, which the backend publishes into on the
+//! window's submits and the overlay and benches read through the window's `Ui`. Each value is
+//! set independently as feature support permits.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::Duration;
 
 /// Categories of work the per-batch timestamp marker distinguishes.
@@ -98,16 +96,6 @@ pub struct PipelineStats {
     pub fragment_shader_invocations: u64,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct Inner {
-    pass: Option<Duration>,
-    kinds: [Option<Duration>; BatchKind::COUNT],
-    stats: Option<PipelineStats>,
-    copy_out: Option<Duration>,
-    backdrops: BackdropTimes,
-    main_pass_cpu: Option<Duration>,
-}
-
 /// The last frame's backdrop work on the device: the sums over its breaks of their captures and
 /// of their blurs, `None` when it timed none.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -116,83 +104,88 @@ pub(crate) struct BackdropTimes {
     pub(crate) blurs: Option<Duration>,
 }
 
-/// Shared GPU-stats handle; clones share the latest sample, `None` until the first
-/// readback.
-#[derive(Clone, Debug, Default)]
+/// A window's latest GPU sample, each value `None` until the first readback that sets it. A
+/// clone is a snapshot.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct GpuPassStats {
-    inner: Rc<RefCell<Inner>>,
+    pass: Option<Duration>,
+    kinds: [Option<Duration>; BatchKind::COUNT],
+    stats: Option<PipelineStats>,
+    copy_out: Option<Duration>,
+    backdrops: BackdropTimes,
+    main_pass_cpu: Option<Duration>,
 }
 
 impl GpuPassStats {
     /// Whole-pass duration; `None` until the first resolve or without
     /// `TIMESTAMP_QUERY`. On a frame whose backdrop panes capture, the main pass
     /// breaks at each, and the duration spans the captures and blurs between.
-    pub fn last_pass(&self) -> Option<Duration> {
-        self.inner.borrow().pass
+    pub const fn last_pass(&self) -> Option<Duration> {
+        self.pass
     }
 
     /// Per-category duration; `None` without `TIMESTAMP_QUERY_INSIDE_PASSES` or if
     /// the category did not run last frame. The captures and blurs between the
     /// passes the main pass breaks into count in no category, and a frame of more
     /// breaks than its timestamps hold publishes none.
-    pub fn last_kind(&self, kind: BatchKind) -> Option<Duration> {
-        self.inner.borrow().kinds[kind.idx()]
+    pub const fn last_kind(&self, kind: BatchKind) -> Option<Duration> {
+        self.kinds[kind.idx()]
     }
 
     /// Pipeline-statistics counters around the main pass, summed over the passes
     /// it breaks into at backdrop panes; `None` without `PIPELINE_STATISTICS_QUERY`,
     /// or when the last frame broke it into more than 16 passes.
-    pub fn last_pipeline_stats(&self) -> Option<PipelineStats> {
-        self.inner.borrow().stats
+    pub const fn last_pipeline_stats(&self) -> Option<PipelineStats> {
+        self.stats
     }
 
     /// Backbuffer-to-target copy after the main pass in the last frame that
     /// painted; `None` if it copied nothing or `TIMESTAMP_QUERY_INSIDE_ENCODERS` is
     /// unavailable.
-    pub fn last_copy_out(&self) -> Option<Duration> {
-        self.inner.borrow().copy_out
+    pub const fn last_copy_out(&self) -> Option<Duration> {
+        self.copy_out
     }
 
     /// Host CPU time the last frame spent recording the main render pass; no
     /// adapter feature gates it, and it scales with draw-step count, not pixels.
-    pub fn last_main_pass_cpu(&self) -> Option<Duration> {
-        self.inner.borrow().main_pass_cpu
+    pub const fn last_main_pass_cpu(&self) -> Option<Duration> {
+        self.main_pass_cpu
     }
 
-    pub(crate) fn record_pass(&self, time: Duration) {
-        self.inner.borrow_mut().pass = Some(time);
+    pub(crate) const fn record_pass(&mut self, time: Duration) {
+        self.pass = Some(time);
     }
 
-    pub(crate) fn record_main_pass_cpu(&self, time: Duration) {
-        self.inner.borrow_mut().main_pass_cpu = Some(time);
+    pub(crate) const fn record_main_pass_cpu(&mut self, time: Duration) {
+        self.main_pass_cpu = Some(time);
     }
 
-    pub(crate) fn record_kind(&self, kind: BatchKind, time: Duration) {
-        self.inner.borrow_mut().kinds[kind.idx()] = Some(time);
+    pub(crate) const fn record_kind(&mut self, kind: BatchKind, time: Duration) {
+        self.kinds[kind.idx()] = Some(time);
     }
 
-    pub(crate) fn clear_kinds(&self) {
-        self.inner.borrow_mut().kinds = [None; BatchKind::COUNT];
+    pub(crate) const fn clear_kinds(&mut self) {
+        self.kinds = [None; BatchKind::COUNT];
     }
 
-    pub(crate) fn record_pipeline_stats(&self, stats: Option<PipelineStats>) {
-        self.inner.borrow_mut().stats = stats;
+    pub(crate) const fn record_pipeline_stats(&mut self, stats: Option<PipelineStats>) {
+        self.stats = stats;
     }
 
-    pub(crate) fn record_copy_out(&self, time: Option<Duration>) {
-        self.inner.borrow_mut().copy_out = time;
+    pub(crate) const fn record_copy_out(&mut self, time: Option<Duration>) {
+        self.copy_out = time;
     }
 
     #[cfg_attr(
         not(feature = "internals"),
         expect(dead_code, reason = "the backdrop benches read it")
     )]
-    pub(crate) fn last_backdrops(&self) -> BackdropTimes {
-        self.inner.borrow().backdrops
+    pub(crate) const fn last_backdrops(&self) -> BackdropTimes {
+        self.backdrops
     }
 
-    pub(crate) fn record_backdrops(&self, times: BackdropTimes) {
-        self.inner.borrow_mut().backdrops = times;
+    pub(crate) const fn record_backdrops(&mut self, times: BackdropTimes) {
+        self.backdrops = times;
     }
 }
 
@@ -210,19 +203,24 @@ mod tests {
         assert_eq!(s.last_main_pass_cpu(), None);
     }
 
+    /// A copy keeps the sample it was taken at: a record into the original after it reaches only
+    /// the original.
     #[test]
-    fn handle_clones_share_state() {
-        let a = GpuPassStats::default();
-        let b = a.clone();
+    fn a_copy_keeps_the_sample_it_was_taken_at() {
+        let mut a = GpuPassStats::default();
         a.record_pass(Duration::from_micros(3500));
+        let b = a;
+        a.record_pass(Duration::from_micros(10));
         a.record_main_pass_cpu(Duration::from_micros(250));
         assert_eq!(b.last_pass(), Some(Duration::from_micros(3500)));
-        assert_eq!(b.last_main_pass_cpu(), Some(Duration::from_micros(250)));
+        assert_eq!(b.last_main_pass_cpu(), None);
+        assert_eq!(a.last_pass(), Some(Duration::from_micros(10)));
+        assert_eq!(a.last_main_pass_cpu(), Some(Duration::from_micros(250)));
     }
 
     #[test]
     fn record_overrides_previous_value() {
-        let s = GpuPassStats::default();
+        let mut s = GpuPassStats::default();
         s.record_pass(Duration::from_millis(1));
         s.record_pass(Duration::from_millis(5));
         assert_eq!(s.last_pass(), Some(Duration::from_millis(5)));
@@ -233,7 +231,7 @@ mod tests {
 
     #[test]
     fn per_kind_independent_of_total() {
-        let s = GpuPassStats::default();
+        let mut s = GpuPassStats::default();
         s.record_kind(BatchKind::Quads, Duration::from_micros(1500));
         s.record_kind(BatchKind::Text, Duration::from_micros(500));
         assert_eq!(
@@ -251,7 +249,7 @@ mod tests {
 
     #[test]
     fn clear_kinds_resets_to_none() {
-        let s = GpuPassStats::default();
+        let mut s = GpuPassStats::default();
         let stats = PipelineStats {
             vertex_shader_invocations: 1,
             clipper_invocations: 2,

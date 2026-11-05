@@ -120,8 +120,11 @@ impl GpuViewTargets {
 
     /// Drop every target of a render stream that will never submit again, freeing textures and bind groups. [`keep_target`](crate::gpu::resource::gpu_view_targets::view_target::keep_target) preserves foreign owners' entries each submit, so a closed window's targets would otherwise outlive it.
     #[cfg_attr(
-        not(feature = "winit"),
-        expect(dead_code, reason = "the winit host is the only caller today")
+        all(not(feature = "winit"), not(test)),
+        expect(
+            dead_code,
+            reason = "the winit host and the tests are the only callers today"
+        )
     )]
     pub(crate) fn retire_owner(&mut self, owner: RenderOwnerId) {
         self.targets.retain(|_, target| target.owner != owner);

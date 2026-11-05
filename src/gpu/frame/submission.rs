@@ -13,10 +13,10 @@ use crate::shape::record_store::RecordStore;
 /// What [`WgpuBackend::submit`](crate::gpu::wgpu_backend::WgpuBackend::submit) draws: the
 /// frame's draw list and record store, the scissors it repaints inside, and how it reaches the
 /// target.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub(crate) struct Submission<'a> {
     /// Where the owner's GPU timings publish.
-    pub(crate) stats: &'a GpuPassStats,
+    pub(crate) stats: &'a mut GpuPassStats,
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
     /// The gradient rows baked since the last frame painted, which this one uploads first.

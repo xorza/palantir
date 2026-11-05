@@ -170,22 +170,22 @@ impl PassTimer {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) })
         };
         // A sink of its own, so no earlier run's time can stand in for this one's.
-        let sink = GpuPassStats::default();
+        let mut sink = GpuPassStats::default();
         let mut run = encoder("palantir.bench.pass_timer");
         self.timings.encoder_mark(&mut run, Mark::RunStart);
         record(&mut run);
         self.timings.encoder_mark(&mut run, Mark::RunEnd);
         self.timings.finish(&mut run);
         queue.submit(iter::once(run.finish()));
-        self.timings.after_submit(&gpu.gpu, &sink);
+        self.timings.after_submit(&gpu.gpu, &mut sink);
         gpu.wait();
         // The run's queries resolve once the queue said it is done, in a submission of their own.
         let mut readback = encoder("palantir.bench.pass_timer.readback");
         self.timings.resolve_done(&mut readback);
         queue.submit(iter::once(readback.finish()));
-        self.timings.after_submit(&gpu.gpu, &sink);
+        self.timings.after_submit(&gpu.gpu, &mut sink);
         gpu.wait();
-        self.timings.after_submit(&gpu.gpu, &sink);
+        self.timings.after_submit(&gpu.gpu, &mut sink);
         sink.last_pass()
             .expect("a run's time reads back once the device is idle")
     }

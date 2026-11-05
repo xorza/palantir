@@ -121,6 +121,14 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
+/// The parts of a [`Ui`] a submit borrows at once ([`Ui::submit_parts`]).
+#[derive(Debug)]
+pub(crate) struct SubmitParts<'a> {
+    pub(crate) stats: &'a mut GpuPassStats,
+    pub(crate) store: &'a RecordStore,
+    pub(crate) gpu_views: &'a GpuViews,
+}
+
 /// Recorder + input/response broker. Coordinates are logical pixels;
 /// `Display::scale_factor` converts to physical at the wgpu boundary. Fields are
 /// private so widgets, host and encoder share one method surface.
@@ -759,12 +767,6 @@ impl Ui {
         levels
     }
 
-    /// This frame's record payloads, valid until the next record pass refills the arena.
-    #[inline]
-    pub(crate) const fn record_store(&self) -> &RecordStore {
-        &self.forest.record_store
-    }
-
     /// This window's geometry for persist-and-restore: where it sits, and the size it returns
     /// to from maximized, its live size while it is not maximized. Placement position is
     /// `None` where the platform reports none (Wayland). In the window manager's
@@ -817,7 +819,7 @@ impl Ui {
 
     /// This window's most recent GPU instrumentation sample, which the backend publishes and the
     /// debug overlay reads; empty unless the host collects GPU stats.
-    pub const fn gpu_pass_stats(&self) -> &GpuPassStats {
+    pub fn gpu_pass_stats(&self) -> &GpuPassStats {
         &self.host.gpu_pass_stats
     }
 
@@ -942,6 +944,16 @@ impl Ui {
     /// Every `GpuView` this window records, which its frames paint through.
     pub(crate) const fn gpu_views(&self) -> &GpuViews {
         &self.memory.gpu_views
+    }
+
+    /// What a submit of the last frame reads, and where it publishes the window's GPU samples,
+    /// borrowed at once.
+    pub(crate) fn submit_parts(&mut self) -> SubmitParts<'_> {
+        SubmitParts {
+            stats: &mut self.host.gpu_pass_stats,
+            store: &self.forest.record_store,
+            gpu_views: &self.memory.gpu_views,
+        }
     }
 
     /// Format `args` into the record-pass text storage and return an arena-backed
@@ -1563,6 +1575,8 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::scene::tree::node_id::NodeId;
     #[cfg(test)]
+    use crate::shape::record_store::RecordStore;
+    #[cfg(test)]
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
     #[cfg(test)]
@@ -1600,6 +1614,11 @@ pub(crate) mod internals {
     /// Only this crate's own tests call these.
     #[cfg(test)]
     impl Ui {
+        /// This frame's record payloads, valid until the next record pass refills the arena.
+        pub(crate) const fn record_store(&self) -> &RecordStore {
+            &self.forest.record_store
+        }
+
         /// [`Self::input`], mutably, for tests that drive routing state.
         pub(crate) fn input_mut(&mut self) -> &mut InputState {
             &mut self.input

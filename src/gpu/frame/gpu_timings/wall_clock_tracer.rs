@@ -92,7 +92,7 @@ impl WallClockTracer {
         clippy::cast_possible_truncation,
         reason = "nanoseconds since the tracer opened fit a u64 for 584 years"
     )]
-    pub(super) fn after_submit(&mut self, gpu: &Gpu, sink: &GpuPassStats) {
+    pub(super) fn after_submit(&mut self, gpu: &Gpu, sink: &mut GpuPassStats) {
         let origin = self.origin;
         if let Some(slot) = self.pending.take().map(|at| &mut self.slots[at]) {
             slot.submitted = origin.elapsed().as_nanos() as u64;
@@ -135,14 +135,14 @@ mod tests {
         let lease = headless_test_gpu();
         let gpu = lease.handles();
         let mut tracer = WallClockTracer::new();
-        let sink = GpuPassStats::default();
+        let mut sink = GpuPassStats::default();
         sink.record_kind(BatchKind::Quads, Duration::from_nanos(5));
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         tracer.finish(&mut encoder);
         gpu.queue.submit([encoder.finish()]);
-        tracer.after_submit(&gpu, &sink);
+        tracer.after_submit(&gpu, &mut sink);
         assert_eq!(
             tracer.slots.iter().filter(|slot| slot.in_flight).count()
                 + usize::from(sink.last_pass().is_some()),
@@ -157,7 +157,7 @@ mod tests {
                 .all(|slot| !slot.in_flight || slot.done.load(Acquire) != PENDING)
         };
         assert_eq!(gpu.wait_until(&landed), GpuWait::Done);
-        tracer.after_submit(&gpu, &sink);
+        tracer.after_submit(&gpu, &mut sink);
         assert!(sink.last_pass().is_some(), "the frame published");
         assert!(
             tracer.slots.iter().all(|slot| !slot.in_flight),
