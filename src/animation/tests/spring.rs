@@ -52,17 +52,17 @@ fn validated_springs_remain_finite_and_settle() {
                 dts[i as usize % dts.len()],
             );
             let row = &map.rows[&(id, SLOT)];
+            if result.settled {
+                assert_eq!(result.value, -100.0, "{label} did not snap to target");
+                assert!(row.motion.is_none(), "{label} retained its motion");
+                settled_at = Some(i);
+                break;
+            }
             let velocity = *support::spring_velocity(row);
             assert!(
                 result.value.is_finite() && velocity.is_finite(),
                 "{label} became non-finite at step {i}: {row:?}",
             );
-            if result.settled {
-                assert_eq!(result.value, -100.0, "{label} did not snap to target");
-                assert_eq!(velocity, 0.0, "{label} retained settled velocity");
-                settled_at = Some(i);
-                break;
-            }
         }
         assert_eq!(settled_at, Some(expected), "{label}");
     }

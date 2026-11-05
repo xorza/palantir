@@ -196,18 +196,6 @@ impl<T: Animatable> MotionRow<T> {
         }
     }
 
-    pub(super) fn stop(&mut self) {
-        match self {
-            Self::Duration { start_offset, .. } => *start_offset = T::zero(),
-            Self::Spring {
-                velocity, offset, ..
-            } => {
-                *velocity = T::zero();
-                *offset = T::zero();
-            }
-        }
-    }
-
     pub(super) fn advance(&mut self, target: T, dt: f32) -> Animated<T> {
         match self {
             Self::Duration {
@@ -275,24 +263,27 @@ fn progress(elapsed: f32, length: f32) -> f32 {
     if length > 0.0 { elapsed / length } else { 1.0 }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub(crate) struct AnimationRow<T: Animatable> {
     pub(super) target: T,
     /// The target's cause; see [`AnimationKey`].
     pub(super) key: Option<AnimationKey>,
-    pub(super) motion: MotionRow<T>,
+    /// The run in flight; `None` rests on `target`. Boxed, as a motion holds `T` twice: 576 B for
+    /// a look, on a row of 312 B, while a stock theme's rows nearly all rest. The 285 looks of
+    /// `FrameFixture` at scale 32 fell from 448 KiB to 164 KiB. Refused: a pool, which keeps the
+    /// 160 KiB a theme transition asks for after it ends.
+    pub(super) motion: Option<Box<MotionRow<T>>>,
     /// Render-frame id of the last `tick`. A second `tick` in the same frame (multi-pass record)
     /// skips the advance but still retargets, and the end-of-frame sweep drops a row whose frame
     /// is not the one that just recorded.
     pub(super) ticked_at: u64,
-    /// Cached settle state, letting `tick` skip the settle math on a steady
-    /// row; the retarget compare still unfreezes it.
-    pub(super) settled: bool,
 }
 
 impl<T: Animatable> AnimationRow<T> {
     pub(super) fn cur(&self) -> T {
-        self.motion.cur(&self.target)
+        self.motion
+            .as_ref()
+            .map_or_else(|| self.target.clone(), |motion| motion.cur(&self.target))
     }
 
     /// One `dt` toward the target from `cur`, its value now, unless pass A of this frame already
@@ -305,8 +296,14 @@ impl<T: Animatable> AnimationRow<T> {
                 settled: false,
             };
         }
-        let step = self.motion.advance(self.target.clone(), dt);
-        self.settled = step.settled;
+        let motion = self
+            .motion
+            .as_mut()
+            .expect("a resting row does not advance");
+        let step = motion.advance(self.target.clone(), dt);
+        if step.settled {
+            self.motion = None;
+        }
         step
     }
 }

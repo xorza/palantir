@@ -33,7 +33,7 @@ pub(super) fn duration_motion<T: Animatable>(row: &AnimationRow<T>) -> DurationM
         start_offset,
         elapsed,
         ..
-    } = &row.motion
+    } = row.motion.as_deref().expect("a run in flight")
     else {
         panic!("expected duration motion state");
     };
@@ -44,7 +44,7 @@ pub(super) fn duration_motion<T: Animatable>(row: &AnimationRow<T>) -> DurationM
 }
 
 pub(super) fn spring_velocity<T: Animatable>(row: &AnimationRow<T>) -> &T {
-    let MotionRow::Spring { velocity, .. } = &row.motion else {
+    let MotionRow::Spring { velocity, .. } = row.motion.as_deref().expect("a run in flight") else {
         panic!("expected spring motion state");
     };
     velocity

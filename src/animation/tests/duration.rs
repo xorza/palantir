@@ -2,8 +2,7 @@
 
 use crate::animation::animation_map_typed::AnimationMapTyped;
 use crate::animation::animation_request::AnimationRequest;
-use crate::animation::animation_row::MotionRow;
-use crate::animation::animation_spec::{AnimationMotion, AnimationSpec};
+use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{self, AnimationUi, SLOT};
 use crate::common::time::MAX_ANIMATION_DT;
@@ -109,11 +108,19 @@ fn target_below_snap_floor_snaps_without_animating() {
             r.settled,
             "case {label}: sub-eps drift must report settled (no repaint)",
         );
+        assert!(
+            map.rows[&(id, SLOT)].motion.is_none(),
+            "case {label}: a change that snaps starts no run",
+        );
 
         let mut scalars = AnimationMapTyped::<f32>::default();
         let _ = scalars.step(AnimationRequest::new(id, SLOT, 0.5), *spec, 0.016);
         let r = scalars.step(AnimationRequest::new(id, SLOT, 0.5 + 2e-4), *spec, 0.016);
         assert!(!r.settled, "case {label}: 2e-4 on an f32 animates");
+        assert!(
+            scalars.rows[&(id, SLOT)].motion.is_some(),
+            "case {label}: a change that animates starts a run",
+        );
 
         let mut colors = AnimationMapTyped::<RgbaF32>::default();
         let (gray, nudged) = (
@@ -204,21 +211,10 @@ fn first_touch_returns_target_and_settled() {
         let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.016);
         assert_eq!(r.value, 1.0, "{label}: first touch must snap");
         assert!(r.settled, "{label}: first touch must report settled");
-        let row = &map.rows[&(id, SLOT)];
-        match &row.motion {
-            MotionRow::Duration {
-                start_offset,
-                elapsed,
-                ..
-            } => {
-                assert_eq!((*start_offset, *elapsed), (0.0, 0.0));
-                assert!(matches!(spec.motion, AnimationMotion::Duration { .. }));
-            }
-            MotionRow::Spring { velocity, .. } => {
-                assert_eq!(*velocity, 0.0);
-                assert!(matches!(spec.motion, AnimationMotion::Spring(_)));
-            }
-        }
+        assert!(
+            map.rows[&(id, SLOT)].motion.is_none(),
+            "{label}: a first touch runs nothing"
+        );
     }
 }
 
@@ -233,9 +229,11 @@ fn duration_settles_in_finite_steps() {
     let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.05);
     assert_eq!(r.value, 0.05 / 0.1, "linear: elapsed over secs");
     assert!(!r.settled, "halfway is not settled");
+    assert!(map.rows[&(id, SLOT)].motion.is_some(), "the run holds it");
     let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.05);
     assert_eq!(r.value, 1.0, "must snap to target on settle");
     assert!(r.settled, "100ms total elapsed must settle");
+    assert!(map.rows[&(id, SLOT)].motion.is_none(), "rest frees it");
 
     let mut boundary_map = AnimationMapTyped::<f32>::default();
     let boundary_id = support::widget_id("maximum-duration");

@@ -270,3 +270,32 @@ fn a_spring_rides_a_target_moving_under_its_key() {
     }
     assert_eq!(last.value, 3.0);
 }
+
+/// A resting row keeps nothing of the run before it, so a change too small to animate does not
+/// make the next one a turn back. Under a 1 s linear spec, 0 under key 0, then `tiny` under key 1,
+/// then 16 under key 0 rests on `tiny` for its first frame, as a motion from rest spends nothing
+/// there, and at 0.25 s has `0.75` of its offset left: not 16 at once.
+#[test]
+fn a_change_too_small_to_animate_does_not_shorten_the_next() {
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("small then far");
+    let spec = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
+    let mut step = |target: f32, key: u8, dt: f32| {
+        map.step(
+            AnimationRequest::new(id, SLOT, target).with_key(AnimationKey::of(key)),
+            spec,
+            dt,
+        )
+    };
+    let tiny = 2.0_f32.powi(-20);
+    let _ = step(0.0, 0, 0.0);
+    let small = step(tiny, 1, 0.25);
+    assert_eq!((small.value, small.settled), (tiny, true));
+    let far = step(16.0, 0, 0.25);
+    assert_eq!((far.value, far.settled), (tiny, false));
+    let quarter = step(16.0, 0, 0.25);
+    assert_eq!(
+        (quarter.value, quarter.settled),
+        (16.0 + (tiny - 16.0) * 0.75, false)
+    );
+}

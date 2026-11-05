@@ -83,9 +83,8 @@ impl<T: Animatable> AnimationMapTyped<T> {
                 v.insert(AnimationRow {
                     target: target.clone(),
                     key,
-                    motion: MotionRow::new(spec.motion, &target, &target),
+                    motion: None,
                     ticked_at: render_frame_id,
-                    settled: true,
                 });
                 return Animated {
                     value: target,
@@ -97,16 +96,11 @@ impl<T: Animatable> AnimationMapTyped<T> {
         let already_advanced = row.ticked_at == render_frame_id;
         row.ticked_at = render_frame_id;
 
-        // Steady-state fast path: a settled row with the same target is a no-op, so
-        // skip the settle math. Retarget detection still runs so a new target unfreezes
-        // the row.
+        // Steady-state fast path: a resting row with the same target is a no-op. Retarget
+        // detection still runs so a new target starts a motion.
         //
-        // Returns the caller's `target` instead of `row.cur()`: every `settled`
-        // site leaves the motion at rest on the target, so this skips a clone per
-        // widget per frame. The assert is debug-only since the compare is the cost
-        // this path avoids.
-        if row.settled && row.target == target {
-            debug_assert!(row.cur() == target, "settled row must sit at its target");
+        // Returns the caller's `target`, which skips a clone per widget per frame.
+        if row.motion.is_none() && row.target == target {
             row.key = key;
             return Animated {
                 value: target,
@@ -122,19 +116,14 @@ impl<T: Animatable> AnimationMapTyped<T> {
         );
 
         if key.is_some() && key == row.key && row.target != target {
-            if row.settled {
-                debug_assert!(
-                    row.motion.cur(&target) == target,
-                    "a settled row holds no offset, so it rests on a moved target"
-                );
-                let cur = target.clone();
-                row.target = target;
+            let Some(motion) = &row.motion else {
+                row.target = target.clone();
                 return Animated {
-                    value: cur,
+                    value: target,
                     settled: true,
                 };
-            }
-            let cur = row.motion.cur(&target);
+            };
+            let cur = motion.cur(&target);
             row.target = target;
             return row.advance_once(cur, already_advanced, dt);
         }
@@ -143,8 +132,15 @@ impl<T: Animatable> AnimationMapTyped<T> {
         row.key = key;
         let mut cur = row.cur();
         if row.target != target {
-            let from_rest = row.settled;
-            row.motion.retarget(
+            let from_rest = row.motion.is_none();
+            // On the stack until it proves to run, so a target that drifts under the floor each
+            // frame allocates nothing.
+            let mut fresh = None;
+            let motion = match &mut row.motion {
+                Some(motion) => &mut **motion,
+                None => fresh.insert(MotionRow::new(spec.motion, &cur, &target)),
+            };
+            motion.retarget(
                 &mut Retarget {
                     cur: &mut cur,
                     old_target: &row.target,
@@ -155,23 +151,20 @@ impl<T: Animatable> AnimationMapTyped<T> {
                 },
                 spec.motion,
             );
-            row.target = target;
-            row.settled = false;
             // Snap-if-close, on the retarget alone: a change too small to see settles at
             // once. A running motion ends by its own rule; checked mid-curve this floor cut
             // `OutBack` short where it crosses the target toward the overshoot.
-            if row
-                .motion
-                .close_enough(&animation_row::offset(&cur, &row.target))
-            {
-                row.motion.stop();
-                row.settled = true;
+            let close = motion.close_enough(&animation_row::offset(&cur, &target));
+            row.target = target;
+            if close {
+                row.motion = None;
                 return Animated {
                     value: row.target.clone(),
                     settled: true,
                 };
             }
-            if from_rest {
+            if let Some(motion) = fresh {
+                row.motion = Some(Box::new(motion));
                 return Animated {
                     value: cur,
                     settled: false,
