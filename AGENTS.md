@@ -14,6 +14,10 @@ items grow as WPF star tracks do), **wgpu rendering**.
 - **Micro-optimize freely** — struct packing, `const fn`, scratch reuse, cache
   layout. A _structural_ change with no workload that needs it is too early:
   shelve it with a note.
+- **A second pass is the last resort.** Do not solve an issue with a relayout, a second record
+  pass or another frame. Settle the state before it records, or in the pass that reads it. A
+  second pass stays only where it is the canonical, idiomatic answer and avoids a lot of
+  complexity, and a comment at the site says why.
 - **Docs are starting positions**, this file included. When one contradicts
   the user's intent or the code, flag the conflict and ask.
 
