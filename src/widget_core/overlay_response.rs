@@ -32,7 +32,8 @@ pub struct OverlayResponse<R> {
 /// How an overlay closed: from outside or from its body.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OverlayClose {
-    /// The user asked from outside: an eaten outside press, or Escape.
+    /// Closed from outside: an eaten outside press, Escape, or a [`Modal`](crate::Modal) that
+    /// opened over a light-dismiss overlay open before it.
     Dismissed,
     /// The body asked: [`Ui::close_overlay`](crate::Ui::close_overlay), as an activated
     /// [`MenuItem`](crate::MenuItem) calls it. Wins over a dismissal in the same frame, as the body acted.

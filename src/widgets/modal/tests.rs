@@ -365,3 +365,114 @@ fn closing_from_outside_gives_the_input_back_at_once() {
         }
     }
 }
+
+/// What one frame of [`an_opening_modal_dismisses_the_popups_open_before_it`] reports: how each
+/// overlay closed, and whether the modal's button took a click.
+#[derive(Clone, Copy, Debug, Default)]
+struct CancelFrame {
+    menu: Option<OverlayClose>,
+    blocking: Option<OverlayClose>,
+    inner: Option<OverlayClose>,
+    container: Option<OverlayClose>,
+    clicked: bool,
+}
+
+/// A modal that opens with no press, as on a close the window manager asks for, dismisses the
+/// light-dismiss overlays open before it on the next frame, as their barriers would: a menu on
+/// [`Layer::Menu`], above the modal's scrim, closes as `Dismissed`, and the first click on the
+/// modal's button then reaches it. A popup that blocks outside presses is no light-dismiss one and
+/// stays open beside it. A popup that opens inside the modal later stays open, and so does a popup
+/// the modal is recorded inside, which would close the modal with it. A frame with no modal
+/// opening dismisses nothing.
+#[test]
+fn an_opening_modal_dismisses_the_popups_open_before_it() {
+    const SURFACE: UVec2 = UVec2::new(400, 300);
+    let [menu, blocking, modal, inner, container, button] = [
+        "cancel-menu",
+        "cancel-blocking",
+        "cancel-modal",
+        "cancel-inner",
+        "cancel-container",
+        "cancel-button",
+    ]
+    .map(WidgetId::from_hash);
+    let popup = |id: WidgetId, at: Vec2| Popup::new().anchor(Anchor::at_point(at)).id(id);
+    let modal_body = |ui: &mut Ui, out: &mut CancelFrame, inner_open: bool| {
+        Modal::new().id(modal).show(ui, |ui| {
+            out.clicked = Button::new()
+                .id(button)
+                .label("Save")
+                .show(ui)
+                .left
+                .clicked();
+            if inner_open {
+                out.inner = popup(inner, Vec2::new(200.0, 200.0)).show(ui, |_| {}).close;
+            }
+        });
+    };
+
+    // A menu open above where the modal opens.
+    let mut h = Harness::mono(SURFACE);
+    let scene = |ui: &mut Ui, menu_open: bool, modal_open: bool, inner_open: bool| {
+        let mut out = CancelFrame::default();
+        if menu_open {
+            out.menu = popup(menu, Vec2::new(300.0, 10.0))
+                .layer(Layer::Menu)
+                .show(ui, |_| {})
+                .close;
+            out.blocking = popup(blocking, Vec2::new(10.0, 260.0))
+                .click_outside(ClickOutside::Block)
+                .show(ui, |_| {})
+                .close;
+        }
+        if modal_open {
+            modal_body(ui, &mut out, inner_open);
+        }
+        out
+    };
+    for _ in 0..2 {
+        let quiet = h.frame_value(|ui| scene(ui, true, false, false));
+        assert_eq!(quiet.menu, None, "no modal, no cancel");
+        assert_eq!(quiet.blocking, None);
+    }
+    let opening = h.frame_value(|ui| scene(ui, true, true, false));
+    assert_eq!(opening.menu, None, "not in the modal's own frame");
+    let next = h.frame_value(|ui| scene(ui, true, true, false));
+    assert_eq!(next.menu, Some(OverlayClose::Dismissed));
+    assert_eq!(next.blocking, None, "a popup that blocks stays");
+    // The menu's caller stops recording it, as a trigger does on the close.
+    h.frame(|ui| {
+        scene(ui, false, true, false);
+    });
+    h.click(button);
+    assert!(
+        h.frame_value(|ui| scene(ui, false, true, false)).clicked,
+        "the first click reaches the modal"
+    );
+    h.frame(|ui| {
+        scene(ui, false, true, true);
+    });
+    let inside = h.frame_value(|ui| scene(ui, false, true, true));
+    assert_eq!(inside.inner, None, "a popup inside the modal stays open");
+
+    // A modal recorded inside a popup's body keeps that popup.
+    let mut h = Harness::mono(SURFACE);
+    let nested = |ui: &mut Ui, modal_open: bool| {
+        let mut out = CancelFrame::default();
+        out.container = popup(container, Vec2::new(10.0, 10.0))
+            .show(ui, |ui| {
+                if modal_open {
+                    modal_body(ui, &mut out, false);
+                }
+            })
+            .close;
+        out
+    };
+    h.frame(|ui| {
+        nested(ui, false);
+    });
+    h.frame(|ui| {
+        nested(ui, true);
+    });
+    assert_eq!(h.frame_value(|ui| nested(ui, true)).container, None);
+}

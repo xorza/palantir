@@ -94,10 +94,17 @@ impl OverlayScope {
         }
     }
 
+    /// Whether the overlay opens this frame: its owner recorded no rect last frame.
+    pub(crate) const fn opened(&self) -> bool {
+        self.opened
+    }
+
     /// Lay the backdrop down, record `body` into the claimed layer, and report the overlay's
     /// frame: whether it opened, and how it closed. A [`Ui::close_overlay`] in the body closes it
     /// as [`OverlayClose::Requested`], which wins; else a press on the backdrop or Escape under
-    /// [`ClickOutside::Dismiss`] closes it as [`OverlayClose::Dismissed`].
+    /// [`ClickOutside::Dismiss`] closes it as [`OverlayClose::Dismissed`], and so does a
+    /// [`Modal`](crate::Modal) that opened after a light-dismiss overlay and not inside it
+    /// (`OverlayStack`).
     ///
     /// Escape is read in here as the overlay's own scope, before the layer closes:
     /// afterwards the ambient scope sits below this overlay's and would silence it. Only a
@@ -122,7 +129,11 @@ impl OverlayScope {
             });
         }
         let dismisses = backdrop.click_outside() == Some(ClickOutside::Dismiss);
-        ui.overlays().enter();
+        let cancelled = dismisses
+            && matches!(backdrop, Backdrop::Barrier(..))
+            && !self.opened
+            && ui.overlays().cancels(self.owner);
+        ui.overlays().enter(self.owner, self.opened);
         let scope = ui.layer(layer);
         let scope = match anchor {
             Some(anchor) => scope.anchor(anchor),
@@ -135,7 +146,7 @@ impl OverlayScope {
             inner
         });
         let requested = ui.overlays().leave();
-        let dismissed = dismisses && (escape_pressed || self.backdrop_clicked(ui));
+        let dismissed = cancelled || (dismisses && (escape_pressed || self.backdrop_clicked(ui)));
         OverlayResponse {
             id: self.owner,
             opened: self.opened,

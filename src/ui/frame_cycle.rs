@@ -243,7 +243,7 @@ impl<'a> FrameCycle<'a> {
 
     /// Opens the pass: clears everything the user closure is about to refill.
     ///
-    /// All three resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. A fourth per-pass reset goes here.
+    /// The first three resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. The overlay stack steps a modal's cancel on by one pass, so a `PaintOnly` frame leaves it for the next pass that records. A further per-pass reset goes here.
     fn pre_record(&mut self) {
         tracy::zone!("Ui::pre_record");
         self.ui
@@ -251,6 +251,7 @@ impl<'a> FrameCycle<'a> {
             .pre_record(self.ui.frame_runtime.transparency);
         self.ui.input.pre_record(&self.ui.cascade);
         self.ui.host.window_requests.begin_pass();
+        self.ui.overlays.begin_pass();
     }
 
     /// Record half of a pass: finalize hashes, measure, arrange, cascade. Cascade runs here so pass B of a `request_relayout` frame reads pass A's rects via [`Ui::response_for`]. Stale cache entries can't match live keys and are reaped in `finalize_frame`.

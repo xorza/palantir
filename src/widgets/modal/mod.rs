@@ -28,6 +28,11 @@ use std::rc::Rc;
 /// and returns to the widget that held it when the modal closes. A popup moves focus only when
 /// opened from the keyboard, as a native menu opened by a click highlights no row.
 ///
+/// On the frame after it opens, every light-dismiss overlay open before it closes as
+/// [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed), but those it records inside:
+/// a menu on [`Layer::Menu`] would otherwise sit above its scrim and take its first press, as
+/// Windows ends a menu's mode when a dialog activates.
+///
 /// A modal is open while it records. Stop recording it only on the frame its response reads
 /// [`closed`](OverlayResponse::closed), or after [`Self::close`]: a modal that merely stops
 /// recording keeps every key and press one more frame, so the next key goes nowhere.
@@ -115,6 +120,9 @@ impl<'a> Modal<'a> {
             backdrop: Backdrop::Root(self.click_outside),
         };
         let scope = OverlayScope::claim(ui, spec, &mut root);
+        if scope.opened() {
+            ui.overlays().arm_cancel(root_id);
+        }
         let response = scope.record(ui, |ui| {
             root.record(ui, Some(&dim), |ui| {
                 panel.record(ui, Some(panel_chrome), body)
