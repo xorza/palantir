@@ -204,6 +204,32 @@ pub const fn is_lane(v: f32) -> bool {
     F16x4::fits_lane(v)
 }
 
+/// True if every value of `vs` is a [`lane`], and so an offset too: the compares run unordered,
+/// as one vector compare.
+#[inline]
+pub(crate) const fn are_lanes<const N: usize>(vs: [f32; N]) -> bool {
+    let mut ok = true;
+    let mut i = 0;
+    while i < N {
+        ok &= is_lane(vs[i]);
+        i += 1;
+    }
+    ok
+}
+
+/// True if every value of `vs` is a [`length`] and a [`lane`], so a factor too: an [`extent`]
+/// on top of a lane, which bounds it. Unordered, as [`are_lanes`].
+#[inline]
+pub(crate) const fn are_length_lanes<const N: usize>(vs: [f32; N]) -> bool {
+    let mut ok = true;
+    let mut i = 0;
+    while i < N {
+        ok &= is_lane(vs[i]) & is_extent(vs[i]);
+        i += 1;
+    }
+    ok
+}
+
 /// `v`, which must be a *lane*: a value that packs into one f16 lane, rounding to within ±65504
 /// rather than to infinity. Checked on top of the value's own kind, wherever a value packs into a
 /// lane: `lane(length(blur))`.

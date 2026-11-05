@@ -343,6 +343,30 @@ impl BackdropFilter {
             && self.lens.is_none()
     }
 
+    /// Whether `blur` is a length, `saturation`, `noise` and each luminance bound factors, each a
+    /// lane, and the lens valid: [`Self::validate`]'s test.
+    #[inline]
+    pub(crate) const fn is_valid(&self) -> bool {
+        // An absent bound checks as 0, a factor; by hand, as `Option::unwrap_or` is not `const`.
+        const fn bound(luminance: Option<f32>) -> f32 {
+            match luminance {
+                Some(luminance) => luminance,
+                None => 0.0,
+            }
+        }
+        let lens = match &self.lens {
+            Some(lens) => lens.is_valid(),
+            None => true,
+        };
+        domain::are_length_lanes([
+            self.blur,
+            self.saturation,
+            self.noise,
+            bound(self.max_luminance),
+            bound(self.min_luminance),
+        ]) & lens
+    }
+
     /// Panics unless `blur` is a length, `saturation`, `noise` and each luminance bound factors, and
     /// the lens valid.
     #[inline]
@@ -587,6 +611,15 @@ impl Lens {
             dispersion: f32::lerp(&a.dispersion, &b.dispersion, t),
             highlight: f32::lerp(&a.highlight, &b.highlight, t),
         }
+    }
+
+    /// Whether `bezel` and `thickness` are lengths and `refractive_index` a refractive index, each
+    /// a lane: [`Self::validate`]'s test.
+    #[inline]
+    pub(crate) const fn is_valid(&self) -> bool {
+        domain::are_length_lanes([self.bezel, self.thickness])
+            & domain::is_refractive_index(self.refractive_index)
+            & domain::is_lane(self.refractive_index)
     }
 
     /// Panics unless `bezel` and `thickness` are lengths and `refractive_index` a refractive

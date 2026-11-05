@@ -1,6 +1,27 @@
 use crate::primitives::packed::half_simd::{F16x4, arch};
 use half::f16;
 
+/// The SWAR sign test, checked exhaustively against the scalar form: all 65 536 patterns in each
+/// lane position, beside neighbors at `-0.0` (a sign with no magnitude) and at `0x7FFF` (the
+/// largest magnitude, positive), which a carry out of a lane or a sign read alone would flip.
+#[test]
+fn any_lane_negative_matches_the_scalar_test_for_every_pattern() {
+    for neighbor in [0x8000u16, 0x7FFF, 0] {
+        for bits in 0..=u16::MAX {
+            let scalar = bits & 0x8000 != 0 && bits & 0x7FFF != 0;
+            for lane in 0..4 {
+                let mut lanes = [neighbor; 4];
+                lanes[lane] = bits;
+                assert_eq!(
+                    F16x4::from_bits(lanes).any_lane_negative(),
+                    scalar,
+                    "neighbor={neighbor:#06x} bits={bits:#06x} lane={lane}",
+                );
+            }
+        }
+    }
+}
+
 /// The SWAR lane compare, checked exhaustively against the scalar form: all 65 536 f16 bit patterns in each of four lane positions at both thresholds. A carry escaping into a neighboring lane would show only for specific patterns.
 #[test]
 fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {

@@ -79,6 +79,25 @@ what was rejected and why, and what is still open. What was kept is in the commi
   build peaks at 4.0 GB local and 2.8 GB on the fanless. A/A on `integration/frame/*/theming`: local
   `cpu` ±0.8 %, `gpu` up to 10 % on one leg; fanless ±1 % on both.
 
+- **Run 9 hosts** (every frame case, 2026-11-05): local is now an high-end Intel CPU with an high-end NVIDIA GPU
+  Laptop (dGPU only), pinned with `taskset -c 2 setarch -R`; fanless as above; handheld as in run 7,
+  pinned to core 4; win: a LAN host, a AMD CPU with a Radeon mobile AMD iGPU, 30 GB, Windows,
+  Vulkan, pinned through `ProcessorAffinity` 4 in a PowerShell ABBA runner. A bench build peaks
+  at 4.7 GB local on a cold build, 2.9 to 3.1 GB after; 2.2 to 2.5 GB on the fanless; 4.2 GB on the
+  handheld (3.5 after); 4.7 GB on win. Win's `cargo.exe` and `rustc.exe` are rustup symlink proxies
+  that fail over SSH (os error 448), and its `sccache` server does not start over SSH: a build
+  there runs the toolchain's binaries by full path with `rustc-wrapper = ""`, and a push to its
+  bare repo needs `--receive-pack="powershell git receive-pack"`. Criterion writes CRLF there.
+- **Run 9 floors.** A sequential A/A moves the local CPU cases by up to 7 % and the GPU cases by
+  up to 31 %, so every run 9 A/B is a per-case ABBA (`--exact`, 3 s, 1 s warm-up). Local ABBA
+  A/A over the CPU cases: under 1 %, at most 2 % (`blur/under`). Deck ABBA A/A over every case:
+  CPU median 0.1 %, under 0.7 % but for `frame/cpu/alternating` (11.6 %) and
+  `backdrop_frame/cpu/blur/cached` (15 %), which run bimodal there; GPU median 0.7 %, up to
+  11 % on the `*/cached` cases. fanless: CPU under 0.6 %, GPU under 0.9 %. win: CPU under 0.7 %, GPU
+  median 1 %, up to 8 % and 23 % on `pair_near/scrolling`. Local ABBA A/A over the GPU cases:
+  up to 8.4 % (`frosted/scrolling`), 7.4 % (`blur/scrolling`), 6.3 % (`pair_near/scrolling`)
+  and 5 % (`frame/gpu/resizing`), the rest under 5 %.
+
 ## Where the time is
 
 - **The theming frame** (run 8, local `cpu/theming` 577 µs): shaping 37 % (`cosmic_text`
@@ -156,6 +175,35 @@ what was rejected and why, and what is still open. What was kept is in the commi
   (605 against 408 µs with one fetch) and the grain 90 µs.
 - **Shader statistics** (`RADV_DEBUG=shaderstats`): every fragment shader stays at 24 to 48 VGPRs
   and 20 to 32 waves a SIMD, with no spills; occupancy is not what bounds them.
+
+- **Run 9, the CPU frame** (local `frame/cpu/hovering` 116 µs, `perf record` with LBR call
+  stacks): `open_node` 21.6 %, `Ui::response_for` 10.1 %, `post_record` 9.7 %, `Text::show`
+  5.4 %, `Button::show` 4.9 %, the text shape's push 4.7 %, `widget_id` 3.8 %, and the chrome
+  check `Widget::record` runs on every chromed widget 4.4 % (`Chrome`, `Shadow`, `Brush` and
+  `BackdropFilter::validate`). The fixture's own `format!` and id hashing take about 5 %. A frame
+  probes 1216 responses over 1245 nodes, about 7.5 ns each. Ceilings, each a diagnostic build
+  against base (local ABBA, CPU cases): no probe in `Widget::show` −2 to −7.8 %
+  (`hovering` 116.1 → 107.0 µs); no chrome check in `Widget::record` −1.6 to −5.2 %
+  (`hovering` 115.7 → 110.2 µs).
+
+- **Run 9, the branch tip against its start** (ABBA medians, base → tip; the tip's one change is
+  the chrome check, so the GPU arms move by noise only):
+
+  | case | local | fanless | handheld | win |
+  | --- | --- | --- | --- | --- |
+  | `frame/cpu/cached` | 100.0 → 97.9 µs | 120.8 → 120.0 µs | 246.1 → 238.3 µs | 161.6 → 160.6 µs |
+  | `frame/cpu/hovering` | 115.2 → 112.2 µs | 134.9 → 133.6 µs | 279.4 → 271.8 µs | 182.2 → 182.5 µs |
+  | `frame/cpu/scrolling` | 169.5 → 166.6 µs | 195.4 → 194.8 µs | 386.0 → 379.8 µs | 247.7 → 246.4 µs |
+  | `frame/cpu/typing` | 281.4 → 276.6 µs | 325.6 → 322.9 µs | 654.5 → 634.8 µs | 423.0 → 422.8 µs |
+  | `backdrop_frame/cpu/glass/hover` | 119.8 → 116.7 µs | 139.4 → 138.6 µs | 281.2 → 275.1 µs | 188.1 → 187.0 µs |
+
+  Every CPU case: local −0.8 to −2.7 %, fanless −0.1 to −1.1 %, handheld −1.2 to −3.2 %, win −1.0 to
+  +0.4 %. The win host (Zen 3+) gains least of the x86 hosts.
+- **Run 9, the scrolling frame**: `CascadeEngine::refresh` 13 %, `compute_paint_rect` 9.3 % and
+  `DamageEngine::compute` 3.7 % of local `frame/cpu/scrolling`, against record's share of every
+  other case. A scroll moves every paint rect under the viewport by one translation, and the
+  refresh computes each again in screen space; the time spreads over the tree-item walk and the
+  rect math, with no line past 14 % of either function.
 
 ## Rejected
 
@@ -258,6 +306,16 @@ what was rejected and why, and what is still open. What was kept is in the commi
   `Lerp` (a prepared type or a memo argument) through every derive, for a ceiling of about
   3 %; a stateless one has nowhere to live.
 
+- **A probe that skips its interaction half** for a widget the pointer does not engage (run 9,
+  branch `spike-probe-engages`): not hovered, no capture's press or release, no scroll delta.
+  Local ABBA −1.4 to +1.8 %, fanless within its floor, handheld +1.7 % on the CPU cases, win ±1 %. The
+  interaction half of a disengaged widget is a few compares; the geometry half and the copies
+  are the probe's cost, and a probe is 7.5 ns.
+- **A probe by the widget's resolve position** (run 9, branch `spike-probe-position`): the probe
+  in `Widget::show` runs after the body, when the newest resolved id is a child's, so a
+  container falls to the `by_id` map; looking up at the widget's own position skips the map.
+  Local ABBA within ±1 %: the map is not where the probe's time goes.
+
 ## Decisions
 
 - **A shape outlives its size** (run 8). Shaping runs unhinted, so cosmic-text's glyphs are in
@@ -339,6 +397,16 @@ what was rejected and why, and what is still open. What was kept is in the commi
   capture moves the tent's normalized fetch coordinates.
 
 ## Open
+
+- **A scroll as a translation** (run 9): paint rects kept in the space of the nearest scroll
+  viewport, so a scroll changes one offset and not every row under it, as Chromium's property
+  trees hold a scroll as one transform node and paint chunks in its local space. Damage diffs
+  screen rects row by row and the encoder culls on them, so both would read through the offset.
+  The ceiling is about a quarter of `frame/cpu/scrolling` (the refresh, the paint rects and the
+  damage pass together); not spiked.
+- **The response probe** (run 9): 1216 probes a frame at 7.5 ns, 5 to 8 % of a CPU frame; the
+  two cheaper probes tried moved nothing (Rejected). What is left is the geometry half's two
+  table reads and the 152-byte copies.
 
 - **The theming frame is a resize frame now** (run 8): `cpu/theming` 374 µs against
   `cpu/resizing` 342 µs local, 301 against 289 µs on the fanless; layout is 40 % and record 35 % of

@@ -50,6 +50,10 @@ impl F16x4 {
     const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
     const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();
     const ABS_MASK: u16 = 0x7FFF;
+    /// [`Self::ABS_MASK`] in each lane of [`Self::packed`].
+    const ABS_LANES: u64 = 0x7FFF_7FFF_7FFF_7FFF;
+    /// The sign bit of each lane of [`Self::packed`].
+    const SIGN_LANES: u64 = 0x8000_8000_8000_8000;
     const NAN_EXP: u16 = 0x7C00;
 
     pub(crate) const ZERO: Self = Self([0; 4]);
@@ -107,14 +111,17 @@ impl F16x4 {
     /// SWAR: with the sign masked every lane is at most `0x7FFF`, so adding `0x7FFF - bits` can set a lane's top bit but never carries out of it, and all four compares run as one masked add. Packing by shift keeps it `const` and endian-independent.
     #[inline]
     pub(crate) const fn any_lane_above(self, bits: u16) -> bool {
-        const ABS: u64 = 0x7FFF_7FFF_7FFF_7FFF;
-        const SIGN: u64 = 0x8000_8000_8000_8000;
         debug_assert!(bits <= 0x7FFF, "threshold must be a magnitude pattern");
-        let [a, b, c, d] = self.0;
-        let packed = (a as u64) | ((b as u64) << 16) | ((c as u64) << 32) | ((d as u64) << 48);
         let bias = (0x7FFF - bits) as u64;
         let bias = bias | (bias << 16) | (bias << 32) | (bias << 48);
-        ((packed & ABS) + bias) & SIGN != 0
+        ((self.packed() & Self::ABS_LANES) + bias) & Self::SIGN_LANES != 0
+    }
+
+    /// The four lanes as one word, lane 0 lowest. By shift, so `const` and endian-independent.
+    #[inline]
+    const fn packed(self) -> u64 {
+        let [a, b, c, d] = self.0;
+        (a as u64) | ((b as u64) << 16) | ((c as u64) << 32) | ((d as u64) << 48)
     }
 
     #[inline]
@@ -123,17 +130,13 @@ impl F16x4 {
     }
 
     /// True if any lane is below zero. `-0.0` is not.
+    ///
+    /// SWAR as [`Self::any_lane_above`]: adding `0x7FFF` to a masked lane sets its top bit exactly
+    /// when its magnitude is not zero, without a carry out of it.
     #[inline]
     pub(crate) const fn any_lane_negative(self) -> bool {
-        let mut i = 0;
-        while i < 4 {
-            let lane = self.0[i];
-            if lane & !Self::ABS_MASK != 0 && lane & Self::ABS_MASK != 0 {
-                return true;
-            }
-            i += 1;
-        }
-        false
+        let packed = self.packed();
+        packed & ((packed & Self::ABS_LANES) + Self::ABS_LANES) & Self::SIGN_LANES != 0
     }
 
     /// True if any lane is NaN: [`Self::any_lane_above`] at infinity.

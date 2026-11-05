@@ -26,6 +26,17 @@ static INSTALL: Once = Once::new();
 /// When `f` returns normally or the message lacks `fragment`.
 #[track_caller]
 pub(crate) fn assert_panics_with<R>(fragment: &str, f: impl FnOnce() -> R) {
+    let Err(message) = caught(f) else {
+        panic!("expected a panic containing {fragment:?}, but the closure returned");
+    };
+    assert!(
+        message.contains(fragment),
+        "expected a panic containing {fragment:?}, got {message:?}",
+    );
+}
+
+/// Run `f` with the panic hook quiet: its value, or the message it panicked with.
+pub(crate) fn caught<R>(f: impl FnOnce() -> R) -> Result<R, String> {
     INSTALL.call_once(|| {
         let prev = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
@@ -43,14 +54,7 @@ pub(crate) fn assert_panics_with<R>(fragment: &str, f: impl FnOnce() -> R) {
     let was_quiet = QUIET.with(|quiet| quiet.replace(true));
     let result = panic::catch_unwind(AssertUnwindSafe(f));
     QUIET.with(|quiet| quiet.set(was_quiet));
-    let Err(payload) = result else {
-        panic!("expected a panic containing {fragment:?}, but the closure returned");
-    };
-    let message = message_of(payload.as_ref());
-    assert!(
-        message.contains(fragment),
-        "expected a panic containing {fragment:?}, got {message:?}",
-    );
+    result.map_err(|payload| message_of(payload.as_ref()).to_owned())
 }
 
 /// [`assert_panics_with`], returning where the panic was raised as `file:line`, so a test can

@@ -24,6 +24,12 @@ pub struct Stroke {
 }
 
 impl Stroke {
+    /// Whether the width is a length and the color a color: [`Self::validate`]'s test.
+    #[inline]
+    pub(crate) const fn is_valid(&self) -> bool {
+        domain::is_length(self.width) & domain::is_color(self.color)
+    }
+
     /// Panics unless the width is a [length](domain::length) and the color a [color](domain::color).
     #[inline]
     #[track_caller]

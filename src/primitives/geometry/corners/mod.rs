@@ -44,11 +44,13 @@ impl Corners {
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {
-        assert!(
-            !self.0.any_lane_non_finite() && !self.0.any_lane_negative(),
-            "{}",
-            <Self as LaneCodec>::LANE_RULE,
-        );
+        assert!(self.is_valid(), "{}", <Self as LaneCodec>::LANE_RULE);
+    }
+
+    /// Whether every radius is a length and a lane: [`Self::validate`]'s test.
+    #[inline]
+    pub(crate) const fn is_valid(self) -> bool {
+        !self.0.any_lane_non_finite() & !self.0.any_lane_negative()
     }
 
     /// Radii the crate derives from valid lengths (half a stroke's width), whose lanes

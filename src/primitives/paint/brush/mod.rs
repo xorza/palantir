@@ -10,9 +10,9 @@ use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
+use crate::primitives::paint::brush::gradient::conic_geometry::{ConicGeometry, ConicGradient};
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+use crate::primitives::paint::brush::gradient::radial_geometry::{RadialGeometry, RadialGradient};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
@@ -43,6 +43,27 @@ impl Brush {
             Self::Conic(g) => g.ramp.stops.make_opaque(),
         }
         brush
+    }
+
+    /// Whether the color or gradient geometry holds its kinds: [`Self::validate`]'s test.
+    #[inline]
+    pub(crate) const fn is_valid(&self) -> bool {
+        match self {
+            Self::Solid(c) => domain::is_color(*c),
+            Self::Linear(g) => domain::is_angle(g.geometry.angle),
+            Self::Radial(g) => {
+                let RadialGeometry { center, radius } = g.geometry;
+                domain::are_lanes([center.x, center.y])
+                    & domain::are_length_lanes([radius.x, radius.y])
+            }
+            Self::Conic(g) => {
+                let ConicGeometry {
+                    center,
+                    start_angle,
+                } = g.geometry;
+                domain::are_lanes([center.x, center.y]) & domain::is_angle(start_angle)
+            }
+        }
     }
 
     /// Panics unless the color or gradient geometry holds its kinds ([`domain`]); stops are checked when made.

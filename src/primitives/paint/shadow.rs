@@ -39,6 +39,14 @@ pub struct Shadow {
 }
 
 impl Shadow {
+    /// Whether the color, offset, blur and spread hold their kinds: [`Self::validate`]'s test.
+    #[inline]
+    pub(crate) const fn is_valid(&self) -> bool {
+        let RgbaF32 { r, g, b, a } = self.color;
+        let Vec2 { x, y } = self.offset;
+        domain::are_lanes([r, g, b, a, x, y, self.blur, self.spread]) & domain::is_extent(self.blur)
+    }
+
     /// Panics unless the color is a [color](domain::color), offset and spread
     /// are [offsets](domain::offset), and blur is a [length](domain::length), each
     /// a [lane](domain::lane): the lowered shadow packs all four into f16 lanes.
