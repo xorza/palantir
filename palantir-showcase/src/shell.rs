@@ -4,9 +4,9 @@
 
 use palantir::{
     Align, App, Block, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
-    FocusPolicy, FontFamily, Justify, Key, Metrics, Palette, Panel, PopupTrigger, Scroll, Sense,
-    Separator, Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, TextWrap, Tooltip, Ui,
-    UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
+    FocusPolicy, FontFamily, Justify, Key, Palette, Panel, PopupTrigger, Scroll, Sense, Separator,
+    Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, TextWrap, Tooltip, Ui, UserScale,
+    VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
 };
 
 use crate::app_state::AppState;
@@ -16,6 +16,7 @@ use crate::pages;
 use crate::scaffold::chip::Chip;
 use crate::scaffold::rail;
 use crate::scaffold::rail::Nav;
+use crate::scaffold::tokens::M;
 use crate::scaffold::tokens::{MEASURE, Tokens};
 use crate::support::{Kit, Kits, PAGE_GAP};
 
@@ -32,7 +33,6 @@ pub(crate) fn toggle_inspector(ui: &mut Ui) {
     }
 }
 
-const M: Metrics = Metrics::DEFAULT;
 /// The rail's search field, which Ctrl+K focuses.
 const SEARCH: &str = "showcase::rail::search";
 /// The rail's scrolling list, which an item scrolls into view in.

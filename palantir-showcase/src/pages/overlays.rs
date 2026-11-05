@@ -4,15 +4,14 @@ use std::time::Duration;
 
 use crate::appearance::Appearance;
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Dialog, Kit, Section};
 use palantir::{
     Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, Configure, Justify, Key, Menu,
-    MenuBar, MenuItem, MenuSeparator, MenuTheme, Metrics, Modal, Panel, Popup, PopupTrigger,
-    Response, Sense, Shortcut, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
+    MenuBar, MenuItem, MenuSeparator, MenuTheme, Modal, Panel, Popup, PopupTrigger, Response,
+    Sense, Shortcut, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Side {

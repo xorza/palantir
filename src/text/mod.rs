@@ -83,17 +83,39 @@ pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 /// Masked from the key, not counted, so the offset is stable per entry: a rotating counter could move a deadline inward on re-promotion, which the expiry wheel owes a fresh ticket for. The wheel is sized from the longest deadline, so this costs a larger ring.
 pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
+/// Frames a *probationary* entry survives before `ShapedBufferCache::tick_frame` drops it:
+/// inserted and never looked up, or superseded (`ShapedBufferCache::supersede`) after its reuse
+/// slot moved to another key. Short on purpose: a drag mints a never-reused key per run per
+/// frame, and the protected window would hold `runs × RENDERED_RUN_KEEP_FRAMES`
+/// dead buffers.
+///
+/// **Supersession is what makes this window reach that population.** Layout shapes
+/// a run and the encoder renders it on the same frame, which is a lookup, so every
+/// buffer would be promoted at creation; the measure and encoded-run caches
+/// short-circuit before here, so nothing repairs that later. `TextSystem` alone
+/// can tell "wants a different shape" (dead) from "left the tree" (may return). It
+/// is a demotion, not an eviction: four frames of grace let an oscillating label or
+/// a reversing drag still hit.
+///
+/// # Why not reference-counted retention
+///
+/// `EncodedKey` embeds [`key::TextShapeKey`], so a width drag mints an encoded entry per
+/// frame living `ENCODED_CACHE_KEEP_FRAMES`. Holding its buffer strongly pins
+/// `runs × (window + 1)` buffers, the growth this scheme stops. Holding it weakly
+/// leaves buffers dying under live entries, so the restore path (`ShapedTextRef`,
+/// `InternedText`, `CosmicMeasure::ensure_buffer`) must stay. The wins exclude each
+/// other.
+pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::common::expiry_wheel::ExpiryWheel;
     use crate::text::cosmic::shaped_buffer_cache;
+    use crate::text::key::TextShapeKey;
 
-    /// The shaped-buffer cache's short window: the first expiry drain comes due this many frames
-    /// after the first shape.
-    #[cfg(test)]
-    pub(crate) const PROBATION_KEEP_FRAMES: u64 = shaped_buffer_cache::PROBATION_KEEP_FRAMES;
-
-    /// Frames one revolution of the expiry ring takes; see `crate::internals::SHAPED_BUFFER_RING_FRAMES`.
-    pub(crate) const SHAPED_BUFFER_RING_FRAMES: u64 = shaped_buffer_cache::internals::RING_FRAMES;
+    /// Frames per revolution of the shaped-buffer expiry ring; audits warm and measure in whole revolutions.
+    pub const SHAPED_BUFFER_RING_FRAMES: usize =
+        ExpiryWheel::<TextShapeKey>::slots_for_keep(shaped_buffer_cache::KEEP_FRAMES) as usize;
 }
 
 #[cfg(test)]

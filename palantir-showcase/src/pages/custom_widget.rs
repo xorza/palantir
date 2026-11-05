@@ -3,16 +3,15 @@
 //! Nothing enforces that no crate internal is reached (the showcase builds with `internals`); the listing beside the demo is the check.
 
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, DragValue, Key, Metrics, Panel, Response, RgbaF32, Sense,
-    Sizing, Stroke, Text, Ui, VAlign, WidgetId, fmt,
+    Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, Sizing,
+    Stroke, Text, Ui, VAlign, WidgetId, fmt,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 const BUTTON: f32 = 28.0;
 /// Reserved, so the buttons hold still from one digit to three.

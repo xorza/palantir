@@ -2,13 +2,12 @@
 //! built into each window's themes once an edit.
 
 use palantir::{
-    AnimationSpec, ButtonTheme, ColorCoords, ColorModel, ColorScheme, FocusRingTheme, Metrics,
-    Palette, RgbaF32, Theme, Ui, WidgetId,
+    AnimationSpec, ButtonTheme, ColorCoords, ColorModel, ColorScheme, FocusRingTheme, Palette,
+    RgbaF32, Theme, Ui, WidgetId,
 };
 
+use crate::scaffold::tokens::M;
 use crate::support;
-
-const M: Metrics = Metrics::DEFAULT;
 
 /// The accent seeds the rail offers beside the stock accent: Tailwind's 500 step of blue, teal,
 /// green, orange, pink and violet (<https://tailwindcss.com/docs/colors>), each solved per scheme

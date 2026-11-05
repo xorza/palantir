@@ -2,17 +2,16 @@
 
 use crate::appearance::Appearance;
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
     Animated, AnimationSpec, Axis, Button, ButtonTheme, Checkbox, Chrome, ColorScheme, ComboBox,
-    Configure, Corners, DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar,
-    RadioGroup, RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
-    Switch, Text, TextEdit, TextStyleOverrides, Theme, Tooltip, Ui, WidgetId, WidgetLook, fmt,
+    Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup,
+    RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text,
+    TextEdit, TextStyleOverrides, Theme, Tooltip, Ui, WidgetId, WidgetLook, fmt,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 static REGIONS: [&str; 5] = [
     "Europe",

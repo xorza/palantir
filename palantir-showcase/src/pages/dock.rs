@@ -1,14 +1,13 @@
 //! A live dock: drag a chip to another pane's edge to split, into its strip to join, onto a divider to resize.
 
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::Kit;
 use palantir::{
     Block, Button, Chrome, ColorPicker, Configure, Corners, DockDrop, DockOperation, DockState,
-    DockTabMenu, DockTabs, DockView, InternedStr, MenuItem, Metrics, Panel, RgbaF32, Size, Sizing,
+    DockTabMenu, DockTabs, DockView, InternedStr, MenuItem, Panel, RgbaF32, Size, Sizing,
     SplitSide, TabChip, Text, Ui, WidgetId, fmt,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 /// The showcase's tab key: a small `Copy` value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

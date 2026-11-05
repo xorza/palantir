@@ -13,7 +13,7 @@
 //! text to verify a request against. And it holds the last bounded key its run answered, the
 //! only record of which buffer to [demote](TextShaper::supersede) when the row stops answering
 //! through it. Supersession makes the shaped-buffer cache's probation window reachable
-//! (`shaped_buffer_cache::PROBATION_KEEP_FRAMES`) and so bounds a resize drag.
+//! (`PROBATION_KEEP_FRAMES`) and so bounds a resize drag.
 //!
 //! A row is verified once per layout run ([`TextSystem::begin_run`]): a run asks each slot for
 //! one text, its intrinsic query first and its measure after, so the second ask compares the key

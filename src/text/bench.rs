@@ -3,7 +3,7 @@ use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::HAlign;
-use crate::text::cosmic::shaped_buffer_cache;
+use crate::text::PROBATION_KEEP_FRAMES;
 use crate::text::family_keys::FamilyKeys;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -36,7 +36,7 @@ const DRAG_PRIME_FRAMES: u32 = 256;
 /// root and the probation window, with room to spare. Derived so it tracks
 /// the window; the failure guarded against retains
 /// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] of them.
-const DRAG_RESIDENCY_LIMIT: usize = shaped_buffer_cache::PROBATION_KEEP_FRAMES as usize * 2 + 4;
+const DRAG_RESIDENCY_LIMIT: usize = PROBATION_KEEP_FRAMES as usize * 2 + 4;
 
 /// Distinct labels per frame in the reuse-layer A/B benches: a mid-size UI's
 /// text runs, enough for real cache pressure.

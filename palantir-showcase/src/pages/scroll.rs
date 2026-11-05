@@ -2,15 +2,15 @@
 //! right half splits vertically into a horizontal strip and a two-axis grid of buttons that zooms
 //! about the pointer, `Scroll::both().zoomable()`, its clicks hit-tested through the zoom.
 
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::Kit;
 use palantir::glam::Vec2;
 use palantir::{
-    Button, Chrome, Configure, Corners, DragValue, Metrics, Panel, Scroll, Sizing, SplitHalf,
-    Splitter, Stroke, Text, Ui, WidgetId, fmt,
+    Button, Chrome, Configure, Corners, DragValue, Panel, Scroll, Sizing, SplitHalf, Splitter,
+    Stroke, Text, Ui, WidgetId, fmt,
 };
 
-const M: Metrics = Metrics::DEFAULT;
 /// Items in the vertical list and the horizontal strip, enough to overflow either pane.
 const ITEMS: u32 = 40;
 /// The zoomable grid's side, in buttons.

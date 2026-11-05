@@ -35,8 +35,7 @@ pub use crate::gpu::test_gpu::{
     HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
 };
 
+pub use crate::text::internals::SHAPED_BUFFER_RING_FRAMES;
+
 /// The raster-scale quantum, so the allocation suite's scale ramp steps one rung a frame.
 pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;
-
-/// Frames per revolution of the shaped-buffer expiry ring; audits warm and measure in whole revolutions.
-pub const SHAPED_BUFFER_RING_FRAMES: u64 = text::internals::SHAPED_BUFFER_RING_FRAMES;

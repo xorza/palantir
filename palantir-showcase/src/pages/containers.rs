@@ -1,15 +1,14 @@
 //! Container drivers: stacks, Canvas, wrap stacks and Grid with fixed, fill, hug and clamped tracks plus spanning.
 
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::{
-    Align, Block, Chrome, Configure, Corners, Grid, GridCell, Justify, Metrics, Panel, RgbaF32,
-    Sizing, Stroke, Text, Track, Ui, WidgetId,
+    Align, Block, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
+    Stroke, Text, Track, Ui, WidgetId,
 };
 use std::hash::Hash;
-
-const M: Metrics = Metrics::DEFAULT;
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Stacks")

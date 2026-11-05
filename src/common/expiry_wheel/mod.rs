@@ -85,13 +85,17 @@ impl Chain {
 /// Ring of pending expiry tickets keyed by due frame, sized from the longest
 /// deadline the owner can hand out ([`Self::with_keep`]).
 ///
-/// Every bucket draws fixed chunks from one pool the whole ring shares, so the memory follows
-/// the most tickets outstanding at once, and a burst in one bucket costs what it holds: 4000
+/// Every bucket draws fixed chunks from one pool the whole ring shares, so the memory it touches
+/// follows the most tickets outstanding at once, and a burst in one bucket costs what it holds: 4000
 /// tickets take 250 chunks, 128 KiB, where a bucket of its own per frame held 256 times that
 /// for the session. A drain gives its chunks back to the pool, so once the pool reaches its
-/// peak no bucket allocates, whichever bucket a later burst lands in. Refused: a `Vec` per
-/// bucket grown together, which kept every bucket at the busiest bucket's load; one grown
-/// alone, which allocates in whichever later frame a bucket first meets that load.
+/// peak no bucket allocates, whichever bucket a later burst lands in. The pool starts with room
+/// for a chunk per bucket, so tickets spread over the ring never allocate, and only a burst past
+/// that room grows it in a frame. Started empty, it grew on the frame a first expiry filed its
+/// tickets, which the process's hash seed picks: 5 to 12 of 100 processes allocated that way after
+/// their warmup. The room is capacity alone, so a page no ticket reached stays untouched. Refused:
+/// a `Vec` per bucket grown together, which kept every bucket at the busiest bucket's load; one
+/// grown alone, which allocates in whichever later frame a bucket first meets that load.
 #[derive(Debug)]
 pub(crate) struct ExpiryWheel<K> {
     /// Ring indexed by `due & mask`: each bucket's chain of chunks.
@@ -135,9 +139,9 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
         Self {
             buckets: vec![Chain::EMPTY; slots].into_boxed_slice(),
             mask: slots as u64 - 1,
-            tickets: Vec::new(),
-            links: Vec::new(),
-            free: Vec::new(),
+            tickets: Vec::with_capacity(slots * CHUNK_TICKETS),
+            links: Vec::with_capacity(slots),
+            free: Vec::with_capacity(slots),
             drained_through: 0,
             next_seq: 0,
         }

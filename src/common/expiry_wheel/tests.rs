@@ -247,6 +247,49 @@ fn buckets_share_one_pool_that_grows_only_past_its_peak() {
     assert_eq!(wheel.free.len(), 250);
 }
 
+/// The pool starts with room for a chunk per bucket: a horizon of 7 is 8 buckets, so 8 chunks of 16
+/// tickets fit. One ticket on each of frames 1 to 7 takes 7 chunks. Frame 1's 17th ticket opens the
+/// 8th, and its 32nd fills it, so the room is full with no buffer grown. Its 33rd opens a 9th.
+#[test]
+fn the_pool_grows_no_buffer_within_a_chunk_per_bucket() {
+    fn capacities(wheel: &ExpiryWheel<u32>) -> [usize; 3] {
+        [
+            wheel.tickets.capacity(),
+            wheel.links.capacity(),
+            wheel.free.capacity(),
+        ]
+    }
+    let mut wheel = ExpiryWheel::<u32>::with_horizon(7);
+    let room = [8 * 16, 8, 8];
+    assert_eq!(capacities(&wheel), room);
+
+    for due in 1..=7 {
+        wheel.schedule(0, due);
+    }
+    assert_eq!(wheel.chunks(), 7);
+
+    for _ in 2..=16 {
+        wheel.schedule(0, 1);
+    }
+    assert_eq!(wheel.chunks(), 7, "16 tickets fit frame 1's chunk");
+
+    wheel.schedule(0, 1);
+    assert_eq!(wheel.chunks(), 8, "the 17th opens the 8th chunk");
+
+    for _ in 18..=32 {
+        wheel.schedule(0, 1);
+    }
+    assert_eq!(wheel.chunks(), 8, "the 32nd fills it");
+    assert_eq!(capacities(&wheel), room, "the room holds all 8");
+
+    wheel.schedule(0, 1);
+    assert_eq!(wheel.chunks(), 9, "the 33rd opens a 9th");
+    assert!(
+        capacities(&wheel)[1] > room[1],
+        "a 9th chunk grows the links"
+    );
+}
+
 /// A clear drops every ticket and keeps every chunk in the pool.
 #[test]
 fn a_clear_keeps_the_pool() {

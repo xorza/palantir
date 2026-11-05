@@ -1,4 +1,5 @@
 use super::*;
+use crate::text::PROBATION_KEEP_FRAMES;
 
 /// The body every retention case shapes.
 const BODY: &str = "hello world";
@@ -99,7 +100,7 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
 /// The pool keeps every evicted buffer, past any count, so a drag that sheds a frame's runs finds
 /// them all on the next. What sits untouched through a whole trim period goes after it, one buffer
 /// per frame: frame 1 opens a period, a miss in it takes one of 200, so 199 sat untouched when
-/// frame 1 + `POOL_TRIM_FRAMES` closes it, and the next 199 frames drop them.
+/// frame 1 + `POOL_TRIM_PERIOD_FRAMES` closes it, and the next 199 frames drop them.
 #[test]
 fn recycle_pool_keeps_its_peak_and_trims_what_goes_cold() {
     let mut c = CosmicMeasure::default();
@@ -111,7 +112,7 @@ fn recycle_pool_keeps_its_peak_and_trims_what_goes_cold() {
     idle_frames(&mut c, 1);
     c.measure(BODY, distinct_width_shape(n));
     assert_eq!(c.recycle_pool_len(), 199);
-    idle_frames(&mut c, shaped_buffer_cache::internals::POOL_TRIM_FRAMES - 1);
+    idle_frames(&mut c, shaped_buffer_cache::POOL_TRIM_PERIOD_FRAMES - 1);
     assert_eq!(
         c.recycle_pool_len(),
         200,
@@ -148,7 +149,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
 
     // Inserted in frame 0: the first four sweeps have a saturated cutoff of 0; the
     // fifth is the first whose cutoff passes their stamp.
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES);
     assert_eq!(
         c.cache_len(),
         10,
@@ -163,7 +164,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
     let mut big = CosmicMeasure::default();
     fill_distinct_widths(&mut big, 1000);
     assert_eq!(big.cache_len(), 1000);
-    idle_frames(&mut big, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut big, PROBATION_KEEP_FRAMES);
     assert_eq!(
         big.cache_len(),
         1000,
@@ -184,7 +185,7 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
     assert_eq!(reshaped.buffer_key(), keys[1], "same parameters, same key");
 
     // Untouched keys are gone; promoted ones have 120 frames, not 4.
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES + 1);
     assert_eq!(c.cache_len(), 2);
     assert!(c.resident_run(keys[0]).is_some(), "promoted key survives");
     assert!(c.resident_run(keys[1]).is_some(), "promoted key survives");
@@ -199,10 +200,7 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
 
     // The protected window is `RENDERED_RUN_KEEP_SPREAD_MASK` frames wide, each key
     // at its own point: this pins floor and ceiling.
-    idle_frames(
-        &mut c,
-        RENDERED_RUN_KEEP_FRAMES - shaped_buffer_cache::PROBATION_KEEP_FRAMES - 1,
-    );
+    idle_frames(&mut c, RENDERED_RUN_KEEP_FRAMES - PROBATION_KEEP_FRAMES - 1);
     assert_eq!(c.cache_len(), 2, "inside the window every key is promised");
     idle_frames(&mut c, RENDERED_RUN_KEEP_SPREAD_MASK + 1);
     assert_eq!(c.cache_len(), 0, "past the widest of them, both dropped");
@@ -241,7 +239,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
 
     // The 20 protected keys plus the counter values of the last
     // PROBATION_KEEP_FRAMES frames.
-    let steady = 20 + shaped_buffer_cache::PROBATION_KEEP_FRAMES as usize;
+    let steady = 20 + PROBATION_KEEP_FRAMES as usize;
     assert_eq!(
         lens[10..],
         vec![steady; 50][..],
@@ -291,7 +289,7 @@ fn demote_and_promote_churn_keeps_the_ticket_count_flat() {
     // A `supersede` ticket is the live one and fires PROBATION_KEEP_FRAMES + 1
     // frames later; the supplanted one dies on its next firing. Outstanding is one
     // live ticket per resident entry plus demotes in flight.
-    let ceiling = RUNS * WIDTHS + RUNS * (shaped_buffer_cache::PROBATION_KEEP_FRAMES as usize + 2);
+    let ceiling = RUNS * WIDTHS + RUNS * (PROBATION_KEEP_FRAMES as usize + 2);
     let (worst_frame, worst) = *pending_at.iter().max_by_key(|&&(_, n)| n).unwrap();
     assert!(
         worst <= ceiling,
@@ -322,11 +320,11 @@ fn a_demote_still_evicts_on_time_with_an_older_ticket_outstanding() {
     // Promote it, then let its insert-time ticket re-file out to the protected
     // deadline.
     c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]).unwrap());
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES + 1);
     assert_eq!(c.cache_len(), 1, "promoted, so it outlives probation");
 
     c.supersede(keys[0]);
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES);
     assert_eq!(c.cache_len(), 1, "still inside the probation window");
     idle_frames(&mut c, 1);
     assert_eq!(
@@ -344,13 +342,13 @@ fn a_supplanted_ticket_does_not_evict_an_entry_promoted_since() {
     let keys = fill_distinct_widths(&mut c, 1);
 
     c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]).unwrap());
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES + 1);
 
     c.supersede(keys[0]);
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES);
     c.ensure_buffer(TextShapeRequest::for_key(BODY, keys[0]).unwrap());
 
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES + 2);
     assert_eq!(c.cache_len(), 1, "the promotion outranks the stale ticket");
 
     idle_frames(
@@ -440,7 +438,7 @@ fn a_new_size_lays_out_the_shape_it_had() {
 
         let mut expired = CosmicMeasure::default();
         let first = expired.measure(text, from).buffer_key();
-        idle_frames(&mut expired, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+        idle_frames(&mut expired, PROBATION_KEEP_FRAMES + 1);
         assert!(expired.resident_run(first).is_none());
         let kept = expired.measure(text, to);
         assert_eq!(
@@ -462,7 +460,7 @@ fn a_new_size_lays_out_the_shape_it_had() {
     let mut drag = CosmicMeasure::default();
     drag.measure(text, from.width(120.0));
     drag.measure(text, from.width(110.0));
-    idle_frames(&mut drag, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut drag, PROBATION_KEEP_FRAMES + 1);
     drag.measure(text, from.width(100.0));
     assert_eq!(
         drag.cache_counts().relayouts,
@@ -473,7 +471,7 @@ fn a_new_size_lays_out_the_shape_it_had() {
     let mut c = CosmicMeasure::default();
     let first = c.measure(text, from).buffer_key();
     let first_glyphs = glyph_poss(&c, first);
-    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+    idle_frames(&mut c, PROBATION_KEEP_FRAMES + 1);
     assert!(c.resident_run(first).is_none());
     c.measure(text, from);
     assert_eq!(
@@ -487,7 +485,7 @@ fn a_new_size_lays_out_the_shape_it_had() {
     let first = gone.measure(text, from).buffer_key();
     idle_frames(
         &mut gone,
-        shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1 + RENDERED_RUN_KEEP_FRAMES + 1,
+        PROBATION_KEEP_FRAMES + 1 + RENDERED_RUN_KEEP_FRAMES + 1,
     );
     assert!(gone.resident_run(first).is_none());
     gone.measure(text, from);

@@ -5,14 +5,13 @@
 
 use palantir::{
     Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Grid,
-    GridCell, Metrics, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme,
-    Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme, Tooltip, Track,
-    Ui, UiPreferences, VAlign, WidgetId, WidgetLook,
+    GridCell, Panel, Preference, RadioGroup, RadioLook, Reduction, Scroll, SegmentedTheme, Sizing,
+    SlotDefaults, Spacing, StatefulLook, Text, TextStyleOverrides, Theme, Tooltip, Track, Ui,
+    UiPreferences, VAlign, WidgetId, WidgetLook,
 };
 
+use crate::scaffold::tokens::M;
 use crate::scaffold::tokens::Tokens;
-
-const M: Metrics = Metrics::DEFAULT;
 
 /// The rail's width: room for a preference row's name beside its [`Segmented`] track, as the
 /// longest name, "Transparency", takes 78 px at the caption size. The track takes the rest,

@@ -115,14 +115,12 @@ impl Audit {
         }
     }
 
-    /// Real cosmic shaping instead of the mono fallback, warmed and measured in one
-    /// revolution of the shaped-buffer expiry ring each: a bucket's first drain
-    /// grows the wheel's scratch, after the probe's quiet frames.
+    /// Real cosmic shaping instead of the mono fallback, warmed and measured for one revolution
+    /// of the shaped-buffer expiry ring each.
     pub(crate) const fn text(mut self) -> Self {
-        let ring = SHAPED_BUFFER_RING_FRAMES as usize;
         self.text = true;
-        self.warmup = Warmup::Fixed(ring);
-        self.frames = ring;
+        self.warmup = Warmup::Fixed(SHAPED_BUFFER_RING_FRAMES);
+        self.frames = SHAPED_BUFFER_RING_FRAMES;
         self
     }
 

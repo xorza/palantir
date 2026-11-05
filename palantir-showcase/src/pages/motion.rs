@@ -2,6 +2,7 @@
 
 use crate::made_image::MadeImage;
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::DemoCell;
 use crate::support::{Kit, Knob, Section, Swatches};
@@ -12,14 +13,12 @@ use palantir::widget::{
 };
 use palantir::{
     Align, Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconFit,
-    IconHandle, IconSet, IconTable, Image, ImageFit, Metrics, Panel, Rect, RgbaF32, Sense, Shadow,
-    Sizing, Spinner, Stroke, Text, TranslateScale, Ui, VAlign, WidgetId,
+    IconHandle, IconSet, IconTable, Image, ImageFit, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
+    Spinner, Stroke, Text, TranslateScale, Ui, VAlign, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
 use std::time::Duration;
-
-const M: Metrics = Metrics::DEFAULT;
 
 #[derive(Debug)]
 struct Bars {

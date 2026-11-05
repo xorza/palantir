@@ -26,7 +26,7 @@ use crate::text::cosmic::counters::CacheCounters;
 use crate::text::cosmic::shape_store::ShapeStore;
 use crate::text::cosmic::text_cut::TextCut;
 use crate::text::key::TextShapeKey;
-use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
+use crate::text::{PROBATION_KEEP_FRAMES, RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use cosmic_text::{Buffer, BufferLine};
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
@@ -34,35 +34,10 @@ use std::collections::hash_map::Entry;
 /// Frames a pooled buffer must sit untouched before the pool lets it go. Long against the pauses
 /// in a resize drag, so a drag that resumes finds its buffers; short against a session, so a burst
 /// of text does not hold its peak for good.
-const POOL_TRIM_PERIOD_FRAMES: u64 = 600;
-
-/// Frames a *probationary* entry survives before [`ShapedBufferCache::tick_frame`]
-/// drops it: inserted and never looked up, or
-/// [superseded](ShapedBufferCache::supersede) after its reuse slot moved to
-/// another key. Short on purpose: a drag mints a never-reused key per run per
-/// frame, and the protected window would hold `runs × RENDERED_RUN_KEEP_FRAMES`
-/// dead buffers.
-///
-/// **Supersession is what makes this window reach that population.** Layout shapes
-/// a run and the encoder renders it on the same frame, which is a lookup, so every
-/// buffer would be promoted at creation; the measure and encoded-run caches
-/// short-circuit before here, so nothing repairs that later. `TextSystem` alone
-/// can tell "wants a different shape" (dead) from "left the tree" (may return). It
-/// is a demotion, not an eviction: four frames of grace let an oscillating label or
-/// a reversing drag still hit.
-///
-/// # Why not reference-counted retention
-///
-/// `EncodedKey` embeds [`TextShapeKey`], so a width drag mints an encoded entry per
-/// frame living `ENCODED_CACHE_KEEP_FRAMES`. Holding its buffer strongly pins
-/// `runs × (window + 1)` buffers, the growth this scheme stops. Holding it weakly
-/// leaves buffers dying under live entries, so the restore path (`ShapedTextRef`,
-/// `InternedText`, `CosmicMeasure::ensure_buffer`) must stay. The wins exclude each
-/// other.
-pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
+pub(crate) const POOL_TRIM_PERIOD_FRAMES: u64 = 600;
 
 /// The longest a rendered run waits to be retired: its keep plus the stagger.
-const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
+pub(crate) const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
 
 /// An evicted entry's allocations, as the pool hands them back to be shaped into.
 #[derive(Debug)]
@@ -382,22 +357,13 @@ impl RecyclePool {
     }
 }
 
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
     use super::*;
-    #[cfg(test)]
     use crate::common::counters::CounterSet;
-    #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
-    #[cfg(test)]
     use crate::text::extent::TextExtent;
 
-    pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
-
-    #[cfg(test)]
-    pub(crate) const POOL_TRIM_FRAMES: u64 = POOL_TRIM_PERIOD_FRAMES;
-
-    #[cfg(test)]
     impl ShapedBufferCache {
         /// The run resident under `key`, whatever text it holds, for a test that watches
         /// residency.

@@ -4,14 +4,13 @@
 
 use crate::appearance::Appearance;
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Kit, Section, Swatches};
 use palantir::{
     Align, Button, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ColorSwatch, Configure, Metrics, Panel, RgbaF32, Sizing, SwatchRow, Ui, VAlign, WidgetId,
+    ColorSwatch, Configure, Panel, RgbaF32, Sizing, SwatchRow, Ui, VAlign, WidgetId,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 #[derive(Debug)]
 struct State {

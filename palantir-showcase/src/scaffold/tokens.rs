@@ -5,7 +5,8 @@ use palantir::{
     TextStyle,
 };
 
-const M: Metrics = Metrics::DEFAULT;
+/// The stock metrics, under the one short name the tour reads them by.
+pub(crate) const M: Metrics = Metrics::DEFAULT;
 
 /// A page's title: Fluent 2's Title 3, 24 px semibold, two steps over the 16 px subtitle
 /// `Metrics` carries as its title (<https://fluent2.microsoft.design/typography>).

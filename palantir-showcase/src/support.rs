@@ -13,15 +13,14 @@ use std::panic::Location;
 
 use palantir::{
     Align, Axis, Block, Checkbox, Chrome, ColorCoords, ColorModel, ColorScheme, Configure, Corners,
-    Expander, FontWeight, Justify, Metrics, Modal, OverlayResponse, Palette, Panel, RadioGroup,
+    Expander, FontWeight, Justify, Modal, OverlayResponse, Palette, Panel, RadioGroup,
     RadioOptions, RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui,
     VAlign, WidgetId, fmt,
 };
 
 use crate::scaffold::chip::Chip;
+use crate::scaffold::tokens::M;
 use crate::scaffold::tokens::{MEASURE, Tokens};
-
-const M: Metrics = Metrics::DEFAULT;
 
 /// Bright demo surface, for drop shadows and dark strokes, in either scheme.
 const LIGHT_WELL: RgbaF32 = RgbaF32::hex(0xc8ccd2);

@@ -30,7 +30,7 @@ const DRAG_BLOCKS_PER_FRAME_MAX: u64 = 20;
 
 /// A resize drag: the committed width moves every frame, so each run resolves
 /// to a fresh bounded key, supersedes the old one, and mints a shaped buffer
-/// nothing asks for again (`shaped_buffer_cache::PROBATION_KEEP_FRAMES`).
+/// nothing asks for again (`PROBATION_KEEP_FRAMES`).
 #[test]
 fn width_drag_stays_flat() {
     // One shaped buffer per run, all inside cosmic.

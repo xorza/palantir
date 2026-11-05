@@ -2,14 +2,13 @@
 //! its own with content of the app's, close buttons and overflow.
 
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Metrics, Panel, Sizing, TabChip, TabItem, TabKey,
-    TabMove, TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
+    Block, Button, Chrome, Configure, Corners, Panel, Sizing, TabChip, TabItem, TabKey, TabMove,
+    TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 /// The pages the view may hold; it opens on the first three, and "+" adds the next missing.
 const POOL: [&str; 6] = [

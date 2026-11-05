@@ -1,10 +1,9 @@
 //! The chips a page's header and a section's title row wear.
 
-use palantir::{Chrome, Configure, Corners, Metrics, Panel, RgbaF32, Stroke, Text, Ui};
+use palantir::{Chrome, Configure, Corners, Panel, RgbaF32, Stroke, Text, Ui};
 
+use crate::scaffold::tokens::M;
 use crate::scaffold::tokens::Tokens;
-
-const M: Metrics = Metrics::DEFAULT;
 
 /// What a chip names.
 #[derive(Clone, Copy, Debug)]

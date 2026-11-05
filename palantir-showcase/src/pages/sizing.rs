@@ -6,14 +6,13 @@
 )]
 
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Align, Block, ComboBox, Configure, HAlign, Justify, Metrics, Panel, RgbaF32, Sizing, Spacing,
-    Text, Ui, VAlign, Visibility, WidgetId,
+    Align, Block, ComboBox, Configure, HAlign, Justify, Panel, RgbaF32, Sizing, Spacing, Text, Ui,
+    VAlign, Visibility, WidgetId,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     playground(ui, k);

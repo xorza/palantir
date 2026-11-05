@@ -1,14 +1,13 @@
 //! Text measurement and wrapping. The left column is single-text wrapping in a box the knobs size (`TextWrap::WrapWithOverflow` and the intrinsic-min overflow rule); the right is composition: Grid Auto under constraint, a property grid, and a chat row whose Fill message column reflows live.
 
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Grid, Metrics, Panel, RgbaF32, Sizing, Text,
-    TextWrap, Track, Ui, WidgetId,
+    Block, Button, Chrome, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track,
+    Ui, WidgetId,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \

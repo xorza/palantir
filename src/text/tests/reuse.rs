@@ -1,4 +1,5 @@
 use super::*;
+use crate::text::PROBATION_KEEP_FRAMES;
 
 #[test]
 fn identity_cache_is_keyed_by_actual_shaping_inputs() {
@@ -184,7 +185,7 @@ fn resize_drag_retains_only_the_probation_window() {
     assert_eq!(counts.supersedes, RUNS * (FRAMES - 1));
 
     let resident = text.shaper().cosmic_cache_len() as u32;
-    let ceiling = RUNS * (shaped_buffer_cache::PROBATION_KEEP_FRAMES as u32 + 2) + RUNS;
+    let ceiling = RUNS * (PROBATION_KEEP_FRAMES as u32 + 2) + RUNS;
     assert!(
         resident <= ceiling,
         "drag retained {resident} buffers, over the {ceiling} the \
@@ -233,7 +234,7 @@ fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
             "{label}: the bounded buffer is demoted exactly once",
         );
 
-        idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+        idle(&mut text, PROBATION_KEEP_FRAMES + 2);
         assert!(
             !text.shaper().has_cosmic_buffer(bounded),
             "{label}: a demoted buffer must not outlive the probation window",
@@ -293,7 +294,7 @@ fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
         "a slot that stopped being recorded is not a slot that moved",
     );
 
-    idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+    idle(&mut text, PROBATION_KEEP_FRAMES + 2);
     for key in &keys {
         assert!(
             text.shaper().has_cosmic_buffer(*key),
@@ -311,7 +312,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
     frame_end(&mut text);
 
     frame_end_removing(&mut text, &WidgetIdSet::from_iter([widget_id]));
-    idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+    idle(&mut text, PROBATION_KEEP_FRAMES + 2);
     assert!(
         text.shaper().has_cosmic_buffer(key),
         "a scrolled-away run must keep the protected window",
@@ -418,7 +419,7 @@ fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
         "a changed run must retire its root *and* its bounded resolve",
     );
 
-    idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+    idle(&mut text, PROBATION_KEEP_FRAMES + 2);
     let live = text.drive(s, "hello", 200.0);
     assert!(
         text.shaper().has_cosmic_buffer(live),
@@ -448,7 +449,7 @@ fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
     frame_end(&mut text);
 
     text.drive_visible(a, "12.5", 60.0);
-    idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
+    idle(&mut text, PROBATION_KEEP_FRAMES + 2);
     assert!(
         !text.shaper().has_cosmic_buffer(shared),
         "premise: the shared buffer is demoted by a's move",

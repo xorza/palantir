@@ -3,15 +3,14 @@
 
 use crate::appearance::Appearance;
 use crate::scaffold::api;
+use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
-    FocusRingTheme, Grid, Metrics, Modal, Panel, PopupTrigger, RadioGroup, Sizing, Slider, Switch,
-    Text, TextEdit, Track, Ui, WidgetId,
+    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioGroup, Sizing, Slider, Switch, Text,
+    TextEdit, Track, Ui, WidgetId,
 };
-
-const M: Metrics = Metrics::DEFAULT;
 
 static PLANS: [&str; 3] = ["Free", "Pro", "Team"];
 const LIST: [&str; 5] = ["Inbox", "Drafts", "Sent", "Archive", "Trash"];
