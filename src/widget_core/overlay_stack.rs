@@ -106,6 +106,11 @@ impl OverlayStack {
         keep.extend(self.entered.iter().map(|entered| entered.owner));
     }
 
+    /// Whether a modal that opened this pass armed a cancel, which the next pass applies.
+    pub(crate) fn is_armed(&self) -> bool {
+        self.cancel.armed.is_some()
+    }
+
     /// Whether the cancel this pass applies closes the light-dismiss overlay `owner`, open
     /// before it: every one but those the opening modal kept.
     pub(crate) fn cancels(&self, owner: WidgetId) -> bool {

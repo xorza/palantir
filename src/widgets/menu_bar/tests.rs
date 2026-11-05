@@ -397,3 +397,44 @@ fn open_close_and_is_open_drive_the_bar_from_outside() {
     frame(&mut h);
     assert_eq!(open(&h), None, "a label the bar does not show");
 }
+
+/// A modal that opens with no press, as on a close the window manager asks for, closes the open
+/// menu in its own frame, before the title records: the menu does not record in the frame's last
+/// pass, the bar holds no open menu, and the title paints the closed look it had before the menu
+/// opened, not the open one.
+#[test]
+fn an_opening_modal_closes_the_menu_and_its_open_look_in_its_frame() {
+    use crate::widgets::modal::Modal;
+
+    let title_fill = |h: &Harness| {
+        h.ui()
+            .tree(Layer::Main)
+            .chrome(h.node_for_widget_id(title(1)))
+            .map(|chrome| match chrome.fill {
+                ShapeBrush::Solid(fill) => fill,
+                other @ ShapeBrush::Gradient { .. } => panic!("a title fills solid: {other:?}"),
+            })
+    };
+    // Reduced motion snaps the title's look, so each frame paints the look its state picks.
+    let mut h = Harness::mono(SURFACE);
+    h.set_system_motion_reduced(true);
+    h.prime(2, |ui| {
+        build(ui);
+    });
+    let closed = title_fill(&h);
+    MenuBar::open(h.ui_mut(), bar(), "Edit");
+    frame(&mut h);
+    assert!(recorded(&h, 1));
+    assert_ne!(title_fill(&h), closed, "the open look");
+
+    h.frame(|ui| {
+        build(ui);
+        Modal::new().id_salt("modal").show(ui, |_| {});
+    });
+    assert_eq!(open(&h), None);
+    assert!(
+        !recorded(&h, 1),
+        "the menu is gone from the frame's last pass"
+    );
+    assert_eq!(title_fill(&h), closed, "the closed look");
+}

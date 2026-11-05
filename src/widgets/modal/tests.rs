@@ -411,15 +411,19 @@ fn an_opening_modal_dismisses_the_popups_open_before_it() {
         });
     };
 
-    // A menu open above where the modal opens.
+    // A menu open above where the modal opens, whose caller stops showing it once it closes.
     let mut h = Harness::mono(SURFACE);
-    let scene = |ui: &mut Ui, menu_open: bool, modal_open: bool, inner_open: bool| {
+    let mut menu_open = true;
+    let mut scene = |ui: &mut Ui, modal_open: bool, inner_open: bool| {
         let mut out = CancelFrame::default();
         if menu_open {
             out.menu = popup(menu, Vec2::new(300.0, 10.0))
                 .layer(Layer::Menu)
                 .show(ui, |_| {})
                 .close;
+            menu_open = out.menu.is_none();
+        }
+        if !modal_open || !inner_open {
             out.blocking = popup(blocking, Vec2::new(10.0, 260.0))
                 .click_outside(ClickOutside::Block)
                 .show(ui, |_| {})
@@ -431,28 +435,37 @@ fn an_opening_modal_dismisses_the_popups_open_before_it() {
         out
     };
     for _ in 0..2 {
-        let quiet = h.frame_value(|ui| scene(ui, true, false, false));
+        let quiet = h.frame_value(|ui| scene(ui, false, false));
         assert_eq!(quiet.menu, None, "no modal, no cancel");
         assert_eq!(quiet.blocking, None);
     }
-    let opening = h.frame_value(|ui| scene(ui, true, true, false));
-    assert_eq!(opening.menu, None, "not in the modal's own frame");
-    let next = h.frame_value(|ui| scene(ui, true, true, false));
-    assert_eq!(next.menu, Some(OverlayClose::Dismissed));
-    assert_eq!(next.blocking, None, "a popup that blocks stays");
-    // The menu's caller stops recording it, as a trigger does on the close.
-    h.frame(|ui| {
-        scene(ui, false, true, false);
-    });
+    // The modal opens with no input: its frame takes a second pass, which closes the menu.
+    let mut passes = Vec::new();
+    h.frame(|ui| passes.push(scene(ui, true, false)));
+    let [first, second] = passes[..] else {
+        panic!("the modal's frame records twice: {passes:?}");
+    };
+    assert_eq!(first.menu, None, "the pass the modal opens in");
+    assert_eq!(
+        second.menu,
+        Some(OverlayClose::Dismissed),
+        "closed in the modal's own frame"
+    );
+    assert_eq!(second.blocking, None, "a popup that blocks stays");
+    assert_eq!(
+        h.ui().response_for(menu).rect,
+        Some(Rect::new(300.0, 10.0, 0.0, 0.0)),
+        "collapsed at its anchor, so it paints nothing"
+    );
     h.click(button);
     assert!(
-        h.frame_value(|ui| scene(ui, false, true, false)).clicked,
+        h.frame_value(|ui| scene(ui, true, false)).clicked,
         "the first click reaches the modal"
     );
     h.frame(|ui| {
-        scene(ui, false, true, true);
+        scene(ui, true, true);
     });
-    let inside = h.frame_value(|ui| scene(ui, false, true, true));
+    let inside = h.frame_value(|ui| scene(ui, true, true));
     assert_eq!(inside.inner, None, "a popup inside the modal stays open");
 
     // A modal recorded inside a popup's body keeps that popup.
@@ -475,4 +488,58 @@ fn an_opening_modal_dismisses_the_popups_open_before_it() {
         nested(ui, true);
     });
     assert_eq!(h.frame_value(|ui| nested(ui, true)).container, None);
+}
+
+/// A modal that first records in a frame's last pass arms its cancel past that pass, so the frame
+/// asks for the next one, whose first pass closes the menu; a quiet frame asks for none.
+#[test]
+fn a_modal_first_recorded_in_the_last_pass_asks_the_next_frame() {
+    const SURFACE: UVec2 = UVec2::new(400, 300);
+    let [menu, modal] = ["late-menu", "late-modal"].map(WidgetId::from_hash);
+    let mut h = Harness::mono(SURFACE);
+    let mut menu_open = true;
+    // How the menu closed on this pass, `None` while it stays open or is gone.
+    let mut scene = |ui: &mut Ui, modal_open: bool| {
+        let mut close = None;
+        if menu_open {
+            close = Popup::new()
+                .anchor(Anchor::at_point(Vec2::new(300.0, 10.0)))
+                .id(menu)
+                .layer(Layer::Menu)
+                .show(ui, |_| {})
+                .close;
+            menu_open = close.is_none();
+        }
+        if modal_open {
+            Modal::new().id(modal).show(ui, |_| {});
+        }
+        close
+    };
+    for _ in 0..2 {
+        h.frame(|ui| {
+            scene(ui, false);
+        });
+    }
+    let quiet = h.step(|ui| {
+        scene(ui, false);
+    });
+    assert!(!quiet.repaint_requested, "a quiet frame");
+
+    // Pass A asks a second pass and shows no modal; pass B shows it first.
+    let mut closes = Vec::new();
+    let report = h.step(|ui| {
+        if closes.is_empty() {
+            ui.request_relayout();
+        }
+        closes.push(scene(ui, !closes.is_empty()));
+    });
+    assert_eq!(closes, [None, None], "both passes keep the menu");
+    assert!(report.repaint_requested, "the cancel needs the next frame");
+    closes.clear();
+    h.step(|ui| closes.push(scene(ui, true)));
+    assert_eq!(
+        closes[0],
+        Some(OverlayClose::Dismissed),
+        "the next frame's first pass"
+    );
 }

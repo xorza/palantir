@@ -70,6 +70,8 @@ pub struct OverlayScope {
     spec: OverlaySpec,
     /// The owner recorded no rect last frame, so the overlay opens this frame.
     opened: bool,
+    /// A modal that opened after this light-dismiss overlay closes it this pass (`OverlayStack`).
+    cancelled: bool,
 }
 
 impl OverlayScope {
@@ -79,18 +81,28 @@ impl OverlayScope {
     /// class but [`KeyFilter::FOCUS`] is taken, so a popup under a modal does not
     /// dismiss on the same Escape; `FOCUS` stays out so Tab walks the overlay's own
     /// stops.
+    ///
+    /// A light-dismiss overlay a modal cancels this pass records collapsed, with no backdrop
+    /// and no claim, so its last pass paints nothing and takes no input, and it reports
+    /// [`OverlayClose::Dismissed`].
     pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
-        if spec.backdrop.click_outside().is_some() {
+        let owner = root.resolve(ui);
+        let opened = ui.response_for(owner).rect.is_none();
+        let cancelled = matches!(spec.backdrop, Backdrop::Barrier(_, ClickOutside::Dismiss))
+            && !opened
+            && ui.overlays().cancels(owner);
+        if cancelled {
+            root.configure().collapsed();
+        } else if spec.backdrop.click_outside().is_some() {
             root.configure()
                 .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS))
                 .blocks_below();
         }
-        let owner = root.resolve(ui);
-        let opened = ui.response_for(owner).rect.is_none();
         Self {
             owner,
             spec,
             opened,
+            cancelled,
         }
     }
 
@@ -119,7 +131,9 @@ impl OverlayScope {
             anchor,
             backdrop,
         } = self.spec;
-        if let Backdrop::Barrier(id, _) = backdrop {
+        if let Backdrop::Barrier(id, _) = backdrop
+            && !self.cancelled
+        {
             ui.layer(layer).show(|ui| {
                 Widget::leaf()
                     .id(id)
@@ -129,10 +143,6 @@ impl OverlayScope {
             });
         }
         let dismisses = backdrop.click_outside() == Some(ClickOutside::Dismiss);
-        let cancelled = dismisses
-            && matches!(backdrop, Backdrop::Barrier(..))
-            && !self.opened
-            && ui.overlays().cancels(self.owner);
         ui.overlays().enter(self.owner, self.opened);
         let scope = ui.layer(layer);
         let scope = match anchor {
@@ -146,7 +156,8 @@ impl OverlayScope {
             inner
         });
         let requested = ui.overlays().leave();
-        let dismissed = cancelled || (dismisses && (escape_pressed || self.backdrop_clicked(ui)));
+        let dismissed =
+            self.cancelled || (dismisses && (escape_pressed || self.backdrop_clicked(ui)));
         OverlayResponse {
             id: self.owner,
             opened: self.opened,

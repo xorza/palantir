@@ -220,6 +220,11 @@ fn focused_title(ui: &Ui, titles: &[WidgetId]) -> Option<WidgetId> {
 /// onto another title opens it. A pointer that rests where it was when the menu opened, as one
 /// the keyboard opened under it, moves nothing.
 fn switch(ui: &mut Ui, row: &MenuBarRow, open: WidgetId) -> Switch {
+    // A modal that opened after the menu closes it before its title records, so the title
+    // drops its open look in the same pass.
+    if ui.overlays().cancels(Menu::menu_id(open)) {
+        return Switch::Close;
+    }
     if let Some(focused) = focused_title(ui, &row.titles)
         && focused != open
     {
