@@ -13,7 +13,7 @@ use std::ops;
 /// [`Ui::response_for`](crate::Ui::response_for) probes one by id.
 ///
 /// Owned, not a lazy probe over `&Ui`: probing every widget's state as it shows costs 9 µs a
-/// record pass of the frame fixture, and the borrow made an owned twin of each response
+/// record pass of the frame bench's tree, and the borrow made an owned twin of each response
 /// (AGENTS.md "A `Response` is owned").
 ///
 /// # Reaching one out of a richer result

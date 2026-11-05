@@ -2126,7 +2126,6 @@ name = "palantir"
 version = "0.8.3"
 dependencies = [
  "arboard",
- "backtrace",
  "bytemuck",
  "cosmic-text",
  "criterion",
@@ -2167,6 +2166,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "palantir-showcase"
+version = "0.8.3"
+dependencies = [
+ "backtrace",
+ "bytemuck",
+ "criterion",
+ "image",
+ "palantir",
+ "palantir-showcase",
+ "tracing-subscriber",
 ]
 
 [[package]]

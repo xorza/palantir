@@ -2,7 +2,8 @@
 
 What nine optimization runs learned (2026-10-28 to 2026-11-05): how to measure on the hosts,
 where the time goes, what was refused and why, and what is still open. What was kept is in the
-commits, each with its numbers per host.
+commits, each with its numbers per host. The runs measured the frame fixture, 1,245 nodes, which
+the showcase's first page, 246 nodes, has since replaced, so no number here compares with a new run.
 
 ## Measuring
 

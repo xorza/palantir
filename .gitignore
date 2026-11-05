@@ -2,8 +2,8 @@
 **/tmp/
 **/.tmp/
 **/.DS_Store
-tests/visual/golden/
-tests/visual/output/
+palantir-showcase/tests/visual/golden/
+palantir-showcase/tests/visual/output/
 .claude/scheduled_tasks.lock
 docs/screens
 dhat-heap.json

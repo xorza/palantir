@@ -1,8 +1,8 @@
 //! The backdrop's device benches, each in device time between passes. Every frame moves the
 //! clear, so each paints whole and captures once.
 //!
-//! - `atomic/backdrop_capture/gpu/<size>`: the capture of a pane over the left half of the frame
-//!   fixture, scrolled a pixel a frame: the copy of its footprint out of the target. A pane over
+//! - `atomic/backdrop_capture/gpu/<size>`: the capture of a pane over the left half of the
+//!   scene, scrolled a pixel a frame: the copy of its footprint out of the target. A pane over
 //!   the whole surface would paint through the backbuffer and copy nothing.
 //! - `atomic/backdrop_composite/gpu/<look>/<side>`: the main pass of a `side`² surface holding one
 //!   rect and a pane over all of it, less the pane's capture and blur between its two passes: the
@@ -17,13 +17,13 @@ use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
+use crate::bench::scene::{Scene, SceneFrame};
 use crate::display::system_scale::SystemScale;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::host::offscreen::OffscreenHost;
-use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
@@ -43,22 +43,22 @@ const SIZES: [UVec2; 2] = [UVec2::new(1920, 1080), UVec2::new(3840, 2160)];
 /// The pane's σ in physical px: two levels down, so the blur after the capture stays small.
 const SIGMA: f32 = 10.0;
 
-/// What a frame records: the frame fixture, shifted by `scroll`, under a pane over the left half
+/// What a frame records: the scene, shifted by `scroll`, under a pane over the left half
 /// of the surface.
 #[derive(Debug, Default)]
-struct State {
-    fixture: FrameFixture,
+struct State<S> {
+    frame: SceneFrame<S>,
     scroll: f32,
 }
 
-impl State {
+impl<S: Scene> State<S> {
     fn record(&mut self, ui: &mut Ui) {
         Panel::zstack()
             .id_salt("backdrop-capture-bench")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                self.fixture.scroll_offset = Vec2::new(self.scroll, 0.0);
-                self.fixture.render(BENCH_SCALE, ui);
+                self.frame.scroll = Vec2::new(self.scroll, 0.0);
+                self.frame.record(ui);
                 Panel::hstack()
                     .id_salt("backdrop-capture-bench-row")
                     .size((Sizing::FILL, Sizing::FILL))
@@ -80,11 +80,11 @@ impl State {
     }
 }
 
-pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
+pub(crate) fn atomic<S: Scene>(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.encoder_timed_gpu() else {
         return;
     };
-    capture(c, backends, backend);
+    capture::<S>(c, backends, backend);
     composite(c, backends, backend);
 }
 
@@ -126,7 +126,7 @@ impl WholeFrames {
     }
 }
 
-fn capture(c: &mut Criterion, backends: &Backends, backend: Backend) {
+fn capture<S: Scene>(c: &mut Criterion, backends: &Backends, backend: Backend) {
     let mut group = Kind::Atomic.group(c, "backdrop_capture", Scale::Frame);
     for size in SIZES {
         group.throughput(Throughput::Elements(u64::from(size.x * size.y)));
@@ -135,7 +135,7 @@ fn capture(c: &mut Criterion, backends: &Backends, backend: Backend) {
             let gpu = backends.device(Timing::PassOnly);
             let target = gpu.target("palantir.bench.backdrop_capture", size);
             let mut frames = WholeFrames::new(gpu);
-            let mut state = State::default();
+            let mut state = State::<S>::default();
             let mut frame = || {
                 state.scroll = (state.scroll + 1.0) % 64.0;
                 frames.frame(gpu, &target, |ui| state.record(ui));
@@ -326,15 +326,15 @@ const TOOLBAR: Rect = Rect::new(0.0, 0.0, 1280.0, 48.0);
 const SIDEBAR: Rect = Rect::new(0.0, 48.0, 240.0, 672.0);
 const POPUP: Rect = Rect::new(500.0, 200.0, 320.0, 220.0);
 
-/// The frame fixture with a toolbar, a sidebar and a popup as panes over it, in `look`, at frame
+/// The scene with a toolbar, a sidebar and a popup as panes over it, in `look`, at frame
 /// `n` of `arm`.
 #[derive(Debug, Default)]
-struct PaneFrame {
-    fixture: FrameFixture,
+struct PaneFrame<S> {
+    frame: SceneFrame<S>,
     n: u32,
 }
 
-impl PaneFrame {
+impl<S: Scene> PaneFrame<S> {
     fn record(&mut self, look: Look, arm: Arm, ui: &mut Ui) {
         let odd = self.n % 2 == 1;
         let flip = |on: bool| {
@@ -345,7 +345,7 @@ impl PaneFrame {
             }
         };
         if arm == Arm::Scrolling {
-            self.fixture.scroll_offset = Vec2::new(0.0, (self.n % 64) as f32);
+            self.frame.scroll = Vec2::new(0.0, (self.n % 64) as f32);
         }
         let popup = match arm {
             Arm::Sliding if odd => Rect {
@@ -362,7 +362,7 @@ impl PaneFrame {
             .id_salt("backdrop-frame")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                self.fixture.render(BENCH_SCALE, ui);
+                self.frame.record(ui);
                 Panel::canvas()
                     .id_salt("backdrop-frame-panes")
                     .size((Sizing::FILL, Sizing::FILL))
@@ -392,11 +392,11 @@ impl Look {
     }
 }
 
-/// `integration/backdrop_frame/<backend>/<look>/<arm>`: one whole frame of the frame fixture under
+/// `integration/backdrop_frame/<backend>/<look>/<arm>`: one whole frame of the scene under
 /// three panes, wall time. `cpu` records through compose with no device; `gpu` runs the host's
 /// frame on the desktop's present strategy and waits for it. Each case checks its arm's paint, and
 /// on the device the blurs its frames run.
-pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
+pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
     let mut group = Kind::Integration.group(c, "backdrop_frame", Scale::Frame);
     for backend in backends.all() {
         for look in Look::FRAME {
@@ -409,7 +409,7 @@ pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
                             .depth(Depth::Compose)
                             .build();
                         let start = Instant::now();
-                        let mut state = PaneFrame::default();
+                        let mut state = PaneFrame::<S>::default();
                         let mut frame = || {
                             state.n += 1;
                             h.at(start.elapsed());
@@ -421,26 +421,26 @@ pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
                         assert_eq!(frame(), arm.expected(look).0, "{}", arm.label());
                         bencher.iter(&mut frame);
                     }
-                    Backend::Gpu => pane_frames(bencher, backends, look, arm),
+                    Backend::Gpu => pane_frames::<S>(bencher, backends, look, arm),
                 });
             }
         }
     }
     if let Some(backend) = backends.gpu() {
-        scenes(&mut group, backends, backend);
+        scenes::<S>(&mut group, backends, backend);
     }
     group.finish();
 }
 
 /// The device half of `integration/backdrop_frame`.
-fn pane_frames(bencher: &mut Bencher<'_>, backends: &Backends, look: Look, arm: Arm) {
+fn pane_frames<S: Scene>(bencher: &mut Bencher<'_>, backends: &Backends, look: Look, arm: Arm) {
     let gpu = backends.device(Timing::PassOnly);
     let target = gpu.target("palantir.bench.backdrop_frame", FRAME_SURFACE);
     let mut host = OffscreenHost::builder(gpu.handles())
         .collect_gpu_stats(false)
         .swapchain_present()
         .build();
-    let mut state = PaneFrame::default();
+    let mut state = PaneFrame::<S>::default();
     let mut frame = || {
         state.n += 1;
         let mut app = |ui: &mut Ui| state.record(look, arm, ui);
@@ -468,16 +468,16 @@ const MODAL_SURFACE: UVec2 = UVec2::new(3840, 2160);
 
 /// One case of `integration/backdrop_frame/gpu` past the three panes: what its frames record,
 /// and what a settled frame paints and blurs.
-#[derive(Clone, Copy, Debug)]
-struct SceneCase {
+#[derive(Debug)]
+struct SceneCase<S> {
     name: &'static str,
     surface: UVec2,
     want: (FramePaint, usize),
-    /// Frame `n` over the frame fixture.
-    record: fn(&mut FrameFixture, u32, &mut Ui),
+    /// Frame `n` over the scene.
+    record: fn(&mut SceneFrame<S>, u32, &mut Ui),
 }
 
-impl SceneCase {
+impl<S: Scene> SceneCase<S> {
     /// Every scene case, in the order the bench runs them.
     const ALL: [Self; 9] = [
         Self {
@@ -596,17 +596,17 @@ impl SceneCase {
 }
 
 /// Scroll the page of `fixture` to frame `n`'s place.
-const fn scroll(fixture: &mut FrameFixture, n: u32) {
-    fixture.scroll_offset = Vec2::new(0.0, (n % 64) as f32);
+const fn scroll<S>(frame: &mut SceneFrame<S>, n: u32) {
+    frame.scroll = Vec2::new(0.0, (n % 64) as f32);
 }
 
-/// The frame fixture, and `panes` on a canvas over it.
-fn over(fixture: &mut FrameFixture, ui: &mut Ui, panes: impl FnOnce(&mut Ui)) {
+/// The scene, and `panes` on a canvas over it.
+fn over<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, panes: impl FnOnce(&mut Ui)) {
     Panel::zstack()
         .id_salt("backdrop-scene")
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            fixture.render(BENCH_SCALE, ui);
+            fixture.record(ui);
             Panel::canvas()
                 .id_salt("backdrop-scene-panes")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -615,13 +615,13 @@ fn over(fixture: &mut FrameFixture, ui: &mut Ui, panes: impl FnOnce(&mut Ui)) {
 }
 
 /// A frosted pane over the whole window, as a modal dialog's page sits.
-fn modal(fixture: &mut FrameFixture, ui: &mut Ui) {
+fn modal<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
     over(fixture, ui, |ui| ui.add_shape(Look::Frosted.pane()));
 }
 
 /// Two frosted cards side by side, `gap` logical px apart: at 8 px the second's reach covers the
 /// first, at 160 px it covers nothing painted after the page.
-fn pair(fixture: &mut FrameFixture, ui: &mut Ui, gap: f32) {
+fn pair<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, gap: f32) {
     over(fixture, ui, |ui| {
         for i in 0..2 {
             let x = 200.0 + i as f32 * (320.0 + gap);
@@ -632,7 +632,7 @@ fn pair(fixture: &mut FrameFixture, ui: &mut Ui, gap: f32) {
 
 /// A window background, which folds into the clear, then a frosted sidebar over it with nothing
 /// painted before it, then the page beside the sidebar.
-fn first(fixture: &mut FrameFixture, ui: &mut Ui) {
+fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
     Panel::zstack()
         .id_salt("backdrop-first")
         .size((Sizing::FILL, Sizing::FILL))
@@ -651,7 +651,7 @@ fn first(fixture: &mut FrameFixture, ui: &mut Ui) {
                         .id_salt("backdrop-first-sidebar")
                         .size((Sizing::fixed(240.0), Sizing::FILL))
                         .show(ui, |ui| ui.add_shape(Look::Frosted.pane()));
-                    fixture.render(BENCH_SCALE, ui);
+                    fixture.record(ui);
                 });
         });
 }
@@ -659,7 +659,7 @@ fn first(fixture: &mut FrameFixture, ui: &mut Ui) {
 /// `integration/backdrop_frame/gpu/<scene>/<arm>`: one whole frame of each [`SceneCase`], wall
 /// time, at 2×, waited for. Each case checks its settled frame's paint and blurs.
 ///
-/// - `modal`: the frame fixture at 4K under a frosted pane over the window; `cached` keeps every
+/// - `modal`: the scene at 4K under a frosted pane over the window; `cached` keeps every
 ///   frame still, `scrolling` scrolls the page under the pane, which captures every frame.
 /// - `cards`: eight frosted cards in a 4 × 2 grid, 60 logical px apart, as a dashboard of glass
 ///   tiles sits: inside the 77.5 logical px a σ of 16 reaches, so each card's footprint takes in
@@ -671,8 +671,8 @@ fn first(fixture: &mut FrameFixture, ui: &mut Ui) {
 /// - `pair_near` and `pair_apart`: two frosted cards whose gap the second's reach covers or not.
 /// - `many/under`: a strip under each row of twelve frosted cards flips color, staling more panes
 ///   than a partial frame holds, so the frame paints whole.
-fn scenes(group: &mut CaseGroup<'_>, backends: &Backends, backend: Backend) {
-    for scene in SceneCase::ALL {
+fn scenes<S: Scene>(group: &mut CaseGroup<'_>, backends: &Backends, backend: Backend) {
+    for scene in SceneCase::<S>::ALL {
         group.bench_function(backend.case(scene.name), |bencher| {
             let gpu = backends.device(Timing::PassOnly);
             let target = gpu.target("palantir.bench.backdrop_scene", scene.surface);
@@ -680,7 +680,7 @@ fn scenes(group: &mut CaseGroup<'_>, backends: &Backends, backend: Backend) {
                 .collect_gpu_stats(false)
                 .swapchain_present()
                 .build();
-            let mut fixture = FrameFixture::default();
+            let mut fixture = SceneFrame::<S>::default();
             let mut n = 0u32;
             let mut frame = || {
                 n += 1;

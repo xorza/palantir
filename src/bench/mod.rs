@@ -1,4 +1,4 @@
-//! The criterion benches, which `benches/palantir.rs` runs: `cargo bench-all`.
+//! The criterion benches, which `palantir-showcase/benches/palantir.rs` runs: `cargo bench-all`.
 //!
 //! Two kinds, and every case is one. An `atomic` case times one stage, one widget or one
 //! operation on a made input. An `integration` case times palantir's frame, or a chain of its
@@ -18,9 +18,11 @@ pub mod backends;
 pub mod case_group;
 pub(crate) mod fixture;
 pub mod kind;
+pub mod scene;
 
 use crate::bench::backends::Backends;
 use crate::bench::case_group::BetweenCases;
+use crate::bench::scene::Scene;
 use crate::cascade;
 use crate::gpu::backdrop;
 use crate::gpu::backdrop::backdrop_blur;
@@ -37,27 +39,27 @@ use crate::widgets::{color_field, text_edit};
 use crate::{animation, damage, gpu, input, layout, text, ui};
 use criterion::Criterion;
 
-/// Every case, atomic first. The host's adapters are listed once here; no device opens, as
-/// [`Backends::device`] refuses to open one between cases. The devices drop with `backends`, when
-/// the run ends.
-pub fn run(c: &mut Criterion) {
+/// Every case, atomic first, those that run a whole screen over `S`. The host's adapters are listed
+/// once here; no device opens, as [`Backends::device`] refuses to open one between cases. The
+/// devices drop with `backends`, when the run ends.
+pub fn run<S: Scene>(c: &mut Criterion) {
     let _between = BetweenCases::set(true);
     let backends = Backends::probe();
 
     animation::bench::atomic(c);
-    backdrop::bench::atomic(c, &backends);
+    backdrop::bench::atomic::<S>(c, &backends);
     backdrop_blur::bench::atomic(c, &backends);
     color_field::bench::atomic(c);
     composer::bench::atomic(c);
     curve_pipeline::bench::atomic(c, &backends);
     damage::bench::atomic(c);
-    frontend::bench::atomic(c);
+    frontend::bench::atomic::<S>(c);
     gradient_atlas::bench::atomic(c);
     half_simd::bench::atomic(c);
-    cascade::bench::atomic(c);
+    cascade::bench::atomic::<S>(c);
     image_pipeline::bench::atomic(c, &backends);
     input::bench::atomic(c);
-    layout::bench::atomic(c);
+    layout::bench::atomic::<S>(c);
     paint_animations::bench::atomic(c);
     gpu::bench::atomic(c, &backends);
     gpu::resource::bench::atomic(c, &backends);
@@ -67,11 +69,11 @@ pub fn run(c: &mut Criterion) {
     text_backend::bench::atomic(c, &backends);
     text_edit::bench::atomic(c);
     text::bench::atomic(c);
-    ui::bench::atomic(c, &backends);
+    ui::bench::atomic::<S>(c, &backends);
 
-    backdrop::bench::integration(c, &backends);
+    backdrop::bench::integration::<S>(c, &backends);
     damage::bench::integration(c);
-    ui::bench::integration(c, &backends);
+    ui::bench::integration::<S>(c, &backends);
     frontend::bench::integration(c);
     measure_cache::bench::integration(c);
 }

@@ -269,8 +269,8 @@ pub(crate) struct AnimationRow<T: Animatable> {
     /// The target's cause; see [`AnimationKey`].
     pub(super) key: Option<AnimationKey>,
     /// The run in flight; `None` rests on `target`. Boxed, as a motion holds `T` twice: 576 B for
-    /// a look, on a row of 312 B, while a stock theme's rows nearly all rest. The 285 looks of
-    /// `FrameFixture` at scale 32 fell from 448 KiB to 164 KiB. Refused: a pool, which keeps the
+    /// a look, on a row of 312 B, while a stock theme's rows nearly all rest. A tree of 285 looks
+    /// fell from 448 KiB to 164 KiB. Refused: a pool, which keeps the
     /// 160 KiB a theme transition asks for after it ends.
     pub(super) motion: Option<Box<MotionRow<T>>>,
     /// Render-frame id of the last `tick`. A second `tick` in the same frame (multi-pass record)

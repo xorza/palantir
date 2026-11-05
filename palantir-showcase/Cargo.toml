@@ -1,0 +1,52 @@
+[package]
+name = "palantir-showcase"
+version = "0.8.3"
+edition = "2024"
+authors = ["xxorza <xxorza@gmail.com>"]
+description = "A tour of palantir's widgets, written against its public API, and the scene its benches and integration tests run"
+repository = "https://github.com/xorza/palantir"
+license = "(MIT OR Apache-2.0) AND OFL-1.1"
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+bench = false
+
+[[bin]]
+name = "palantir-showcase"
+path = "src/main.rs"
+bench = false
+test = false
+
+[dependencies]
+palantir = { workspace = true, features = ["winit"] }
+bytemuck = { workspace = true }
+image = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+palantir = { workspace = true, features = ["internals"] }
+palantir-showcase = { workspace = true, features = ["internals"] }
+backtrace = { workspace = true }
+criterion = { workspace = true }
+
+[features]
+internals = ["palantir/internals"]
+golden = ["palantir/golden"]
+profile-with-tracy = ["palantir/profile-with-tracy"]
+
+[[test]]
+name = "visual"
+path = "tests/visual/main.rs"
+required-features = ["golden"]
+
+[[test]]
+name = "alloc"
+path = "tests/alloc/main.rs"
+
+[[bench]]
+name = "palantir"
+harness = false
+required-features = ["internals"]

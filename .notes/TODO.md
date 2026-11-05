@@ -10,7 +10,6 @@
 - rich text edit
 - audit hot structs for compact opportunities
 - behavior differences in release and debug
-- migrate frame bench to showcase and force enable transparency and motion
 - separate input processing stage to avoid relayouts?
 
 - table widget: sortable header, virtual rows over a fixed row height

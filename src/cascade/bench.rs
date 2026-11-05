@@ -1,9 +1,10 @@
-//! The cascade's two costs: a run over the frame fixture (incremental after a
+//! The cascade's two costs: a run over the scene (incremental after a
 //! paint-only or transform change, and a forced full rebuild), and the hit
 //! test input runs per event against a disjoint grid of interactive rows.
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::bench::scene::{Scene, SceneFrame};
 use crate::cascade::Cascade;
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
@@ -13,7 +14,6 @@ use crate::display::Display;
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::input::sense::Sense;
-use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -102,14 +102,14 @@ struct CascadeRunFixture {
 }
 
 impl CascadeRunFixture {
-    fn new(mutation: RunMutation) -> Self {
+    fn new<S: Scene>(mutation: RunMutation) -> Self {
         let display = Display::from_physical(FRAME_SIZE, DISPLAY_SCALE);
-        let first = record_fixture(FrameFixture::default());
-        let mut second_state = FrameFixture::default();
+        let first = record_fixture(SceneFrame::<S>::default());
+        let mut second_state = SceneFrame::<S>::default();
         match mutation {
             RunMutation::PaintOnly => second_state.tick = 1,
             RunMutation::Transform => {
-                second_state.scroll_offset = Vec2::new(1.5, 0.7);
+                second_state.scroll = Vec2::new(1.5, 0.7);
             }
         }
         let second = record_fixture(second_state);
@@ -159,32 +159,32 @@ fn source_of(h: &Harness, display: Display) -> CascadeSource<'_> {
     }
 }
 
-fn record_fixture(mut state: FrameFixture) -> Harness {
+fn record_fixture<S: Scene>(mut state: SceneFrame<S>) -> Harness {
     let mut h = Harness::builder(FRAME_SIZE)
         .system_scale(SystemScale::new(DISPLAY_SCALE).unwrap())
         .build();
     let _ = h.frame(|ui| {
-        state.render(BENCH_SCALE, ui);
+        state.record(ui);
     });
     h
 }
 
 /// The cascade's run and the hit test it serves.
-pub(crate) fn atomic(c: &mut Criterion) {
-    run(c);
+pub(crate) fn atomic<S: Scene>(c: &mut Criterion) {
+    run::<S>(c);
     hit_test(c);
 }
 
-/// `atomic/cascade/cpu/<mutation>`: the cascade run alone over the frame fixture, incremental
+/// `atomic/cascade/cpu/<mutation>`: the cascade run alone over the scene, incremental
 /// after a paint-only or a transform change, and a forced full rebuild.
-fn run(c: &mut Criterion) {
+fn run<S: Scene>(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "cascade", Scale::Sample);
     for (label, mutation) in [
         ("paint_only", RunMutation::PaintOnly),
         ("transform", RunMutation::Transform),
     ] {
         group.bench_function(Backend::Cpu.case(label), |b| {
-            let mut fixture = CascadeRunFixture::new(mutation);
+            let mut fixture = CascadeRunFixture::new::<S>(mutation);
             b.iter(|| {
                 fixture.run_next();
                 black_box(&fixture.cascade);
@@ -192,7 +192,7 @@ fn run(c: &mut Criterion) {
         });
     }
     group.bench_function(Backend::Cpu.case("full_rebuild"), |b| {
-        let mut fixture = CascadeRunFixture::new(RunMutation::Transform);
+        let mut fixture = CascadeRunFixture::new::<S>(RunMutation::Transform);
         b.iter(|| {
             fixture.run_next_full();
             black_box(&fixture.cascade);

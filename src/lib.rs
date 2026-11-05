@@ -81,7 +81,7 @@
 //! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard; [`OffscreenHost`] opts in via [`OffscreenHostBuilder::system_clipboard`], and [`WinitHost`] opts out via [`WinitHostBuilder::system_clipboard`]. Otherwise an in-process buffer. |
 //! | `gpu-debug-markers` | no | GPU debug groups around every draw step for RenderDoc / Xcode captures; costs two commands and a label copy per step. |
 //! | `profile-with-tracy` | no | A Tracy zone per frame pass and a frame set per window. Needs the Tracy viewer. |
-//! | `internals` | no | The `internals` module (fixtures, the headless test GPU, the reach-ins tests and benches read), and the benchmark drivers with the facade `benches/` calls. Every test and bench build of this crate turns it on. **Not a supported API.** |
+//! | `internals` | no | The `internals` module (fixtures, the headless test GPU, the reach-ins tests and benches read), and the benchmark drivers with the facade `palantir-showcase/benches` calls. Every test and bench build of this crate turns it on. **Not a supported API.** |
 //! | `golden` | no | The `golden` module for golden-image tests of suites that draw through Palantir; costs an image codec. |
 //!
 //! # Color
@@ -173,7 +173,7 @@ macro_rules! fmt {
 }
 
 /// Authoring a widget: the node, paint primitives, and text and animation plumbing
-/// a widget of your own is built from (see `examples/showcase/pages/custom_widget.rs`).
+/// a widget of your own is built from (see `palantir-showcase/src/pages/custom_widget.rs`).
 /// Nothing here is needed to compose shipped widgets.
 ///
 /// Shipped widgets also use some crate-private internals. A widget of your own

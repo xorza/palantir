@@ -56,7 +56,7 @@ declaration, good-looking and fast. I made it.
 ## See it
 
 A short screen recording of the
-[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase), a tour of every
+[showcase](https://github.com/xorza/palantir/tree/master/palantir-showcase), a tour of every
 widget:
 
 https://github.com/user-attachments/assets/6ae8305c-dba6-4998-8fb1-9522f9331e02
@@ -111,22 +111,23 @@ fn main() -> Result<(), WinitHostError> {
 ```
 
 For a tour of every widget, run the bundled
-[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase):
+[showcase](https://github.com/xorza/palantir/tree/master/palantir-showcase):
 
 ```sh
-cargo run --profile release-dev --example showcase
+cargo run --profile release-dev -p palantir-showcase
 ```
 
 **Your own widgets.** The crate root is what an application types;
 `palantir::widget` is what a widget is built from. The showcase's
 **custom widget** page,
-[`examples/showcase/pages/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/examples/showcase/pages/custom_widget.rs),
+[`palantir-showcase/src/pages/custom_widget.rs`](https://github.com/xorza/palantir/blob/master/palantir-showcase/src/pages/custom_widget.rs),
 builds a `Stepper` entirely against the published API.
 
 ## Performance
 
-The `frame` bench drives one synthetic app screen — every layout driver,
-every widget, every `Shape` family — on a 2560×1440 surface at 2× scale.
+The `frame` bench drives the showcase's first page on a 2560×1440 surface at
+2× scale. The numbers below predate that page: they come from a larger synthetic
+screen, about five times its nodes, and wait for a new run on each machine.
 Each scenario runs two ways: the deviceless **CPU pipeline** (record →
 measure → arrange → cascade → damage → encode + compose), and the full
 public path through `OffscreenHost`, the **CPU + GPU frame**, with the GPU
@@ -171,7 +172,7 @@ drained before the next iteration.
   [Recommended build flag](#recommended-build-flag)); an aarch64 build sets
   no flag.
 
-The bench screen, as the showcase's frame bench page draws it:
+The bench screen, the showcase's first page:
 
 ![Frame bench screen](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
 

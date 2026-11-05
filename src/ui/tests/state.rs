@@ -9,7 +9,7 @@ use crate::widgets::{button::Button, panel::Panel, text::Text};
 
 /// Inside the body the row is lent: a `Ui::state` read of it and a second lend panic, as a
 /// `RefCell` borrowed mutably does, and a singleton lent by `Ui::with_singleton` likewise. After
-/// the body the value is back, carried across frames. `tests/alloc`'s
+/// the body the value is back, carried across frames. `palantir-showcase/tests/alloc`'s
 /// `state_map_counter_alloc_free` holds that no default is built per lend.
 #[test]
 fn with_state_lends_the_row_out_and_back() {

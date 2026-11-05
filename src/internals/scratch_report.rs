@@ -1,12 +1,55 @@
-//! High-water bytes of the scratch no frame reads from an earlier one, phase by phase, over the frame fixture: what the buffers hold apart (their sum) against the least one arena reset between phases would need (the largest phase; growth leaves more).
+//! High-water bytes of the scratch no frame reads from an earlier one, phase by phase, over a screen of form rows: what the buffers hold apart (their sum) against the least one arena reset between phases would need (the largest phase; growth leaves more).
 //!
 //! Leaves out text shaping's scratch, which the shared shaper uses both in layout and when the backend rasterizes glyphs, and the GPU backend's, as the harness opens no device.
 
+use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE};
+use crate::fmt;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
-use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
+use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
+use crate::widgets::button::Button;
+use crate::widgets::checkbox::Checkbox;
+use crate::widgets::panel::Panel;
+use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
+
+/// Form rows the largest report records, about 1,000 nodes.
+const ROWS_MAX: usize = 256;
+
+/// What the screen's frames change: a transform and a counter.
+#[derive(Debug, Default)]
+struct Screen {
+    scroll_offset: Vec2,
+    tick: u32,
+    checked: bool,
+}
+
+impl Screen {
+    fn render(&mut self, scale: usize, ui: &mut Ui) {
+        Panel::vstack()
+            .id_salt("scratch-screen")
+            .size((Sizing::FILL, Sizing::FILL))
+            .transform(TranslateScale::from_translation(self.scroll_offset))
+            .show(ui, |ui| {
+                Text::new(fmt!(ui, "Frame {:08}", self.tick))
+                    .id_salt("scratch-counter")
+                    .show(ui);
+                for row in 0..scale * ROWS_MAX / 32 {
+                    Panel::hstack()
+                        .id_salt(("scratch-row", row))
+                        .show(ui, |ui| {
+                            Text::new("label").id_salt("label").show(ui);
+                            Button::new().id_salt("button").label("go").show(ui);
+                            Checkbox::new(&mut self.checked).id_salt("check").show(ui);
+                        });
+                }
+            });
+    }
+}
 
 /// The heap bytes `v` holds, used or not: a retained buffer keeps its high water as capacity.
 pub(crate) fn vec_bytes<T>(v: &Vec<T>) -> usize {
@@ -33,7 +76,7 @@ impl Report {
             .system_scale(BENCH_DPR)
             .depth(Depth::Compose)
             .build();
-        let mut state = FrameFixture::default();
+        let mut state = Screen::default();
         let mut time = Duration::ZERO;
         for surface in SURFACES {
             h.resize(surface);
@@ -85,7 +128,7 @@ impl Report {
 #[ignore = "print-only"]
 fn print_scratch_high_water() {
     println!();
-    for scale in [1, 8, BENCH_SCALE] {
+    for scale in [1, 8, 32] {
         Report::run(scale).print();
     }
 }

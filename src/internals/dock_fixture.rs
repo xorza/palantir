@@ -81,7 +81,7 @@ impl Default for DockFixture {
 impl DockFixture {
     /// The id the fixture's dock records under.
     fn id() -> WidgetId {
-        WidgetId::from_hash("frame_fixture.dock")
+        WidgetId::from_hash("dock_fixture.dock")
     }
 
     /// Record one frame through [`DockView::run`], the one-call surface.

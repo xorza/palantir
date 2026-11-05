@@ -185,8 +185,8 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **The showcase's shot mode is a script**, as iced's `.ice` tests, rebuilt per call so a shot
   never shows a stale binary.
 - **The visual suite stays on `OffscreenHost`**, as it tests presentation paths.
-- **The visual suite wears a theme of its own**: `tests/visual/theme/`, each `Theme` written out
-  whole, with the scheme pinned to dark. No recipe, `Palette`, `Metrics` or fallback scheme moves
+- **The visual suite wears a theme of its own**: `palantir-showcase/tests/visual/theme/`, each
+  `Theme` written out whole, with the scheme pinned to dark. No recipe, `Palette`, `Metrics` or fallback scheme moves
   a golden, and a new `Theme` field fails to compile until both themes hold it. Refused: the
   stock recipes over a pinned palette and metrics, which a recipe change still reached; a theme
   file, a second format to keep in step with the type.
@@ -357,8 +357,8 @@ driver serves that command alone; the drive table's `version` names it
   discrete pick commits at once.
 - **A `Response` is owned**: `show` probes the widget's state once and hands it back, with no
   borrow of the `Ui`, so one type serves a read, an overlay's anchor and a composite's gathering.
-  Measured on the frame fixture against the lazy probe it replaced, which read 2 of 896 handles a
-  pass: 9 µs a record pass, 6 to 10 µs and 2 to 9 % of a CPU frame. Refused: a lazy `Response`
+  Measured on the frame bench's tree against the lazy probe it replaced, which read 2 of 896
+  handles a pass: 9 µs a record pass, 6 to 10 µs and 2 to 9 % of a CPU frame. Refused: a lazy `Response`
   over `&Ui`, whose borrow makes an owned twin of each response, `ResponseSnapshot`, `ValueEdges`
   and `EditEdges`, and a lifetime on every response type; `Response::tooltip`, which needs
   `&mut Ui` and names a widget above `widget_core`.
@@ -450,12 +450,13 @@ of the crates.
 - **`--all-features` is clippy's alone**: under `profile-with-tracy` a test binary opens the
   Tracy socket.
 - **A change to bench code** adds `cargo bench-once`. Before measuring or `perf`, read
-  `benches/AGENTS.md`.
+  `palantir-showcase/benches/AGENTS.md`.
 - **A rendering change** runs the golden suite, `cargo visual [filter]`. Goldens are
   local to an adapter: run the unchanged tree first and rewrite stale ones with
-  `UPDATE_GOLDEN=1`. A failure leaves the images in `tests/visual/output/<name>/`.
+  `UPDATE_GOLDEN=1`. A failure leaves the images in
+  `palantir-showcase/tests/visual/output/<name>/`.
 - **A change a user can see** ends with `cargo shot SCRIPT`
-  (`examples/showcase/shot/script.rs`); `--against DIR` marks what moved since an earlier run.
+  (`palantir-showcase/src/shot/script.rs`); `--against DIR` marks what moved since an earlier run.
   Goldens are a test, never a viewer.
 
 ## Non-shipping code
@@ -474,6 +475,18 @@ Homes beside a file's own `mod tests`:
   outside the crate.
 
 Items code outside the crate calls are `pub`; the rest are `pub(crate)`.
+
+- **The showcase is a crate**, `palantir-showcase`, as egui's
+  [`egui_demo_lib`](https://docs.rs/crate/egui_demo_lib/0.34.0/source/README.md): it reaches the
+  public API alone, and it holds the benches and the integration tests, which run its pages.
+  Refused: `#[path]` imports of an example's files; the tour in `src` behind a feature, which can
+  reach crate privates and compiles into each test build of the lib; a dev-dependency cycle, whose
+  unit tests see a second palantir. The nowinit lanes leave the crate out, as it needs winit.
+- **The frame benches run over `bench::scene::Scene`**, the showcase's first page, so a number
+  comes from a screen a person opens. The drivers add a counter and a transform around it, so the
+  page holds no bench code, and it holds still at rest, so the spinners sit on the Motion page.
+  Cost: 246 nodes, where the fixture it replaced held 1,247, and no mesh, image or icon. Refused:
+  a fixture beside the tour, a second screen to keep; a bench-only flag on the page.
 
 - **One oracle per property**, in `internals::oracle`, over every column the property covers.
   Refused: a comparator per suite, each blind to other columns, where a `scroll_content`

@@ -22,7 +22,6 @@ exclude = [
     "CLAUDE.md",
     "assets/fonts/test/",
     "assets/logo/",
-    "benches/bench-perf.sh",
     "docs/",
 ]
 
@@ -38,24 +37,24 @@ features = ["golden"]
 version = "0.2.7"
 
 [workspace]
-members = ["palantir-anim-derive"]
+members = ["palantir-anim-derive", "palantir-showcase"]
 
-[lints]
-workspace = true
-
-
-[dependencies]
+[workspace.dependencies]
+palantir = { path = ".", default-features = false }
 palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.8.3", default-features = false }
+palantir-showcase = { path = "palantir-showcase" }
 arboard = { version = "3.7", default-features = false, features = [
     "image-data",
     "wayland-data-control",
-], optional = true }
+] }
+backtrace = { version = "0.3", default-features = false, features = ["std"] }
 bytemuck = { version = "1.25", default-features = false, features = ["derive"] }
 cosmic-text = { version = "0.19", default-features = false, features = [
     "std",
     "swash",
     "fontconfig",
 ] }
+criterion = { version = "0.8", default-features = false }
 fixedbitset = { version = "0.5", default-features = false }
 foldhash = { version = "0.2", default-features = false, features = ["std"] }
 glam = { version = "0.34", default-features = false, features = [
@@ -67,18 +66,61 @@ glam = { version = "0.34", default-features = false, features = [
     "bytemuck",
     "serde",
 ] }
-resvg = { version = "0.49", default-features = false }
-image = { version = "0.25", default-features = false, features = [
-    "png",
-], optional = true }
 half = { version = "2.7", default-features = false, features = [
     "std",
     "bytemuck",
 ] }
 hashbrown = { version = "0.17", default-features = false }
-rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
-tracing = { version = "0.1", default-features = false, features = ["std"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+mundy = { version = "0.2", default-features = false, features = [
+    "async-io",
+    "callback",
+    "color-scheme",
+    "double-click-interval",
+    "reduced-motion",
+    "reduced-transparency",
+] }
+naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
+padding-struct = { version = "0.2", default-features = false }
 pollster = { version = "1.0", default-features = false }
+proc-macro2 = { version = "1.0", default-features = false, features = ["proc-macro"] }
+quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
+resvg = { version = "0.49", default-features = false }
+ron = { version = "0.12", default-features = false }
+rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
+serde = { version = "1.0", default-features = false, features = [
+    "alloc",
+    "derive",
+] }
+soa-rs = { version = "1.0", default-features = false }
+static_assertions = { version = "1.1", default-features = false }
+strum = { version = "0.28", default-features = false, features = [
+    "derive",
+] }
+swash = { version = "0.2", default-features = false, features = [
+    "std",
+    "scale",
+    "render",
+] }
+syn = { version = "3.0", default-features = false, features = [
+    "derive",
+    "parsing",
+    "printing",
+    "proc-macro",
+] }
+tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "std",
+    "fmt",
+    "env-filter",
+    "tracing-log",
+] }
+tracy-client = { version = "0.19", default-features = false, features = [
+    "enable",
+] }
+unicode-linebreak = { version = "0.1", default-features = false }
+unicode-segmentation = { version = "1.13", default-features = false }
 wgpu = { version = "30.0", default-features = false, features = [
     "std",
     "parking_lot",
@@ -94,51 +136,47 @@ winit = { version = "0.30", default-features = false, features = [
     "wayland",
     "wayland-dlopen",
     "wayland-csd-adwaita",
-], optional = true }
-padding-struct = { version = "0.2", default-features = false }
-soa-rs = { version = "1.0", default-features = false }
-strum = { version = "0.28", default-features = false, features = [
-    "derive",
-], optional = true }
-swash = { version = "0.2", default-features = false, features = [
-    "std",
-    "scale",
-    "render",
 ] }
-serde = { version = "1.0", default-features = false, features = [
-    "alloc",
-    "derive",
-] }
-tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
-unicode-linebreak = { version = "0.1", default-features = false }
-unicode-segmentation = { version = "1.13", default-features = false }
-criterion = { version = "0.8", default-features = false, optional = true }
-tracy-client = { version = "0.19", default-features = false, features = [
-    "enable",
-], optional = true }
 
-mundy = { version = "0.2", default-features = false, features = [
-    "async-io",
-    "callback",
-    "color-scheme",
-    "double-click-interval",
-    "reduced-motion",
-    "reduced-transparency",
-], optional = true }
+[lints]
+workspace = true
+
+
+[dependencies]
+palantir-anim-derive = { workspace = true }
+arboard = { workspace = true, optional = true }
+bytemuck = { workspace = true }
+cosmic-text = { workspace = true }
+fixedbitset = { workspace = true }
+foldhash = { workspace = true }
+glam = { workspace = true }
+resvg = { workspace = true }
+image = { workspace = true, optional = true }
+half = { workspace = true }
+hashbrown = { workspace = true }
+rustc-hash = { workspace = true }
+tracing = { workspace = true }
+pollster = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true, optional = true }
+padding-struct = { workspace = true }
+soa-rs = { workspace = true }
+strum = { workspace = true, optional = true }
+swash = { workspace = true }
+serde = { workspace = true }
+tinyvec = { workspace = true }
+unicode-linebreak = { workspace = true }
+unicode-segmentation = { workspace = true }
+criterion = { workspace = true, optional = true }
+tracy-client = { workspace = true, optional = true }
+mundy = { workspace = true, optional = true }
 
 [dev-dependencies]
-palantir = { path = ".", default-features = false, features = ["internals"] }
-backtrace = { version = "0.3", default-features = false, features = ["std"] }
-tracing-subscriber = { version = "0.3", default-features = false, features = [
-    "std",
-    "fmt",
-    "env-filter",
-    "tracing-log",
-] }
-static_assertions = { version = "1.1", default-features = false }
-ron = { version = "0.12", default-features = false }
-naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
-
+palantir = { workspace = true, features = ["internals"] }
+tracing-subscriber = { workspace = true }
+static_assertions = { workspace = true }
+ron = { workspace = true }
+naga = { workspace = true }
 
 [features]
 default = ["winit"]
@@ -182,15 +220,6 @@ codegen-units = 16
 incremental = true
 debug = "line-tables-only"
 
-[[test]]
-name = "visual"
-path = "tests/visual/main.rs"
-required-features = ["golden"]
-
-[[test]]
-name = "alloc"
-path = "tests/alloc/main.rs"
-
 [[example]]
 name = "counter"
 required-features = ["winit"]
@@ -199,20 +228,8 @@ required-features = ["winit"]
 name = "reel"
 path = "examples/reel/main.rs"
 
-[[example]]
-name = "showcase"
-path = "examples/showcase/main.rs"
-required-features = ["winit"]
-# The shot mode's tests run with the first test lane.
-test = true
-
 [lib]
 bench = false
-
-[[bench]]
-name = "palantir"
-harness = false
-required-features = ["internals"]
 
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }

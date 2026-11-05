@@ -2,7 +2,7 @@
 //!
 //! One cell type owns the gate: it holds its value only when the gate is on, and its mutators are **unconditional** methods with gated bodies, so call sites are plain method calls and the type is zero-sized when off. Only read accessors carry a `#[cfg]`.
 //!
-//! - [`TestOnly`] (`cfg(test)`): for counters nothing benches and for anything that allocates, which the allocation suite (`tests/alloc`) would otherwise measure instead of the frame.
+//! - [`TestOnly`] (`cfg(test)`): for counters nothing benches and for anything that allocates, which the allocation suite (`palantir-showcase/tests/alloc`) would otherwise measure instead of the frame.
 //! - [`BenchOnly`] (`cfg(feature = "internals")`): for counters a benchmark reads; they never allocate, so the allocation suite, which builds with `internals`, measures the frame alone.
 //!
 //! `TestOnly` unless a benchmark reads the counter; a counter module documents what it measures, not which gate it picked.

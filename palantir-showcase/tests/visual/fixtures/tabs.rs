@@ -1,0 +1,84 @@
+//! Tab and dock fixtures: the chip row's chrome, and the pane tree the dock walks it onto.
+
+use palantir::glam::UVec2;
+use palantir::internals::dock_fixture::DockFixture;
+use palantir::{
+    Block, Chrome, Configure, Corners, Panel, Sizing, TabItem, TabKey, TabStrip, TabbedView, Text,
+    Ui, WidgetId,
+};
+
+use crate::golden_name::GoldenName;
+
+/// A strip alone: a selected accent-capped chip, a dot the app's content adds, close buttons.
+#[test]
+fn tab_strip_matches_golden() {
+    fn scene(ui: &mut Ui) {
+        let items: Vec<TabItem> = ["curves", "levels", "export"]
+            .into_iter()
+            .enumerate()
+            .map(|(i, label)| TabItem {
+                closable: true,
+                ..TabItem::new(TabKey::of(i), ui.intern(label))
+            })
+            .collect();
+        Panel::vstack()
+            .id_salt("strip-well")
+            .size((Sizing::FILL, Sizing::HUG))
+            .padding(12.0)
+            .show(ui, |ui| {
+                TabStrip::new(&items)
+                    .id_salt("strip")
+                    .selected(1)
+                    .show(ui, |ui, chip| {
+                        chip.show_label(ui);
+                        if chip.selected {
+                            Block::new()
+                                .id(chip.id.with("dot"))
+                                .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
+                                .chrome(Chrome::rounded(chip.text.color, Corners::all(3.0)))
+                                .show(ui);
+                        }
+                    });
+            });
+    }
+
+    GoldenName::TabStrip.assert_settled_scene(UVec2::new(360, 76), 2, scene);
+}
+
+/// A tabbed view: the selected chip's bottom edge dissolves into the page below.
+#[test]
+fn tabbed_view_matches_golden() {
+    fn scene(ui: &mut Ui) {
+        ui.with_state::<usize, _>(WidgetId::from_hash("visual.page"), |ui, page| {
+            *page = 1;
+            TabbedView::new(page, &["Color", "Geometry", "Metadata"])
+                .id_salt("pages")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui, idx| {
+                    Panel::vstack()
+                        .id_salt("page")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(14.0)
+                        .show(ui, |ui| {
+                            Text::new(["Color", "Geometry", "Metadata"][idx])
+                                .id_salt("page-title")
+                                .show(ui);
+                        });
+                });
+        });
+    }
+
+    GoldenName::TabbedView.assert_settled_scene(UVec2::new(360, 140), 2, scene);
+}
+
+/// Three panes: divider chrome, a strip per pane, and the dimmed cap on the two unfocused panes.
+#[test]
+fn dock_split_panes_matches_golden() {
+    fn scene(ui: &mut Ui) {
+        ui.with_state::<DockFixture, _>(WidgetId::from_hash("visual.dock"), |ui, dock| {
+            dock.record(ui);
+        });
+    }
+
+    GoldenName::DockSplitPanes.assert_settled_scene(UVec2::new(520, 220), 2, scene);
+}

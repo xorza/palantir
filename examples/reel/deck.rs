@@ -574,7 +574,7 @@ impl Deck {
         let muted = muted(ui);
         Self::page(ui, 10, "Fast", |ui| {
             for (big, small) in [
-                ("78 µs", "a frame of the frame fixture (Apple laptop)"),
+                ("78 µs", "a frame of a 1,247-node screen (Apple laptop)"),
                 ("0", "allocations a frame"),
             ] {
                 Panel::hstack()

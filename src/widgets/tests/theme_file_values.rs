@@ -9,9 +9,11 @@ use crate::host::harness::Harness;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::shortcut::Shortcut;
 use crate::internals::dock_fixture::DockFixture;
-use crate::internals::frame_fixture::FrameFixture;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::track::Track;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::text::font_scope::FontScope;
@@ -20,12 +22,30 @@ use crate::theme::Theme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
+use crate::widgets::button::Button;
+use crate::widgets::checkbox::Checkbox;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::combo_box::ComboBox;
+use crate::widgets::drag_value::DragValue;
+use crate::widgets::editable_label::EditableLabel;
+use crate::widgets::expander::Expander;
+use crate::widgets::grid::Grid;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::menu::menu_separator::MenuSeparator;
 use crate::widgets::modal::Modal;
+use crate::widgets::panel::Panel;
+use crate::widgets::popup::Popup;
+use crate::widgets::progress_bar::ProgressBar;
+use crate::widgets::radio_group::RadioGroup;
+use crate::widgets::scroll::Scroll;
+use crate::widgets::separator::Separator;
+use crate::widgets::slider::Slider;
 use crate::widgets::spinner::Spinner;
+use crate::widgets::splitter::Splitter;
+use crate::widgets::switch::Switch;
+use crate::widgets::text::Text;
+use crate::widgets::text_edit::TextEdit;
 use crate::widgets::tooltip::Tooltip;
 use glam::{UVec2, Vec2};
 use ron::ser::{self, PrettyConfig};
@@ -87,10 +107,112 @@ fn numbers(ron: &str) -> Vec<Range<usize>> {
     out
 }
 
-/// Every themed surface a frame can draw: the fixture's forms and lists, a dock with its tab
-/// strips, an open context menu and a shown tooltip.
+static QUALITIES: [&str; 2] = ["Draft", "Final"];
+
+/// What the form widgets bind.
+#[derive(Debug)]
+struct Forms {
+    name: String,
+    checked: bool,
+    on: bool,
+    pick: u8,
+    quality: &'static &'static str,
+    value: f64,
+    split: f32,
+}
+
+impl Default for Forms {
+    fn default() -> Self {
+        Self {
+            name: String::from("name"),
+            checked: true,
+            on: true,
+            pick: 1,
+            quality: &QUALITIES[1],
+            value: 0.5,
+            split: 0.5,
+        }
+    }
+}
+
+/// One of each form widget, a container of each kind, and each kind of text.
+fn forms(ui: &mut Ui, f: &mut Forms) {
+    Panel::vstack()
+        .id_salt("probe-forms")
+        .padding(8.0)
+        .gap(8.0)
+        .show(ui, |ui| {
+            EditableLabel::new("title").id_salt("probe-title").show(ui);
+            Text::new("caption").id_salt("probe-caption").show(ui);
+            TextEdit::new(&mut f.name).id_salt("probe-edit").show(ui);
+            Checkbox::new(&mut f.checked)
+                .id_salt("probe-check")
+                .label("check")
+                .show(ui);
+            Switch::new(&mut f.on)
+                .id_salt("probe-switch")
+                .label("switch")
+                .show(ui);
+            RadioGroup::new(&mut f.pick)
+                .id_salt("probe-radio")
+                .show(ui, |ui, options| {
+                    for pick in 0..2 {
+                        options.option(pick).label("radio").show(ui);
+                    }
+                });
+            ComboBox::new(&mut f.quality, &QUALITIES)
+                .id_salt("probe-combo")
+                .show(ui);
+            Slider::new(&mut f.value, 0.0..=1.0)
+                .id_salt("probe-slider")
+                .show(ui);
+            DragValue::new(&mut f.value).id_salt("probe-drag").show(ui);
+            Button::new().id_salt("probe-button").label("go").show(ui);
+            ProgressBar::new(0.5).id_salt("probe-progress").show(ui);
+            Separator::horizontal().id_salt("probe-separator").show(ui);
+            Expander::new("more")
+                .id_salt("probe-expander")
+                .start_open(true)
+                .show(ui, |ui| {
+                    Text::new("body").id_salt("probe-body").show(ui);
+                });
+            Grid::new()
+                .id_salt("probe-grid")
+                .cols([Track::HUG, Track::FILL])
+                .rows([Track::HUG])
+                .show(ui, |ui| {
+                    Text::new("cell")
+                        .id_salt("probe-cell")
+                        .grid_cell((0, 0))
+                        .show(ui);
+                });
+            Scroll::vertical()
+                .id_salt("probe-scroll")
+                .size((Sizing::FILL, Sizing::fixed(40.0)))
+                .show(ui, |ui| {
+                    Panel::vstack()
+                        .id_salt("probe-scrolled")
+                        .size((Sizing::FILL, Sizing::fixed(120.0)))
+                        .show(ui, |_| {});
+                });
+            Panel::hstack()
+                .id_salt("probe-split-row")
+                .size((Sizing::FILL, Sizing::fixed(60.0)))
+                .show(ui, |ui| {
+                    Splitter::row(&mut f.split)
+                        .id_salt("probe-split")
+                        .min_pane(20.0)
+                        .show(ui, |ui, _| {
+                            Panel::vstack().auto_id().show(ui, |_| {});
+                        });
+                });
+        });
+}
+
+/// Every themed surface one frame can draw: the form widgets, a dock with its tab strips, an open
+/// context menu and popup, and a shown tooltip.
 fn probe(ui: &mut Ui, scene: &mut Scene) {
-    scene.fixture.render(1, ui);
+    forms(ui, &mut scene.forms);
     scene.dock.record(ui);
     Menu::for_id(menu_id()).show(ui, |ui| {
         MenuItem::new("Copy").shortcut(Shortcut::ctrl('C')).show(ui);
@@ -106,12 +228,23 @@ fn probe(ui: &mut Ui, scene: &mut Scene) {
         },
     };
     Tooltip::on(&hovered, "tip").delay(Duration::ZERO).show(ui);
+    Popup::new()
+        .id(WidgetId::from_hash("probe-popup"))
+        .anchor(Anchor::at_point(Vec2::new(200.0, 200.0)))
+        .click_outside(None)
+        .show(ui, |ui| {
+            Text::new("popup").id_salt("probe-popup-text").show(ui);
+        });
     Spinner::new()
         .id(WidgetId::from_hash("probe-spinner"))
         .show(ui);
     ColorPicker::new(&mut scene.color)
         .id(WidgetId::from_hash("probe-picker"))
         .show(ui);
+}
+
+/// A modal, in a frame of its own: it cancels a menu open before it.
+fn probe_modal(ui: &mut Ui) {
     Modal::new()
         .id(WidgetId::from_hash("probe-modal"))
         .show(ui, |_| {});
@@ -123,18 +256,20 @@ fn menu_id() -> WidgetId {
 
 #[derive(Debug, Default)]
 struct Scene {
-    fixture: FrameFixture,
+    forms: Forms,
     dock: DockFixture,
     color: RgbaF32,
 }
 
-/// One frame of [`probe`] under `theme`, with the menu opened before it, shaped by `shaper`. Real
+/// A frame of [`probe_modal`], then one of [`probe`] with the menu opened before it, under `theme`,
+/// shaped by `shaper`. Real
 /// shaping, so a font size reaches the shaper and the ink it measures.
 fn render(theme: Theme, shaper: &TextShaper) -> Harness {
     let mut h = Harness::builder(UVec2::new(640, 480))
         .shaper(shaper.clone())
         .build();
     h.ui_mut().set_theme_for(ColorScheme::Dark, theme);
+    h.frame(probe_modal);
     Menu::open(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
         color: RgbaF32::srgb(0.2, 0.4, 0.6),
@@ -204,15 +339,15 @@ fn every_number_at_the_length_bound_at_once_renders() {
     let _ = render(theme, &TextShaper::with_fonts(FontScope::Bundled));
 }
 
-/// The default theme's probe frame opens the menu and shows the tooltip, so the walk reaches
-/// their theme values.
+/// The default theme's probe frame opens the menu and the popup and shows the tooltip, so the walk
+/// reaches their theme values.
 #[test]
 fn the_probe_draws_the_overlays() {
     let h = render(
         Theme::stock(ColorScheme::Dark),
         &TextShaper::with_fonts(FontScope::Bundled),
     );
-    for layer in [Layer::Popup, Layer::Tooltip] {
+    for layer in [Layer::Menu, Layer::Popup, Layer::Tooltip] {
         assert!(
             !h.ui().tree(layer).shapes.records.is_empty(),
             "{layer:?} records nothing",

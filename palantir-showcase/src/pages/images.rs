@@ -1,0 +1,382 @@
+//! Image drawing: fit modes on a 64×64 checkerboard, tint and alpha on a gradient source, tiled repeat (`fract` in-shader), linear vs nearest under magnification and minification, and the minification tap modes on a starfield.
+
+#![expect(
+    clippy::cast_sign_loss,
+    reason = "the showcase casts non-negative sizes, ids and color channels"
+)]
+
+use crate::made_image::MadeImage;
+use crate::scaffold::api;
+use crate::support;
+use crate::support::{DemoCell, Kit, Section};
+use palantir::glam::{UVec2, Vec2};
+use palantir::widget::{ImageShape, Shape};
+use palantir::{
+    ComboBox, Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32,
+    Sizing, Switch, Text, Ui, WidgetId,
+};
+
+fn checker() -> Image {
+    const N: u32 = 64;
+    const CELL: u32 = 8;
+    let mut pixels = Vec::with_capacity((N * N * 4) as usize);
+    for y in 0..N {
+        for x in 0..N {
+            let on = ((x / CELL) ^ (y / CELL)) & 1 == 0;
+            let rgb = if on { 230 } else { 30 };
+            pixels.extend_from_slice(&[rgb, rgb, rgb, 255]);
+        }
+    }
+    Image::from_srgba8(UVec2::new(N, N), pixels).expect("the demo pixels match their size")
+}
+
+/// 64×64 vertical magenta-to-cyan gradient; exercises tint and gives a distinct second image.
+fn gradient() -> Image {
+    const W: u32 = 64;
+    const H: u32 = 64;
+    let mut pixels = Vec::with_capacity((W * H * 4) as usize);
+    for y in 0..H {
+        let t = y as f32 / (H - 1) as f32;
+        let r = (255.0 * (1.0 - t)) as u8;
+        let g = (255.0 * t) as u8;
+        for _ in 0..W {
+            pixels.extend_from_slice(&[r, g, 255, 255]);
+        }
+    }
+    Image::from_srgba8(UVec2::new(W, H), pixels).expect("the demo pixels match their size")
+}
+
+/// 4×4 primary-color sprite: any tile-sized draw is a heavy upscale, making linear vs nearest obvious.
+fn sprite() -> Image {
+    let px: [[u8; 4]; 16] = [
+        [230, 60, 60, 255],
+        [230, 200, 60, 255],
+        [60, 200, 90, 255],
+        [60, 120, 230, 255],
+        [230, 120, 60, 255],
+        [240, 240, 240, 255],
+        [30, 30, 30, 255],
+        [140, 60, 200, 255],
+        [60, 200, 200, 255],
+        [30, 30, 30, 255],
+        [240, 240, 240, 255],
+        [200, 60, 140, 255],
+        [120, 200, 60, 255],
+        [60, 60, 120, 255],
+        [200, 200, 120, 255],
+        [120, 30, 30, 255],
+    ];
+    Image::from_srgba8(UVec2::new(4, 4), px.into_iter().flatten().collect())
+        .expect("the demo pixels match their size")
+}
+
+/// 512×512 near-black with one-pixel stars: the worst case for minification and what [`ImageDownsample`] is for. In a demo cell it shrinks ~5×, so one bilinear tap reads ~4 of each pixel's 27 source texels and most stars miss it. Deterministic (xorshift, fixed seed).
+fn starfield() -> Image {
+    const N: u32 = 512;
+    const STARS: usize = 900;
+    let mut pixels = vec![0u8; (N * N * 4) as usize];
+    for px in pixels.as_chunks_mut::<4>().0 {
+        *px = [6, 8, 14, 255];
+    }
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for _ in 0..STARS {
+        let r = next();
+        let x = (r % u64::from(N)) as u32;
+        let y = ((r >> 20) % u64::from(N)) as u32;
+        // Varied magnitudes and a warm/cool split, so `Peak` picking a whole tap (not a per-channel max) shows as kept color.
+        let mag = 90 + ((r >> 40) % 166) as u8;
+        let warm = (r >> 48) & 1 == 0;
+        let (rr, gg, bb) = if warm {
+            (mag, mag.saturating_sub(30), mag.saturating_sub(70))
+        } else {
+            (mag.saturating_sub(60), mag.saturating_sub(20), mag)
+        };
+        let i = ((y * N + x) * 4) as usize;
+        pixels[i..i + 4].copy_from_slice(&[rr, gg, bb, 255]);
+    }
+    Image::from_srgba8(UVec2::new(N, N), pixels).expect("the demo pixels match their size")
+}
+
+fn sources_id() -> WidgetId {
+    WidgetId::from_hash("showcase::images::sources")
+}
+
+/// The four demo images, registered once and parked in a state row; their GPU textures live as long as these handles, and dropping the row frees the VRAM.
+#[derive(Clone, Debug)]
+struct Sources {
+    checker: MadeImage,
+    gradient: MadeImage,
+    sprite: MadeImage,
+    starfield: MadeImage,
+}
+
+impl Sources {
+    fn load(ui: &mut Ui) -> Self {
+        ui.with_state::<Option<Self>, _>(sources_id(), |ui, slot| {
+            slot.get_or_insert_with(|| Self {
+                checker: MadeImage::new(ui, checker),
+                gradient: MadeImage::new(ui, gradient),
+                sprite: MadeImage::new(ui, sprite),
+                starfield: MadeImage::new(ui, starfield),
+            })
+            .clone()
+        })
+    }
+}
+
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
+    let src = Sources::load(ui);
+    live(ui, k, &src);
+
+    Section::new("Fit")
+        .apis(&[api!(type ImageFit)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "How the source maps onto a rect that is not its shape.",
+            );
+            support::tiles(ui, |ui| {
+                for (label, fit) in [
+                    ("Fill — stretch to the rect", ImageFit::Fill),
+                    ("Contain — whole image, letterboxed", ImageFit::Contain),
+                    ("Cover — fill the rect, crop", ImageFit::Cover),
+                    ("Natural — 1:1, centered", ImageFit::Natural),
+                ] {
+                    DemoCell::new(label).size(232.0, 132.0).show(ui, k, |ui| {
+                        ui.add_shape(fitted(src.checker.handle(), fit));
+                    });
+                }
+            });
+        });
+
+    Section::new("Tint")
+        .apis(&[api!(type ImageHandle)])
+        .show(ui, k, |ui| {
+            support::note(ui, k, "The tint multiplies each sampled texel.");
+            support::tiles(ui, |ui| {
+                DemoCell::new("no tint").show(ui, k, |ui| {
+                    ui.add_shape(fitted(src.gradient.handle(), ImageFit::Fill));
+                });
+                DemoCell::new("red tint").show(ui, k, |ui| {
+                    ui.add_shape(fitted(src.gradient.handle(), ImageFit::Fill).tint(k.swatch.red));
+                });
+                DemoCell::new("half alpha").show(ui, k, |ui| {
+                    ui.add_shape(
+                        fitted(src.gradient.handle(), ImageFit::Fill)
+                            .tint(RgbaF32::WHITE.with_alpha(0.5)),
+                    );
+                });
+            });
+        });
+
+    Section::new("Tiling").show(ui, k, |ui| {
+        support::note(ui, k, "The UVs wrap, with a scale and an offset.");
+        support::tiles(ui, |ui| {
+            DemoCell::new("tile 3×3").show(ui, k, |ui| {
+                let fit = ImageFit::Tile {
+                    offset: Vec2::ZERO,
+                    scale: Vec2::splat(3.0),
+                };
+                ui.add_shape(fitted(src.checker.handle(), fit));
+            });
+            DemoCell::new("tile 2×4, offset 0.25").show(ui, k, |ui| {
+                let fit = ImageFit::Tile {
+                    offset: Vec2::new(0.25, 0.0),
+                    scale: Vec2::new(2.0, 4.0),
+                };
+                ui.add_shape(fitted(src.gradient.handle(), fit));
+            });
+        });
+    });
+
+    Section::new("Filtering")
+        .apis(&[api!(type ImageFilter)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Magnification on a 4×4 sprite, minification on a 64×64 checker tiled \
+                 32 times.",
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("magnify — Linear").show(ui, k, |ui| {
+                    magnified(ui, src.sprite.handle(), ImageFilter::Linear);
+                });
+                DemoCell::new("magnify — Nearest").show(ui, k, |ui| {
+                    magnified(ui, src.sprite.handle(), ImageFilter::Nearest);
+                });
+                DemoCell::new("minify — Linear").show(ui, k, |ui| {
+                    minified(ui, src.checker.handle(), ImageFilter::Linear);
+                });
+                DemoCell::new("minify — Nearest").show(ui, k, |ui| {
+                    minified(ui, src.checker.handle(), ImageFilter::Nearest);
+                });
+            });
+        });
+
+    Section::new("Downsampling")
+        .apis(&[api!(type ImageDownsample)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "A 512×512 starfield shrunk about 5 times. Single keeps a shifting \
+                 subset of the stars, Mean keeps all of them and dims each by its \
+                 footprint, and Peak keeps them at their own brightness.",
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("Single (default)").show(ui, k, |ui| {
+                    downsampled(ui, src.starfield.handle(), ImageDownsample::Single);
+                });
+                DemoCell::new("Mean").show(ui, k, |ui| {
+                    downsampled(ui, src.starfield.handle(), ImageDownsample::Mean);
+                });
+                DemoCell::new("Peak").show(ui, k, |ui| {
+                    downsampled(ui, src.starfield.handle(), ImageDownsample::Peak);
+                });
+            });
+        });
+}
+
+fn fitted(handle: &ImageHandle, fit: ImageFit) -> ImageShape {
+    Shape::image(handle.clone()).fit(fit)
+}
+
+fn magnified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
+    ui.add_shape(
+        Shape::image(handle.clone())
+            .fit(ImageFit::Fill)
+            .mag_filter(filter),
+    );
+}
+
+fn downsampled(ui: &mut Ui, handle: &ImageHandle, downsample: ImageDownsample) {
+    ui.add_shape(
+        Shape::image(handle.clone())
+            .fit(ImageFit::Contain)
+            .downsample(downsample),
+    );
+}
+
+fn minified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
+    ui.add_shape(
+        Shape::image(handle.clone())
+            .fit(ImageFit::Tile {
+                offset: Vec2::ZERO,
+                scale: Vec2::splat(32.0),
+            })
+            .min_filter(filter),
+    );
+}
+
+static FITS: [(&str, ImageFit); 5] = [
+    ("Fill", ImageFit::Fill),
+    ("Contain", ImageFit::Contain),
+    ("Cover", ImageFit::Cover),
+    ("Natural", ImageFit::Natural),
+    (
+        "Tile 3×3",
+        ImageFit::Tile {
+            offset: Vec2::ZERO,
+            scale: Vec2::splat(3.0),
+        },
+    ),
+];
+
+/// The live image's knobs: its fit, and whether a magnified texel shows as a block.
+#[derive(Debug)]
+struct LiveImage {
+    fit: &'static (&'static str, ImageFit),
+    nearest: bool,
+}
+
+impl Default for LiveImage {
+    fn default() -> Self {
+        Self {
+            fit: &FITS[0],
+            nearest: false,
+        }
+    }
+}
+
+/// The 4×4 sprite in a wide rect, its fit and its sampling from the knobs.
+fn live(ui: &mut Ui, k: Kit, src: &Sources) {
+    Section::new("Live image")
+        .apis(&[api!(type ImageFit), api!(type ImageFilter)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Fit a 4×4 sprite to a wide rect and pick how a magnified texel samples: Linear \
+                 blends its neighbors, Nearest keeps it a block.",
+            );
+            let id = WidgetId::from_hash("showcase::images::live");
+            ui.with_state::<LiveImage, _>(id, |ui, l| {
+                support::row(ui, |ui| {
+                    Text::new("fit").style(&k.t.caption()).show(ui);
+                    ComboBox::labeled(&mut l.fit, &FITS, |fit| fit.0)
+                        .size((Sizing::fixed(120.0), Sizing::HUG))
+                        .show(ui);
+                    Switch::new(&mut l.nearest).label("Nearest").show(ui);
+                });
+                let fit = l.fit.1;
+                let filter = if l.nearest {
+                    ImageFilter::Nearest
+                } else {
+                    ImageFilter::Linear
+                };
+                DemoCell::new("the knobs' image")
+                    .size(360.0, 160.0)
+                    .show(ui, k, |ui| {
+                        ui.add_shape(fitted(src.sprite.handle(), fit).mag_filter(filter));
+                    });
+            });
+        });
+}
+
+#[cfg(test)]
+mod tests {
+    use palantir::glam::UVec2;
+    use palantir::internals::headless_test_gpu;
+    use palantir::{ColorScheme, Depth, Harness, ImageHandle, Palette, Ui};
+
+    use crate::pages::images::{Sources, build, sources_id};
+    use crate::support::Kits;
+
+    /// A new device holds none of the demo images, and the page's next frame fills each one
+    /// again: the window paints as it did on the old device.
+    #[test]
+    fn a_new_device_gets_every_image_again() {
+        let gpu = headless_test_gpu();
+        let k = Kits::default().kit(ColorScheme::Dark, &Palette::DARK);
+        let mut record = |ui: &mut Ui| build(ui, k);
+        let mut h = Harness::builder(UVec2::new(1000, 600))
+            .depth(Depth::gpu(gpu.handles()))
+            .build();
+        h.frame(&mut record);
+        let before = h.read_back();
+        let src = h
+            .state::<Option<Sources>>(sources_id())
+            .unwrap()
+            .clone()
+            .unwrap();
+        let handles = [&src.checker, &src.gradient, &src.sprite, &src.starfield]
+            .map(|made| made.handle().clone());
+
+        h.recover(gpu.handles());
+        assert!(handles.iter().all(|handle| !handle.is_resident()));
+        h.frame(&mut record);
+        assert!(handles.iter().all(ImageHandle::is_resident));
+        assert!(
+            h.read_back() == before,
+            "the page paints as before the new device"
+        );
+    }
+}

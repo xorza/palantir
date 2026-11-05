@@ -2,10 +2,10 @@
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE, Scene, SceneFrame};
 use crate::damage::Damage;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
-use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
@@ -112,21 +112,26 @@ pub(crate) fn integration(c: &mut Criterion) {
     group.finish();
 }
 
-/// `atomic/encode/cpu/<arm>`: encode and compose alone over the frame fixture, its tree recorded
-/// and laid out once: `full` builds the whole screen's draw list, `partial` the one the footer
+/// Frames the scene takes to reach a look at rest, its theme built on the first.
+const SETTLE_FRAMES: u32 = 3;
+
+/// `atomic/encode/cpu/<arm>`: encode and compose alone over the scene, its tree recorded
+/// and laid out once: `full` builds the whole screen's draw list, `partial` the one the
 /// counter's tick plans. Per draw group built.
-pub(crate) fn atomic(c: &mut Criterion) {
+pub(crate) fn atomic<S: Scene>(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "encode", Scale::Sample);
     for (label, partial) in [("full", false), ("partial", true)] {
         group.bench_function(Backend::Cpu.case(label), |b| {
-            let mut state = FrameFixture::default();
+            let mut state = SceneFrame::<S>::default();
             let mut h = Harness::builder(BENCH_SURFACE)
                 .system_scale(BENCH_DPR)
                 .depth(Depth::Compose)
                 .build();
-            h.frame(|ui| state.render(BENCH_SCALE, ui));
+            for _ in 0..SETTLE_FRAMES {
+                h.frame(|ui| state.record(ui));
+            }
             state.tick += 1;
-            let report = h.frame(|ui| state.render(BENCH_SCALE, ui));
+            let report = h.frame(|ui| state.record(ui));
             let plan = if partial {
                 report.plan.expect("a tick paints")
             } else {

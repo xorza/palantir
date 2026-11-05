@@ -9,7 +9,6 @@
 pub(crate) mod cache_fixture;
 pub(crate) mod compose_rig;
 pub mod dock_fixture;
-pub mod frame_fixture;
 #[cfg(test)]
 mod hot_struct_sizes;
 #[cfg(test)]

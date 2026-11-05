@@ -1,4 +1,4 @@
-//! The frame: palantir's whole pipeline over the frame fixture, on each backend.
+//! The frame: palantir's whole pipeline over the scene, on each backend.
 //!
 //! - **`cpu`**: the CPU pipeline on a bare `Ui` and standalone `Frontend` with no wgpu device,
 //!   from record through encode and compose. Going through the offscreen driver plus a poll
@@ -10,24 +10,24 @@
 //! Scenarios, on both backends:
 //!
 //! - **`cached`**: fixed viewport, measure-cache hits, damage `Skip`.
-//! - **`partial`**: one fixture counter changes per frame, so damage is one small `Partial` rect.
+//! - **`partial`**: the counter over the scene changes per frame, so damage is one small `Partial`
+//!   rect.
 //! - **`resizing`**: rotates surface sizes so the offer busts the measure cache each frame.
 //! - **`scrolling`**: shifts a `Panel::transform` so only the cascade walk sees change.
 //! - **`alternating`**: a scroll step (full repaint) then a counter tick (small partial);
 //!   measures what a full frame costs the partial after it.
-//! - **`hovering`**: the pointer moves from the request card's checkbox to its submit button and
-//!   back, one move a frame: input routing, hover state and its small partial repaint.
-//! - **`typing`**: the request card's name field holds the focus and takes a character, then a
-//!   backspace, one a frame: an edit's reshaping, caret and small partial repaint.
+//! - **`hovering`**: the pointer moves between the scene's two hover targets, one move a frame:
+//!   input routing, hover state and its small partial repaint.
+//! - **`typing`**: the scene's field holds the focus and takes a character, then a backspace, one
+//!   a frame: an edit's reshaping, caret and small partial repaint.
 //! - **`theming`**: a theme transition between the dark stock look and a roomier light one, every
 //!   frame at a new phase: a theme blend, a record under it and a whole repaint, with each font
 //!   size at a new value, so text reshapes and rasterizes anew. The worst frame a transition
 //!   costs; [`THEMING`] runs so long that a measured frame never lands.
 //!
-//! The surface is 2560 × 1440 at 2×, a 1280 × 720 window, and the fixture is taller, so the CPU
-//! backend processes the whole tree while paint and the GPU see only the screen. The workload
-//! lives in [`crate::internals::frame_fixture`], shared with the allocation gates in
-//! `tests/alloc/gates/` and the showcase's `frame bench` page.
+//! The surface is 2560 × 1440 at 2×, a 1280 × 720 window. The scene comes from the caller
+//! ([`Scene`]). Motion and transparency are pinned on, so no default that moves can change a number.
+//! The bench theme still snaps its state transitions, as [`bench_theme`] says why.
 
 use crate::theme::color_scheme::ColorScheme;
 
@@ -37,6 +37,7 @@ use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
+use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE, Scene, SceneFrame};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
@@ -45,13 +46,15 @@ use crate::host::harness::harness_builder::Depth;
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
-use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::preference::Preference;
+use crate::primitives::reduction::Reduction;
 use crate::theme::Theme;
 use crate::theme::metrics::{Metrics, SpaceSteps, TextSteps};
 use crate::theme::palette::Palette;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
+use crate::ui::ui_preferences::UiPreferences;
 use crate::window::window_token::WindowToken;
 use criterion::Criterion;
 use glam::UVec2;
@@ -76,6 +79,24 @@ fn bench_theme() -> Theme {
                 ..Metrics::DEFAULT
             },
         )
+    }
+}
+
+/// Motion and transparency on, whatever the host's settings say.
+fn force_full_effects(ui: &mut Ui) {
+    ui.set_preferences(UiPreferences {
+        motion: Preference::Fixed(Reduction::Full),
+        transparency: Preference::Fixed(Reduction::Full),
+        ..ui.preferences()
+    });
+}
+
+/// Frame `n`'s look: the scene builds its theme on the first frame, so the bench's goes on the
+/// second, at once.
+fn settle_look(ui: &mut Ui, n: u32) {
+    if n == 1 {
+        ui.set_theme_transition(AnimationSpec::SNAP);
+        ui.set_theme_for(ColorScheme::Dark, bench_theme());
     }
 }
 
@@ -139,8 +160,7 @@ fn bench_host(g: &BenchGpu, time: OffscreenTime) -> OffscreenHost {
         .swapchain_present()
         .time(time)
         .build();
-    host.ui_mut()
-        .set_theme_for(ColorScheme::Dark, bench_theme());
+    force_full_effects(host.ui_mut());
     host
 }
 
@@ -169,7 +189,7 @@ impl CpuHarness {
             .system_scale(BENCH_DPR)
             .depth(Depth::Compose)
             .build();
-        h.ui_mut().set_theme_for(ColorScheme::Dark, bench_theme());
+        force_full_effects(h.ui_mut());
         Self {
             h,
             clock: match time {
@@ -261,8 +281,8 @@ impl Arm {
         }
     }
 
-    /// Set the fixture to frame `n`'s state.
-    fn advance(self, state: &mut FrameFixture, n: u32) {
+    /// Set the frame to frame `n`'s state.
+    fn advance<S>(self, state: &mut SceneFrame<S>, n: u32) {
         match self {
             Self::Cached | Self::Hovering | Self::Resizing | Self::Theming | Self::Typing => {}
             Self::Partial => state.tick = state.tick.wrapping_add(1),
@@ -275,20 +295,20 @@ impl Arm {
 
     /// The input frame `n` sends `ui` before it records, after the arm puts the focus where it
     /// types: none until the last frame resolved the widgets the arm aims at.
-    fn input(self, state: &FrameFixture, ui: &mut Ui, n: u32) -> Option<InputEvent<'static>> {
-        let probes = state.probes;
+    fn input<S: Scene>(
+        self,
+        state: &SceneFrame<S>,
+        ui: &mut Ui,
+        n: u32,
+    ) -> Option<InputEvent<'static>> {
         match self {
             Self::Hovering => {
-                let id = if n.is_multiple_of(2) {
-                    probes.enabled
-                } else {
-                    probes.submit
-                }?;
+                let id = state.scene.hover_targets()[n as usize % 2];
                 let rect = ui.response_for(id).rect?;
                 Some(InputEvent::PointerMoved(rect.center()))
             }
             Self::Typing => {
-                let edit = probes.name_edit?;
+                let edit = state.scene.field();
                 if ui.focus() != Some(edit) {
                     ui.set_focus(edit);
                 }
@@ -309,9 +329,13 @@ impl Arm {
     }
 
     /// Ready `ui` for frame `n`: the theming arm starts a transition to the theme it does not
-    /// show whenever none runs, on its first frame and after a rare landing.
-    fn prepare(self, ui: &mut Ui) {
-        if self != Self::Theming || !Rc::ptr_eq(ui.theme(), ui.theme_for(ui.color_scheme())) {
+    /// show whenever none runs, once the bench's look is on and after a rare landing.
+    fn prepare(self, ui: &mut Ui, n: u32) {
+        settle_look(ui, n);
+        if self != Self::Theming
+            || n < 2
+            || !Rc::ptr_eq(ui.theme(), ui.theme_for(ui.color_scheme()))
+        {
             return;
         }
         let roomy = ui.theme().text.font_size == Metrics::DEFAULT.text.body;
@@ -349,13 +373,14 @@ impl Arm {
 
     /// Measure this arm on `backend`: build its frame with `build` in the case, run it through
     /// [`SETTLE_FRAMES`], pin one cycle of [`Self::paints`], then time frames.
-    fn measure<F>(self, group: &mut CaseGroup<'_>, backend: Backend, build: impl Fn() -> F)
+    fn measure<S, F>(self, group: &mut CaseGroup<'_>, backend: Backend, build: impl Fn() -> F)
     where
-        F: FnMut(&mut FrameFixture, u32) -> FramePaint,
+        S: Scene,
+        F: FnMut(&mut SceneFrame<S>, u32) -> FramePaint,
     {
         group.bench_function(backend.case(self.label()), |b| {
             let mut frame = build();
-            let mut state = FrameFixture::default();
+            let mut state = SceneFrame::<S>::default();
             let mut n = 0u32;
             // A frame's paint, and whether the typing arm's key reached the field: a character
             // after an even frame, none after an odd.
@@ -363,7 +388,7 @@ impl Arm {
                 self.advance(&mut state, n);
                 let paint = frame(&mut state, n);
                 let typed = self != Self::Typing
-                    || state.name() == if n.is_multiple_of(2) { "x" } else { "" };
+                    || state.scene.field_len() == usize::from(n.is_multiple_of(2));
                 n = n.wrapping_add(1);
                 (paint, typed)
             };
@@ -387,15 +412,16 @@ impl Arm {
 }
 
 /// `atomic/main_pass_batch/gpu/<kind>`: the device time of one batch kind of a whole repaint of
-/// the frame fixture (the `scrolling` arm), from its in-pass timestamps: the quads, the shadows
-/// and the text, each pipeline's share of [`main_pass`]. Only where the adapter writes in-pass
+/// the scene (the `scrolling` arm), from its in-pass timestamps: the quads and the text, each
+/// pipeline's share of [`main_pass`]. No shadow case: the page paints no shadow, and a case with
+/// no batch reads no timestamp. Only where the adapter writes in-pass
 /// timestamps; a tiler splits its pass at each, so these cases do not sum to `main_pass`.
-fn main_pass_batch(c: &mut Criterion, backends: &Backends) {
+fn main_pass_batch<S: Scene>(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.batch_timed_gpu() else {
         return;
     };
     let mut group = Kind::Atomic.group(c, "main_pass_batch", Scale::Frame);
-    for kind in [BatchKind::Quads, BatchKind::Shadows, BatchKind::Text] {
+    for kind in [BatchKind::Quads, BatchKind::Text] {
         group.bench_function(backend.case(kind.label()), |b| {
             let g = backends.device(Timing::Instrumented);
             let target = g.target("palantir.main_pass_batch_bench", BENCH_SURFACE);
@@ -403,11 +429,11 @@ fn main_pass_batch(c: &mut Criterion, backends: &Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui_mut()
-                .set_theme_for(ColorScheme::Dark, bench_theme());
-            let mut state = FrameFixture::default();
+            force_full_effects(host.ui_mut());
+            let mut state = SceneFrame::<S>::default();
             let mut n = 0u32;
             let mut frame = || {
+                settle_look(host.ui_mut(), n);
                 Arm::Scrolling.advance(&mut state, n);
                 n = n.wrapping_add(1);
                 let paint = gpu_frame(&mut host, &target, &mut state);
@@ -439,30 +465,30 @@ fn release(event: InputEvent<'static>, send: impl FnOnce(InputEvent<'static>)) {
     }
 }
 
-/// Shift the fixture's transform, so only the cascade walk sees change.
-fn scroll(state: &mut FrameFixture) {
-    state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
-    state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+/// Shift the scene's transform, so only the cascade walk sees change.
+fn scroll<S>(state: &mut SceneFrame<S>) {
+    state.scroll.x = (state.scroll.x + 1.5) % 256.0;
+    state.scroll.y = (state.scroll.y + 0.7) % 256.0;
 }
 
 /// Frames each arm runs before its paint is pinned: even, so the alternating arm
 /// starts its check on a scroll step.
 const SETTLE_FRAMES: u32 = 4;
 
-/// One frame of the fixture on `target`, at the bench's device pixel ratio.
-fn gpu_frame(
+/// One frame of the scene on `target`, at the bench's device pixel ratio.
+fn gpu_frame<S: Scene>(
     host: &mut OffscreenHost,
     target: &OwnedTarget,
-    state: &mut FrameFixture,
+    state: &mut SceneFrame<S>,
 ) -> FramePaint {
-    let mut app = |ui: &mut Ui| state.render(BENCH_SCALE, ui);
+    let mut app = |ui: &mut Ui| state.record(ui);
     host.set_system_scale(BENCH_DPR)
         .frame(target.as_target(), &mut app)
         .paint()
 }
 
-/// `integration/frame/<backend>/<scenario>`: one whole frame of the frame fixture.
-pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
+/// `integration/frame/<backend>/<scenario>`: one whole frame of the scene.
+pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
     let mut group = Kind::Integration.group(c, "frame", Scale::Frame);
     for backend in backends.all() {
         for arm in Arm::ALL {
@@ -470,31 +496,31 @@ pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
                 Backend::Cpu => arm.measure(&mut group, backend, || {
                     let mut h = CpuHarness::new(arm.clock());
                     let sizes = arm.sizes();
-                    move |state: &mut FrameFixture, n: u32| {
+                    move |state: &mut SceneFrame<S>, n: u32| {
                         if arm == Arm::Resizing {
                             h.h.resize(sizes[n as usize % sizes.len()]);
                         }
                         let harness = &mut h.h;
-                        arm.prepare(harness.ui_mut());
+                        arm.prepare(harness.ui_mut(), n);
                         if let Some(event) = arm.input(state, harness.ui_mut(), n) {
                             harness.on_input(event);
                             release(event, |up| {
                                 harness.on_input(up);
                             });
                         }
-                        h.frame(|ui| state.render(BENCH_SCALE, ui))
+                        h.frame(|ui| state.record(ui))
                     }
                 }),
                 Backend::Gpu => arm.measure(&mut group, backend, || {
                     let g = backends.device(TIMING);
                     let targets = arm.targets(backends.device(TIMING));
                     let mut host = bench_host(g, arm.clock());
-                    move |state: &mut FrameFixture, n: u32| {
+                    move |state: &mut SceneFrame<S>, n: u32| {
                         let target = &targets[n as usize % targets.len()];
                         if arm.clock() == OffscreenTime::Manual {
                             host.advance(THEMING_FRAME);
                         }
-                        arm.prepare(host.ui_mut());
+                        arm.prepare(host.ui_mut(), n);
                         if let Some(event) = arm.input(state, host.ui_mut(), n) {
                             host.on_input(event);
                             release(event, |up| {
@@ -512,24 +538,24 @@ pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
     group.finish();
 }
 
-/// Two stages of the frame alone over the frame fixture: record, and the main pass.
-pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
-    record(c);
-    main_pass(c, backends);
-    main_pass_batch(c, backends);
+/// Two stages of the frame alone over the scene: record, and the main pass.
+pub(crate) fn atomic<S: Scene>(c: &mut Criterion, backends: &Backends) {
+    record::<S>(c);
+    main_pass::<S>(c, backends);
+    main_pass_batch::<S>(c, backends);
 }
 
-/// `atomic/record/cpu/frame`: one record pass of the frame fixture alone, its hashes finalized:
+/// `atomic/record/cpu/frame`: one record pass of the scene alone, its hashes finalized:
 /// the widgets' code, node and shape recording and lowering, without layout or what follows.
-fn record(c: &mut Criterion) {
+fn record<S: Scene>(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "record", Scale::Sample);
     group.bench_function(Backend::Cpu.case("frame"), |b| {
-        let mut state = FrameFixture::default();
+        let mut state = SceneFrame::<S>::default();
         let mut h = Harness::builder(BENCH_SURFACE)
             .system_scale(BENCH_DPR)
             .build();
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-        let mut app = |ui: &mut Ui| state.render(BENCH_SCALE, ui);
+        h.frame(|ui| state.record(ui));
+        let mut app = |ui: &mut Ui| state.record(ui);
         let mut pass = || {
             let parts = h.parts();
             parts
@@ -542,13 +568,13 @@ fn record(c: &mut Criterion) {
     group.finish();
 }
 
-/// `atomic/main_pass/gpu/<arm>`: the device time of the main pass alone over the frame fixture,
+/// `atomic/main_pass/gpu/<arm>`: the device time of the main pass alone over the scene,
 /// read back from its timestamps: `scrolling`, a whole repaint each frame, and `partial`, the
-/// footer counter's small rect. What the GPU pays to paint the frame, without the CPU half
+/// counter's small rect. What the GPU pays to paint the frame, without the CPU half
 /// [`integration`] adds. On Metal the pass time is the frame's wall time from submit to done
 /// ([`GpuTimings`](crate::gpu::frame::gpu_timings::GpuTimings)), so it also holds the frame's
 /// uploads, copies and the wake-up's latency.
-fn main_pass(c: &mut Criterion, backends: &Backends) {
+fn main_pass<S: Scene>(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
@@ -561,11 +587,11 @@ fn main_pass(c: &mut Criterion, backends: &Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui_mut()
-                .set_theme_for(ColorScheme::Dark, bench_theme());
-            let mut state = FrameFixture::default();
+            force_full_effects(host.ui_mut());
+            let mut state = SceneFrame::<S>::default();
             let mut n = 0u32;
             let mut frame = || {
+                settle_look(host.ui_mut(), n);
                 arm.advance(&mut state, n);
                 n = n.wrapping_add(1);
                 let paint = gpu_frame(&mut host, &target, &mut state);
