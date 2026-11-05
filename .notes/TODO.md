@@ -8,6 +8,7 @@
 - audit platform dependent behavior
 - build-in colors
 - rich text edit
+- audit hot structs for compact opportunities
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
