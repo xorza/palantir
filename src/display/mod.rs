@@ -18,6 +18,7 @@ use crate::display::user_scale::UserScale;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::EPS;
+use crate::primitives::math::num::Vec2Ext;
 use glam::{UVec2, Vec2};
 
 #[inline]
@@ -96,6 +97,20 @@ impl Display {
             EdgeRounding::WholePixels
         } else {
             EdgeRounding::Exact
+        }
+    }
+
+    /// `translation`, in logical px, landed where an edge lands: on whole physical px where
+    /// [`Self::pixel_snap`] holds, else as it is. For a pan or a scroll offset kept exact and drawn
+    /// landed, as Blink keeps a scroll offset on whole pixels: the composer places content by its
+    /// transform exactly, so unzoomed content then stays on its pixels at any offset.
+    pub fn land_translation(&self, translation: Vec2) -> Vec2 {
+        match self.edge_rounding() {
+            EdgeRounding::WholePixels => {
+                let scale = self.scale_factor();
+                (translation * scale).fast_round() / scale
+            }
+            EdgeRounding::Exact => translation,
         }
     }
 

@@ -4,7 +4,6 @@
 use crate::display::Display;
 use crate::input::interaction::drag::Drag;
 use crate::input::sense::Sense;
-use crate::primitives::geometry::rect::EdgeRounding;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -12,7 +11,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::math::domain;
-use crate::primitives::math::num::Vec2Ext;
 use crate::scene::bar_geometry::BarGeometry;
 use crate::widgets::scroll::zoom_config::ZoomConfig;
 use glam::Vec2;
@@ -285,19 +283,11 @@ impl ScrollState {
     /// scaling about the node's corner would grow that padding with zoom.
     /// Scaling about the content origin keeps offset 0 at the content's start.
     ///
-    /// Where `display` snaps, the translation lands on whole physical px, as Blink keeps a scroll
-    /// offset on whole pixels: the composer places content by its transform exactly
-    /// (`TransformStack::physical_rect`), so unzoomed content stays on its pixels at any offset.
+    /// The translation lands as `display` lands one ([`Display::land_translation`]), so unzoomed
+    /// content stays on its pixels at any offset.
     pub(crate) fn transform(&self, content_origin: Vec2, display: Display) -> TranslateScale {
         let translation = content_origin * (1.0 - self.zoom) - self.offset;
-        let landed = match display.edge_rounding() {
-            EdgeRounding::WholePixels => {
-                let scale = display.scale_factor();
-                (translation * scale).fast_round() / scale
-            }
-            EdgeRounding::Exact => translation,
-        };
-        TranslateScale::new(landed, self.zoom)
+        TranslateScale::new(display.land_translation(translation), self.zoom)
     }
 
     pub(super) fn apply_thumb_drag(&mut self, axis: Axis, drag: Drag, travel: Option<ThumbTravel>) {

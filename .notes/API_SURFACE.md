@@ -523,6 +523,7 @@ Display
         pub const fn user_scale(&self) -> UserScale
         pub const fn pixel_snap(&self) -> bool
         pub const fn refresh_millihertz(&self) -> Option<u32>
+        pub fn land_translation(&self, translation: Vec2) -> Vec2
         pub const fn scale_factor(&self) -> f32
         pub fn logical_size(&self) -> Size
         pub fn system_logical_size(&self) -> Size

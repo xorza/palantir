@@ -134,3 +134,33 @@ fn from_physical_checks_its_scale() {
         });
     }
 }
+
+/// A translation lands on whole physical px where the display snaps, half away from zero, and
+/// stays as it is where it does not: at 2× 0.3 → 0.6 physical → 1 → 0.5 logical, and −0.3 →
+/// −0.5; at 1.5× 0.4 → 0.6 → 1 → 2/3; at 1× 2.5 → 3. Unsnapped, 0.3 stays 0.3.
+#[test]
+fn a_translation_lands_on_whole_physical_px_where_the_display_snaps() {
+    let surface = UVec2::new(800, 600);
+    let at = |scale: f32| Display::from_physical(surface, scale);
+    for (label, display, translation, landed) in [
+        ("2×", at(2.0), Vec2::new(0.3, -0.3), Vec2::new(0.5, -0.5)),
+        (
+            "1.5×",
+            at(1.5),
+            Vec2::new(0.4, 0.0),
+            Vec2::new(1.0 / 1.5, 0.0),
+        ),
+        ("1×", at(1.0), Vec2::new(2.5, -2.5), Vec2::new(3.0, -3.0)),
+        (
+            "unsnapped",
+            Display {
+                pixel_snap: false,
+                ..at(2.0)
+            },
+            Vec2::new(0.3, -0.3),
+            Vec2::new(0.3, -0.3),
+        ),
+    ] {
+        assert_eq!(display.land_translation(translation), landed, "{label}");
+    }
+}
