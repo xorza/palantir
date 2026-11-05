@@ -1,7 +1,7 @@
 //! The gates whose cost is partly the driver's rather than palantir's.
 //!
 //! Every wgpu submission allocates, and how much is the adapter's call: the
-//! scale ramp spends 396 blocks a frame on a high-end NVIDIA GPU, 1059 on Mesa's
+//! scale ramp spends 396 blocks a frame on a high-end NVIDIA laptop GPU, 1059 on Mesa's
 //! lavapipe and 1759 on Apple's Metal. Validation accounts for none of it.
 //!
 //! So neither gate reads a strict zero. The still-tree gate measures the

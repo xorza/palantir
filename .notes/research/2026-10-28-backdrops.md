@@ -1,7 +1,7 @@
 # Backdrops: blur, frosted glass and glass (2026-10-28 to 2026-11-01)
 
 Facts and measurements behind `gpu::backdrop`, `shape::paint::blur_plan` and the glass composite.
-Hosts: the AMD mobile AMD iGPU ran RADV on Linux; fanless an Apple laptop and mac an Apple laptop, on Metal.
+Hosts: a mobile AMD iGPU ran RADV on Linux; two Apple laptops, on Metal.
 
 ## Practice elsewhere
 
@@ -139,7 +139,7 @@ window), wall time per frame, against the same cases with the main pass split
 at each pane's barrier (`*_split`). The split frames match the replay's bit
 for bit (`a_split_main_pass_paints_what_the_replay_paints`).
 
-| case | AMD mobile AMD iGPU replay | split | Apple laptop replay | split |
+| case | mobile AMD iGPU replay | split | Apple laptop replay | split |
 |---|---|---|---|---|
 | blur | 6.44 ms | 4.74 ms | 2.32 ms | 2.00 ms |
 | frosted | 6.46 ms | 4.82 ms | 2.32 ms | 2.01 ms |
@@ -152,7 +152,7 @@ The Apple laptop is a tiler: there a split stores and loads the whole attachment
 Partial frames (`*/under`, two panes recapture; `*/sliding`, one or none),
 ABBA on both hosts:
 
-| case | AMD mobile AMD iGPU replay | split | Apple laptop replay | split |
+| case | mobile AMD iGPU replay | split | Apple laptop replay | split |
 |---|---|---|---|---|
 | blur under | 3.9–4.1 ms | 3.9–4.0 ms | 1.58–1.60 ms | 1.67–1.68 ms |
 | frosted under | 3.7–4.1 ms | 3.8–4.2 ms | 1.58–1.60 ms | 1.67–1.68 ms |
@@ -186,7 +186,7 @@ between passes local.
 ## Measured: where a frame's device time goes (2026-10-29)
 
 `integration/backdrop_frame/gpu/*/scrolling`, device time split between the main pass, the
-captures and the blurs, on the mobile AMD iGPU:
+captures and the blurs, on a mobile AMD iGPU:
 
 | scene | main pass | captures | blurs |
 |---|---|---|---|
@@ -199,7 +199,7 @@ captures and the blurs, on the mobile AMD iGPU:
 
 ## Measured: dispersion (2026-11-01)
 
-`integration/backdrop_frame/gpu/glass/*`, Apple laptop, full runs, the glass look's lens at
+`integration/backdrop_frame/gpu/glass/*`, an Apple laptop, full runs, the glass look's lens at
 dispersion 0.06 and σ 2:
 
 | case | three reads (before) | weight loop, 48 points | closed form |

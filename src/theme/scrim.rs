@@ -12,7 +12,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// `backdrop-filter`.
 ///
 /// A filter costs a capture and a blur of the whole window on each frame where something under
-/// the scrim changes: 394 µs and 732 µs of device time at 3840 × 2160 on an AMD mobile AMD iGPU
+/// the scrim changes: 394 µs and 732 µs of device time at 3840 × 2160 on a mobile AMD iGPU
 /// (`integration/backdrop_frame/gpu/modal`, `.notes/research/2026-10-28-backdrops.md`), and
 /// nothing on a frame where nothing does.
 ///

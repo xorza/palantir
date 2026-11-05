@@ -5,8 +5,8 @@
 //! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_IDX`], published as [`GpuPassStats::last_copy_out`], and each backdrop break's captures and blurs at [`BACKDROP_IDX`], published as their sums.
 //!
 //! A frame's queries resolve in a later frame, once the queue said the frame's work is done, and
-//! read back after that frame completes: publishing lags two frames. A Metal device on macOS
-//! and later reads a timestamp resolved in the command buffer that wrote it, or in one submitted
+//! read back after that frame completes: publishing lags two frames. A Metal device on a recent macOS
+//! reads a timestamp resolved in the command buffer that wrote it, or in one submitted
 //! before the CPU learned it completed, as the value written before it (wgpu #9414); resolving
 //! after the work-done callback reads right on every backend.
 

@@ -11,28 +11,27 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   A, B, B, A, medians compared, the binary pinned with `taskset -c N setarch -R`. A sequential
   A/A moved the local CPU cases by up to 7 % and the GPU cases by up to 31 %.
 - **Hosts.**
-  - local: high-end Intel CPU, high-end NVIDIA GPU (dGPU only), Vulkan; core 2. A bench build peaks at
-    4.7 GB cold, 3 GB after.
-  - fanless: a LAN host, Apple laptop, 8 GB, Metal, no pinning; 2.2 to 2.8 GB a build, so one at
-    a time. Login shell fish: run scripts with `bash`.
-  - handheld: handheld@a LAN host, handheld (an AMD APU, RADV), core 4,
-    governor `powersave` without `sudo`; 3.0 to 4.2 GB a build. Fish login shell. It kills a
-    user's processes when the SSH session that started them ends, so a run holds its session.
-  - win: a LAN host, AMD CPU with a Radeon mobile AMD iGPU, 30 GB, Windows, Vulkan; pinned through
-    `ProcessorAffinity` 4 in a PowerShell ABBA runner; 4.2 to 4.7 GB a build. The rustup
-    `cargo.exe` and `rustc.exe` are symlink proxies that fail over SSH (os error 448), and
-    `sccache` does not start there: a build runs the toolchain's binaries by full path with
-    `rustc-wrapper = ""`. A push to its bare repo needs `--receive-pack="powershell git
-    receive-pack"`; criterion writes CRLF, and cargo prints `benches\palantir.rs` with a
-    backslash.
-  - Earlier: board, a LAN host, VideoCore board (V3D, V3DV), core 3, governor `ondemand`; it
-    builds nothing, its binaries are cross-built against a sysroot copied from it (glibc 2.41)
-    with `clang` and `lld`, or on the mac with `zig cc -target aarch64-linux-gnu.2.41` behind a
-    wrapper that drops `--fix-cortex-a53-843419` and `-Wl,-O1`, and run from worktrees at the
-    builder's paths, which `CARGO_MANIFEST_DIR` names. mac, a LAN host, Apple laptop Mac, 24 GB; its
-    `sccache` wants `/opt/homebrew/bin` on the `PATH`. A macOS Local Network permission belongs
-    to the app that started the `tmux` server: a server started before it gets `No route to
-    host` to every LAN address until it restarts.
+  - local: a high-end laptop, its NVIDIA GPU alone, Vulkan; one pinned core. A bench build peaks
+    at 4.7 GB cold, 3 GB after.
+  - fanless: a fanless Apple laptop with little RAM, Metal, no pinning; 2.2 to 2.8 GB a build, so
+    one at a time.
+  - handheld: a handheld AMD APU, RADV; one pinned core, governor `powersave` without `sudo`; 3.0
+    to 4.2 GB a build. It kills a user's processes when the SSH session that started them ends, so
+    a run holds its session.
+  - windows: a mobile AMD iGPU, Windows, Vulkan; pinned through `ProcessorAffinity` in a PowerShell
+    ABBA runner; 4.2 to 4.7 GB a build. The rustup `cargo.exe` and `rustc.exe` are symlink proxies
+    that fail over SSH (os error 448), and `sccache` does not start there: a build runs the
+    toolchain's binaries by full path with `rustc-wrapper = ""`. A push to its bare repo needs
+    `--receive-pack="powershell git receive-pack"`; criterion writes CRLF, and cargo prints
+    `benches\palantir.rs` with a backslash.
+  - Earlier: board, a VideoCore single-board computer; one core, governor `ondemand`; it builds
+    nothing, its binaries are cross-built against a sysroot copied from it (glibc 2.41) with
+    `clang` and `lld`, or on the mac with `zig cc -target aarch64-linux-gnu.2.41` behind a wrapper
+    that drops `--fix-cortex-a53-843419` and `-Wl,-O1`, and run from worktrees at the builder's
+    paths, which `CARGO_MANIFEST_DIR` names. mac, a larger Apple laptop; its `sccache` wants
+    the package manager's `bin` on the `PATH`. A macOS Local Network permission belongs to the app that
+    started the `tmux` server: a server started before it gets `No route to host` to every LAN
+    address until it restarts.
 - **Noise floors** (ABBA A/A):
 
   | host | CPU cases | GPU cases |
@@ -40,7 +39,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   | local | under 1 %, at most 2 % | up to 8.4 % (`frosted/scrolling`), 7.4 % (`blur/scrolling`), 6.3 % (`pair_near/scrolling`) |
   | fanless | under 0.6 % | under 0.9 % |
   | handheld | under 0.7 %; `frame/cpu/alternating` and `backdrop_frame/cpu/blur/cached` bimodal, 12 to 15 % | median 0.7 %, up to 11 % on `*/cached` |
-  | win | under 0.7 % | median 1 %, up to 8 %, 23 % on `pair_near/scrolling` |
+  | windows | under 0.7 % | median 1 %, up to 8 %, 23 % on `pair_near/scrolling` |
   | board | under 0.3 % | under 0.3 %, `glass/hover` 0.7 %, `record_pass` 5 % |
 
 - **CPU A/B across binaries moves by code placement.** A change a case never runs moved it 4 %
@@ -54,7 +53,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 - **Apple GPUs compile with fast math**: shader variants equal in IEEE arithmetic differ by up to
   one f16 step at 1 (2⁻¹¹). A bit-exact check of a shader change compares frames on each host's
   own device (`f16diff`).
-- **An APU's GPU frames are not its CPU's**: on the mobile AMD iGPU under RADV an empty submit and wait took
+- **An APU's GPU frames are not its CPU's**: on the AMD iGPU under RADV an empty submit and wait took
   250 µs (19 µs on the fanless), and with the iGPU busy the core ran at 2.0 GHz with an IPC of 1.8,
   so `frame/gpu/partial` spent 1.1 ms in record against 0.18 ms in the CPU harness. Read CPU
   work off the CPU arms.
@@ -68,7 +67,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
     `MESA_SHADER_CACHE_DISABLE=true` prints instructions, threads and spills, `nir` names each
     entry point.
   - Missing: no Xcode on the fanless, so no Metal trace; RGP opens captures only in its GUI; the
-    the distribution's RenderDoc ships no Python module.
+    distribution's RenderDoc ships no Python module.
 
 ## Where the time is
 
@@ -91,7 +90,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   screen expired after probation and shaped again.
 - **Current CPU numbers** (ABBA medians at `5ab2bdeef`):
 
-  | case | local | fanless | handheld | win |
+  | case | local | fanless | handheld | windows |
   | --- | --- | --- | --- | --- |
   | `frame/cpu/cached` | 97.9 µs | 120.0 µs | 238.3 µs | 160.6 µs |
   | `frame/cpu/hovering` | 112.2 µs | 133.6 µs | 271.8 µs | 182.5 µs |
@@ -100,17 +99,17 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   | `frame/cpu/theming` | 286.1 µs | 307.4 µs | 713.2 µs | 411.9 µs |
   | `backdrop_frame/cpu/glass/hover` | 116.7 µs | 138.6 µs | 275.1 µs | 187.0 µs |
 
-- **The main pass on the mobile AMD iGPU** (`main_pass_batch`, a whole fixture repaint): quads 151 µs,
+- **The main pass on the AMD iGPU** (`main_pass_batch`, a whole fixture repaint): quads 151 µs,
   shadows 115 µs, text 9 µs. The quads are raster-bound: a shader that returns its fill at once
   times the same, and blending off saves 40 µs (27 %); 4.1 M fragments over 1.12 screens, 0.4 M
   under a later opaque interior. The shadows: 79 µs of raster, 46 µs of coverage math. Every
   fragment shader sits at 24 to 48 VGPRs and 20 to 32 waves a SIMD, with no spills.
 - **Backdrop passes** (`.notes/research/2026-10-28-backdrops.md`): a blur pass costs the
-  Apple laptop about 48 µs whatever it draws and the mobile AMD iGPU about 6 µs; on the mobile AMD iGPU a frame's backdrop work
+  Apple laptop about 48 µs whatever it draws and the AMD iGPU about 6 µs; on the AMD iGPU a frame's backdrop work
   is the composite, then the blurs, then the captures (cards: 793, 610 and 248 µs). The
   composite on the fanless's 4K `modal/scrolling` costs 1.4 ms over a pane that returns at once: the
   B-spline read 0.29 ms, grain and saturation 0.21, the luminance ceiling and tint 0.16, the
-  dither nothing; on the mobile AMD iGPU at 2048² the B-spline is a third of it and the grain 90 µs.
+  dither nothing; on the AMD iGPU at 2048² the B-spline is a third of it and the grain 90 µs.
 - **On the board the GPU is the frame**: `frame/gpu/scrolling` 18 ms, its CPU half 0.55 ms; a whole
   2560 × 1440 main pass 17.1 ms, of which the tabled shadows 7.7 (coverage 5.8: cutout lookups
   2.1, source clip 1.4), the quads 4.6, text 0.16, and every fragment entry trivial 4.8. In
@@ -124,11 +123,11 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   busy 77 % of `frame/gpu/hovering`, record at an IPC of 1.6 against 2.6 in the CPU frame at the
   same 2.4 GHz, and the wgpu, RADV and kernel calls about 1.4 M instructions a frame more than
   the CPU harness. The passes of a partial frame are small (`main_pass/gpu/partial` 7 µs local,
-  37 µs fanless, 13 µs handheld, 17 µs win); the copy of the whole backbuffer onto the target is not:
+  37 µs fanless, 13 µs handheld, 17 µs windows); the copy of the whole backbuffer onto the target is not:
   without it `frame/gpu/hovering` and `partial` run 16 to 33 % faster on every host
   (diagnostic). A whole repaint's main pass takes 0.68 ms on the fanless, 1.0 ms on the handheld and
-  1.04 ms on win, of it the quads 426 and 553 µs and the shadows 356 and 297 µs on the handheld and
-  win; win's `frame/gpu/scrolling` spends 1.6 ms of its 2.9 outside the passes and the CPU
+  1.04 ms on windows, of it the quads 426 and 553 µs and the shadows 356 and 297 µs on the handheld and
+  windows; windows's `frame/gpu/scrolling` spends 1.6 ms of its 2.9 outside the passes and the CPU
   half, in its submit and fence wait.
 
 ## Rejected
@@ -142,10 +141,10 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 - **Blur: one residual loop for every device**: the mirrored loop takes V3D's σ 4 at 2048² from
   232 to 153 ms and the Apple laptop's from 6.2 to 14.3; the windowed one wins the Apple laptop 20 % and loses V3D
   2 to 3 %. Each device takes its own (Decisions).
-- **Blur: `LoadOp::Clear` on the tent and first-axis passes**: +8 to +15 % on the mobile AMD iGPU at 512², as
+- **Blur: `LoadOp::Clear` on the tent and first-axis passes**: +8 to +15 % on the AMD iGPU at 512², as
   a clear writes the whole mip.
 - **Blur: the residual as a compute pass over workgroup memory** (FidelityFX Blur): both GPUs
-  serve the reads from texture cache as fast; the barrier and fill lose (mobile AMD iGPU +15 %, m-series
+  serve the reads from texture cache as fast; the barrier and fill lose (AMD iGPU +15 %, m-series
   +86 %, and wgpu zero-fills workgroup memory per dispatch on Metal).
 - **Blur: halve above σ 2 texels, or cut the residual at 3σ**: the response leaves the Gaussian
   by 3.5 % and 0.83 % of its peak, past the 0.4 % `blur_plan` promises.
@@ -163,7 +162,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 - **The spectrum loop's state**, its integrals read again or the lens surface computed once:
   board −2.5 to +3.3 % on the glass composite, its frames −0.4 % at best; handheld +1.2 %.
 - **Captures: every capturing frame through the backbuffer**: −6 % on the fanless's `cards_apart`,
-  +12 % on the mobile AMD iGPU's `pair_near/scrolling`. Kept only where the captures add up to the surface.
+  +12 % on the AMD iGPU's `pair_near/scrolling`. Kept only where the captures add up to the surface.
 - **Captures: sample the swapchain image**: wgpu 30 offers a sampled surface usage only on
   Vulkan (wgpu-hal 30.0.1 `metal/adapter.rs:474`, `dx12/adapter.rs:1360`,
   `gles/adapter.rs:1379`), and there it costs a bind group a frame, as each acquire is a new
@@ -171,12 +170,12 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 - **`LoadOp::DontCare` on the blit**: wgpu-core refuses it under
   `InstanceFlags::STRICT_WEBGPU_COMPLIANCE`, which a device the app opened can carry unseen.
 - **No blending for opaque quad interiors** (Skia Graphite's depth-ordered opaque pass, or
-  core-and-ring quads): a ceiling of −40 µs of a 436 µs pass on the mobile AMD iGPU under RADV; on Windows'
-  mobile AMD iGPU and the handheld turning quad blending off moves no frame (run 10). The fanless reads otherwise (Open).
+  core-and-ring quads): a ceiling of −40 µs of a 436 µs pass on the AMD iGPU under RADV; on Windows'
+  AMD iGPU and the handheld turning quad blending off moves no frame (run 10). The fanless reads otherwise (Open).
 - **A join billboard as one quad, not sixteen**: −11.5 % on `curve_pipeline/join`, but the
   joint's clip planes test the interpolated `phys`, so 8 pixels of `polyline_gradient` move by
   up to 235 levels; testing `@builtin(position)` moves seam pixels against the goldens.
-- **Mean and peak image taps**: the bench reads a 5120² texture 24 times a frame, the mobile AMD iGPU's
+- **Mean and peak image taps**: the bench reads a 5120² texture 24 times a frame, the AMD iGPU's
   memory bandwidth; only a mip chain reads less.
 - **Clip per instance in the shader** (GPUI's content mask): 340 ns a group on Vulkan, but the
   fixture's main pass records in 23 µs of a 2.1 ms frame.
@@ -199,8 +198,8 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 - **A probe by the widget's resolve position**, which skips the `by_id` map for a container
   probed after its children: within ±1 %.
 
-- **The backbuffer drawn out on every device** (run 10): against the copy, Windows' mobile AMD iGPU +8 to
-  +10 % on the partial frames, the 4090 +4 to +5 %, the handheld within its floor. Kept on Apple
+- **The backbuffer drawn out on every device** (run 10): against the copy, Windows' AMD iGPU +8 to
+  +10 % on the partial frames, the NVIDIA GPU +4 to +5 %, the handheld within its floor. Kept on Apple
   GPUs alone (Decisions).
 - **Opaque fast quads without blending** (run 10): a solid, sharp, pixel-aligned quad of full
   alpha through a pipeline with no blend, the same pixels. Every case within each host's floor:
@@ -213,7 +212,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   rule run only on the cold path, so a panic keeps its message and caller. Refused: dropping the
   per-frame check for `debug_assert!`, against "a wrong value never draws quietly"
   (`AGENTS.md`, Input validation); a check that is only branch-free (−1 %, its cost unchanged).
-  CPU frames: local −0.8 to −2.7 %, handheld −1.2 to −3.2 %, fanless −0.1 to −1.1 %, win −1.0 to
+  CPU frames: local −0.8 to −2.7 %, handheld −1.2 to −3.2 %, fanless −0.1 to −1.1 %, windows −1.0 to
   +0.4 %; the ceiling is −1.6 to −5.2 %.
 - **A shape outlives its size.** Shaping runs unhinted, so glyphs are in em units: a miss lays
   out the shaped lines of a resident buffer of its `ShapeIdentity` at another size or leading,
@@ -227,7 +226,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   `cpu/theming` −2.6 % local, −2.0 % fanless.
 - **The blur residual's loop follows the device**: `ResidualLoop::One` on Broadcom's VideoCore,
   `Windowed` elsewhere, by an `override` constant, both bit for bit (a test). Refused: one form
-  for all (Rejected); a vendor list nobody measured. Pi σ 4 −34 %, fanless −20 %.
+  for all (Rejected); a vendor list nobody measured. board σ 4 −34 %, fanless −20 %.
 - **The cutout atlas keeps what it baked**: `CutoutTables` holds earlier frames' tables and bakes
   only what a frame lacks. Refused: a cache per window's plan, which another window's bake would
   void unseen; baking more tables, which changes which shadows read one. Pi frames −13 to −21 %,
@@ -262,7 +261,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 ## Open
 
 - **A depth-ordered opaque pass on Apple GPUs** (run 10): with no quad blending the fanless's
-  `frame/gpu/scrolling` ran 12.4 % faster and its main pass 19.6 % (diagnostic); the handheld, win
+  `frame/gpu/scrolling` ran 12.4 % faster and its main pass 19.6 % (diagnostic); the handheld, windows
   and local moved within their floors. Realizing it exactly takes each opaque quad's core drawn
   first with a depth value, so the later draws, the quad's own blended edge among them, skip the
   pixels it covers (Skia Graphite's opaque pass): a depth attachment beside the rounded-clip
@@ -292,7 +291,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 - **A pane's break test reads one bounding box** of what was painted since the break, so an
   L-shaped layout breaks anew though no draw touches the footprint; no bench has one.
 - **Shadow coverage per instance**: `filter_cdf_series` takes `1 / σ` and `h²/6` per pixel; the
-  coverage math is about 40 µs of the shadows' 115 µs on the mobile AMD iGPU.
+  coverage math is about 40 µs of the shadows' 115 µs on the AMD iGPU.
 - **A shadow corner stream per shadow, not per quad**: in a frame with a shadow every quad
   uploads 16 B of `CornerTables` that only shadow instances read. No bench shows the upload.
 - **`Ordering::order` inlined into the curve lowering**: x86 needs it inlined (as a call,
@@ -306,6 +305,6 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
 - **The board's vertex floor**: the main pass with every fragment entry trivial takes 4.8 ms.
 - **The cutout bake's cost model** assumes a bake a frame; with held tables more keys would pay,
   but which shadows read a table is a rendering decision.
-- **Shader costs with a profiler**: RGP on the mobile AMD iGPU and Xcode's Metal System Trace on the fanless
+- **Shader costs with a profiler**: RGP on the AMD iGPU and Xcode's Metal System Trace on the fanless
   would split the main pass and `backdrop_frame/gpu/*/under`, which spends 1.6 ms over `hover`
   on the fanless.

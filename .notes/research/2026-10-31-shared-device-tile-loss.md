@@ -1,6 +1,6 @@
 # A `Stencil8` stencil on reused memory loses 4×4 blocks (2026-10-31)
 
-All measurements on an high-end NVIDIA GPU GPU, Vulkan, NVIDIA driver 615.78.08, wgpu 30.0.1,
+All measurements on a high-end NVIDIA laptop GPU, Vulkan, NVIDIA driver 615.78.08, wgpu 30.0.1,
 gpu-allocator 0.28.0, palantir at `d92e5df6a`. The test code the measurements ran, a palantir
 bisect test, a stencil read-back patch and a wgpu-only program, was not kept; the parts below
 describe what each did.

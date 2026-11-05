@@ -24,7 +24,7 @@ const PROBE: &str = "
 /// builds the stencil and tests it, writes every pixel, read back from a color target, so the
 /// stencil is made with production's usage alone. Each round frees the last round's stencil
 /// and 3 to 6 buffers of 256 to 16 640 bytes, each filled with one nonzero byte, so the
-/// allocator puts the next stencil over them. On an high-end NVIDIA GPU GPU (NVIDIA 615.78.08)
+/// allocator puts the next stencil over them. On a high-end NVIDIA laptop GPU (NVIDIA 615.78.08)
 /// about 1 such stencil in 70 held 128, 130 or 132 in some 4 × 4 blocks without the zero
 /// write: 600 rounds miss it with odds of (69 / 70)^600, about 1 in 5600.
 #[test]

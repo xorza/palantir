@@ -19,11 +19,11 @@
 //!   between passes. Otherwise both take the wall clock. As Flutter's Impeller keeps one GPU
 //!   tracer per backend behind one role. An enum, as the set is closed. Refused: a branch on the
 //!   platform; a trait object, for a closed set.
-//! - **A frame's queries resolve after the queue said it is done.** On an Apple laptop (macOS) a
+//! - **A frame's queries resolve after the queue said it is done.** On an Apple laptop a
 //!   render pass's end timestamp, resolved in the command buffer that wrote it or in one
 //!   submitted at once after, reads as zero or as the frame before's; resolved after the
 //!   work-done callback, it reads the pass's 22 ms against 22.6 ms of wall time (wgpu #9414
-//!   reports the same race on macOS). So every backend resolves a frame in a later one, two
+//!   reports the same race). So every backend resolves a frame in a later one, two
 //!   frames late. Refused: the wall clock for Metal frames, whose latency reads tens of µs too
 //!   long; Metal's command buffer times, which wgpu 30 cannot hand out, as its `as_hal` encoder
 //!   refuses to mix with wgpu encoding; empty passes bracketing the work, which Metal drops

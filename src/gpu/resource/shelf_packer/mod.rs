@@ -33,7 +33,7 @@ pub(crate) struct ShelfPacker {
 /// Each shelf keeps a list of its own, as a free or a carve moves only the spans after it in that
 /// list. Refused: one list of every shelf's spans sorted by row, which moves every span after it
 /// in the atlas, about 2,500 at 8,000 glyphs, and took the churn of `atomic/shelf_packer` from
-/// 65 / 128 ns to 98 / 243 ns (1,000 / 8,000 live rectangles, Apple laptop).
+/// 65 / 128 ns to 98 / 243 ns (1,000 / 8,000 live rectangles, an Apple laptop).
 #[derive(Debug)]
 pub(crate) struct Shelf {
     pub(crate) y: u16,

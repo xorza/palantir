@@ -51,7 +51,7 @@ fn primary_modifier_matches() {
 
 #[test]
 fn non_latin_layout_matches_command_chord_via_physical_key() {
-    // A non-Latin layout reports physical Z as non-Latin 'ζ'; the physical char 'z' recovers the chord.
+    // A non-Latin layout reports physical Z as 'ζ'; the physical char 'z' recovers the chord.
     let undo = Shortcut::ctrl('Z');
     let non_latin_z = KeyPress {
         key: Key::Char('ζ'),
@@ -60,7 +60,10 @@ fn non_latin_layout_matches_command_chord_via_physical_key() {
         physical: Key::Char('z'),
         text: KeyText::from_char('ζ'),
     };
-    assert!(undo.matches(non_latin_z), "Cmd+Z fires on a non-Latin layout");
+    assert!(
+        undo.matches(non_latin_z),
+        "Cmd+Z fires on a non-Latin layout"
+    );
 
     // The non-ASCII gate leaves ASCII layouts on the logical path: a Dvorak chord with an ASCII logical char never consults `physical`.
     let dvorak_semicolon = KeyPress {

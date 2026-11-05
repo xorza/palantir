@@ -15,7 +15,7 @@ pub struct KeyPress {
     pub mods: Modifiers,
     /// `true` for OS key-repeat re-emissions; a command that must fire once per press checks it.
     pub repeat: bool,
-    /// The key at this physical position, independent of layout (`Char('z')` for the physical Z key whatever the layout maps it to); lets [`crate::Shortcut`] match a chord whose logical [`key`](Self::key) is non-Latin (non-Latin `'ζ'`, see [`crate::Shortcut::matches`]).
+    /// The key at this physical position, independent of layout (`Char('z')` for the physical Z key whatever the layout maps it to); lets [`crate::Shortcut`] match a chord whose logical [`key`](Self::key) is non-Latin (`'ζ'`, see [`crate::Shortcut::matches`]).
     pub physical: Key,
     /// What this press produced to type, where `key` is what it produced to match, see [`KeyText`]; empty for a named key, a chord, or a pending dead key.
     pub text: KeyText,

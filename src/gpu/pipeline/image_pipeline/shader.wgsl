@@ -32,7 +32,7 @@ const FLAG_CLAMP_TO_UV: u32 = /*{IMG_FLAG_CLAMP_TO_UV}*/;
 // Cheaper than the fetch count suggests: at 9 taps (5× minification) the image
 // batch runs 1.8× the same draw with taps off, not 9×, because neighboring
 // taps overlap in the texture cache (`image_pipeline` bench, `minified_*`,
-// high-end NVIDIA GPU / Vulkan). Both reductions measure the same, which is what
+// a high-end NVIDIA laptop GPU, Vulkan). Both reductions measure the same, which is what
 // the branchless accumulate below is for.
 const MAX_TAPS_PER_AXIS: i32 = 4;
 

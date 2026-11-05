@@ -13,7 +13,7 @@ past it by hand.
 - **Page faults after warmup** usually mean a `Vec::reserve` crossed a page.
   `palantir-showcase/tests/alloc` attributes them.
 
-## Intel (Intel hybrid)
+## Intel hybrid
 
 Read in this order:
 
@@ -26,7 +26,7 @@ Read in this order:
    - **Bad_speculation >10%** — mispredicts; confirm with `branch-misses`.
 
    Each leaf prints a `Sampling events:` hint for `perf record -e`.
-2. **`palantir-perf-stat.txt`** — Intel hybrid IPC peaks at ~4-5, >2.0 is
+2. **`palantir-perf-stat.txt`** — P-core IPC peaks at ~4-5, >2.0 is
    healthy, <1.0 stalled. dTLB misses above 1 per 1000 instructions
    suggest huge pages.
 3. **`palantir-perf-mem.txt`** — when memory-bound. `Local_RAM` spills LLC,
@@ -38,14 +38,14 @@ Drill one level at a time — bucket, memory sub-bucket, cache level, then one
 event with source lines (setup in [By hand](#by-hand)):
 
 ```sh
-RUN=(taskset -c 16-31 perf stat)   # perf on the E-cores
+RUN=(taskset -c "$E_CORES" perf stat)   # perf on the E-cores
 "${RUN[@]}" -M TopdownL1              "${BENCH[@]}"
 "${RUN[@]}" -M tma_memory_bound_group "${BENCH[@]}"
 "${RUN[@]}" -M tma_l1_bound_group     "${BENCH[@]}"
 "${RUN[@]}" -M tma_store_bound_group  "${BENCH[@]}"
 
 # Sample the winning event with PEBS (`ppp`: no skid) and LBR.
-taskset -c 16-31 perf record -e cpu_core/LD_BLOCKS.STORE_FORWARD/ppp \
+taskset -c "$E_CORES" perf record -e cpu_core/LD_BLOCKS.STORE_FORWARD/ppp \
     --call-graph lbr -o tmp/perf-stfwd.data "${BENCH[@]}"
 perf annotate -i tmp/perf-stfwd.data -M intel <sym>
 ```
@@ -64,7 +64,7 @@ perf annotate -i tmp/perf-stfwd.data -M intel <sym>
 
 Hybrid pitfalls:
 
-- Two PMUs: `cpu_core/` (P-cores 0-15) and `cpu_atom/` (E-cores 16-31). A
+- Two PMUs: `cpu_core/` (P-cores) and `cpu_atom/` (E-cores). A
   bare `-e cycles` counts on both, each its own share, and `perf report`
   shows the `cpu_atom` table first. Keep the prefix.
 - TMA groups resolve only on `cpu_core`. Do not pass `--cpu` to a TMA
@@ -73,7 +73,7 @@ Hybrid pitfalls:
 - 8 general counters a P-core. More events means more `perf stat` runs,
   not a longer `-e` list: multiplexing distorts short runs.
 
-## AMD (Zen 3+, AMD CPU)
+## AMD (Zen 3+)
 
 No TMA. Read in this order:
 
@@ -88,7 +88,7 @@ No TMA. Read in this order:
    coverage drops to ~14%:
 
    ```sh
-   RUN=(taskset -c 0,1,4-15 perf stat)   # perf off cpu2 and its sibling
+   RUN=(taskset -c "$OTHER_CORES" perf stat)   # perf off the pinned core and its sibling
    "${RUN[@]}" -M branch_prediction "${BENCH[@]}"
    "${RUN[@]}" -M tlb               "${BENCH[@]}"
    "${RUN[@]}" -M l2_cache          "${BENCH[@]}"

@@ -12,7 +12,7 @@
 //! - **A capture is copied out of the main pass, broken at the pane.** The main pass ends at each
 //!   capturing pane's barrier, the footprint is copied into the capture and blurred, and the next
 //!   pass loads the target, as Impeller's `FlipBackdrop` and Chromium's render pass per backdrop
-//!   do. It won whole frames on the AMD mobile AMD iGPU (by up to 26 %) and the Apple laptop (by up to 14 %),
+//!   do. It won whole frames on a mobile AMD iGPU (by up to 26 %) and an Apple laptop (by up to 14 %),
 //!   and cost the Apple laptop 6 % on a partial frame, where the tiler stores and loads the whole
 //!   attachment; the worst frame decides, and one path is kept. Refused: replaying the draws
 //!   below a pane into its own target, which draws them twice and grows with the scene; a split

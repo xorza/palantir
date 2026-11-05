@@ -133,7 +133,7 @@ measure → arrange → cascade → damage → encode + compose), and the full
 public path through `OffscreenHost`, the **CPU + GPU frame**, with the GPU
 drained before the next iteration.
 
-|                                    | Intel high-end Intel CPU<br>high-end NVIDIA GPU | AMD CPU<br>Radeon mobile AMD iGPU | Apple laptop, Apple laptop<br>10-core GPU |
+|                                    | High-end Intel laptop<br>high-end NVIDIA GPU | Mobile AMD<br>integrated GPU | Fanless Apple laptop |
 | ---------------------------------- | ----------------------------------: | -------------------------------: | -----------------------------------: |
 | **CPU pipeline**                   |                                     |                                  |                                      |
 | `cached`                           |                               91 µs |                           130 µs |                                78 µs |
@@ -165,7 +165,7 @@ drained before the next iteration.
   measure runs again. `typing` types a character into a focused field, then
   deletes it.
 - **Counters.** The x86 counts come from `perf stat`, pinned to one core; the
-  Apple laptop counts from `/usr/bin/time -l`, unpinned, as macOS has no core affinity.
+  Apple counts from `/usr/bin/time -l`, unpinned, as macOS has no core affinity.
   Each count is the difference between two measurement windows, so process
   startup cancels out.
 - **Build.** The x86 build sets `-C target-cpu=x86-64-v3` (see
@@ -176,7 +176,7 @@ The bench screen, the showcase's first page:
 
 ![Frame bench screen](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
 
-The worst-case frame in a Tracy capture of a window resize on the Apple laptop:
+The worst-case frame in a Tracy capture of a window resize on a fanless Apple laptop:
 
 ![Tracy capture of one frame](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/tracy-frame.png)
 

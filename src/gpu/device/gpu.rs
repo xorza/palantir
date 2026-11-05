@@ -228,7 +228,7 @@ impl Gpu {
     /// wait's own poll or an earlier one on another thread, which runs the callback outside
     /// wgpu's lock, as soon as it can, so the spin for it is short. A wait that took the device's
     /// finished work for the callbacks run missed one map in 20,000 with four threads polling
-    /// (high-end NVIDIA GPU, Vulkan), and two in three when a callback slept 1 ms.
+    /// (a high-end NVIDIA laptop GPU, Vulkan), and two in three when a callback slept 1 ms.
     pub(crate) fn wait_until(&self, landed: &dyn Fn() -> bool) -> GpuWait {
         self.wait_until_within(landed, WAIT_TIMEOUT)
     }

@@ -35,7 +35,7 @@ pub(crate) struct BenchAdapter {
 pub enum Timing {
     /// Requests whichever timestamp and pipeline-statistics features the adapter has.
     Instrumented,
-    /// [`Self::Instrumented`] without in-pass timestamps: a tiler splits the pass at each (the VideoCore board's V3D reloads the target).
+    /// [`Self::Instrumented`] without in-pass timestamps: a tiler splits the pass at each (a VideoCore GPU reloads the target).
     PassOnly,
     /// Requests none, for a driver timing a pass the queries would write into.
     Bare,

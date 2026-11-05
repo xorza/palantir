@@ -181,7 +181,7 @@ pub(super) enum PresentPath {
 /// Coverage above which [`PresentStrategy::DirectAdaptive`] promotes a `Partial`
 /// to a direct full repaint. Below [`FULL_REPAINT_THRESHOLD`] (asserted), so a
 /// promotable partial isn't already `Full`. The backbuffer path pays a whole-surface
-/// copy per frame; measured crossover is near 0.40 (`frame` bench, Radeon mobile AMD iGPU:
+/// copy per frame; measured crossover is near 0.40 (`frame` bench, a mobile AMD iGPU:
 /// `scrolling` 7.8 ms via backbuffer vs 6.8 ms direct; a tiny partial 3.3 ms via
 /// backbuffer). Area only proxies cost, so the line sits under the expensive band.
 const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;

@@ -12,7 +12,7 @@ pub(crate) enum PassTraffic {
     /// (`atomic/main_pass/gpu/partial`).
     Drawn,
     /// Every tile of the attachments, loaded before the pass and stored after it: the tile-based
-    /// GPUs ANGLE lists, Apple's aside. The same pass takes the VideoCore board's V3D 3.8 ms.
+    /// GPUs ANGLE lists, Apple's aside. The same pass takes a VideoCore GPU 3.8 ms.
     WholeTarget,
 }
 

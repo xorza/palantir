@@ -1,3 +1,5 @@
 # Open issues
 
 - `Staging::abort` (`src/gpu/surface/staging.rs`) unmaps a buffer whose `MapState` reads pending. wgpu-core 30's `Buffer::map`, run by a device poll, sets the buffer's map state to idle for the length of the map, so an abort on one thread while another thread polls the same device can unmap a buffer wgpu holds as idle: a "Buffer is not mapped" validation error, which `device_health` turns into a panic. The Windows CI runner hit it in `gpu::surface::map_state` tests on the shared test device. Waits on the wgpu release that carries https://github.com/gfx-rs/wgpu/pull/9959 (merged after 30.0.1, not on the `v30` branch).
+
+- **`gates::full_tree_cpu_frame_alloc_free` and `gates::backdrop::backdrop_cpu_frames_alloc_free` fail intermittently.** In 5 of 96 runs of the `alloc` test binary, four at a time, both gates fail in one process on frame 109 or 110 of 256 with 3 allocations, 6336 B, against a budget of 0: `ExpiryWheel::grow_chunk` reached from `ShapeStore::keep` in `ShapedBufferCache::tick_frame`. Six serial runs pass.

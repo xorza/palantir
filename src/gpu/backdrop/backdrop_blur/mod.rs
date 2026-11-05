@@ -27,8 +27,7 @@ pub(crate) const LEVEL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16
 
 /// The shape of the residual's loop, which only speed tells apart: one loop that mirrors each
 /// read where the window crosses the level's edge, or one loop for a window inside the level and
-/// one that mirrors every read. At σ 4 over 2048² (`atomic/backdrop_blur/gpu/4/2048`) the VideoCore board's
-/// V3D takes 153 ms on one loop and 189 ms on two, the Apple laptop 14.3 ms and 5.0 ms, and the mobile AMD iGPU 3.24 ms
+/// one that mirrors every read. At σ 4 over 2048² (`atomic/backdrop_blur/gpu/4/2048`) a VideoCore GPU takes 153 ms on one loop and 189 ms on two, the Apple laptop 14.3 ms and 5.0 ms, and a mobile AMD iGPU 3.24 ms
 /// either way.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ResidualLoop {

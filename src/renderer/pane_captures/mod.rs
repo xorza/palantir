@@ -28,8 +28,8 @@
 //!   nobody sees.
 //! - **A capturing frame that would copy more than the surface paints through the backbuffer.**
 //!   The blurs then read the backbuffer in place, and the copy onto the target moves the surface
-//!   once, where the captures move each footprint: on the fanless host `cards/scrolling` took 4.8 % off,
-//!   `cards_apart` 6.1 %. Every capturing frame through the backbuffer cost the mobile AMD iGPU 12 % on
+//!   once, where the captures move each footprint: on an Apple laptop `cards/scrolling` took 4.8 % off,
+//!   `cards_apart` 6.1 %. Every capturing frame through the backbuffer cost a mobile AMD iGPU 12 % on
 //!   `pair_near/scrolling`, two small footprints. A target that gives no copy, a GLES swapchain
 //!   image, paints every capturing frame through it.
 //! - **A pane with nothing painted under it shows the clear.** The composer gives a capturing pane

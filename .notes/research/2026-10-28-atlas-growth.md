@@ -36,7 +36,7 @@ Impeller's design.
 - The atlas shader reads by `textureLoad`, so no sampler or derivative ties a
   page to uniform control flow: pages could be chosen per instance.
 
-## Measured grow frame (Apple laptop, Metal, `cargo drive bench raster_atlas`)
+## Measured grow frame (an Apple laptop, Metal, `cargo drive bench raster_atlas`)
 
 Wall time from `Side::grow` to the drained submit of its blit, the old side
 fully written first; `submit` is the same submit with nothing recorded, and
@@ -50,5 +50,5 @@ fully written first; `submit` is the same submit with nothing recorded, and
 | `grow/mask/2048` (16 MiB new, 4 MiB copied) | 914 µs |
 | `text_atlas/gpu/steady_warm/frame` | 248 µs |
 
-The Apple laptop is an integrated GPU on unified memory. Not measured: lavapipe, where
+An Apple laptop is an integrated GPU on unified memory. Not measured: lavapipe, where
 the copy and the clear of the new texture run on the CPU.

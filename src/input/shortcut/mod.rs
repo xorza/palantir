@@ -109,7 +109,7 @@ impl Shortcut {
     /// shortcut with no command modifier.
     ///
     /// Non-Latin fallback: a command chord's letter arrives as the *active
-    /// layout's* character (non-Latin `'ζ'` for the physical Z), which never matches
+    /// layout's* character (a non-Latin letter for the physical Z), which never matches
     /// ASCII. For a **non-ASCII** `Char` with a command modifier, retry against the
     /// layout-independent [physical key] ([`KeyPress::physical`]); Dvorak / AZERTY
     /// still produce ASCII and are untouched.

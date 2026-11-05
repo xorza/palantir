@@ -2,7 +2,7 @@
 
 use crate::primitives::packed::fill_kind::FillKind;
 
-/// The paths of `fs` a quad reaches, pinned per pipeline as `QUAD_FORM`, so a solid rect skips a gradient's register cost (VideoCore board V3D: 54 temporaries and two threads for all forms, 22 and four for solid).
+/// The paths of `fs` a quad reaches, pinned per pipeline as `QUAD_FORM`, so a solid rect skips a gradient's register cost (VideoCore: 54 temporaries and two threads for all forms, 22 and four for solid).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QuadForm {
     /// Rounded rect, solid fill.

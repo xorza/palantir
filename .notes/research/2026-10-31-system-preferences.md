@@ -19,7 +19,7 @@ Facts behind `host/winit/system_preferences.rs`, which reads them through `mundy
   signals a change
   (<https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.Settings.html>).
 - GNOME writes 0 for its Light setting; libadwaita's default scheme reads 0 as light.
-- Measured on this machine (two portal backends), with `busctl --user
+- Measured on a Linux desktop (two portal backends), with `busctl --user
   call … org.freedesktop.portal.Settings ReadOne`:
 
   | Namespace, key | Answer |
@@ -53,7 +53,7 @@ Facts behind `host/winit/system_preferences.rs`, which reads them through `mundy
 - `iced_winit` 0.14 takes the scheme from winit on macOS and Windows and from `mundy` on Linux,
   behind its optional `linux-theme-detection` feature.
 
-## `mundy` in the winit host (measured 2026-10-31, this machine)
+## `mundy` in the winit host (measured 2026-10-31, a Linux desktop)
 
 - `Preferences::once_blocking(ColorScheme | DoubleClickInterval)` through the portal: 20.3 ms
   for the first read of a process (the D-Bus connection), then 1.0–1.4 ms; answers `Dark` and

@@ -58,7 +58,7 @@ cargo bench-once                           # each case once, built under the tes
   screenshot path, which also copies on skip and full frames: 1.3 ms on a
   1440p `cached` frame.
 - **No timestamp inside a pass.** The frame device is `Timing::PassOnly`, and
-  the timed frames collect no GPU stats. On a tiler such as the VideoCore board's V3D
+  the timed frames collect no GPU stats. On a tiler such as a VideoCore GPU
   each in-pass timestamp splits the pass: a 1440p `scrolling` frame took
   149 ms with them against 45 ms without. The `image_pipeline` and
   `curve_pipeline` cases time their batch with them, at the same cost on a
@@ -71,12 +71,10 @@ cargo bench-once                           # each case once, built under the tes
 
 - **Pin the run, never the build**: `taskset` in front of `cargo` pins the
   compiler too.
-- **One core, its SMT sibling idle.** `lscpu -e` lists each CPU's core; on
-  the rig these notes come from, CPU 2 shares a core with CPU 3.
+- **One core, its SMT sibling idle.** `lscpu -e` lists each CPU's core.
 - **`setarch -R`** fixes the address layout, so alignment does not change
   between processes.
-- **Governor and EPP at `performance`** (`sudo
-  /usr/local/sbin/cpu-bench-pin.sh` here). The SMU ignores boost caps, so a
+- **Governor and EPP at `performance`.** The SMU ignores boost caps, so a
   drift of several percent between runs stays.
 - **No `RUSTFLAGS`**: it replaces `.cargo/config.toml`'s rustflags and drops
   `target-cpu=x86-64-v3`. Add a flag with `--config`, which merges:

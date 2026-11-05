@@ -16,7 +16,7 @@ use crate::theme::color_scheme::ColorScheme;
 
 /// How long the host waits at startup for the first read, before it opens a window in the
 /// fallback and lets the subscription correct it. A read measured 20 ms cold and 1 ms warm on a
-/// KDE desktop through the Settings portal
+/// Linux desktop through the Settings portal
 /// (`.notes/research/2026-10-31-system-preferences.md`); five cold reads bound a portal that is
 /// still starting, so a launch waits no longer.
 const FIRST_READ_TIMEOUT: Duration = Duration::from_millis(100);

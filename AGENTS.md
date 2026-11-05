@@ -77,7 +77,7 @@ Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
 - **No frame reads the last frame from the swapchain.** wgpu hands out each image
   uninitialized, so a frame that keeps pixels paints through the backbuffer.
 - **Never sample a swapchain image.** Metal, DX12 and GL offer no `TEXTURE_BINDING`; a pass that
-  samples the frame samples the backbuffer. Refused: a Vulkan-only sampled path the fanless host cannot
+  samples the frame samples the backbuffer. Refused: a Vulkan-only sampled path an Apple GPU cannot
   run.
 - **Ask only for usages the surface offers.** `COPY_DST` and `COPY_SRC` are optional, and each
   path that needs one checks it; a usage the surface lacks fails `configure`.
