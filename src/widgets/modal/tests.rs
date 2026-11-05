@@ -468,6 +468,66 @@ fn an_opening_modal_dismisses_the_popups_open_before_it() {
     let inside = h.frame_value(|ui| scene(ui, true, true));
     assert_eq!(inside.inner, None, "a popup inside the modal stays open");
 
+    // A modal recorded ahead of the menu closes it in its one pass: no second pass, and no
+    // barrier, as the menu records collapsed. With no overlay open, one pass too.
+    for menu_open in [true, false] {
+        let mut h = Harness::mono(SURFACE);
+        let scene = |ui: &mut Ui, modal_open: bool, menu_shown: bool| {
+            let mut out = CancelFrame::default();
+            if modal_open {
+                modal_body(ui, &mut out, false);
+            }
+            if menu_shown {
+                out.menu = popup(menu, Vec2::new(300.0, 10.0))
+                    .layer(Layer::Menu)
+                    .show(ui, |_| {})
+                    .close;
+            }
+            out
+        };
+        h.prime(2, |ui| {
+            scene(ui, false, menu_open);
+        });
+        let mut passes = Vec::new();
+        h.frame(|ui| passes.push(scene(ui, true, menu_open)));
+        let [only] = passes[..] else {
+            panic!("menu open {menu_open}: one pass: {passes:?}");
+        };
+        let want = menu_open.then_some(OverlayClose::Dismissed);
+        assert_eq!(only.menu, want, "menu open {menu_open}");
+    }
+
+    // The focus on a row of the menu goes to the modal's first Tab stop, in either order.
+    let row = WidgetId::from_hash("cancel-row");
+    for modal_first in [true, false] {
+        let mut h = Harness::mono(SURFACE);
+        let mut menu_open = true;
+        let mut scene = |ui: &mut Ui, modal_open: bool| {
+            let mut out = CancelFrame::default();
+            if modal_open && modal_first {
+                modal_body(ui, &mut out, false);
+            }
+            if menu_open {
+                menu_open = popup(menu, Vec2::new(300.0, 10.0))
+                    .layer(Layer::Menu)
+                    .show(ui, |ui| {
+                        Button::new().id(row).label("Row").show(ui);
+                    })
+                    .close
+                    .is_none();
+            }
+            if modal_open && !modal_first {
+                modal_body(ui, &mut out, false);
+            }
+        };
+        h.prime(2, |ui| scene(ui, false));
+        h.ui_mut().set_focus(row);
+        h.frame(|ui| scene(ui, false));
+        assert_eq!(h.ui().focus(), Some(row), "modal first: {modal_first}");
+        h.frame(|ui| scene(ui, true));
+        assert_eq!(h.ui().focus(), Some(button), "modal first: {modal_first}");
+    }
+
     // A modal recorded inside a popup's body keeps that popup.
     let mut h = Harness::mono(SURFACE);
     let nested = |ui: &mut Ui, modal_open: bool| {

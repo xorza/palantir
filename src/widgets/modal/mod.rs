@@ -29,10 +29,11 @@ use std::rc::Rc;
 /// opened from the keyboard, as a native menu opened by a click highlights no row.
 ///
 /// In the frame it opens, every light-dismiss overlay open before it closes as
-/// [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed), but those it records inside: the
-/// frame records a second pass, in which such an overlay records collapsed, so the frame paints it
-/// gone. A menu on [`Layer::Menu`] would otherwise sit above the scrim and take the first press,
-/// until some later input brought a frame; Windows ends a menu's mode as a dialog activates.
+/// [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed), but those it records inside: such
+/// an overlay records collapsed, so the frame paints it gone. A menu on [`Layer::Menu`] would
+/// otherwise sit above the scrim and take the first press; Windows ends a menu's mode as a dialog
+/// activates. Record a modal before the overlays it may open over: one that already recorded in
+/// the pass costs the frame a second pass.
 ///
 /// A modal is open while it records. Stop recording it only on the frame its response reads
 /// [`closed`](OverlayResponse::closed), or after [`Self::close`]: a modal that merely stops

@@ -180,8 +180,8 @@ fn the_arrows_move_between_menus_and_wrap() {
             (Key::ArrowRight, 0),
             (Key::ArrowLeft, 2),
         ] {
+            // One frame: its second pass records the next menu, with no later frame asked for it.
             h.key(key);
-            frame(&mut h);
             frame(&mut h);
             assert_eq!(open(&h), Some(want), "{opened_by} {key:?}");
             assert!(recorded(&h, want), "{opened_by} {key:?}: its menu records");
@@ -401,7 +401,8 @@ fn open_close_and_is_open_drive_the_bar_from_outside() {
 /// A modal that opens with no press, as on a close the window manager asks for, closes the open
 /// menu in its own frame, before the title records: the menu does not record in the frame's last
 /// pass, the bar holds no open menu, and the title paints the closed look it had before the menu
-/// opened, not the open one.
+/// opened, not the open one. A modal recorded after the bar takes two passes for it, one recorded
+/// ahead of the bar takes one.
 #[test]
 fn an_opening_modal_closes_the_menu_and_its_open_look_in_its_frame() {
     use crate::widgets::modal::Modal;
@@ -415,26 +416,36 @@ fn an_opening_modal_closes_the_menu_and_its_open_look_in_its_frame() {
                 other @ ShapeBrush::Gradient { .. } => panic!("a title fills solid: {other:?}"),
             })
     };
-    // Reduced motion snaps the title's look, so each frame paints the look its state picks.
-    let mut h = Harness::mono(SURFACE);
-    h.set_system_motion_reduced(true);
-    h.prime(2, |ui| {
-        build(ui);
-    });
-    let closed = title_fill(&h);
-    MenuBar::open(h.ui_mut(), bar(), "Edit");
-    frame(&mut h);
-    assert!(recorded(&h, 1));
-    assert_ne!(title_fill(&h), closed, "the open look");
+    for (modal_first, want_passes) in [(false, 2), (true, 1)] {
+        // Reduced motion snaps the title's look, so each frame paints the look its state picks.
+        let mut h = Harness::mono(SURFACE);
+        h.set_system_motion_reduced(true);
+        h.prime(2, |ui| {
+            build(ui);
+        });
+        let closed = title_fill(&h);
+        MenuBar::open(h.ui_mut(), bar(), "Edit");
+        frame(&mut h);
+        assert!(recorded(&h, 1));
+        assert_ne!(title_fill(&h), closed, "the open look");
 
-    h.frame(|ui| {
-        build(ui);
-        Modal::new().id_salt("modal").show(ui, |_| {});
-    });
-    assert_eq!(open(&h), None);
-    assert!(
-        !recorded(&h, 1),
-        "the menu is gone from the frame's last pass"
-    );
-    assert_eq!(title_fill(&h), closed, "the closed look");
+        let mut passes = 0;
+        h.frame(|ui| {
+            passes += 1;
+            if modal_first {
+                Modal::new().id_salt("modal").show(ui, |_| {});
+            }
+            build(ui);
+            if !modal_first {
+                Modal::new().id_salt("modal").show(ui, |_| {});
+            }
+        });
+        assert_eq!(passes, want_passes, "modal first: {modal_first}");
+        assert_eq!(open(&h), None);
+        assert!(
+            !recorded(&h, 1),
+            "the menu is gone from the frame's last pass"
+        );
+        assert_eq!(title_fill(&h), closed, "the closed look");
+    }
 }

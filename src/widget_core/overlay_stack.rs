@@ -9,14 +9,18 @@ use crate::primitives::identity::widget_id::WidgetId;
 /// asked to close it. A [`MenuItem`](crate::MenuItem) closes the overlay it sits in through it, so
 /// a row takes no handle.
 ///
-/// A modal that opens cancels every light-dismiss overlay open before it on the next pass, as
-/// Windows sends `WM_CANCELMODE` to end a menu's mode when a dialog activates, and macOS ends menu
-/// tracking before it shows a modal. A press outside closes such an overlay, but a modal can open
-/// with no press: a close the window manager asks for, a file the system hands over, the app's own
-/// code. Left open, it would sit above the modal's scrim on its own layer, and its barrier would
-/// take the first press meant for the dialog. The overlays the modal opened inside are kept, as
-/// closing one would close the modal with it, and so is every overlay that opened in the pass
-/// the modal did, which was not open before it.
+/// A modal that opens cancels every light-dismiss overlay open before it, as Windows sends
+/// `WM_CANCELMODE` to end a menu's mode when a dialog activates, and macOS ends menu tracking
+/// before it shows a modal. A press outside closes such an overlay, but a modal can open with no
+/// press: a close the window manager asks for, a file the system hands over, the app's own code.
+/// Left open, it would sit above the modal's scrim on its own layer, and its barrier would take
+/// the first press meant for the dialog. The overlays the modal opened inside are kept, as closing
+/// one would close the modal with it, and so is every overlay that opened in the pass the modal
+/// did, which was not open before it.
+///
+/// The cancel applies at once to the overlays that record after the modal. One that already
+/// recorded in the pass cannot be taken back, so it alone asks for the next pass
+/// ([`Self::needs_pass`]). An app that records its modal first takes no second pass.
 ///
 /// Capacity retained, so no pass allocates after the deepest nesting.
 #[derive(Debug, Default)]
@@ -32,8 +36,11 @@ pub(crate) struct OverlayStack {
 struct Cancel {
     /// The overlays that opened this pass.
     opened: Vec<WidgetId>,
+    /// The light-dismiss overlays open before this pass that recorded in it uncancelled.
+    recorded: Vec<WidgetId>,
     /// The overlays a cancel armed this pass keeps: the modal that opened and those it opened
-    /// inside; the next pass adds those that opened in this one, and applies it.
+    /// inside. It applies at once, and to the next pass too when [`OverlayStack::needs_pass`],
+    /// which adds those that opened in this one.
     armed: Option<Vec<WidgetId>>,
     /// The cancel this pass applies, and the overlays it keeps.
     active: Option<Vec<WidgetId>>,
@@ -49,23 +56,30 @@ struct Entered {
 }
 
 impl OverlayStack {
-    /// A record pass opens: the cancel armed last pass applies to this one, and the one it
-    /// applied ends.
+    /// A record pass opens: the cancel armed last pass applies to this one if an overlay it
+    /// closes had already recorded there, and the one it applied ends.
     pub(crate) fn begin_pass(&mut self) {
         debug_assert!(
             self.entered.is_empty(),
             "every overlay left the pass before"
         );
+        let stale = self.needs_pass();
         let cancel = &mut *self.cancel;
         if let Some(mut ended) = cancel.active.take() {
             ended.clear();
             cancel.spare = ended;
         }
-        cancel.active = cancel.armed.take().map(|mut keep| {
-            keep.extend_from_slice(&cancel.opened);
-            keep
-        });
+        if let Some(mut keep) = cancel.armed.take() {
+            if stale {
+                keep.extend_from_slice(&cancel.opened);
+                cancel.active = Some(keep);
+            } else {
+                keep.clear();
+                cancel.spare = keep;
+            }
+        }
         cancel.opened.clear();
+        cancel.recorded.clear();
     }
 
     /// The body of the overlay `owner` starts recording, opening this pass when `opened`.
@@ -77,6 +91,11 @@ impl OverlayStack {
             owner,
             close: false,
         });
+    }
+
+    /// The light-dismiss overlay `owner`, open before this pass, records in it uncancelled.
+    pub(crate) fn note_recorded(&mut self, owner: WidgetId) {
+        self.cancel.recorded.push(owner);
     }
 
     /// The innermost overlay body ends; whether a row in it asked to close it.
@@ -95,8 +114,8 @@ impl OverlayStack {
         }
     }
 
-    /// The modal `owner` opened: arm the cancel the next pass applies, keeping `owner` and every
-    /// overlay recording around it now. A second modal opening in the pass keeps its own too.
+    /// The modal `owner` opened: arm the cancel, keeping `owner` and every overlay recording
+    /// around it now. A second modal opening in the pass keeps its own too.
     pub(crate) fn arm_cancel(&mut self, owner: WidgetId) {
         let cancel = &mut *self.cancel;
         let keep = cancel
@@ -106,18 +125,25 @@ impl OverlayStack {
         keep.extend(self.entered.iter().map(|entered| entered.owner));
     }
 
-    /// Whether a modal that opened this pass armed a cancel, which the next pass applies.
-    pub(crate) fn is_armed(&self) -> bool {
-        self.cancel.armed.is_some()
+    /// Whether a cancel armed this pass closes an overlay that already recorded in it, which
+    /// only the next pass can take away.
+    pub(crate) fn needs_pass(&self) -> bool {
+        let Cancel {
+            recorded, armed, ..
+        } = &*self.cancel;
+        armed
+            .as_ref()
+            .is_some_and(|keep| recorded.iter().any(|owner| !keep.contains(owner)))
     }
 
-    /// Whether the cancel this pass applies closes the light-dismiss overlay `owner`, open
-    /// before it: every one but those the opening modal kept.
+    /// Whether a cancel closes the light-dismiss overlay `owner`, open before it, when it records
+    /// now: every one but those the opening modal kept.
     pub(crate) fn cancels(&self, owner: WidgetId) -> bool {
-        self.cancel
-            .active
-            .as_ref()
-            .is_some_and(|keep| !keep.contains(&owner))
+        let Cancel { armed, active, .. } = &*self.cancel;
+        [armed, active]
+            .into_iter()
+            .flatten()
+            .any(|keep| !keep.contains(&owner))
     }
 }
 
@@ -139,30 +165,42 @@ mod tests {
         assert!(!stack.leave(), "the outer one stays open");
     }
 
-    /// A cancel armed in one pass applies to the next pass alone, and keeps the modal, the
-    /// overlays around it when it opened, and those that opened in its pass: a popup the modal
-    /// opened inside of stays, one opened beside it in its pass stays, one open before it closes.
-    /// A pass with nothing armed cancels nothing.
+    /// A cancel applies at once to what records after the modal. It keeps the modal and the
+    /// overlays around it. With no overlay it closes already recorded, the next pass cancels
+    /// nothing. An overlay recorded before it asks for the next pass, which closes that overlay,
+    /// keeps those that opened in the modal's pass, and is the last pass the cancel holds.
     #[test]
-    fn a_cancel_applies_to_the_next_pass_and_keeps_the_modal_and_its_containers() {
-        let [container, modal, before, beside] = [1, 2, 3, 4].map(WidgetId::from_hash);
+    fn a_cancel_applies_at_once_and_reaches_the_next_pass_only_for_a_stale_overlay() {
+        let [container, modal, before, beside, after] = [1, 2, 3, 4, 5].map(WidgetId::from_hash);
+
         let mut stack = OverlayStack::default();
         stack.begin_pass();
-        stack.enter(before, false);
-        assert!(!stack.leave());
+        stack.note_recorded(container);
         stack.enter(container, false);
         stack.arm_cancel(modal);
         assert!(!stack.leave());
-        stack.enter(beside, true);
-        assert!(!stack.leave());
-        assert!(!stack.cancels(before), "not in the pass that armed it");
-
-        stack.begin_pass();
-        assert!(stack.cancels(before), "the pass after");
+        assert!(stack.cancels(after), "at once, for what records after");
         assert!(!stack.cancels(modal), "the modal stays");
         assert!(!stack.cancels(container), "its container stays");
-        assert!(!stack.cancels(beside), "one that opened beside it stays");
+        assert!(!stack.needs_pass(), "a kept container is not stale");
+        stack.begin_pass();
+        assert!(!stack.cancels(after), "nothing stale, so nothing carries");
 
+        let mut stack = OverlayStack::default();
+        stack.begin_pass();
+        assert!(!stack.needs_pass(), "nothing armed");
+        stack.note_recorded(before);
+        assert!(!stack.cancels(before), "nothing armed");
+        assert!(!stack.needs_pass(), "nothing armed");
+        stack.arm_cancel(modal);
+        stack.enter(beside, true);
+        assert!(!stack.leave());
+        assert!(stack.needs_pass(), "the overlay already recorded");
+        stack.begin_pass();
+        assert!(stack.cancels(before), "the pass after");
+        assert!(!stack.cancels(modal));
+        assert!(!stack.cancels(beside), "one that opened beside it stays");
+        assert!(!stack.needs_pass(), "only the pass that armed it asks");
         stack.begin_pass();
         assert!(!stack.cancels(before), "one pass only");
     }

@@ -98,10 +98,11 @@ impl<'a> FrameCycle<'a> {
                     tracy::zone!("Ui::record_pass.A");
                     self.record_pass(win, app)
                 };
-                // A modal that opened in pass A cancels the light-dismiss overlays open before
-                // it; pass B applies that, so this frame paints them closed rather than leaving
-                // them over the modal until some later input brings a frame.
-                let cancel = self.ui.overlays.is_armed();
+                // A modal in pass A cancelled an overlay already recorded there, which no record
+                // can take back, as an app decides what to show only as it records. Pass B paints
+                // it closed; left to the next frame, it would stay over the modal until some input.
+                // Rare: only an app that records the modal after the overlay takes this.
+                let cancel = self.ui.overlays.needs_pass();
                 let double_layout =
                     action_flag || self.ui.frame_runtime.relayout_requested() || cancel;
                 if double_layout {
@@ -117,9 +118,9 @@ impl<'a> FrameCycle<'a> {
                     );
                     self.ui.input.drain_per_frame_queues();
                     let _ = self.record_pass(win, app);
-                    // A modal that first recorded in pass B armed its cancel past the frame's
+                    // A modal that first recorded in pass B cancelled an overlay past the frame's
                     // last pass: the next frame applies it.
-                    if self.ui.overlays.is_armed() {
+                    if self.ui.overlays.needs_pass() {
                         self.ui.frame_runtime.request_repaint();
                     }
                 }

@@ -88,9 +88,11 @@ impl OverlayScope {
     pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
         let owner = root.resolve(ui);
         let opened = ui.response_for(owner).rect.is_none();
-        let cancelled = matches!(spec.backdrop, Backdrop::Barrier(_, ClickOutside::Dismiss))
-            && !opened
-            && ui.overlays().cancels(owner);
+        let dismissible = matches!(spec.backdrop, Backdrop::Barrier(_, ClickOutside::Dismiss));
+        let cancelled = dismissible && Self::cancelled(ui, owner);
+        if dismissible && !opened && !cancelled {
+            ui.overlays().note_recorded(owner);
+        }
         if cancelled {
             root.configure().collapsed();
         } else if spec.backdrop.click_outside().is_some() {
@@ -104,6 +106,12 @@ impl OverlayScope {
             opened,
             cancelled,
         }
+    }
+
+    /// Whether a modal's cancel closes the light-dismiss overlay `owner` now: it was open before
+    /// this frame, and the modal did not open inside it.
+    pub(crate) fn cancelled(ui: &mut Ui, owner: WidgetId) -> bool {
+        ui.response_for(owner).rect.is_some() && ui.overlays().cancels(owner)
     }
 
     /// Whether the overlay opens this frame: its owner recorded no rect last frame.

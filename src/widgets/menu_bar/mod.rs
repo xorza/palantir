@@ -17,6 +17,7 @@ use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
+use crate::widget_core::overlay_scope::OverlayScope;
 use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
@@ -190,7 +191,6 @@ impl<'a> MenuBar<'a> {
             let len = titles.len();
             let to = (if step > 0 { at + 1 } else { at + len - 1 }) % len;
             open = Some(OpenMenu::below(titles[to]));
-            ui.request_repaint();
         }
         // Read only while a menu is open, as the read wakes a frame on every pointer move.
         let pointer = open.and_then(|_| ui.pointer_pos());
@@ -222,7 +222,7 @@ fn focused_title(ui: &Ui, titles: &[WidgetId]) -> Option<WidgetId> {
 fn switch(ui: &mut Ui, row: &MenuBarRow, open: WidgetId) -> Switch {
     // A modal that opened after the menu closes it before its title records, so the title
     // drops its open look in the same pass.
-    if ui.overlays().cancels(Menu::menu_id(open)) {
+    if OverlayScope::cancelled(ui, Menu::menu_id(open)) {
         return Switch::Close;
     }
     if let Some(focused) = focused_title(ui, &row.titles)
