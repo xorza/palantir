@@ -3,6 +3,7 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::theme::color_scheme::ColorScheme;
 
+use crate::common::sync::MutexExt;
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::host::harness::Harness;
 use crate::input::pointer::PointerButton;
@@ -11,6 +12,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameProcessing;
+use crate::ui::frame_runtime::MAX_CARRIED_RELAYOUTS;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
@@ -19,7 +21,10 @@ use crate::widgets::{block::Block, button::Button, panel::Panel};
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::cell::{Cell, RefCell};
+use std::io;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tracing::subscriber;
 
 /// Cascade runs in `post_record`, not `finalize_frame`, so a `request_relayout` re-record can read pass A's rect via `response_for(id).rect` (`Menu::show` clamps its anchor with it).
 #[test]
@@ -200,6 +205,78 @@ fn action_effect_runs_once_across_record_replay() {
         (true, Some(&false)),
         "the action edge shows in pass A and does not replay"
     );
+}
+
+/// What a test's subscriber writes.
+#[derive(Clone, Debug, Default)]
+struct LoopLog(Arc<Mutex<Vec<u8>>>);
+
+impl io::Write for LoopLog {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.lock_unpoisoned().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A relayout asked in the last pass takes the next frame, so the ask is not lost. A frame that
+/// asks only in pass A owes none. Asking in the last pass of [`MAX_CARRIED_RELAYOUTS`] frames in a
+/// row is still allowed, and a frame that asks nothing starts the count again. One frame past it
+/// is a loop: every build logs one error and asks no more frames, until a frame that asks nothing.
+#[test]
+fn a_relayout_in_the_last_pass_takes_the_next_frame_and_a_loop_is_an_error() {
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, |_| {});
+
+    let mut passes = 0;
+    let report = h.step(|ui| {
+        if passes == 0 {
+            ui.request_relayout();
+        }
+        passes += 1;
+    });
+    assert_eq!(passes, 2);
+    assert!(!report.repaint_requested, "pass B asked nothing");
+
+    let mut passes = 0;
+    let report = h.step(|ui| {
+        ui.request_relayout();
+        passes += 1;
+    });
+    assert_eq!(passes, 2, "the last pass has no third");
+    assert!(report.repaint_requested, "its ask takes the next frame");
+    assert!(
+        !h.step(|_| {}).repaint_requested,
+        "the next frame asked none"
+    );
+
+    let asking = |ui: &mut Ui| ui.request_relayout();
+    for frame in 1..=MAX_CARRIED_RELAYOUTS {
+        assert!(h.step(asking).repaint_requested, "frame {frame}");
+    }
+    assert!(!h.step(|_| {}).repaint_requested);
+    for frame in 1..=MAX_CARRIED_RELAYOUTS {
+        assert!(h.step(asking).repaint_requested, "again, frame {frame}");
+    }
+    let log = LoopLog::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer({
+            let log = log.clone();
+            move || log.clone()
+        })
+        .finish();
+    subscriber::with_default(subscriber, || {
+        assert!(!h.step(asking).repaint_requested, "the loop stops");
+        assert!(!h.step(asking).repaint_requested, "and stays stopped");
+    });
+    let logged = String::from_utf8(log.0.lock_unpoisoned().clone()).unwrap();
+    assert_eq!(logged.matches("ERROR").count(), 1, "one error: {logged}");
+    assert!(logged.contains("a relayout loop"), "{logged}");
+    assert!(!h.step(|_| {}).repaint_requested);
+    assert!(h.step(asking).repaint_requested, "the count starts again");
 }
 
 /// A relayout request forces a second record pass; `frame_value` returns pass A's value, which observes one-frame edges.

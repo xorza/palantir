@@ -117,12 +117,18 @@ impl<'a> FrameCycle<'a> {
                         }
                     );
                     self.ui.input.drain_per_frame_queues();
+                    self.ui.frame_runtime.begin_pass();
                     let _ = self.record_pass(win, app);
                     // A modal that first recorded in pass B cancelled an overlay past the frame's
                     // last pass: the next frame applies it.
                     if self.ui.overlays.needs_pass() {
                         self.ui.frame_runtime.request_repaint();
                     }
+                }
+                // Pass B is the frame's last, so a relayout it asks for takes the next frame.
+                // Refused: dropping the ask, which leaves the frame stale until input.
+                if self.ui.frame_runtime.carry_relayout() {
+                    self.ui.frame_runtime.request_repaint();
                 }
                 self.finalize_frame();
 

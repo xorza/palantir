@@ -17,6 +17,11 @@ use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
 use std::mem;
 use std::time::Duration;
 
+/// The frames in a row a last pass may ask for a relayout before it counts as a loop. A real ask
+/// settles in one, as a node laid out for the first time does; the room past it is for a few such
+/// edits on consecutive frames.
+pub(crate) const MAX_CARRIED_RELAYOUTS: u8 = 8;
+
 /// What `Ui::frame` does this frame, decided at entry from fired wake reasons,
 /// input state and prior-frame validity. The variants make a paint-only frame
 /// with a discarded damage base unrepresentable.
@@ -104,6 +109,8 @@ pub(crate) struct FrameRuntime {
     /// Whether the current frame needs one settling record pass; at most one
     /// per frame.
     relayout_requested: bool,
+    /// How many frames in a row a last pass asked for a relayout; see [`Self::carry_relayout`].
+    relayouts_carried: u8,
     /// The baseline the retained tree was last recorded under, `None` before the first record.
     recorded: Option<RecordBaseline>,
     /// The transparency this frame paints with, resolved once at its start so a frame never
@@ -186,6 +193,27 @@ impl FrameRuntime {
     /// Whether this frame asked for a settling record pass.
     pub(super) const fn relayout_requested(&self) -> bool {
         self.relayout_requested
+    }
+
+    /// Whether the relayout this frame's last pass asked for takes the next frame. Past
+    /// [`MAX_CARRIED_RELAYOUTS`] frames in a row it is a loop, the app's own logic error: every
+    /// build logs one error and asks no more frames, so the loop stops and the window keeps what
+    /// its last pass recorded. A frame whose last pass asks nothing starts the count again.
+    /// Refused: an `assert!`, as the bound is a judgment, and in an app with `panic = "abort"` a
+    /// false alarm costs the person's unsaved work; a `debug_assert!`, which makes a build differ.
+    pub(super) fn carry_relayout(&mut self) -> bool {
+        if !self.relayout_requested {
+            self.relayouts_carried = 0;
+            return false;
+        }
+        self.relayouts_carried = self.relayouts_carried.saturating_add(1);
+        if self.relayouts_carried == MAX_CARRIED_RELAYOUTS + 1 {
+            tracing::error!(
+                frames = self.relayouts_carried,
+                "a relayout loop: Ui::request_relayout in the last pass of each of these frames"
+            );
+        }
+        self.relayouts_carried <= MAX_CARRIED_RELAYOUTS
     }
 
     /// Open a record pass with no settling pass asked.

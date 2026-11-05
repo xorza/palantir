@@ -535,7 +535,9 @@ impl Ui {
     }
 
     /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer
-    /// a layout driver or [`App::update`].
+    /// a layout driver or [`App::update`]. Asked in the frame's second pass, it asks for the next
+    /// frame. An app that asks in every pass has a relayout loop: after a few frames, it logs an
+    /// error and asks no more frames.
     ///
     /// # Panics
     ///
