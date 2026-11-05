@@ -666,7 +666,7 @@ impl WgpuBackend {
                         .backbuffer()
                         .expect("the plan puts a backbuffer out only through one");
                     encoder_mark(timings.as_deref_mut(), &mut encoder, Mark::CopyOutStart);
-                    bb.present_onto(&mut encoder, target, draw.blit);
+                    bb.present_onto(&mut encoder, target, draw.blit, self.gpu.backbuffer_out());
                     encoder_mark(timings.as_deref_mut(), &mut encoder, Mark::CopyOutEnd);
                 }
                 PassStep::Overlay => {
@@ -1108,7 +1108,7 @@ impl WgpuBackend {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.skip"),
             });
-        backbuffer.present_onto(&mut encoder, target, blit);
+        backbuffer.present_onto(&mut encoder, target, blit, self.gpu.backbuffer_out());
         self.gpu.queue.submit(iter::once(encoder.finish()));
     }
 
@@ -1219,6 +1219,8 @@ fn begin_load_pass<'e>(
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     #[cfg(test)]
+    use crate::gpu::device::backbuffer_out::BackbufferOut;
+    #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
@@ -1269,6 +1271,12 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(crate) const fn paint_as(&mut self, traffic: PassTraffic) {
             self.gpu.paint_as(traffic);
+        }
+
+        /// Put the backbuffer out by `out`, whatever the device is.
+        #[cfg(test)]
+        pub(crate) const fn put_backbuffer_by(&mut self, out: BackbufferOut) {
+            self.gpu.put_backbuffer_by(out);
         }
 
         pub(crate) fn has_format_pipelines(&self, format: TargetFormat) -> bool {

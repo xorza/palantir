@@ -38,8 +38,8 @@ AgentWindow
         fn play<X: Locate<A> + Clone + Send + 'static>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>
         fn settle(&mut self) -> Result<u32, PlayError>
         fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError>
-        fn find<X: Locate<A> + Clone + Send + 'static>(&self, at: &Locator<X>) -> Result<Found, PlayError>
-        fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>
+        fn find<X: Locate<A> + Clone + Send + 'static>(&mut self, at: &Locator<X>) -> Result<Found, PlayError>
+        fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>
 
 Align
     struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -884,12 +884,12 @@ GpuPaint
         fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>)
 
 GpuPassStats
-    struct GpuPassStats: Clone, Debug, Default
-        pub fn last_pass(&self) -> Option<Duration>
-        pub fn last_kind(&self, kind: BatchKind) -> Option<Duration>
-        pub fn last_pipeline_stats(&self) -> Option<PipelineStats>
-        pub fn last_copy_out(&self) -> Option<Duration>
-        pub fn last_main_pass_cpu(&self) -> Option<Duration>
+    struct GpuPassStats: Clone, Copy, Debug, Default
+        pub const fn last_pass(&self) -> Option<Duration>
+        pub const fn last_kind(&self, kind: BatchKind) -> Option<Duration>
+        pub const fn last_pipeline_stats(&self) -> Option<PipelineStats>
+        pub const fn last_copy_out(&self) -> Option<Duration>
+        pub const fn last_main_pass_cpu(&self) -> Option<Duration>
 
 GpuRequestError
     #[non_exhaustive]
@@ -1841,7 +1841,7 @@ Remote  [features: winit]
     struct Remote<T: 'static>: AgentWindow<T>, Debug
         pub fn with_blocked(self, blocked: impl Fn() -> bool + Send + 'static) -> Self
         pub const fn with_wait(self, wait: Duration) -> Self
-        pub fn query<R: Send + 'static>(&self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
+        pub fn query<R: Send + 'static>(&mut self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
 
 RenderTarget
     struct RenderTarget<'a>: Clone, Copy, Debug
@@ -2715,7 +2715,7 @@ Ui
         pub fn window_geometry(&self) -> WindowGeometry
         pub fn debug_overlay(&self) -> DebugOverlayConfig
         pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig)
-        pub const fn gpu_pass_stats(&self) -> &GpuPassStats
+        pub fn gpu_pass_stats(&self) -> &GpuPassStats
         pub fn is_window_open(&self, token: WindowToken) -> bool
         pub fn add_shape(&mut self, shape: impl Lower)
         pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
@@ -3192,7 +3192,7 @@ widget::Mesh
         pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
         pub fn triangle(&mut self, a: u32, b: u32, c: u32)
         pub fn append(&mut self, other: &Self)
-        pub fn bbox(&self) -> Rect
+        pub const fn bbox(&self) -> Rect
         pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self
 
 widget::MeshShape

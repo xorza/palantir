@@ -1,5 +1,6 @@
 //! The device and queue Palantir draws with.
 
+use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::device_health::DeviceHealth;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu_wait::GpuWait;
@@ -41,6 +42,7 @@ pub struct Gpu {
     pub(crate) queue: wgpu::Queue,
     health: DeviceHealth,
     pass_traffic: PassTraffic,
+    backbuffer_out: BackbufferOut,
     /// Held across each pipeline build on the device, so builds take turns: see
     /// [`Self::create_render_pipeline`].
     pipeline_turn: Arc<Mutex<()>>,
@@ -57,9 +59,11 @@ impl Gpu {
     /// callback from the first, and holds a pipeline turn of its own, so its builds do not take
     /// turns with the first's ([`Self::create_render_pipeline`]).
     pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+        let info = device.adapter_info();
         Self {
             health: DeviceHealth::watch(&device),
-            pass_traffic: PassTraffic::of(&device.adapter_info()),
+            pass_traffic: PassTraffic::of(&info),
+            backbuffer_out: BackbufferOut::of(&info),
             device,
             queue,
             pipeline_turn: Arc::default(),
@@ -186,6 +190,11 @@ impl Gpu {
         self.pass_traffic
     }
 
+    /// How a frame painted in the backbuffer reaches a target that takes a copy.
+    pub(crate) const fn backbuffer_out(&self) -> BackbufferOut {
+        self.backbuffer_out
+    }
+
     /// Whether the device is lost: it draws nothing more, and a host attaches a new one.
     pub(crate) fn is_lost(&self) -> bool {
         self.health.is_lost()
@@ -277,6 +286,7 @@ impl Gpu {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::gpu::device::backbuffer_out::BackbufferOut;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::device::pass_traffic::PassTraffic;
 
@@ -285,6 +295,12 @@ pub(crate) mod internals {
         /// other clones keep the device's own.
         pub(crate) const fn paint_as(&mut self, traffic: PassTraffic) {
             self.pass_traffic = traffic;
+        }
+
+        /// This handle puts the backbuffer out by `out`, whatever the device is; other clones
+        /// keep the device's own.
+        pub(crate) const fn put_backbuffer_by(&mut self, out: BackbufferOut) {
+            self.backbuffer_out = out;
         }
 
         /// Lose the device, as a GPU hang does: `Device::destroy` makes every later call a no-op,

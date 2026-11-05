@@ -1,5 +1,6 @@
 //! The off-screen color target the backbuffer-copy path renders into.
 
+use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -21,20 +22,21 @@ pub(crate) struct Backbuffer {
 
 impl Backbuffer {
     /// Put this backbuffer's pixels on `target`, which it must [`fit`](Self::fits):
-    /// a copy where the target takes one, else a draw through `blit`, in a pass of its own as it
-    /// replaces the target, onto the target's view.
+    /// a copy where the target takes one and the device copies (`out`), else a draw through
+    /// `blit`, in a pass of its own as it replaces the target, onto the target's view.
     pub(crate) fn present_onto(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         target: RenderTarget<'_>,
         blit: &wgpu::RenderPipeline,
+        out: BackbufferOut,
     ) {
         debug_assert!(
             self.fits(target),
             "a backbuffer presents onto a target of its size and format, as the frame that \
              painted it, or the frame a skip follows, saw"
         );
-        if target.takes_copy() {
+        if out == BackbufferOut::Copy && target.takes_copy() {
             encoder.copy_texture_to_texture(
                 self.texture.as_image_copy(),
                 target.texture().as_image_copy(),

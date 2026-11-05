@@ -1,7 +1,8 @@
 //! A partial frame on a device whose pass moves its whole target paints its damage into a canvas
 //! and copies it into the backbuffer; on any other device it loads the backbuffer. The two paint
-//! the same pixels.
+//! the same pixels, and the backbuffer reaches the target alike by a copy and by a draw.
 
+use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
@@ -79,7 +80,8 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
 /// Five frames whose tile turns each time: the first whole, the rest partial, the first of them
 /// through the backbuffer whole, as a direct frame left it stale. Painted as a device whose pass
 /// moves its whole target, they paint a canvas; as one whose pass moves what it draws, the
-/// backbuffer. Every frame's pixels match.
+/// backbuffer, which a device that draws it out puts on the target by a draw. Every frame's
+/// pixels match.
 #[test]
 fn a_canvas_paints_what_the_backbuffer_paints() {
     let gpu = headless_test_gpu();
@@ -88,19 +90,22 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
     let b = mesh.vertex(Vec2::new(55.6, 33.1), RgbaF32::hex(0xfacc15));
     let c = mesh.vertex(Vec2::new(68.9, 57.45), RgbaF32::hex(0x46c46c));
     mesh.triangle(a, b, c);
-    let host = |traffic| {
+    let host = |traffic, out| {
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::test_mono())
             .swapchain_present()
             .build();
         host.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
         host.device.backend_mut().paint_as(traffic);
+        host.device.backend_mut().put_backbuffer_by(out);
         host
     };
-    let mut on_backbuffer = host(PassTraffic::Drawn);
-    let mut on_canvas = host(PassTraffic::WholeTarget);
+    let mut on_backbuffer = host(PassTraffic::Drawn, BackbufferOut::Copy);
+    let mut on_canvas = host(PassTraffic::WholeTarget, BackbufferOut::Copy);
+    let mut drawn_out = host(PassTraffic::Drawn, BackbufferOut::Draw);
     let backbuffer_target = gpu.target("palantir.test.canvas.backbuffer", UVec2::new(160, 120));
     let canvas_target = gpu.target("palantir.test.canvas.canvas", UVec2::new(160, 120));
+    let drawn_target = gpu.target("palantir.test.canvas.drawn", UVec2::new(160, 120));
     let tile = Cell::new(RgbaF32::srgba(1.0, 0.0, 0.0, 0.5));
     for frame in 0..5 {
         tile.set(RgbaF32::srgba(1.0, 0.2 * frame as f32, 0.0, 0.5));
@@ -112,11 +117,18 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
         };
         let backbuffer_paint = on_backbuffer.frame(backbuffer_target.as_target(), &mut app);
         let canvas_paint = on_canvas.frame(canvas_target.as_target(), &mut app);
+        let drawn_paint = drawn_out.frame(drawn_target.as_target(), &mut app);
         assert_eq!(backbuffer_paint.paint(), want, "frame {frame}");
         assert_eq!(canvas_paint.paint(), want, "frame {frame}");
+        assert_eq!(drawn_paint.paint(), want, "frame {frame}");
+        let painted = backbuffer_target.read_back();
         assert!(
-            backbuffer_target.read_back() == canvas_target.read_back(),
+            painted == canvas_target.read_back(),
             "frame {frame}: the canvas paints other pixels"
+        );
+        assert!(
+            painted == drawn_target.read_back(),
+            "frame {frame}: the backbuffer drawn out paints other pixels"
         );
     }
     assert!(!on_backbuffer.window.driver.holds_canvas());

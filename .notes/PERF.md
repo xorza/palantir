@@ -118,6 +118,18 @@ commits, each with its numbers per host.
   target. A blur residual at 2048² takes 70 ms at σ 1 and 153 ms at σ 4, each tap a
   `textureLoad` of `Rgba16Float`.
 
+- **The GPU frames** (run 10): a GPU frame waits for its device each frame, so the CPU and the
+  GPU never overlap in the bench. On the APUs the CPU half is most of it: on a handheld the CPU is
+  busy 77 % of `frame/gpu/hovering`, record at an IPC of 1.6 against 2.6 in the CPU frame at the
+  same 2.4 GHz, and the wgpu, RADV and kernel calls about 1.4 M instructions a frame more than
+  the CPU harness. The passes of a partial frame are small (`main_pass/gpu/partial` 7 µs local,
+  37 µs fanless, 13 µs handheld, 17 µs win); the copy of the whole backbuffer onto the target is not:
+  without it `frame/gpu/hovering` and `partial` run 16 to 33 % faster on every host
+  (diagnostic). A whole repaint's main pass takes 0.68 ms on the fanless, 1.0 ms on the handheld and
+  1.04 ms on win, of it the quads 426 and 553 µs and the shadows 356 and 297 µs on the handheld and
+  win; win's `frame/gpu/scrolling` spends 1.6 ms of its 2.9 outside the passes and the CPU
+  half, in its submit and fence wait.
+
 ## Rejected
 
 - **Shadows: the blur's reciprocals per instance**, handed on flat from `vs_shadow`: bit-exact,
@@ -158,8 +170,8 @@ commits, each with its numbers per host.
 - **`LoadOp::DontCare` on the blit**: wgpu-core refuses it under
   `InstanceFlags::STRICT_WEBGPU_COMPLIANCE`, which a device the app opened can carry unseen.
 - **No blending for opaque quad interiors** (Skia Graphite's depth-ordered opaque pass, or
-  core-and-ring quads): a ceiling of −40 µs of a 436 µs pass on the mobile AMD iGPU; Apple GPUs blend in
-  tile memory.
+  core-and-ring quads): a ceiling of −40 µs of a 436 µs pass on the mobile AMD iGPU under RADV; on Windows'
+  mobile AMD iGPU and the handheld turning quad blending off moves no frame (run 10). The fanless reads otherwise (Open).
 - **A join billboard as one quad, not sixteen**: −11.5 % on `curve_pipeline/join`, but the
   joint's clip planes test the interpolated `phys`, so 8 pixels of `polyline_gradient` move by
   up to 235 levels; testing `@builtin(position)` moves seam pixels against the goldens.
@@ -185,6 +197,13 @@ commits, each with its numbers per host.
   each host's floor, handheld +1.7 %. A disengaged widget's interaction half is a few compares.
 - **A probe by the widget's resolve position**, which skips the `by_id` map for a container
   probed after its children: within ±1 %.
+
+- **The backbuffer drawn out on every device** (run 10): against the copy, Windows' mobile AMD iGPU +8 to
+  +10 % on the partial frames, the 4090 +4 to +5 %, the handheld within its floor. Kept on Apple
+  GPUs alone (Decisions).
+- **Opaque fast quads without blending** (run 10): a solid, sharp, pixel-aligned quad of full
+  alpha through a pipeline with no blend, the same pixels. Every case within each host's floor:
+  such quads are rare, and the blended quads hold the fanless's ceiling (Open).
 
 ## Decisions
 
@@ -230,7 +249,27 @@ commits, each with its numbers per host.
   from the pane's narrowest side where the cascade knows it. Glass frames −5.6 to −10.6 % on the
   board, handheld and mac; one texel of 54 handheld frames moves by one f16 step at 1.
 
+- **The backbuffer reaches the target by a draw on Apple GPUs** (run 10). `BackbufferOut::Draw`
+  on Metal with memoryless storage, a full-screen blit in a pass that clears the target, where
+  the copy reads it through another engine; `Copy` elsewhere, as the draw loses on the immediate
+  GPUs (Rejected). The blit reads each texel by index into the same format, so both paint the
+  same pixels (`a_canvas_paints_what_the_backbuffer_paints`). Refused: the draw on every device
+  whose transient attachments save memory, the other tilers, which nobody measured. fanless:
+  `backdrop_frame/gpu/blur/sliding` 699 → 656 µs (−6.2 %), `glass/under` −4.5 %,
+  `modal/scrolling` −3.4 %; the rest within 1 %.
+
 ## Open
+
+- **A depth-ordered opaque pass on Apple GPUs** (run 10): with no quad blending the fanless's
+  `frame/gpu/scrolling` ran 12.4 % faster and its main pass 19.6 % (diagnostic); the handheld, win
+  and local moved within their floors. Realizing it exactly takes each opaque quad's core drawn
+  first with a depth value, so the later draws, the quad's own blended edge among them, skip the
+  pixels it covers (Skia Graphite's opaque pass): a depth attachment beside the rounded-clip
+  stencil, a depth state in every pipeline and a value per instance. A core-and-ring split with
+  no depth puts a pipeline switch after each such quad. Not spiked.
+- **The partial frame's copy-out**: 16 to 33 % of a partial frame on every host. wgpu hands out
+  each swapchain image uninitialized, so a partial frame writes all of it; only buffer age or a
+  present with damage regions, neither of which wgpu exposes, would let it write less.
 
 - **A scroll as a translation**: paint rects kept in the space of the nearest scroll viewport,
   so a scroll changes one offset and not every row under it, as Chromium's property trees hold

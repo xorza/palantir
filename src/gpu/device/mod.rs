@@ -1,6 +1,7 @@
 //! Opening the device: what Palantir asks of an adapter, and the handles it
 //! hands out.
 
+pub(crate) mod backbuffer_out;
 pub(crate) mod device_health;
 pub(crate) mod device_requirements;
 pub(crate) mod gpu;
