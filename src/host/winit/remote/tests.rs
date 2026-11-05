@@ -261,7 +261,7 @@ fn a_remote_plays_and_reads_a_live_window() {
 
     // A query that outlasts a 50 ms wait gives up after it: the query holds the window's thread
     // until the test lets it go, so no sleep of the test's sets how long it takes.
-    let short = handle
+    let mut short = handle
         .remote(WINDOW)
         .with_tick(TICK)
         .with_wait(Duration::from_millis(50));
@@ -273,7 +273,7 @@ fn a_remote_plays_and_reads_a_live_window() {
     release.send(()).ok();
 
     // A query gives up at once while the window's thread is held, and never runs.
-    let held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);
+    let mut held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);
     let ran = Arc::new(AtomicBool::new(false));
     let marked = Arc::clone(&ran);
     assert!(matches!(

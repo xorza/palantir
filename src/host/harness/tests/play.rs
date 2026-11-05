@@ -593,7 +593,7 @@ fn input_aims_by_text_id_and_point() {
     h.frame(|ui: &mut Ui| app.record(WindowToken(0), ui));
     assert_eq!(app.one, 3);
 
-    let window = h.session(&mut app);
+    let mut window = h.session(&mut app);
     let texts: Vec<String> = window
         .widgets(Some("twin"))
         .unwrap()

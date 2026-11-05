@@ -28,7 +28,7 @@ use glam::Vec2;
 #[derive(Default, Debug)]
 pub(crate) struct RecordStore {
     /// Vertex storage for `ShapeRecord::Mesh`, indexed by the record's `vertices`. Two columns,
-    /// as the polyline payloads are kept, not an authoring `Mesh`, whose cached hash and bounds
+    /// as the polyline payloads are kept, not an authoring `Mesh`, whose running hash and bounds
     /// the arena would leave stale.
     pub(crate) mesh_vertices: Vec<MeshVertex>,
     /// Index storage for `ShapeRecord::Mesh`, indexed by the record's `idxs`.
@@ -103,10 +103,13 @@ impl RecordStore {
     /// Copy one mesh's vertices and indices in, returning the spans a
     /// `ShapeRecord::Mesh` carries.
     pub(crate) fn stage_mesh(&mut self, mesh: &Mesh) -> MeshSpans {
-        let vertices = Span::new(self.mesh_vertices.len() as u32, mesh.vertices.len() as u32);
-        self.mesh_vertices.extend_from_slice(&mesh.vertices);
-        let idxs = Span::new(self.mesh_idxs.len() as u32, mesh.idxs.len() as u32);
-        self.mesh_idxs.extend_from_slice(&mesh.idxs);
+        let vertices = Span::new(
+            self.mesh_vertices.len() as u32,
+            mesh.vertices().len() as u32,
+        );
+        self.mesh_vertices.extend_from_slice(mesh.vertices());
+        let idxs = Span::new(self.mesh_idxs.len() as u32, mesh.idxs().len() as u32);
+        self.mesh_idxs.extend_from_slice(mesh.idxs());
         MeshSpans { vertices, idxs }
     }
 

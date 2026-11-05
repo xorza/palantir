@@ -4,7 +4,6 @@
 
 pub(crate) mod remote_end;
 
-use std::cell::Cell;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,9 +58,8 @@ pub struct Remote<T: 'static> {
     window: WindowToken,
     /// Whether something outside the host holds the window's thread, as a native dialog does.
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
-    /// The events sent, inputs and queries, which a frame that saw them all counts; a cell, as a
-    /// query reads through `&self`.
-    sent: Cell<u64>,
+    /// The events sent, inputs and queries, which a frame that saw them all counts.
+    sent: u64,
     /// The last press's real time, which the next press waits out the double-click interval from.
     last_press: Option<Instant>,
     /// The longest real time a wait for the window lasts: [`WAIT`] unless [`Self::with_wait`]
@@ -75,7 +73,7 @@ impl<T: 'static> Debug for Remote<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Remote")
             .field("window", &self.window)
-            .field("sent", &self.sent.get())
+            .field("sent", &self.sent)
             .finish_non_exhaustive()
     }
 }
@@ -140,7 +138,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     ///
     /// [`PlayError::Locate`] when `at` names no one place, and as [`Self::query`].
     fn find<X: Locate<T> + Clone + Send + 'static>(
-        &self,
+        &mut self,
         at: &Locator<X>,
     ) -> Result<Found, PlayError> {
         let at = at.clone();
@@ -153,7 +151,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// # Errors
     ///
     /// As [`Self::query`].
-    fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
+    fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
         let filter = filter.map(str::to_owned);
         self.query(move |_, ui| InspectedWidget::visible(ui, filter.as_deref()))
     }
@@ -168,7 +166,7 @@ impl<T: 'static> Remote<T> {
             handle,
             window,
             blocked: None,
-            sent: Cell::new(sent),
+            sent,
             last_press: None,
             wait: WAIT,
             tick: TICK,
@@ -205,7 +203,7 @@ impl<T: 'static> Remote<T> {
     /// [`PlayError::Disconnected`] when the window closed or the loop ended, and
     /// [`PlayError::NoFrame`] when no answer came within the [wait](Self::with_wait).
     pub fn query<R: Send + 'static>(
-        &self,
+        &mut self,
         f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static,
     ) -> Result<R, PlayError> {
         // Before sending, so a held thread gives up at once and the query never runs.
@@ -221,7 +219,7 @@ impl<T: 'static> Remote<T> {
         self.handle
             .send(UserEvent::Query(self.window, task))
             .map_err(|_| PlayError::Disconnected)?;
-        self.sent.set(self.sent.get() + 1);
+        self.sent += 1;
         let answered = self.receive(&answer, Answer::BetweenFrames);
         if answered.is_err() {
             given_up.store(true, Ordering::Release);
@@ -278,7 +276,7 @@ impl<T: 'static> Remote<T> {
         loop {
             let last = self.last_frame()?;
             let unsettled = settled && (last.repaint_requested || last.busy);
-            if last.sent_events >= self.sent.get() && !unsettled {
+            if last.sent_events >= self.sent && !unsettled {
                 return Ok(());
             }
             let working = settled && last.busy && !last.repaint_requested;
@@ -336,7 +334,7 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
         self.remote
             .handle
             .send_input(self.remote.window, OwnedInputEvent::from(event));
-        self.remote.sent.set(self.remote.sent.get() + 1);
+        self.remote.sent += 1;
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {

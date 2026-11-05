@@ -46,7 +46,7 @@ pub trait AgentWindow<A> {
     ///
     /// [`PlayError::Locate`] when `at` names no one place, and what the host's query fails with.
     fn find<X: Locate<A> + Clone + Send + 'static>(
-        &self,
+        &mut self,
         at: &Locator<X>,
     ) -> Result<Found, PlayError>;
 
@@ -56,5 +56,5 @@ pub trait AgentWindow<A> {
     /// # Errors
     ///
     /// What the host's query fails with.
-    fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>;
+    fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>;
 }

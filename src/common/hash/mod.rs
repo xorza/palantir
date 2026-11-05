@@ -56,6 +56,13 @@ impl Hasher {
     }
 }
 
+impl Default for Hasher {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl hash::Hasher for Hasher {
     #[inline]
     fn write(&mut self, bytes: &[u8]) {

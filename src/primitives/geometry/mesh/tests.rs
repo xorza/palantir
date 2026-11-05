@@ -158,19 +158,24 @@ fn content_hash_stable_for_identical_input() {
 
 #[test]
 fn content_hash_changes_on_reordered_indices() {
-    let mut a = red_tri();
-    let mut b = red_tri();
-    a.idxs = vec![0, 1, 2];
-    a.cached_hash.set(None);
-    b.idxs = vec![0, 2, 1];
-    b.cached_hash.set(None);
-    assert_ne!(a.content_hash(), b.content_hash());
+    let wound = |[a, b, c]: [u32; 3]| {
+        let mut m = Mesh::new();
+        for pos in [Vec2::ZERO, Vec2::X, Vec2::Y] {
+            m.vertex(pos, RgbaF32::default());
+        }
+        m.triangle(a, b, c);
+        m
+    };
+    assert_ne!(
+        wound([0, 1, 2]).content_hash(),
+        wound([0, 2, 1]).content_hash()
+    );
 }
 
-/// A filled polygon caches its bbox as it builds: a triangle reaching below the origin, then a
+/// A filled polygon's bbox spans its points: a triangle reaching left of the origin, then a
 /// rectangle at it.
 #[test]
-fn filled_polygon_precaches_bbox() {
+fn filled_polygon_bbox_spans_its_points() {
     let cases: [(&[Vec2], Rect); 2] = [
         (
             &[
@@ -192,7 +197,7 @@ fn filled_polygon_precaches_bbox() {
     ];
     for (corners, bbox) in cases {
         let m = Mesh::filled_polygon(corners, RgbaF32::default());
-        assert_eq!(m.cached_bbox.get(), Some(bbox), "{corners:?}");
+        assert_eq!(m.bbox(), bbox, "{corners:?}");
     }
 }
 
@@ -201,87 +206,109 @@ fn bbox_empty_mesh_is_zero() {
     assert_eq!(Mesh::new().bbox(), Rect::ZERO);
 }
 
-#[test]
-fn bbox_spans_vertex_extent() {
-    let m = Mesh::filled_polygon(
-        &[
-            Vec2::new(-1.0, 2.0),
-            Vec2::new(4.0, 2.0),
-            Vec2::new(0.0, 7.0),
-        ],
-        RgbaF32::default(),
-    );
-    let b = m.bbox();
-    assert_eq!(b.min, Vec2::new(-1.0, 2.0));
-    assert_eq!(b.size.w, 5.0);
-    assert_eq!(b.size.h, 5.0);
+/// `points` in order, then `triangles`.
+fn built(points: &[(Vec2, SrgbaU8)], triangles: &[[u32; 3]]) -> Mesh {
+    let mut m = Mesh::new();
+    for &(pos, color) in points {
+        m.vertex(pos, color);
+    }
+    for &[a, b, c] in triangles {
+        m.triangle(a, b, c);
+    }
+    m
 }
 
-/// Which caches each mutation drops, from a mesh with both primed: vertex, append and clear drop both; a triangle drops only the hash; appending an empty mesh and cloning keep both.
+/// Each mutation leaves the hash and the bbox of the same content built at once, vertex by vertex
+/// and triangle by triangle: `red_tri` is the unit triangle at the origin, and `far` one at
+/// (10, 10). Pushing (2, 3) grows the bbox to 2 × 3; a triangle moves no vertex; appending `far`
+/// reaches (11, 11); appending an empty mesh changes nothing; clearing leaves the empty mesh. A
+/// clone keeps both.
 #[test]
-fn mutations_drop_exactly_the_caches_they_stale() {
+fn mutations_match_the_content_built_at_once() {
     type Mutate = fn(&mut Mesh, &Mesh);
-    let far = Mesh::filled_polygon(
-        &[
-            Vec2::new(10.0, 10.0),
-            Vec2::new(11.0, 10.0),
-            Vec2::new(10.0, 11.0),
-        ],
-        RgbaF32::default(),
-    );
-    let unit = Rect::new(0.0, 0.0, 1.0, 1.0);
-    let cases: [(&str, Mutate, bool, bool, Rect); 5] = [
+    let far_points = [
+        Vec2::new(10.0, 10.0),
+        Vec2::new(11.0, 10.0),
+        Vec2::new(10.0, 11.0),
+    ];
+    let far = Mesh::filled_polygon(&far_points, RgbaF32::default());
+    let red = red_tri().vertices[0].color;
+    let unit = [Vec2::ZERO, Vec2::X, Vec2::Y];
+    let reds = unit.map(|pos| (pos, red));
+    let black = RgbaF32::default().to_srgba8();
+    let cases: [(&str, Mutate, Mesh, Rect); 5] = [
         (
             "vertex",
             |m, _| {
                 m.vertex(Vec2::new(2.0, 3.0), RgbaF32::default());
             },
-            false,
-            false,
+            built(
+                &[reds[0], reds[1], reds[2], (Vec2::new(2.0, 3.0), black)],
+                &[[0, 1, 2]],
+            ),
             Rect::new(0.0, 0.0, 2.0, 3.0),
         ),
-        ("triangle", |m, _| m.triangle(0, 1, 2), false, true, unit),
+        (
+            "triangle",
+            |m, _| m.triangle(0, 1, 2),
+            built(&reds, &[[0, 1, 2], [0, 1, 2]]),
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+        ),
         (
             "append",
             |m, o| m.append(o),
-            false,
-            false,
+            built(
+                &[
+                    reds[0],
+                    reds[1],
+                    reds[2],
+                    (far_points[0], black),
+                    (far_points[1], black),
+                    (far_points[2], black),
+                ],
+                &[[0, 1, 2], [3, 4, 5]],
+            ),
             Rect::new(0.0, 0.0, 11.0, 11.0),
         ),
         (
             "append empty",
             |m, _| m.append(&Mesh::new()),
-            true,
-            true,
-            unit,
+            built(&reds, &[[0, 1, 2]]),
+            Rect::new(0.0, 0.0, 1.0, 1.0),
         ),
-        ("clear", |m, _| m.clear(), false, false, Rect::ZERO),
+        ("clear", |m, _| m.clear(), Mesh::new(), Rect::ZERO),
     ];
-    for (label, mutate, hash_kept, bbox_kept, bbox) in cases {
+    let mut cleared = red_tri();
+    cleared.clear();
+    cleared.vertex(Vec2::new(5.0, 6.0), RgbaF32::default());
+    assert_eq!(
+        cleared.bbox(),
+        Rect::new(5.0, 6.0, 0.0, 0.0),
+        "a clear forgets the old bounds"
+    );
+    assert_eq!(
+        cleared.content_hash(),
+        built(&[(Vec2::new(5.0, 6.0), black)], &[]).content_hash(),
+        "a clear forgets the old hash"
+    );
+    for (label, mutate, expected, bbox) in cases {
         let mut m = red_tri();
-        let (h0, b0) = (m.content_hash(), m.bbox());
-        assert_eq!(b0, unit);
         let copy = m.clone();
-        assert_eq!(
-            (copy.cached_hash.get(), copy.cached_bbox.get()),
-            (Some(h0), Some(b0)),
-            "a clone carries both caches",
-        );
-
         mutate(&mut m, &far);
-        assert_eq!(
-            m.cached_hash.get(),
-            hash_kept.then_some(h0),
-            "{label}: hash cache"
-        );
-        assert_eq!(
-            m.cached_bbox.get(),
-            bbox_kept.then_some(b0),
-            "{label}: bbox cache"
-        );
         assert_eq!(m.bbox(), bbox, "{label}: bbox");
-        assert_eq!(m.content_hash() == h0, hash_kept, "{label}: hash value");
+        assert_eq!(expected.bbox(), bbox, "{label}: bbox built at once");
+        assert_eq!(m.content_hash(), expected.content_hash(), "{label}: hash");
+        assert_eq!(
+            (copy.content_hash(), copy.bbox()),
+            (red_tri().content_hash(), Rect::new(0.0, 0.0, 1.0, 1.0)),
+            "{label}: the clone keeps the content before",
+        );
     }
+    assert_ne!(
+        red_tri().content_hash(),
+        Mesh::new().content_hash(),
+        "content changes the hash"
+    );
 }
 
 /// `vertex` refuses a non-finite position, the one door a vertex enters by, so a mesh never holds

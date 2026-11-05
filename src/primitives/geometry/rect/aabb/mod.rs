@@ -28,26 +28,43 @@ impl Aabb {
         let Some(first) = points.next() else {
             return Rect::ZERO;
         };
-        let mut bounds = Self {
-            lo: first,
-            hi: first,
-            saw_nan: first.is_nan(),
-        };
+        let mut bounds = Self::at(first);
         for p in points {
             bounds.push(p);
         }
         bounds.finish()
     }
 
+    /// The bounds of `p` alone.
     #[inline]
-    fn push(&mut self, p: Vec2) {
+    pub(crate) fn at(p: Vec2) -> Self {
+        Self {
+            lo: p,
+            hi: p,
+            saw_nan: p.is_nan(),
+        }
+    }
+
+    /// The bounds of both `self`'s points and `other`'s.
+    #[inline]
+    pub(crate) fn union(self, other: Self) -> Self {
+        Self {
+            lo: self.lo.min(other.lo),
+            hi: self.hi.max(other.hi),
+            saw_nan: self.saw_nan | other.saw_nan,
+        }
+    }
+
+    /// Grow to hold `p`.
+    #[inline]
+    pub(crate) fn push(&mut self, p: Vec2) {
         self.saw_nan |= p.is_nan();
         self.lo = self.lo.min(p);
         self.hi = self.hi.max(p);
     }
 
     #[inline]
-    const fn finish(self) -> Rect {
+    pub(crate) const fn finish(self) -> Rect {
         if self.saw_nan {
             return Rect::NAN;
         }

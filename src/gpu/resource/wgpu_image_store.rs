@@ -28,10 +28,6 @@ use std::ops::Range;
 pub(crate) struct WgpuImageStore {
     /// `None` until the first attach.
     attached: RefCell<Option<AttachedStore>>,
-    /// Staging for [`premultiply_into`], reused across updates and held to [`STAGED_BYTES`]: a
-    /// translucent image is premultiplied and written a band of rows at a time. Opaque images skip
-    /// it ([`Self::write`]).
-    staged: RefCell<Vec<SrgbaU8>>,
     /// Built with the store, at startup: the build takes milliseconds, which shouldn't
     /// land on the frame that registers a soft-edged image.
     premultiply: Box<[[u8; 256]; 256]>,
@@ -44,6 +40,10 @@ struct AttachedStore {
     /// The device's group-0 layout and sampler, which an image's group binds through.
     binding: TextureBinding,
     textures: FxHashMap<TextureId, ImageTexture>,
+    /// Staging for [`premultiply_into`], reused across updates and held to [`STAGED_BYTES`]: a
+    /// translucent image is premultiplied and written a band of rows at a time. Opaque images skip
+    /// it ([`WgpuImageStore::write`]).
+    staged: Vec<SrgbaU8>,
 }
 
 #[derive(Debug)]
@@ -54,7 +54,7 @@ pub(crate) struct ImageTexture {
 
 const ATTACHED: &str = "the host attaches a device before it draws or registers an image";
 
-/// The most [`WgpuImageStore::staged`] holds, a band of rows at least one high: a 64 MP
+/// The most [`AttachedStore::staged`] holds, a band of rows at least one high: a 64 MP
 /// translucent image staged whole would keep 256 MiB for the session, and in bands of 1 MiB it
 /// costs the same copies, one `write_texture` each. It bounds the CPU copy alone: wgpu stages each
 /// write in a buffer of its own until the submit, so the upload's staging peak is the image.
@@ -65,7 +65,6 @@ impl Default for WgpuImageStore {
     fn default() -> Self {
         Self {
             attached: RefCell::default(),
-            staged: RefCell::default(),
             premultiply: premultiplied_bytes(),
         }
     }
@@ -79,6 +78,7 @@ impl WgpuImageStore {
             gpu: gpu.clone(),
             binding,
             textures: FxHashMap::default(),
+            staged: Vec::new(),
         });
     }
 
@@ -131,6 +131,7 @@ impl ImageStore for WgpuImageStore {
             gpu,
             binding,
             textures,
+            staged,
         } = &mut *attached;
         let entry = textures
             .entry(id)
@@ -168,12 +169,11 @@ impl ImageStore for WgpuImageStore {
             write(0, &image.pixels);
             return Ok(());
         }
-        let mut staged = self.staged.borrow_mut();
         let width = image.size.x as usize;
         for rows in bands(image.size) {
             let band = &texels[rows.start as usize * width..rows.end as usize * width];
-            premultiply_into(&self.premultiply, band, &mut staged);
-            write(rows.start, bytemuck::cast_slice(&staged));
+            premultiply_into(&self.premultiply, band, staged);
+            write(rows.start, bytemuck::cast_slice(staged));
         }
         Ok(())
     }
@@ -398,7 +398,7 @@ mod tests {
             ..SrgbaU8::hex(0x4cd3ff)
         });
         store.write(TextureId(1), &image).unwrap();
-        let staged = store.staged.borrow().capacity() * 4;
+        let staged = store.attached().staged.capacity() * 4;
         assert!(staged <= STAGED_BYTES as usize, "{staged} bytes staged");
     }
 }

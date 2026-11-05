@@ -10,7 +10,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
-use std::cell::Cell;
 use std::hash::Hasher as _;
 
 /// One vertex of a user-supplied mesh: 12 B (pos 8 + color 4), no padding,
@@ -50,16 +49,20 @@ impl MeshVertex {
 /// CCW but the pipeline does not cull.
 #[derive(Default, Clone, Debug)]
 pub struct Mesh {
-    pub(crate) vertices: Vec<MeshVertex>,
-    pub(crate) idxs: Vec<u32>,
+    /// Private, as the hashes and the bounds follow every push: a write past the mutators would
+    /// leave them stale.
+    vertices: Vec<MeshVertex>,
+    idxs: Vec<u32>,
     /// The largest index pushed, so [`Self::is_noop`] screens an index past
     /// the last vertex at one compare. Meaningless while `idxs` is empty.
     max_idx: u32,
-    /// Lazy cache of `content_hash`, cleared by every mutator. It turns a retained mesh's
-    /// per-frame O(n) re-hash into a hit.
-    cached_hash: Cell<Option<u64>>,
-    /// Lazy cache of the owner-local AABB, same contract as `cached_hash`.
-    cached_bbox: Cell<Option<Rect>>,
+    /// The vertices hashed as they are pushed, and the indices beside them: each mutator only
+    /// appends, so [`Self::content_hash`] reads two states and a retained mesh hashes nothing
+    /// per frame. Path-independent: one write per vertex and per index, however they came in.
+    vertex_hash: Hasher,
+    idx_hash: Hasher,
+    /// The owner-local AABB of the vertices, grown as each is pushed; `None` while empty.
+    bounds: Option<Aabb>,
 }
 
 impl Mesh {
@@ -70,8 +73,9 @@ impl Mesh {
             vertices: Vec::new(),
             idxs: Vec::new(),
             max_idx: 0,
-            cached_hash: Cell::new(None),
-            cached_bbox: Cell::new(None),
+            vertex_hash: Hasher::new(),
+            idx_hash: Hasher::new(),
+            bounds: None,
         }
     }
 
@@ -82,19 +86,21 @@ impl Mesh {
             vertices: Vec::with_capacity(vertices),
             idxs: Vec::with_capacity(idxs),
             max_idx: 0,
-            cached_hash: Cell::new(None),
-            cached_bbox: Cell::new(None),
+            vertex_hash: Hasher::new(),
+            idx_hash: Hasher::new(),
+            bounds: None,
         }
     }
 
-    /// Drop the contents and cached hash and bbox, keeping capacity.
+    /// Drop the contents, keeping capacity.
     #[inline]
     pub fn clear(&mut self) {
         self.vertices.clear();
         self.idxs.clear();
         self.max_idx = 0;
-        self.cached_hash.set(None);
-        self.cached_bbox.set(None);
+        self.vertex_hash = Hasher::new();
+        self.idx_hash = Hasher::new();
+        self.bounds = None;
     }
 
     /// Non-paintable: no vertices, indices not forming whole triangles, or an
@@ -109,21 +115,45 @@ impl Mesh {
             || self.max_idx as usize >= self.vertices.len()
     }
 
-    /// Stable visual hash of vertices and indices. Memoized until a public
-    /// mutator runs.
+    pub(crate) const fn vertices(&self) -> &[MeshVertex] {
+        self.vertices.as_slice()
+    }
+
+    pub(crate) const fn idxs(&self) -> &[u32] {
+        self.idxs.as_slice()
+    }
+
+    /// Stable visual hash of vertices and indices, the same however the mesh was built.
     pub fn content_hash(&self) -> u64 {
-        if let Some(h) = self.cached_hash.get() {
-            return h;
+        let mut h = self.vertex_hash.clone();
+        h.write_u64(self.idx_hash.finish());
+        h.finish()
+    }
+
+    /// Push `vertex`, hashing it and growing the bounds.
+    #[inline]
+    fn push_vertex(&mut self, vertex: MeshVertex) {
+        self.hash_vertex(vertex);
+        match &mut self.bounds {
+            Some(bounds) => bounds.push(vertex.pos),
+            None => self.bounds = Some(Aabb::at(vertex.pos)),
         }
-        let mut h = Hasher::new();
-        for vertex in &self.vertices {
-            vertex.pos.hash_visual(&mut h);
-            h.write_u32(vertex.color.to_u32());
-        }
-        h.pod_slice(self.idxs.as_slice());
-        let v = h.finish();
-        self.cached_hash.set(Some(v));
-        v
+        self.vertices.push(vertex);
+    }
+
+    /// Fold `vertex` into the vertex hash: the one write per vertex, whichever way it comes in.
+    #[inline]
+    fn hash_vertex(&mut self, vertex: MeshVertex) {
+        vertex.pos.hash_visual(&mut self.vertex_hash);
+        self.vertex_hash.write_u32(vertex.color.to_u32());
+    }
+
+    /// Push index `idx`, hashing it: the one way an index comes in.
+    #[inline]
+    fn push_idx(&mut self, idx: u32) {
+        self.idx_hash.write_u32(idx);
+        self.idxs.push(idx);
+        self.max_idx = self.max_idx.max(idx);
     }
 
     /// Push a vertex; returns its index for [`Self::triangle`].
@@ -136,10 +166,7 @@ impl Mesh {
     #[track_caller]
     pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32 {
         let idx = checked_vertex_idx(self.vertices.len());
-        self.vertices
-            .push(MeshVertex::new(vec2::offset(pos), color));
-        self.cached_hash.set(None);
-        self.cached_bbox.set(None);
+        self.push_vertex(MeshVertex::new(vec2::offset(pos), color));
         idx
     }
 
@@ -157,11 +184,9 @@ impl Mesh {
             "mesh triangle indices [{a}, {b}, {c}] exceed vertex count {}",
             self.vertices.len(),
         );
-        self.idxs.push(a);
-        self.idxs.push(b);
-        self.idxs.push(c);
-        self.max_idx = self.max_idx.max(a.max(b).max(c));
-        self.cached_hash.set(None);
+        self.push_idx(a);
+        self.push_idx(b);
+        self.push_idx(c);
     }
 
     /// Append another mesh, offsetting its indices into this mesh's vertex
@@ -182,29 +207,30 @@ impl Mesh {
             .expect("combined mesh vertex count overflowed usize");
         checked_vertex_idx(combined_vertex_count - 1);
         let base = checked_vertex_idx(self.vertices.len());
+        for &vertex in &other.vertices {
+            self.hash_vertex(vertex);
+        }
         self.vertices.extend_from_slice(&other.vertices);
+        let other_bounds = other.bounds.expect("a mesh with vertices has bounds");
+        self.bounds = Some(
+            self.bounds
+                .map_or(other_bounds, |bounds| bounds.union(other_bounds)),
+        );
         self.idxs.reserve(other.idxs.len());
         for &idx in &other.idxs {
-            self.idxs.push(checked_rebased_idx(base, idx));
+            self.push_idx(checked_rebased_idx(base, idx));
         }
-        if !other.idxs.is_empty() {
-            self.max_idx = self.max_idx.max(checked_rebased_idx(base, other.max_idx));
-        }
-        self.cached_hash.set(None);
-        self.cached_bbox.set(None);
     }
 
-    /// Owner-local AABB of `vertices`, memoized; empty gives `Rect::ZERO`.
-    pub fn bbox(&self) -> Rect {
-        if let Some(b) = self.cached_bbox.get() {
-            return b;
+    /// Owner-local AABB of `vertices`; empty gives `Rect::ZERO`.
+    pub const fn bbox(&self) -> Rect {
+        match self.bounds {
+            Some(bounds) => bounds.finish(),
+            None => Rect::ZERO,
         }
-        let b = compute_aabb(&self.vertices);
-        self.cached_bbox.set(Some(b));
-        b
     }
 
-    /// Filled convex polygon (fan around the first vertex), bbox pre-cached.
+    /// Filled convex polygon (fan around the first vertex).
     /// A non-convex polygon renders wrong.
     ///
     /// # Panics
@@ -224,7 +250,6 @@ impl Mesh {
             m.triangle(i0, prev, next);
             prev = next;
         }
-        m.cached_bbox.set(Some(Aabb::of(points)));
         m
     }
 }
@@ -238,13 +263,6 @@ fn checked_vertex_idx(idx: usize) -> u32 {
 const fn checked_rebased_idx(base: u32, idx: u32) -> u32 {
     base.checked_add(idx)
         .expect("appended mesh index exceeds u32 range")
-}
-
-// Not fused into the copy loops in `shape/lower/`: splitting the AABB pass
-// from the copy is ~3x faster past a handful of points, since the fold
-// vectorizes and the copy becomes one `memcpy`.
-fn compute_aabb(verts: &[MeshVertex]) -> Rect {
-    Aabb::of_iter(verts.iter().map(|v| v.pos))
 }
 
 #[cfg(test)]

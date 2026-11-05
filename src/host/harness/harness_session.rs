@@ -69,14 +69,14 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     }
 
     fn find<X: Locate<A> + Clone + Send + 'static>(
-        &self,
+        &mut self,
         at: &Locator<X>,
     ) -> Result<Found, PlayError> {
         at.find(&*self.app, &self.harness.window.driver.ui)
             .map_err(PlayError::Locate)
     }
 
-    fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
+    fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
         Ok(self.harness.widgets(filter))
     }
 }
