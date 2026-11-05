@@ -21,6 +21,7 @@ pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod popup;
 pub(crate) mod progress_bar;
+pub(crate) mod scrim;
 pub(crate) mod scrollbar;
 pub(crate) mod segmented;
 pub(crate) mod selection;
@@ -59,6 +60,7 @@ use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
 use crate::theme::popup::PopupTheme;
 use crate::theme::progress_bar::ProgressBarTheme;
+use crate::theme::scrim::Scrim;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::theme::segmented::SegmentedTheme;
 use crate::theme::separator::SeparatorTheme;
@@ -234,6 +236,7 @@ no_text_slots!(
     AnimationSpec,
     ClipMode,
     CloseShown,
+    Scrim,
 );
 
 /// A whole style.

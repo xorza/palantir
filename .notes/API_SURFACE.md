@@ -1485,7 +1485,7 @@ Modal
     struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
-        pub const fn scrim(self, color: RgbaF32) -> Self
+        pub fn scrim(self, scrim: impl Into<Scrim>) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
         pub fn close(ui: &mut Ui, id: WidgetId)
@@ -1495,7 +1495,7 @@ Modal
 ModalTheme
     struct ModalTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
-        pub scrim: RgbaF32
+        pub scrim: Scrim
         pub padding: Spacing
         pub min_width: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
@@ -1901,6 +1901,7 @@ RgbaF32
         pub const fn hexa(rgba: u32) -> Self
         pub const fn to_srgba8(self) -> SrgbaU8
         impl From<RgbaF32> for Brush
+        impl From<RgbaF32> for Scrim
 
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
@@ -1911,6 +1912,12 @@ Screenshot
 
 ScreenshotId
     struct ScreenshotId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+
+Scrim
+    struct Scrim: Clone, Copy, Debug, Deserialize<'de>, From<RgbaF32>, Lerp, PartialEq, Serialize
+        pub tint: RgbaF32
+        pub filter: BackdropFilter
+        pub const fn with_filter(self, filter: BackdropFilter) -> Self
 
 Scroll
     struct Scroll<'a>: Configure, Debug, ThemeDefaults (blanket)

@@ -5,11 +5,10 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
+use crate::theme::scrim::Scrim;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configurator::Configurator;
@@ -37,7 +36,7 @@ use std::rc::Rc;
 pub struct Modal<'a> {
     widget: Widget,
     chrome: Option<Chrome>,
-    scrim: Option<RgbaF32>,
+    scrim: Option<Scrim>,
     click_outside: ClickOutside,
     style: Option<&'a ModalTheme>,
 }
@@ -61,14 +60,18 @@ impl<'a> Modal<'a> {
         self
     }
 
-    /// The scrim's color, defaulting to [`crate::Theme::modal`]'s.
+    /// What the modal lays over the window behind its panel, defaulting to
+    /// [`crate::Theme::modal`]'s; a color makes a scrim that only dims.
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    /// Panics unless the scrim's tint is a [color](crate::widget::domain::color) and its filter
+    /// passes [`BackdropFilter`](crate::BackdropFilter)'s checks.
     #[track_caller]
-    pub const fn scrim(mut self, color: RgbaF32) -> Self {
-        self.scrim = Some(domain::color(color));
+    pub fn scrim(mut self, scrim: impl Into<Scrim>) -> Self {
+        let scrim = scrim.into();
+        scrim.validate();
+        self.scrim = Some(scrim);
         self
     }
 
@@ -89,7 +92,7 @@ impl<'a> Modal<'a> {
         // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let mt = self.style.unwrap_or(&ui_theme.modal);
-        let dim = Chrome::fill(self.scrim.unwrap_or(mt.scrim));
+        let dim = self.scrim.unwrap_or(mt.scrim).chrome();
         let panel_chrome = self.chrome.as_ref().unwrap_or(&mt.panel);
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;

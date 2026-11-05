@@ -4,7 +4,6 @@
 - mesh once registrations
 - flexbox
 - mcp
-- scrim: Option<RgbaF32> - to backdrop? for blur, etc?
 - image handle with closure for reupload?
 - audit platform dependent behavior
 - build-in colors

@@ -182,7 +182,7 @@ const PINS: &[Pin] = &[
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
     pin::<Popup<'static>>("widgets::Popup", 352, 8),
-    pin::<Modal<'static>>("widgets::Modal", 344, 8),
+    pin::<Modal<'static>>("widgets::Modal", 400, 8),
     pin::<Tooltip<'static>>("widgets::Tooltip", 512, 8),
     pin::<GpuView>("widgets::GpuView", 152, 8),
     pin::<Menu<'static>>("widgets::Menu", 432, 8),

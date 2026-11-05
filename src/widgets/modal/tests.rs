@@ -6,10 +6,12 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::theme::scrim::Scrim;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
@@ -43,19 +45,37 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
     assert_eq!(tree.bounds(panel.node).min_size, Size::ZERO);
 }
 
-/// A modal takes no placement, so the layer default makes the backdrop cover the screen; the root paints the scrim.
+/// A modal takes no placement, so the layer default makes the backdrop cover the screen; the root
+/// paints the scrim. The theme's dims in half-clear black with no filter; a color passed in dims
+/// in that color, as `Scrim::from` it; a blurred scrim paints its tint over the window seen
+/// through its filter; and under reduced transparency the blurred scrim drops its filter and
+/// keeps its tint, half clear through the sRGB byte its fallback stores, not made opaque.
 #[test]
 fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
     let id = WidgetId::from_hash("modal-full-surface");
     let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
-    for explicit in [None, Some(custom)] {
+    let blurred = Scrim::from(custom).with_filter(BackdropFilter::blur(8.0));
+    let themed = Scrim::from(RgbaF32::BLACK.with_alpha8(128));
+    let in_bytes = RgbaF32::from(custom.to_srgba8());
+    assert!(
+        in_bytes.a < 1.0,
+        "the fallback stays half clear: {in_bytes:?}"
+    );
+    for (label, explicit, reduced, tint, filtered) in [
+        ("themed", None, false, themed.tint, false),
+        ("a color", Some(Scrim::from(custom)), false, custom, false),
+        ("blurred", Some(blurred), false, custom, true),
+        ("blurred, reduced", Some(blurred), true, in_bytes, false),
+    ] {
         let mut h = Harness::mono(SURFACE);
-        let themed = h.ui().theme().modal.scrim;
+        h.set_system_transparency_reduced(reduced);
+        assert_eq!(h.ui().theme().modal.scrim, themed, "{label}");
         h.frame(|ui| {
             let modal = Modal::new().id(id);
             match explicit {
-                Some(c) => modal.scrim(c),
+                Some(scrim) if scrim == Scrim::from(custom) => modal.scrim(custom),
+                Some(scrim) => modal.scrim(scrim),
                 None => modal,
             }
             .show(ui, |_| {});
@@ -67,17 +87,18 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
             h.ui().layout(Layer::Modal).rect[backdrop.node.idx()],
             Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
         );
-        let scrim = h
+        let row = h
             .ui()
             .tree(Layer::Modal)
             .chrome(backdrop.node)
-            .expect("the backdrop paints a scrim")
-            .fill;
-        let want = explicit.unwrap_or(themed).to_f16();
+            .expect("the backdrop paints a scrim");
+        let want = tint.to_f16();
         assert!(
-            matches!(scrim, ShapeBrush::Solid(fill) if fill == want),
-            "explicit {explicit:?}: scrim {scrim:?}, want {want:?}",
+            matches!(row.fill, ShapeBrush::Solid(fill) if fill == want),
+            "{label}: scrim {:?}, want {want:?}",
+            row.fill,
         );
+        assert_eq!(row.backdrop.is_some(), filtered, "{label}");
     }
 }
 

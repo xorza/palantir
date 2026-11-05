@@ -5,6 +5,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
+use crate::theme::scrim::Scrim;
 
 /// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.scrim(...)`) win; these defaults fill in.
 #[derive(
@@ -19,10 +20,8 @@ use crate::theme::palette::Palette;
 pub struct ModalTheme {
     /// Dialog panel chrome.
     pub panel: Chrome,
-    /// Dimming scrim; straight-alpha linear. A color, as Fluent's ContentDialog smoke layer,
-    /// Material 3's scrim, Apple's alerts and libadwaita's `AdwDialog` all dim; a frosted panel
-    /// shows the page through itself. Refused: a blurred scrim, which captures the whole window.
-    pub scrim: RgbaF32,
+    /// What the modal lays over the window behind its panel.
+    pub scrim: Scrim,
     /// Padding inside the panel, applied when the builder leaves it unset.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub padding: Spacing,
@@ -32,14 +31,15 @@ pub struct ModalTheme {
 }
 
 impl ModalTheme {
-    /// [`Palette::popup_panel`] over a half-opaque black scrim, in [`Metrics::float_material`]
+    /// [`Palette::popup_panel`] over a half-opaque black scrim that only dims, as every native
+    /// toolkit's does ([`Scrim`]), in [`Metrics::float_material`]
     /// held for the ambient ink, as the modal's content is the app's. The panel sits a rung under
     /// the controls it holds, as every surface does, so a button shows by its fill. Refused:
     /// `element_mid`, a button's own fill, which left a button its hairline alone.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             panel: m.dress_float(p.popup_panel(m), p.text),
-            scrim: RgbaF32::BLACK.with_alpha8(128),
+            scrim: Scrim::from(RgbaF32::BLACK.with_alpha8(128)),
             padding: Spacing::all(m.space.xl),
             min_width: 280.0,
         }

@@ -377,6 +377,7 @@ pub use theme::modal::ModalTheme;
 pub use theme::palette::Palette;
 pub use theme::popup::PopupTheme;
 pub use theme::progress_bar::ProgressBarTheme;
+pub use theme::scrim::Scrim;
 pub use theme::scrollbar::ScrollbarTheme;
 pub use theme::segmented::SegmentedTheme;
 pub use theme::selection::Selection;
