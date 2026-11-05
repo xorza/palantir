@@ -123,7 +123,7 @@ struct ExternalReplacementCase {
 #[test]
 fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
     fn word_nav(key: Key) -> KeyPress {
-        KeyPress::with(key, NAV.word_chord())
+        KeyPress::with(key, Modifiers::CTRL)
     }
 
     let cases = [
@@ -286,7 +286,6 @@ fn type_char(s: &mut String, state: &mut EditState, c: char, max: Option<usize>)
             Duration::ZERO,
         ),
         press(Key::Char(c)),
-        NAV,
     );
 }
 
@@ -365,9 +364,9 @@ fn max_chars_caps_typed_input() {
     assert_eq!((state.caret, state.selection), (2, Some(0)));
 }
 
-/// Ctrl+Home / Ctrl+End jump to the document ends in a multi-line editor, where plain Home / End mean the visual line's.
+/// The command modifier with Home / End or Up / Down jumps to the document ends in a multi-line editor, where plain Home / End mean the visual line's.
 #[test]
-fn ctrl_home_and_end_reach_the_document_ends() {
+fn the_command_modifier_reaches_the_document_ends() {
     let mut s = String::from("one\ntwo\nthree");
     let mut state = EditState {
         caret: 5,
@@ -385,7 +384,6 @@ fn ctrl_home_and_end_reach_the_document_ends() {
                 Duration::ZERO,
             ),
             kp,
-            NAV,
         )
     };
     assert_eq!(
@@ -398,6 +396,10 @@ fn ctrl_home_and_end_reach_the_document_ends() {
         KeyOutcome::None
     );
     assert_eq!(state.caret, 0);
+    key(&mut s, &mut state, ctrl_press(Key::ArrowDown));
+    assert_eq!(state.caret, s.len());
+    key(&mut s, &mut state, ctrl_press(Key::ArrowUp));
+    assert_eq!(state.caret, 0);
     assert_eq!(
         key(&mut s, &mut state, press(Key::End)),
         KeyOutcome::Probe(ProbeMotion {
@@ -406,90 +408,80 @@ fn ctrl_home_and_end_reach_the_document_ends() {
         }),
         "plain End is still the visual line's",
     );
+    for mods in [Modifiers::ALT, Modifiers::CTRL | Modifiers::ALT] {
+        assert_eq!(
+            key(&mut s, &mut state, KeyPress::with(Key::End, mods)),
+            KeyOutcome::Probe(ProbeMotion {
+                target: ProbeTarget::RowEnd,
+                motion: CaretMove::Collapse,
+            }),
+            "{mods:?} does not reach the document's end",
+        );
+    }
 }
 
-/// The platform's line and word chords. macOS (Cmd is `Modifiers::CTRL`): Cmd+Right / Left go to
-/// line end / start, Cmd+Backspace deletes to line start, and Option+Backspace / Delete delete a
-/// word. Elsewhere Ctrl+Arrow is the word motion and Ctrl+Backspace / Delete delete a word.
+/// One chord table on every platform, where Cmd reads as `Modifiers::CTRL` on macOS. The command
+/// modifier or Alt acts on a word. Both, which are AltGr off macOS, act on one character, as no
+/// modifier does. Carets in "one two": from 0 to the right, past `one` at 3, or one character at
+/// 1; from 6 to the left, the start of `two` at 4, or one character at 5. In "one two three",
+/// Backspace from 8 removes `two ` or the space, and Delete from 4 removes `two` or `t`.
 #[test]
-fn line_and_word_chords_follow_the_platform() {
-    let alt_press = |key| KeyPress::with(key, Modifiers::ALT);
-    // Carets after Ctrl+Right from 0 and Ctrl+Left from 5 in "one two". Then, in
-    // "one two three", what Ctrl+Backspace and Alt+Backspace leave with the caret after
-    // `two `, and Ctrl+Delete and Alt+Delete with it before `two`: a chord that is not
-    // the platform's word or line chord deletes one character.
-    let cases = [
-        (
-            Platform::Mac,
-            7,
-            0,
-            ["three", "one three", "one wo three", "one  three"],
-        ),
-        (
-            Platform::Windows,
-            3,
-            4,
-            ["one three", "one twothree", "one  three", "one wo three"],
-        ),
-        (
-            Platform::Linux,
-            3,
-            4,
-            ["one three", "one twothree", "one  three", "one wo three"],
-        ),
-    ];
-    for (platform, right, left, deleted) in cases {
-        let keys = FieldKeys::on(platform);
+fn the_command_modifier_and_alt_act_on_a_word() {
+    let both = Modifiers::CTRL | Modifiers::ALT;
+    for (mods, right, left, backspaced, deleted) in [
+        (Modifiers::CTRL, 3, 4, "one three", "one  three"),
+        (Modifiers::ALT, 3, 4, "one three", "one  three"),
+        (both, 1, 5, "one twothree", "one wo three"),
+        (Modifiers::NONE, 1, 5, "one twothree", "one wo three"),
+    ] {
+        let keys = FieldKeys::new(Clipboard::memory());
+        let chord = |key| KeyPress::with(key, mods);
         let mut s = String::from("one two");
         let mut state = EditState::default();
-        keys.apply(&mut s, &mut state, ctrl_press(Key::ArrowRight));
-        assert_eq!(
-            state.caret, right,
-            "{platform:?}: line end, or past the first word"
-        );
-        state.caret = 5;
-        keys.apply(&mut s, &mut state, ctrl_press(Key::ArrowLeft));
-        assert_eq!(
-            state.caret, left,
-            "{platform:?}: line start, or the word start"
-        );
+        keys.apply(&mut s, &mut state, chord(Key::ArrowRight));
+        assert_eq!(state.caret, right, "{mods:?}: right from 0");
+        state.caret = 6;
+        keys.apply(&mut s, &mut state, chord(Key::ArrowLeft));
+        assert_eq!(state.caret, left, "{mods:?}: left from 6");
 
-        let chords = [
-            (8, ctrl_press(Key::Backspace)),
-            (8, alt_press(Key::Backspace)),
-            (4, ctrl_press(Key::Delete)),
-            (4, alt_press(Key::Delete)),
-        ];
-        for ((caret, chord), want) in chords.into_iter().zip(deleted) {
+        for (caret, key, want) in [(8, Key::Backspace, backspaced), (4, Key::Delete, deleted)] {
             let mut s = String::from("one two three");
             let mut state = EditState {
                 caret,
                 ..EditState::default()
             };
-            keys.apply(&mut s, &mut state, chord);
-            assert_eq!(s, want, "{platform:?}: {chord:?} from {caret}");
+            keys.apply(&mut s, &mut state, chord(key));
+            assert_eq!(s, want, "{mods:?}: {key:?} from {caret}");
         }
     }
+
+    let mut s = String::from("one two");
+    let mut state = EditState::default();
+    let extend = KeyPress::with(Key::ArrowRight, Modifiers::ALT | Modifiers::SHIFT);
+    FieldKeys::new(Clipboard::memory()).apply(&mut s, &mut state, extend);
+    assert_eq!(
+        (state.caret, state.selection),
+        (3, Some(0)),
+        "Shift extends"
+    );
 }
 
-/// Redo is Ctrl+Shift+Z on every platform, Windows included; Ctrl+Y redoes nothing.
+/// Redo is Ctrl+Shift+Z; Ctrl+Y redoes nothing.
 #[test]
-fn redo_is_ctrl_shift_z_on_every_platform() {
-    for platform in [Platform::Windows, Platform::Mac, Platform::Linux] {
-        let keys = FieldKeys::on(platform);
-        let mut s = String::from("a");
-        let mut state = EditState {
-            caret: 1,
-            ..EditState::default()
-        };
-        keys.apply(&mut s, &mut state, press(Key::Char('b')));
-        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
-        assert_eq!(s, "a", "{platform:?}: premise, the typing undone");
-        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('y')));
-        assert_eq!(s, "a", "{platform:?}: Ctrl+Y");
-        keys.apply(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
-        assert_eq!(s, "ab", "{platform:?}: Ctrl+Shift+Z");
-    }
+fn redo_is_ctrl_shift_z() {
+    let keys = FieldKeys::new(Clipboard::memory());
+    let mut s = String::from("a");
+    let mut state = EditState {
+        caret: 1,
+        ..EditState::default()
+    };
+    keys.apply(&mut s, &mut state, press(Key::Char('b')));
+    keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(s, "a", "premise, the typing undone");
+    keys.apply(&mut s, &mut state, ctrl_press(Key::Char('y')));
+    assert_eq!(s, "a", "Ctrl+Y");
+    keys.apply(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
+    assert_eq!(s, "ab", "Ctrl+Shift+Z");
 }
 
 #[test]

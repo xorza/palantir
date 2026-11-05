@@ -33,8 +33,7 @@ fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
     });
 }
 
-/// An index past the last vertex is refused before either push, leaving no partial run. Debug-only: it runs per item of a build loop.
-#[cfg(debug_assertions)]
+/// An index past the last vertex is refused before either push, leaving no partial run.
 #[test]
 fn triangle_validates_each_index_before_mutating() {
     fn mesh_with_vertices(count: usize) -> Mesh {
@@ -98,22 +97,7 @@ fn triangle_indices_offset_in_append() {
     }
     assert_eq!(a.vertices, expected.vertices);
     assert_eq!(a.content_hash(), expected.content_hash());
-    assert_eq!(a.max_idx, 5);
     assert!(!a.is_noop());
-}
-
-/// An out-of-range index trips `triangle`'s debug assert; release pushes it, so the state is built by hand and the screen must drop the mesh. The control row has the last index at 2.
-#[test]
-fn an_index_past_the_last_vertex_is_a_noop() {
-    for (last, noop) in [(2, false), (3, true)] {
-        let mut mesh = Mesh::with_capacity(3, 3);
-        for x in 0..3 {
-            mesh.vertex(Vec2::new(x as f32, x as f32 * 2.0), RgbaF32::WHITE);
-        }
-        mesh.idxs.extend([0, 1, last]);
-        mesh.max_idx = last;
-        assert_eq!(mesh.is_noop(), noop, "last index {last} of 3 vertices");
-    }
 }
 
 #[test]

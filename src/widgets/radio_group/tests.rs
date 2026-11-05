@@ -1,6 +1,7 @@
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
@@ -287,4 +288,23 @@ fn arrows_and_tab_pass_a_disabled_option_by() {
         "Shift+Tab passes the checked A by"
     );
     assert_eq!(cur, Some(Pick::A), "and checks nothing");
+}
+
+/// The group sets each option's id, so an id of the caller's is refused, in every build.
+#[test]
+fn an_option_refuses_an_id_of_its_own() {
+    let mut h = Harness::mono(UVec2::new(200, 100));
+    let mut value = Some(Pick::A);
+    panic_probe::assert_panics_with("a radio option takes its id from its group", || {
+        h.frame(|ui| {
+            RadioGroup::new(&mut value)
+                .id(group())
+                .show(ui, |ui, options| {
+                    options
+                        .option(Some(Pick::A))
+                        .id(WidgetId::from_hash("own"))
+                        .show(ui);
+                });
+        });
+    });
 }

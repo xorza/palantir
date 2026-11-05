@@ -118,7 +118,7 @@ fn redo_stack_changes_only_on_real_edit() {
         },
         Duration::ZERO,
     );
-    apply_editor_key(&mut editor, press(Key::Char('x')), NAV);
+    apply_editor_key(&mut editor, press(Key::Char('x')));
     assert!(!editor.edited());
     assert_eq!(editor.text(), "a");
     assert_eq!(editor.redo_len(), 1);
@@ -146,7 +146,6 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
             Duration::ZERO,
         ),
         press(Key::Backspace),
-        NAV,
     );
     assert_eq!(s, "a");
     assert_eq!(state.history.undo_len(), 1);
@@ -162,7 +161,6 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
             Duration::ZERO,
         ),
         press(Key::Char('x')),
-        NAV,
     );
     assert_eq!(s, "a");
     assert_eq!(state.history.undo_len(), 1);
@@ -179,7 +177,6 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
             Duration::ZERO,
         ),
         press(Key::Backspace),
-        NAV,
     );
     assert_eq!(s, "");
     assert_eq!(state.history.undo_len(), 1);
@@ -244,19 +241,17 @@ fn the_history_sees_the_buffer_exactly() {
     assert_eq!(text, "aby", "an equal-length replacement drops the history");
 }
 
-/// Redo is Ctrl+Shift+Z on every platform (Cmd+Shift+Z on macOS), and Ctrl+Y is no chord: the
-/// undone "a" stays undone after it.
+/// Redo is Ctrl+Shift+Z (Cmd+Shift+Z on macOS), and Ctrl+Y is no chord: the undone "a" stays
+/// undone after it.
 #[test]
 fn redo_is_ctrl_shift_z_alone() {
-    for platform in [Platform::Windows, Platform::Linux, Platform::Mac] {
-        let keys = FieldKeys::on(platform);
-        let mut s = String::new();
-        let mut state = EditState::default();
-        keys.apply(&mut s, &mut state, press(Key::Char('a')));
-        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
-        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('y')));
-        assert_eq!(s, "", "{platform:?}: Ctrl+Y redoes nothing");
-        keys.apply(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
-        assert_eq!(s, "a", "{platform:?}: Ctrl+Shift+Z redoes");
-    }
+    let keys = FieldKeys::new(Clipboard::memory());
+    let mut s = String::new();
+    let mut state = EditState::default();
+    keys.apply(&mut s, &mut state, press(Key::Char('a')));
+    keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
+    keys.apply(&mut s, &mut state, ctrl_press(Key::Char('y')));
+    assert_eq!(s, "", "Ctrl+Y redoes nothing");
+    keys.apply(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
+    assert_eq!(s, "a", "Ctrl+Shift+Z redoes");
 }

@@ -1,10 +1,10 @@
 //! One frame's pointer and keyboard dispatch for a TextEdit.
 
-use crate::common::platform::PLATFORM;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::watch::KeyboardWake;
 use crate::text::probe::{Caret, TextProbe};
 use crate::ui::Ui;
@@ -15,7 +15,6 @@ use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
 use crate::widgets::text_edit::history::EditKind;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_layout::TextLayout;
-use crate::widgets::text_edit::text_nav::TextNav;
 use crate::widgets::text_edit::view_state::ViewState;
 use glam::Vec2;
 
@@ -155,7 +154,7 @@ impl InputPass<'_> {
                 action.execute(&mut ed, &ui.clipboard());
                 continue;
             }
-            match apply_key(&mut ed, kp, TextNav::new(PLATFORM)) {
+            match apply_key(&mut ed, kp) {
                 KeyOutcome::Blur => {
                     ended = Some(EditEnd::Canceled);
                     assert_only_repeats_after(ui.keyboard_events(KeyboardWake::NONE), i);
@@ -189,25 +188,25 @@ fn assert_only_repeats_after(events: &[KeyPress], terminal: usize) {
     );
 }
 
-pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress, nav: TextNav) -> KeyOutcome {
+pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
     let motion = CaretMove::from(keypress.mods);
     let probe = |target| KeyOutcome::Probe(ProbeMotion { target, motion });
-    let line_nav = nav.is_line(keypress.mods);
+    let (command, alt) = (
+        keypress.mods.contains(Modifiers::CTRL),
+        keypress.mods.contains(Modifiers::ALT),
+    );
+    // Not both, which are AltGr off macOS.
+    let word = command != alt;
+    let document = command && !alt;
     match keypress.key {
-        Key::Backspace if line_nav => editor.delete_to_line_start(),
-        Key::Backspace if nav.is_word(keypress.mods) => editor.delete_word_backward(),
+        Key::Backspace if word => editor.delete_word_backward(),
         Key::Backspace => editor.delete_backward(),
-        Key::Delete if nav.is_word(keypress.mods) => editor.delete_word_forward(),
+        Key::Delete if word => editor.delete_word_forward(),
         Key::Delete => editor.delete_forward(),
-        Key::ArrowLeft if nav.is_word(keypress.mods) => editor.move_word_left(motion),
-        Key::ArrowRight if nav.is_word(keypress.mods) => editor.move_word_right(motion),
-        Key::ArrowLeft if line_nav && editor.multiline() => return probe(ProbeTarget::RowStart),
-        Key::ArrowRight if line_nav && editor.multiline() => return probe(ProbeTarget::RowEnd),
-        Key::ArrowLeft if line_nav => editor.move_caret(0, motion),
-        Key::ArrowRight if line_nav => editor.move_caret(editor.text().len(), motion),
-        // Document ends: Ctrl+Home/End, and Cmd+Up/Down on macOS.
-        Key::Home | Key::ArrowUp if nav.is_document(keypress) => editor.move_caret(0, motion),
-        Key::End | Key::ArrowDown if nav.is_document(keypress) => {
+        Key::ArrowLeft if word => editor.move_word_left(motion),
+        Key::ArrowRight if word => editor.move_word_right(motion),
+        Key::Home | Key::ArrowUp if document => editor.move_caret(0, motion),
+        Key::End | Key::ArrowDown if document => {
             editor.move_caret(editor.text().len(), motion);
         }
         Key::ArrowLeft => editor.move_grapheme_left(motion),

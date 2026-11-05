@@ -389,9 +389,14 @@ pub const fn fraction(v: f32) -> f32 {
 }
 
 /// `v` clamped into `0..=1`, or `fallback` where it is not finite (NaN survives `f32::clamp`, an infinity would clamp to an unmeant end). The fallback is the caller's: unknown progress is empty, an unknown split is centered.
+///
+/// # Panics
+///
+/// When `fallback` is outside `0..=1`.
 #[inline]
+#[track_caller]
 pub const fn fraction_or(v: f32, fallback: f32) -> f32 {
-    debug_assert!(
+    assert!(
         is_fraction(fallback),
         "a fraction's fallback must itself be in 0..=1",
     );
@@ -430,9 +435,14 @@ pub(crate) const fn raised_to(v: f32, floor: f32) -> f32 {
 }
 
 /// A theme length floored at `min`, a widget design rule rather than validation.
+///
+/// # Panics
+///
+/// When `min` is no length.
 #[inline]
+#[track_caller]
 pub const fn length_at_least(v: f32, min: f32) -> f32 {
-    debug_assert!(is_length(min), "a length's floor must itself be a length");
+    assert!(is_length(min), "a length's floor must itself be a length");
     v.max(min)
 }
 

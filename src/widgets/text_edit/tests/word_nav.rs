@@ -119,7 +119,7 @@ fn a_triple_click_selects_the_line_in_a_multi_line_field() {
 #[test]
 fn apply_key_word_nav_cases() {
     fn word_nav(key: Key) -> KeyPress {
-        KeyPress::with(key, NAV.word_chord())
+        KeyPress::with(key, Modifiers::CTRL)
     }
 
     fn word_nav_shift(key: Key) -> KeyPress {

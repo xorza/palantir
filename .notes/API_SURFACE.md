@@ -856,6 +856,7 @@ Gpu
         pub fn new(device: Device, queue: Queue) -> Self
         pub const fn device(&self) -> &Device
         pub const fn queue(&self) -> &Queue
+        pub fn max_texture_dim(&self) -> NonZeroU32
         pub fn create_render_pipeline(&self, desc: &RenderPipelineDescriptor<'_>) -> RenderPipeline
         pub fn create_compute_pipeline(&self, desc: &ComputePipelineDescriptor<'_>) -> ComputePipeline
 

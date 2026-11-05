@@ -88,9 +88,8 @@ impl Gpu {
     /// `GpuView` targets, the atlases and the backdrop blur's textures. Every texture made on the
     /// device reads it here; the CPU side reads the copy a host attaches to its `SharedDevice`.
     ///
-    /// A zero limit panics rather than joining [`DeviceRequirements::met_by`]'s
-    /// `Result`: no adapter reports one.
-    pub(crate) fn max_texture_dim(&self) -> NonZeroU32 {
+    /// A zero limit panics: no adapter reports one.
+    pub fn max_texture_dim(&self) -> NonZeroU32 {
         NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
             .expect("device texture dimension limit is zero")
     }

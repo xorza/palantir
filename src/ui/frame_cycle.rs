@@ -148,7 +148,7 @@ impl<'a> FrameCycle<'a> {
         let baseline = FrameBaseline {
             clear: self.ui.theme().window_bg,
             font_epoch: self.ui.resources.text().font_epoch(),
-            collision_overlay: cfg!(debug_assertions) && !self.ui.forest.collisions.is_empty(),
+            collision_overlay: !self.ui.forest.collisions.is_empty(),
         };
         let input = DamageInput {
             forest: &self.ui.forest,

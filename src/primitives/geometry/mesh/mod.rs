@@ -53,9 +53,6 @@ pub struct Mesh {
     /// leave them stale.
     vertices: Vec<MeshVertex>,
     idxs: Vec<u32>,
-    /// The largest index pushed, so [`Self::is_noop`] screens an index past
-    /// the last vertex at one compare. Meaningless while `idxs` is empty.
-    max_idx: u32,
     /// The vertices hashed as they are pushed, and the indices beside them: each mutator only
     /// appends, so [`Self::content_hash`] reads two states and a retained mesh hashes nothing
     /// per frame. Path-independent: one write per vertex and per index, however they came in.
@@ -72,7 +69,6 @@ impl Mesh {
         Self {
             vertices: Vec::new(),
             idxs: Vec::new(),
-            max_idx: 0,
             vertex_hash: Hasher::new(),
             idx_hash: Hasher::new(),
             bounds: None,
@@ -85,7 +81,6 @@ impl Mesh {
         Self {
             vertices: Vec::with_capacity(vertices),
             idxs: Vec::with_capacity(idxs),
-            max_idx: 0,
             vertex_hash: Hasher::new(),
             idx_hash: Hasher::new(),
             bounds: None,
@@ -97,22 +92,16 @@ impl Mesh {
     pub fn clear(&mut self) {
         self.vertices.clear();
         self.idxs.clear();
-        self.max_idx = 0;
         self.vertex_hash = Hasher::new();
         self.idx_hash = Hasher::new();
         self.bounds = None;
     }
 
-    /// Non-paintable: no vertices, indices not forming whole triangles, or an
-    /// index past the last vertex. Mirrors `DrawMeshPayload::is_noop`.
+    /// Non-paintable: no vertices, or indices not forming whole triangles. Mirrors
+    /// `DrawMeshPayload::is_noop`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
-        self.vertices.is_empty()
-            || self.idxs.len() < 3
-            || !self.idxs.len().is_multiple_of(3)
-            // A release build reaches here with what `triangle`'s debug
-            // assert would have caught.
-            || self.max_idx as usize >= self.vertices.len()
+        self.vertices.is_empty() || self.idxs.len() < 3 || !self.idxs.len().is_multiple_of(3)
     }
 
     pub(crate) const fn vertices(&self) -> &[MeshVertex] {
@@ -153,7 +142,6 @@ impl Mesh {
     fn push_idx(&mut self, idx: u32) {
         self.idx_hash.write_u32(idx);
         self.idxs.push(idx);
-        self.max_idx = self.max_idx.max(idx);
     }
 
     /// Push a vertex; returns its index for [`Self::triangle`].
@@ -174,12 +162,12 @@ impl Mesh {
     ///
     /// # Panics
     ///
-    /// Panics in a debug build if an index does not refer to an existing
-    /// vertex. Debug-only because it runs per triangle of a per-frame build; a
-    /// release build draws nothing instead ([`Self::is_noop`]).
+    /// Panics if an index does not refer to an existing vertex: one comparison per triangle, as
+    /// a wrong value never draws quietly.
     #[inline]
+    #[track_caller]
     pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
-        debug_assert!(
+        assert!(
             (a.max(b).max(c) as usize) < self.vertices.len(),
             "mesh triangle indices [{a}, {b}, {c}] exceed vertex count {}",
             self.vertices.len(),

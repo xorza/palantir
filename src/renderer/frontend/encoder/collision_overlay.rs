@@ -1,4 +1,4 @@
-//! The explicit-`WidgetId` collision overlay. Development-only: a duplicate id is a caller bug, and `Forest::report_explicit_collision`'s `tracing::error!` survives into release. Gated at the `mod` declaration so its imports leave the release build too.
+//! The explicit-`WidgetId` collision overlay, in every build: a duplicate id shares a widget's state between two call sites, and a bug that shows beats one that only logs (`Forest::report_explicit_collision`).
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::paint::color::RgbaF32;

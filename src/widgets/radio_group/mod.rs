@@ -313,12 +313,12 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
     ///
     /// # Panics
     ///
-    /// In a debug build, when the caller set the option's id, which its group sets.
+    /// When the caller set the option's id, which its group sets.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse {
         let node = self.configure();
         let auto_id = node.has_auto_id();
         let disabled = node.widget.authored().disabled();
-        debug_assert!(auto_id, "a radio option takes its id from its group");
+        assert!(auto_id, "a radio option takes its id from its group");
         let Self {
             options,
             value,

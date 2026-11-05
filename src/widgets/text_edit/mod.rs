@@ -18,7 +18,6 @@ mod paint_input;
 mod shape_ctx;
 mod text_geometry;
 pub(crate) mod text_layout;
-mod text_nav;
 mod unicode;
 mod view_state;
 

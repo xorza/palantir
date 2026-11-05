@@ -5,7 +5,6 @@ use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
 use crate::widgets::text_edit::input_pass::{
     KeyOutcome, ProbeMotion, ProbeTarget, apply_key as apply_editor_key,
 };
-use crate::widgets::text_edit::text_nav::TextNav;
 use crate::widgets::text_edit::unicode::{
     line_range_at, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
     prev_word_boundary, word_range_at,
@@ -31,37 +30,23 @@ use glam::{UVec2, Vec2};
 use std::iter;
 use std::time::Duration;
 
-/// The build's own chords, for the cases that do not test them.
-const NAV: TextNav = TextNav::new(PLATFORM);
-
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
     FieldKeys::new(Clipboard::memory()).apply(text, state, kp)
 }
 
 /// A single-line field's key handling outside a frame: the clipboard its
-/// commands reach, and the platform whose chords it binds.
+/// commands reach.
 #[derive(Debug)]
 struct FieldKeys {
     clipboard: Clipboard,
-    platform: Platform,
     /// The frame clock the keys land at.
     now: Duration,
 }
 
 impl FieldKeys {
-    /// The build's own platform.
     fn new(clipboard: Clipboard) -> Self {
         Self {
             clipboard,
-            platform: PLATFORM,
-            now: Duration::ZERO,
-        }
-    }
-
-    fn on(platform: Platform) -> Self {
-        Self {
-            clipboard: Clipboard::memory(),
-            platform,
             now: Duration::ZERO,
         }
     }
@@ -82,7 +67,7 @@ impl FieldKeys {
                 action.execute(&mut ed, &self.clipboard);
                 false
             }
-            None => apply_editor_key(&mut ed, kp, TextNav::new(self.platform)) == KeyOutcome::Blur,
+            None => apply_editor_key(&mut ed, kp) == KeyOutcome::Blur,
         }
     }
 }

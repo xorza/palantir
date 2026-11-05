@@ -36,9 +36,7 @@ pub(crate) struct Forest {
     scratch: PerPlane<RecordingScratch>,
     /// Per-frame `WidgetId` tracker (collision detection, auto-id disambiguation). Lives here so every path to `open_node` gets the check.
     pub(crate) ids: SeenIds,
-    /// Explicit-id collisions this frame, read by `encoder::emit_collision_overlays`.
-    ///
-    /// Recorded in every profile for tests, but only painted in a development build.
+    /// Explicit-id collisions this frame, read by `collision_overlay::emit`.
     pub(crate) collisions: Vec<CollisionRecord>,
     /// Planes of the active side-layer scopes; empty for the `Main` baseline.
     ///

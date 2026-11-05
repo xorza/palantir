@@ -14,8 +14,7 @@ use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
-/// The magenta outlines the encoder emitted for this frame's explicit-id collisions, in physical pixels. Debug-build only (`encoder::collision_overlay` is `cfg(debug_assertions)`); selected by stroke width, the only 3 px stroke the encoder emits.
-#[cfg(debug_assertions)]
+/// The magenta outlines the encoder emitted for this frame's explicit-id collisions, in physical pixels. Selected by stroke width, the only 3 px stroke the encoder emits.
 fn collision_outlines(ui: &Ui) -> Vec<Rect> {
     use crate::damage::Damage;
     use crate::renderer::frontend::{BuildPlan, Frontend};
@@ -43,7 +42,6 @@ fn collision_outlines(ui: &Ui) -> Vec<Rect> {
 #[derive(Debug)]
 struct DuplicateIds {
     id: WidgetId,
-    #[cfg(debug_assertions)]
     first_node: NodeId,
 }
 
@@ -60,7 +58,6 @@ fn record_duplicate_ids(h: &mut Harness) -> DuplicateIds {
     });
     DuplicateIds {
         id: duplicate_id,
-        #[cfg(debug_assertions)]
         first_node: button_node.get(),
     }
 }
@@ -96,7 +93,6 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 }
 
 /// The overlay: one magenta rect per colliding node at its arranged rect.
-#[cfg(debug_assertions)]
 #[test]
 fn duplicate_explicit_widget_ids_are_outlined() {
     let mut h = Harness::mono(UVec2::new(100, 100));
@@ -119,7 +115,6 @@ fn duplicate_explicit_widget_ids_are_outlined() {
 /// The outlines belong to no node, so a frame that paints them repaints whole, and the first
 /// frame after the last one clears them; then a change repaints its own rect again. Each frame
 /// moves a block's fill, so each has damage.
-#[cfg(debug_assertions)]
 #[test]
 fn collision_outlines_repaint_whole_until_they_clear() {
     use crate::damage::Damage;
@@ -159,7 +154,6 @@ fn collision_outlines_repaint_whole_until_they_clear() {
 }
 
 /// Under a panned and zoomed panel the outline follows where the node paints: canvas translate (30, 20), scale 0.5, 40 px blocks at (10, 10) and (60, 10) land at (35, 25) and (60, 25), 20 px square.
-#[cfg(debug_assertions)]
 #[test]
 fn a_collision_under_a_transform_is_outlined_where_it_paints() {
     use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -218,7 +212,6 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
 }
 
 /// Each endpoint's outline comes from its own layer's `PlaneLayout`.
-#[cfg(debug_assertions)]
 #[test]
 fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
     let mut h = Harness::mono(SURFACE);

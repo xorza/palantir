@@ -321,6 +321,12 @@ fn compound_kinds_check_every_part() {
     assert_eq!(domain::count(1), 1);
     assert_eq!(domain::count(u32::MAX), u32::MAX);
     panic_probe::assert_panics_with("a count must be at least 1", || domain::count(0));
+    panic_probe::assert_panics_with("a fraction's fallback must itself be in 0..=1", || {
+        domain::fraction_or(0.5, 2.0)
+    });
+    panic_probe::assert_panics_with("a length's floor must itself be a length", || {
+        domain::length_at_least(1.0, -1.0)
+    });
 
     for n in [1, 2, 4, 8, 16] {
         assert_eq!(domain::power_of_two_in(n, 16), n);

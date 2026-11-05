@@ -52,18 +52,6 @@ impl Platform {
             Self::Mac | Self::Linux => "Super",
         }
     }
-
-    /// Whether a text field's word motion takes Option, as Cmd is the line chord there: macOS.
-    /// Elsewhere it takes Ctrl.
-    pub(crate) const fn words_with_option(self) -> bool {
-        matches!(self, Self::Mac)
-    }
-
-    /// Whether Cmd with Left, Right or Backspace acts on a text field's whole line, and with Up or
-    /// Down on the whole document: macOS.
-    pub(crate) const fn has_cmd_arrow_chords(self) -> bool {
-        matches!(self, Self::Mac)
-    }
 }
 
 /// The conventions of the platform this build targets; const-evaluable. Anything but macOS and

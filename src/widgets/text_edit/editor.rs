@@ -478,11 +478,6 @@ impl<'a> Editor<'a> {
         }
     }
 
-    pub(super) fn delete_to_line_start(&mut self) {
-        let caret = self.state.caret;
-        self.delete_toward(self.text[..caret].rfind('\n').map_or(0, |i| i + 1));
-    }
-
     pub(super) fn delete_backward(&mut self) {
         self.delete_toward(prev_grapheme_boundary(self.text, self.state.caret));
     }

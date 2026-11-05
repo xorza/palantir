@@ -1,7 +1,6 @@
 //! The encode pass: walk the cascaded scene into paint calls, one plane at a time ([`plane_ctx`]);
 //! [`gradient_resolver`] resolves each gradient once per frame.
 
-#[cfg(debug_assertions)]
 mod collision_overlay;
 mod cull_region;
 mod gradient_resolver;
@@ -116,7 +115,6 @@ impl Encoder {
 
         debug_assert_eq!(first_pane, tickets.len(), "a ticket for each pane");
 
-        #[cfg(debug_assertions)]
         collision_overlay::emit(scene, out);
     }
 }

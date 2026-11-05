@@ -14,6 +14,9 @@ items grow as WPF star tracks do), **wgpu rendering**.
 - **Micro-optimize freely** — struct packing, `const fn`, scratch reuse, cache
   layout. A _structural_ change with no workload that needs it is too early:
   shelve it with a note.
+- **One behavior in every build and on every platform**, unless the difference is speed alone or
+  the system decides it: a person's settings, what a device can hold. Refused: a diagnostic on in
+  debug alone.
 - **A second pass is the last resort.** Do not solve an issue with a relayout, a second record
   pass or another frame. Settle the state before it records, or in the pass that reads it. A
   second pass stays only where it is the canonical, idiomatic answer and avoids a lot of
@@ -334,9 +337,11 @@ driver serves that command alone; the drive table's `version` names it
 - **Frosted glass holds its ink at WCAG 4.5:1**; palantir owns the math, as it depends on its
   dither. Refused: `Chrome::with_frost` and a `Chrome` setter per `BackdropFilter` constructor
   ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).
-- **Redo is Ctrl+Shift+Z on every platform**, Cmd+Shift+Z on macOS, beside Undo's Ctrl+Z.
-  Refused: Ctrl+Y on Windows and Linux, as Win32's edit control binds it, a second chord for
-  one action that takes a key the app could bind.
+- **One chord table**, Cmd standing in for Ctrl on macOS: Redo is Ctrl+Shift+Z; Ctrl or Alt acts
+  on a word; Ctrl with Home, End, Up or Down goes to the document's ends. Refused: Ctrl+Y, a second
+  chord for one action; macOS's Cmd+Left line chords and each platform's own table, as
+  [Flutter](https://codebrowser.dev/flutter/flutter/packages/flutter/lib/src/widgets/default_text_editing_shortcuts.dart.html)
+  binds, which a person who moves between machines learns twice.
 - **Activation.** Space and Enter fold into one left click; a toggle takes Space alone, as
   WAI-ARIA leaves Enter to the form. Each is a `KeyClass` of its own, so a focused widget's scope
   takes those keys and no letter, as a Qt or GTK button accepts only the keys it acts on.

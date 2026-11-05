@@ -23,6 +23,7 @@ pub const fn band_fraction(pos: Vec2, extent: Size, band: Size) -> Vec2 {
 
 /// [`domain::fraction_or`] per axis.
 #[inline]
+#[track_caller]
 pub const fn fraction_or(v: Vec2, fallback: Vec2) -> Vec2 {
     Vec2::new(
         domain::fraction_or(v.x, fallback.x),
@@ -32,6 +33,7 @@ pub const fn fraction_or(v: Vec2, fallback: Vec2) -> Vec2 {
 
 /// [`domain::length_at_least`] per axis.
 #[inline]
+#[track_caller]
 pub const fn length_at_least(v: Vec2, min: Vec2) -> Vec2 {
     Vec2::new(
         domain::length_at_least(v.x, min.x),
