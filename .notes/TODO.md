@@ -9,7 +9,6 @@
 - build-in colors
 - rich text edit
 - audit hot structs for compact opportunities
-- wid from hash - const
 - behavior differences in release and debug
 - migrate frame bench to showcase and force enable transparency and motion
 - separate input processing stage to avoid relayouts?
