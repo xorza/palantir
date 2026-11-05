@@ -12,7 +12,6 @@
 - behavior differences in release and debug
 - migrate frame bench to showcase and force enable transparency and motion
 - separate input processing stage to avoid relayouts?
-- compress bundled fonts
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
