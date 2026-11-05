@@ -224,10 +224,6 @@ debug = "line-tables-only"
 name = "counter"
 required-features = ["winit"]
 
-[[example]]
-name = "reel"
-path = "examples/reel/main.rs"
-
 [lib]
 bench = false
 

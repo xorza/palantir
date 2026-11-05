@@ -2175,6 +2175,7 @@ dependencies = [
  "backtrace",
  "bytemuck",
  "criterion",
+ "half",
  "image",
  "palantir",
  "palantir-showcase",

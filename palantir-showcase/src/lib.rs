@@ -11,6 +11,7 @@ mod app_state;
 mod appearance;
 #[cfg(feature = "internals")]
 pub mod bench;
+pub mod cube_renderer;
 mod job;
 mod made_image;
 pub mod pages;

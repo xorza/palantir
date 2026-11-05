@@ -1,98 +1,21 @@
-//! Raw-wgpu demo: a slowly auto-rotating colored cube rendered through a [`GpuView`]; drag to orbit. Shows the full
-//! `GpuPaint` surface: lazy `init`, per-frame `paint`, a private depth buffer recreated on resize, continuous repaint.
+//! Raw-wgpu demo: a slowly auto-rotating colored cube rendered through a [`GpuView`]; drag to orbit. [`CubeRenderer`] holds the wgpu, and this page its turn and continuous repaint.
 
-#![expect(
-    clippy::disallowed_types,
-    reason = "the `GpuView` escape hatch is raw wgpu by definition, so naming its types is what this page is for"
-)]
-
-use palantir::wgpu;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::cube_renderer::CubeRenderer;
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section};
-use palantir::glam::camera::rh::{proj::directx, view};
-use palantir::glam::{Mat4, UVec2, Vec3};
-use palantir::wgpu::util::DeviceExt;
+use palantir::glam::Mat4;
 use palantir::{
     Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, Sizing, Switch, Ui, WidgetId,
 };
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    pos: [f32; 3],
-    color: [f32; 3],
-}
-
-const fn v(pos: [f32; 3], color: [f32; 3]) -> Vertex {
-    Vertex { pos, color }
-}
-
-const VERTICES: [Vertex; 8] = [
-    v([-1.0, -1.0, -1.0], [0.10, 0.10, 0.12]),
-    v([1.0, -1.0, -1.0], [0.90, 0.20, 0.25]),
-    v([1.0, 1.0, -1.0], [0.95, 0.80, 0.20]),
-    v([-1.0, 1.0, -1.0], [0.20, 0.80, 0.35]),
-    v([-1.0, -1.0, 1.0], [0.20, 0.45, 0.90]),
-    v([1.0, -1.0, 1.0], [0.85, 0.30, 0.85]),
-    v([1.0, 1.0, 1.0], [0.95, 0.95, 0.95]),
-    v([-1.0, 1.0, 1.0], [0.25, 0.85, 0.90]),
-];
-
-/// 12 triangles; culling is off, so depth alone resolves occlusion.
-const IDXS: [u16; 36] = [
-    0, 1, 2, 0, 2, 3, // -z
-    4, 6, 5, 4, 7, 6, // +z
-    4, 0, 3, 4, 3, 7, // -x
-    1, 5, 6, 1, 6, 2, // +x
-    3, 2, 6, 3, 6, 7, // +y
-    4, 5, 1, 4, 1, 0, // -y
-];
-
-const SHADER: &str = "
-struct Uniforms { mvp: mat4x4<f32> };
-@group(0) @binding(0) var<uniform> u: Uniforms;
-
-struct VsOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) color: vec3<f32>,
-};
-
-@vertex
-fn vs(@location(0) pos: vec3<f32>, @location(1) color: vec3<f32>) -> VsOut {
-    var out: VsOut;
-    out.clip = u.mvp * vec4<f32>(pos, 1.0);
-    out.color = color;
-    return out;
-}
-
-@fragment
-fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.color, 1.0);
-}
-";
-
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-
-/// GPU resources, built lazily in [`GpuPaint::init`] (no device before first paint).
-#[derive(Debug)]
-struct CubeGpu {
-    pipeline: wgpu::RenderPipeline,
-    vertices: wgpu::Buffer,
-    idxs: wgpu::Buffer,
-    uniform: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    /// Private depth attachment and the target texture size it was made for.
-    depth: Option<(wgpu::TextureView, wgpu::Extent3d)>,
-}
-
 /// The app's persistent renderer; `'static` so it can live behind the `Rc<RefCell<…>>` the framework holds.
 #[derive(Debug)]
 struct Cube {
-    gpu: Option<CubeGpu>,
+    renderer: CubeRenderer,
     /// Whether the cube turns on its own; off at first, so a view at rest asks for no frame.
     spinning: bool,
     spin: f32,
@@ -101,9 +24,9 @@ struct Cube {
 }
 
 impl Cube {
-    const fn new() -> Self {
+    fn new() -> Self {
         Self {
-            gpu: None,
+            renderer: CubeRenderer::default(),
             spinning: false,
             spin: 0.0,
             yaw: 0.6,
@@ -119,101 +42,7 @@ impl Cube {
 
 impl GpuPaint for Cube {
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
-        let device = ctx.gpu.device();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("showcase.cube.shader"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("showcase.cube.vbuf"),
-            contents: bytemuck::cast_slice(&VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let idxs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("showcase.cube.ibuf"),
-            contents: bytemuck::cast_slice(&IDXS),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("showcase.cube.mvp"),
-            size: 64, // mat4x4<f32>
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("showcase.cube.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("showcase.cube.bg"),
-            layout: &bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform.as_entire_binding(),
-            }],
-        });
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("showcase.cube.pl"),
-            bind_group_layouts: &[Some(&bgl)],
-            immediate_size: 0,
-        });
-        let pipeline = ctx
-            .gpu
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("showcase.cube.pipeline"),
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout {
-                        array_stride: size_of::<Vertex>() as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
-                    })],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: ctx.target_format,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::Less),
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            });
-        self.gpu = Some(CubeGpu {
-            pipeline,
-            vertices,
-            idxs,
-            uniform,
-            bind_group,
-            depth: None,
-        });
+        self.renderer.init(ctx);
     }
 
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
@@ -221,84 +50,8 @@ impl GpuPaint for Cube {
         if self.spinning {
             self.spin += 0.6 * ctx.dt.as_secs_f32();
         }
-        let mvp = {
-            // The projection frames the whole view, so the cube holds its shape and size while a
-            // scroll slides part of it out; `crop` then zooms clip space onto the shown part.
-            let full = ctx.physical_full_size.max(UVec2::ONE).as_vec2();
-            let shown = ctx.physical_size.max(UVec2::ONE).as_vec2();
-            let center = ctx.physical_offset.as_vec2() + shown * 0.5;
-            // The shown part's center in the whole view's NDC, whose y points up.
-            let center_ndc = Vec3::new(
-                center.x / full.x * 2.0 - 1.0,
-                1.0 - center.y / full.y * 2.0,
-                0.0,
-            );
-            let crop =
-                Mat4::from_scale((full / shown).extend(1.0)) * Mat4::from_translation(-center_ndc);
-            // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the `directx` RH perspective.
-            let proj = directx::perspective(45f32.to_radians(), full.x / full.y, 0.1, 100.0);
-            let view = view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
-            let model =
-                Mat4::from_rotation_y(self.spin + self.yaw) * Mat4::from_rotation_x(self.pitch);
-            crop * proj * view * model
-        };
-
-        let gpu = self.gpu.as_mut().expect("init ran before paint");
-        // Depth matches the color texture, which can be larger than `physical_size`.
-        let target_size = ctx.target.texture().size();
-        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(target_size);
-        if need_depth {
-            let texture = ctx.gpu.device().create_texture(&wgpu::TextureDescriptor {
-                label: Some("showcase.cube.depth"),
-                size: target_size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: DEPTH_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            });
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            gpu.depth = Some((view, target_size));
-        }
-        let depth_view = &gpu.depth.as_ref().expect("depth just ensured").0;
-
-        ctx.gpu
-            .queue()
-            .write_buffer(&gpu.uniform, 0, bytemuck::cast_slice(&mvp.to_cols_array()));
-
-        let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("showcase.cube.pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: ctx.target,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: depth_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Discard,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        // Render into the shown corner of the target; the scissor is belt-and-braces.
-        let (w, h) = (ctx.physical_size.x.max(1), ctx.physical_size.y.max(1));
-        pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
-        pass.set_scissor_rect(0, 0, w, h);
-        pass.set_pipeline(&gpu.pipeline);
-        pass.set_bind_group(0, &gpu.bind_group, &[]);
-        pass.set_vertex_buffer(0, gpu.vertices.slice(..));
-        pass.set_index_buffer(gpu.idxs.slice(..), wgpu::IndexFormat::Uint16);
-        pass.draw_indexed(0..IDXS.len() as u32, 0, 0..1);
+        let model = Mat4::from_rotation_y(self.spin + self.yaw) * Mat4::from_rotation_x(self.pitch);
+        self.renderer.paint(ctx, model);
     }
 }
 

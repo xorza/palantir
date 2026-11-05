@@ -1,17 +1,15 @@
-//! Slide 8's cube, raw wgpu in a `GpuView`, after the showcase's.
+//! The tour's cube: raw wgpu behind a `GpuView`, for the page that shows it and the reel's slide.
 
 #![expect(
     clippy::disallowed_types,
-    reason = "a `GpuView` is raw wgpu by definition"
+    reason = "the `GpuView` escape hatch is raw wgpu by definition, so naming its types is what this file is for"
 )]
-
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use palantir::glam::camera::rh::{proj::directx, view};
 use palantir::glam::{Mat4, UVec2, Vec3};
-use palantir::{GpuFrameCtx, GpuInitCtx, GpuPaint};
-use wgpu::util::DeviceExt;
+use palantir::wgpu;
+use palantir::wgpu::util::DeviceExt;
+use palantir::{GpuFrameCtx, GpuInitCtx};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -70,7 +68,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-/// GPU resources, built lazily in [`GpuPaint::init`] (no device before first paint).
+/// GPU resources, built lazily in [`CubeRenderer::init`] (no device before first paint).
 #[derive(Debug)]
 struct CubeGpu {
     pipeline: wgpu::RenderPipeline,
@@ -82,52 +80,39 @@ struct CubeGpu {
     depth: Option<(wgpu::TextureView, wgpu::Extent3d)>,
 }
 
-/// The cube's renderer; its turn is set from the reel's time, never the frame's own clock, so
-/// a render repeats.
-#[derive(Debug)]
-pub(crate) struct Cube {
+/// Draws the cube, its GPU resources built in [`Self::init`]: `'static`, as a `GpuView` holds its
+/// owner behind an `Rc<RefCell<…>>`, and no device exists before the first paint.
+#[derive(Debug, Default)]
+pub struct CubeRenderer {
     gpu: Option<CubeGpu>,
-    /// Radians about the vertical axis.
-    pub(crate) angle: f32,
 }
 
-/// The cube as `GpuView` holds it.
-pub(crate) type CubeHandle = Rc<RefCell<Cube>>;
-
-impl Cube {
-    pub(crate) fn handle() -> CubeHandle {
-        Rc::new(RefCell::new(Self {
-            gpu: None,
-            angle: 0.0,
-        }))
-    }
-}
-
-impl GpuPaint for Cube {
-    fn init(&mut self, ctx: &GpuInitCtx<'_>) {
+impl CubeRenderer {
+    /// Build the GPU resources, from `GpuPaint::init`.
+    pub fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         let device = ctx.gpu.device();
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("reel.cube.shader"),
+            label: Some("showcase.cube.shader"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
         });
         let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("reel.cube.vbuf"),
+            label: Some("showcase.cube.vbuf"),
             contents: bytemuck::cast_slice(&VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let idxs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("reel.cube.ibuf"),
+            label: Some("showcase.cube.ibuf"),
             contents: bytemuck::cast_slice(&IDXS),
             usage: wgpu::BufferUsages::INDEX,
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("reel.cube.mvp"),
+            label: Some("showcase.cube.mvp"),
             size: 64, // mat4x4<f32>
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("reel.cube.bgl"),
+            label: Some("showcase.cube.bgl"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX,
@@ -140,7 +125,7 @@ impl GpuPaint for Cube {
             }],
         });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("reel.cube.bg"),
+            label: Some("showcase.cube.bg"),
             layout: &bgl,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -148,14 +133,14 @@ impl GpuPaint for Cube {
             }],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("reel.cube.pl"),
+            label: Some("showcase.cube.pl"),
             bind_group_layouts: &[Some(&bgl)],
             immediate_size: 0,
         });
         let pipeline = ctx
             .gpu
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("reel.cube.pipeline"),
+                label: Some("showcase.cube.pipeline"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
@@ -202,7 +187,8 @@ impl GpuPaint for Cube {
         });
     }
 
-    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
+    /// Draw the cube turned by `model`, its projection framing the whole view.
+    pub fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>, model: Mat4) {
         let mvp = {
             // The projection frames the whole view, so the cube holds its shape and size while a
             // scroll slides part of it out; `crop` then zooms clip space onto the shown part.
@@ -220,7 +206,6 @@ impl GpuPaint for Cube {
             // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the `directx` RH perspective.
             let proj = directx::perspective(45f32.to_radians(), full.x / full.y, 0.1, 100.0);
             let view = view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
-            let model = Mat4::from_rotation_y(self.angle + 0.6) * Mat4::from_rotation_x(0.5);
             crop * proj * view * model
         };
 
@@ -230,7 +215,7 @@ impl GpuPaint for Cube {
         let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(target_size);
         if need_depth {
             let texture = ctx.gpu.device().create_texture(&wgpu::TextureDescriptor {
-                label: Some("reel.cube.depth"),
+                label: Some("showcase.cube.depth"),
                 size: target_size,
                 mip_level_count: 1,
                 sample_count: 1,
@@ -249,7 +234,7 @@ impl GpuPaint for Cube {
             .write_buffer(&gpu.uniform, 0, bytemuck::cast_slice(&mvp.to_cols_array()));
 
         let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("reel.cube.pass"),
+            label: Some("showcase.cube.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: ctx.target,
                 resolve_target: None,

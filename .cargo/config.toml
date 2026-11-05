@@ -16,7 +16,7 @@ gate-doc = "doc --workspace --no-deps --document-private-items --all-features"
 gate-doctest = "test --workspace --doc --no-fail-fast --features golden,gpu-debug-markers"
 visual = "test --workspace --features golden,gpu-debug-markers --test visual"
 shot = "run -p palantir-showcase --features golden -- --shot"
-reel = "run --example reel --profile release-dev --"
+reel = "run -p palantir-showcase --example reel --profile release-dev --"
 # `--bench *`, not `--benches`, which also selects the library.
 bench-all = "bench --workspace --bench *"
 bench-once = "test --workspace --bench *"
