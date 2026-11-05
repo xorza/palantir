@@ -7,6 +7,7 @@
 - image handle with closure for reupload?
 - audit platform dependent behavior
 - build-in colors
+- rich text edit
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
