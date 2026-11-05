@@ -77,7 +77,8 @@ struct TreeSink<'a> {
     roots: &'a mut Vec<RootRow>,
     arrow_groups: &'a mut Vec<ArrowGroupRow>,
     plane: Plane,
-    root: WidgetId,
+    /// The root over the node the walk is on; the walk's first node is one.
+    root: Option<WidgetId>,
     /// The slot in `tree.roots` of the next root the walk meets: roots are recorded in
     /// pre-order, as the walk visits them.
     next_root: usize,
@@ -100,7 +101,7 @@ impl RowSink for TreeSink<'_> {
                 "roots are walked in their slots' order"
             );
             self.next_root += 1;
-            self.root = id;
+            self.root = Some(id);
             self.roots.push(RootRow {
                 plane,
                 layer: slot.layer,
@@ -125,7 +126,7 @@ impl RowSink for TreeSink<'_> {
         if focusable && attrs.is_tab_stop() {
             self.tab_stops.push(TabStopRow {
                 plane,
-                root: self.root,
+                root: self.root.expect("the walk's first node is a root"),
                 id,
                 idx: tree.bounds(NodeId(iu as u32)).tab_idx,
             });
@@ -360,7 +361,7 @@ impl CascadeEngine {
                     roots: &mut cascade.roots,
                     arrow_groups: &mut cascade.arrow_groups,
                     plane,
-                    root: WidgetId::default(),
+                    root: None,
                     next_root: 0,
                 },
             );

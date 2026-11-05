@@ -2835,7 +2835,7 @@ Waker
         pub fn wake(&self)
 
 WidgetId
-    struct WidgetId: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq, Pod, Zeroable
+    struct WidgetId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, NoUninit, PartialEq
         pub fn from_hash(h: impl Hash) -> Self
         pub fn with(self, h: impl Hash) -> Self
         pub fn auto() -> Self

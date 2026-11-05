@@ -7,6 +7,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use rustc_hash::FxHasher;
 use std::collections;
 use std::hash::Hasher;
+use std::num::NonZeroU64;
 use std::panic;
 
 #[track_caller]
@@ -58,7 +59,7 @@ fn finalize_avalanches_sequential_ids() {
         ),
     ];
     for (label, ids) in cases {
-        let buckets: collections::HashSet<u64> = ids.iter().map(|id| id.0 & MASK).collect();
+        let buckets: collections::HashSet<u64> = ids.iter().map(|id| id.0.get() & MASK).collect();
         assert!(
             buckets.len() >= FLOOR,
             "{label}: {N} ids landed in {} of {N} low-bit buckets, under \
@@ -95,10 +96,9 @@ fn finalize_is_a_bijection_that_avoids_zero() {
     #[expect(clippy::iter_over_hash_type, reason = "each id is checked alone")]
     for &raw in &raws {
         let id = WidgetId::finalize(raw);
-        assert_ne!(id.0, 0, "finalize must never produce the zero value");
         if raw != 0 {
             // The round-trip proves no folding; `raw == 0` is displaced by the zero-guard and has no preimage.
-            let mut x = unxorshift(id.0, 31);
+            let mut x = unxorshift(id.0.get(), 31);
             x = x.wrapping_mul(INV_B);
             x = unxorshift(x, 27);
             x = x.wrapping_mul(INV_A);
@@ -113,5 +113,5 @@ fn finalize_is_a_bijection_that_avoids_zero() {
     );
     // Zero is displaced to 1 since `u64::MAX` is `WidgetId::VIEWPORT`: the only
     // place injectivity is given up, a 1-in-2^64 collision.
-    assert_eq!(WidgetId::finalize(0), WidgetId(1));
+    assert_eq!(WidgetId::finalize(0), WidgetId(NonZeroU64::MIN));
 }

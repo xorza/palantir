@@ -165,7 +165,7 @@ struct RowKey {
 
 fn row_key(row: &OwnedPaint) -> RowKey {
     RowKey {
-        owner: row.owner.0,
+        owner: row.owner.0.get(),
         hash: row.hash.0,
         screen: [
             row.screen.min.x.to_bits(),

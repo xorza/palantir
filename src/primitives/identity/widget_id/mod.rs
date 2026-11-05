@@ -6,6 +6,7 @@ use std::hash;
 use std::hash::BuildHasherDefault;
 use std::hash::Hash;
 use std::hash::Hasher as _;
+use std::num::NonZeroU64;
 use std::panic::Location;
 
 /// Identity hasher for [`WidgetIdMap`]: a [`WidgetId`] is already a hash, so re-hashing is wasted.
@@ -36,13 +37,15 @@ pub(crate) type WidgetIdMap<V> = HashMap<WidgetId, V, BuildHasherDefault<IdHashe
 pub(crate) type WidgetIdSet = HashSet<WidgetId, BuildHasherDefault<IdHasher>>;
 
 /// A widget's identity across frames, derived from the call site and any [`Configure::id_salt`](crate::Configure::id_salt) above it, so the same call in the same place gives the same id. Cross-frame state, focus and animation key on it.
+///
+/// Never zero, so `Option<WidgetId>` takes 8 B, as std's `ThreadId` does.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct WidgetId(pub(crate) u64);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::NoUninit)]
+pub struct WidgetId(pub(crate) NonZeroU64);
 
 impl WidgetId {
     /// Id of the `Layer::Main` synthetic viewport root. Hard-coded so refactors of `ui/mod.rs` don't shift it; a top-level `id_salt("k")` resolves to `VIEWPORT.with(from_hash("k").0)`.
-    pub(crate) const VIEWPORT: Self = Self(u64::MAX);
+    pub(crate) const VIEWPORT: Self = Self(NonZeroU64::MAX);
 
     /// An id from anything hashable, with no parent mixed in; [`Self::with`] derives a child.
     pub fn from_hash(h: impl Hash) -> Self {
@@ -60,7 +63,7 @@ impl WidgetId {
         Self::finalize(hasher.finish())
     }
 
-    /// Avalanche a raw [`Hasher`] output into the final id, and keep it off all-zero so a zeroed or [`Default`] id never equals a derived one. Every constructor funnels through here.
+    /// Avalanche a raw [`Hasher`] output into the final id, and keep it off zero, the niche `Option<Self>` takes. Every constructor funnels through here.
     ///
     /// A `WidgetId` is its own hash ([`IdHasher`] forwards it), so a map's bucket index is the id's low bits. `FxHasher` leaves those linear in the last word written, so sequential inputs (`parent.with(row_idx)`) stride by a constant sharing a factor of two with the table size and half the buckets go unreachable (4096 sequential ids occupied ~2000 buckets, against ~2590 for uniform).
     ///
@@ -74,7 +77,10 @@ impl WidgetId {
         x ^= x >> 27;
         x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
         x ^= x >> 31;
-        Self(if x == 0 { 1 } else { x })
+        Self(match NonZeroU64::new(x) {
+            Some(x) => x,
+            None => NonZeroU64::MIN,
+        })
     }
 
     /// Stable across frames while the call site is unchanged. Repeated calls from one location (a loop or closure helper) get an occurrence counter mixed in; use [`Configure::id_salt`](crate::widget_core::configure::Configure::id_salt) when call order is unstable.

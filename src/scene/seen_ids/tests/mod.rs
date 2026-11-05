@@ -384,19 +384,3 @@ fn matches_the_per_pass_tables_over_random_frames() {
         "both paths run: {in_step} frames in step, {out_of_step} out",
     );
 }
-
-/// A parent whose id is 0 is still a parent: a salt under no parent, then under parent 0, names another raw id.
-#[test]
-fn a_parent_of_id_zero_is_not_no_parent() {
-    let mut ids = SeenIds::default();
-    let salt = WidgetId::from_hash("salt");
-    ids.pre_record();
-    let first = ids.resolve_scoped(ScopedRecipe::Hash(salt), None);
-    assert!(ids.record_endpoint(first, ep(0)).is_none());
-    ids.rollover();
-    ids.pre_record();
-    let zero = WidgetId::default();
-    let second = ids.resolve_scoped(ScopedRecipe::Hash(salt), Some(zero));
-    assert_eq!(second.id(), salt.scoped(Some(zero)));
-    assert_ne!(second.id(), first.id());
-}

@@ -16,6 +16,7 @@ use crate::layout::cache::measure_snapshot::MeasureSnapshot;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::paint::brush::Brush;
@@ -109,7 +110,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()` under `cfg(test)`. One value for both profiles: the scene's
 /// `cfg(debug_assertions)` check fields sit on each plane's `Tree`, which `Forest` keeps on the
 /// heap.
-const UI_SIZE: usize = 3088;
+const UI_SIZE: usize = 3008;
 
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
@@ -128,7 +129,8 @@ const PINS: &[Pin] = &[
     // Split from `Ui` so cache growth is not mistaken for recorder growth.
     pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),
     pin::<NodeRecord>("scene::NodeRecord", 72, 8),
-    pin::<IdEntry>("scene::IdEntry", 64, 8),
+    pin::<IdEntry>("scene::IdEntry", 56, 8),
+    pin::<Option<WidgetId>>("primitives::Option<WidgetId>", 8, 8),
     pin::<LayoutCore>("scene::LayoutCore", 28, 4),
     pin::<NodeFlags>("scene::NodeFlags", 4, 4),
     pin::<LayoutMode>("primitives::LayoutMode", 4, 2),
@@ -178,7 +180,7 @@ const PINS: &[Pin] = &[
     pin::<Panel>("widgets::Panel", 312, 8),
     pin::<Block>("widgets::Block", 312, 8),
     pin::<Grid>("widgets::Grid", 312, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 376, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 368, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
     pin::<Popup<'static>>("widgets::Popup", 352, 8),
@@ -207,7 +209,7 @@ const PINS: &[Pin] = &[
     pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
     pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 56, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 64, 4),
-    pin::<DrawImagePayload>("payload::DrawImagePayload", 96, 8),
+    pin::<DrawImagePayload>("payload::DrawImagePayload", 88, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
     pin::<Quad>("renderer::Quad", 64, 4),

@@ -5,10 +5,20 @@ use std::cmp;
 
 /// A pane across frames: its owner and its row among the owner's paint rows, `0` for the owner's
 /// chrome, which stays put when other widgets add shapes. A pane's cached blur keys on it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct PaneKey {
     pub(crate) owner: WidgetId,
     pub(crate) shape: u32,
+}
+
+/// The fill of `tinyvec`'s empty slots, which no read reaches.
+impl Default for PaneKey {
+    fn default() -> Self {
+        Self {
+            owner: WidgetId::VIEWPORT,
+            shape: 0,
+        }
+    }
 }
 
 /// By owner, then by row: an order of its own, so [`PaneKeys`](crate::primitives::identity::pane_keys::PaneKeys)
