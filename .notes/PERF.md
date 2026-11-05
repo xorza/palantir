@@ -104,7 +104,7 @@ commits, each with its numbers per host.
   times the same, and blending off saves 40 µs (27 %); 4.1 M fragments over 1.12 screens, 0.4 M
   under a later opaque interior. The shadows: 79 µs of raster, 46 µs of coverage math. Every
   fragment shader sits at 24 to 48 VGPRs and 20 to 32 waves a SIMD, with no spills.
-- **Backdrop passes** (`.notes/research/2026-10-29-backdrop-passes.md`): a blur pass costs the
+- **Backdrop passes** (`.notes/research/2026-10-28-backdrops.md`): a blur pass costs the
   Apple laptop about 48 µs whatever it draws and the mobile AMD iGPU about 6 µs; on the mobile AMD iGPU a frame's backdrop work
   is the composite, then the blurs, then the captures (cards: 793, 610 and 248 µs). The
   composite on the fanless's 4K `modal/scrolling` costs 1.4 ms over a pane that returns at once: the

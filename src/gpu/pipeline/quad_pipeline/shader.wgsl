@@ -1098,7 +1098,8 @@ struct SpectrumCell {
 
 // The most whole steps a bezel pixel reads across the spectrum: it bounds a
 // pixel's cost at 33 reads, 22–27 % over the default dispersion's frame on
-// the Apple laptop (`.notes/research/2026-11-01-glass-dispersion.md`).
+// the Apple laptop (`.notes/research/2026-10-28-backdrops.md`, "Measured:
+// dispersion").
 const SPECTRUM_STEPS: f32 = 32.0;
 
 // The spectrum's running integrals from its red end to `t`: of the weight,

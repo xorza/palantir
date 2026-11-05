@@ -1,4 +1,7 @@
-# Research for backdrop blur, frosted glass and glass (2026-10-28)
+# Backdrops: blur, frosted glass and glass (2026-10-28 to 2026-11-01)
+
+Facts and measurements behind `gpu::backdrop`, `shape::paint::blur_plan` and the glass composite.
+Hosts: the AMD mobile AMD iGPU ran RADV on Linux; fanless an Apple laptop and mac an Apple laptop, on Metal.
 
 ## Practice elsewhere
 
@@ -89,6 +92,29 @@
   at every phase `x`, so the variance it adds does not depend on where a
   pixel falls between texels.
 
+## How others split color through glass
+
+- Filament's `specgen` (2025): N wavelengths, each a matrix
+  `K_n = M_XYZ→sRGB · diag(W_n) · M_sRGB→XYZ` with `W_n` the CIE 1931 observer at `λ_n` times
+  its quadrature weight; each XYZ channel of `Σ W_n` normalized to 1, so `Σ K_n = I`. The index
+  per sample is `n_D + ((n_D − 1) / V_d) · offset(λ)`, Cauchy's model through D with
+  `offset(λ) = (λ⁻² − λ_D⁻²) / (λ_F⁻² − λ_C⁻²)`. Default 4 samples at F, e, D and C ("best for
+  strong rainbows"), or Gauss–Legendre nodes ("best for accuracy"). The observer is Wyman,
+  Sloan and Shirley's multi-lobe fit, or the CIE table.
+  <https://google.github.io/filament/dup/specgen.html>,
+  <https://github.com/google/filament/blob/main/tools/specgen/specgen.cpp>
+- Haze (Compose) liquid glass: `ChromaticAberrationMode.Simple`, red read forward, green at the
+  center, blue backward; `Full`, seven reads along the offset, red to purple, with channel
+  weights set by hand (red `1/3.5` from red, orange and yellow, `1/7` from purple, …).
+  <https://github.com/chrisbanes/haze/blob/main/haze-glass/src/commonMain/kotlin/dev/chrisbanes/haze/glass/GlassShaders.kt>
+- luma.gl glass material: red, green and blue transmission at their own offset.
+  <https://luma.gl/docs/api-reference/experimental/glass-material>
+- `@ybouane/liquidglass`: red along the normal, blue against it, green at the center, from a
+  sharp and a blurred copy. <https://cdn.jsdelivr.net/npm/@ybouane/liquidglass@1.0.3/src/shaders.ts>
+- Maxime Heckel: per-channel indices, several reads per channel, and six channels (r, y, g, c,
+  b, v) folded back into RGB.
+  <https://blog.maximeheckel.com/posts/refraction-dispersion-and-other-shader-light-effects/>
+
 ## Arithmetic
 
 - The tent `[1 3 3 1] / 8` has variance 0.75 source texel²: two bilinear
@@ -100,46 +126,12 @@
 - Interleaved gradient noise: Jimenez, "Next Generation Post Processing in
   Call of Duty: Advanced Warfare", SIGGRAPH 2014; a per-pixel dither with no
   texture.
+- Glass (Schott catalog): N-BK7 `n_d` 1.5168, `V_d` 64.17, so `n_F − n_C` ≈ 0.0081; N-SF11
+  `n_d` 1.7847, `V_d` 25.68, so ≈ 0.0306.
+- Cauchy's offset at 400 nm is 1.7643 and at 700 nm −0.4390: across 400–700 nm the index moves
+  2.2 times `n_F − n_C`.
 
-## In the code
-
-- One frame is one main render pass per surface (`wgpu_backend/mod.rs`
-  `run_main_pass`), walked once per damage rect; partial frames
-  `LoadOp::Load` the `Backbuffer`, whose texture has `TEXTURE_BINDING` and
-  `COPY_SRC`. Full frames above `DIRECT_PROMOTE_COVERAGE` (0.4) render
-  straight into the surface, which offers only `RENDER_ATTACHMENT`
-  (`SurfaceUsages`).
-- The stencil clears per pass and is discarded at its end; the schedule
-  never ends a walk with a mask stamped.
-- `Quad` is 64 B, pinned; `QuadForm` (solid, gradient, triangle) is one
-  pipeline each, chosen to keep register pressure off the solid form (VideoCore board
-  V3D: 54 temporaries for all forms, 22 for solid).
-- `OcclusionPruner` drops a quad covered by a later opaque quad of the same
-  scissor group; text batches coalesce across groups while paint order
-  holds; the clear fold drops everything before a full-viewport opaque quad.
-- `finish_region` collapses `raw_rects` by the pass-budget heuristic.
-- `GpuView` targets: `frame_targets` lists the ones to repaint and
-  `live_targets` the roster that keeps the rest alive, the retention pattern
-  a cached backdrop can reuse.
-- `Shadow::blur` is a Gaussian σ in logical px, half CSS's blur radius;
-  shadows are analytic in the quad shader and need no backdrop.
-- `prelude.wgsl` substitutes `AA_HALF_WIDTH` as a constant, and the
-  immediates hold only `viewport_size`, which `clip_from_px` divides by, so
-  clip space does not depend on the target's resolution.
-- Fragment code reads `@builtin(position)` as surface px: the quad shadow
-  (`shadow_pixel`) and the cutout bake in `quad_pipeline/shader.wgsl`.
-- The raster atlas's flat path reads one texel per pixel by `textureLoad`
-  and takes `FLAG_RESAMPLE` only when a quad's size differs from its
-  raster's; at another target scale it would skip texels.
-- `DamageEngine::compute` pushes `raw_rects` per plane in paint order, then
-  the predamaged animation rects and the removed widgets' rects, which carry
-  no paint position.
-- Pipelines are built per `TargetFormat` (`FormatPipelines`); a target in
-  another format needs its own set.
-- Layers paint bottom-up (`Main`, `Popup`, `Modal`, `Menu`, `Tooltip`), all
-  into one `RenderBuffer`.
-
-## The capture: replay against split (2026-10-28)
+## Measured: the capture, replay against split (2026-10-28)
 
 `integration/backdrop_frame/gpu/*/scrolling` (three panes, 2560×1440, every
 pane recaptured each frame) and `modal/scrolling` (one pane over a 4K
@@ -154,10 +146,8 @@ for bit (`a_split_main_pass_paints_what_the_replay_paints`).
 | glass | 13.41 ms | 13.08 ms | 5.13 ms | 4.89 ms |
 | modal 4K | 10.18 ms | 9.60 ms | 5.51 ms | 4.88 ms |
 
-The Apple laptop runs are in ABBA order (replay, split, split, replay), and each pair
-agrees within 1 %. The mobile AMD iGPU runs are one pass each. The Apple laptop is a tiler:
-there a split stores and loads the whole attachment and still wins.
-Its fat-LTO bench build peaked at 3.1 GB RSS.
+The Apple laptop runs are in ABBA order and each pair agrees within 1 %; the mobile AMD iGPU runs are one pass each.
+The Apple laptop is a tiler: there a split stores and loads the whole attachment and still wins.
 
 Partial frames (`*/under`, two panes recapture; `*/sliding`, one or none),
 ABBA on both hosts:
@@ -174,16 +164,62 @@ On the Apple laptop the split costs a partial frame about 6 % with two captures:
 tiler stores and loads the whole attachment for a small footprint. On the
 mobile AMD iGPU the two agree within the run-to-run drift.
 
-- Impeller ends the pass at a backdrop and draws the stored texture back
-  full-screen into a new pass (`FlipBackdrop`, engine commit 55983).
-  Flutter's `BackdropGroup` exists to share that cost.
+## Measured: a blur pass has a fixed cost (2026-10-29)
 
-## The wider `Chrome` (2026-10-28)
+A temporary bench blurred `n` regions of 8 × 8 texels at σ 32 px (three tents and the two
+residual axes, five passes a job), on surfaces of 256² to 4096². Wall clock on fanless, device time
+between passes local.
 
-`Chrome` grew from 124 to 160 bytes with `backdrop_filter`, `ChromeRow` from
-64 to 80, and each widget holding a chrome by 32. On the AMD mobile AMD iGPU, ABBA,
-the cascade benches did not move (`integration/cascade/cpu/*` within 1 %);
-the CPU frames of the frame fixture, which has no pane, rose about 2 %
-(`integration/frame/cpu/cached` 131–135 µs to 135–137 µs, `alternating`
-203–204 µs to 207–210 µs, `scrolling` 221–223 µs to 226–229 µs), against a
-spread of up to 2.6 % between the two base runs.
+| case | fanless, a pass per job and stage | fanless, one pass a stage | local, a pass per job and stage |
+|---|---|---|---|
+| 1 job, 256² | 465 µs | 458 µs | |
+| 1 job, 2048² | 463 µs | 457 µs | 41 µs |
+| 1 job, 4096² | 463 µs | 456 µs | |
+| 8 jobs, 2048² | 2.16 ms | 459 µs | 248 µs |
+| 16 jobs, 2048² | 4.04 ms | | 491 µs |
+
+- The cost does not follow the surface: the passes load and store only what their scissors
+  cover, or the Apple laptop skips tiles without geometry.
+- On fanless each job adds about 240 µs, 48 µs a pass; drawn in one pass a stage, eight jobs cost what
+  one does. Local, each job adds about 30 µs.
+
+## Measured: where a frame's device time goes (2026-10-29)
+
+`integration/backdrop_frame/gpu/*/scrolling`, device time split between the main pass, the
+captures and the blurs, on the mobile AMD iGPU:
+
+| scene | main pass | captures | blurs |
+|---|---|---|---|
+| modal, 4K | 2.22 ms | 394 µs | 732 µs |
+| cards, 8 panes | 793 µs | 248 µs | 610 µs |
+| many, 12 panes | 1.01 ms | 162 µs | 463 µs |
+| stacked, 2 panes | 619 µs | 76 µs | 345 µs |
+| pair, 2 panes | 568 µs | 81 µs | 173 µs |
+| first, its pane on the clear | 571 µs | | |
+
+## Measured: dispersion (2026-11-01)
+
+`integration/backdrop_frame/gpu/glass/*`, Apple laptop, full runs, the glass look's lens at
+dispersion 0.06 and σ 2:
+
+| case | three reads (before) | weight loop, 48 points | closed form |
+|---|---|---|---|
+| under | 1.450 ms | 1.966 ms | 1.482 ms |
+| moving | 718 µs | 856 µs | 728 µs |
+| sliding | 720 µs | 858 µs | 728 µs |
+| scrolling | 1.949 ms | 2.586 ms | 1.997 ms |
+| cached | 82.9 µs | 82.7 µs | 82.6 µs |
+
+The closed form at the highest dispersion, 1, where the bezel's rim spreads past 32 texels and
+reads the most steps, 33: under 1.809 ms, sliding 923 µs, scrolling 2.452 ms, 22–27 % over the
+glass look's 0.06. Moving read 1.548 ms with a 1.13–2.28 ms interval, too noisy to rank.
+
+A sum over the reads alone, four reads across a 2.3 px spread, gave a pixel at a white edge
+`(0, 1.52, 0.33)` linear: x̄ and z̄ came from a read at 420 nm and ȳ from one at 510 nm.
+
+## Measured: the wider `Chrome` (2026-10-28)
+
+`Chrome` grew from 124 to 160 bytes with `backdrop_filter` (`ChromeRow` 64 to 80). On the AMD
+mobile AMD iGPU the cascade benches did not move, and the frame fixture's CPU frames, which hold no pane,
+rose about 2 % (`frame/cpu/cached` 131–135 µs to 135–137 µs), against up to 2.6 % between two
+base runs.

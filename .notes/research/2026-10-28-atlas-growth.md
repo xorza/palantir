@@ -1,6 +1,9 @@
-# Research for the shelved atlas growth and the re-export rule (2026-10-28)
+# How a raster atlas grows (2026-10-28)
 
-## How glyph and image atlases grow
+Facts for a raster atlas past one page, shelved: `raster_atlas/side.rs` doubles one texture,
+Impeller's design.
+
+## Practice
 
 - Skia (Ganesh `GrDrawOpAtlas`): when a page is full the atlas "will attempt
   to allocate a new atlas texture (or "page") of the same size, up to a
@@ -19,7 +22,7 @@
 - Impeller (flutter/engine#52849): when the packer is full, doubles the
   height, allocates a new texture, blits the old one into its top-left, and
   packs the new rows with a packer of the added area only; past the maximum
-  it rebuilds. Palantir's `Side::grow` is this design.
+  it rebuilds.
   <https://www.github.com/flutter/engine/pull/52849>
 - glyphon 0.11: doubles to the device maximum and re-rasterizes every cached
   glyph into the new texture at its old position.
@@ -30,12 +33,8 @@
 - wgpu: a texture cannot be resized, and an array texture cannot gain layers,
   so growing either is a new texture and a copy. Binding arrays are a native
   feature (`TEXTURE_BINDING_ARRAY`), not WebGPU.
-- In the code: `raster_atlas/side.rs` doubles a square side up to
-  `max_bytes` (16 MiB a side); text starts at 1024² mask and 256² color, icons
-  at 256² mask and 512² color, so a side grows at most four times in a
-  process. The last mask grow allocates 16 MiB and copies 4 MiB; the atlas
-  shader reads by `textureLoad`, so no sampler or derivative ties a page to
-  uniform control flow.
+- The atlas shader reads by `textureLoad`, so no sampler or derivative ties a
+  page to uniform control flow: pages could be chosen per instance.
 
 ## Measured grow frame (Apple laptop, Metal, `cargo drive bench raster_atlas`)
 
@@ -53,11 +52,3 @@ fully written first; `submit` is the same submit with nothing recorded, and
 
 The Apple laptop is an integrated GPU on unified memory. Not measured: lavapipe, where
 the copy and the clear of the new texture run on the CPU.
-
-## Re-exports
-
-- See `2026-10-26-review-decisions.md`, "Foreign re-exports" (Effective Rust
-  Item 24; API guidelines discussion #176; egui-wgpu and eframe practice).
-- RFC 3516 (`public = true` in Cargo, `exported_private_dependencies`) is
-  still unstable: the 2026 project goal is to stabilize a minimal subset of
-  the lint. <https://goals.rust-lang.org/2026/pub-priv.html>

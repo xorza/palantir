@@ -1,13 +1,6 @@
-# System preferences: color scheme and double-click time
+# System preferences: color scheme and double-click time (2026-10-31)
 
-Facts for the light and dark proposal (`.notes/showcase-proposal.md`), 2026-10-31.
-
-## What palantir reads today
-
-- No color scheme. Nothing reads winit's `Window::theme` or `WindowEvent::ThemeChanged`.
-- The double-click time, in `src/host/winit/platform/`: Windows `GetDoubleClickTime` (the only
-  use of the `windows` dependency), macOS `NSEvent.doubleClickInterval` (the only use of
-  `objc2-app-kit`), Linux a fixed 400 ms.
+Facts behind `host/winit/system_preferences.rs`, which reads them through `mundy`.
 
 ## winit 0.30.13
 
@@ -38,8 +31,8 @@ Facts for the light and dark proposal (`.notes/showcase-proposal.md`), 2026-10-3
   | `org.gnome.desktop.peripherals.mouse double-click` | `i 400` |
   | `org.kde.kdeglobals.KDE DoubleClickInterval` | not found |
 
-  The GNOME double-click key reads through the portal, which `platform/linux.rs` says fails; on
-  KDE it answers the GSettings value, not KDE's own setting.
+  The GNOME double-click key reads through the portal; on KDE it answers the GSettings value,
+  not KDE's own setting.
 
 ## Crates (crates.io and GitHub, 2026-10-31)
 
@@ -60,26 +53,6 @@ Facts for the light and dark proposal (`.notes/showcase-proposal.md`), 2026-10-3
 - `iced_winit` 0.14 takes the scheme from winit on macOS and Windows and from `mundy` on Linux,
   behind its optional `linux-theme-detection` feature.
 
-## Contrast of the palettes (WCAG 2.2 ratios, computed 2026-10-31)
-
-| Pair | `Palette::DEFAULT` (dark) | Light candidate |
-|---|---|---|
-| `text` on `window_bg` / `surround` / `element` / `element_mid` / `element_strong` | 15.45 / 13.83 / 9.84 / 8.04 / 6.55 | 9.88 / 8.95 / 10.14 / 8.17 / 7.22 |
-| `text_muted` on `surround` / `element` / `element_mid` | 6.61 / 4.70 / **3.85** | 4.99 / 5.65 / 4.55 |
-| accent on `window_bg` / `surround` / `element_mid` | 8.16 / 7.30 / 4.25 | 4.56 / 4.13 / 3.77 |
-| `text` on the selection wash (accent at 64/255 over `element_mid`) | 5.48 | 6.04 |
-| knob: `text` on accent | **1.89** | — |
-| `window_bg` on accent / white on accent | 8.16 / 2.26 | 4.56 / 4.68 |
-| rungs `window_bg`–`surround`, `surround`–`element_mid`, `element_mid`–`element_strong` | 1.118, 1.719, 1.227 | 1.104, **1.096**, 1.131 |
-
-- Recipes that put `text_muted` on `element_mid`: a text field's placeholder
-  (`theme/text_edit.rs`), a hovered menu row's shortcut (`theme/context_menu/menu_item.rs`).
-- The smallest neutral gray that clears 4.5:1 on `#454545` is `#b2b2b2` (4.52:1).
-- Ayu Light as it ships: muted `#828E9F` on `#F8F9FA` 3.15; accent `#F29718` on white 2.28;
-  blue `#22A4E6` on `#EBEEF0` 2.40; ground `#FCFCFC` against `#F8F9FA` 1.03. Ayu's orange at its
-  own hue and saturation clears 3:1 on `#e4e7ea` from `#ba710a`, and carries white at 4.5:1 from
-  `#a66509` (4.68:1).
-
 ## `mundy` in the winit host (measured 2026-10-31, this machine)
 
 - `Preferences::once_blocking(ColorScheme | DoubleClickInterval)` through the portal: 20.3 ms
@@ -91,3 +64,15 @@ Facts for the light and dark proposal (`.notes/showcase-proposal.md`), 2026-10-3
   thread", `src/async_rt.rs`) on every non-wasm target, so the callback is never on the main
   thread; `once_blocking` and `subscribe` are called on the main thread, as `mundy`'s caveats
   ask for macOS.
+
+## Double-click time and distance elsewhere
+
+- Windows: `GetDoubleClickTime`, in ms, at most 5000, default 500
+  (<https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getdoubleclicktime>).
+- macOS: `NSEvent.doubleClickInterval`.
+- Linux: no cross-desktop standard. XSETTINGS `Net/DoubleClickTime` (default 250 ms) and
+  `Net/DoubleClickDistance` (5 px), read by GTK; on Wayland GTK reads
+  `org.gnome.desktop.peripherals.mouse double-click` through the Settings portal
+  (<https://wiki.freedesktop.org/www/Specifications/XSettingsRegistry/>).
+- egui: `InputOptions::{max_double_click_delay, max_click_dist}`, 0.3 s by default, set by the
+  app.

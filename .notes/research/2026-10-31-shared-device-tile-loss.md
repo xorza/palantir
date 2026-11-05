@@ -39,73 +39,40 @@ describe what each did.
   block is often missing again.
 - **It is in the texture.** A second read-back of a wrong frame, after `Gpu::wait`, returns the
   same pixels.
-- **Where it showed first.** `assert_paints_as_fresh` in `src/host/offscreen/tests/recovery.rs`
-  failed about 1 run in 7 to 25 of `cargo drive test recovery`. In one failure a third new host
-  painted what the recovered host painted: the odd frame was the comparison host's. The recovery
-  is not the cause.
+- **Where it showed first.** `assert_paints_as_fresh` in the recovery tests failed about 1 run
+  in 7 to 25; the odd frame was the comparison host's, so the recovery is not the cause.
 
 ## Measurements in palantir
 
 First frames of new hosts on `headless_test_gpu`. "Wrong" compares colors with a reference
 frame; "dirty" counts frames whose stencil, read back after the frame, holds a nonzero texel
-outside the clip's square, which finds three times as many frames, as most spoiled blocks lie
-under no shape.
+outside the clip's square, which finds three times as many, as most spoiled blocks lie under no
+shape.
 
 | Setup | Result |
 |---|---|
 | Recovery scene, 8 threads, one shared device | 4 / 2000 wrong |
-| Recovery scene, 8 threads, a device for each thread | 0 / 2000 wrong |
-| Recovery scene, 1 thread, one host at a time | 0 / 3840 wrong |
-| Recovery tests, each on an isolated device, 60 runs | 0 failed runs |
+| Recovery scene, 8 threads, a device each, or 1 thread one host at a time | 0 wrong |
+| Recovery scene without the rounded clip, 8 threads, 4000 frames | 0 wrong, against 4 to 24 with it |
+| Clip and four shadows, 2000 frames | 43 to 69 dirty; a clip alone or with another shape kind, 0 |
+| Every frame's GPU work serialized under one lock | 64 / 67 dirty: not concurrent work |
+| Every stencil texture kept alive, never freed | **0** dirty |
+| One thread, 8 hosts alive, a pseudo-random one replaced each frame | 43 / 33 dirty |
+| `Depth24PlusStencil8` instead of `Stencil8` (8000 frames) | **0** wrong |
+| Without Vulkan object names, or without the Khronos layer | 30 / 30 and 65 wrong of 8000 |
 
-The recovery scene with one part taken out at a time, 8 threads, 4000 frames, two lanes:
-
-| Variant | Wrong, lane 1 / 2 |
-|---|---|
-| All | 11 / 5 |
-| No rounded clip | **0 / 0** |
-| No mesh / no line / no image | 15 / 18, 14 / 4, 6 / 10 |
-| Clip with rects, gradient, shadows, text, polyline | 24 / 17 |
-
-The clip with one shape kind, 2000 frames, `WGPU_VALIDATION=0`:
-
-| Variant | Dirty, lane 1 / 2 |
-|---|---|
-| Clip alone | 0 / 0 (4000 frames) |
-| Clip and solid rect, gradient, text or polyline | 0 / 0 each |
-| Clip and four shadows | 52 / 54, a second run 60 / 69 |
-| Clip and four shadows, cutout tables off | 56 / 53 |
-
-The shadows change what the host allocates; they are not needed in the wgpu-only program.
-
-The clip-and-shadows scene, changed one way at a time, 2000 frames, two lanes:
-
-| Change | Dirty, lane 1 / 2 |
-|---|---|
-| None | 43 / 45 |
-| Each frame's GPU work serialized under one lock, waited before the next | 64 / 67 |
-| Hosts kept alive in rounds of 32 a thread | 1 / 6 |
-| Every stencil texture kept alive, never freed | **0 / 0** (same run time) |
-| One thread, 8 hosts alive, a pseudo-random one replaced each frame | 43 / 33 |
-| Stencil `StoreOp::Store` instead of `Discard` (full scene, 8000) | 25 wrong |
-| Stencil `Depth24PlusStencil8` instead of `Stencil8` (full scene, 8000) | **0 / 0** wrong |
-| `WGPU_DEBUG=0`, no Vulkan object names (8000) | 30 / 30 wrong |
-| `WGPU_VALIDATION=0`, no Khronos layer (8000) | 65 wrong |
-
-- **Not concurrent GPU work.** Serializing the frames does not lower the rate.
-- **Where the stencil lands.** From gpu-allocator's report (`Device::generate_allocator_report`)
-  in the one-thread run: of the new stencils whose memory an earlier stencil held at the same
-  start, 0 of 193 were dirty; at another start, 45 of 1041; on memory no stencil held in the
-  last 8 frames, 10 of 278. Dirty stencils sat on memory that buffers (`*.vbuf`, `*.instances`,
-  `quad.masks`, `cutouts.corners`) had held; none on memory a backbuffer or color target had held.
-- **Before any draw.** With an extra pass that only clears the stencil and stores it, run before
-  the frame's passes, 12 to 77 frames out of 2000 already held the values after that pass.
-- **Not the object names.** Dawn removed its Vulkan debug labels for an NVIDIA driver memory
-  corruption (<https://dawn.googlesource.com/dawn/+/4e5bb20e628b6fc1052b5a65f939df4b87e7b823%5E>);
-  here the rate does not move without them.
-- **Not the validation layer.** Version 1.4.357 had a heap corruption under concurrent render pass
-  creation (<https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/13535>); without the
-  layer the rate rises, with the faster frames. Its synchronization validation reported no hazard.
+- **Where the stencil lands.** From gpu-allocator's report in the one-thread run: of the new
+  stencils on memory an earlier stencil held at the same start, 0 of 193 were dirty; at another
+  start 45 of 1041; on memory no stencil held in the last 8 frames, 10 of 278. Dirty stencils sat
+  on memory buffers had held (`*.vbuf`, `*.instances`, `quad.masks`, `cutouts.corners`), none on
+  a backbuffer's or color target's.
+- **Before any draw.** An extra pass that only clears and stores the stencil, before the frame's
+  passes, already left the values in 12 to 77 frames of 2000.
+- **Not the object names**, which Dawn removed for an NVIDIA memory corruption
+  (<https://dawn.googlesource.com/dawn/+/4e5bb20e628b6fc1052b5a65f939df4b87e7b823%5E>), and **not
+  the validation layer**, whose 1.4.357 heap corruption under concurrent render pass creation
+  (<https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/13535>) does not apply; its
+  synchronization validation reported no hazard.
 
 ## wgpu alone
 

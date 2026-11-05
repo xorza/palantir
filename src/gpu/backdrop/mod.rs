@@ -5,7 +5,7 @@
 //! where the main pass breaks at the pane; [`backdrops`] keeps each pane's result in an atlas
 //! across frames, and blurs again the panes
 //! [`PaneCaptures`](crate::renderer::pane_captures::PaneCaptures) marks to capture. Facts and
-//! measurements: `.notes/research/2026-10-28-backdrop-effects.md`.
+//! measurements: `.notes/research/2026-10-28-backdrops.md`.
 //!
 //! # Decisions
 //!
@@ -33,16 +33,16 @@
 //!   shows its tint over the clear for the frame. Refused: a release panic on data-driven
 //!   content; a standalone texture per result that misses the atlas, which splits the
 //!   composite's draw run.
-//! - **The composer infers sharing.** A pane whose footprint misses every draw since the last
-//!   break captures at that break, as it would see the same pixels at its own place; else it
-//!   opens a barrier, where groups and text batches end, so nothing prunes or coalesces across
-//!   it. The panes of one break blur in one set of passes, each pass drawing every pane under its
-//!   own scissor, their first-axis rows apart in the scratch: a pass costs the Apple laptop about 48 µs
-//!   whatever it draws (`.notes/research/2026-10-29-backdrop-passes.md`), and on the Apple laptop the
-//!   shared break took 8 % off two panes apart and 6 % off the three-pane frames. Refused: an
-//!   explicit group, as Flutter's `BackdropGroup` and SwiftUI's `GlassEffectContainer` ask for,
-//!   which lets a pane miss what another painted under it; one capture for the union of the
-//!   footprints, which copies and blurs the gap between them.
+//! - **The composer infers sharing.** A pane whose footprint misses every draw since the last break
+//!   captures at that break, as it would see the same pixels at its own place; else it opens a
+//!   barrier, where groups and text batches end, so nothing prunes or coalesces across it. The
+//!   panes of one break blur in one set of passes, each pass drawing every pane under its own
+//!   scissor, their first-axis rows apart in the scratch: a pass costs the Apple laptop about 48 µs whatever
+//!   it draws (`.notes/research/2026-10-28-backdrops.md`, "Measured: a blur pass has a fixed
+//!   cost"), and on the Apple laptop the shared break took 8 % off two panes apart and 6 % off the three-pane
+//!   frames. Refused: an explicit group, as Flutter's `BackdropGroup` and SwiftUI's
+//!   `GlassEffectContainer` ask for, which lets a pane miss what another painted under it; one
+//!   capture for the union of the footprints, which copies and blurs the gap between them.
 //! - **The pane is a quad form, `QuadForm::Backdrop`, and glass two more.** SDF, corners, border,
 //!   AA, turn, rounded clips and scissors hold as for any quad, and the form keeps the backdrop's
 //!   reads off the solid form's registers. The fill is the tint; a gradient tint draws as its own
@@ -66,15 +66,15 @@
 //!   lit the flat face's Fresnel across the inner bezel and stepped at its edge, 5 sRGB levels
 //!   over the reel's grey pane.
 //! - **Dispersion spreads the whole spectrum** (`lens_spectrum` in `quad_pipeline/shader.wgsl`).
-//!   Each wavelength refracts at its index by Cauchy's model through `n_D`, and the reads sum
-//!   back to color in CIE XYZ under the 1931 observer, normalized so a field of one color keeps
-//!   it, as Filament's specgen builds its matrices; the weight between reads is integrated in
-//!   closed form (`.notes/research/2026-11-01-glass-dispersion.md`). Refused: red, green and blue
-//!   at their own index (luma.gl, Haze's `Simple`), two sharp ghosts of a bright edge; seven
-//!   reads weighted by eye (Haze's `Full`); a sum over the reads alone, which fringes a white
-//!   edge with a pure green; a weight loop over a fine grid, 19–36 % of a glass frame. The
-//!   tables are a buffer: as a constant array indexed at run time, V3D took 1288 uniforms and a
-//!   select over every entry, 2.6 times the glass composite's time at 512².
+//!   Each wavelength refracts at its index by Cauchy's model through `n_D`, and the reads sum back
+//!   to color in CIE XYZ under the 1931 observer, normalized so a field of one color keeps it, as
+//!   Filament's specgen builds its matrices; the weight between reads is integrated in closed form
+//!   (`.notes/research/2026-10-28-backdrops.md`, "Measured: dispersion"). Refused: red, green and
+//!   blue at their own index (luma.gl, Haze's `Simple`), two sharp ghosts of a bright edge; seven
+//!   reads weighted by eye (Haze's `Full`); a sum over the reads alone, which fringes a white edge
+//!   with a pure green; a weight loop over a fine grid, 19–36 % of a glass frame. The tables are a
+//!   buffer: as a constant array indexed at run time, V3D took 1288 uniforms and a select over
+//!   every entry, 2.6 times the glass composite's time at 512².
 //! - **No banding.** The levels are `Rgba16Float`; before an 8-bit target writes, the composite
 //!   adds interleaved gradient noise of one encoded step, scaled to linear by the sRGB curve's
 //!   slope. Grain (`noise`) is separate and fixed to the pane, so it moves and turns with it.
