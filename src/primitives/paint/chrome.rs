@@ -71,7 +71,7 @@ impl Chrome {
     /// Panics unless its fill, border, corners, shadow and backdrop filter each pass their own
     /// check. One branch-free test of every part, the checks that name the broken rule only on
     /// the cold path: `Widget::record` runs it on every chromed widget each frame, where the part
-    /// checks one by one took 4.4 % of a CPU frame (`.notes/PERF.md`, "Run 9, the CPU frame").
+    /// checks one by one took 4.4 % of a CPU frame (`.notes/PERF.md`, "The CPU frame").
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {

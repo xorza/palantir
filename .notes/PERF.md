@@ -1,468 +1,271 @@
 # Perf journal
 
-What seven optimization runs learned (2026-10-28 to 2026-11-01): how to measure on the hosts,
-what was rejected and why, and what is still open. What was kept is in the commits.
+What nine optimization runs learned (2026-10-28 to 2026-11-05): how to measure on the hosts,
+where the time goes, what was refused and why, and what is still open. What was kept is in the
+commits, each with its numbers per host.
 
 ## Measuring
 
-- **Hosts.** local: AMD CPU with a Radeon mobile AMD iGPU (RDNA2 iGPU), Vulkan (RADV), pinned with
-  `taskset -c 2 setarch -R`, governor and EPP at `performance`. fanless: a LAN host, an Apple laptop
-  Air with 8 GB, Metal, no pinning; a bench build peaks at 2.8 GB there, so one build at a time.
-  mac: a LAN host, an Apple laptop Mac with 24 GB, Metal, no pinning, which replaced the fanless during run 6;
-  a bench build peaks at 4.1 GB there, through its `sccache`, which wants `/opt/homebrew/bin` on
-  the `PATH`. Its CPU cases move up to 10 % between A/A runs at `schedule/cpu/walk`, under 1 %
-  elsewhere.
-  board: a LAN host, a VideoCore board (V3D through V3DV
-  Mesa), Linux, pinned with `taskset -c 3 setarch -R`; its governor stays `ondemand`, as
-  the user has no password-free `sudo` there. It builds nothing: the bench and test binaries are
-  cross-built on local against a sysroot copied from it (glibc 2.41, `clang` and `lld`; a fat-LTO
-  bench build peaks at 4.7 GB), and run there from worktrees at local's paths, which
-  `CARGO_MANIFEST_DIR` names.
-- **Run 7 hosts** (backdrops, 2026-11-01). mac is the build machine: it builds its own benches
-  and cross-builds the board's with zig as the C compiler and linker (`zig cc -target
-  aarch64-linux-gnu.2.41`, a wrapper that drops rustc's `--fix-cortex-a53-843419` and `-Wl,-O1`,
-  which zig's linker refuses or ignores), in 53 s for the fat-LTO bench binary. handheld:
-  a LAN host, a handheld (an AMD APU, RADV), pinned with `taskset -c 4 setarch -R`, governor `powersave` without `sudo`; it
-  builds its own benches, peaking at 3.0 GB, and kills a user's processes when the SSH session
-  that started them ends, so a run holds its session. win (a LAN host, the mobile AMD CPU under Windows
-  11) was dropped: `cargo` over SSH hangs at 0 % CPU before it resolves the dependencies, and
-  its `cargo.exe` proxy is 0 bytes, so `rustup run stable cargo` stands in. The Mac's macOS
-  Local Network permission belongs to the app that started the `tmux` server: a server started
-  before the permission gets `No route to host` to every LAN address until it restarts.
-- **Run 7 noise floors** (A/A, ABBA): handheld frames ±1.5 % (`many/under` 2.4 %), composite and
-  blur ±0.8 %; board under 0.3 % but `glass/hover` 0.7 %; mac frames ±1 %.
-- **A shader change moves the last f16 bit on Apple GPUs.** Variants of the spectrum loop that
-  are equal in IEEE arithmetic differ by up to 2⁻¹¹ (one f16 step at 1) on a few hundred texels:
-  Metal compiles with fast math. A bit-exact check of a shader change compares frames on each
-  host's own device (`f16diff`, a frame dump per look and pane shape).
-- **Noise floors** (A/A over every case): CPU cases within 2 % local and 4 % fanless. GPU cases within
-  4 % on fanless but `gradient_upload` (13 %); local GPU cases up to 43 % (`gradient_upload`), 32 %
-  (`record_pass/images`), 12 to 16 % (`text_atlas`, `raster_atlas`), and 8 % on the frames.
-- **CPU A/B across binaries moves by code placement.** A change a case never runs can move it
-  4 % (`backdrop_frame/cpu/*/cached`), and a tight loop doubles when its branch crosses a
-  64-byte line (`half_simd/from_f32x4/runtime_simd`, 60 ↔ 114 ns). A commit that only added a
-  GPU bench moved `layout/cached` +5 % and `hit_test/click_focus/topmost` +8 %. Judge a small
-  CPU change inside one binary, switched at run time, or read the moved case's code before
-  believing it.
-- **The board barely drifts**: an A/A of the frame and main-pass cases moves 0.0 to 0.3 %, and
-  `record_pass` up to 5 %.
-- **The fanless drifts.** It has no fan: one ABBA read a base binary 16 % slow on both A runs. Confirm
-  a surprising fanless result with interleaved short runs.
-- **The fanless writes no timestamps between passes**, so `backdrop_blur`, `backdrop_capture` and
-  `backdrop_composite` read wall clock there, submit latency included.
-- **Local GPU benches pay RADV's round trip**: an empty submit and wait is 250 µs local, 19 µs
-  on fanless. Traced (`perf trace -e ioctl`; perf decodes amdgpu's CS ioctl as `DRM_I915_IRQ_EMIT`):
-  a `scrolling` frame's submit takes 49 µs and its wait 590 µs (the 425 µs pass); a `partial` or
-  `hovering` frame's submit takes 60 µs and 230 µs on alternate frames, asleep in the kernel, not
-  on the CPU, and its wait 180 to 330 µs (the backbuffer's 179 µs copy out). Why the submit
-  alternates is not found.
-- **The mobile AMD iGPU's GPU frames are the APU's.** With the iGPU busy the core runs at 2.0 GHz with an
-  IPC of 1.8 (3.2 idle), so `frame/gpu/partial` spends 1.1 ms in record against 0.18 ms in the
-  CPU harness. Not a C-state: a busy-poll wait changes nothing. Read CPU work off the CPU arms.
-- **V3D tools** (run 6). `V3D_DEBUG=shaderdb` prints each pipeline's instructions, threads,
-  uniforms and spills, and `nir` the entry point of each (`decl_function … (entrypoint)`), which
-  names a stats line; `perf` names V3DV's slow paths, such as a render area off the tile
-  granularity, and `fs` the QPU code. A diagnostic build that swaps a shader module's body for a
-  file at run time (`PALANTIR_DIAG_BODY=blur:/path.wgsl`, local branch `diag-body`) times shader
-  variants on every host from one build each.
-- **GPU tools.** `atomic/main_pass_batch` times each pipeline of a whole repaint from in-pass
-  timestamps (not on Apple GPUs). RADV prints each pipeline's registers and occupancy under
-  `RADV_DEBUG=shaderstats`. A diagnostic build with a shader that returns at once, or with
-  blending off, splits raster from ALU. The fanless has no Xcode, so no Metal trace; RGP opens its
-  captures only in its GUI, and the the distribution's RenderDoc ships no Python module.
-- **Profiling.** DWARF call graphs do not unwind in the bench binaries; `perf record` flat
-  profiles with `addr2line -i` over the sample addresses give the inlined frames. On the mobile AMD iGPU,
-  RADV's RGP capture (`MESA_VK_TRACE=rgp`) frames at a present, so capture from the showcase;
-  whether an offscreen bench triggers one is not tried.
+- **Every A/B is a per-case ABBA**: `--exact <case> --measurement-time 3 --warm-up-time 1`, legs
+  A, B, B, A, medians compared, the binary pinned with `taskset -c N setarch -R`. A sequential
+  A/A moved the local CPU cases by up to 7 % and the GPU cases by up to 31 %.
+- **Hosts.**
+  - local: high-end Intel CPU, high-end NVIDIA GPU (dGPU only), Vulkan; core 2. A bench build peaks at
+    4.7 GB cold, 3 GB after.
+  - fanless: a LAN host, Apple laptop, 8 GB, Metal, no pinning; 2.2 to 2.8 GB a build, so one at
+    a time. Login shell fish: run scripts with `bash`.
+  - handheld: handheld@a LAN host, handheld (an AMD APU, RADV), core 4,
+    governor `powersave` without `sudo`; 3.0 to 4.2 GB a build. Fish login shell. It kills a
+    user's processes when the SSH session that started them ends, so a run holds its session.
+  - win: a LAN host, AMD CPU with a Radeon mobile AMD iGPU, 30 GB, Windows, Vulkan; pinned through
+    `ProcessorAffinity` 4 in a PowerShell ABBA runner; 4.2 to 4.7 GB a build. The rustup
+    `cargo.exe` and `rustc.exe` are symlink proxies that fail over SSH (os error 448), and
+    `sccache` does not start there: a build runs the toolchain's binaries by full path with
+    `rustc-wrapper = ""`. A push to its bare repo needs `--receive-pack="powershell git
+    receive-pack"`; criterion writes CRLF, and cargo prints `benches\palantir.rs` with a
+    backslash.
+  - Earlier: board, a LAN host, VideoCore board (V3D, V3DV), core 3, governor `ondemand`; it
+    builds nothing, its binaries are cross-built against a sysroot copied from it (glibc 2.41)
+    with `clang` and `lld`, or on the mac with `zig cc -target aarch64-linux-gnu.2.41` behind a
+    wrapper that drops `--fix-cortex-a53-843419` and `-Wl,-O1`, and run from worktrees at the
+    builder's paths, which `CARGO_MANIFEST_DIR` names. mac, a LAN host, Apple laptop Mac, 24 GB; its
+    `sccache` wants `/opt/homebrew/bin` on the `PATH`. A macOS Local Network permission belongs
+    to the app that started the `tmux` server: a server started before it gets `No route to
+    host` to every LAN address until it restarts.
+- **Noise floors** (ABBA A/A):
 
-- **Run 8 hosts** (theming frame, 2026-11-03): local and fanless (a LAN host) as above; a bench
-  build peaks at 4.0 GB local and 2.8 GB on the fanless. A/A on `integration/frame/*/theming`: local
-  `cpu` ±0.8 %, `gpu` up to 10 % on one leg; fanless ±1 % on both.
+  | host | CPU cases | GPU cases |
+  | --- | --- | --- |
+  | local | under 1 %, at most 2 % | up to 8.4 % (`frosted/scrolling`), 7.4 % (`blur/scrolling`), 6.3 % (`pair_near/scrolling`) |
+  | fanless | under 0.6 % | under 0.9 % |
+  | handheld | under 0.7 %; `frame/cpu/alternating` and `backdrop_frame/cpu/blur/cached` bimodal, 12 to 15 % | median 0.7 %, up to 11 % on `*/cached` |
+  | win | under 0.7 % | median 1 %, up to 8 %, 23 % on `pair_near/scrolling` |
+  | board | under 0.3 % | under 0.3 %, `glass/hover` 0.7 %, `record_pass` 5 % |
 
-- **Run 9 hosts** (every frame case, 2026-11-05): local is now an high-end Intel CPU with an high-end NVIDIA GPU
-  Laptop (dGPU only), pinned with `taskset -c 2 setarch -R`; fanless as above; handheld as in run 7,
-  pinned to core 4; win: a LAN host, a AMD CPU with a Radeon mobile AMD iGPU, 30 GB, Windows,
-  Vulkan, pinned through `ProcessorAffinity` 4 in a PowerShell ABBA runner. A bench build peaks
-  at 4.7 GB local on a cold build, 2.9 to 3.1 GB after; 2.2 to 2.5 GB on the fanless; 4.2 GB on the
-  handheld (3.5 after); 4.7 GB on win. Win's `cargo.exe` and `rustc.exe` are rustup symlink proxies
-  that fail over SSH (os error 448), and its `sccache` server does not start over SSH: a build
-  there runs the toolchain's binaries by full path with `rustc-wrapper = ""`, and a push to its
-  bare repo needs `--receive-pack="powershell git receive-pack"`. Criterion writes CRLF there.
-- **Run 9 floors.** A sequential A/A moves the local CPU cases by up to 7 % and the GPU cases by
-  up to 31 %, so every run 9 A/B is a per-case ABBA (`--exact`, 3 s, 1 s warm-up). Local ABBA
-  A/A over the CPU cases: under 1 %, at most 2 % (`blur/under`). Deck ABBA A/A over every case:
-  CPU median 0.1 %, under 0.7 % but for `frame/cpu/alternating` (11.6 %) and
-  `backdrop_frame/cpu/blur/cached` (15 %), which run bimodal there; GPU median 0.7 %, up to
-  11 % on the `*/cached` cases. fanless: CPU under 0.6 %, GPU under 0.9 %. win: CPU under 0.7 %, GPU
-  median 1 %, up to 8 % and 23 % on `pair_near/scrolling`. Local ABBA A/A over the GPU cases:
-  up to 8.4 % (`frosted/scrolling`), 7.4 % (`blur/scrolling`), 6.3 % (`pair_near/scrolling`)
-  and 5 % (`frame/gpu/resizing`), the rest under 5 %.
+- **CPU A/B across binaries moves by code placement.** A change a case never runs moved it 4 %
+  (`backdrop_frame/cpu/*/cached`), a commit that only added a GPU bench moved `layout/cached`
+  +5 %, and a tight loop doubles when its branch crosses a 64-byte line
+  (`half_simd/from_f32x4/runtime_simd`, 60 ↔ 114 ns). Judge a small CPU change inside one
+  binary, switched at run time, or read the moved case's code before believing it.
+- **The fanless has no fan and drifts**: one ABBA read a base binary 16 % slow on both A legs. Confirm
+  a surprising fanless result with interleaved short runs. It writes no timestamps between passes, so
+  `backdrop_blur`, `backdrop_capture` and `backdrop_composite` read wall clock there.
+- **Apple GPUs compile with fast math**: shader variants equal in IEEE arithmetic differ by up to
+  one f16 step at 1 (2⁻¹¹). A bit-exact check of a shader change compares frames on each host's
+  own device (`f16diff`).
+- **An APU's GPU frames are not its CPU's**: on the mobile AMD iGPU under RADV an empty submit and wait took
+  250 µs (19 µs on the fanless), and with the iGPU busy the core ran at 2.0 GHz with an IPC of 1.8,
+  so `frame/gpu/partial` spent 1.1 ms in record against 0.18 ms in the CPU harness. Read CPU
+  work off the CPU arms.
+- **Tools.**
+  - CPU: DWARF call graphs do not unwind in the bench binaries; `perf record --call-graph lbr`
+    gives callers on Intel, and `perf annotate -l` ranks source lines. A diagnostic build that
+    stubs one call out (no probe, no check) gives its ceiling in one ABBA.
+  - GPU: `atomic/main_pass_batch` times each pipeline from in-pass timestamps (not on Apple
+    GPUs); `RADV_DEBUG=shaderstats` prints registers and occupancy; a shader that returns at
+    once, or blending off, splits raster from ALU. V3D: `V3D_DEBUG=shaderdb` with
+    `MESA_SHADER_CACHE_DISABLE=true` prints instructions, threads and spills, `nir` names each
+    entry point.
+  - Missing: no Xcode on the fanless, so no Metal trace; RGP opens captures only in its GUI; the
+    the distribution's RenderDoc ships no Python module.
 
 ## Where the time is
 
-- **The theming frame** (run 8, local `cpu/theming` 577 µs): shaping 37 % (`cosmic_text`
-  12.9, `harfrust` 12.4, `read_fonts` 9.4, `unicode_bidi` 1.6), layout 17 %, record about 20 %,
-  the theme blend 3 % (`Oklab::from_color` 1.5). A 60 s linear transition moves a font size by
-  one 1/64 px step about every 6 frames, and the layout measures a run again only on a frame its
-  measure cache misses: a run off screen shapes, is never rendered, and its buffer expires after
-  its 4 probation frames, so the next measure shapes it again at the same size.
-
-- **Run 6, the branch tip against its start**, medians (board one leg each, its A/A 0.0 to 0.3 %;
-  mac and local ABBA):
-
-  | case | board | mac | local |
-  | --- | --- | --- | --- |
-  | `frame/gpu/scrolling` | 21.1 → 18.2 ms | 712 → 663 µs | 2.29 → 2.33 ms (floor) |
-  | `frame/gpu/partial` | 7.42 → 3.19 ms | 387 → 349 µs | 1.69 → 1.52 ms (floor) |
-  | `frame/gpu/hovering` | 7.25 → 2.87 ms | 369 → 330 µs | 1.77 → 1.69 ms |
-  | `frame/cpu/scrolling` | 586 → 545 µs | 131 → 131 µs | 224 → 225 µs |
-  | `backdrop_frame/gpu/glass/scrolling` | 174 → 142 ms | 2.35 → 1.93 ms | 4.29 → 4.15 ms |
-  | `backdrop_blur/gpu/4/2048` | 232 → 153 ms | 3.68 → 2.86 ms | 3.24 → 3.23 ms |
-  | `main_pass/gpu/partial` | 3.84 ms → 161 µs | 13.2 → 11.4 µs | 5.42 → 6.06 µs |
-
-  The partial main pass alone grows on local and fanless since the atlas holds its tables: with no
-  bake pass before it, it opens the frame's work; the frames it belongs to shrink.
-
-- **Run 7, the glass composite on V3D.** `fs_backdrop` with the spectrum loop compiled to 2869
-  instructions, 1288 uniforms and 37 spills: the three 48-entry tables, constant arrays indexed
-  by the cell, ran as a select over every entry, and the lens's registers spilled on every pane,
-  glass or not (`V3D_DEBUG=shaderdb` with `MESA_SHADER_CACHE_DISABLE=true`, as a cached shader
-  prints nothing). A blurred pane's composite: 56.5 ms at 2048² against 25.9 with no lens in its
-  shader; glass at 512²: 13.8 ms against 5.4 with the tables in a buffer. The glass pipeline
-  still spills (1410 instructions, 32:74 spills:fills); the plain backdrop pipeline does not
-  (413 instructions).
-- **Run 7, the glass frame's blur.** Glass blurs at σ 2 logical, 4 physical at 2×: the residual
-  runs at level 0 with 25 taps an axis, the plan's most costly σ (`backdrop_blur/gpu/4/2048`:
-  board 153 ms, handheld 4.7 ms, mac 2.9 ms, against 22, 1.3 and 0.5 ms at σ 16). A lens's reach used
-  to grow its footprint by up to 41 px a side at 2×, which the residual blurred and the capture
-  copied.
-- **On the board the GPU is the frame** (run 6): `frame/gpu/scrolling` 21 ms of which the CPU half
-  0.59 ms; the main pass of a whole 2560 × 1440 repaint 17.1 ms. Cutting one fragment entry at a
-  time (`PALANTIR_DIAG`, a diagnostic build that makes an entry return at once): the tabled
-  shadows 7.7 ms (their coverage 5.8, of it the cutout lookups 2.1 and the source clip 1.4), the
-  quads 4.6 ms, text 0.16 ms, meshes and curves 0.06 ms, and the pass with every fragment entry
-  trivial 4.8 ms. `V3D_DEBUG=shaderdb` gives `fs_shadow_tables` 564 to 698 instructions at 2
-  threads, `fs_shadow` 9612 with 12 loops, `vs_shadow` 461 and 420 (binning) at 2 threads.
-- **On the board a partial pass moved the whole target**: `main_pass/gpu/partial` was 3.84 ms, a
-  load and a store of the 14.7 MB backbuffer, as V3DV runs the render area wgpu always sets to
-  the whole attachment. See Decisions.
-- **The board's backdrop blur**: a full-resolution residual at 2048² took 98 ms at σ 1 and 232 ms
-  at σ 4 (the mobile AMD iGPU 2.6 and 3.3 ms), as each tap is a `textureLoad` of `Rgba16Float`; 70 and
-  153 ms since the loop per device. In `backdrop_frame/gpu/blur/scrolling` (52 ms) the blur
-  passes take 8 ms, the composite 4.6, the shadows 7.2, the quads 4.7; the rest is the pass
-  breaks, each a load and a store of the whole target.
-- **The board's cutout bake** took 2.5 ms of a 21 ms scrolling frame until the atlas held its tables.
-
-- **CPU frame**: record dominates every arm (`frame/cpu/cached` is almost all record). The profile
-  is flat at IPC 3.2: `open_node` 27 % (SoA push 4.6 %, chrome lowering 3.8 %), `widget_id`
-  5.8 %, `Button::show` 6.8 %, `Text::show` 5.3 %, nothing else past 3 %. Only fewer
-  instructions move it.
+- **The CPU frame** (local `frame/cpu/hovering` 116 µs, LBR call stacks): record is nearly all
+  of it. `open_node` 21.6 %, `Ui::response_for` 10.1 %, `post_record` 9.7 %, `Text::show`
+  5.4 %, `Button::show` 4.9 %, the text shape's push 4.7 %, `widget_id` 3.8 %, the fixture's own
+  `format!` and id hashing about 5 %, and before it was made one test, the chrome check
+  `Widget::record` runs on every chromed widget, 4.4 %. Flat at an IPC above 4: only fewer
+  instructions move it. A frame probes 1216 responses over 1245 nodes, 7.5 ns each; no probe in
+  `Widget::show` is a ceiling of −2 to −7.8 %.
+- **The scrolling frame**: `CascadeEngine::refresh` 13 %, `compute_paint_rect` 9.3 % and
+  `DamageEngine::compute` 3.7 % of local `frame/cpu/scrolling`. A scroll moves every paint rect
+  under the viewport by one translation, and the refresh computes each again in screen space,
+  spread over the tree-item walk and the rect math.
 - **An action frame records twice** (`typing`: two passes, and a full cascade rebuild as `""`
   and `"x"` differ by one shape). That is the frame cycle's design.
-- **Main pass GPU** of a whole fixture repaint on the mobile AMD iGPU (`main_pass_batch`): quads 151 µs,
-  shadows 115 µs, text 9 µs. The quads are raster-bound: a shader that returns its fill at
-  once times the same, and blending off entirely saves 40 µs (27 %). They shade 4.1 M fragments
-  over 1.12 screens; 0.4 M lie under a later opaque interior. The shadows are 79 µs of raster
-  and 46 µs of coverage math (a trivial shader, before the edge cells were tightened).
-- **Backdrop passes** (run 5, `.notes/research/2026-10-29-backdrop-passes.md`): a blur pass costs
-  the Apple laptop about 48 µs whatever it draws, five a pane, and the mobile AMD iGPU about 6 µs; the panes of one
-  break now blur in one set of passes. On the mobile AMD iGPU a whole frame's backdrop work is the main
-  pass's composite, then the blurs, then the captures (cards: 793, 610 and 248 µs).
-- **The pane composite** (run 5, a temporary diagnostic override that cut one part at a time):
-  on the fanless's 4K `modal/scrolling`, 4.9 ms a frame, the composite costs 1.4 ms over a pane that
-  returns at once: the B-spline read 0.29 ms, grain and saturation 0.21 ms, the luminance ceiling
-  and tint 0.16 ms, the dither nothing. On the mobile AMD iGPU at 2048² the B-spline is a third of it
-  (605 against 408 µs with one fetch) and the grain 90 µs.
-- **Shader statistics** (`RADV_DEBUG=shaderstats`): every fragment shader stays at 24 to 48 VGPRs
-  and 20 to 32 waves a SIMD, with no spills; occupancy is not what bounds them.
-
-- **Run 9, the CPU frame** (local `frame/cpu/hovering` 116 µs, `perf record` with LBR call
-  stacks): `open_node` 21.6 %, `Ui::response_for` 10.1 %, `post_record` 9.7 %, `Text::show`
-  5.4 %, `Button::show` 4.9 %, the text shape's push 4.7 %, `widget_id` 3.8 %, and the chrome
-  check `Widget::record` runs on every chromed widget 4.4 % (`Chrome`, `Shadow`, `Brush` and
-  `BackdropFilter::validate`). The fixture's own `format!` and id hashing take about 5 %. A frame
-  probes 1216 responses over 1245 nodes, about 7.5 ns each. Ceilings, each a diagnostic build
-  against base (local ABBA, CPU cases): no probe in `Widget::show` −2 to −7.8 %
-  (`hovering` 116.1 → 107.0 µs); no chrome check in `Widget::record` −1.6 to −5.2 %
-  (`hovering` 115.7 → 110.2 µs).
-
-- **Run 9, the branch tip against its start** (ABBA medians, base → tip; the tip's one change is
-  the chrome check, so the GPU arms move by noise only):
+- **The theming frame is a resize frame** since the shape store: `cpu/theming` 288 µs against
+  `cpu/resizing` 261 µs local; layout 40 % and record 35 % on the fanless. Before, shaping was 37 %:
+  a 60 s transition moves a font size one 1/64 px step about every 6 frames, and a run off
+  screen expired after probation and shaped again.
+- **Current CPU numbers** (ABBA medians at `5ab2bdeef`):
 
   | case | local | fanless | handheld | win |
   | --- | --- | --- | --- | --- |
-  | `frame/cpu/cached` | 100.0 → 97.9 µs | 120.8 → 120.0 µs | 246.1 → 238.3 µs | 161.6 → 160.6 µs |
-  | `frame/cpu/hovering` | 115.2 → 112.2 µs | 134.9 → 133.6 µs | 279.4 → 271.8 µs | 182.2 → 182.5 µs |
-  | `frame/cpu/scrolling` | 169.5 → 166.6 µs | 195.4 → 194.8 µs | 386.0 → 379.8 µs | 247.7 → 246.4 µs |
-  | `frame/cpu/typing` | 281.4 → 276.6 µs | 325.6 → 322.9 µs | 654.5 → 634.8 µs | 423.0 → 422.8 µs |
-  | `backdrop_frame/cpu/glass/hover` | 119.8 → 116.7 µs | 139.4 → 138.6 µs | 281.2 → 275.1 µs | 188.1 → 187.0 µs |
+  | `frame/cpu/cached` | 97.9 µs | 120.0 µs | 238.3 µs | 160.6 µs |
+  | `frame/cpu/hovering` | 112.2 µs | 133.6 µs | 271.8 µs | 182.5 µs |
+  | `frame/cpu/scrolling` | 166.6 µs | 194.8 µs | 379.8 µs | 246.4 µs |
+  | `frame/cpu/typing` | 276.6 µs | 322.9 µs | 634.8 µs | 422.8 µs |
+  | `frame/cpu/theming` | 286.1 µs | 307.4 µs | 713.2 µs | 411.9 µs |
+  | `backdrop_frame/cpu/glass/hover` | 116.7 µs | 138.6 µs | 275.1 µs | 187.0 µs |
 
-  Every CPU case: local −0.8 to −2.7 %, fanless −0.1 to −1.1 %, handheld −1.2 to −3.2 %, win −1.0 to
-  +0.4 %. The win host (Zen 3+) gains least of the x86 hosts.
-- **Run 9, the scrolling frame**: `CascadeEngine::refresh` 13 %, `compute_paint_rect` 9.3 % and
-  `DamageEngine::compute` 3.7 % of local `frame/cpu/scrolling`, against record's share of every
-  other case. A scroll moves every paint rect under the viewport by one translation, and the
-  refresh computes each again in screen space; the time spreads over the tree-item walk and the
-  rect math, with no line past 14 % of either function.
+- **The main pass on the mobile AMD iGPU** (`main_pass_batch`, a whole fixture repaint): quads 151 µs,
+  shadows 115 µs, text 9 µs. The quads are raster-bound: a shader that returns its fill at once
+  times the same, and blending off saves 40 µs (27 %); 4.1 M fragments over 1.12 screens, 0.4 M
+  under a later opaque interior. The shadows: 79 µs of raster, 46 µs of coverage math. Every
+  fragment shader sits at 24 to 48 VGPRs and 20 to 32 waves a SIMD, with no spills.
+- **Backdrop passes** (`.notes/research/2026-10-29-backdrop-passes.md`): a blur pass costs the
+  Apple laptop about 48 µs whatever it draws and the mobile AMD iGPU about 6 µs; on the mobile AMD iGPU a frame's backdrop work
+  is the composite, then the blurs, then the captures (cards: 793, 610 and 248 µs). The
+  composite on the fanless's 4K `modal/scrolling` costs 1.4 ms over a pane that returns at once: the
+  B-spline read 0.29 ms, grain and saturation 0.21, the luminance ceiling and tint 0.16, the
+  dither nothing; on the mobile AMD iGPU at 2048² the B-spline is a third of it and the grain 90 µs.
+- **On the board the GPU is the frame**: `frame/gpu/scrolling` 18 ms, its CPU half 0.55 ms; a whole
+  2560 × 1440 main pass 17.1 ms, of which the tabled shadows 7.7 (coverage 5.8: cutout lookups
+  2.1, source clip 1.4), the quads 4.6, text 0.16, and every fragment entry trivial 4.8. In
+  `backdrop_frame/gpu/blur/scrolling` (52 ms) the blur passes take 8 ms, the composite 4.6, the
+  shadows 7.2, the quads 4.7, the rest the pass breaks, each a load and a store of the whole
+  target. A blur residual at 2048² takes 70 ms at σ 1 and 153 ms at σ 4, each tap a
+  `textureLoad` of `Rgba16Float`.
 
 ## Rejected
 
-- **Shadows: the blur's reciprocals per instance** (run 6): `1 / σ`, the reach and the cutout
-  scale handed on flat from `vs_shadow` instead of worked out per pixel. Bit-exact on all three
-  hosts and nothing gained: the board's main pass 17.11 → 17.08 ms, the fanless's +2.0 %, local within
-  its floor. The SFU is not what bounds the tabled shadows on V3D.
-- **Blur residual: one loop that mirrors each read, everywhere** (run 6). V3D: σ 4 at 2048²
-  232 → 153 ms; the Apple laptop: 6.2 → 14.3 ms. **Two loops with the weights read four at a time,
-  everywhere**: the Apple laptop −20 %, V3D +2 to +3 % at 512². So each device takes its own (Decisions).
-- **Shadows: fewer `vs_shadow` invocations** through an index buffer over the cells' 24 distinct
-  corners (run 6). The vertex stage costs nothing measurable on V3D: a main pass whose shadows
-  compute every output and land off screen times as one with no shadow draws.
-- **Blur: `LoadOp::Clear` on the tent and first-axis passes.** +8 % to +15 % on the mobile AMD iGPU's 512²
-  cases, as a clear writes the whole mip; no change on Apple GPUs.
-- **Blur: the residual as a compute pass over workgroup memory** (FidelityFX Blur's design).
-  Both GPUs serve the residual's reads from texture cache as fast as from workgroup memory;
-  the barrier and fill lose (mobile AMD iGPU +15 % on `1/2048`, m-series +86 %; wgpu also zero-fills
-  workgroup memory per dispatch on Metal). Wins only on 512² high-σ, where it saves a render
-  pass's fixed cost.
-- **Blur: halve at σ above 2 texels, or cut the residual at 3σ.** The impulse response leaves the
-  Gaussian by 3.5 % and 0.83 % of its peak, past the 0.4 % `blur_plan` promises.
-- **Blur: an unsigned-compare mirror in the tents' edge fallback.** A test per read costs more
-  than the remainders it skips (+3.1 % on `160/2048` local); it stays in the residual only.
-- **Composite: dither by the sRGB slope.** No change on either host; the composite does not wait
-  on its `pow`s.
-- **Blur: two tents in one pass** (branch `spike-two-tents`), `[1 3 6 10 12 12 10 6 3 1] / 64`
-  as five bilinear fetches an axis, exact at 1/16. It saves a pass, −11 % on
-  `backdrop_blur/jobs/*` on the fanless, but reads 25 fetches a texel from the larger level: fanless
-  `backdrop_blur/48/2048` +145 %, `backdrop_frame/gpu/*/scrolling` +17 %.
-- **Mean and peak image taps** (`image_pipeline/minified_mean`, 39 ms on the mobile AMD iGPU against 4 ms
-  for one tap): the bench reads a 5120² texture whole 24 times a frame, the mobile AMD iGPU's memory
-  bandwidth. Only a mip chain reads less.
-- **Clip per instance in the shader** (GPUI's content mask) to merge clipped groups:
-  `record_pass/groups/per_item` pays 340 ns a group on Vulkan, but the frame fixture's main pass
-  records in 23 µs of a 2.1 ms frame.
-- **A hit-test rect column for SIMD**: a miss scans 0.5 ns a row local, 0.9 ns on fanless; a few
-  hundred rows cost under 0.3 µs.
+- **Shadows: the blur's reciprocals per instance**, handed on flat from `vs_shadow`: bit-exact,
+  nothing gained (board 17.11 → 17.08 ms, fanless +2.0 %). The SFU does not bound the tabled shadows.
+- **Shadows: fewer `vs_shadow` invocations** through an index buffer over the cells' 24 corners:
+  the vertex stage costs nothing measurable on V3D.
+- **Shadows: discard a pixel its source clips**: −1.9 % before the edge cells were tightened,
+  which left only the corner cells' few such pixels.
+- **Blur: one residual loop for every device**: the mirrored loop takes V3D's σ 4 at 2048² from
+  232 to 153 ms and the Apple laptop's from 6.2 to 14.3; the windowed one wins the Apple laptop 20 % and loses V3D
+  2 to 3 %. Each device takes its own (Decisions).
+- **Blur: `LoadOp::Clear` on the tent and first-axis passes**: +8 to +15 % on the mobile AMD iGPU at 512², as
+  a clear writes the whole mip.
+- **Blur: the residual as a compute pass over workgroup memory** (FidelityFX Blur): both GPUs
+  serve the reads from texture cache as fast; the barrier and fill lose (mobile AMD iGPU +15 %, m-series
+  +86 %, and wgpu zero-fills workgroup memory per dispatch on Metal).
+- **Blur: halve above σ 2 texels, or cut the residual at 3σ**: the response leaves the Gaussian
+  by 3.5 % and 0.83 % of its peak, past the 0.4 % `blur_plan` promises.
+- **Blur: an unsigned-compare mirror in the tents' edge fallback**: +3.1 % on `160/2048`; it
+  stays in the residual only.
+- **Blur: two tents in one pass**: −11 % on `backdrop_blur/jobs/*` on
+  the fanless, but 25 fetches a texel from the larger level, `backdrop_blur/48/2048` +145 %.
+- **Blur only the texels the composite reads**: board −0.7 to −5 %,
+  handheld −0.5 to −4.4 % but +1 % on the blur frames. A held capture serves a pane inside the
+  snapped region, so the cut needs the footprint snapped everywhere it is read (damage, the
+  encoder's filter, the capture), for a few percent.
+- **Composite: dither by the sRGB slope**: no change; the composite does not wait on its `pow`s.
+- **Composite: a cheaper grain hash**, **a narrower results atlas** (`Rg11b10Ufloat`,
+  `Rgb10a2Unorm`): each changes pixels, a rendering change and not an optimization.
+- **The spectrum loop's state**, its integrals read again or the lens surface computed once:
+  board −2.5 to +3.3 % on the glass composite, its frames −0.4 % at best; handheld +1.2 %.
+- **Captures: every capturing frame through the backbuffer**: −6 % on the fanless's `cards_apart`,
+  +12 % on the mobile AMD iGPU's `pair_near/scrolling`. Kept only where the captures add up to the surface.
+- **Captures: sample the swapchain image**: wgpu 30 offers a sampled surface usage only on
+  Vulkan (wgpu-hal 30.0.1 `metal/adapter.rs:474`, `dx12/adapter.rs:1360`,
+  `gles/adapter.rs:1379`), and there it costs a bind group a frame, as each acquire is a new
+  texture.
+- **`LoadOp::DontCare` on the blit**: wgpu-core refuses it under
+  `InstanceFlags::STRICT_WEBGPU_COMPLIANCE`, which a device the app opened can carry unseen.
+- **No blending for opaque quad interiors** (Skia Graphite's depth-ordered opaque pass, or
+  core-and-ring quads): a ceiling of −40 µs of a 436 µs pass on the mobile AMD iGPU; Apple GPUs blend in
+  tile memory.
+- **A join billboard as one quad, not sixteen**: −11.5 % on `curve_pipeline/join`, but the
+  joint's clip planes test the interpolated `phys`, so 8 pixels of `polyline_gradient` move by
+  up to 235 levels; testing `@builtin(position)` moves seam pixels against the goldens.
+- **Mean and peak image taps**: the bench reads a 5120² texture 24 times a frame, the mobile AMD iGPU's
+  memory bandwidth; only a mip chain reads less.
+- **Clip per instance in the shader** (GPUI's content mask): 340 ns a group on Vulkan, but the
+  fixture's main pass records in 23 µs of a 2.1 ms frame.
+- **A hit-test rect column for SIMD**: a miss scans 0.5 ns a row; a few hundred rows cost under
+  0.3 µs.
 - **A byte compare before `AnimatedLook::eq`**: the look holds padding.
-- **No blending for opaque quad interiors**, by a depth-ordered opaque pass (Skia Graphite's
-  design) or core-and-ring quads: the ceiling is blending off for every quad, −40 µs of a 436 µs
-  pass on the mobile AMD iGPU; Apple GPUs blend in tile memory. A depth attachment and a second draw order
-  for under 2 % of the frame.
-- **Discard a shadow pixel its source clips** instead of returning zero: −1.9 % on the shadows
-  before the edge cells; the tighter cells leave only the corner cells' few such pixels.
-- **A join billboard as one quad, not sixteen**: −11.5 % on `curve_pipeline/join`, but 8 pixels
-  of `polyline_gradient` move by up to 235 levels. The clip planes that split a joint between its
-  segments and its join test the interpolated `phys`, so the partition depends on the
-  triangulation. Testing `@builtin(position)` would make it exact and free the triangulation, but
-  it moves seam pixels against the goldens: a rendering change, not an optimization.
-- **Every capturing frame through the backbuffer.** It saves each capture's copy, −6 % on the
-  fanless's `cards_apart`, but the copy onto the target costs more than two small footprints: the
-  mobile AMD iGPU's `pair_near/scrolling` +12 %. Kept only where the captures add up to the surface.
-- **Sample the swapchain image in place of a capture.** wgpu 30 offers a sampled usage on a
-  surface only on Vulkan, where the driver lists it: Metal's surfaces take render, copy and
-  storage usages, DX12's render and copy, GL's render alone (wgpu-hal 30.0.1
-  `metal/adapter.rs:474`, `dx12/adapter.rs:1360`, `gles/adapter.rs:1379`), so the fanless cannot
-  take it. Where it is offered it costs a group each frame, as each acquire is a new texture.
-  Metal's framebuffer-only path is not the obstacle: wgpu keeps it only for a usage of
-  `COLOR_TARGET` alone (`metal/surface.rs:260`), and the surface already takes the copies.
-- **A cheaper grain hash.** The grain costs the mobile AMD iGPU 90 µs at 2048²; a hash without integer
-  multiplies changes the grain, so it is a rendering change, not an optimization.
-- **A narrower results atlas** (`Rg11b10Ufloat`, `Rgb10a2Unorm`), for a B-spline read that is a
-  third of the composite: a 6-bit mantissa or 10-bit linear bands under an 8-bit sRGB step.
-- **`LoadOp::DontCare` on the blit**, which writes every texel with blending off. wgpu-core
-  refuses it under `InstanceFlags::STRICT_WEBGPU_COMPLIANCE`, which a device the app opened can
-  carry and not report, so the blit would fail validation there.
-- **`is_finite() && v >= 0.0` in a value kind.** LLVM folds it into one class test that x86
-  lowers to 14 integer ops; the kinds bound by `f32::MAX` instead, two compares.
-
-- **Blur only the texels the composite reads** (run 7, branch `spike-tight-blur`). Each pass
-  writes the region the footprint snaps to, though the texels within the blur's reach of its
-  edge are past their support and nothing reads them; scissors cut to what the composite reads
-  and, stage by stage, what that needs. Pi −0.7 to −5 % (`cards` −5 %), handheld −0.5 to −4.4 % but
-  +0.6 to +1 % on the blur frames, mac −0.6 to −2 %. Refused: a held capture serves a pane whose
-  footprint lies inside the snapped region, not inside the copied footprint, so cutting the
-  texels past the support needs the footprint snapped to the lattice everywhere it is read
-  (damage, the encoder's filter, the capture), for a few percent.
-- **The spectrum loop's state** (run 7): its running integrals read again from the buffer each
-  step rather than carried; the lens surface computed once for every wavelength; both. Pi: the
-  glass composite −2.5, +3.3 and −2.4 %, its frames −0.4 % at best; handheld: the first +1.2 % on
-  the glass composite at 512² and +0.4 to +0.7 % on its frames; mac within its floor. A V3D path
-  for 0.4 % of a frame is not worth its branch.
-- **cosmic-text's `shape-run-cache`** (run 8): its shapes are size-free too, and it took
-  `cpu/theming` −28.7 % local and −28.4 % on the fanless, but its key builds a `String` and clones
-  the attributes for every run it looks up, and its `trim` walks the whole map on every frame.
-  The shape store below beats it by 8.5 % local and 7.6 % on the fanless.
-- **Shapes from resident buffers alone** (run 8): −11 % on the fanless's `cpu/theming`; 62 % of the
-  misses found no resident buffer of their text, as the runs the frame never renders expire
-  after probation (Where the time is).
-- **Kept shapes on the entries' own expiry wheel** (run 8), a kept shape taking over the expired
-  entry's ticket serial, against a wheel of their own: `single_line_dispatch` moved −0.9 % local
-  and +0.6 % on the fanless, inside the floor, and the fanless's `resize_drag` +2.4 %. The 3 % that
-  `single_line_dispatch` reads against the branch start is not the second wheel's: the spike
-  without the counter and guards read +0.1 % on the fanless.
-
-- **A memo of the theme blend's Oklab conversions** (run 8). After the blend in place, the
-  fanless's `sample` puts `advance_theme` at 3.9 % of `cpu/theming`, most of it `Oklab::from_color`
-  for colors whose ends a run fixes. A memo per color slot needs a second form of the public
-  `Lerp` (a prepared type or a memo argument) through every derive, for a ceiling of about
-  3 %; a stateless one has nowhere to live.
-
-- **A probe that skips its interaction half** for a widget the pointer does not engage (run 9,
-  branch `spike-probe-engages`): not hovered, no capture's press or release, no scroll delta.
-  Local ABBA −1.4 to +1.8 %, fanless within its floor, handheld +1.7 % on the CPU cases, win ±1 %. The
-  interaction half of a disengaged widget is a few compares; the geometry half and the copies
-  are the probe's cost, and a probe is 7.5 ns.
-- **A probe by the widget's resolve position** (run 9, branch `spike-probe-position`): the probe
-  in `Widget::show` runs after the body, when the newest resolved id is a child's, so a
-  container falls to the `by_id` map; looking up at the widget's own position skips the map.
-  Local ABBA within ±1 %: the map is not where the probe's time goes.
+- **`is_finite() && v >= 0.0` in a value kind**: LLVM folds it into a class test x86 lowers to 14
+  integer ops; the kinds bound by `f32::MAX`, two compares.
+- **cosmic-text's `shape-run-cache`**: −28.7 % on `cpu/theming`, but its key builds a `String`
+  and clones the attributes per lookup, and its `trim` walks the map every frame; the shape
+  store beats it by 8 %.
+- **Shapes from resident buffers alone**: −11 % on the fanless's `cpu/theming`; 62 % of the misses
+  found no resident buffer, as runs never rendered expire after probation.
+- **Kept shapes on the entries' own expiry wheel**: within the floor, `resize_drag` +2.4 % on the
+  fanless.
+- **A memo of the theme blend's Oklab conversions**: a ceiling of about 3 % of `cpu/theming`,
+  for a second form of the public `Lerp` through every derive.
+- **A probe that skips its interaction half** for a widget the pointer does not engage: within
+  each host's floor, handheld +1.7 %. A disengaged widget's interaction half is a few compares.
+- **A probe by the widget's resolve position**, which skips the `by_id` map for a container
+  probed after its children: within ±1 %.
 
 ## Decisions
 
-- **A shape outlives its size** (run 8). Shaping runs unhinted, so cosmic-text's glyphs are in
-  em units and a `TextShapeKey` of another size, leading or width shapes the same text alike: a
-  miss lays out the shaped lines of a resident buffer of its `ShapeIdentity` at another size or
-  leading, else the buffer an expired entry left, kept out of the pool as long as a rendered run,
-  at other metrics or under its own key, as cosmic-text's `Buffer::set_metrics` lays out again
-  and shapes nothing. A shape at the run's own metrics and another width shapes again into a
-  recycled buffer, as a copy of the lines allocates each of them where a reshape reuses the
-  pool's (`churn::width_drag_stays_flat`); the pool reserves room for every kept buffer when it
-  is kept and frees one that comes back with no room, so no still frame grows it. Refused:
-  cosmic-text's `shape-run-cache` and resident buffers alone (Rejected). Bit for bit: a test
-  lays out against a cold shape at four metrics. `cpu/theming` −34.9 % local, −34.3 % fanless;
-  `gpu/theming` −5.9 % local, −10.4 % fanless; every other frame case within each host's floor.
-  Sources: cosmic-text 0.19 `shape.rs` (`x_advance / font_scale`), `buffer.rs`
-  (`set_metrics` marks a relayout, not a reshape).
-- **A theme transition blends in place** (run 8). `Lerp::lerp_into`, a provided method the
-  derive overrides field by field, and a run that shares its ends' text axes once: a frame
-  cloned both 28 KiB themes for the by-value `lerp`, moved each part again at every nesting
-  level and walked every text slot to share axes the run's ends fix (the fanless's `sample`: 19 µs a
-  frame in `ThemeTransition::advance`, a third of it `memmove`). A test holds the blend in place
-  to `Theme::lerp`, bit for bit through RON. `cpu/theming` −2.6 % local, −2.0 % fanless; the rest
-  within each host's floor. Since then `lerp` and every `Animatable` method borrow their
-  operands too, as Bevy's `Animatable::interpolate` reads its ends, which also drops the clones
-  of the animation engine's spring step, offset and settle checks; `lerp_into` stays for the
-  parts it writes in place. Refused at first as a break of every impl for one caller, before the
-  engine's clones were counted. Not measured since.
-
-- **The blur residual's loop follows the device** (run 6). `ResidualLoop::One` on Broadcom's
-  VideoCore, one loop that mirrors each read where the window crosses the level's edge;
-  `Windowed` elsewhere, a loop for a window inside the level and one that mirrors every read;
-  both read the weights four at a time, and write the same texels bit for bit (a test). Chosen
-  by an `override` constant at pipeline creation. Refused: one form for all, as each loses 2 to
-  130 % on the other host (Rejected); a vendor list for Mali, Adreno and PowerVR, which nobody
-  measured. Pi: σ 4 at 2048² −34 %, `glass/scrolling` −17 %; fanless: σ 4 −20 %, `glass` −13 %;
-  local within ±1.3 %.
-- **The cutout atlas keeps what it baked** (run 6). `CutoutTables` holds the tables of earlier
-  frames, pairwise apart, and bakes of a frame's tables only what it lacks; the plan still
-  places each frame's tables afresh, so a table the frames keep needing stays at its place.
-  Refused: a cache per window's plan, which another window's bake into the shared atlas would
-  void unseen; baking more tables now that a bake lasts, which changes which shadows read a
-  table and so their pixels. Pi frames −13 to −21 %, fanless −9 to −12 %.
-- **A partial frame paints a damage canvas where a pass moves its whole target** (run 6). On
-  Arm, Imagination, Qualcomm and Broadcom GPUs (`PassTraffic::WholeTarget`, ANGLE's tile-based
-  list less Apple) the main pass of a partial frame clears a `DamageCanvas` the size of its
-  scissors' bounds out to 64 px tiles, in power-of-two size classes of which the stream keeps
-  two, under the surface's viewport moved by the canvas's origin (wgpu 30 takes a viewport past
-  the target), and copies each scissor into the backbuffer. The fragment entries that read their
-  position add the origin (`frag_px`), so every pixel is the backbuffer path's: a test paints
-  both on one device and compares. Refused: Vulkan's render area, which wgpu does not expose
-  (Dawn has `render-pass-render-area` for it); the canvas on Apple GPUs, whose pass over the same
-  target takes the fanless 32 µs, so it gains nothing there and costs 45 ns of encoding; shifting the
-  varyings by the origin in the vertex stage, which saves the add but is not exact for a center
-  left of half the origin; a canvas over half the surface, whose store and copies cost what the
-  load did. Pi: `frame/gpu/partial` 7.37 → 3.73 ms, `hovering` 7.24 → 3.62 ms,
-  `backdrop_frame/gpu/blur/hover` 6.38 → 2.71 ms; whole frames +0.2 to +0.3 %, the add in the
-  shadows' fragments. fanless and local within their floors. Spike branch `spike-damage-canvas`.
-  Sources: [Vulkan Guide, tile-based rendering](https://docs.vulkan.org/guide/latest/tile_based_rendering_best_practices.html),
+- **A chrome is checked in one branch-free test** (`5ab2bdeef`). Each part's lane checks
+  gather into one array compare and the f16 sign test is SWAR; the asserts that name the broken
+  rule run only on the cold path, so a panic keeps its message and caller. Refused: dropping the
+  per-frame check for `debug_assert!`, against "a wrong value never draws quietly"
+  (`AGENTS.md`, Input validation); a check that is only branch-free (−1 %, its cost unchanged).
+  CPU frames: local −0.8 to −2.7 %, handheld −1.2 to −3.2 %, fanless −0.1 to −1.1 %, win −1.0 to
+  +0.4 %; the ceiling is −1.6 to −5.2 %.
+- **A shape outlives its size.** Shaping runs unhinted, so glyphs are in em units: a miss lays
+  out the shaped lines of a resident buffer of its `ShapeIdentity` at another size or leading,
+  else the buffer an expired entry left, as cosmic-text's `Buffer::set_metrics` lays out again
+  and shapes nothing; another width shapes again into a recycled buffer. Refused:
+  `shape-run-cache` and resident buffers alone (Rejected). `cpu/theming` −34.9 % local, −34.3 %
+  fanless. Sources: cosmic-text 0.19 `shape.rs` (`x_advance / font_scale`), `buffer.rs`.
+- **A theme transition blends in place**: `Lerp::lerp_into`, which the derive overrides field by
+  field; a frame had cloned both 28 KiB themes for the by-value `lerp`. `lerp` and every
+  `Animatable` method borrow their operands, as Bevy's `Animatable::interpolate` does.
+  `cpu/theming` −2.6 % local, −2.0 % fanless.
+- **The blur residual's loop follows the device**: `ResidualLoop::One` on Broadcom's VideoCore,
+  `Windowed` elsewhere, by an `override` constant, both bit for bit (a test). Refused: one form
+  for all (Rejected); a vendor list nobody measured. Pi σ 4 −34 %, fanless −20 %.
+- **The cutout atlas keeps what it baked**: `CutoutTables` holds earlier frames' tables and bakes
+  only what a frame lacks. Refused: a cache per window's plan, which another window's bake would
+  void unseen; baking more tables, which changes which shadows read one. Pi frames −13 to −21 %,
+  fanless −9 to −12 %.
+- **A partial frame paints a damage canvas where a pass moves its whole target**: on Arm,
+  Imagination, Qualcomm and Broadcom GPUs (`PassTraffic::WholeTarget`, ANGLE's tile-based list
+  less Apple) a partial frame clears a `DamageCanvas` over its scissors' bounds and copies each
+  scissor into the backbuffer, every pixel the backbuffer path's (a test). Refused: Vulkan's
+  render area, which wgpu does not expose; the canvas on Apple GPUs, where it gains nothing.
+  Pi `frame/gpu/partial` 7.37 → 3.73 ms. Sources:
+  [Vulkan Guide, tile-based rendering](https://docs.vulkan.org/guide/latest/tile_based_rendering_best_practices.html),
   [Dawn render-pass-render-area](https://dawn.googlesource.com/dawn.git/+/refs/heads/main/docs/dawn/features/render_pass_render_area.md),
   ANGLE `vk_renderer.cpp` (`isTileBasedRenderer`), Mesa V3DV `v3dv_cmd_buffer.c`.
-
-- **Glass draws through pipelines of its own, and its spectrum's tables are a buffer** (run 7).
-  `QuadForm::BackdropLens` and `BackdropSpectrum` beside `Backdrop`, each a pipeline that the
-  `QUAD_FORM` constant prunes; the spectrum tables a storage buffer the composite group binds.
-  Refused: one shader with the lens behind a branch, whose registers V3D spilled on every pane;
-  the tables as WGSL constant arrays, which V3D indexes by a select over every entry. Pi: a
-  blurred pane's composite −54 %, `modal/scrolling` −34 %, glass composite −61 % at 512² and
-  glass frames −26 to −41 %, `glass_plain` −14 % on the handheld; frames elsewhere within each
-  host's floor. The module doc of `gpu::backdrop` holds both.
-- **A glass pane's footprint holds what its lens reads, not its reach** (run 7).
-  `LensOptics::margin`: a sample `d` px in moves inward along the edge's normal, and a rounded
-  rect's chord along an inward normal is no shorter than its narrowest side, so a pane wider than
-  its bezel, lean and a pixel together reads a pixel past itself; the pixel is for the normal the
-  composite takes from screen differences, which can turn a pixel from the ridge. The cascade
-  knows a pane's narrowest side only for a shape no clip cuts and no paint animation turns;
-  chrome and the rest keep the reach. Glass frames: mac −8.8 to −10.6 %, handheld −7.2 to −8.3 %, board −5.6 to −6.6 %; `stacked`
-  −4.5 to −6.5 %. Frames of every look and three pane shapes match the reach's bit for bit on
-  the mac; on the handheld one texel of 54 frames moves by one f16 step at 1 (2⁻¹¹), where a smaller
-  capture moves the tent's normalized fetch coordinates.
+- **Glass draws through pipelines of its own, and its spectrum's tables are a buffer**:
+  `QuadForm::BackdropLens` and `BackdropSpectrum`, which the `QUAD_FORM` constant prunes.
+  Refused: the lens behind a branch, whose registers V3D spilled on every pane; the tables as
+  WGSL constant arrays, which V3D indexes by a select over every entry. Pi glass frames −26 to
+  −41 %. The module doc of `gpu::backdrop` holds both.
+- **A glass pane's footprint holds what its lens reads, not its reach**: `LensOptics::margin`,
+  from the pane's narrowest side where the cascade knows it. Glass frames −5.6 to −10.6 % on the
+  board, handheld and mac; one texel of 54 handheld frames moves by one f16 step at 1.
 
 ## Open
 
-- **A scroll as a translation** (run 9): paint rects kept in the space of the nearest scroll
-  viewport, so a scroll changes one offset and not every row under it, as Chromium's property
-  trees hold a scroll as one transform node and paint chunks in its local space. Damage diffs
-  screen rects row by row and the encoder culls on them, so both would read through the offset.
-  The ceiling is about a quarter of `frame/cpu/scrolling` (the refresh, the paint rects and the
-  damage pass together); not spiked.
-- **The response probe** (run 9): 1216 probes a frame at 7.5 ns, 5 to 8 % of a CPU frame; the
-  two cheaper probes tried moved nothing (Rejected). What is left is the geometry half's two
-  table reads and the 152-byte copies.
-
-- **The theming frame is a resize frame now** (run 8): `cpu/theming` 374 µs against
-  `cpu/resizing` 342 µs local, 301 against 289 µs on the fanless; layout is 40 % and record 35 % of
-  the fanless's frame (`sample`). `FamilyKeys::key` and `TextSystem::refresh` compare a family name
-  and each reused run's text every frame (`memcmp`, 1.2 % and 1.3 % on the fanless), in every frame,
-  not only a theme's.
-- **`single_line_dispatch` +2.0 % local and +2.6 % on the fanless** since run 8 began, a case of 64
-  cache hits and one frame tick: the hit's code is the same, and the tick grew from 2.2 to 5.7
-  KiB with the kept shapes' wheel. Every frame case stays within its floor.
-
-- **The glass pipeline spills on V3D** (run 7): 1410 instructions, 32:74 spills:fills, two
-  threads. The loop carries the last read, the running integrals and the sum; the variants
-  tried (Rejected) moved nothing.
+- **A scroll as a translation**: paint rects kept in the space of the nearest scroll viewport,
+  so a scroll changes one offset and not every row under it, as Chromium's property trees hold
+  a scroll as one transform node and paint chunks in its local space. Damage diffs screen rects
+  row by row and the encoder culls on them, so both would read through the offset. A ceiling of
+  about a quarter of `frame/cpu/scrolling`; not spiked.
+- **The response probe**: 5 to 8 % of a CPU frame at 7.5 ns a probe. What is left is the
+  geometry half's two table reads and the 152-byte copies.
+- **`FamilyKeys::key` and `TextSystem::refresh`** compare a 64-byte family name and each reused
+  run's text every frame (`memcmp`, 1.2 % and 1.3 % on the fanless).
+- **The glass pipeline spills on V3D**: 1410 instructions, 32:74 spills:fills, two threads.
 - **Glass's σ is the plan's most costly**: σ 4 physical runs the residual at level 0, 25 taps an
-  axis, where σ 4.01 halves first. Every exact cut tried is in Rejected (a halving at 2 texels,
-  pairs of linear taps); the bilinear pair at the 8 sub-texel bits the board and the handheld report
-  still moves a pair's weight by up to 0.39 % of the peak.
+  axis; the bilinear pair at the 8 sub-texel bits the board and handheld report moves a pair's weight by
+  up to 0.39 % of the peak.
 - **Glass chrome keeps the lens's whole reach**: the cascade keeps no chrome lift, so
   `LensOptics::margin` reads no narrowest side for it.
-- **The Windows host's `cargo`** hangs over SSH before it resolves dependencies (run 7).
-
-- **Skip the backdrop capture copy on a swapchain image.** A frame that paints the backbuffer
-  copies nothing since run 5, and a frame whose captures would copy more than the surface paints
-  there. A direct frame still copies: wgpu offers no sampled usage on a Metal or DX12
-  swapchain (see Rejected). Skipping every copy took the fanless 5 % to 12 % off the frames that
-  capture (`modal` 7.5 %).
-- **A pane's break test reads one bounding box** of what was painted since the break, so in an
-  L-shaped layout a pane breaks anew though no single draw touches its footprint. A short list
-  of rects would see it; no bench has such a layout.
-- **Shadow coverage per instance**: `filter_cdf_series` takes `1 / σ` and `h²/6` per pixel,
-  where the vertex stage could hand them on flat. The coverage math is about 40 µs of the
-  shadows' 115 µs on the mobile AMD iGPU.
-- **A shadow corner stream per shadow, not per quad.** In a frame with a shadow every quad
-  uploads 16 B of `CornerTables` (25 % over its 64 B), which only shadow instances read; in
-  `CutoutMode::Shade` all of them are `NONE`. A stream per shadow needs the instance buffer bound
-  at an offset for each shadow run, and the run's shadow ordinal. No bench shows the upload.
-- **`Ordering::order` inlined into the curve lowering on the fanless.** Always inlined, as x86 needs
-  (as a call, `curves/alone` +20 % and `same_tier_mesh` +25 % on the local host), the fanless's
-  `curves/alone` runs 21 % slower than with `order` a call, while its `same_tier_mesh` runs 23 %
-  faster. The curve function grows from 362 to 432 instructions; no profile says why.
-- **The board's tabled shadows** (7.7 ms of a 17.1 ms main pass): the coverage math, not its
-  reciprocals (Rejected), and 2 threads where V3D runs 4 at 16 registers. A lean entry for the
-  edge cells, which take one span and no cutout, could run on 4; drawn per shadow, edge cells
-  then corner cells, it keeps the blending order but doubles the shadow draws. Its ceiling: the
-  pass without the cutout lookups takes 15.0 ms against 17.1.
-- **The board's pass breaks**: each pane capture ends the main pass, a load and a store of the
-  whole target, 3.8 ms on V3D. Painting what lies under the panes into capture canvases first,
-  then the frame in one pass, trades the breaks for drawing each footprint twice, on a device
-  whose pass moves its whole target only.
+- **A direct frame still copies its captures**: no sampled swapchain on Metal or DX12
+  (Rejected). Skipping every copy took the fanless 5 to 12 % off the frames that capture.
+- **A pane's break test reads one bounding box** of what was painted since the break, so an
+  L-shaped layout breaks anew though no draw touches the footprint; no bench has one.
+- **Shadow coverage per instance**: `filter_cdf_series` takes `1 / σ` and `h²/6` per pixel; the
+  coverage math is about 40 µs of the shadows' 115 µs on the mobile AMD iGPU.
+- **A shadow corner stream per shadow, not per quad**: in a frame with a shadow every quad
+  uploads 16 B of `CornerTables` that only shadow instances read. No bench shows the upload.
+- **`Ordering::order` inlined into the curve lowering**: x86 needs it inlined (as a call,
+  `curves/alone` +20 %), the fanless's `curves/alone` runs 21 % slower so and its `same_tier_mesh`
+  23 % faster; no profile says why.
+- **The board's tabled shadows** run at 2 threads where V3D runs 4 at 16 registers; a lean entry
+  for the edge cells could run on 4, at twice the shadow draws. Ceiling: 15.0 against 17.1 ms.
+- **The board's pass breaks**: each pane capture ends the main pass, 3.8 ms on V3D. Painting what
+  lies under the panes into capture canvases first trades the breaks for drawing each footprint
+  twice.
+- **The board's vertex floor**: the main pass with every fragment entry trivial takes 4.8 ms.
 - **The cutout bake's cost model** assumes a bake a frame; with held tables more keys would pay,
-  but which shadows read a table is a rendering decision (Decisions).
-- **The board's vertex floor**: the main pass with every fragment entry trivial still takes 4.8 ms;
-  `vs_shadow` runs once per vertex of 48 per shadow, binned and rendered.
-- **The board's blur residual**: 98 to 232 ms at 2048². A pass's taps read a dynamically indexed
-  uniform array and a 64-bit texel each; the bilinear pair, which would halve the reads, is
-  refused for its 1/16 sub-texel weights (`blur.wgsl`).
-- **Shader costs with a profiler.** RGP on the mobile AMD iGPU and Xcode's Metal System Trace on the fanless can
-  now split the main pass (quads, shadows) and `backdrop_frame/gpu/*/under` on the fanless, which
-  spends 1.6 ms over `hover` on two captures.
+  but which shadows read a table is a rendering decision.
+- **Shader costs with a profiler**: RGP on the mobile AMD iGPU and Xcode's Metal System Trace on the fanless
+  would split the main pass and `backdrop_frame/gpu/*/under`, which spends 1.6 ms over `hover`
+  on the fanless.

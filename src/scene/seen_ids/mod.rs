@@ -24,7 +24,7 @@
 //! hash index until the first differing resolve, then indexes the entries so far
 //! and sets the counters. The rollover diff compares by position over the matching
 //! prefix. A steady frame hashes no id. The mode is a second path beside the hashed one, kept
-//! because `widget_id` is 5.8 % of the CPU frame (`.notes/PERF.md` "Where the time is"), and
+//! because `widget_id` is 3.8 % of the CPU frame (`.notes/PERF.md` "The CPU frame"), and
 //! `tests/reference.rs` holds it to the hashed path.
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
