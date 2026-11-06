@@ -377,9 +377,9 @@ pub(crate) mod internals {
     use crate::ui::app::App;
 
     impl OffscreenHostBuilder {
-        /// Present as the winit host does, through [`PresentStrategy::DirectAdaptive`], so a bench
+        /// Present as the winit host does, through `PresentStrategy::DirectAdaptive`, so a bench
         /// measures what the desktop pays.
-        pub(crate) const fn swapchain_present(mut self) -> Self {
+        pub const fn swapchain_present(mut self) -> Self {
             self.strategy = PresentStrategy::DirectAdaptive;
             self
         }
