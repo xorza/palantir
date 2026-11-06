@@ -18,7 +18,7 @@ use palantir::{App, Configure, Grid, Panel, Sizing, Track, TranslateScale, Ui};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::fixtures::parked_icons::ParkedIcons;
-use crate::gates::WARMUP_FRAMES;
+use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::offscreen::OffscreenTarget;
 use crate::harness::{Audit, Report};
 
@@ -28,10 +28,6 @@ use crate::harness::{Audit, Report};
 /// same page plus a row of icons, and its excess is the miss path.
 const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 
-/// Frames a device gate measures for its mode: a still frame's count is flat, so a longer window
-/// reads the same mode and adds to a test that the first GPU open already takes most of 1 s from.
-const MODE_FRAMES: usize = 64;
-
 /// Offscreen frames of `scene` on `target`, warmed and measured with no ceiling.
 fn device_frames(
     gpu: &HeadlessTestGpuLease,
@@ -40,7 +36,7 @@ fn device_frames(
 ) -> Report {
     Audit::new()
         .warmup(WARMUP_FRAMES)
-        .frames(MODE_FRAMES)
+        .frames(MEASURE_FRAMES)
         .budget(u64::MAX)
         .run_settled_frames(
             || {

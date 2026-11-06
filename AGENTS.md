@@ -447,6 +447,10 @@ of the crates.
 
 - **Every test run needs a GPU adapter**; a headless machine needs a software Vulkan driver
   (Mesa lavapipe).
+- **A slow first GPU test can be the build folder, not the GPU.** The first Metal call lists the
+  folder that holds the executable, through `NSBundle`: a `deps/` of 221,686 entries made it 800 ms
+  on an Apple laptop, and the still gate took 0.26 s after `cargo clean`. Cargo leaves old build
+  output there, so a `cargo clean` is the remedy.
 - **`--all-features` is clippy's alone**: under `profile-with-tracy` a test binary opens the
   Tracy socket.
 - **A change to bench code** adds `cargo bench-once`. Before measuring or `perf`, read
