@@ -56,11 +56,12 @@ impl AnimationSpec {
             ease: Easing::OutCubic,
         },
     };
-    /// 300 ms ease-out-cubic. A theme change's default ([`Ui::set_theme_transition`]): a theme
-    /// set every frame under it lags 89 ms behind the edit, where `InOutCubic`, which starts at
-    /// `4t³`, would lag 24 s (`.notes/research/2026-11-01-reel.md`, "Measured").
+    /// 300 ms ease-out-cubic. A stock theme's [`Theme::transition`]. A theme set every frame under
+    /// it lags 89 ms behind the edit at 60 Hz: a frame is 1/18 of the spec and closes the share
+    /// `e = 1 − (17/18)³` of the gap, so the lag holds at `(1 − e) / e = 4913/919` frames. Under
+    /// `InOutCubic`, which starts at `4t³`, `e` is 1/1458 and it would lag 24 s.
     ///
-    /// [`Ui::set_theme_transition`]: crate::Ui::set_theme_transition
+    /// [`Theme::transition`]: crate::Theme::transition
     pub const THEME: Self = Self {
         motion: AnimationMotion::Duration {
             secs: 0.3,

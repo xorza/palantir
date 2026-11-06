@@ -1,3 +1,4 @@
+use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::domain;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
@@ -36,6 +37,18 @@ fn default_theme_roundtrips_through_ron() {
     };
     let opaque = pretty(&Theme::from_parts(&Palette::DARK, &opaque));
     assert_eq!(opaque.matches("backdrop_filter:").count(), 0);
+
+    // A theme's transition is its own value in the file, a duration or a spring.
+    for transition in [AnimationSpec::SNAP, AnimationSpec::spring(300.0, 10.0)] {
+        let theme = Theme {
+            transition,
+            ..Theme::stock(ColorScheme::Dark)
+        };
+        let file = pretty(&theme);
+        assert_ne!(file, serialized);
+        let loaded: Theme = ron::from_str(&file).expect("parse");
+        assert_eq!(loaded.transition, transition);
+    }
 }
 
 #[test]

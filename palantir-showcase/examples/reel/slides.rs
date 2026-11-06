@@ -66,7 +66,6 @@ pub(crate) fn steps(k: usize) -> Vec<Step> {
             Step::Hold(ms(2600)),
             Step::Act(|_, ui| morph(ui, Theme::stock(ColorScheme::Dark))),
             Step::Hold(ms(2000)),
-            Step::Act(|_, ui| ui.set_theme_transition(AnimationSpec::THEME)),
         ]),
         5 => steps.extend([Step::Hold(secs(13))]),
         6 => steps.extend([Step::Hold(secs(9))]),
@@ -96,8 +95,13 @@ pub(crate) fn steps(k: usize) -> Vec<Step> {
 
 /// Blend the window's theme to `theme` under [`MORPH`].
 fn morph(ui: &mut Ui, theme: Theme) {
-    ui.set_theme_transition(MORPH);
-    ui.set_theme_for(ColorScheme::Dark, theme);
+    ui.set_theme(
+        ColorScheme::Dark,
+        Theme {
+            transition: MORPH,
+            ..theme
+        },
+    );
 }
 
 /// Mark `deck`'s slide as started at its time; a slide's own pictures run from here.

@@ -59,8 +59,8 @@
 //! Three doors, widest first.
 //!
 //! - **[`Theme`]** is the whole style tree, one per [`ColorScheme`]
-//!   ([`Ui::set_theme_for`](Ui::set_theme_for) swaps one; [`UiPreferences::scheme`]
-//!   picks which shows; [`Ui::set_theme_transition`] blends a change), with per-widget bundles
+//!   ([`Ui::set_theme`](Ui::set_theme) swaps one; [`UiPreferences::scheme`]
+//!   picks which shows; [`Theme::transition`] blends a change), with per-widget bundles
 //!   ([`Theme::button`], [`Theme::slider`]).
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
 //!   `Option`, so `.style(overrides.as_ref())` works.

@@ -2601,6 +2601,7 @@ Theme
         pub focus_ring: FocusRingTheme
         pub text: TextStyle
         pub window_bg: RgbaF32
+        pub transition: AnimationSpec
         pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
@@ -2688,10 +2689,8 @@ Ui
     struct Ui: Debug
         pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
-        pub const fn theme_for(&self, scheme: ColorScheme) -> &Rc<Theme>
-        pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>)
-        pub const fn theme_transition(&self) -> AnimationSpec
-        pub fn set_theme_transition(&mut self, spec: AnimationSpec)
+        pub const fn scheme_theme(&self, scheme: ColorScheme) -> &Rc<Theme>
+        pub fn set_theme(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>)
         pub fn preferences(&self) -> UiPreferences
         pub fn set_preferences(&mut self, preferences: UiPreferences)
         pub const fn color_scheme(&self) -> ColorScheme

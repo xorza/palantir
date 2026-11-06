@@ -1,6 +1,5 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
-use crate::animation::animation_spec::AnimationSpec;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
@@ -631,7 +630,7 @@ fn an_app_global_setting_asks_for_a_frame_only_when_it_moves() {
     ];
     for (name, set) in sets {
         let mut h = Harness::mono(SURFACE);
-        h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
+        support::set_still_themes(&mut h);
         h.prime(2, |ui| {
             support::blue_frame(ui, "steady");
         });

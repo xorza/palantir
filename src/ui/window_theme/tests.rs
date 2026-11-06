@@ -72,12 +72,16 @@ fn an_animated_set_moves_the_epoch_with_each_blend() {
     assert_eq!(window.epoch(), 2, "a frame with no run moves nothing");
 }
 
-/// A running transition ends where it heads, moving the epoch, when the spec is taken away, when a
+/// A running transition ends, moving the epoch, when a theme under no transition lands, when a
 /// frame snaps motion, and when the shown theme is edited in place.
 #[test]
 fn every_end_of_a_run_moves_the_epoch() {
     let ends: [fn(&mut WindowTheme); 3] = [
-        |window| assert!(window.set_spec(AnimationSpec::SNAP)),
+        |window| {
+            let mut still = Theme::stock(Dark);
+            still.transition = AnimationSpec::SNAP;
+            assert!(window.set(Dark, Rc::new(still), Motion::Animate));
+        },
         |window| window.advance(0.1, Dark, Motion::Snap),
         |window| _ = window.edit(),
     ];

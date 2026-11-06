@@ -974,6 +974,39 @@ mod tests {
         );
     }
 
+    /// A scheme pick blends in, on a fresh tour, whose first build snapped, and after a live edit:
+    /// the frame that adopts the scheme does not yet show its theme, and the frames settle on it.
+    #[test]
+    fn a_scheme_pick_blends_after_an_edit() {
+        let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
+        let mut shell = Shell::open(0);
+        h.session(&mut shell).settle().expect("the frames settle");
+        let pick_the_other_scheme = |h: &mut Harness, shell: &mut Shell| {
+            let (target, label) = match h.ui().color_scheme() {
+                ColorScheme::Light => (ColorScheme::Dark, "Dark"),
+                ColorScheme::Dark => (ColorScheme::Light, "Light"),
+            };
+            h.click(label);
+            // The click is delivered on one frame, and the next adopts the scheme.
+            h.frame_app(shell);
+            h.frame_app(shell);
+            assert_eq!(h.ui().color_scheme(), target);
+            assert_ne!(
+                **h.ui().theme(),
+                **h.ui().scheme_theme(target),
+                "{label} blends in",
+            );
+            h.session(shell).settle().expect("the frames settle");
+            assert_eq!(**h.ui().theme(), **h.ui().scheme_theme(target));
+        };
+        pick_the_other_scheme(&mut h, &mut shell);
+
+        shell.app.appearance.set_ring_width(4.0);
+        h.session(&mut shell).settle().expect("the frames settle");
+        assert_eq!(h.ui().theme().focus_ring.width, 4.0);
+        pick_the_other_scheme(&mut h, &mut shell);
+    }
+
     /// A page opened from the keyboard far down the list scrolls its item into view: on a short
     /// window the last item starts out of view, and after Alt+↓ steps onto it the list has moved
     /// so the whole 28 px item shows.

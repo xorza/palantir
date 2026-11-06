@@ -163,6 +163,12 @@ pub struct Theme {
     /// The window's background, which each frame clears to; [`Palette::window_bg`] in a stock
     /// theme.
     pub window_bg: RgbaF32,
+    /// The spec a change to this theme runs under, whether [`Ui::set_theme`](crate::Ui::set_theme)
+    /// or a turn of the scheme brought it, as CSS reads the new values of `transition-*`
+    /// (<https://www.w3.org/TR/css-transitions-1/>). [`AnimationSpec::THEME`] in a stock theme. A
+    /// blend holds one end's, so read it from [`Ui::scheme_theme`](crate::Ui::scheme_theme).
+    #[animate(snap)]
+    pub transition: AnimationSpec,
     /// Default chrome for in-tree containers (`Panel`, `Grid`) without chrome of their own. `None` leaves them unpainted; a popup reads [`Self::popup`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub panel_chrome: Option<Chrome>,
@@ -359,6 +365,7 @@ impl Theme {
             expander: _,
             focus_ring: _,
             window_bg: _,
+            transition: _,
             panel_chrome: _,
             panel_clip: _,
         } = self;
@@ -446,6 +453,7 @@ impl Theme {
             focus_ring: FocusRingTheme::from_parts(p, m),
             text: TextStyle::from_parts(p, m),
             window_bg: p.window_bg,
+            transition: AnimationSpec::THEME,
             panel_chrome: None,
             panel_clip: ClipMode::None,
         };
@@ -495,6 +503,7 @@ struct UncheckedTheme {
     focus_ring: FocusRingTheme,
     text: TextStyle,
     window_bg: RgbaF32,
+    transition: AnimationSpec,
     // This and the next are left out of a file when absent, as `Theme` writes them.
     #[serde(default)]
     panel_chrome: Option<Chrome>,

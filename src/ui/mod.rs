@@ -196,7 +196,7 @@ impl Ui {
     }
 
     /// The theme this frame shows: the one of the scheme it shows ([`Self::color_scheme`]), or a
-    /// blend on its way there under [`Self::set_theme_transition`]. `.clone()` is a refcount
+    /// blend on its way there under [`Theme::transition`]. `.clone()` is a refcount
     /// bump, so a style can outlive the `show(ui)` reborrow; a handle kept past the frame makes
     /// the next blend copy the theme:
     ///
@@ -214,26 +214,37 @@ impl Ui {
 
     /// This window's theme for `scheme`, shown or not. [`Theme::stock`] of each until set.
     #[inline]
-    pub const fn theme_for(&self, scheme: ColorScheme) -> &Rc<Theme> {
+    pub const fn scheme_theme(&self, scheme: ColorScheme) -> &Rc<Theme> {
         self.window_theme.get(scheme)
     }
 
     /// Replace this window's theme for `scheme`; takes an `Rc` so swapping prebuilt themes copies
-    /// nothing, and a theme equal to the one the slot holds changes nothing, the same handle
-    /// with no compare. The other scheme's waits
-    /// until its scheme shows. The shown scheme's moves there under
-    /// [`Self::set_theme_transition`] from the next frame, this one keeping what it shows. Under
-    /// [`AnimationSpec::SNAP`], before the window's second frame, in the first frame after the
-    /// window was hidden, or with motion reduced, it applies at once, to the widgets recorded
-    /// after the call, and asks for a frame that records the rest under it. Set it on a change:
-    /// a call each frame with an equal theme starts nothing, but builds and compares a whole
+    /// nothing, and a theme equal to the one the slot holds changes nothing, the same handle with
+    /// no compare. The other scheme's waits until its scheme shows.
+    ///
+    /// The shown scheme's moves there from the next frame, this one keeping what it shows, under
+    /// [`Theme::transition`], as Flutter's `AnimatedTheme` shows each frame's lerp: colors, lengths
+    /// and font sizes move with real layout. A turn of the scheme runs the same way, under the
+    /// transition of the theme it turns to. A change mid-way starts from the blend shown. A run
+    /// keeps its spec until the next change.
+    ///
+    /// It applies at once, to the widgets recorded after the call, and asks for a frame that records
+    /// the rest under it, under [`AnimationSpec::SNAP`], before the window's second frame, in the
+    /// first frame after the window was hidden, or with motion reduced
+    /// ([`Self::is_motion_reduced`]). A theme that differs in its transition alone counts as a
+    /// change.
+    ///
+    /// A live edit, one theme a frame, blends too: under [`AnimationSpec::THEME`] at 60 Hz it trails
+    /// by 89 ms and adds 5 µs a frame over a snap on an Apple laptop. Refused: a second method that
+    /// snaps one change, which every caller must choose between, and a window-wide spec, a mode that
+    /// each caller must restore. Set it on a change: a call each frame with an equal theme starts nothing, but builds and compares a whole
     /// theme.
     ///
     /// ```
     /// # use palantir::{ColorScheme, Preference, Theme, Ui, UiPreferences};
     /// # fn one_look(ui: &mut Ui) {
     /// // An app with one look sets it and pins its scheme.
-    /// ui.set_theme_for(ColorScheme::Dark, Theme::stock(ColorScheme::Dark));
+    /// ui.set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark));
     /// ui.set_preferences(UiPreferences {
     ///     scheme: Preference::Fixed(ColorScheme::Dark),
     ///     ..ui.preferences()
@@ -241,42 +252,18 @@ impl Ui {
     /// # }
     /// ```
     #[inline]
-    pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) {
+    pub fn set_theme(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) {
         let motion = self.theme_motion();
         if self.window_theme.set(scheme, theme.into(), motion) {
             self.frame_runtime.request_repaint();
         }
     }
 
-    /// The spec a change of the shown theme runs under, a pick or the system's turn of the
-    /// scheme included. Per window; [`AnimationSpec::THEME`] until set.
-    #[inline]
-    pub const fn theme_transition(&self) -> AnimationSpec {
-        self.window_theme.spec()
-    }
-
-    /// Run every change of the shown theme under `spec`, as Flutter's `AnimatedTheme` does: each
-    /// frame shows [`Theme`]'s lerp from the theme shown to the new one, so colors, lengths and
-    /// font sizes move with real layout. [`AnimationSpec::SNAP`] snaps, as does any change before
-    /// the window's second frame, while the window is hidden, or with motion reduced
-    /// ([`Self::is_motion_reduced`]). A change mid-way starts from the blend shown. A live edit,
-    /// one theme a frame, sets `SNAP` for its span: under 300 ms `OutCubic` it lags 89 ms behind.
-    /// A transition running when `SNAP` is set ends where it heads; one running under another spec
-    /// keeps its own, and the next change takes `spec`.
-    pub fn set_theme_transition(&mut self, spec: AnimationSpec) {
-        if self.window_theme.set_spec(spec) {
-            self.frame_runtime.request_repaint();
-        }
-    }
-
-    /// Whether a change of the shown theme now animates. Not before the window's second frame:
+    /// Whether a change of the shown theme may now animate. Not before the window's second frame:
     /// a change before the first or during it lands on a window that showed nothing, and one
     /// right after it is the system's first answer (`SystemPreferences::read`'s timeout).
     fn theme_motion(&self) -> Motion {
-        if self.window_theme.animates()
-            && !self.motion_snaps()
-            && self.frame_runtime.render_frame_id > 1
-        {
+        if !self.motion_snaps() && self.frame_runtime.render_frame_id > 1 {
             Motion::Animate
         } else {
             Motion::Snap
@@ -1678,7 +1665,7 @@ pub(crate) mod internals {
         }
 
         /// The shown theme, for in-place edits. Gated: apps build a [`Theme`] and call
-        /// [`set_theme_for`](Ui::set_theme_for). Copy-on-write, so a handle from [`Ui::theme`]
+        /// [`set_theme`](Ui::set_theme). Copy-on-write, so a handle from [`Ui::theme`]
         /// keeps its values.
         pub fn theme_mut(&mut self) -> &mut Theme {
             self.window_theme.edit()

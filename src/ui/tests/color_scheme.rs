@@ -2,7 +2,6 @@ use std::rc::Rc;
 
 use glam::UVec2;
 
-use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::preference::Preference;
@@ -11,6 +10,7 @@ use crate::theme::color_scheme::ColorScheme::{self, Dark, Light};
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::resources::UiResources;
+use crate::ui::tests::support;
 use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
@@ -23,7 +23,7 @@ fn record(ui: &mut Ui) {
 
 /// `scheme`'s stock theme on another window color, which no stock theme equals.
 fn edited(scheme: ColorScheme) -> Theme {
-    let mut theme = Theme::stock(scheme);
+    let mut theme = support::still_theme(scheme);
     theme.window_bg = RgbaF32::new(0.25, 0.5, 0.75, 1.0);
     theme
 }
@@ -33,7 +33,7 @@ fn edited(scheme: ColorScheme) -> Theme {
 #[test]
 fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
+    support::set_still_themes(&mut h);
     h.frame(record);
     assert_eq!(h.ui().color_scheme(), Dark, "nothing reports a scheme");
 
@@ -48,12 +48,15 @@ fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
     });
     assert_eq!(shown, Some(Dark), "the frame that picked keeps its scheme");
     assert!(report.repaint_requested, "the pick asks for a frame");
-    assert!(Rc::ptr_eq(h.ui().theme(), h.ui().theme_for(Dark)));
+    assert!(Rc::ptr_eq(h.ui().theme(), h.ui().scheme_theme(Dark)));
 
     let report = h.frame(record);
     assert_eq!(h.ui().color_scheme(), Light);
-    assert!(Rc::ptr_eq(h.ui().theme(), h.ui().theme_for(Light)));
-    assert_eq!(*h.ui().theme_for(Light).as_ref(), Theme::stock(Light));
+    assert!(Rc::ptr_eq(h.ui().theme(), h.ui().scheme_theme(Light)));
+    assert_eq!(
+        *h.ui().scheme_theme(Light).as_ref(),
+        support::still_theme(Light)
+    );
     assert_eq!(
         report.paint(),
         FramePaint::Full,
@@ -106,8 +109,8 @@ fn a_pick_in_one_window_shows_in_another() {
     assert_eq!(second.ui().preferences().scheme, Preference::Fixed(Light));
     assert_eq!(second.ui().color_scheme(), Light);
     assert!(!Rc::ptr_eq(
-        first.ui().theme_for(Light),
-        second.ui().theme_for(Light)
+        first.ui().scheme_theme(Light),
+        second.ui().scheme_theme(Light)
     ));
 
     let third = Harness::from_resources(shared, SURFACE);
@@ -120,18 +123,18 @@ fn a_pick_in_one_window_shows_in_another() {
 #[test]
 fn the_theme_epoch_moves_only_with_the_shown_theme() {
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
+    support::set_still_themes(&mut h);
     h.frame(record);
     let epoch = h.ui().window_theme.epoch();
 
     let light = Rc::new(edited(Light));
-    h.ui_mut().set_theme_for(Light, Rc::clone(&light));
+    h.ui_mut().set_theme(Light, Rc::clone(&light));
     assert_eq!(
         h.ui().window_theme.epoch(),
         epoch,
         "the light slot is hidden"
     );
-    assert!(Rc::ptr_eq(h.ui().theme_for(Light), &light));
+    assert!(Rc::ptr_eq(h.ui().scheme_theme(Light), &light));
 
     h.frame(|ui| {
         ui.set_preferences(UiPreferences {
@@ -146,14 +149,14 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
         "dark resolves to dark again"
     );
 
-    let held = Theme::clone(h.ui().theme_for(Dark));
-    h.ui_mut().set_theme_for(Dark, held);
+    let held = Theme::clone(h.ui().scheme_theme(Dark));
+    h.ui_mut().set_theme(Dark, held);
     assert_eq!(
         h.ui().window_theme.epoch(),
         epoch,
         "an equal theme moves nothing"
     );
-    h.ui_mut().set_theme_for(Dark, edited(Dark));
+    h.ui_mut().set_theme(Dark, edited(Dark));
     assert_eq!(h.ui().window_theme.epoch(), epoch.wrapping_add(1));
 }
 
@@ -164,21 +167,21 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
 #[test]
 fn a_shown_theme_write_asks_for_a_frame() {
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
+    support::set_still_themes(&mut h);
     h.frame(record);
     let shown = Rc::new(edited(Dark));
     let report = h.frame(|ui| {
         record(ui);
-        ui.set_theme_for(Dark, Rc::clone(&shown));
+        ui.set_theme(Dark, Rc::clone(&shown));
     });
     assert!(report.repaint_requested);
     h.frame(record);
     let epoch = h.ui().window_theme.epoch();
     let report = h.frame(|ui| {
         record(ui);
-        ui.set_theme_for(Dark, Rc::clone(&shown));
-        ui.set_theme_for(Dark, Theme::clone(&shown));
-        ui.set_theme_for(Light, Theme::stock(Light));
+        ui.set_theme(Dark, Rc::clone(&shown));
+        ui.set_theme(Dark, Theme::clone(&shown));
+        ui.set_theme(Light, support::still_theme(Light));
     });
     assert!(!report.repaint_requested);
     assert_eq!(h.ui().window_theme.epoch(), epoch);

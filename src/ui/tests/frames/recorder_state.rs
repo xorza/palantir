@@ -1,13 +1,12 @@
 //! Theme sharing, and a subtree disabled between frames.
 
-use crate::animation::animation_spec::AnimationSpec;
 use crate::theme::color_scheme::ColorScheme;
 
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::ui::tests::support::SURFACE;
+use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::Vec2;
@@ -115,10 +114,9 @@ fn theme_reads_share_and_writes_copy_on_write() {
         "an unshared theme must be written in place, with no copy",
     );
 
-    // `set_theme_for` takes the handle, so swapping themes is a move.
-    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
-    let swapped: Rc<Theme> = Rc::new(Theme::stock(ColorScheme::Dark));
+    // `set_theme` takes the handle, so swapping themes is a move.
+    let swapped: Rc<Theme> = Rc::new(support::still_theme(ColorScheme::Dark));
     let swapped_ptr = Rc::as_ptr(&swapped);
-    h.ui_mut().set_theme_for(ColorScheme::Dark, swapped);
+    h.ui_mut().set_theme(ColorScheme::Dark, swapped);
     assert_eq!(Rc::as_ptr(h.ui().theme()), swapped_ptr);
 }

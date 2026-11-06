@@ -7,13 +7,12 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::phase::{Phase, PhaseEnd};
 use crate::theme::Theme;
 
-/// A window's theme transition: the spec a change runs under, and the blend while one runs.
+/// A window's theme transition: the blend while one runs, under the spec of the theme it heads for.
 ///
 /// Driven by the change, not by a compare: a frame with no run pays nothing. Refused: a theme
 /// row in the `AnimationMap`, which would compare a whole `Theme` every frame.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct ThemeTransition {
-    spec: AnimationSpec,
     run: Option<ThemeRun>,
     /// A finished run's buffers, its blend and the start a third theme gave it, which later runs
     /// write into, so only a window's first runs allocate, also when the app holds its themes.
@@ -74,35 +73,7 @@ impl SharedEnds {
     }
 }
 
-impl Default for ThemeTransition {
-    fn default() -> Self {
-        Self {
-            spec: AnimationSpec::THEME,
-            run: None,
-            spares: [None, None],
-            spare_ends: None,
-        }
-    }
-}
-
 impl ThemeTransition {
-    pub(crate) const fn spec(&self) -> AnimationSpec {
-        self.spec
-    }
-
-    /// Whether a change animates under the spec: an instant spec snaps.
-    pub(crate) const fn animates(&self) -> bool {
-        !self.spec.is_instant()
-    }
-
-    /// Run the next change under `spec`; a run in flight keeps its own, as a row does. An instant
-    /// spec ends the run, as CSS stops a transition whose property no longer transitions.
-    /// Returns whether a run ended.
-    pub(crate) fn set_spec(&mut self, spec: AnimationSpec) -> bool {
-        self.spec = spec;
-        spec.is_instant() && self.snap()
-    }
-
     /// The blend this frame shows, while a run is on.
     pub(crate) const fn shown(&self) -> Option<&Rc<Theme>> {
         match &self.run {
@@ -115,7 +86,7 @@ impl ThemeTransition {
     /// starts at `old`. A run heading for one of its own ends turns to `new` by the row rules; a
     /// third theme starts a new run from the blend shown now, from rest.
     pub(crate) fn follow(&mut self, old: Rc<Theme>, new: &Rc<Theme>) {
-        let spec = self.spec;
+        let spec = new.transition;
         debug_assert!(
             !spec.is_instant(),
             "a change animates only under a moving spec"

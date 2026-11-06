@@ -4,21 +4,20 @@
 use std::mem;
 use std::rc::Rc;
 
-use crate::animation::animation_spec::AnimationSpec;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::theme_pair::ThemePair;
 use crate::ui::theme_transition::ThemeTransition;
 
-/// Whether a change of the shown theme animates under the transition's spec or lands at once.
+/// Whether a change of the shown theme may run under the new theme's spec or lands at once.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Motion {
     Animate,
     Snap,
 }
 
-/// A window's theme for each scheme, the scheme it shows, the transition the shown theme moves
-/// under, and the epoch a recorded tree compares with. Every change of what [`Self::shown`] returns
+/// A window's theme for each scheme, the scheme it shows, the blend while the shown theme moves,
+/// and the epoch a recorded tree compares with. Every change of what [`Self::shown`] returns
 /// moves the epoch, here and nowhere else, so a frame can tell its tree was recorded under another
 /// theme (`RecordBaseline`).
 #[derive(Debug)]
@@ -64,23 +63,14 @@ impl WindowTheme {
         self.epoch
     }
 
-    pub(crate) const fn spec(&self) -> AnimationSpec {
-        self.transition.spec()
-    }
-
-    /// Whether a change animates under the spec: an instant spec snaps.
-    pub(crate) const fn animates(&self) -> bool {
-        self.transition.animates()
-    }
-
     /// Whether a transition runs, which owes the next frame.
     pub(crate) const fn is_moving(&self) -> bool {
         self.transition.shown().is_some()
     }
 
     /// Hold `theme` for `scheme`. Returns whether the shown target changed, which the next frame
-    /// shows: a transition starts or turns under [`Motion::Animate`], else the theme lands. A
-    /// theme equal to the held one is no change, as Flutter's `AnimatedTheme` compares
+    /// shows: a transition starts or turns under [`Motion::Animate`] and a moving spec, else the
+    /// theme lands. A theme equal to the held one is no change, as Flutter's `AnimatedTheme` compares
     /// `ThemeData` by value, so an app that sets its theme each frame still idles.
     pub(crate) fn set(&mut self, scheme: ColorScheme, theme: Rc<Theme>, motion: Motion) -> bool {
         let slot = self.pair.get_mut(scheme);
@@ -93,16 +83,6 @@ impl WindowTheme {
         }
         self.follow(old, motion);
         true
-    }
-
-    /// Run on under `spec`. Returns whether the shown theme changed, as an instant spec ends a
-    /// running transition where it heads.
-    pub(crate) fn set_spec(&mut self, spec: AnimationSpec) -> bool {
-        let ended = self.transition.set_spec(spec);
-        if ended {
-            self.bump();
-        }
-        ended
     }
 
     /// At a frame's start, after its clock: move a transition `dt` seconds on, or land it under
@@ -128,14 +108,14 @@ impl WindowTheme {
     }
 
     /// The shown target moved from `old` to the shown scheme's theme: start or turn a transition,
-    /// which shows `old` this frame, or land the new theme.
+    /// which shows `old` this frame, or land the new theme, as it does under an instant spec.
     fn follow(&mut self, old: Rc<Theme>, motion: Motion) {
-        match motion {
-            Motion::Animate => self.transition.follow(old, self.pair.get(self.scheme)),
-            Motion::Snap => {
-                self.transition.snap();
-                self.bump();
-            }
+        let new = self.pair.get(self.scheme);
+        if motion == Motion::Animate && !new.transition.is_instant() {
+            self.transition.follow(old, new);
+        } else {
+            self.transition.snap();
+            self.bump();
         }
     }
 

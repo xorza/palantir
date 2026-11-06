@@ -65,13 +65,14 @@ use std::time::{Duration, Instant};
 /// The window clear both backends render over.
 const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
 
-/// The stock look over [`WINDOW_CLEAR`], its state transitions snapped: an arm that changes a
-/// look each frame measures the repaint the change plans, where a transition starts each change
+/// The stock look over [`WINDOW_CLEAR`], its own arrival and its state transitions snapped: an arm
+/// that changes a look each frame measures the repaint the change plans, where a transition starts each change
 /// from rest and paints nothing in its first frame, and the hovering arm, which moves every
 /// frame, would plan none.
 fn bench_theme() -> Theme {
     Theme {
         window_bg: WINDOW_CLEAR,
+        transition: AnimationSpec::SNAP,
         ..Theme::from_parts(
             &Palette::DARK,
             &Metrics {
@@ -95,8 +96,7 @@ fn force_full_effects(ui: &mut Ui) {
 /// second, at once.
 fn settle_look(ui: &mut Ui, n: u32) {
     if n == 1 {
-        ui.set_theme_transition(AnimationSpec::SNAP);
-        ui.set_theme_for(ColorScheme::Dark, bench_theme());
+        ui.set_theme(ColorScheme::Dark, bench_theme());
     }
 }
 
@@ -334,15 +334,17 @@ impl Arm {
         settle_look(ui, n);
         if self != Self::Theming
             || n < 2
-            || !Rc::ptr_eq(ui.theme(), ui.theme_for(ui.color_scheme()))
+            || !Rc::ptr_eq(ui.theme(), ui.scheme_theme(ui.color_scheme()))
         {
             return;
         }
         let roomy = ui.theme().text.font_size == Metrics::DEFAULT.text.body;
-        ui.set_theme_transition(THEMING);
-        ui.set_theme_for(
+        ui.set_theme(
             ColorScheme::Dark,
-            if roomy { roomy_theme() } else { bench_theme() },
+            Theme {
+                transition: THEMING,
+                ..if roomy { roomy_theme() } else { bench_theme() }
+            },
         );
     }
 

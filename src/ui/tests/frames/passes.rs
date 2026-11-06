@@ -1,6 +1,5 @@
 //! Pass count and replay: what triggers a second record.
 
-use crate::animation::animation_spec::AnimationSpec;
 use crate::theme::color_scheme::ColorScheme;
 
 use crate::common::sync::MutexExt;
@@ -14,7 +13,7 @@ use crate::ui::app::App;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::MAX_CARRIED_RELAYOUTS;
 use crate::ui::frame_runtime::wake::WakeReasons;
-use crate::ui::tests::support::SURFACE;
+use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -484,7 +483,6 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
 #[test]
 fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     use crate::text::font_scope::internals::INTER;
-    use crate::theme::Theme;
     use crate::ui::resources::UiResources;
 
     let resources = UiResources::isolated_text();
@@ -496,7 +494,6 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
             .label("label")
             .show(ui);
     };
-    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     h.prime(2, record);
     other.prime(2, record);
     let mut ms = 16;
@@ -515,7 +512,7 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     );
 
     h.ui_mut()
-        .set_theme_for(ColorScheme::Dark, Theme::stock(ColorScheme::Dark));
+        .set_theme(ColorScheme::Dark, support::still_theme(ColorScheme::Dark));
     assert_ne!(
         animation_frame(&mut h),
         FrameProcessing::PaintOnly,

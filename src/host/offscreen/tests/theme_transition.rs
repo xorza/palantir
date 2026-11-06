@@ -58,7 +58,7 @@ fn a_transition_of_font_sizes_neither_grows_nor_evicts_the_glyph_atlas() {
             ..d
         },
     );
-    host.ui_mut().set_theme_for(ColorScheme::Dark, roomy);
+    host.ui_mut().set_theme(ColorScheme::Dark, roomy);
     let sizes: Vec<f32> = (0..24).map(|_| frame(&mut host)).collect();
     let moving = &sizes[..18];
     assert!(

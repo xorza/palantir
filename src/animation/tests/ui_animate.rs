@@ -365,7 +365,7 @@ fn a_look_follows_a_theme_change_and_fades_a_state_change() {
         ColorScheme::Light => ColorScheme::Dark,
         ColorScheme::Dark => ColorScheme::Light,
     };
-    h.ui_mut().set_theme_for(shown, Theme::stock(other));
+    h.ui_mut().set_theme(shown, Theme::stock(other));
     let (look, want) = wear(h.advance(Duration::from_millis(16)));
     assert_eq!(look, want, "a theme change is followed at once");
 

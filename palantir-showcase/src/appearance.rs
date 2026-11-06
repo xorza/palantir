@@ -2,8 +2,8 @@
 //! built into each window's themes once an edit.
 
 use palantir::{
-    AnimationSpec, ButtonTheme, ColorCoords, ColorModel, ColorScheme, FocusRingTheme, Palette,
-    RgbaF32, Theme, Ui, WidgetId,
+    ButtonTheme, ColorCoords, ColorModel, ColorScheme, FocusRingTheme, Palette, RgbaF32, Theme, Ui,
+    WidgetId,
 };
 
 use crate::scaffold::tokens::M;
@@ -38,19 +38,6 @@ pub(crate) struct Appearance {
     /// Moved by every edit; each window builds its themes once a generation, as each window's
     /// `Ui` holds its own.
     generation: u64,
-    /// How the last edit came, which picks how its themes show.
-    edit: Edit,
-}
-
-/// How an edit reaches the look.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Edit {
-    /// A pick: a click on a swatch, a toggle, a reset. Its themes blend in under
-    /// [`AnimationSpec::THEME`].
-    Pick,
-    /// A drag that sets a value every frame, a slider's or a color field's. Its themes snap, as a
-    /// blend would trail the pointer.
-    Drag,
 }
 
 impl Appearance {
@@ -65,8 +52,6 @@ impl Appearance {
             light_seeds: SEEDS.map(|seed| accent_for(seed, ColorScheme::Light)),
             dark_seeds: SEEDS.map(|seed| accent_for(seed, ColorScheme::Dark)),
             generation: 1,
-            // The first build shows at once: nothing was on screen to fade from.
-            edit: Edit::Drag,
         }
     }
 
@@ -106,7 +91,7 @@ impl Appearance {
             palette.accent = accent;
             palette.border_focused = accent;
         }
-        self.edited(Edit::Pick);
+        self.edited();
     }
 
     /// The ring the shown scheme draws: its color, set or the accent's, and its width.
@@ -123,14 +108,14 @@ impl Appearance {
     pub(crate) fn set_ring_color(&mut self, color: RgbaF32) {
         if self.ring_color != Some(color) {
             self.ring_color = Some(color);
-            self.edited(Edit::Drag);
+            self.edited();
         }
     }
 
     pub(crate) fn set_ring_width(&mut self, width: f32) {
         if self.ring_width != width {
             self.ring_width = width;
-            self.edited(Edit::Drag);
+            self.edited();
         }
     }
 
@@ -139,14 +124,13 @@ impl Appearance {
         let width = self.ring_width != M.stroke.line;
         self.ring_width = M.stroke.line;
         if self.ring_color.take().is_some() || width {
-            self.edited(Edit::Pick);
+            self.edited();
         }
     }
 
-    /// A new generation of edits, the last one made by `edit`.
-    const fn edited(&mut self, edit: Edit) {
+    /// A new generation of edits.
+    const fn edited(&mut self) {
         self.generation += 1;
-        self.edit = edit;
     }
 
     /// The filled call to action of `scheme`, over the palette its theme is built from.
@@ -163,15 +147,11 @@ impl Appearance {
             if *applied == self.generation {
                 return;
             }
-            ui.set_theme_transition(match self.edit {
-                Edit::Pick => AnimationSpec::THEME,
-                Edit::Drag => AnimationSpec::SNAP,
-            });
             for scheme in [ColorScheme::Light, ColorScheme::Dark] {
                 let palette = self.palette(scheme);
                 let mut theme = Theme::from_parts(palette, &M);
                 theme.focus_ring = self.ring(scheme);
-                ui.set_theme_for(scheme, theme);
+                ui.set_theme(scheme, theme);
             }
             *applied = self.generation;
         });
@@ -228,8 +208,7 @@ pub(crate) fn accent_for(seed: RgbaF32, scheme: ColorScheme) -> RgbaF32 {
 mod tests {
     use palantir::glam::UVec2;
     use palantir::{
-        AnimationSpec, ColorCoords, ColorModel, ColorScheme, Harness, Metrics, Palette, RgbaF32,
-        Theme,
+        ColorCoords, ColorModel, ColorScheme, Harness, Metrics, Palette, RgbaF32, Theme,
     };
 
     use crate::appearance::{Appearance, SEEDS, accent_for, holds_floors};
@@ -285,7 +264,7 @@ mod tests {
 
     /// A seed or a ring edit moves the generation, so each window builds both themes once from
     /// the solved palettes: the ring follows the accent until a color of its own is set, and a
-    /// reset gives it back. A pick's themes blend in and a drag's snap. The floats wear the
+    /// reset gives it back. Past the window's second frame an edit blends in. The floats wear the
     /// stock frost.
     #[test]
     fn an_edit_builds_the_themes_once() {
@@ -305,7 +284,6 @@ mod tests {
         assert_eq!(look.palette(scheme).accent, accent);
         assert_eq!(look.palette(scheme).border_focused, accent);
         assert_eq!(h.ui().theme().focus_ring.color, accent);
-        assert_eq!(h.ui().theme_transition(), AnimationSpec::THEME, "a pick");
 
         let red = RgbaF32::hex(0xff0000);
         look.set_ring_color(red);
@@ -313,17 +291,29 @@ mod tests {
         look.apply(h.ui_mut());
         assert_eq!(h.ui().theme().focus_ring.color, red);
         assert_eq!(h.ui().theme().focus_ring.width, 3.0);
-        assert_eq!(h.ui().theme_transition(), AnimationSpec::SNAP, "a drag");
 
         look.reset_ring();
         look.set_seed(None);
         look.apply(h.ui_mut());
-        assert_eq!(h.ui().theme_transition(), AnimationSpec::THEME, "a reset");
         assert_eq!(h.ui().theme().focus_ring, look.ring(scheme));
         assert_eq!(*look.palette(scheme), *Palette::for_scheme(scheme));
 
         let stock = Theme::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT);
         assert!(!stock.menu.panel.backdrop_filter.is_noop());
         assert_eq!(h.ui().theme().menu.panel, stock.menu.panel);
+
+        // Past the window's second frame an edit blends in, a pick and a drag alike.
+        h.frame(|_| {});
+        h.frame(|_| {});
+        look.set_ring_width(4.0);
+        look.apply(h.ui_mut());
+        assert_ne!(h.ui().theme().focus_ring.width, 4.0);
+        assert_eq!(h.ui().scheme_theme(scheme).focus_ring.width, 4.0);
+
+        look.set_seed(Some(SEEDS[1]));
+        look.apply(h.ui_mut());
+        let accent = accent_for(SEEDS[1], scheme);
+        assert_ne!(h.ui().theme().focus_ring.color, accent);
+        assert_eq!(h.ui().scheme_theme(scheme).focus_ring.color, accent);
     }
 }

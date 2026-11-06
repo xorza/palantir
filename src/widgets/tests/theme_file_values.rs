@@ -268,7 +268,7 @@ fn render(theme: Theme, shaper: &TextShaper) -> Harness {
     let mut h = Harness::builder(UVec2::new(640, 480))
         .shaper(shaper.clone())
         .build();
-    h.ui_mut().set_theme_for(ColorScheme::Dark, theme);
+    h.ui_mut().set_theme(ColorScheme::Dark, theme);
     h.frame(probe_modal);
     Menu::open(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
