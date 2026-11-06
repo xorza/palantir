@@ -456,8 +456,8 @@ fn left_and_right_click_are_independent() {
 /// second layout pass.
 #[test]
 fn drain_per_frame_queues_clears_action_latch() {
-    use crate::input_state::InputState;
-    let mut input = InputState {
+    use crate::input_state::Input;
+    let mut input = Input {
         frame_had_action: true,
         ..Default::default()
     };

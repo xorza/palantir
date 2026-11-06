@@ -1,6 +1,7 @@
-//! The live input state machine: what survives across input events.
+//! [`Input`], the live input state machine: what survives across input events and the latest
+//! arranged frame they meet. The module keeps its name, as `crate::input` holds the event types.
 
-pub(crate) mod arranged_frame;
+pub(crate) mod arranged;
 pub(crate) mod capture;
 pub(crate) mod event_outcome;
 pub(crate) mod focus;
@@ -13,7 +14,6 @@ pub(crate) mod scope;
 pub(crate) mod target_scroll_delta;
 pub(crate) mod watches;
 
-use crate::cascade::Cascade;
 use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::cascade::{TabDirection, TabDomain, WidgetLocation};
 use crate::input::ime_preedit::ImePreedit;
@@ -35,7 +35,7 @@ use crate::input::policy::{FocusPolicy, InputPolicy, InputSignal};
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input::zoom_factor::ZoomFactor;
-use crate::input_state::arranged_frame::ArrangedFrame;
+use crate::input_state::arranged::Arranged;
 use crate::input_state::capture::{PressDrag, ReleaseKind};
 use crate::input_state::event_outcome::EventOutcome;
 use crate::input_state::focus::{Focus, FocusCause, FocusEntry};
@@ -61,9 +61,13 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 
 /// What input leaves behind between events: the pointer and what it routes to, each button's
 /// capture, focus, the modifiers and the IME composition, plus this frame's edges for the record
-/// passes to read.
+/// passes to read. It owns the latest arranged frame, the one thing an event means anything
+/// against, so no read takes it as a parameter. Refused: the cascade and layout on `Ui`, which threaded them
+/// through 27 signatures here and needed a view over the whole `Ui` to answer a read.
 #[derive(Debug, Default)]
-pub(crate) struct InputState {
+pub(crate) struct Input {
+    /// The latest arranged frame. The engines write it, and the encoder and damage read it too.
+    pub(crate) arranged: Arranged,
     pointer: Pointer,
     keyboard: Keyboard,
     ime: Ime,
@@ -94,21 +98,13 @@ struct Traversal {
     direction: TabDirection,
 }
 
-/// What an event applies against beside the input's own state: the cascade it hit-tests in, and
-/// how soon a second press on the same target chains a run, which the host shares among its
-/// windows.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct InputCtx<'a> {
-    pub(crate) cascade: &'a Cascade,
-    pub(crate) double_click: Duration,
-}
-
-impl InputState {
+impl Input {
     /// Start a record pass: drop last pass's watches and resolve this pass's scope path once.
-    pub(crate) fn pre_record(&mut self, cascade: &Cascade) {
+    pub(crate) fn pre_record(&mut self) {
         self.subs.clear();
-        self.scopes.resolve(self.focus.focused(), cascade);
-        self.traverse_focus(cascade);
+        self.scopes
+            .resolve(self.focus.focused(), &self.arranged.cascade);
+        self.traverse_focus();
         self.snapshot_frame_quiescent();
     }
 
@@ -117,24 +113,30 @@ impl InputState {
     /// move. Arrows do the same inside an arrow group
     /// ([`Configure::arrow_focus`](crate::Configure::arrow_focus)) when no scope inside
     /// the group takes them.
-    fn traverse_focus(&mut self, cascade: &Cascade) {
+    fn traverse_focus(&mut self) {
         let mut i = 0;
         while i < self.keyboard.presses.len() {
             let press = self.keyboard.presses[i];
-            let Some(Traversal { domain, direction }) = self.traversal(press, cascade) else {
+            let Some(Traversal { domain, direction }) = self.traversal(press) else {
                 i += 1;
                 continue;
             };
-            if let Some(next) = cascade.next_tab_stop(domain, self.focus.focused(), direction) {
+            if let Some(next) =
+                self.arranged
+                    .cascade
+                    .next_tab_stop(domain, self.focus.focused(), direction)
+            {
                 self.focus.move_to(Some(next), FocusCause::Keyboard);
             }
             self.keyboard.presses.remove(i);
-            self.scopes.resolve(self.focus.focused(), cascade);
+            self.scopes
+                .resolve(self.focus.focused(), &self.arranged.cascade);
         }
     }
 
     /// Where `press` moves focus, if the framework owns it.
-    fn traversal(&self, press: KeyPress, cascade: &Cascade) -> Option<Traversal> {
+    fn traversal(&self, press: KeyPress) -> Option<Traversal> {
+        let cascade = &self.arranged.cascade;
         match press.class() {
             KeyClass::Focus if !self.scopes.path_takes(KeyClass::Focus) => {
                 let direction = if press.mods.contains(Modifiers::SHIFT) {
@@ -240,16 +242,20 @@ impl InputState {
         self.scopes.close(owner);
     }
 
-    /// The state a warmup pass records against: no input, but this state's focus.
-    pub(crate) fn warmup_scratch(&self) -> Self {
+    /// The state a warmup pass records against: no input, but this state's focus. It takes the
+    /// arranged frame, which the pass fills, and [`Self::adopt_warmup`] brings it back.
+    pub(crate) fn warmup_scratch(&mut self) -> Self {
         Self {
+            arranged: mem::take(&mut self.arranged),
             focus: self.focus.warmup_scratch(),
             ..Self::default()
         }
     }
 
-    /// Keep the focus moves and scope withdrawals a warmup pass recorded.
-    pub(crate) fn adopt_warmup(&mut self, warmup: &Self) {
+    /// Take back the arranged frame a warmup pass filled, and keep the focus moves and scope
+    /// withdrawals it recorded.
+    pub(crate) fn adopt_warmup(&mut self, warmup: Self) {
+        self.arranged = warmup.arranged;
         self.focus.adopt_warmup(&warmup.focus);
         self.scopes.adopt_closing(&warmup.scopes);
     }
@@ -292,46 +298,31 @@ impl InputState {
     }
 
     /// Whether `shortcut` was pressed and granted to the scope `reader`'s parent sits in.
-    pub(crate) fn shortcut_pressed(
-        &mut self,
-        reader: KeyReader,
-        cascade: &Cascade,
-        shortcut: Shortcut,
-    ) -> bool {
+    pub(crate) fn shortcut_pressed(&mut self, reader: KeyReader, shortcut: Shortcut) -> bool {
         self.subs.watch_shortcut(shortcut);
-        self.granted_press(reader, cascade, |press| shortcut.matches(press))
+        self.granted_press(reader, |press| shortcut.matches(press))
     }
 
     /// Whether `key` was pressed, whatever the modifiers, and granted to the scope `reader`'s
     /// parent sits in.
-    pub(crate) fn key_pressed(&mut self, reader: KeyReader, cascade: &Cascade, key: Key) -> bool {
+    pub(crate) fn key_pressed(&mut self, reader: KeyReader, key: Key) -> bool {
         self.subs.watch_key(key);
-        self.granted_press(reader, cascade, |press| press.key.same_key(key))
+        self.granted_press(reader, |press| press.key.same_key(key))
     }
 
     /// Whether a press of `class` came this frame, whatever its key and modifiers, and is granted
     /// to the scope `reader`'s parent sits in: what a scope that takes `class` acts on, as Shift
     /// and Space are still [`KeyClass::Space`]. Watches nothing, as its reader is focused.
-    pub(crate) fn class_pressed(
-        &mut self,
-        reader: KeyReader,
-        cascade: &Cascade,
-        class: KeyClass,
-    ) -> bool {
-        self.granted_press(reader, cascade, |press| press.class() == class)
+    pub(crate) fn class_pressed(&mut self, reader: KeyReader, class: KeyClass) -> bool {
+        self.granted_press(reader, |press| press.class() == class)
     }
 
     /// Whether a press this frame passes `matches` and is granted to `reader`'s scope.
-    fn granted_press(
-        &mut self,
-        reader: KeyReader,
-        cascade: &Cascade,
-        matches: impl Fn(KeyPress) -> bool,
-    ) -> bool {
+    fn granted_press(&mut self, reader: KeyReader, matches: impl Fn(KeyPress) -> bool) -> bool {
         if self.keyboard.presses.is_empty() || self.silenced(reader.plane) {
             return false;
         }
-        let scope = self.scopes.reader(reader.parent, cascade);
+        let scope = self.scopes.reader(reader.parent, &self.arranged.cascade);
         self.keyboard
             .presses
             .iter()
@@ -354,13 +345,11 @@ impl InputState {
     /// Every edge the pointer produced this frame, widget by widget, from the same
     /// capture state as [`Self::response_for`]. Three slots per button, at most two
     /// filled (`InputQueue` admits one press-or-release per button per frame). A widget
-    /// `cascade` holds disabled, itself or by an ancestor, has none, as its response is empty:
-    /// the press still latched on it, so nothing behind it takes the input.
+    /// the arranged frame holds disabled, itself or by an ancestor, has none, as its response is
+    /// empty: the press still latched on it, so nothing behind it takes the input.
     #[inline]
-    pub(crate) fn pointer_actions<'a>(
-        &'a self,
-        cascade: &'a Cascade,
-    ) -> impl Iterator<Item = PointerAction> + 'a {
+    pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
+        let cascade = &self.arranged.cascade;
         let disabled = move |id| {
             cascade
                 .locate(id)
@@ -457,29 +446,30 @@ impl InputState {
         self.pointer.pos.is_some() && self.push_pointer_event(wake, self.pointer.pos, make)
     }
 
-    /// Feed a palantir-native input event, hit-tested against this frame's latest
-    /// cascade. `now` is the arrival time on the host's clock (see
+    /// Feed a palantir-native input event, hit-tested against this frame's latest cascade;
+    /// `double_click` is how soon a second press on the same target chains a run, which the host
+    /// shares among its windows. `now` is the arrival time on the host's clock (see
     /// [`FrameLoop::on_input`](crate::ui::frame_loop::FrameLoop::on_input)).
     pub(crate) fn on_input(
         &mut self,
         event: InputEvent<'_>,
-        ctx: InputCtx<'_>,
+        double_click: Duration,
         now: Duration,
     ) -> InputDelta {
         if !event.is_valid() {
             return InputDelta::default();
         }
         if self.queue.is_empty() && self.ready(&event) {
-            return self.apply(event, ctx, now);
+            return self.apply(event, double_click, now);
         }
         if self.queue.is_full() {
             while let Some(held) = self.queue.front() {
                 self.queue.pop_front();
                 self.cut_held_press(&held.event);
-                self.apply_held(held, ctx);
+                self.apply_held(held, double_click);
             }
             self.cut_held_press(&event);
-            self.apply(event, ctx, now);
+            self.apply(event, double_click, now);
         } else {
             self.queue.defer(event, now);
         }
@@ -500,15 +490,15 @@ impl InputState {
     }
 
     /// Apply `held`, its text read back from the queue.
-    fn apply_held(&mut self, held: HeldEvent, ctx: InputCtx<'_>) {
+    fn apply_held(&mut self, held: HeldEvent, double_click: Duration) {
         if held.event.text().is_none() {
-            self.apply(held.event, ctx, held.at);
+            self.apply(held.event, double_click, held.at);
             return;
         }
         let mut text = mem::take(&mut self.held_text);
         text.clear();
         text.push_str(self.queue.text(held.text));
-        self.apply(held.event.with_text(&text), ctx, held.at);
+        self.apply(held.event.with_text(&text), double_click, held.at);
         self.held_text = text;
     }
 
@@ -532,7 +522,7 @@ impl InputState {
 
     /// End the frame for input: forget what it changed and apply held events. Returns whether input
     /// owes the next frame.
-    pub(crate) fn next_frame(&mut self, ctx: InputCtx<'_>) -> bool {
+    pub(crate) fn next_frame(&mut self, double_click: Duration) -> bool {
         self.queue.next_frame();
         // An eviction's release edge (see `end_frame`) belongs to the frame starting now, so that
         // button's next change waits a frame, as after any release.
@@ -546,22 +536,27 @@ impl InputState {
                 break;
             }
             self.queue.pop_front();
-            self.apply_held(held, ctx);
+            self.apply_held(held, double_click);
         }
         self.signal_since_last_frame != InputSignal::None || !self.queue.is_empty()
     }
 
     /// Apply `event`, which the queue admitted, and say whether it asks for a frame; each kind of
     /// event goes to its handler.
-    fn apply(&mut self, event: InputEvent<'_>, ctx: InputCtx<'_>, now: Duration) -> InputDelta {
+    fn apply(
+        &mut self,
+        event: InputEvent<'_>,
+        double_click: Duration,
+        now: Duration,
+    ) -> InputDelta {
         // A host event that passed the screen above is at least `Inert`, enough to force
         // a record under `InputPolicy::Always`; a refused event mutates nothing.
         self.signal_since_last_frame.raise(InputSignal::Inert);
         let outcome = match event {
-            InputEvent::PointerMoved(p) => self.on_pointer_moved(p, ctx.cascade),
-            InputEvent::PointerLeft => self.on_pointer_left(ctx.cascade),
-            InputEvent::PointerPressed(btn) => self.on_pointer_pressed(btn, ctx, now),
-            InputEvent::PointerReleased(btn) => self.on_pointer_released(btn, ctx.cascade),
+            InputEvent::PointerMoved(p) => self.on_pointer_moved(p),
+            InputEvent::PointerLeft => self.on_pointer_left(),
+            InputEvent::PointerPressed(btn) => self.on_pointer_pressed(btn, double_click, now),
+            InputEvent::PointerReleased(btn) => self.on_pointer_released(btn),
             InputEvent::ScrollPixels(d) => self.on_scroll(d, Vec2::ZERO),
             InputEvent::ScrollLines(d) => self.on_scroll(Vec2::ZERO, d),
             InputEvent::Pinch(factor) => self.on_pinch(factor),
@@ -570,16 +565,13 @@ impl InputState {
                 repeat,
                 physical,
                 text,
-            } => self.on_key_down(
-                KeyPress {
-                    key,
-                    mods: self.keyboard.modifiers,
-                    repeat,
-                    physical,
-                    text,
-                },
-                ctx.cascade,
-            ),
+            } => self.on_key_down(KeyPress {
+                key,
+                mods: self.keyboard.modifiers,
+                repeat,
+                physical,
+                text,
+            }),
             InputEvent::ImeCommit(text) => self.on_ime_commit(text),
             InputEvent::ImePreedit(preedit) => {
                 self.ime.compose(preedit, self.focus.focused());
@@ -606,12 +598,12 @@ impl InputState {
         }
     }
 
-    fn on_pointer_moved(&mut self, p: Vec2, cascade: &Cascade) -> EventOutcome {
+    fn on_pointer_moved(&mut self, p: Vec2) -> EventOutcome {
         let prev_hover = self.pointer.hovered;
         let prev_scroll = self.pointer.scroll_targets;
         let prev_pinch = self.pointer.pinch_target;
         let latched = self.pointer.move_to(p);
-        self.refresh_pointer_targets(cascade);
+        self.refresh_pointer_targets();
         let move_subbed = self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Moved);
         EventOutcome {
             repaint: self.pointer.hovered != prev_hover
@@ -623,13 +615,13 @@ impl InputState {
         }
     }
 
-    fn on_pointer_left(&mut self, cascade: &Cascade) -> EventOutcome {
+    fn on_pointer_left(&mut self) -> EventOutcome {
         let observable = self.pointer.hovered.is_some()
             || self.pointer.scroll_targets.any()
             || self.pointer.pinch_target.is_some()
             || self.pointer.any_press();
         self.pointer.pos = None;
-        self.refresh_pointer_targets(cascade);
+        self.refresh_pointer_targets();
         let pointer_subbed = self.push_unclassed(PointerEvent::Left);
         EventOutcome::repaint(observable || pointer_subbed)
     }
@@ -637,15 +629,11 @@ impl InputState {
     fn on_pointer_pressed(
         &mut self,
         btn: PointerButton,
-        ctx: InputCtx<'_>,
+        double_click: Duration,
         now: Duration,
     ) -> EventOutcome {
-        let InputCtx {
-            cascade,
-            double_click,
-        } = ctx;
         let pointer_pos = self.pointer.pos;
-        let targets = pointer_pos.map(|p| cascade.hit_test_press(p));
+        let targets = pointer_pos.map(|p| self.arranged.cascade.hit_test_press(p));
         let hit = targets.and_then(|t| t.click);
         let buttons_subbed = self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
             PointerEvent::Pressed { pos, button: btn }
@@ -686,7 +674,7 @@ impl InputState {
         }
     }
 
-    fn on_pointer_released(&mut self, btn: PointerButton, cascade: &Cascade) -> EventOutcome {
+    fn on_pointer_released(&mut self, btn: PointerButton) -> EventOutcome {
         let pointer_pos = self.pointer.pos;
         let was_captured = self.pointer.capture(btn).press.is_some();
         if was_captured {
@@ -700,7 +688,7 @@ impl InputState {
             // A latched drag ending is its own edge; otherwise a release back on the widget
             // is a click carrying its press's run number.
             let kind = if press.drag == PressDrag::None {
-                let hit = pointer_pos.and_then(|p| cascade.hit_test_press(p).click);
+                let hit = pointer_pos.and_then(|p| self.arranged.cascade.hit_test_press(p).click);
                 if hit == Some(press.target) {
                     ReleaseKind::Click { count: press.count }
                 } else {
@@ -737,7 +725,7 @@ impl InputState {
         EventOutcome::repaint(target.is_some() || subbed)
     }
 
-    fn on_key_down(&mut self, kp: KeyPress, cascade: &Cascade) -> EventOutcome {
+    fn on_key_down(&mut self, kp: KeyPress) -> EventOutcome {
         let KeyPress {
             key,
             repeat,
@@ -751,7 +739,8 @@ impl InputState {
         // it, or a `KeyboardWake::KEY` watcher records raw keys. A bare modifier wakes only
         // a watcher that asked, since widgets get modifier state via `ModifiersChanged`.
         let bare_modifier = input_queue::is_bare_modifier(key, text);
-        let traverses = kp.class() == KeyClass::Focus && !cascade.tab_stops.is_empty();
+        let traverses =
+            kp.class() == KeyClass::Focus && !self.arranged.cascade.tab_stops.is_empty();
         let observable = (self.focus.focused().is_some() && !bare_modifier)
             || traverses
             || self.subs.matches_press(kp)
@@ -815,13 +804,13 @@ impl InputState {
     /// Re-resolve `hovered` / `scroll_targets` / `pinch_target` from `pointer_pos`;
     /// the single owner of that assignment. Also routes the held pointer after
     /// cold-start warmup, whose pre-frame events hit an empty cascade.
-    pub(crate) fn refresh_pointer_targets(&mut self, cascade: &Cascade) {
-        self.pointer.retarget(cascade);
+    pub(crate) fn refresh_pointer_targets(&mut self) {
+        self.pointer.retarget(&self.arranged.cascade);
     }
 
     /// Once-per-frame close-out after the final record pass: recompute hover, drop transient flags,
     /// evict captured widgets that left the tree.
-    pub(crate) fn end_frame(&mut self, cascade: &Cascade) {
+    pub(crate) fn end_frame(&mut self) {
         self.drain_per_frame_queues();
         self.scopes.end_frame();
         // `modifiers` persists: a held shift must stay `true` across frames.
@@ -832,7 +821,7 @@ impl InputState {
         for cap in &mut self.pointer.captures {
             let vanished = cap
                 .press
-                .is_some_and(|press| !cascade.contains(press.target));
+                .is_some_and(|press| !self.arranged.cascade.contains(press.target));
             if vanished {
                 cap.abandon_press();
                 // The release edge belongs to the next frame; raise the signal so it records
@@ -840,7 +829,7 @@ impl InputState {
                 self.signal_since_last_frame.raise(InputSignal::Repaint);
             }
         }
-        if self.focus.reconcile(cascade) {
+        if self.focus.reconcile(&self.arranged.cascade) {
             // The next frame records against the new focus (ring, scope path), so it must not
             // repaint the retained tree.
             self.signal_since_last_frame.raise(InputSignal::Repaint);
@@ -849,7 +838,23 @@ impl InputState {
         if self.ime.owner != self.focus.focused() {
             self.ime.retire();
         }
-        self.refresh_pointer_targets(cascade);
+        self.refresh_pointer_targets();
+    }
+
+    /// True when focus sits on `ancestor` or in its subtree, per the arranged frame.
+    #[inline]
+    pub(crate) fn is_focus_within(&self, ancestor: WidgetId) -> bool {
+        self.focus
+            .focused()
+            .is_some_and(|focused| self.arranged.cascade.is_within(focused, ancestor))
+    }
+
+    /// True when the pointer's hover target is `ancestor` or in its subtree, per the arranged
+    /// frame.
+    #[inline]
+    pub(crate) fn is_hover_within(&self, ancestor: WidgetId) -> bool {
+        self.hovered()
+            .is_some_and(|hovered| self.arranged.cascade.is_within(hovered, ancestor))
     }
 
     pub(crate) fn scroll_delta_for(&self, id: WidgetId) -> ScrollDelta {
@@ -879,16 +884,11 @@ impl InputState {
                 .all(|c| c.press.is_none() && c.release.is_none());
     }
 
-    pub(crate) fn response_for(
-        &self,
-        id: WidgetId,
-        loc: Option<WidgetLocation>,
-        frame: ArrangedFrame<'_>,
-    ) -> ResponseState {
+    pub(crate) fn response_for(&self, id: WidgetId, loc: Option<WidgetLocation>) -> ResponseState {
         // Geometry half, needed every frame. `entries` is AoS so the fields share a cache line.
-        let entry = loc.map(|l| *frame.cascade.entry(l));
+        let entry = loc.map(|l| *self.arranged.cascade.entry(l));
         let rect = entry.map(|e| e.rect);
-        let layout_rect = loc.map(|l| frame.layout.arranged_rect(l.endpoint));
+        let layout_rect = loc.map(|l| self.arranged.layout.arranged_rect(l.endpoint));
         let transform = entry.map_or(TranslateScale::IDENTITY, |e| e.transform);
         // Cascade flattens parent-disabled into each entry: effective ancestor-or-self disabled,
         // one frame stale.
@@ -966,7 +966,7 @@ impl InputState {
 }
 
 /// Read by a harness to know what it already fed.
-impl InputState {
+impl Input {
     /// Whether input waits for a later frame (one change of a kind per frame).
     pub(crate) fn has_held_input(&self) -> bool {
         !self.queue.is_empty()
@@ -984,11 +984,11 @@ impl InputState {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::input::scroll_targets::ScrollTargets;
-    use crate::input_state::InputState;
+    use crate::input_state::Input;
     use crate::primitives::identity::widget_id::WidgetId;
 
     /// Routing state the widget suites assert on.
-    impl InputState {
+    impl Input {
         pub(crate) const fn scroll_targets(&self) -> ScrollTargets {
             self.pointer.scroll_targets
         }

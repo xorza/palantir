@@ -23,7 +23,6 @@ use crate::animation::animated::Animated;
 use crate::animation::animation_map_typed::AnimationClock;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
-use crate::cascade::Cascade;
 use crate::cascade::WidgetLocation;
 use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::clipboard::Clipboard;
@@ -48,10 +47,8 @@ use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
-use crate::input_state::arranged_frame::ArrangedFrame;
+use crate::input_state::Input;
 use crate::input_state::key_reader::KeyReader;
-use crate::input_state::{InputCtx, InputState};
-use crate::layout::Layout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -116,11 +113,8 @@ pub struct Ui {
     /// What the widgets keep between frames.
     memory: Memory,
     resources: UiResources,
-    layout: Layout,
-    /// Cascaded clip/disabled/invisible/transform per node plus the hit index.
-    /// Written in the paint phase; read by the encoder, input dispatch and damage.
-    cascade: Cascade,
-    input: InputState,
+    /// This window's input, and the arranged frame it reads.
+    input: Input,
     /// Frame clock, wake queue, repaint/relayout flags and prior-frame validity.
     frame_runtime: FrameRuntime,
     /// What this `Ui` and its host hand each other.
@@ -139,9 +133,7 @@ impl Ui {
             window_theme: WindowTheme::new(resources.color_scheme()),
             resources,
             memory: Memory::default(),
-            layout: Layout::default(),
-            cascade: Cascade::default(),
-            input: InputState::default(),
+            input: Input::default(),
             frame_runtime: FrameRuntime::default(),
             host: HostSeam::default(),
             overlays: OverlayStack::default(),
@@ -372,7 +364,7 @@ impl Ui {
     #[inline]
     pub fn key_pressed(&mut self, key: Key) -> bool {
         let reader = self.key_reader();
-        self.input.key_pressed(reader, &self.cascade, key)
+        self.input.key_pressed(reader, key)
     }
 
     /// `true` if `key` is down now, whatever the modifiers: from its press to its release, or
@@ -399,15 +391,14 @@ impl Ui {
     #[inline]
     pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool {
         let reader = self.key_reader();
-        self.input
-            .shortcut_pressed(reader, &self.cascade, shortcut.into())
+        self.input.shortcut_pressed(reader, shortcut.into())
     }
 
     /// [`Self::key_pressed`] read as `reader` rather than the record position.
     #[inline]
     pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, key: Key) -> bool {
         let reader = self.key_reader_as(reader);
-        self.input.key_pressed(reader, &self.cascade, key)
+        self.input.key_pressed(reader, key)
     }
 
     /// [`Self::shortcut_pressed`] read inside `reader`, as the scope around it, rather than at
@@ -420,15 +411,14 @@ impl Ui {
         shortcut: impl Into<Shortcut>,
     ) -> bool {
         let reader = self.key_reader_as(reader);
-        self.input
-            .shortcut_pressed(reader, &self.cascade, shortcut.into())
+        self.input.shortcut_pressed(reader, shortcut.into())
     }
 
-    /// [`InputState::class_pressed`] read inside `reader`, as [`Self::shortcut_pressed_as`] is.
+    /// [`Input::class_pressed`] read inside `reader`, as [`Self::shortcut_pressed_as`] is.
     #[inline]
     pub(crate) fn class_pressed_as(&mut self, reader: WidgetId, class: KeyClass) -> bool {
         let reader = self.key_reader_as(reader);
-        self.input.class_pressed(reader, &self.cascade, class)
+        self.input.class_pressed(reader, class)
     }
 
     /// The key reader at this record position.
@@ -951,10 +941,7 @@ impl Ui {
     /// zoom. `Size::ZERO` for a non-viewport or a widget not yet laid out.
     #[inline]
     pub(crate) fn scroll_content(&self, id: WidgetId) -> Size {
-        // Bridge: `Layout` keys by `(layer, node)`, callers hold a `WidgetId`.
-        self.cascade
-            .endpoint(id)
-            .map_or(Size::ZERO, |endpoint| self.layout.scroll_content(endpoint))
+        self.input.arranged.scroll_content(id)
     }
 
     /// The [`Response`] of the widget `id`, probed now. `rect` and `disabled` are last
@@ -963,19 +950,11 @@ impl Ui {
     /// `Widget::response`.
     pub fn response_for(&self, id: WidgetId) -> Response {
         let loc = self.last_frame_location(id);
-        let mut state = self.input.response_for(id, loc, self.arranged_frame());
+        let mut state = self.input.response_for(id, loc);
         // Cascade lags a frame; fold in this frame's ancestor-disabled so a newly
         // disabled subtree paints disabled at once.
         state.merge_disabled(self.forest.ancestor_disabled());
         Response { id, state }
-    }
-
-    /// Last frame's cascade and layout, as a response reads them.
-    const fn arranged_frame(&self) -> ArrangedFrame<'_> {
-        ArrangedFrame {
-            cascade: &self.cascade,
-            layout: &self.layout,
-        }
     }
 
     /// Where the most recent cascade run put `id`, which a widget reads as it resolves: the
@@ -983,7 +962,7 @@ impl Ui {
     #[inline]
     fn last_frame_location(&self, id: WidgetId) -> Option<WidgetLocation> {
         let newest = self.forest.ids.resolved_count().wrapping_sub(1);
-        self.cascade.locate_at(id, newest)
+        self.input.arranged.cascade.locate_at(id, newest)
     }
 
     /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored. Creates
@@ -1128,9 +1107,7 @@ impl Ui {
     /// within its anchor.
     #[inline]
     pub fn is_focus_within(&self, ancestor: WidgetId) -> bool {
-        self.input
-            .focused()
-            .is_some_and(|f| self.cascade.is_within(f, ancestor))
+        self.input.is_focus_within(ancestor)
     }
 
     /// True when the pointer's hover target is `ancestor` or in its subtree.
@@ -1139,9 +1116,7 @@ impl Ui {
     /// is already scheduled.
     #[inline]
     pub fn is_hover_within(&self, ancestor: WidgetId) -> bool {
-        self.input
-            .hovered()
-            .is_some_and(|h| self.cascade.is_within(h, ancestor))
+        self.input.is_hover_within(ancestor)
     }
 
     /// Active `Display` (physical surface size and both scale factors).
@@ -1191,7 +1166,7 @@ impl Ui {
     /// The last frame's interactive widgets, in paint order, into `out`: what a tool that
     /// drives the `Ui` from outside finds a widget by.
     pub fn inspect(&self, out: &mut Vec<InspectedWidget>) {
-        InspectedWidget::collect(&self.forest, &self.cascade, out);
+        InspectedWidget::collect(&self.forest, &self.input.arranged.cascade, out);
     }
 
     /// How soon a second press on the same target makes a double click: what the winit host sets
@@ -1224,7 +1199,7 @@ impl Ui {
     /// as its `response_for` read outside a disabled subtree reports none.
     #[inline]
     pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
-        self.input.pointer_actions(&self.cascade)
+        self.input.pointer_actions()
     }
 
     /// Move keyboard focus to `id` now, bypassing [`FocusPolicy`]. Key-class routing
@@ -1352,31 +1327,6 @@ impl Ui {
     }
 }
 
-/// The doors past [`Ui`]'s private fields, for white-box suites and benches.
-/// What a host's harness reads.
-impl Ui {
-    /// The input machine, for tests asserting routing state the public surface hides.
-    pub(crate) const fn input(&self) -> &InputState {
-        &self.input
-    }
-
-    pub(crate) const fn cascade(&self) -> &Cascade {
-        &self.cascade
-    }
-
-    pub(crate) const fn frame_runtime(&self) -> &FrameRuntime {
-        &self.frame_runtime
-    }
-}
-
-/// What input applies an event against: `cascade`, and the double-click time `resources` share.
-fn input_ctx<'a>(cascade: &'a Cascade, resources: &UiResources) -> InputCtx<'a> {
-    InputCtx {
-        cascade,
-        double_click: resources.settings().double_click_interval(),
-    }
-}
-
 /// The state-map id the one `S` of a `Ui` lives under: of its type, so no widget id meets it.
 fn singleton_id<S: 'static>() -> WidgetId {
     WidgetId::from_hash(("palantir.singleton", std::any::TypeId::of::<S>()))
@@ -1385,14 +1335,15 @@ fn singleton_id<S: 'static>() -> WidgetId {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::theme::Theme;
-    use crate::ui::input_ctx;
 
     #[cfg(test)]
     use crate::animation::AnimationMap;
     #[cfg(test)]
+    use crate::cascade::Cascade;
+    #[cfg(test)]
     use crate::input::pointer::PointerEvent;
     #[cfg(test)]
-    use crate::input_state::InputState;
+    use crate::input_state::Input;
     use crate::layout::Layout;
     #[cfg(test)]
     use crate::layout::plane_layout::PlaneLayout;
@@ -1413,6 +1364,8 @@ pub(crate) mod internals {
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
     #[cfg(test)]
+    use crate::ui::frame_runtime::FrameRuntime;
+    #[cfg(test)]
     use crate::window::window_frame_state::WindowFrameState;
     #[cfg(test)]
     use crate::window::window_requests::WindowRequests;
@@ -1431,16 +1384,15 @@ pub(crate) mod internals {
 
         /// The whole layout table, for callers that walk every plane.
         pub(crate) const fn layout_tables(&self) -> &Layout {
-            &self.layout
+            &self.input.arranged.layout
         }
 
         /// Close the input frame as the end of a frame does (dropping its edges, then applying
         /// held events) and return whether input owes another. For a caller streaming input with
         /// no frame recorded between.
         pub(crate) fn end_input_frame(&mut self) -> bool {
-            self.input.end_frame(&self.cascade);
-            self.input
-                .next_frame(input_ctx(&self.cascade, &self.resources))
+            self.input.end_frame();
+            self.input.next_frame(self.double_click_interval())
         }
     }
 
@@ -1452,9 +1404,22 @@ pub(crate) mod internals {
             &self.forest.record_store
         }
 
+        pub(crate) const fn cascade(&self) -> &Cascade {
+            &self.input.arranged.cascade
+        }
+
+        /// The input machine, for tests asserting routing state the public surface hides.
+        pub(crate) const fn input(&self) -> &Input {
+            &self.input
+        }
+
         /// [`Self::input`], mutably, for tests that drive routing state.
-        pub(crate) fn input_mut(&mut self) -> &mut InputState {
+        pub(crate) fn input_mut(&mut self) -> &mut Input {
             &mut self.input
+        }
+
+        pub(crate) const fn frame_runtime(&self) -> &FrameRuntime {
+            &self.frame_runtime
         }
 
         /// One plane's recorded tree; a `Layer` names its base plane.
@@ -1465,12 +1430,12 @@ pub(crate) mod internals {
         /// One plane's arranged columns; a `Layer` names its base plane. Callers wanting the whole
         /// table use [`Self::layout_tables`].
         pub(crate) fn layout(&self, plane: impl Into<Plane>) -> &PlaneLayout {
-            &self.layout[plane.into()]
+            &self.input.arranged.layout[plane.into()]
         }
 
         /// `node`'s arranged rect on `plane`: pre-transform, unclipped, world coords.
         pub(crate) fn arranged_rect(&self, plane: impl Into<Plane>, node: NodeId) -> Rect {
-            self.layout.arranged_rect(Endpoint {
+            self.input.arranged.layout.arranged_rect(Endpoint {
                 plane: plane.into(),
                 node,
             })

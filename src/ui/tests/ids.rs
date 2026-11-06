@@ -87,7 +87,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
         "expected exactly one explicit collision recorded",
     );
     assert_eq!(
-        h.ui().cascade.hit_ids().collect::<Vec<_>>(),
+        h.ui().input.arranged.cascade.hit_ids().collect::<Vec<_>>(),
         [duplicate_id, duplicate_id.with(1)],
         "hit rows must retain both resolved IDs rather than the duplicated raw ID",
     );
@@ -98,7 +98,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 fn duplicate_explicit_widget_ids_are_outlined() {
     let mut h = Harness::mono(UVec2::new(100, 100));
     let button_node = record_duplicate_ids(&mut h).first_node;
-    let button_rect = h.ui().layout[Plane::MAIN].rect[button_node.idx()];
+    let button_rect = h.ui().input.arranged.layout[Plane::MAIN].rect[button_node.idx()];
     let outlines = collision_outlines(h.frames());
     assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
     let matched = outlines.iter().any(|rect| {
@@ -218,8 +218,9 @@ fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
     let mut h = Harness::mono(SURFACE);
     record_cross_layer_duplicate_ids(&mut h);
     let pair = h.ui().forest.collisions[0];
-    let main_rect = h.ui().layout[Plane::MAIN].rect[pair.first.node.idx()];
-    let popup_rect = h.ui().layout[Plane::base(Layer::Popup)].rect[pair.second.node.idx()];
+    let main_rect = h.ui().input.arranged.layout[Plane::MAIN].rect[pair.first.node.idx()];
+    let popup_rect =
+        h.ui().input.arranged.layout[Plane::base(Layer::Popup)].rect[pair.second.node.idx()];
     let outlines = collision_outlines(h.frames());
     assert_eq!(
         outlines,
@@ -263,23 +264,31 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
     h.frame(&mut record);
     let main_node = node_for(&h, Layer::Main, main_id);
     let popup_node = node_for(&h, Layer::Popup, popup_id);
-    let cold_main = h.ui().layout[Plane::MAIN].rect[main_node.idx()];
-    let cold_popup = h.ui().layout[Plane::base(Layer::Popup)].rect[popup_node.idx()];
+    let cold_main = h.ui().input.arranged.layout[Plane::MAIN].rect[main_node.idx()];
+    let cold_popup = h.ui().input.arranged.layout[Plane::base(Layer::Popup)].rect[popup_node.idx()];
     assert_eq!(cold_main, Rect::new(0.0, 0.0, 40.0, 20.0));
     assert_eq!(cold_popup, Rect::new(80.0, 60.0, 70.0, 30.0));
 
-    let main_span = h.ui().layout[Plane::MAIN].text_spans[main_node.idx()];
-    let popup_span = h.ui().layout[Plane::base(Layer::Popup)].text_spans[popup_node.idx()];
+    let main_span = h.ui().input.arranged.layout[Plane::MAIN].text_spans[main_node.idx()];
+    let popup_span =
+        h.ui().input.arranged.layout[Plane::base(Layer::Popup)].text_spans[popup_node.idx()];
     assert_eq!(main_span, Span::new(0, 1));
     assert_eq!(popup_span, Span::new(0, 1));
-    assert_eq!(h.ui().layout[Plane::MAIN].text_shapes.len(), 1);
     assert_eq!(
-        h.ui().layout[Plane::base(Layer::Popup)].text_shapes.len(),
+        h.ui().input.arranged.layout[Plane::MAIN].text_shapes.len(),
         1
     );
-    let cold_main_key = h.ui().layout[Plane::MAIN].text_shapes[main_span.start as usize].key;
-    let cold_popup_key =
-        h.ui().layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key;
+    assert_eq!(
+        h.ui().input.arranged.layout[Plane::base(Layer::Popup)]
+            .text_shapes
+            .len(),
+        1
+    );
+    let cold_main_key =
+        h.ui().input.arranged.layout[Plane::MAIN].text_shapes[main_span.start as usize].key;
+    let cold_popup_key = h.ui().input.arranged.layout[Plane::base(Layer::Popup)].text_shapes
+        [popup_span.start as usize]
+        .key;
     assert_ne!(cold_main_key, cold_popup_key);
 
     h.frames_mut().layout.forget_last_run();
@@ -290,17 +299,22 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
     );
     let main_node = node_for(&h, Layer::Main, main_id);
     let popup_node = node_for(&h, Layer::Popup, popup_id);
-    assert_eq!(h.ui().layout[Plane::MAIN].rect[main_node.idx()], cold_main);
     assert_eq!(
-        h.ui().layout[Plane::base(Layer::Popup)].rect[popup_node.idx()],
+        h.ui().input.arranged.layout[Plane::MAIN].rect[main_node.idx()],
+        cold_main
+    );
+    assert_eq!(
+        h.ui().input.arranged.layout[Plane::base(Layer::Popup)].rect[popup_node.idx()],
         cold_popup
     );
     assert_eq!(
-        h.ui().layout[Plane::MAIN].text_shapes[main_span.start as usize].key,
+        h.ui().input.arranged.layout[Plane::MAIN].text_shapes[main_span.start as usize].key,
         cold_main_key,
     );
     assert_eq!(
-        h.ui().layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key,
+        h.ui().input.arranged.layout[Plane::base(Layer::Popup)].text_shapes
+            [popup_span.start as usize]
+            .key,
         cold_popup_key,
     );
 }

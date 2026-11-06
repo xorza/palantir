@@ -34,7 +34,7 @@ pub enum InputEvent<'a> {
     /// Wheel zoom is not translated into `Pinch`.
     Pinch(ZoomFactor),
     /// Logical key pressed; `repeat` reflects OS key repeat. Modifiers are not carried: read
-    /// [`Modifiers`] from `InputState`.
+    /// [`Modifiers`] from `Input`.
     KeyDown {
         /// The logical key, after the keyboard layout is applied.
         key: Key,
@@ -109,7 +109,7 @@ impl<'a> InputEvent<'a> {
 
     /// Whether this event's payload is one the pipeline can act on. **The screen on
     /// host input**, applied once by
-    /// [`InputState::on_input`](crate::input_state::InputState): a
+    /// [`Input::on_input`](crate::input_state::Input): a
     /// non-finite scalar would poison retained state (NaN fails every hit-test; an
     /// offset holding one trips [`TranslateScale::new`](crate::TranslateScale)'s
     /// finite check later). A pinch's [`ZoomFactor`] is valid by construction.

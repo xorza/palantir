@@ -7,7 +7,6 @@
 - image handle with closure for reupload?
 - build-in colors
 - rich text edit
-- separate input processing stage to avoid relayouts?
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
@@ -15,4 +14,3 @@
 
 - audit hot structs for compact opportunities
 - audit platform dependent behavior
-

@@ -1,7 +1,7 @@
 //! Off-target wake gates, re-asserted by widgets each frame they are active
 //! and cleared before each record. The set persists across silent frames, so
 //! a dormant popup keeps `BUTTONS` for the next outside click. Events are
-//! queued in [`InputState`](crate::input_state::InputState) only while
+//! queued in [`Input`](crate::input_state::Input) only while
 //! a relevant watch is active.
 
 flag_set! {

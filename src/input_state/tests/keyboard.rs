@@ -1,4 +1,3 @@
-use crate::cascade::Cascade;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::key_class::KeyFilter;
@@ -9,7 +8,7 @@ use crate::input::pointer::PointerButton;
 use crate::input::policy::FocusPolicy;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::watch::KeyboardWake;
-use crate::input_state::InputState;
+use crate::input_state::Input;
 use crate::input_state::tests::{
     BUTTON_SURFACE, Sample, Stream, claiming, fixed_button, forged_focus, sample_layers,
 };
@@ -23,7 +22,7 @@ use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
-    let mut state = InputState::default();
+    let mut state = Input::default();
     let target = WidgetId::from_hash("scroll");
     state.pointer.scroll_targets = ScrollTargets::both(target);
     state.feed(InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)));
@@ -35,7 +34,7 @@ fn keyboard_events_do_not_perturb_scroll_state() {
 
 #[test]
 fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
-    let mut state = InputState::default();
+    let mut state = Input::default();
     state.set_focus(Some(forged_focus()));
 
     state.feed(InputEvent::ModifiersChanged(Modifiers::CTRL));
@@ -560,14 +559,13 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 
 #[test]
 fn post_record_clears_keys_but_preserves_modifiers() {
-    let mut state = InputState::default();
-    let cascade = Cascade::default();
+    let mut state = Input::default();
     state.set_focus(Some(forged_focus()));
     state.feed(InputEvent::ModifiersChanged(Modifiers::SHIFT));
     state.feed(InputEvent::key_down(Key::ArrowLeft));
     let buf_cap_before = state.keyboard.presses.capacity();
 
-    state.end_frame(&cascade);
+    state.end_frame();
 
     assert!(state.keyboard.presses.is_empty());
     assert_eq!(state.keyboard.presses.capacity(), buf_cap_before);

@@ -1,7 +1,7 @@
 //! What one handled input event asks of the frame.
 
 /// What one event asks of the frame, decided by the [`on_input`
-/// arm](crate::input_state::InputState::on_input) that handled it; every arm must give both answers.
+/// arm](crate::input_state::Input::on_input) that handled it; every arm must give both answers.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct EventOutcome {
     /// The event could change what is on screen (surfaced as `InputDelta::repaint_requested`).

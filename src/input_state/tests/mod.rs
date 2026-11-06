@@ -14,13 +14,12 @@ mod trickle;
 mod watch;
 mod zoom;
 
-use crate::cascade::Cascade;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::key_class::KeyFilter;
+use crate::input_state::Input;
 use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
-use crate::input_state::{InputCtx, InputState};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -40,14 +39,10 @@ fn claiming<W: Configure>(mut widget: W) -> W {
     widget
 }
 
-impl InputState {
-    /// Feed `event` at time zero against an empty cascade: the input machine alone.
+impl Input {
+    /// Feed `event` at time zero against this input's arranged frame.
     fn feed(&mut self, event: InputEvent<'_>) -> InputDelta {
-        let ctx = InputCtx {
-            cascade: &Cascade::default(),
-            double_click: DOUBLE_CLICK_INTERVAL,
-        };
-        self.on_input(event, ctx, Duration::ZERO)
+        self.on_input(event, DOUBLE_CLICK_INTERVAL, Duration::ZERO)
     }
 }
 

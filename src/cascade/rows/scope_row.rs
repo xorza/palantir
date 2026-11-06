@@ -5,7 +5,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::plane::Plane;
 
 /// One declared input scope, in paint order across every plane; the table
-/// [`crate::input_state::InputState`] resolves a key press against.
+/// [`crate::input_state::Input`] resolves a key press against.
 ///
 /// Not a column on [`EntryRow`](crate::cascade::rows::entry_row::EntryRow): scopes are a handful per frame, and
 /// containment is answered by [`Cascade::is_within`](crate::cascade::Cascade::is_within).

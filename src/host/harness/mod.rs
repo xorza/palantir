@@ -284,13 +284,7 @@ impl Harness {
         self.deliver_held_input(&mut |ui: &mut Ui| {
             record(ui);
         });
-        let mut warmup = self
-            .window
-            .driver
-            .frames
-            .ui
-            .frame_runtime()
-            .is_first_frame();
+        let mut warmup = self.window.driver.frames.is_first_frame();
         let mut first = None;
         self.step(|ui| {
             // `record` runs on every pass: skipping it would record an empty tree.
@@ -431,7 +425,7 @@ impl Harness {
                     "{button:?} is already held; release it before pressing it again",
                 );
                 self.held[button.idx()] = Some(PressOrigin {
-                    at: self.window.driver.frames.ui.input().pointer_pos(),
+                    at: self.window.driver.frames.input().pointer_pos(),
                 });
             }
             InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
@@ -590,7 +584,6 @@ impl Harness {
             .window
             .driver
             .frames
-            .ui
             .input()
             .modifiers_after_held_input();
         self.hold_modifiers(mods.held());
@@ -606,7 +599,6 @@ impl Harness {
             .window
             .driver
             .frames
-            .ui
             .input()
             .modifiers_after_held_input()
             == mods
@@ -672,7 +664,7 @@ impl Harness {
             panic!("{id:?} has no arranged rect: it did not record, or no frame ran")
         });
         let pos = response.transform.apply_point(layout.min + local);
-        let cascade = self.window.driver.frames.ui.cascade();
+        let cascade = &self.window.driver.frames.input().arranged.cascade;
         let routing = cascade
             .hit_rows()
             .iter()
@@ -694,8 +686,9 @@ impl Harness {
         self.window
             .driver
             .frames
-            .ui
-            .cascade()
+            .input()
+            .arranged
+            .cascade
             .hit_test(pos, Sense::hovers)
     }
 
@@ -796,7 +789,7 @@ impl Harness {
     }
 
     fn deliver_held_input(&mut self, app: &mut impl App) {
-        while self.window.driver.frames.ui.input().has_held_input() {
+        while self.window.driver.frames.input().has_held_input() {
             self.drive(app);
         }
     }
@@ -1080,13 +1073,7 @@ pub(crate) mod internals {
 
         /// [`Self::frame_passes`] over exactly one frame, as [`Self::step`].
         pub(crate) fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
-            let mut warmup = self
-                .window
-                .driver
-                .frames
-                .ui
-                .frame_runtime()
-                .is_first_frame();
+            let mut warmup = self.window.driver.frames.is_first_frame();
             let mut values = Vec::new();
             let report = self.step(|ui| {
                 let value = record(ui);
@@ -1158,7 +1145,13 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {
-            self.window.driver.frames.ui.cascade().endpoint(id)
+            self.window
+                .driver
+                .frames
+                .input()
+                .arranged
+                .cascade
+                .endpoint(id)
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {

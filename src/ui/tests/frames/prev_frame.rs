@@ -50,7 +50,7 @@ fn prev_frame_captures_nodes_with_rows() {
             .damage
             .prev_paint_rect(WidgetId::from_hash("a"))
             .unwrap(),
-        h.ui().layout[Plane::MAIN].rect[frame_node.idx()],
+        h.ui().input.arranged.layout[Plane::MAIN].rect[frame_node.idx()],
     );
     assert_eq!(
         snap.hash,

@@ -14,7 +14,7 @@ Each stage of a frame has one type, and each type offers only what its stage may
 |---|---|---|---|
 | Frame | The host | `FrameLoop` (crate-private) | `Ui`, the three engines, the window token |
 | Non-input work | `App::update` | `&Ui` | No change |
-| Input | `App::input` (new) | `&mut Input` | `InputState`, `Arranged` |
+| Input | `App::input` (new) | `&mut Input` | Pointer, keyboard, focus, `Arranged` |
 | Record | `App::record` | `&mut Ui` | `Input`, `Forest`, `Memory`, theme, resources, `FrameRuntime`, `HostSeam`, overlays |
 
 ```rust
@@ -26,7 +26,7 @@ pub trait App {
     fn is_busy(&self) -> bool { false }                                // no change
 }
 
-pub struct Input { state: InputState, arranged: Arranged }             // no lifetime, no wrapper
+pub struct Input { pointer, keyboard, focus, /* ... */ arranged: Arranged } // no lifetime, no wrapper
 pub struct Ui { input: Input, forest: Forest, /* ... */ }
 
 pub(crate) struct FrameLoop { ui: Ui, layout: LayoutEngine, cascade: CascadeEngine, /* ... */ }
@@ -68,8 +68,7 @@ GPUI's `Window` show.
 
 ## Decisions
 
-- **Two plain structures, and `Ui` owns `Input`.** `Ui` has the field `input: Input`, as it has
-  `input: InputState` now. Refused: `Input<'a>` over `&mut Ui` with `Deref`, which needs a lifetime in
+- **Two plain structures, and `Ui` owns `Input`.** `Ui` has the field `input: Input`. Refused: `Input<'a>` over `&mut Ui` with `Deref`, which needs a lifetime in
   each helper and 15 forwards. Refused: `UiCtx` with `Ui(UiCtx)` and `DerefMut`, as egui's `Ui` derefs
   to `Context`, which moves most public methods and gives the stage writes it does not need. Refused:
   `&mut Ui` with a panic, as GPUI's `debug_assert_paint` checks its phases, which compiles wrong code,
@@ -80,6 +79,9 @@ GPUI's `Window` show.
   `ui.input.arranged`, and `FrameScene` and `DamageInput` borrow from it. Refused: a public
   `InputState`, which exposes `on_input` and `next_frame`. Cost: the encoder's data sits under a type
   named for input. `Arranged` keeps its own name and doc for this reason.
+- **`Input` is one flat struct.** `InputState` became `Input`, with `arranged` as a field, so no read
+  takes a cascade. Refused: `Input { state, arranged }`, which keeps the parameters between the two
+  halves. The warmup takes the arranged frame into its scratch and brings it back.
 - **`Input` has the canonical input methods, and `Ui` has one-line calls to them.** The `Ui` calls
   exist now, so a record's call sites do not change. Two reads differ by position:
   `ui.key_pressed(k)` reads at the record position, and `input.key_pressed(k)` reads as the window's
@@ -178,32 +180,15 @@ A scratch copy removed the action trigger of pass B and changed nothing else. Th
 
 # Part 2: Plan
 
-## Batch 2: `Input` owns what it reads
-
-Files: `src/input_state/`, `src/ui/mod.rs`, `src/ui/frame_loop.rs`, `src/renderer/frontend/mod.rs`,
-`src/damage/engine.rs`.
-
-- [ ] `input_state/mod.rs`: 27 signatures thread `&Cascade`, `InputCtx` or `ArrangedFrame`. Add
-  `Input { state: InputState, arranged: Arranged }`, and delete `ArrangedFrame`. `InputCtx` becomes the
-  `double_click` duration.
-- [ ] `ui/mod.rs:143`: the fields `layout`, `cascade` and `input` become `input: Input`.
-- [ ] `ui/frame_loop.rs`: the warmup swaps `input.state` alone, so its record still fills the real
-  `Arranged`.
-- [ ] `ui/mod.rs`: move the input methods to `Input`, and keep each `Ui` method as one line. Key reads
-  on `Input` read as the window's root.
-- [ ] `ui/mod.rs:1129`: `response_for` needs the newest id and the open ancestors from `Forest`. `Input`
-  reads the id's last location, and `Ui` folds in its ancestors.
-
-- [ ] `ui/mod.rs`, `Ui::input`, `cascade` and `frame_runtime`: only the harness and tests call them, and
-  a widget can too. Move what stays to `FrameLoop`, once `Input` holds the first two.
-
-No public change yet. Tests: a key read on `Input` and on `Ui` at the root agree, and a modal's scope
-silences the one on `Input`.
-
 ## Batch 3: the input stage
 
 Files: `src/ui/app.rs`, `src/ui/frame_loop.rs`, `src/input_state/`, `src/widgets/dock/`,
-`src/widgets/tabs/tab_strip.rs`, `src/host/harness/mod.rs`. Needs batch 2.
+`src/widgets/tabs/tab_strip.rs`, `src/host/harness/mod.rs`.
+
+- [ ] `input_state/mod.rs`: make `Input` public, and add the public reads as the window's root:
+  `key_pressed(key)`, `shortcut_pressed(shortcut)` and `response_for(id)`. The reads that take a
+  `KeyReader` stay crate-private under another name, for `Ui`. These wait for this batch, as a read
+  with no caller is dead code.
 
 - [ ] `ui/frame_loop.rs`: `update` runs before input opens, so it sees another focus than pass A.
   Open input first: scopes, focus traversal and the quiescent snapshot.
@@ -216,7 +201,8 @@ Files: `src/ui/app.rs`, `src/ui/frame_loop.rs`, `src/input_state/`, `src/widgets
   decision of the dock arrives. `scan` takes `&mut Input`, and `TabStrip::scan` takes `&Input`.
 - [ ] `host/harness/mod.rs:9`: add the input stage to the table of passes.
 
-Tests: `input` runs once when pass B and the warmup run. `input` reads the same edges, focus and grants
+Tests: a key read on `Input` and on `Ui` at the root agree, and a modal's scope silences the one on
+`Input`. `input` runs once when pass B and the warmup run. `input` reads the same edges, focus and grants
 as pass A. A key read only in `input` stays watched after a frame with pass B. A `compile_fail` doctest:
 a widget's `show` and an `add_shape` do not compile on `Input`.
 

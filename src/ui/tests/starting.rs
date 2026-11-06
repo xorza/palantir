@@ -87,7 +87,7 @@ fn cold_start_runs_record_closure_twice_on_first_frame() {
     );
 }
 
-/// Warmup sees an empty `InputState`; a pre-frame `PointerMoved` appears only in the real pass.
+/// Warmup sees an empty `Input`; a pre-frame `PointerMoved` appears only in the real pass.
 #[test]
 fn cold_start_blacks_out_input_during_warmup_pass() {
     let mut h = support::cold_ui();
@@ -101,7 +101,7 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
     assert_eq!(observed.len(), 2, "warmup + real");
     assert_eq!(
         observed[0], None,
-        "warmup pass must see InputState::default() — no pointer",
+        "warmup pass must see Input::default() — no pointer",
     );
     assert_eq!(
         observed[1],

@@ -214,9 +214,9 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let text_id = WidgetId::from_hash("shared-text");
 
     a.frame(|ui| text_window(ui, "window A", 120.0));
-    let a_key = a.ui().layout[Plane::MAIN].text_shapes[0].buffer_key();
+    let a_key = a.ui().input.arranged.layout[Plane::MAIN].text_shapes[0].buffer_key();
     b.frame(|ui| text_window(ui, "window B", 120.0));
-    let b_key = b.ui().layout[Plane::MAIN].text_shapes[0].buffer_key();
+    let b_key = b.ui().input.arranged.layout[Plane::MAIN].text_shapes[0].buffer_key();
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
     for (label, shaper) in [
@@ -361,7 +361,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
 
     let idle_first = idle.frame(|ui| blinking_text(ui, "idle interned window text"));
     assert_eq!(idle_first.repaint_at, Some(HALF));
-    let idle_key = idle.ui().layout[Plane::MAIN].text_shapes[0].buffer_key();
+    let idle_key = idle.ui().input.arranged.layout[Plane::MAIN].text_shapes[0].buffer_key();
 
     active.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {

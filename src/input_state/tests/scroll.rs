@@ -1,15 +1,14 @@
-use crate::cascade::Cascade;
 use crate::input::input_event::InputEvent;
 use crate::input::policy::InputSignal;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::zoom_factor::ZoomFactor;
-use crate::input_state::InputState;
+use crate::input_state::Input;
 use crate::primitives::identity::widget_id::WidgetId;
 use glam::Vec2;
 
 #[test]
 fn scroll_delta_for_preserves_raw_pixels_and_lines() {
-    let mut state = InputState::default();
+    let mut state = Input::default();
     let id = WidgetId::from_hash("scroll");
     state.pointer.scroll_targets = ScrollTargets::both(id);
     state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
@@ -22,7 +21,7 @@ fn scroll_delta_for_preserves_raw_pixels_and_lines() {
 
 #[test]
 fn on_input_accumulates_scroll_delta() {
-    let mut state = InputState::default();
+    let mut state = Input::default();
     let id = WidgetId::from_hash("scroll");
     state.pointer.scroll_targets = ScrollTargets::both(id);
     state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 40.0)));
@@ -32,8 +31,7 @@ fn on_input_accumulates_scroll_delta() {
 
 #[test]
 fn end_frame_clears_target_deltas_without_releasing_capacity() {
-    let mut state = InputState::default();
-    let cascade = Cascade::default();
+    let mut state = Input::default();
     for idx in 0..8 {
         state.pointer.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("scroll", idx)));
         state.feed(InputEvent::ScrollPixels(Vec2::ONE));
@@ -41,7 +39,7 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
     assert_eq!(state.pointer.target_deltas.len(), 8);
     let capacity = state.pointer.target_deltas.capacity();
 
-    state.end_frame(&cascade);
+    state.end_frame();
     assert!(state.pointer.target_deltas.is_empty());
     assert_eq!(state.pointer.target_deltas.capacity(), capacity);
 
@@ -57,7 +55,7 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
 #[test]
 fn an_invalid_payload_is_refused_and_mutates_nothing() {
     let id = WidgetId::from_hash("scroll");
-    let mut state = InputState::default();
+    let mut state = Input::default();
     state.feed(InputEvent::PointerMoved(Vec2::new(7.0, 11.0)));
     state.pointer.scroll_targets = ScrollTargets::both(id);
     state.pointer.pinch_target = Some(id);

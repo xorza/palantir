@@ -1,4 +1,3 @@
-use crate::cascade::Cascade;
 use crate::host::harness::Harness;
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
@@ -8,8 +7,7 @@ use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::zoom_factor::ZoomFactor;
-use crate::input_state::InputState;
-use crate::input_state::arranged_frame::ArrangedFrame;
+use crate::input_state::Input;
 use crate::input_state::capture::{Press, PressDrag, Release, ReleaseKind};
 use crate::input_state::target_scroll_delta::TargetScrollDelta;
 use crate::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
@@ -143,12 +141,12 @@ fn disabled_false_when_chain_clean() {
 #[test]
 fn a_departed_pointer_clears_every_routed_target() {
     let id = WidgetId::from_hash("w");
-    let mut s = InputState::default();
+    let mut s = Input::default();
     s.pointer.hovered = Some(id);
     s.pointer.scroll_targets = ScrollTargets::both(id);
     s.pointer.pinch_target = Some(id);
 
-    s.refresh_pointer_targets(&Cascade::default());
+    s.refresh_pointer_targets();
     assert_eq!(
         (
             s.pointer.hovered,
@@ -165,8 +163,8 @@ fn a_departed_pointer_clears_every_routed_target() {
 /// targets cannot be tested alone, since a departed pointer clears them.
 #[test]
 fn frame_quiescent_predicate() {
-    let quiescent = |mutate: &dyn Fn(&mut InputState)| {
-        let mut s = InputState::default();
+    let quiescent = |mutate: &dyn Fn(&mut Input)| {
+        let mut s = Input::default();
         mutate(&mut s);
         s.snapshot_frame_quiescent();
         s.frame_quiescent
@@ -177,7 +175,7 @@ fn frame_quiescent_predicate() {
     );
 
     let id = WidgetId::from_hash("w");
-    let broken = |label: &str, mutate: &dyn Fn(&mut InputState)| {
+    let broken = |label: &str, mutate: &dyn Fn(&mut Input)| {
         assert!(!quiescent(mutate), "{label} must break quiescence");
     };
     broken("pointer.pos", &|s| s.pointer.pos = Some(Vec2::ZERO));
@@ -388,24 +386,38 @@ fn pointer_local_uses_unclipped_widget_origin() {
 }
 
 /// The quiescent and non-quiescent paths must agree on every field they both own; toggles only `frame_quiescent`.
+/// A warmup's scratch holds the window's one arranged frame while the pass fills it, and the
+/// window's input takes it back: one left behind would hit-test the first frame against nothing.
+#[test]
+fn a_warmup_takes_the_arranged_frame_and_gives_it_back() {
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    h.frame(build_focusable_leaf);
+    let input = h.ui_mut().input_mut();
+    let placed = input.arranged.cascade.endpoint(focusable_id());
+    assert!(placed.is_some(), "the frame arranged the leaf");
+
+    let scratch = input.warmup_scratch();
+    assert_eq!(scratch.arranged.cascade.endpoint(focusable_id()), placed);
+    assert_eq!(input.arranged.cascade.endpoint(focusable_id()), None);
+
+    input.adopt_warmup(scratch);
+    assert_eq!(input.arranged.cascade.endpoint(focusable_id()), placed);
+}
+
 #[test]
 fn quiescent_and_full_paths_agree_on_geometry() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(build_focusable_leaf);
 
-    // Drives `InputState` directly against the frozen cascade, flipping only the quiescent bit.
-    let mut s = InputState::default();
+    // Drives the window's `Input` against its frozen cascade, flipping only the quiescent bit.
+    let s = h.ui_mut().input_mut();
     s.set_focus(Some(focusable_id()));
 
-    let at = h.ui().cascade().locate(focusable_id());
-    let frame = ArrangedFrame {
-        cascade: h.ui().cascade(),
-        layout: h.ui().layout_tables(),
-    };
+    let at = s.arranged.cascade.locate(focusable_id());
     s.frame_quiescent = true;
-    let quiet = s.response_for(focusable_id(), at, frame);
+    let quiet = s.response_for(focusable_id(), at);
     s.frame_quiescent = false;
-    let full = s.response_for(focusable_id(), at, frame);
+    let full = s.response_for(focusable_id(), at);
 
     assert_eq!(quiet.rect, full.rect);
     assert_eq!(quiet.layout_rect, full.layout_rect);

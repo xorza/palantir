@@ -54,7 +54,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     });
 
     // A raw press latches the same origin as `press` (it reads the pointer back out of
-    // `InputState`), so a press separated from its move still arms the threshold check.
+    // `Input`), so a press separated from its move still arms the threshold check.
     let mut split = Harness::mono(SURFACE);
     split.prime(2, support::button);
     split.hover(INSIDE);
@@ -91,7 +91,7 @@ fn modifiers_are_sticky_until_set_back() {
     let ctrl = Modifiers::CTRL;
     let mut harness = Harness::mono(SURFACE);
 
-    // The set under test is `InputState`'s, not a harness copy: a copy desyncs once one modifier goes
+    // The set under test is `Input`'s, not a harness copy: a copy desyncs once one modifier goes
     // through `on_input`, and `hold_modifiers` would then suppress the emit that clears it.
     harness.hold_modifiers(ctrl);
     harness.key(Key::Char('b'));

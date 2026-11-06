@@ -125,7 +125,7 @@ impl Translator {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 // Three buttons on purpose: [`PointerButton`] indexes per-widget
-                // `ButtonState` and an `InputState` capture slot, so a fourth costs every app.
+                // `ButtonState` and an `Input` capture slot, so a fourth costs every app.
                 // Named, not wildcarded, so adding one is a decision.
                 let button = match button {
                     MouseButton::Left => PointerButton::Left,

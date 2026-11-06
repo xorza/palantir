@@ -16,6 +16,7 @@ use crate::display::frame_stamp::FrameStamp;
 use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
+use crate::input_state::Input;
 use crate::layout::engine::LayoutEngine;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::renderer::frontend::FrameScene;
@@ -23,13 +24,13 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::IdRecipe;
 use crate::shape::record_store::RecordStore;
+use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan, RecordBaseline};
 use crate::ui::frame_stats_readout;
 use crate::ui::resources::UiResources;
-use crate::ui::{Ui, input_ctx};
 use crate::window::screenshot::{Screenshot, ScreenshotRequest};
 #[cfg(feature = "winit")]
 use crate::window::vsync::Vsync;
@@ -45,8 +46,8 @@ use std::time::Duration;
 const fn scene_of(ui: &Ui) -> FrameScene<'_> {
     FrameScene {
         forest: &ui.forest,
-        layout: &ui.layout,
-        cascade: &ui.cascade,
+        layout: &ui.input.arranged.layout,
+        cascade: &ui.input.arranged.cascade,
         stamp: ui.frame_runtime.stamp(),
     }
 }
@@ -101,6 +102,16 @@ impl FrameLoop {
         }
     }
 
+    /// The input machine, which a harness asks where the pointer and its widgets are.
+    pub(crate) const fn input(&self) -> &Input {
+        &self.ui.input
+    }
+
+    /// No frame has been stamped yet.
+    pub(crate) const fn is_first_frame(&self) -> bool {
+        self.ui.frame_runtime.is_first_frame()
+    }
+
     /// The window the app records for.
     #[cfg(any(test, feature = "winit"))]
     pub(crate) const fn token(&self) -> WindowToken {
@@ -114,9 +125,8 @@ impl FrameLoop {
     /// to redraw.
     #[inline]
     pub(crate) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
-        self.ui
-            .input
-            .on_input(event, input_ctx(&self.ui.cascade, &self.ui.resources), now)
+        let double_click = self.ui.double_click_interval();
+        self.ui.input.on_input(event, double_click, now)
     }
 
     /// The window's host sets the waker [`Ui::waker`] hands out.
@@ -231,7 +241,7 @@ impl FrameLoop {
             stamp.display.scale_factor(),
         );
 
-        let first_frame = self.ui.frame_runtime.is_first_frame();
+        let first_frame = self.is_first_frame();
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui.advance_theme();
@@ -334,7 +344,7 @@ impl FrameLoop {
         };
         let input = DamageInput {
             forest: &self.ui.forest,
-            cascade: &self.ui.cascade,
+            cascade: &self.ui.input.arranged.cascade,
             surface,
             baseline,
             prev_time,
@@ -349,11 +359,11 @@ impl FrameLoop {
         };
 
         // Re-queue the next paint-anim boundary on every path, else PaintOnly drains the ANIM wake and the caret freezes.
-        if let Some(min_wake) =
-            self.ui
-                .cascade
-                .min_paint_animation_wake(&self.ui.forest, surface, self.ui.now())
-        {
+        if let Some(min_wake) = self.ui.input.arranged.cascade.min_paint_animation_wake(
+            &self.ui.forest,
+            surface,
+            self.ui.now(),
+        ) {
             self.ui.frame_runtime.schedule_wake(
                 min_wake,
                 WakeReasons::ANIMATION,
@@ -364,8 +374,8 @@ impl FrameLoop {
         self.ui.frame_runtime.end_frame();
 
         // The input frame boundary: held events apply against this frame's cascade; anything input owes the frame asks for it here, since no host event will.
-        let ctx = input_ctx(&self.ui.cascade, &self.ui.resources);
-        if self.ui.input.next_frame(ctx) {
+        let double_click = self.ui.double_click_interval();
+        if self.ui.input.next_frame(double_click) {
             self.ui.frame_runtime.request_repaint();
         }
 
@@ -394,7 +404,7 @@ impl FrameLoop {
 
     /// Cold-start record pass, run once before frame 1 and discarded: the cascade is empty until something records, so early events hit-test against nothing.
     ///
-    /// It runs against a **scratch [`InputState`]** so that:
+    /// It runs against a **scratch [`Input`]** so that:
     ///
     /// - nothing consumes the real queues (pass B's `drain_per_frame_queues` would discard a pre-frame click),
     /// - no watcher fires (`watch_*` bypasses hit-testing and would see pre-frame events twice),
@@ -402,15 +412,15 @@ impl FrameLoop {
     ///
     /// The scratch starts with the real focus, and the real input keeps what the pass asked of it (`set_focus`, `clear_focus`, `withdraw_input_scope`). Afterwards the real input is restored and `pointer_pos` re-routed against the new cascade. Relayout/repaint requests are withdrawn, else frame 1 runs three record passes instead of two.
     ///
-    /// [`InputState`]: crate::input_state::InputState
+    /// [`Input`]: crate::input_state::Input
     fn warmup<T: App>(&mut self, app: &mut T) {
         tracy::zone!("Ui::record_pass.warmup");
         let scratch = self.ui.input.warmup_scratch();
         let saved_input = mem::replace(&mut self.ui.input, scratch);
         let _ = self.record_pass(app);
         let warmup_input = mem::replace(&mut self.ui.input, saved_input);
-        self.ui.input.adopt_warmup(&warmup_input);
-        self.ui.input.refresh_pointer_targets(&self.ui.cascade);
+        self.ui.input.adopt_warmup(warmup_input);
+        self.ui.input.refresh_pointer_targets();
         self.ui.frame_runtime.withdraw_requests();
     }
 
@@ -449,7 +459,7 @@ impl FrameLoop {
         self.ui
             .forest
             .pre_record(self.ui.frame_runtime.transparency);
-        self.ui.input.pre_record(&self.ui.cascade);
+        self.ui.input.pre_record();
         self.ui.host.window_requests.begin_pass();
         self.ui.overlays.begin_pass();
     }
@@ -461,16 +471,16 @@ impl FrameLoop {
         self.layout.run(
             &self.ui.forest,
             self.ui.frame_runtime.stamp().display.logical_rect(),
-            &mut self.ui.layout,
+            &mut self.ui.input.arranged.layout,
         );
         self.cascade.run(
             CascadeSource {
                 forest: &self.ui.forest,
-                layout: &self.ui.layout,
+                layout: &self.ui.input.arranged.layout,
                 display: self.ui.frame_runtime.stamp().display,
                 font_epoch: self.ui.resources.text().font_epoch(),
             },
-            &mut self.ui.cascade,
+            &mut self.ui.input.arranged.cascade,
         );
     }
 
@@ -483,7 +493,7 @@ impl FrameLoop {
             .memory
             .sweep(removed, self.ui.frame_runtime.render_frame_id);
 
-        self.ui.input.end_frame(&self.ui.cascade);
+        self.ui.input.end_frame();
     }
 }
 

@@ -1,11 +1,10 @@
-use crate::cascade::Cascade;
 use crate::input::input_event::InputEvent;
 use crate::input::zoom_factor::ZoomFactor;
-use crate::input_state::InputState;
+use crate::input_state::Input;
 use crate::primitives::identity::widget_id::WidgetId;
 
-fn pinch_state() -> InputState {
-    let mut state = InputState::default();
+fn pinch_state() -> Input {
+    let mut state = Input::default();
     state.pointer.pinch_target = Some(pinch_id());
     state
 }
@@ -27,10 +26,9 @@ fn pinch_gesture_accumulates_zoom_delta() {
 #[test]
 fn post_record_resets_zoom_delta_to_identity() {
     let mut state = pinch_state();
-    let cascade = Cascade::default();
     state.feed(InputEvent::Pinch(ZoomFactor::new(1.2).unwrap()));
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.2);
-    state.end_frame(&cascade);
+    state.end_frame();
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.0);
     assert!(state.pointer.target_deltas.is_empty());
 }
