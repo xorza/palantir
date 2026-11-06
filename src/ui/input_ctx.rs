@@ -9,12 +9,14 @@ use crate::primitives::input::keyboard::key_press::KeyPress;
 use crate::primitives::input::pointer::PointerEvent;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::input::watch::{KeyboardWake, PointerWake};
+use crate::theme::Theme;
 use crate::ui::Ui;
 use crate::ui::state::StateMap;
+use std::rc::Rc;
 use std::time::Duration;
 
 /// What [`App::input`](crate::App::input) has of a window: its [`Input`], its widgets' state rows,
-/// the display and the time. A view of disjoint parts of the [`Ui`], which holds them for the record
+/// the theme, the display and the time. A view of disjoint parts of the [`Ui`], which holds them for the record
 /// passes, as Masonry's `EventCtx` holds references to what each pass shares. Refused: the state
 /// rows on `Input`, whose logic never reads them; a `Ui` of references too, which changes each of
 /// its signatures for no gain to a caller.
@@ -37,8 +39,10 @@ pub struct InputCtx<'a> {
     pub input: &'a mut Input,
     state: &'a mut StateMap,
     reader: KeyReader,
+    theme: &'a Rc<Theme>,
     display: Display,
     now: Duration,
+    record_frame_id: u64,
 }
 
 impl<'a> InputCtx<'a> {
@@ -48,6 +52,8 @@ impl<'a> InputCtx<'a> {
             reader: ui.key_reader(),
             display: ui.frame_runtime.stamp().display,
             now: ui.frame_runtime.stamp().time,
+            record_frame_id: ui.frame_runtime.record_frame_id,
+            theme: ui.window_theme.shown(),
             input: &mut ui.input,
             state: &mut ui.memory.state,
         }
@@ -112,6 +118,19 @@ impl<'a> InputCtx<'a> {
     #[inline]
     pub const fn display(&self) -> Display {
         self.display
+    }
+
+    /// The theme this frame shows. See [`Ui::theme`].
+    #[inline]
+    pub const fn theme(&self) -> &Rc<Theme> {
+        self.theme
+    }
+
+    /// Which recorded frame this is, which its record passes read too. See
+    /// [`Ui::record_frame_id`].
+    #[inline]
+    pub const fn record_frame_id(&self) -> u64 {
+        self.record_frame_id
     }
 
     /// Monotonic time of this frame. See [`Ui::now`].

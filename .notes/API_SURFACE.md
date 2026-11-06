@@ -1194,6 +1194,8 @@ InputCtx
         pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S)
         pub fn remove_state<S: 'static>(&mut self, id: WidgetId) -> Option<S>
         pub const fn display(&self) -> Display
+        pub const fn theme(&self) -> &Rc<Theme>
+        pub const fn record_frame_id(&self) -> u64
         pub const fn now(&self) -> Duration
 
 InputDelta

@@ -441,6 +441,11 @@ impl App for CountingApp {
     fn input(&mut self, win: WindowToken, ctx: InputCtx<'_>) {
         assert_eq!(win, WindowToken(0));
         assert_eq!(ctx.display().physical, SURFACE);
+        assert_eq!(
+            ctx.record_frame_id(),
+            u64::from(self.inputs),
+            "one id per recorded frame"
+        );
         assert_eq!(ctx.input.peek_pointer_pos(), self.expected_pointer);
         assert_eq!(self.inputs + 1, self.updates, "after this frame's update");
         self.inputs += 1;
@@ -666,6 +671,7 @@ fn the_first_input_stage_reads_what_the_warmup_arranged() {
 struct StateProbe {
     written: u32,
     times: Vec<Duration>,
+    line_heights: Vec<f32>,
     read: Vec<Option<u32>>,
 }
 
@@ -673,6 +679,7 @@ impl App for StateProbe {
     fn input(&mut self, _: WindowToken, mut ctx: InputCtx<'_>) {
         self.written += 1;
         self.times.push(ctx.now());
+        self.line_heights.push(ctx.theme().text.line_height());
         ctx.set_state(WidgetId::from_hash("row"), self.written);
     }
 
@@ -693,6 +700,8 @@ fn a_state_the_input_stage_writes_shows_in_the_first_pass() {
     h.at(Duration::from_millis(16)).frame_app(&mut app);
     assert_eq!(app.read, [Some(1), Some(2)]);
     assert_eq!(app.times, [Duration::ZERO, Duration::from_millis(16)]);
+    let shown = h.ui().theme().text.line_height();
+    assert_eq!(app.line_heights, [shown, shown]);
 }
 
 /// A paint-only frame repaints the retained tree, so a move of what that tree was built under

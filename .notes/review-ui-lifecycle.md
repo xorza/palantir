@@ -133,6 +133,9 @@ GPUI's `Window` show.
   in `update`, and a record needs that, which a test showed when the warmup ran first. The input stage
   opens after the warmup, so a press or a Tab before frame 1 meets its frame. Each later frame opens
   input before `update`, so `update` reads pass A's focus.
+- **A pass with no input stage before it settles.** Darkroom's first-frame warmup and a second pass
+  rebuild the canvas geometry from the latest rects and land a pending framing, and what input left
+  for the draw goes. Refused: a replay of the prepass, which ran each gesture again on a level read.
 - **`request_relayout` stays record-only.** An app that learns of the need in `input` keeps it for its
   record, as Darkroom does now with `Relayout`.
 - **Refused: retained handlers** (`on_click` closures or messages, as in iced, GPUI and Flutter). Their
@@ -194,24 +197,10 @@ A scratch copy removed the action trigger of pass B and changed nothing else. Th
 
 # Part 2: Plan
 
-## Batch 4: Darkroom moves its prepass
-
-Files: `darkroom/src/gui/app/mod.rs`, `session/mod.rs`, `main_window/mod.rs`, `pane/graph_ui/`.
-
-- [ ] `session/mod.rs:112`: navigation and the prepass run in `record`. Move them to `App::input`, with
-  helpers on `&mut Input`.
-- [ ] `main_window/mod.rs:109`: `GraphCtx::new` reads `ui.display()`. Read `ctx.display()`.
-- [ ] `pane/graph_ui/mod.rs:287`: delete the guards for a replayed prepass, as `appearing`'s two-pass
-  allowance.
-- [ ] `pane/graph_ui/`: `CanvasGeometry` reads rects. Rebuild it in `input`, and again in pass B, as that
-  pass reads pass A's rects.
-
-Pass counts do not change in this batch.
-
 ## Batch 5: pass B on request
 
 Files: `src/ui/app.rs`, `src/ui/frame_loop.rs`, `src/widgets/` (splitter, menu bar, popup, tabs, color
-button, drag value), `darkroom/src/gui/app/`. Needs batch 4 for Darkroom.
+button, drag value), `darkroom/src/gui/app/`. 
 
 - [ ] `ui/app.rs`: add `SettlePolicy` and `App::settle_policy`.
 - [ ] `ui/frame_loop.rs`: run pass B on an action only under `OnAction`, and add the runtime check.
