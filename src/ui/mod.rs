@@ -644,8 +644,6 @@ impl Ui {
         self.host.window_requests.close_vetoed = true;
     }
 
-    // The recorder-host seam: two methods the host writes before a frame, two it reads after.
-
     /// This window's geometry for persist-and-restore: where it sits, and the size it returns
     /// to from maximized, its live size while it is not maximized. Placement position is
     /// `None` where the platform reports none (Wayland). In the window manager's

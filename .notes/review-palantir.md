@@ -86,12 +86,11 @@ The remaining gain is in the signatures:
 |---|---|
 | `list_panes(tree, layout, lc, display_scale)` | `list_panes(source, lc)` |
 | `ToggleFace::paint(ui, id, slot, chrome, checked)` | `paint(ui, toggle_box)` |
-| `double_click` in five `Input` signatures | A field on `Input` |
 
 ## Root causes
 
 1. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
-2. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
+2. **One orchestrator outgrew its stages.** `WgpuBackend::submit` is 299 lines.
 
 ## Target design
 
@@ -159,6 +158,7 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 - **A `Frame<'a>` context that holds `app`, `frontend` and `backend` for the whole stack**: it hides which stage reads what, which is the defect the stage split removed.
 - **Typestate markers on `WindowDriver`** (`WindowDriver<Recorded>`): a driver lives in a `Vec` across frames, and a consumed value gives the same guarantee at no cost to its type.
 - **Moving a screenshot's wake out of `FrameReport`**: `OffscreenHost::frame` returns the report, and its caller has no other sign that the window owes a frame.
+- **`double_click` as a field on `Input`**: `Input` cannot read the settings, so each of its entries would copy the value first, state synced by hand. The parameter cannot go stale.
 - **Merging `WindowDriver` into `FrameLoop`**: `FrameLoop` sits in `ui`, left of `host`, and it needs nothing from the device.
 - **Merging the text clock and `DisplayFrames`**: they look alike, but a `TextShaper` can span two hosts and a backend cannot, so each keeps its own round.
 - **A trait for the `Ui`, `UpdateCtx` and `Input` reads**: a caller must import it, and `const fn` goes.
@@ -170,15 +170,6 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 # Part 2: Plan
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
-
-## Batch 6: Frame stages
-
-Files: `src/ui/frame_loop.rs`, `src/ui/frame_runtime/mod.rs`, `src/input/mod.rs`, `src/input/capture.rs`.
-
-- [ ] `FrameLoop::frame`: 199 lines of five stages. Split it into `open_frame`, `record_frame` and `close_frame`, with each stage's comments beside it.
-- [ ] `frame_runtime.begin_pass`: move it into `pre_record`, as that fn's doc says a per-pass reset goes there. Extend `src/ui/tests/frames/passes.rs` to hold that a first frame still runs its warmup and at most two record passes.
-- [ ] `Input::on_input`, `next_frame`, `apply`, `apply_held`, `on_pointer_pressed`: a `double_click` setting rides five signatures. Hold it as a field on `Input`, which `FrameLoop` refreshes at its two entries, `on_input` and `frame`.
-- [ ] `src/ui/mod.rs:636`: the comment names a seam that moved to `FrameLoop`. Delete it.
 
 ## Batch 7: Backend stages
 

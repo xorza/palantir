@@ -29,6 +29,33 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::subscriber;
 
+/// A pass opens with no settling pass asked, so an ask counts only in the pass that made it: the
+/// warmup's is withdrawn, pass A's adds pass B, and a first frame runs at most those three.
+#[test]
+fn a_relayout_ask_counts_in_its_own_pass() {
+    for (asking, passes, processing) in [
+        (&[][..], 2, FrameProcessing::SingleLayout),
+        (&[0][..], 2, FrameProcessing::SingleLayout),
+        (&[1][..], 3, FrameProcessing::DoubleLayout),
+        (&[0, 1][..], 3, FrameProcessing::DoubleLayout),
+    ] {
+        let mut h = Harness::cold(SURFACE);
+        let mut pass = 0;
+        let report = h.frame(|ui| {
+            if asking.contains(&pass) {
+                ui.request_relayout();
+            }
+            pass += 1;
+        });
+        assert_eq!(pass, passes, "asking in passes {asking:?}");
+        assert_eq!(report.processing, processing, "asking in passes {asking:?}");
+        assert!(
+            !report.repaint_requested,
+            "the last pass asked nothing, so nothing carries: asking in passes {asking:?}"
+        );
+    }
+}
+
 /// Cascade runs in `post_record`, not `finalize_frame`, so a `request_relayout` re-record can read pass A's rect via `response_for(id).rect` (`Menu::show` clamps its anchor with it).
 #[test]
 fn cascade_visible_to_relayout_pass() {

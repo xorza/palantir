@@ -1,7 +1,7 @@
 //! [`FrameLoop`]: what owns one window's frames, the [`Ui`] an app records through and the engines
 //! only a frame runs. A host holds it, and a widget, which holds a `&mut Ui`, cannot reach it.
 //!
-//! [`FrameLoop::frame`] classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`FrameLoop::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last. Per-pass resets live in [`FrameLoop::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
+//! [`FrameLoop::frame`] classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`FrameLoop::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last, in `close_frame`. Per-pass resets live in [`FrameLoop::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
 
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
@@ -228,6 +228,35 @@ impl FrameLoop {
         );
 
         let first_frame = self.is_first_frame();
+        let plan = self.open_frame(stamp, damage_base);
+        let processing = match plan {
+            FramePlan::PaintOnly => {
+                tracy::zone!("Ui::frame.paint_only");
+                // Record payloads are not cleared: the live `tree.shapes` still index into them. PaintOnly skips `post_record`'s input cleanup, so under `OnDelta` an unrouted event can land here with the sticky arrival flag set.
+                self.ui.input.drain_per_frame_queues();
+                FrameProcessing::PaintOnly
+            }
+            FramePlan::FullRecord { .. } => self.record_frame(app),
+        };
+        self.ui.frame_runtime.note_processing(processing);
+        let report = self.close_frame(plan, processing);
+        // First-frame contract: with no prev snapshot every painting widget is new, so the walk can only be `Full`; and a retained-tree paint cannot be the first frame.
+        debug_assert!(
+            !first_frame || report.paint() == FramePaint::Full,
+            "first frame must repaint in full; got {:?}",
+            report.paint(),
+        );
+        debug_assert!(
+            !first_frame || report.processing != FrameProcessing::PaintOnly,
+            "first frame has no retained tree to paint from; got {:?}",
+            report.processing,
+        );
+        report
+    }
+
+    /// The frame's entry: move the clock and the theme on, tick the text clock, and classify the
+    /// frame against what the retained tree was recorded under.
+    fn open_frame(&mut self, stamp: FrameStamp, damage_base: DamageBase) -> FramePlan {
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui.advance_theme();
@@ -249,92 +278,83 @@ impl FrameLoop {
             input_signal: self.ui.input.signal_since_last_frame(),
             close_requested: self.ui.close_requested(),
         });
-
         // After the plan, which spends the requests made before it on this frame.
         if self.ui.window_theme.is_moving() {
             self.ui.frame_runtime.request_repaint();
         }
-        self.ui.frame_runtime.begin_pass();
+        plan
+    }
 
-        let processing = match plan {
-            FramePlan::PaintOnly => {
-                tracy::zone!("Ui::frame.paint_only");
-                // Record payloads are not cleared: the live `tree.shapes` still index into them. PaintOnly skips `post_record`'s input cleanup, so under `OnDelta` an unrouted event can land here with the sticky arrival flag set.
+    /// A frame that runs the app: [`App::update`] once, the first frame's warmup, one or two record
+    /// passes, and the frame's sweep.
+    fn record_frame<T: App>(&mut self, app: &mut T) -> FrameProcessing {
+        {
+            tracy::zone!("Ui::update_user");
+            // On the first frame `update` runs ahead of the warmup, as an app sets up in it and a
+            // record needs that. No frame is on screen then, so it reads no rects, and nothing
+            // routes against the empty cascade: a Tab held from before frame 1 waits for pass A's
+            // routing. Each later frame routes first, so `update` reads pass A's focus.
+            let first_frame = self.is_first_frame();
+            if first_frame {
+                self.ui.input.snapshot_frame_quiescent();
+            } else {
+                self.ui.input.open_update();
+            }
+            let outcome = app.update(self.token, self.ui.update_ctx());
+            self.ui.input.close_update();
+            if first_frame {
+                self.warmup(app);
+            }
+            // As a second pass reads it: the edges are gone, so no record can react.
+            if outcome == InputOutcome::Handled {
                 self.ui.input.drain_per_frame_queues();
-                FrameProcessing::PaintOnly
             }
-            FramePlan::FullRecord { .. } => {
-                {
-                    tracy::zone!("Ui::update_user");
-                    // On the first frame `update` runs ahead of the warmup, as an app sets up in it
-                    // and a record needs that. No frame is on screen then, so it reads no rects, and
-                    // nothing routes against the empty cascade: a Tab held from before frame 1 waits
-                    // for pass A's routing. Each later frame routes first, so `update` reads pass A's
-                    // focus.
-                    if first_frame {
-                        self.ui.input.snapshot_frame_quiescent();
-                    } else {
-                        self.ui.input.open_update();
-                    }
-                    let outcome = app.update(self.token, self.ui.update_ctx());
-                    self.ui.input.close_update();
-                    if first_frame {
-                        self.warmup(app);
-                    }
-                    // As a second pass reads it: the edges are gone, so no record can react.
-                    if outcome == InputOutcome::Handled {
-                        self.ui.input.drain_per_frame_queues();
-                    }
-                }
-                let action_flag = {
-                    tracy::zone!("Ui::record_pass.A");
-                    self.record_pass(app)
-                };
-                // A modal in pass A cancelled an overlay already recorded there, which no record
-                // can take back, as an app decides what to show only as it records. Pass B paints
-                // it closed; left to the next frame, it would stay over the modal until some input.
-                // Rare: only an app that records the modal after the overlay takes this.
-                let cancel = self.ui.overlays.needs_pass();
-                let double_layout =
-                    action_flag || self.ui.frame_runtime.relayout_requested() || cancel;
-                if double_layout {
-                    tracy::zone!(
-                        "Ui::record_pass.B",
-                        text = if self.ui.frame_runtime.relayout_requested() {
-                            "relayout"
-                        } else if cancel {
-                            "overlay cancel"
-                        } else {
-                            "action"
-                        }
-                    );
-                    self.ui.input.drain_per_frame_queues();
-                    self.ui.frame_runtime.begin_pass();
-                    let _ = self.record_pass(app);
-                    // A modal that first recorded in pass B cancelled an overlay past the frame's
-                    // last pass: the next frame applies it.
-                    if self.ui.overlays.needs_pass() {
-                        self.ui.frame_runtime.request_repaint();
-                    }
-                }
-                // Pass B is the frame's last, so a relayout it asks for takes the next frame.
-                // Refused: dropping the ask, which leaves the frame stale until input.
-                if self.ui.frame_runtime.carry_relayout() {
-                    self.ui.frame_runtime.request_repaint();
-                }
-                self.finalize_frame();
-
-                if double_layout {
-                    FrameProcessing::DoubleLayout
-                } else {
-                    FrameProcessing::SingleLayout
-                }
-            }
+        }
+        let action_flag = {
+            tracy::zone!("Ui::record_pass.A");
+            self.record_pass(app)
         };
+        // A modal in pass A cancelled an overlay already recorded there, which no record can take
+        // back, as an app decides what to show only as it records. Pass B paints it closed; left to
+        // the next frame, it would stay over the modal until some input. Rare: only an app that
+        // records the modal after the overlay takes this.
+        let cancel = self.ui.overlays.needs_pass();
+        let double_layout = action_flag || self.ui.frame_runtime.relayout_requested() || cancel;
+        if double_layout {
+            tracy::zone!(
+                "Ui::record_pass.B",
+                text = if self.ui.frame_runtime.relayout_requested() {
+                    "relayout"
+                } else if cancel {
+                    "overlay cancel"
+                } else {
+                    "action"
+                }
+            );
+            self.ui.input.drain_per_frame_queues();
+            let _ = self.record_pass(app);
+            // A modal that first recorded in pass B cancelled an overlay past the frame's last
+            // pass: the next frame applies it.
+            if self.ui.overlays.needs_pass() {
+                self.ui.frame_runtime.request_repaint();
+            }
+        }
+        // Pass B is the frame's last, so a relayout it asks for takes the next frame. Refused:
+        // dropping the ask, which leaves the frame stale until input.
+        if self.ui.frame_runtime.carry_relayout() {
+            self.ui.frame_runtime.request_repaint();
+        }
+        self.finalize_frame();
+        if double_layout {
+            FrameProcessing::DoubleLayout
+        } else {
+            FrameProcessing::SingleLayout
+        }
+    }
 
-        self.ui.frame_runtime.note_processing(processing);
-
-        // `ids.removed` feeds damage; PaintOnly recorded nothing, so pass an empty set.
+    /// The frame's exit on every path: its damage, the next paint-animation wake, the clock's and
+    /// the input's frame boundaries, and the report.
+    fn close_frame(&mut self, plan: FramePlan, processing: FrameProcessing) -> FrameReport {
         let surface = self.ui.frame_runtime.stamp().display.logical_rect();
         let prev_time = self.ui.frame_runtime.prev_stamp.map(|s| s.time);
         let baseline = FrameBaseline {
@@ -379,7 +399,7 @@ impl FrameLoop {
             self.ui.frame_runtime.request_repaint();
         }
 
-        let report = FrameReport {
+        FrameReport {
             repaint_requested: self.ui.frame_runtime.repaint_requested(),
             repaint_at: self.ui.frame_runtime.next_wake(),
             plan: damage.map(|damage| RenderPlan {
@@ -387,19 +407,7 @@ impl FrameLoop {
                 damage,
             }),
             processing,
-        };
-        // First-frame contract: with no prev snapshot every painting widget is new, so the walk can only be `Full`; and a retained-tree paint cannot be the first frame.
-        debug_assert!(
-            !first_frame || report.paint() == FramePaint::Full,
-            "first frame must repaint in full; got {:?}",
-            report.paint(),
-        );
-        debug_assert!(
-            !first_frame || report.processing != FrameProcessing::PaintOnly,
-            "first frame has no retained tree to paint from; got {:?}",
-            report.processing,
-        );
-        report
+        }
     }
 
     /// Cold-start record pass, run once before frame 1 and discarded: the cascade is empty until something records, so early events hit-test against nothing.
@@ -453,9 +461,10 @@ impl FrameLoop {
 
     /// Opens the pass: clears everything the user closure is about to refill.
     ///
-    /// The first three resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. The overlay stack steps a modal's cancel on by one pass, so a `PaintOnly` frame leaves it for the next pass that records. A further per-pass reset goes here.
+    /// The first four resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. The overlay stack steps a modal's cancel on by one pass, so a `PaintOnly` frame leaves it for the next pass that records. A further per-pass reset goes here.
     fn pre_record(&mut self) {
         tracy::zone!("Ui::pre_record");
+        self.ui.frame_runtime.begin_pass();
         self.ui
             .forest
             .pre_record(self.ui.frame_runtime.transparency);
