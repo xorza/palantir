@@ -25,7 +25,8 @@ per stage runs that stage alone over it, so a moved frame points at its stage.
 
 `integration/frame` arms: `cached` (a still frame), `partial` and
 `alternating` (state changes), `scrolling` and `resizing` (whole repaints),
-`hovering` and `typing` (input driving the frame). Every case of a group has
+`hovering` and `typing` (input driving the frame), `theming` (a theme
+transition in progress). Every case of a group has
 one id depth (`CaseGroup` holds it), so a filter on a level selects alike.
 
 ## Running
