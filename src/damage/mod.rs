@@ -50,6 +50,8 @@ mod plane_walk;
 pub(crate) mod region;
 mod root_order;
 mod row_matcher;
+#[cfg(feature = "internals")]
+pub(crate) mod sweep;
 
 /// Coverage fraction above which [`Damage::new`] collapses straight to
 /// [`Damage::Full`]: past this, per-node filter, per-pass scissor, `Load` and

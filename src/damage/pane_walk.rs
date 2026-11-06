@@ -239,9 +239,20 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::internals::scratch_report;
     use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::identity::pane_keys::PaneKeys;
 
     impl PaneWalk {
+        /// Mark pane `key` stale in this frame, as a walk that found damage under it does.
+        ///
+        /// # Panics
+        ///
+        /// Panics past [`DirtyPanes::CAP`](crate::damage::dirty_panes::DirtyPanes::CAP), which a
+        /// real walk answers by painting whole.
+        pub(crate) fn force_stale(&mut self, key: PaneKey) {
+            assert!(self.dirty.push(key), "more stale panes than a frame holds");
+        }
+
         #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             scratch_report::vec_bytes(&self.marks)

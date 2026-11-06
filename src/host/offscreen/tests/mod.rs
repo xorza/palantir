@@ -442,6 +442,7 @@ fn a_carried_request_the_window_shrank_past_lands_nothing() {
 }
 
 mod canvas;
+mod forced_frame;
 mod held_cutouts;
 mod lazy_pipelines;
 mod recovery;

@@ -51,3 +51,8 @@ path = "tests/alloc/main.rs"
 name = "palantir"
 harness = false
 required-features = ["internals"]
+
+[[bench]]
+name = "damage_sweep"
+harness = false
+required-features = ["internals"]

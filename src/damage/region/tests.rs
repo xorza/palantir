@@ -1,18 +1,18 @@
-use crate::damage::region::{DAMAGE_RECT_CAP, DEFAULT_PASS_BUDGET_PX, DamageRegion};
+use crate::damage::region::{DAMAGE_RECT_CAP, DEFAULT_PASS_BUDGET_PX, DamageRegion, MergePolicy};
 use crate::primitives::geometry::rect::Rect;
 
-/// A region and the budget its case folds under (an argument of [`DamageRegion::add`]).
+/// A region and the policy its case folds under (an argument of [`DamageRegion::add`]).
 #[derive(Debug)]
 struct Fold {
     region: DamageRegion,
-    budget_px: f32,
+    policy: MergePolicy,
 }
 
 impl Fold {
     fn new(budget_px: f32) -> Self {
         Self {
             region: DamageRegion::default(),
-            budget_px,
+            policy: MergePolicy::with_budget(budget_px),
         }
     }
 
@@ -21,7 +21,7 @@ impl Fold {
     }
 
     fn add(&mut self, r: Rect) {
-        self.region.add(r, self.budget_px);
+        self.region.add(r, self.policy);
     }
 
     fn rects(&self) -> Vec<Rect> {
@@ -266,4 +266,46 @@ fn total_area_sums_disjoint_rects() {
     region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
     region.add(Rect::new(100.0, 100.0, 20.0, 20.0));
     assert_eq!(region.region.total_area(), 100.0 + 400.0);
+}
+
+/// A cap of 3 folds four far-apart rects into three: the fourth forces the merge of least growth,
+/// with its nearest neighbor 10 px away, (0, 0) + 10² and (20, 0) + 10² to (0, 0) + 30 × 10. A cap
+/// of 1 folds all four into their bounds.
+#[test]
+fn rect_cap_bounds_the_fold() {
+    let rects = [
+        Rect::new(0.0, 0.0, 10.0, 10.0),
+        Rect::new(500.0, 0.0, 10.0, 10.0),
+        Rect::new(0.0, 500.0, 10.0, 10.0),
+        Rect::new(20.0, 0.0, 10.0, 10.0),
+    ];
+    let fold = |rect_cap| {
+        let mut region = DamageRegion::default();
+        for r in rects {
+            region.add(
+                r,
+                MergePolicy {
+                    budget_px: 0.0,
+                    rect_cap,
+                },
+            );
+        }
+        let mut out: Vec<Rect> = region.iter_rects().collect();
+        out.sort_by(|a, b| {
+            a.min
+                .x
+                .total_cmp(&b.min.x)
+                .then(a.min.y.total_cmp(&b.min.y))
+        });
+        out
+    };
+    assert_eq!(
+        fold(3),
+        vec![
+            Rect::new(0.0, 0.0, 30.0, 10.0),
+            Rect::new(0.0, 500.0, 10.0, 10.0),
+            Rect::new(500.0, 0.0, 10.0, 10.0),
+        ]
+    );
+    assert_eq!(fold(1), vec![Rect::new(0.0, 0.0, 510.0, 510.0)]);
 }

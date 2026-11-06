@@ -53,7 +53,10 @@ const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
 
 mod present_mode_tests {
     use crate::damage::Damage;
-    use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
+    use crate::damage::region::{DamageRegion, MergePolicy};
+    use crate::damage::sweep::policy::{Decision, Policy};
+    use crate::damage::sweep::scenario::catalog;
+    use crate::damage::sweep::stage::Stage;
     use crate::host::window_driver::PresentPath::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
     use crate::host::window_driver::{PresentPath, present_path};
@@ -76,7 +79,7 @@ mod present_mode_tests {
     fn partial(w: f32, h: f32) -> RenderPlan {
         let damage = DamageRegion::collapse_from(
             &[Rect::new(0.0, 0.0, w, h)],
-            DEFAULT_PASS_BUDGET_PX,
+            MergePolicy::DEFAULT,
             SURFACE,
         );
         RenderPlan {
@@ -88,6 +91,41 @@ mod present_mode_tests {
         clear: RgbaF32::BLACK,
         damage: Damage::Full,
     });
+
+    /// A sweep's production policy decides each scenario as the frame path does: the damage's
+    /// classification, then the desktop's present path, on a backbuffer that holds the last frame.
+    #[test]
+    fn the_sweeps_production_policy_is_the_frame_paths() {
+        let stage = Stage::SCENE;
+        let surface = stage.surface();
+        for scenario in catalog() {
+            for raw in stage.raw_frames(&scenario) {
+                let collapsed = DamageRegion::collapse_from(&raw, MergePolicy::DEFAULT, surface);
+                let damage = Damage::new(collapsed).expect("a scenario damages something");
+                let plan = RenderPlan {
+                    clear: RgbaF32::BLACK,
+                    damage,
+                };
+                let real = match present_path(Some(plan), DirectAdaptive, true) {
+                    Direct(RenderPlan {
+                        damage: Damage::Full,
+                        ..
+                    }) => Decision::Full,
+                    ViaBackbuffer(RenderPlan {
+                        damage: Damage::Partial(damage),
+                        ..
+                    }) => Decision::partial(damage.region.iter_rects().collect()),
+                    other => panic!("{}: {other:?}", scenario.name),
+                };
+                assert_eq!(
+                    Policy::PRODUCTION.decide(&raw, surface),
+                    real,
+                    "{}",
+                    scenario.name
+                );
+            }
+        }
+    }
 
     #[test]
     fn backbuffer_copy_fills_target_through_backbuffer() {

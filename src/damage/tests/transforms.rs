@@ -1,7 +1,7 @@
 //! What a transform on a parent does to the damage under it.
 
 use crate::damage::Damage;
-use crate::damage::region::DamageRegion;
+use crate::damage::region::{DamageRegion, MergePolicy};
 use crate::damage::tests::support::{BLUE, RED};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
@@ -156,7 +156,7 @@ fn transform_animation_keeps_far_positions_split() {
     // of 0 pins the strict-overlap-only branch.
     let rects: Vec<Rect> = DamageRegion::collapse_from(
         &h.engines().damage.raw_rects,
-        0.0,
+        MergePolicy::with_budget(0.0),
         h.ui().display().logical_rect(),
     )
     .region

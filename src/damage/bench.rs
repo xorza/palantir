@@ -1,13 +1,18 @@
-//! DamageEngine CPU-side regression bench: whole CPU frames (record through damage, no encode or GPU) over a ~1056-node grid on each `Damage` path, shape-count churn, a raised sibling's paint-order inversion, and the three `DamageRegion::add` branches. Text measurement uses the mono fallback.
+//! DamageEngine regression bench: whole CPU frames (record through damage, no encode or GPU) over a ~1056-node grid on each `Damage` path, shape-count churn, a raised sibling's paint-order inversion, and the three `DamageRegion::add` branches, with text measured by the mono fallback; and whole GPU frames of production's decision on the damage sweep's scenarios.
 
-use crate::bench::backends::Backend;
+use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
+use crate::bench::scene::Scene;
 use crate::cascade::pane_row::PaneRow;
 use crate::damage::Damage;
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::damage::pane_walk::PaneWalk;
 use crate::damage::region::DamageRegion;
+use crate::damage::sweep::player::{PlayedFrame, Player};
+use crate::damage::sweep::policy::Policy;
+use crate::damage::sweep::scenario::named;
+use crate::damage::sweep::stage::Stage;
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
@@ -20,6 +25,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
+use crate::ui::bench::TIMING;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
@@ -518,4 +524,47 @@ fn backdrop_walk(group: &mut CaseGroup<'_>) {
             });
         }
     }
+}
+
+/// The scenarios of the sweep kept as regression cases: one decision of each kind production
+/// makes, so a change to the renderer that moves one shows in a plain `cargo bench-all`.
+pub(crate) const POLICY_CASES: [&str; 8] = [
+    "pair/l_touching",
+    "pair/l_overlap",
+    "pair/cross_strips",
+    "pair/rows_gap1",
+    "pair/icons_gap400",
+    "triple/cluster_outlier",
+    "seq/oscillate_39_41",
+    "seq/spike_1_in_16",
+];
+
+/// `integration/damage_policy/gpu/<scenario>`: a frame of a sweep scenario over the scene, as
+/// production decides it, on the desktop's present path. A cycle's frames take turns.
+pub(crate) fn policy<S: Scene>(c: &mut Criterion, backends: &Backends) {
+    let Some(backend) = backends.gpu() else {
+        return;
+    };
+    let mut group = Kind::Integration.group(c, "damage_policy", Scale::Frame);
+    for name in POLICY_CASES {
+        group.bench_function(backend.case(name), |b| {
+            let stage = Stage::SCENE;
+            let raw = stage.raw_frames(&named(name));
+            let frames: Vec<PlayedFrame> = raw
+                .iter()
+                .map(|rects| {
+                    let decision = Policy::PRODUCTION.decide(rects, stage.surface());
+                    PlayedFrame::new(&decision, rects)
+                })
+                .collect();
+            let mut player = Player::<S>::new(backends.device(TIMING), stage);
+            player.settle(&frames);
+            let mut at = 0;
+            b.iter(|| {
+                player.play(&frames[at]);
+                at = (at + 1) % frames.len();
+            });
+        });
+    }
+    group.finish();
 }

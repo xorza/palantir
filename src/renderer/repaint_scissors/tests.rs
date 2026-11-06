@@ -1,5 +1,5 @@
 use crate::damage::Damage;
-use crate::damage::region::DamageRegion;
+use crate::damage::region::{DamageRegion, MergePolicy};
 use crate::display::Display;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -23,7 +23,11 @@ fn scissors_past_the_cap_fit_no_partial_repaint() {
     let strips: Vec<Rect> = (0..8)
         .map(|i| Rect::new(1.0 + 6.0 * i as f32, 0.0, 1.0, 50.0))
         .collect();
-    let damage = DamageRegion::collapse_from(&strips, 0.0, Rect::new(0.0, 0.0, 50.0, 50.0));
+    let damage = DamageRegion::collapse_from(
+        &strips,
+        MergePolicy::with_budget(0.0),
+        Rect::new(0.0, 0.0, 50.0, 50.0),
+    );
     assert_eq!(damage.region.iter_rects().count(), 8);
     let footprints = (0..8).map(|j| URect::new(0, 12 * j, 100, 6));
     assert!(RepaintScissors::new(Damage::Partial(damage), &display(), footprints).is_none());
@@ -41,7 +45,7 @@ fn partial_repaint_preserves_padded_physical_scissors() {
             Rect::new(30.0, 20.0, 10.0, 5.0),
             Rect::new(20.0, 18.0, 4.0, 4.0),
         ],
-        0.0,
+        MergePolicy::with_budget(0.0),
         Rect::new(0.0, 0.0, 50.0, 50.0),
     );
     // One capturing pane: its footprint, already physical, joins the scissors first.

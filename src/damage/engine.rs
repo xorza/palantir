@@ -12,7 +12,7 @@ use crate::damage::node_snapshot::NodeSnapshot;
 use crate::damage::pane_walk::PaneWalk;
 use crate::damage::plane_frame::PlaneFrame;
 use crate::damage::plane_walk::PlaneWalk;
-use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
+use crate::damage::region::{DamageRegion, MergePolicy};
 use crate::damage::root_order::RootOrder;
 use crate::damage::row_matcher::RowMatcher;
 use crate::damage::{Damage, DamageBase};
@@ -182,7 +182,7 @@ impl DamageEngine {
     fn finish_region(&self, surface: Rect) -> Option<Damage> {
         Damage::new(DamageRegion::collapse_from(
             &self.raw_rects,
-            DEFAULT_PASS_BUDGET_PX,
+            MergePolicy::DEFAULT,
             surface,
         ))
     }
@@ -242,6 +242,15 @@ impl DamageEngine {
     /// This frame's damage rects before they collapse, for the frame harness.
     pub(crate) fn raw_rects(&self) -> &[Rect] {
         &self.raw_rects
+    }
+
+    /// Mark pane `key` stale in this frame, as damage under it would.
+    #[expect(
+        clippy::absolute_paths,
+        reason = "a gated impl, whose type a gated import could not name"
+    )]
+    pub(crate) fn force_stale_pane(&mut self, key: crate::primitives::identity::pane_key::PaneKey) {
+        self.panes.force_stale(key);
     }
 }
 

@@ -68,6 +68,9 @@ pub(super) struct WindowDriver {
     screenshot_requests: Vec<ScreenshotRequest>,
     /// Screenshots on their way back from the device, oldest first; one lands per frame.
     captures: VecDeque<PendingScreenshot>,
+    /// What the next frame paints in place of its own damage, for a bench that measures a decision.
+    #[cfg(feature = "internals")]
+    forced: internals::ForcedFrame,
 }
 
 /// What a window's driver opens as: the window's token, the render owner its frames draw as, and
@@ -184,7 +187,7 @@ pub(super) enum PresentPath {
 /// copy per frame; measured crossover is near 0.40 (`frame` bench, a mobile AMD iGPU:
 /// `scrolling` 7.8 ms via backbuffer vs 6.8 ms direct; a tiny partial 3.3 ms via
 /// backbuffer). Area only proxies cost, so the line sits under the expensive band.
-const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;
+pub(crate) const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;
 
 // Retuning either threshold past the other would silently kill promotion.
 const _: () = assert!(DIRECT_PROMOTE_COVERAGE < FULL_REPAINT_THRESHOLD);
@@ -272,6 +275,8 @@ impl WindowDriver {
             pane_captures: PaneCaptures::default(),
             screenshot_requests: Vec::new(),
             captures: VecDeque::new(),
+            #[cfg(feature = "internals")]
+            forced: internals::ForcedFrame::default(),
         }
     }
 
@@ -439,6 +444,8 @@ impl WindowDriver {
         placements: &mut CutoutPlacements,
         mut report: FrameReport,
     ) -> CpuFrame {
+        #[cfg(feature = "internals")]
+        self.apply_forced(&mut report);
         self.ui
             .take_screenshot_requests(&mut self.screenshot_requests);
         // A screenshot reads the backbuffer, so its frame paints all of it there, whatever
@@ -742,9 +749,13 @@ impl WindowDriver {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::damage::Damage;
     use crate::host::window_driver::WindowDriver;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::renderer::render_plan::RenderPlan;
     use crate::ui::Ui;
     use crate::ui::frame_engines::FrameEngines;
+    use crate::ui::frame_report::FrameReport;
 
     /// A driver's `Ui` and engines, for a bench that runs one step of a frame on them.
     #[derive(Debug)]
@@ -753,7 +764,47 @@ pub(crate) mod internals {
         pub(crate) engines: &'a mut FrameEngines,
     }
 
+    /// What the next frame paints in place of its own damage.
+    #[derive(Debug, Default)]
+    pub(crate) struct ForcedFrame {
+        damage: Option<Damage>,
+        /// What the frame's content changed, which leaves each pane whose footprint it touches
+        /// stale. Kept apart from `damage`, whose rects may have merged past a pane no change
+        /// reached.
+        changed: Vec<Rect>,
+    }
+
     impl WindowDriver {
+        /// Have the next frame that paints paint `damage` over a change of `changed`, past the
+        /// damage engine's answer and the present path's promotion, so a bench can time a decision
+        /// production would not make, on a scene that holds still.
+        pub(crate) fn force_next_frame(&mut self, damage: Damage, changed: &[Rect]) {
+            self.forced.damage = Some(damage);
+            self.forced.changed.clear();
+            self.forced.changed.extend_from_slice(changed);
+        }
+
+        /// Put the forced decision in `report`'s plan, and mark the panes its change left stale.
+        pub(super) fn apply_forced(&mut self, report: &mut FrameReport) {
+            let Some(damage) = self.forced.damage.take() else {
+                return;
+            };
+            report.plan = Some(RenderPlan {
+                clear: self.ui.theme().window_bg,
+                damage,
+            });
+            // A whole frame captures every pane and reports none stale.
+            if matches!(damage, Damage::Full) {
+                return;
+            }
+            let changed = &self.forced.changed;
+            for pane in self.ui.frame_scene().panes() {
+                if changed.iter().any(|rect| rect.intersects(pane.footprint)) {
+                    self.engines.damage.force_stale_pane(pane.key);
+                }
+            }
+        }
+
         /// Shade every shadow corner instead of baking tables: the visual suite's reference.
         pub(crate) fn disable_cutout_tables(&mut self) {
             self.stream.disable_cutout_tables();

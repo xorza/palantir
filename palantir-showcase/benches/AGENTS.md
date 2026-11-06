@@ -1,6 +1,8 @@
 # Benches
 
-One target, `palantir` in this crate, runs every case through `bench::run`; each
+The target `palantir` in this crate runs every case through `bench::run`, and the
+target `damage_sweep` is a study of its own (**The damage sweep**), which `cargo bench-all`
+leaves out; each
 driver sits in a `bench.rs` beside the code it measures in palantir's `src/`, and
 `src/bench/mod.rs` states the rules: the kinds, the ids, one number for each case, and the
 `Scale` sampling policy (`clippy.toml` keeps a group from setting its own).
@@ -17,7 +19,7 @@ per stage runs that stage alone over it, so a moved frame points at its stage.
 | record | `atomic/record` | `atomic/text_edit`, `atomic/animation` |
 | layout | `atomic/layout` | `atomic/text_shape`, `integration/measure_cache` |
 | cascade | `atomic/cascade` | |
-| damage | | `atomic/damage`, `integration/damage` |
+| damage | | `atomic/damage`, `integration/damage`, `integration/damage_policy` |
 | encode + compose | `atomic/encode` | `atomic/composer`, `atomic/rect_grid` |
 | paint, CPU | | `atomic/record_pass`, `atomic/schedule` |
 | paint, GPU | `atomic/main_pass`, `atomic/main_pass_batch` | `atomic/*_pipeline`, `atomic/*_atlas`, `atomic/backdrop_*` |
@@ -28,6 +30,49 @@ per stage runs that stage alone over it, so a moved frame points at its stage.
 `hovering` and `typing` (input driving the frame), `theming` (a theme
 transition in progress). Every case of a group has
 one id depth (`CaseGroup` holds it), so a filter on a level selects alike.
+
+## The damage sweep
+
+`cargo damage-sweep` times what each way of repainting a frame's damage costs on this GPU, and
+scores every setting of the merge budget, the rect cap and the promote coverage against it. Its
+reasons sit in `src/damage/sweep/mod.rs`.
+
+```sh
+cargo damage-sweep                            # every stage
+cargo damage-sweep -- scene/pair/             # what a `<stage>/<scenario>` holds
+cargo damage-sweep -- --list                  # each case and its arms
+cargo damage-sweep -- --rounds 24 --csv tmp/damage-sweep
+PALANTIR_BENCH_NO_GPU=1 cargo damage-sweep    # each decision, with the pair grid, and no timing
+```
+
+Each stage prints a table and a score:
+
+- **The table** has a row per scenario: the arm production takes, the cheapest arm, and the regret
+  between them, `tie` when the gap lies inside the two arms' spreads. An arm's name says which raw
+  rects each repainted rect holds: `AB|C` is two scissors, `A*15/full` a cycle of 15 frames of `A`
+  and a whole one, and past eight raw rects a count, `4 rects #2` the second arm of that count.
+  A session's scenario is named by what it covers, as its counts move a few frames from run to run.
+- **The score** gives the five best policies, how many score better than production, and each knob
+  swept with the others at production's values. A policy reads by its worst regret, then by its mean
+  regret per frame, where a scenario of a scripted session counts its frames and a made one
+  counts one.
+
+How to read it:
+
+- **A cost holds for this GPU.** A number never moves to another host; the stages only compare
+  against each other on one. Run it on each GPU class, and a knob the classes disagree on is a
+  knob that wants a device rule.
+- **Time alone.** A smaller repaint draws less power even at a tie.
+- **`dense` against `plain` asks whether a cost follows the draws**, as a replay per scissor makes
+  it; **`dense_1x` and `dense_4k` against `dense`** whether it follows the pixels, while a budget
+  counts logical px² whatever the scale.
+- **`scene` alone holds the session**, whose rects describe that screen.
+- **Rects scale with the surface**, so a share stays a share: `dense_4k`'s icons are 1.5× larger,
+  which keeps the coverage and not the logical sizes.
+
+A session runs over the showcase only; a darkroom session's rects would need a recording of their
+own. The regression cases `integration/damage_policy/gpu/<scenario>` run production's decision on
+eight of these scenarios in a plain `cargo bench-all`.
 
 ## Running
 

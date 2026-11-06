@@ -12,6 +12,6 @@ mod host_options;
 pub(crate) mod offscreen;
 mod system_preferences;
 mod wake_signal;
-mod window_driver;
+pub(crate) mod window_driver;
 #[cfg(feature = "winit")]
 pub(crate) mod winit;

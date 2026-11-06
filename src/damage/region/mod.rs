@@ -1,8 +1,8 @@
 //! Bounded set of screen-space damage rects produced by [`crate::damage::engine::DamageEngine::compute`] and consumed by the encoder filter and backend scissors.
 //!
-//! Merge policy: agglomerative clustering by the Surface Area Heuristic. A pair merges when `bbox(A,B).area() − A.area() − B.area()` (the extra pixels redrawn) is below `budget_px`, the per-pass setup cost, passed to each fold; the default is [`DEFAULT_PASS_BUDGET_PX`].
+//! Merge policy: agglomerative clustering by the Surface Area Heuristic. A pair merges when `bbox(A,B).area() − A.area() − B.area()` (the extra pixels redrawn) is below [`MergePolicy::budget_px`], the per-pass setup cost, passed to each fold; the shipped values are [`MergePolicy::DEFAULT`].
 //!
-//! `add(r)` grows a candidate by absorbing the cheapest slot until none meets the budget, then appends or, at the cap, forces the cheapest merge and resumes absorbing so no retained slots overlap. Containment is the same predicate's limit.
+//! `add(r)` grows a candidate by absorbing the cheapest slot until none meets the budget, then appends or, at [`MergePolicy::rect_cap`], forces the cheapest merge and resumes absorbing so no retained slots overlap. Containment is the same predicate's limit.
 //!
 //! Intersecting pairs always merge regardless of budget: overlapping scissor passes would paint the overlap twice (`LoadOp::Load` each).
 //!
@@ -16,7 +16,24 @@ use tinyvec::ArrayVec;
 pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 
 /// Default per-pass setup cost, in extra-overdraw pixels. 20 000 px² collapses near pairs (axis-adjacent, animation-frame) without merging unrelated tiny corners; the isolated-pair GPU crossover is near 7 000 px², but clusters let each merge remove another pass.
-pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
+const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
+
+/// What a fold trades: the extra pixels one merge may redraw, and how many rects it keeps.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MergePolicy {
+    /// Per-pass setup cost, in extra-overdraw pixels: a pair whose merge redraws fewer merges.
+    pub(crate) budget_px: f32,
+    /// The most rects the fold keeps, from 1 to [`DAMAGE_RECT_CAP`].
+    pub(crate) rect_cap: usize,
+}
+
+impl MergePolicy {
+    /// What every frame folds by.
+    pub(crate) const DEFAULT: Self = Self {
+        budget_px: DEFAULT_PASS_BUDGET_PX,
+        rect_cap: DAMAGE_RECT_CAP,
+    };
+}
 
 /// Set of disjoint damage rects in screen space. `Copy`, so [`crate::damage::Damage`] threads through `FrameOutput` and the encoder by value.
 ///
@@ -37,7 +54,11 @@ pub(crate) struct CollapsedDamage {
 
 impl DamageRegion {
     /// Build a region from `rects`, clipping each to `surface` first: off-surface pixels bias `FULL_REPAINT_THRESHOLD`, the encoder's `any_intersects` and the scissor, and source rects routinely overflow at high zoom.
-    pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32, surface: Rect) -> CollapsedDamage {
+    pub(crate) fn collapse_from(
+        rects: &[Rect],
+        policy: MergePolicy,
+        surface: Rect,
+    ) -> CollapsedDamage {
         let surface_area = surface.area();
         debug_assert!(
             surface_area > EPS,
@@ -47,7 +68,7 @@ impl DamageRegion {
         for r in rects {
             let clipped = r.clamp_to(surface);
             if !clipped.is_paint_empty() {
-                region.add(clipped, budget_px);
+                region.add(clipped, policy);
             }
         }
         CollapsedDamage {
@@ -73,8 +94,13 @@ impl DamageRegion {
         self.rects.iter().map(|r| r.area()).sum()
     }
 
-    /// Fold `r` into the region per the module policy. `budget_px` is an argument because it describes this fold, not the result.
-    pub(crate) fn add(&mut self, r: Rect, budget_px: f32) {
+    /// Fold `r` into the region per the module policy, which is an argument because it describes this fold, not the result.
+    pub(crate) fn add(&mut self, r: Rect, policy: MergePolicy) {
+        debug_assert!(
+            (1..=DAMAGE_RECT_CAP).contains(&policy.rect_cap),
+            "a rect cap of {} outside the storage",
+            policy.rect_cap
+        );
         // `is_paint_empty`, not `area() <= 0.0`: it also rejects NaN (which would poison every comparison) and sub-EPS slivers.
         if r.is_paint_empty() {
             return;
@@ -107,14 +133,14 @@ impl DamageRegion {
                 continue;
             }
             match best_idx {
-                Some(i) if best_cost < budget_px => {
+                Some(i) if best_cost < policy.budget_px => {
                     let e = self.rects.swap_remove(i);
                     candidate = candidate.union(e);
                     continue;
                 }
                 _ => {}
             }
-            if self.rects.len() < DAMAGE_RECT_CAP {
+            if self.rects.len() < policy.rect_cap {
                 self.rects.push(candidate);
                 return;
             }
@@ -135,26 +161,43 @@ impl DamageRegion {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    #[cfg(test)]
-    use crate::damage::region::CollapsedDamage;
-    use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
+    use crate::damage::region::{CollapsedDamage, DamageRegion, MergePolicy};
     use crate::primitives::geometry::rect::Rect;
+    use tinyvec::ArrayVec;
 
     impl DamageRegion {
         pub(crate) fn from_rects(rects: &[Rect]) -> Self {
             let mut region = Self::default();
             for r in rects {
-                region.add(*r, DEFAULT_PASS_BUDGET_PX);
+                region.add(*r, MergePolicy::DEFAULT);
             }
             region
         }
 
+        /// A region of exactly `rects`, with no fold: they may overlap, which the repaint's
+        /// scissors keep disjoint, so a damage sweep can measure a split no fold keeps.
+        pub(crate) fn from_unmerged(rects: &[Rect]) -> Self {
+            Self {
+                rects: rects.iter().copied().collect::<ArrayVec<_>>(),
+            }
+        }
+
         /// These rects with no coverage measured, for consumers that read only rects.
-        #[cfg(test)]
         pub(crate) const fn unmeasured(self) -> CollapsedDamage {
             CollapsedDamage {
                 region: self,
                 coverage: 0.0,
+            }
+        }
+    }
+
+    impl MergePolicy {
+        /// The default with a budget of `budget_px`.
+        #[cfg(test)]
+        pub(crate) const fn with_budget(budget_px: f32) -> Self {
+            Self {
+                budget_px,
+                ..Self::DEFAULT
             }
         }
     }

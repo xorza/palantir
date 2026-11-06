@@ -850,7 +850,7 @@ const fn either(a: InputDelta, b: InputDelta) -> InputDelta {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::damage::Damage;
-    use crate::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
+    use crate::damage::region::{CollapsedDamage, DamageRegion, MergePolicy};
     use crate::host::harness::{Harness, HarnessPaint};
     use crate::host::window_driver::internals::DriverParts;
     use crate::renderer::frontend::BuildPlan;
@@ -951,7 +951,7 @@ pub(crate) mod internals {
         pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
             DamageRegion::collapse_from(
                 self.engines().damage.raw_rects(),
-                DEFAULT_PASS_BUDGET_PX,
+                MergePolicy::DEFAULT,
                 self.window.driver.ui.display().logical_rect(),
             )
         }

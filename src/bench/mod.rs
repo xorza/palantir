@@ -38,6 +38,7 @@ use crate::scene::tree::paint_animations;
 use crate::widgets::{color_field, text_edit};
 use crate::{animation, damage, gpu, input, layout, text, ui};
 use criterion::Criterion;
+use std::process::ExitCode;
 
 /// Every case, atomic first, those that run a whole screen over `S`. The host's adapters are listed
 /// once here; no device opens, as [`Backends::device`] refuses to open one between cases. The
@@ -73,7 +74,13 @@ pub fn run<S: Scene>(c: &mut Criterion) {
 
     backdrop::bench::integration::<S>(c, &backends);
     damage::bench::integration(c);
+    damage::bench::policy::<S>(c, &backends);
     ui::bench::integration::<S>(c, &backends);
     frontend::bench::integration(c);
     measure_cache::bench::integration(c);
+}
+
+/// The damage sweep over `S`, a target of its own: `cargo damage-sweep`.
+pub fn damage_sweep<S: Scene>() -> ExitCode {
+    damage::sweep::run::<S>()
 }

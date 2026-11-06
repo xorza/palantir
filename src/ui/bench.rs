@@ -94,7 +94,7 @@ fn force_full_effects(ui: &mut Ui) {
 
 /// Frame `n`'s look: the scene builds its theme on the first frame, so the bench's goes on the
 /// second, at once.
-fn settle_look(ui: &mut Ui, n: u32) {
+pub(crate) fn settle_look(ui: &mut Ui, n: u32) {
     if n == 1 {
         ui.set_theme(ColorScheme::Dark, bench_theme());
     }
@@ -148,13 +148,13 @@ const RESIZE_POOL: [UVec2; 4] = [
 ];
 
 /// The device timing every GPU case here opens.
-const TIMING: Timing = Timing::PassOnly;
+pub(crate) const TIMING: Timing = Timing::PassOnly;
 
 /// A host on the desktop's present strategy (`DirectAdaptive`, as the winit host
 /// runs). The default would measure the screenshot path, which copies the
 /// backbuffer out on skip and full frames, and a retained target paints a
 /// partial frame where the desktop cannot.
-fn bench_host(g: &BenchGpu, time: OffscreenTime) -> OffscreenHost {
+pub(crate) fn bench_host(g: &BenchGpu, time: OffscreenTime) -> OffscreenHost {
     let mut host = OffscreenHost::builder(g.handles())
         .collect_gpu_stats(false)
         .swapchain_present()

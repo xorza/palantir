@@ -2,7 +2,7 @@
 
 use crate::damage::Damage;
 use crate::damage::engine::DamageEngine;
-use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
+use crate::damage::region::{DamageRegion, MergePolicy};
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame, one_frame};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
@@ -34,7 +34,6 @@ fn damage_filter_returns_partial_when_small() {
 /// excluded from `PartialEq`.
 #[test]
 fn damage_filter_threshold_cases() {
-    use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
     fn region(rects: &[Rect]) -> DamageRegion {
         DamageRegion::from_rects(rects)
     }
@@ -91,7 +90,7 @@ fn damage_filter_threshold_cases() {
         // No zero-area-surface case: `collapse_from` asserts `surface_area > EPS`.
     ];
     for (label, rects, surface, want) in cases {
-        let collapsed = DamageRegion::collapse_from(rects, DEFAULT_PASS_BUDGET_PX, *surface);
+        let collapsed = DamageRegion::collapse_from(rects, MergePolicy::DEFAULT, *surface);
         match (Damage::new(collapsed), want) {
             (damage, Some(want)) => {
                 assert_eq!(Damage::expect_partial(damage), *want, "case: {label}");
@@ -109,7 +108,7 @@ fn no_damage_means_skip() {
     assert_eq!(
         Damage::new(DamageRegion::collapse_from(
             &d.raw_rects,
-            DEFAULT_PASS_BUDGET_PX,
+            MergePolicy::DEFAULT,
             TEST_SURFACE
         )),
         None,

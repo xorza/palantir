@@ -364,9 +364,11 @@ impl OffscreenHost {
 /// Peepholes for the visual suite and the benches.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::damage::Damage;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
     use crate::host::window_driver::PresentStrategy;
+    use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_buffer::RenderBuffer;
 
     #[cfg(test)]
@@ -386,6 +388,11 @@ pub(crate) mod internals {
     }
 
     impl OffscreenHost {
+        /// Have the next frame paint `damage` over a change of `changed`, whatever damage it finds.
+        pub(crate) fn force_next_frame(&mut self, damage: Damage, changed: &[Rect]) {
+            self.window.driver.force_next_frame(damage, changed);
+        }
+
         /// The frame `target` describes at the host's time, as [`Self::frame`] runs it.
         #[cfg(test)]
         pub(super) fn spec(&self, target: RenderTarget<'_>) -> FrameSpec {

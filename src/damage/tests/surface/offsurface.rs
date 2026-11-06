@@ -3,7 +3,7 @@
 use crate::cascade::paint::Paint;
 use crate::cascade::paint::PaintRows;
 use crate::damage::Damage;
-use crate::damage::region::DamageRegion;
+use crate::damage::region::{DamageRegion, MergePolicy};
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
@@ -27,7 +27,11 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
         Rect::new(90.0, 90.0, 10.0, 10.0),
         "sanity: 1000×1000 rect at (90,90) intersects surface in a 10×10 corner",
     );
-    let collapsed = DamageRegion::collapse_from(&[oversized], f32::INFINITY, surface);
+    let collapsed = DamageRegion::collapse_from(
+        &[oversized],
+        MergePolicy::with_budget(f32::INFINITY),
+        surface,
+    );
     let stored: Vec<_> = collapsed.region.iter_rects().collect();
     assert_eq!(
         stored,
@@ -46,8 +50,11 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
 fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
     let covers_all_plus_overflow = Rect::new(-50.0, -50.0, 1000.0, 1000.0);
-    let collapsed =
-        DamageRegion::collapse_from(&[covers_all_plus_overflow], f32::INFINITY, surface);
+    let collapsed = DamageRegion::collapse_from(
+        &[covers_all_plus_overflow],
+        MergePolicy::with_budget(f32::INFINITY),
+        surface,
+    );
     let damage = Damage::new(collapsed);
     assert_eq!(
         damage,
@@ -61,7 +68,11 @@ fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
 fn fully_off_surface_rect_is_dropped_from_region() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
     let off_screen = Rect::new(500.0, 500.0, 50.0, 50.0);
-    let collapsed = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
+    let collapsed = DamageRegion::collapse_from(
+        &[off_screen],
+        MergePolicy::with_budget(f32::INFINITY),
+        surface,
+    );
     assert!(
         collapsed.region.is_empty(),
         "wholly-off-surface rect must produce an empty region (no skip-vs-Partial drift)",
