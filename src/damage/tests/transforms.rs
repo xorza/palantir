@@ -111,7 +111,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // unchanged, so all damage comes from the child.
     let dirty_widget_ids: Vec<WidgetId> = h
         .frames()
-        .damage
+        .damage()
         .counters
         .dirty()
         .iter()
@@ -154,7 +154,7 @@ fn transform_animation_keeps_far_positions_split() {
     // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600. bbox 240×40 =
     // 9600, SAH cost 6400; a budget of 0 keeps them apart whatever the default.
     let rects: Vec<Rect> = DamageRegion::collapse_from(
-        &h.frames().damage.raw_rects,
+        &h.frames().damage().raw_rects,
         MergePolicy::with_budget(0.0),
         h.ui().display().logical_rect(),
     )
@@ -454,7 +454,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // clean Skip. Fails if the bulk refresh corrupted a snapshot field.
     build(60.0, &mut h);
     assert!(
-        h.frames_mut().damage.counters.dirty().is_empty(),
+        h.frames().damage().counters.dirty().is_empty(),
         "still frame after motion must not dirty any node",
     );
     assert_eq!(

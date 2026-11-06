@@ -78,7 +78,7 @@ impl HeadlessWindow {
         settings: &HeadlessSettings,
     ) -> Self {
         let wake = Arc::<WakeSignal>::default();
-        driver.frames.set_waker(wake.waker());
+        driver.set_waker(wake.waker());
         let _ = settings.preferences.apply(&cpu.resources);
         Self {
             cpu,
@@ -141,7 +141,7 @@ impl HeadlessWindow {
     /// A frame opens by taking the waker's wake.
     fn take_wake(&mut self) {
         if self.wake.take() {
-            self.driver.frames.ui.request_repaint();
+            self.driver.ui_mut().request_repaint();
         }
     }
 
@@ -183,7 +183,7 @@ impl HeadlessWindow {
     pub(super) fn set_preferences(&mut self, change: impl FnOnce(&mut SystemPreferences)) {
         change(&mut self.preferences);
         if self.preferences.apply(&self.cpu.resources) {
-            self.driver.frames.ui.request_repaint();
+            self.driver.ui_mut().request_repaint();
         }
     }
 
@@ -199,5 +199,5 @@ impl HeadlessWindow {
 /// and closes are kept for the app to read.
 pub(super) fn record_window_commands(driver: &mut WindowDriver, commands: &mut WindowCommands) {
     commands.clear();
-    driver.frames.drain_window_output(commands);
+    driver.drain_window_output(commands);
 }

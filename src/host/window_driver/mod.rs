@@ -5,6 +5,7 @@
 //! windows share one renderer without sharing frame-local geometry.
 
 pub(crate) mod present_facts;
+mod screenshot_lane;
 
 use crate::common::tracy;
 use crate::damage::{Damage, DamageBase};
@@ -15,35 +16,41 @@ use crate::gpu::frame::submission::{self, FrameOverlay, Route, Submission};
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode};
 use crate::gpu::render_owner_id::RenderOwnerId;
-use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::host::window_driver::present_facts::{
     Escalation, PaintPath, PresentFacts, promote_share,
 };
-use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::urect::URect;
+use crate::host::window_driver::screenshot_lane::ScreenshotLane;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::renderer::frontend::{BuildPlan, FrameOutput, Frontend};
 use crate::renderer::pane_captures::{PaneCaptures, PaneDamage, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::repaint_scissors::RepaintScissors;
+use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_loop::{FrameLoop, SubmitParts};
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
-use crate::window::screenshot::{Screenshot, ScreenshotRequest};
+#[cfg(feature = "winit")]
+use crate::window::vsync::Vsync;
+use crate::window::waker::Waker;
+use crate::window::window_commands::WindowCommands;
+#[cfg(feature = "winit")]
+use crate::window::window_frame_state::WindowFacts;
+use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
-use std::collections::VecDeque;
 use std::time::Duration;
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
 #[derive(Debug)]
 pub(super) struct WindowDriver {
     /// The window's `Ui` and the engines its frames run on.
-    pub(super) frames: FrameLoop,
+    frames: FrameLoop,
     /// What the window's frames keep on the device.
     stream: RenderStream,
     /// What the next frame's damage diffs against: the last frame, once it completed its
@@ -57,12 +64,7 @@ pub(super) struct WindowDriver {
     target: Option<TargetKey>,
     /// The captures this window's panes hold, which decide what a frame captures again.
     pane_captures: PaneCaptures,
-    /// The images a recorded frame asked for, until a frame paints them: ones the host did not
-    /// present (an outdated swapchain) carry to the next, and are resolved against the display of
-    /// the frame that paints them, so a resize in between cannot leave one outside.
-    screenshot_requests: Vec<ScreenshotRequest>,
-    /// Screenshots on their way back from the device, oldest first; one lands per frame.
-    captures: VecDeque<PendingScreenshot>,
+    screenshots: ScreenshotLane,
     /// What the next frame paints in place of its own damage, for a bench that measures a decision.
     #[cfg(feature = "internals")]
     forced: internals::ForcedFrame,
@@ -75,39 +77,6 @@ pub(super) struct DriverSpec {
     pub(super) token: WindowToken,
     pub(super) owner: RenderOwnerId,
     pub(super) strategy: PresentStrategy,
-}
-
-/// The physical pixels of a logical `region` of `display`: edges rounded out, so every pixel
-/// the region touches is in, and held inside the surface.
-#[expect(
-    clippy::cast_sign_loss,
-    reason = "each coordinate is floored at zero first, and `as` saturates the far side"
-)]
-fn physical_region(region: Rect, display: Display) -> URect {
-    let scale = display.scale_factor();
-    let max = region.max();
-    let bound = display.physical;
-    let corner = |x: f32, y: f32| {
-        UVec2::new(
-            (x.max(0.0) as u32).min(bound.x),
-            (y.max(0.0) as u32).min(bound.y),
-        )
-    };
-    let min = corner(
-        (region.min.x * scale).floor(),
-        (region.min.y * scale).floor(),
-    );
-    let max = corner((max.x * scale).ceil(), (max.y * scale).ceil());
-    URect::from_min_max(min, max.max(min))
-}
-
-/// A [`Capture`] with the request it answers, its region clamped to the window it was taken
-/// from.
-#[derive(Debug)]
-struct PendingScreenshot {
-    capture: Capture,
-    request: ScreenshotRequest,
-    scale: f32,
 }
 
 /// Identity of the surface or texture a window renders into: the single gate on retained target
@@ -239,11 +208,74 @@ impl WindowDriver {
             strategy,
             target: None,
             pane_captures: PaneCaptures::default(),
-            screenshot_requests: Vec::new(),
-            captures: VecDeque::new(),
+            screenshots: ScreenshotLane::default(),
             #[cfg(feature = "internals")]
             forced: internals::ForcedFrame::default(),
         }
+    }
+
+    /// The window's `Ui`.
+    pub(super) const fn ui(&self) -> &Ui {
+        &self.frames.ui
+    }
+
+    /// The window's `Ui`, mutably.
+    pub(super) const fn ui_mut(&mut self) -> &mut Ui {
+        &mut self.frames.ui
+    }
+
+    /// The window the app records for.
+    #[cfg(feature = "winit")]
+    pub(super) const fn token(&self) -> WindowToken {
+        self.frames.token()
+    }
+
+    /// See [`FrameLoop::is_first_frame`].
+    pub(super) const fn is_first_frame(&self) -> bool {
+        self.frames.is_first_frame()
+    }
+
+    /// See [`FrameLoop::on_input`].
+    pub(super) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
+        self.frames.on_input(event, now)
+    }
+
+    /// See [`FrameLoop::set_waker`].
+    pub(super) fn set_waker(&mut self, waker: Waker) {
+        self.frames.set_waker(waker);
+    }
+
+    /// See [`FrameLoop::set_window_facts`].
+    #[cfg(feature = "winit")]
+    pub(super) fn set_window_facts(&mut self, facts: WindowFacts) {
+        self.frames.set_window_facts(facts);
+    }
+
+    /// See [`FrameLoop::seed_vsync`].
+    #[cfg(feature = "winit")]
+    pub(super) const fn seed_vsync(&mut self, vsync: Vsync) {
+        self.frames.seed_vsync(vsync);
+    }
+
+    /// See [`FrameLoop::laid_out_scale`].
+    #[cfg(feature = "winit")]
+    pub(super) fn laid_out_scale(&self) -> Option<f32> {
+        self.frames.laid_out_scale()
+    }
+
+    /// See [`FrameLoop::drain_window_output`].
+    pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> WindowOutput {
+        self.frames.drain_window_output(commands)
+    }
+
+    /// See [`FrameLoop::set_prev_stamp`].
+    pub(super) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
+        self.frames.set_prev_stamp(stamp);
+    }
+
+    /// See [`FrameLoop::set_display`].
+    pub(super) const fn set_display(&mut self, display: Display) {
+        self.frames.set_display(display);
     }
 
     /// The owner the window's frames render as.
@@ -265,8 +297,7 @@ impl WindowDriver {
         self.stream = stream;
         self.pane_captures = PaneCaptures::default();
         self.invalidate_target_contents();
-        self.screenshot_requests
-            .splice(0..0, self.captures.drain(..).map(|pending| pending.request));
+        self.screenshots.requeue_pending();
     }
 
     /// The stamp of the frame `spec` describes, as [`Self::record`] runs it.
@@ -286,15 +317,13 @@ impl WindowDriver {
 
     /// Whether a screenshot is on its way back from the device, which a later frame lands.
     pub(super) fn has_pending_screenshots(&self) -> bool {
-        !self.captures.is_empty()
+        self.screenshots.has_pending()
     }
 
     /// Whether the device's copy of every screenshot owed has landed, or failed, so the next frame
     /// hands the oldest over.
     pub(super) fn screenshots_landed(&self) -> bool {
-        self.captures
-            .iter()
-            .all(|pending| !pending.capture.is_pending())
+        self.screenshots.all_landed()
     }
 
     /// Declare the target of the frame `spec` describes. A change invalidates retained pixels and
@@ -330,8 +359,8 @@ impl WindowDriver {
     /// device takes them: no image lands for them, as for an empty ask.
     pub(super) fn finish_unpainted(&mut self) {
         self.frames
-            .take_screenshot_requests(&mut self.screenshot_requests);
-        self.screenshot_requests.clear();
+            .take_screenshot_requests(&mut self.screenshots.requests);
+        self.screenshots.requests.clear();
         self.damage_base = DamageBase::Prev;
     }
 
@@ -355,33 +384,9 @@ impl WindowDriver {
     }
 
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
-    /// an edge of exactly that frame. A copy the device failed, as only a lost one does, goes
-    /// back to the requests, and the next frame that paints takes it again; a copy a lost device
-    /// never finishes goes back when a new device attaches.
+    /// an edge of exactly that frame.
     pub(super) fn deliver_screenshot(&mut self, backend: &WgpuBackend) {
-        if !self.captures.is_empty() {
-            backend.poll();
-        }
-        let mut landed = None;
-        // Each failed ask is older than the asks queued since, so it goes ahead of them, in order.
-        let mut requeued = 0;
-        while self
-            .captures
-            .front()
-            .is_some_and(|pending| !pending.capture.is_pending())
-        {
-            let PendingScreenshot {
-                capture,
-                request,
-                scale,
-            } = self.captures.pop_front().expect("the front one landed");
-            if let Some(image) = capture.take() {
-                landed = Some(Screenshot::new(image, scale, request.region, request.id));
-                break;
-            }
-            self.screenshot_requests.insert(requeued, request);
-            requeued += 1;
-        }
+        let landed = self.screenshots.take_landed(backend);
         self.frames.set_screenshot_taken(landed);
     }
 
@@ -396,8 +401,8 @@ impl WindowDriver {
         #[cfg(feature = "internals")]
         self.apply_forced(&mut report);
         self.frames
-            .take_screenshot_requests(&mut self.screenshot_requests);
-        let capturing = !self.screenshot_requests.is_empty();
+            .take_screenshot_requests(&mut self.screenshots.requests);
+        let capturing = self.screenshots.is_capturing();
         if capturing {
             report.plan = Some(report.plan.map_or(
                 RenderPlan {
@@ -413,7 +418,7 @@ impl WindowDriver {
                 capturing,
                 backbuffer_fresh: self.stream.is_backbuffer_fresh(),
                 promote_share: matches!(plan.damage, Damage::Partial(_)).then(|| {
-                    let scene = self.frames.frame_scene();
+                    let scene = self.frames.ui.frame_scene();
                     promote_share(
                         scene.visible_row_count(),
                         scene.pane_share(),
@@ -435,8 +440,8 @@ impl WindowDriver {
         if !matches!(built, BuiltFrame::Still) {
             self.damage_base = DamageBase::Discarded;
         }
-        // The host runs frames until each screenshot lands, as nothing else wakes it then.
-        if capturing || !self.captures.is_empty() {
+        // In the report, as all an offscreen caller reads to know it owes a frame.
+        if self.screenshots.owes_frame() {
             report.repaint_requested = true;
         }
         CpuFrame { report, built }
@@ -501,7 +506,7 @@ impl WindowDriver {
             path
         };
         // The disjoint scissors outgrow their cap.
-        let display = self.frames.frame_scene().stamp.display;
+        let display = self.frames.ui.frame_scene().stamp.display;
         let Some(scissors) = RepaintScissors::new(
             plan.damage,
             &display,
@@ -540,11 +545,11 @@ impl WindowDriver {
 
     /// The ledger's tickets for a frame painted by `plan`.
     fn decide_panes(&mut self, plan: RenderPlan) -> Settled {
-        let scene = self.frames.frame_scene();
+        let scene = self.frames.ui.frame_scene();
         self.pane_captures.decide(
             scene.panes(),
             scene.stamp.display,
-            PaneDamage::of(plan, self.frames.damage.dirty_panes()),
+            PaneDamage::of(plan, self.frames.dirty_panes()),
         )
     }
 
@@ -553,7 +558,7 @@ impl WindowDriver {
     /// a culled unchanged view keeps its texture.
     fn build(&self, frontend: &mut Frontend, plan: RenderPlan) {
         frontend.build(
-            self.frames.frame_scene(),
+            self.frames.ui.frame_scene(),
             BuildPlan {
                 render: plan,
                 panes: self.pane_captures.tickets(),
@@ -707,28 +712,12 @@ impl WindowDriver {
                 },
             },
         );
+        debug_assert!(
+            route == Route::ViaBackbuffer || !self.screenshots.is_capturing(),
+            "a frame with a screenshot request paints through the backbuffer"
+        );
         let display = self.frames.ui.display();
-        for request in self.screenshot_requests.drain(..) {
-            debug_assert_eq!(
-                route,
-                Route::ViaBackbuffer,
-                "a frame with a screenshot request paints through the backbuffer"
-            );
-            let region = request.region.clamp_to(display.logical_rect());
-            // An ask made between frames, before the window shrank past its region, has
-            // no pixel left to copy: no image lands for it, as for an empty ask.
-            if region.is_paint_empty() {
-                continue;
-            }
-            self.captures.push_back(PendingScreenshot {
-                capture: backend.capture(&self.stream, physical_region(region, display)),
-                request: ScreenshotRequest {
-                    region,
-                    id: request.id,
-                },
-                scale: display.scale_factor(),
-            });
-        }
+        self.screenshots.capture_all(backend, &self.stream, display);
     }
 }
 
@@ -746,9 +735,21 @@ pub(crate) mod internals {
     use crate::host::window_driver::{BuiltFrame, FrameSpec, TargetKey};
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::ui::frame_loop::FrameLoop;
     use crate::ui::frame_report::FrameReport;
     #[cfg(test)]
     use std::time::Duration;
+
+    impl WindowDriver {
+        /// The window's `Ui` and the engines its frames run on, for a harness's reads.
+        pub(crate) const fn frames(&self) -> &FrameLoop {
+            &self.frames
+        }
+
+        pub(crate) const fn frames_mut(&mut self) -> &mut FrameLoop {
+            &mut self.frames
+        }
+    }
 
     #[cfg(test)]
     impl BuiltFrame<'_> {

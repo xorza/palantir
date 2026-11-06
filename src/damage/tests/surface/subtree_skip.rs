@@ -49,18 +49,18 @@ fn stable_painting_subtree_triggers_skip_jump() {
     };
     frame(&mut h, build);
     assert_eq!(
-        h.frames_mut().damage.counters.subtree_skips(),
+        h.frames().damage().counters.subtree_skips(),
         0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
     frame(&mut h, build);
     assert!(
-        h.frames_mut().damage.counters.subtree_skips() >= 1,
+        h.frames().damage().counters.subtree_skips() >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        h.frames_mut().damage.counters.subtree_skips(),
+        h.frames().damage().counters.subtree_skips(),
     );
-    assert!(h.frames_mut().damage.counters.dirty().is_empty());
+    assert!(h.frames().damage().counters.dirty().is_empty());
 }
 
 /// A widget that loses its chrome flips from painting to non-painting. The diff must (a) add its
@@ -92,11 +92,11 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
     };
     frame(&mut h, with_chrome);
     let id = WidgetId::from_hash("a");
-    assert!(h.frames_mut().damage.prev.contains_key(&id));
+    assert!(h.frames().damage().prev.contains_key(&id));
 
     frame(&mut h, no_chrome);
     assert!(
-        !h.frames_mut().damage.prev.contains_key(&id),
+        !h.frames().damage().prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
     );
     let rects: Vec<_> = h.damage_region().iter_rects().collect();

@@ -82,8 +82,8 @@ fn container_text_replays_at_its_width_and_reshapes_at_another() {
         (shaped.extent.size, shaped.buffer_key())
     };
     let replays = |h: &mut Harness| {
-        h.frames_mut()
-            .layout
+        h.frames()
+            .layout()
             .scratch
             .counters
             .arrange_replays()
@@ -92,7 +92,7 @@ fn container_text_replays_at_its_width_and_reshapes_at_another() {
     let node = h.frame_value(build);
     let first = run_of(&h, node);
 
-    h.frames_mut().layout.forget_last_run();
+    h.frames_mut().layout_mut().forget_last_run();
     let node = h.frame_value(build);
     assert_eq!(replays(&mut h), 1, "the same width replays the run");
     assert_eq!(run_of(&h, node), first);
@@ -147,7 +147,7 @@ fn container_text_under_a_shown_ancestor_shapes_what_it_did_not_replay() {
     let node = h.frame_value(build(Visibility::Visible));
     let container = h.ui().tree(Layer::Main).records.widget_id()[node.idx()];
     assert!(
-        h.frames_mut().layout.cache_hits().contains(&container),
+        h.frames().layout().cache_hits().contains(&container),
         "fixture: the container's subtree hits the cache"
     );
     assert_eq!(
@@ -256,15 +256,10 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         first_draw_keys,
         [first_parent_keys[0], first_child_key, first_parent_keys[1]],
     );
-    h.frames_mut().layout.forget_last_run();
+    h.frames_mut().layout_mut().forget_last_run();
     let second_scene = h.frame_value(build_interleaved_container_text);
     assert!(
-        !h.frames_mut()
-            .layout
-            .scratch
-            .counters
-            .cache_hits()
-            .is_empty(),
+        !h.frames().layout().scratch.counters.cache_hits().is_empty(),
         "second identical frame should exercise measure-cache replay",
     );
     let second_layout = h.ui().plane_layout(Layer::Main);

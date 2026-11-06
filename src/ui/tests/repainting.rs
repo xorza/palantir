@@ -346,7 +346,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             clear: frames.ui.theme().window_bg,
             damage: Damage::Full,
         };
-        encoder::internals::encode(frames.frame_scene(), encoder, plan)
+        encoder::internals::encode(frames.ui.frame_scene(), encoder, plan)
             .calls
             .iter()
             .filter_map(|command| match command {

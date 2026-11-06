@@ -144,7 +144,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     });
     let widget_id = WidgetId::from_hash("transient");
     assert!(
-        h.frames_mut().layout.has_text_entry(widget_id, 0),
+        h.frames().layout().has_text_entry(widget_id, 0),
         "text widget should populate text_reuse on first render",
     );
 
@@ -152,7 +152,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !h.frames_mut().layout.has_text_entry(widget_id, 0),
+        !h.frames().layout().has_text_entry(widget_id, 0),
         "removed widget's reuse entry must be swept",
     );
 }
@@ -181,18 +181,18 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
     h.frame(build(3));
     for ordinal in 0..3 {
         assert!(
-            h.frames_mut().layout.has_text_entry(widget_id, ordinal),
+            h.frames().layout().has_text_entry(widget_id, ordinal),
             "premise: run {ordinal} took a row",
         );
     }
 
     h.frame(build(1));
     assert!(
-        h.frames_mut().layout.has_text_entry(widget_id, 0),
+        h.frames().layout().has_text_entry(widget_id, 0),
         "the run it kept"
     );
-    assert!(!h.frames_mut().layout.has_text_entry(widget_id, 1));
-    assert!(!h.frames_mut().layout.has_text_entry(widget_id, 2));
+    assert!(!h.frames().layout().has_text_entry(widget_id, 1));
+    assert!(!h.frames().layout().has_text_entry(widget_id, 2));
 }
 
 #[test]
@@ -232,8 +232,8 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             "window {label} shares the buffer cache, so it sees B's key",
         );
     }
-    assert!(a.frames().layout.has_text_entry(text_id, 0));
-    assert!(b.frames().layout.has_text_entry(text_id, 0));
+    assert!(a.frames().layout().has_text_entry(text_id, 0));
+    assert!(b.frames().layout().has_text_entry(text_id, 0));
 
     let after_b = a.ui().resources.text().measure_calls();
     a.frame(|ui| text_window(ui, "window A", 140.0));
@@ -249,8 +249,8 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
             .size((Sizing::fixed(120.0), Sizing::HUG))
             .show(ui, |_| {});
     });
-    assert!(!b.frames().layout.has_text_entry(text_id, 0));
-    assert!(a.frames().layout.has_text_entry(text_id, 0));
+    assert!(!b.frames().layout().has_text_entry(text_id, 0));
+    assert!(a.frames().layout().has_text_entry(text_id, 0));
 
     let after_b_removal = a.ui().resources.text().measure_calls();
     a.frame(|ui| text_window(ui, "window A", 160.0));
@@ -385,7 +385,10 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     assert!(!idle.ui().resources.text().has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
-    frontend.build(idle.frames().frame_scene(), BuildPlan::without_panes(plan));
+    frontend.build(
+        idle.frames().ui.frame_scene(),
+        BuildPlan::without_panes(plan),
+    );
     let run = frontend
         .buffer
         .texts
@@ -393,7 +396,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         .find(|run| run.text.key == idle_key)
         .copied()
         .expect("PaintOnly must emit the retained text run");
-    let scene = idle.frames().frame_scene();
+    let scene = idle.frames().ui.frame_scene();
     let interned_text = scene.forest.record_store.text.interned();
     assert_eq!(
         interned_text.resolve(run.text.span),

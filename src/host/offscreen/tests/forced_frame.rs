@@ -150,7 +150,7 @@ fn a_forced_frame_stales_the_panes_its_change_touches() {
     );
     captures(Damage::Full, &[PANE]);
     assert_eq!(
-        *host.window.driver.frames.damage.dirty_panes(),
+        *host.window.driver.frames().dirty_panes(),
         DirtyPanes::default(),
         "a whole frame reports no stale pane"
     );

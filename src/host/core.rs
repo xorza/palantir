@@ -108,15 +108,8 @@ mod tests {
             "the record built the target format's pipelines, so the submit compiles none"
         );
         core.device.submit(&mut drawn, target.as_target(), built);
-        assert!(
-            drawn
-                .frames
-                .ui
-                .gpu_pass_stats()
-                .last_main_pass_cpu()
-                .is_some()
-        );
-        assert_eq!(idle.frames.ui.gpu_pass_stats().last_main_pass_cpu(), None);
+        assert!(drawn.ui().gpu_pass_stats().last_main_pass_cpu().is_some());
+        assert_eq!(idle.ui().gpu_pass_stats().last_main_pass_cpu(), None);
     }
 
     /// A frame has a target to reach when it draws something on a device that lives: a first frame

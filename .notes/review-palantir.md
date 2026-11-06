@@ -40,15 +40,15 @@ WinitRuntime<T>
 ├─ windows: WindowSet
 │  └─ Window { window: Arc, surface, driver, translator, clock, remote, … }
 │     └─ driver: WindowDriver
-│        ├─ frames: FrameLoop (pub fields)
+│        ├─ frames: FrameLoop (private engines)
 │        │  ├─ ui: Ui
 │        │  │  ├─ forest, window_theme, memory, overlays, frame_runtime, host
 │        │  │  ├─ resources: UiResources (clone)
 │        │  │  └─ input: Input { arranged: { cascade, layout }, … }
 │        │  └─ layout, cascade, damage (engines)
 │        ├─ stream: RenderStream
-│        ├─ scissors, damage_base, target, target_outlined, pane_captures
-│        └─ screenshot_requests, captures
+│        ├─ damage_base, target, target_outlined, pane_captures
+│        └─ screenshots: ScreenshotLane { requests, pending }
 ├─ frame_log: Arc<FrameLog>   (also inside handle)
 └─ handle: HostHandle<T>
 ```
@@ -91,10 +91,9 @@ The remaining gain is in the signatures:
 
 ## Root causes
 
-1. **Hosts reach through the window's layers.** 71 non-test lines in `host` name `.frames.`, and 38 of them reach `.frames.ui`. `FrameLoop`'s engines are `pub(crate)` fields. A screenshot makes four stops on its way through, two on `Ui` and two on the driver, and `WindowDriver` mixes that lane with the present decision in 842 lines.
-2. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
-3. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
-4. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
+1. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
+2. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
+3. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
 
 ## Target design
 
@@ -132,7 +131,7 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 
 - `host/window_driver/mod.rs`: the driver and its stages.
 - `host/window_driver/present_facts.rs`: the pure decision: `PresentFacts`, `Escalation`, the promote share.
-- `host/window_driver/screenshot_lane.rs`: `ScreenshotLane { requests, pending }`, with `take_from`, `is_capturing`, `deliver`, `capture_all`, `requeue_lost`, `drop_unpainted`.
+- `host/window_driver/screenshot_lane.rs`: `ScreenshotLane`, each screenshot from the ask to the image.
 - `ui/overlay_stack.rs`: `OverlayStack`, moved out of `widget_core`.
 - `ui/resources/mod.rs`: `UiResources(Rc<SharedResources>)`.
 
@@ -167,6 +166,7 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 - **A `HostCore` method for each step**: `OffscreenHost` and `Harness` hold `cpu` inside `HeadlessWindow` and `device` beside it, so `HostCore` is not on their path.
 - **A `Frame<'a>` context that holds `app`, `frontend` and `backend` for the whole stack**: it hides which stage reads what, which is the defect the stage split removed.
 - **Typestate markers on `WindowDriver`** (`WindowDriver<Recorded>`): a driver lives in a `Vec` across frames, and a consumed value gives the same guarantee at no cost to its type.
+- **Moving a screenshot's wake out of `FrameReport`**: `OffscreenHost::frame` returns the report, and its caller has no other sign that the window owes a frame.
 - **Merging `WindowDriver` into `FrameLoop`**: `FrameLoop` sits in `ui`, left of `host`, and it needs nothing from the device.
 - **Merging the text clock and `DisplayFrames`**: they look alike, but a `TextShaper` can span two hosts and a backend cannot, so each keeps its own round.
 - **A trait for the `Ui`, `UpdateCtx` and `Input` reads**: a caller must import it, and `const fn` goes.
@@ -178,16 +178,6 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 # Part 2: Plan
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
-
-## Batch 4: One level to the window
-
-Files: `src/ui/frame_loop.rs`, `src/host/window_driver/mod.rs`, new `src/host/window_driver/screenshot_lane.rs`, `src/host/winit/*`, `src/host/harness/*`, `src/host/offscreen/mod.rs`.
-
-- [ ] `FrameLoop`: make `layout`, `cascade` and `damage` private. Add `dirty_panes()`, and give the harness its reads under `internals`.
-- [ ] `WindowDriver.frames`: make it private. Add `ui()`, `ui_mut()`, `token()` and the few host calls, and move the 71 `.frames.` lines to them.
-- [ ] `FrameLoop::frame_scene` and `scene_of`: `scene_of` exists for one bench reach. Keep one of them.
-- [ ] Add `ScreenshotLane`, and move `screenshot_requests`, `captures`, `deliver_screenshot` and the capture loop into it.
-- [ ] `build_paint`: it writes `report.repaint_requested` after the report exists. Return the lane's need beside the report, and let `FrameReport` stay what the frame said.
 
 ## Batch 5: One shared owner
 

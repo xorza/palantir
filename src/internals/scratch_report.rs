@@ -97,9 +97,9 @@ impl Report {
             nodes: h.ui().forest().total_nodes(),
             phases: [
                 ("record", h.ui().forest().scratch_bytes()),
-                ("layout", engines.layout.scratch_bytes()),
-                ("cascade", engines.cascade.scratch_bytes()),
-                ("damage", engines.damage.scratch_bytes()),
+                ("layout", engines.layout().scratch_bytes()),
+                ("cascade", engines.cascade().scratch_bytes()),
+                ("damage", engines.damage().scratch_bytes()),
                 ("encode+compose", h.frontend().scratch_bytes()),
             ],
         }

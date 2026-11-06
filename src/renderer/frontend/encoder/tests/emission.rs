@@ -462,7 +462,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     let cmds = h.encode_paint();
     assert_eq!(cmds.kinds(), ["Text"]);
     let payload = cmds.calls[0].as_text().unwrap();
-    let scene = h.frames().frame_scene();
+    let scene = h.frames().ui.frame_scene();
     let interned_text = scene.forest.record_store.text.interned();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
@@ -488,7 +488,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     let replayed = h.encode_paint();
     assert_eq!(replayed.kinds(), ["Text"], "replayed text must still emit");
     let payload = replayed.calls[0].as_text().unwrap();
-    let scene = h.frames().frame_scene();
+    let scene = h.frames().ui.frame_scene();
     let interned_text = scene.forest.record_store.text.interned();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(

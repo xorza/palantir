@@ -24,7 +24,7 @@ fn collision_outlines(frames: &FrameLoop) -> Vec<Rect> {
     // Share Ui's record store so mesh/polyline bytes pushed at record time are visible at compose.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        frames.frame_scene(),
+        frames.ui.frame_scene(),
         BuildPlan::without_panes(RenderPlan {
             clear: frames.ui.theme().window_bg,
             damage: Damage::Full,
@@ -291,10 +291,10 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
         .key;
     assert_ne!(cold_main_key, cold_popup_key);
 
-    h.frames_mut().layout.forget_last_run();
+    h.frames_mut().layout_mut().forget_last_run();
     h.frame(&mut record);
     assert!(
-        !h.frames_mut().layout.cache_hits().is_empty(),
+        !h.frames().layout().cache_hits().is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
     let main_node = node_for(&h, Layer::Main, main_id);

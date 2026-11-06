@@ -7,6 +7,7 @@ use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
 use crate::common::tracy;
 use crate::damage::DamageBase;
+use crate::damage::dirty_panes::DirtyPanes;
 use crate::damage::engine::{DamageEngine, DamageInput};
 use crate::damage::frame_baseline::FrameBaseline;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
@@ -18,7 +19,6 @@ use crate::layout::engine::LayoutEngine;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
-use crate::renderer::frontend::FrameScene;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::IdRecipe;
@@ -40,16 +40,6 @@ use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use std::mem;
 use std::time::Duration;
-
-/// The scene `ui` holds, apart from the engines, so a caller can write those as it reads it.
-const fn scene_of(ui: &Ui) -> FrameScene<'_> {
-    FrameScene {
-        forest: &ui.forest,
-        layout: &ui.input.arranged.layout,
-        cascade: &ui.input.arranged.cascade,
-        stamp: ui.frame_runtime.stamp(),
-    }
-}
 
 /// The parts of a [`FrameLoop`] a submit borrows at once ([`FrameLoop::submit_parts`]).
 #[derive(Debug)]
@@ -74,10 +64,10 @@ pub(crate) struct SubmitParts<'a> {
 pub(crate) struct FrameLoop {
     pub(crate) ui: Ui,
     /// Measure/arrange, plus the measure cache and the `TextSystem` whose clock ages the glyph atlas.
-    pub(crate) layout: LayoutEngine,
-    pub(crate) cascade: CascadeEngine,
+    layout: LayoutEngine,
+    cascade: CascadeEngine,
     /// Retains the previous frame's paint snapshot, making the damage diff incremental.
-    pub(crate) damage: DamageEngine,
+    damage: DamageEngine,
     /// The window the app records for.
     token: WindowToken,
 }
@@ -177,9 +167,9 @@ impl FrameLoop {
         self.ui.host.window_frame.screenshot = screenshot.map(Box::new);
     }
 
-    /// What the frontend builds the last frame's draw list from.
-    pub(crate) const fn frame_scene(&self) -> FrameScene<'_> {
-        scene_of(&self.ui)
+    /// The panes the last frame's damage left stale.
+    pub(crate) const fn dirty_panes(&self) -> &DirtyPanes {
+        self.damage.dirty_panes()
     }
 
     /// Every `GpuView` this window records, which its frames paint through.
@@ -509,11 +499,44 @@ impl FrameLoop {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::cascade::engine::CascadeEngine;
+    use crate::damage::engine::DamageEngine;
+    use crate::layout::Layout;
+    use crate::layout::engine::LayoutEngine;
     use crate::primitives::geometry::rect::Rect;
     use crate::ui::app::App;
-    use crate::ui::frame_loop::{FrameLoop, scene_of};
+    use crate::ui::frame_loop::FrameLoop;
 
     impl FrameLoop {
+        #[cfg(test)]
+        pub(crate) const fn layout(&self) -> &LayoutEngine {
+            &self.layout
+        }
+
+        pub(crate) const fn layout_mut(&mut self) -> &mut LayoutEngine {
+            &mut self.layout
+        }
+
+        #[cfg(test)]
+        pub(crate) const fn cascade(&self) -> &CascadeEngine {
+            &self.cascade
+        }
+
+        pub(crate) const fn damage(&self) -> &DamageEngine {
+            &self.damage
+        }
+
+        #[cfg(test)]
+        pub(crate) const fn damage_mut(&mut self) -> &mut DamageEngine {
+            &mut self.damage
+        }
+
+        /// One layout run over the recorded forest into `out`, as a bench times it alone.
+        pub(crate) fn run_layout(&mut self, surface: Rect, out: &mut Layout) {
+            self.layout.run(&self.ui.forest, surface, out);
+        }
+
         /// One record pass of `app` alone, its hashes finalized: no layout, cascade, damage or
         /// frame sweep, so a bench times record apart from the stages after it.
         pub(crate) fn record_alone<T: App>(&mut self, app: &mut T) {
@@ -524,7 +547,7 @@ pub(crate) mod internals {
         /// Mark as stale each pane whose footprint a rect of `changed` touches, for a bench that
         /// forces a frame's decision.
         pub(crate) fn force_stale_panes(&mut self, changed: &[Rect]) {
-            for pane in scene_of(&self.ui).panes() {
+            for pane in self.ui.frame_scene().panes() {
                 if changed.iter().any(|rect| rect.intersects(pane.footprint)) {
                     self.damage.force_stale_pane(pane.key);
                 }

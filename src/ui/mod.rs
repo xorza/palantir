@@ -64,6 +64,7 @@ use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
+use crate::renderer::frontend::FrameScene;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -146,6 +147,16 @@ impl Ui {
     #[inline]
     pub fn update_ctx(&mut self) -> UpdateCtx<'_> {
         UpdateCtx::of(self)
+    }
+
+    /// What the frontend builds the last frame's draw list from.
+    pub(crate) const fn frame_scene(&self) -> FrameScene<'_> {
+        FrameScene {
+            forest: &self.forest,
+            layout: &self.input.arranged.layout,
+            cascade: &self.input.arranged.cascade,
+            stamp: self.frame_runtime.stamp(),
+        }
     }
 
     /// The input machine, which a harness asks where the pointer and its widgets are.

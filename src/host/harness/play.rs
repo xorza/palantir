@@ -55,8 +55,7 @@ impl Harness {
         let asked = self
             .window
             .driver
-            .frames
-            .ui
+            .ui_mut()
             .request_screenshot(region)
             .ok_or(PlayError::EmptyRegion)?;
         // The frame paints the image; once the device's copy is back, the next frame lands it,
@@ -68,7 +67,7 @@ impl Harness {
                 return Err(PlayError::DeviceLost);
             }
             self.next_frame(app);
-            if let Some(shot) = self.window.driver.frames.ui.screenshot_taken(asked) {
+            if let Some(shot) = self.window.driver.ui().screenshot_taken(asked) {
                 return Ok(shot.clone());
             }
         }
@@ -178,7 +177,7 @@ struct HarnessStage<'a, A> {
 
 impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
     fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError> {
-        Ok(at.point_for(self.app, &self.h.window.driver.frames.ui, reach)?)
+        Ok(at.point_for(self.app, self.h.window.driver.ui(), reach)?)
     }
 
     /// A modifier change that holds what is held already sends nothing, which would wait a frame.
@@ -210,7 +209,7 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
         let Some(pressed) = self.h.last_press else {
             return Ok(());
         };
-        let interval = self.h.window.driver.frames.ui.double_click_interval();
+        let interval = self.h.window.driver.ui().double_click_interval();
         let since = self.h.time.saturating_sub(pressed);
         if since <= interval {
             self.h.advance(interval - since + Duration::from_millis(1));

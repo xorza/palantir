@@ -114,8 +114,8 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     });
 
     assert!(
-        !h.frames_mut()
-            .damage
+        !h.frames()
+            .damage()
             .prev
             .contains_key(&WidgetId::from_hash("off")),
         "Vacant + off-surface paint_rect must not seed a prev entry — \

@@ -114,7 +114,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     };
 
     frontend.build(
-        h.frames().frame_scene(),
+        h.frames().ui.frame_scene(),
         BuildPlan::without_panes(plan(Damage::Full)),
     );
     h.frames()
@@ -135,7 +135,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     // Damage confined to the corner opposite the bottom-right view.
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
     frontend.build(
-        h.frames().frame_scene(),
+        h.frames().ui.frame_scene(),
         BuildPlan::without_panes(plan(Damage::Partial(elsewhere))),
     );
     h.frames()

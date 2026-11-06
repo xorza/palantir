@@ -301,10 +301,9 @@ mod output_validity_tests {
     use crate::gpu::surface::capture::Capture;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::host::window_driver::screenshot_lane::PendingScreenshot;
     use crate::host::window_driver::tests::{config, spec};
-    use crate::host::window_driver::{
-        BuiltFrame, FrameSpec, PendingScreenshot, PresentStrategy, WindowDriver,
-    };
+    use crate::host::window_driver::{BuiltFrame, FrameSpec, PresentStrategy, WindowDriver};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
@@ -524,7 +523,7 @@ mod output_validity_tests {
 
         assert!(driver.output_valid());
         assert_eq!(driver.frames.ui.window_requests().screenshots.len(), 0);
-        assert_eq!(driver.screenshot_requests.len(), 0);
+        assert_eq!(driver.screenshots.requests.len(), 0);
     }
 
     /// A built frame dropped unsubmitted, as a failed acquire or a lost device leaves it, leaves
@@ -604,7 +603,7 @@ mod output_validity_tests {
 
         // A screenshot still on the device keeps the frames coming, as nothing else wakes the
         // host when it lands; a still frame asks for nothing once it has.
-        driver.captures.push_back(PendingScreenshot {
+        driver.screenshots.pending.push_back(PendingScreenshot {
             capture: Capture::never_landing(&headless_test_gpu()),
             request: ScreenshotRequest {
                 region: Rect::new(0.0, 0.0, 1.0, 1.0),
@@ -618,7 +617,7 @@ mod output_validity_tests {
             waiting.report.repaint_requested,
             "a pending screenshot asks for the next frame"
         );
-        driver.captures.clear();
+        driver.screenshots.pending.clear();
         let landed = driver.build_alone(&mut frontend, report(None));
         assert!(!landed.report.repaint_requested);
 
@@ -1509,6 +1508,7 @@ mod escalation_tests {
         driver.compose(&mut frontend, report.plan.expect("a first frame paints"));
         let keys: Vec<PaneKey> = driver
             .frames
+            .ui
             .frame_scene()
             .panes()
             .map(|pane| pane.key)

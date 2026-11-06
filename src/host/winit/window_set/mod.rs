@@ -43,7 +43,7 @@ impl WindowSet {
     }
 
     pub(super) fn slot_of_token(&self, token: WindowToken) -> Option<WindowSlot> {
-        self.slot_where(|win| win.driver.frames.token() == token)
+        self.slot_where(|win| win.driver.token() == token)
     }
 
     fn slot_where(&self, matches: impl Fn(&Window) -> bool) -> Option<WindowSlot> {
