@@ -16,3 +16,5 @@
 
 - audit hot structs for compact opportunities
 - audit platform dependent behavior
+
+- find optimal strategy for damage draw
