@@ -5,7 +5,7 @@ use crate::damage::sweep::policy::FrameFacts;
 use crate::damage::sweep::scenario::{REFERENCE, Scenario, Scope};
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
-use crate::host::window_driver::rows_per_mpx;
+use crate::host::window_driver::present_facts::rows_per_mpx;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;

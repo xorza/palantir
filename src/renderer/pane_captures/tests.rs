@@ -294,8 +294,8 @@ fn a_pane_off_screen_drops_its_capture() {
 }
 
 /// A partial frame holds a footprint scissor for at most `PARTIAL_CAP` captures; one more makes
-/// it whole, which a whole frame already is, and turns its tickets into a whole frame's. The
-/// ledger counts before the composer knows which show the clear, so each capturing pane counts.
+/// it whole, which a whole frame already is. The ledger counts before the composer knows which
+/// show the clear, so each capturing pane counts.
 #[test]
 fn more_captures_than_a_partial_frame_holds_overflow() {
     let none = DirtyPanes::default();
@@ -314,7 +314,7 @@ fn more_captures_than_a_partial_frame_holds_overflow() {
         assert_eq!(settled, want, "{n} panes, {damage:?}");
     }
 
-    // Past the cap the tickets are a whole frame's: a pane whose capture would serve captures too.
+    // Past the cap the caller decides again, whole: a pane whose capture would serve captures too.
     let mut captures = PaneCaptures::default();
     let held = pane(cap + 1, URect::new(200, 100, 10, 10), 1.0);
     frame(
@@ -328,6 +328,10 @@ fn more_captures_than_a_partial_frame_holds_overflow() {
     assert_eq!(
         captures.decide(&overflowing, display(), PaneDamage::Stale(&none)),
         Settled::Overflow
+    );
+    assert_eq!(
+        captures.decide(&overflowing, display(), PaneDamage::Whole),
+        Settled::Fits
     );
     assert!(
         captures

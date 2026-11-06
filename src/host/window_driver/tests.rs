@@ -85,9 +85,8 @@ mod present_mode_tests {
     use crate::damage::sweep::stage::Stage;
     use crate::host::window_driver::PresentPath::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
-    use crate::host::window_driver::{
-        PresentFacts, PresentPath, PresentStrategy, present_path, promote_share, rows_per_mpx,
-    };
+    use crate::host::window_driver::present_facts::{PresentFacts, promote_share, rows_per_mpx};
+    use crate::host::window_driver::{PresentPath, PresentStrategy};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
@@ -118,14 +117,13 @@ mod present_mode_tests {
     }
     /// The path of `plan` on a scene whose promote share is 0.4.
     fn path(plan: Option<RenderPlan>, strategy: PresentStrategy, fresh: bool) -> PresentPath {
-        present_path(
-            plan,
+        PresentFacts {
             strategy,
-            PresentFacts {
-                backbuffer_fresh: fresh,
-                promote_share: Some(0.4),
-            },
-        )
+            capturing: false,
+            backbuffer_fresh: fresh,
+            promote_share: Some(0.4),
+        }
+        .path(plan)
     }
 
     /// `d / (d + 400)`: 400 rows on a million pixels read one half, 1,200 three quarters, none
@@ -148,6 +146,24 @@ mod present_mode_tests {
         clear: RgbaF32::BLACK,
         damage: Damage::Full,
     });
+
+    /// A frame that takes a screenshot paints all of the backbuffer, whatever its damage, the
+    /// strategy or the backbuffer's freshness, as the capture reads it.
+    #[test]
+    fn a_capturing_frame_paints_the_whole_backbuffer() {
+        for strategy in [DirectAdaptive, BackbufferCopy, Retained] {
+            for fresh in [false, true] {
+                let facts = PresentFacts {
+                    strategy,
+                    capturing: true,
+                    backbuffer_fresh: fresh,
+                    promote_share: None,
+                };
+                assert_eq!(facts.path(Some(full())), ViaBackbuffer(full()));
+                assert_eq!(facts.path(Some(partial(10.0, 10.0))), ViaBackbuffer(full()));
+            }
+        }
+    }
 
     /// A sweep's production policy decides each scenario as the frame path does: the damage's
     /// classification, then the desktop's present path, on a backbuffer that holds the last frame,
@@ -172,14 +188,13 @@ mod present_mode_tests {
                         clear: RgbaF32::BLACK,
                         damage,
                     };
-                    let path = present_path(
-                        Some(plan),
-                        DirectAdaptive,
-                        PresentFacts {
-                            backbuffer_fresh: true,
-                            promote_share: Some(promote_share),
-                        },
-                    );
+                    let path = PresentFacts {
+                        strategy: DirectAdaptive,
+                        capturing: false,
+                        backbuffer_fresh: true,
+                        promote_share: Some(promote_share),
+                    }
+                    .path(Some(plan));
                     let real = match path {
                         Direct(RenderPlan {
                             damage: Damage::Full,
@@ -1321,6 +1336,330 @@ mod screenshot_tests {
             }
         }
         assert_eq!(landed, [(first, left), (second, right)]);
+    }
+}
+
+/// Each refusal of a partial frame, from the plain facts the decision reads. A stale census needs
+/// a device's tables, and `cutout_census_tests` holds it.
+mod escalation_tests {
+    use crate::damage::Damage;
+    use crate::damage::region::{DamageRegion, MergePolicy};
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+    use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
+    use crate::host::window_driver::present_facts::PresentFacts;
+    use crate::host::window_driver::tests::{config, new_driver, spec};
+    use crate::host::window_driver::{
+        BuildCtx, FrameSpec, PresentPath, PresentStrategy, TargetKey,
+    };
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::identity::pane_key::PaneKey;
+    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::paint::backdrop_filter::BackdropFilter;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::internals::test_device;
+    use crate::renderer::render_buffer::backdrop_row::PaneSource;
+    use crate::renderer::render_plan::RenderPlan;
+    use crate::shape::Shape;
+    use crate::ui::Ui;
+    use crate::ui::resources::UiResources;
+    use crate::widget_core::configure::Configure;
+    use crate::widgets::panel::Panel;
+    use crate::window::window_token::WindowToken;
+    use glam::UVec2;
+
+    const SIDE: f32 = 400.0;
+    const PHYSICAL: UVec2 = UVec2::splat(400);
+
+    /// One frame's facts. Panes are bars the full height of the surface, 8 wide and 40 apart.
+    #[derive(Clone, Copy, Debug)]
+    struct Row {
+        what: &'static str,
+        strategy: PresentStrategy,
+        /// Bands the full width of the surface, 10 high and 80 apart.
+        bands: u32,
+        panes: u32,
+        outlined: bool,
+        gives_copy: bool,
+        fresh: bool,
+        through_backbuffer: bool,
+        whole: bool,
+    }
+
+    /// A partial row of a retained target that gives a copy, and whose backbuffer is stale, that
+    /// paints partial and direct.
+    const KEPT: Row = Row {
+        what: "",
+        strategy: Retained,
+        bands: 1,
+        panes: 0,
+        outlined: false,
+        gives_copy: true,
+        fresh: false,
+        through_backbuffer: false,
+        whole: false,
+    };
+
+    /// `count` panes, each a bar as [`Row`] says.
+    fn bars(ui: &mut Ui, count: u32) {
+        Panel::canvas()
+            .id_salt("panes")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for i in 0..count {
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(20.0 + 40.0 * i as f32, 0.0, 8.0, SIDE))
+                            .backdrop_filter(BackdropFilter::blur(2.0)),
+                    );
+                }
+            });
+    }
+
+    /// A partial plan of `count` bands, each as [`Row`] says.
+    fn bands(count: u32) -> RenderPlan {
+        let bands: Vec<Rect> = (0..count)
+            .map(|i| Rect::new(0.0, 40.0 + 80.0 * i as f32, SIDE, 10.0))
+            .collect();
+        let damage = DamageRegion::collapse_from(
+            &bands,
+            MergePolicy::DEFAULT,
+            Rect::new(0.0, 0.0, SIDE, SIDE),
+        );
+        RenderPlan {
+            clear: RgbaF32::BLACK,
+            damage: Damage::Partial(damage),
+        }
+    }
+
+    fn run(row: Row) -> PresentPath {
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(test_device());
+        let mut driver = new_driver(WindowToken(1), &shared, config(row.strategy, true));
+        let base = spec(PHYSICAL, 1.0);
+        let spec = FrameSpec {
+            target: TargetKey {
+                gives_copy: row.gives_copy,
+                ..base.target
+            },
+            ..base
+        };
+        driver.note_target(&spec);
+        driver.target_outlined = row.outlined;
+        let mut app = |ui: &mut Ui| bars(ui, row.panes);
+        let stamp = driver.stamp(&spec);
+        let _ = driver.frames.frame(stamp, driver.damage_base, &mut app);
+        let plan = bands(row.bands);
+        let facts = PresentFacts {
+            strategy: row.strategy,
+            capturing: false,
+            backbuffer_fresh: row.fresh,
+            promote_share: Some(1.0),
+        };
+        let ctx = BuildCtx {
+            frontend: &mut frontend,
+            placements: &mut CutoutPlacements::default(),
+        };
+        let mode = driver.build_painted(ctx, facts.path(Some(plan)), facts);
+        assert_eq!(
+            driver.scissors.is_partial(),
+            !row.whole,
+            "{}: the scissors fit the path",
+            row.what
+        );
+        mode
+    }
+
+    /// A composed frame past the capture cap builds whole under a whole frame's tickets, so a pane
+    /// whose capture would still serve captures too: 9 panes lost theirs, and the tenth holds its
+    /// own until the frame overflows.
+    #[test]
+    fn a_composed_frame_past_the_cap_captures_every_pane() {
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(test_device());
+        let mut driver = new_driver(WindowToken(1), &shared, config(Retained, true));
+        driver.note_target(&spec(PHYSICAL, 1.0));
+        let mut app = |ui: &mut Ui| bars(ui, 10);
+        let stamp = driver.stamp(&spec(PHYSICAL, 1.0));
+        let report = driver.frames.frame(stamp, driver.damage_base, &mut app);
+        driver.compose(&mut frontend, report.plan.expect("a first frame paints"));
+        let keys: Vec<PaneKey> = driver
+            .frames
+            .frame_scene()
+            .panes()
+            .map(|pane| pane.key)
+            .collect();
+        assert_eq!(keys.len(), 10);
+        for &key in &keys[..9] {
+            driver.pane_captures.forget(key);
+        }
+
+        driver.compose(&mut frontend, bands(1));
+
+        let held = frontend
+            .buffer
+            .backdrops
+            .iter()
+            .filter(|row| row.source == PaneSource::Held)
+            .count();
+        assert_eq!(frontend.buffer.backdrops.len(), 10);
+        assert_eq!(held, 0);
+    }
+
+    /// 8 panes fill the capture cap; a ninth paints whole. Under 8 bars, each band splits into 9
+    /// pieces, so 3 bands hold 8 + 27 = 35 scissors of the 40 the cap holds, and 4 hold 44. A
+    /// target that loses its kept pixels goes through the backbuffer: partial when that holds the
+    /// last frame, else whole. A whole frame after a refusal takes the strategy's own path.
+    #[test]
+    fn each_refusal_of_a_partial_frame_lands_on_its_path() {
+        let copy = Row {
+            strategy: BackbufferCopy,
+            through_backbuffer: true,
+            ..KEPT
+        };
+        let through = Row {
+            through_backbuffer: true,
+            ..KEPT
+        };
+        let desktop = Row {
+            strategy: DirectAdaptive,
+            fresh: true,
+            through_backbuffer: true,
+            ..KEPT
+        };
+        let table = [
+            Row {
+                what: "desktop: partial through a fresh backbuffer",
+                ..desktop
+            },
+            Row {
+                what: "desktop: a stale backbuffer resyncs whole",
+                fresh: false,
+                whole: true,
+                ..desktop
+            },
+            Row {
+                what: "desktop: an outline stays through the backbuffer",
+                outlined: true,
+                ..desktop
+            },
+            Row {
+                what: "desktop: 8 panes fit",
+                panes: 8,
+                ..desktop
+            },
+            Row {
+                what: "desktop: 9 panes, whole direct",
+                panes: 9,
+                through_backbuffer: false,
+                whole: true,
+                ..desktop
+            },
+            Row {
+                what: "desktop: 44 scissors, whole direct",
+                panes: 8,
+                bands: 4,
+                through_backbuffer: false,
+                whole: true,
+                ..desktop
+            },
+            Row {
+                what: "kept: direct and partial",
+                ..KEPT
+            },
+            Row {
+                what: "copy: partial through the backbuffer",
+                ..copy
+            },
+            Row {
+                what: "a pane that copies out stays direct",
+                panes: 1,
+                ..KEPT
+            },
+            Row {
+                what: "8 panes fit",
+                panes: 8,
+                ..KEPT
+            },
+            Row {
+                what: "9 panes: kept, whole direct",
+                panes: 9,
+                whole: true,
+                ..KEPT
+            },
+            Row {
+                what: "9 panes: copy, whole",
+                panes: 9,
+                whole: true,
+                ..copy
+            },
+            Row {
+                what: "35 scissors fit",
+                panes: 8,
+                bands: 3,
+                ..KEPT
+            },
+            Row {
+                what: "44 scissors: kept, whole direct",
+                panes: 8,
+                bands: 4,
+                whole: true,
+                ..KEPT
+            },
+            Row {
+                what: "44 scissors: copy, whole",
+                panes: 8,
+                bands: 4,
+                whole: true,
+                ..copy
+            },
+            Row {
+                what: "outlined, fresh",
+                outlined: true,
+                fresh: true,
+                ..through
+            },
+            Row {
+                what: "outlined, stale",
+                outlined: true,
+                whole: true,
+                ..through
+            },
+            Row {
+                what: "no copy, no pane",
+                gives_copy: false,
+                ..KEPT
+            },
+            Row {
+                what: "no copy, a pane, fresh",
+                gives_copy: false,
+                panes: 1,
+                fresh: true,
+                ..through
+            },
+            Row {
+                what: "no copy, a pane, stale",
+                gives_copy: false,
+                panes: 1,
+                whole: true,
+                ..through
+            },
+        ];
+        for row in table {
+            let mode = run(row);
+            let (through_backbuffer, plan) = match mode {
+                PresentPath::Direct(plan) => (false, plan),
+                PresentPath::ViaBackbuffer(plan) => (true, plan),
+                other => panic!("{}: {other:?}", row.what),
+            };
+            assert_eq!(through_backbuffer, row.through_backbuffer, "{}", row.what);
+            assert_eq!(
+                matches!(plan.damage, Damage::Full),
+                row.whole,
+                "{}",
+                row.what
+            );
+        }
     }
 }
 

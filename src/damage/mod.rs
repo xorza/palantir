@@ -57,7 +57,7 @@ pub(crate) mod sweep;
 /// [`Damage::Full`]: past this, per-node filter, per-pass scissor, `Load` and
 /// backbuffer-copy bookkeeping costs more than redrawing everything. Checked
 /// against the coverage `DamageRegion::collapse_from` measured. The desktop
-/// present path's promote share (`host::window_driver::promote_share`) is its own
+/// present path's promote share (`host::window_driver::present_facts::promote_share`) is its own
 /// call, and reads below this on all but the densest screens.
 ///
 /// It can sit this high because the region keeps far rects apart, so `coverage`

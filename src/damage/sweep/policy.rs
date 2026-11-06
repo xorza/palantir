@@ -2,7 +2,7 @@
 
 use crate::damage::region::{CollapsedDamage, DAMAGE_RECT_CAP, DamageRegion, MergePolicy};
 use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
-use crate::host::window_driver::{
+use crate::host::window_driver::present_facts::{
     PROMOTE_HALF_ROWS_PER_MPX, PROMOTE_PANE_ROWS_PER_MPX, density_share,
 };
 use crate::primitives::geometry::rect::Rect;

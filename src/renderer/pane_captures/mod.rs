@@ -108,8 +108,8 @@ impl<'a> PaneDamage<'a> {
 pub(crate) enum Settled {
     /// Every capturing pane's footprint joins the repaint scissors.
     Fits,
-    /// More panes capture than a partial repaint holds scissors for: the frame paints whole, as
-    /// the tickets already say.
+    /// More panes capture than a partial repaint holds scissors for: the frame paints whole, and
+    /// these tickets do not serve it.
     Overflow,
 }
 
@@ -130,8 +130,8 @@ impl PaneCaptures {
 
     /// Write a ticket for each of `panes`, a frame's in paint order on `display`. Every pane
     /// captures on a whole frame, else each one `damage` left stale or whose held capture does
-    /// not serve. When more capture than a partial repaint holds, the tickets are a whole
-    /// frame's, and [`Settled::Overflow`] says the frame paints whole. Holds nothing new:
+    /// not serve. When more capture than a partial repaint holds, [`Settled::Overflow`] says the
+    /// frame paints whole, and the caller decides again for it. Holds nothing new:
     /// [`Self::settle`] records what the built frame took.
     pub(crate) fn decide<'a>(
         &mut self,
@@ -164,18 +164,10 @@ impl PaneCaptures {
             self.tickets.push(ticket);
         }
         if matches!(damage, PaneDamage::Whole) || captures <= Self::PARTIAL_CAP {
-            return Settled::Fits;
+            Settled::Fits
+        } else {
+            Settled::Overflow
         }
-        for ticket in self.tickets.iter_mut().flatten() {
-            let PaneCapture {
-                footprint, plan, ..
-            } = ticket.capture;
-            ticket.capture.region = plan
-                .region(footprint, surface)
-                .expect("a ticket's footprint paints");
-            ticket.captures = true;
-        }
-        Settled::Overflow
     }
 
     /// Stop holding pane `key`'s capture, whose result the device no longer keeps.

@@ -77,8 +77,8 @@ What rides down that stack, counted as the signatures that take it:
 | Value | Today | Target | What changes |
 |---|---|---|---|
 | `app` | 6 | 7 | `record_frame` adds a stage: the app is the frame's input |
-| `frontend` | 2, inside `BuildCtx` | 3 | `try_partial` and `whole` add a stage |
-| `placements` | 3, the first inside `BuildCtx` | 4 | The same stage |
+| `frontend` | 4, three inside `BuildCtx` | 4 | Nothing further |
+| `placements` | 5, three inside `BuildCtx` | 5 | Nothing further |
 | `mode`, `scissors`, the buffer | 5, and two fields | 4 | One `BuiltFrame` holds what three places held |
 | `cpu` at submit | 1, which only hands over `frontend` | 0 | Removed |
 
@@ -95,11 +95,10 @@ The hop count does not fall further, and that is the honest result: most of thes
 ## Root causes
 
 1. **A built frame has no owner.** Its parts are `PresentPath` on the host's stack, `WindowDriver::scissors`, `Frontend::buffer` and the encoder's gradient epoch. Five `debug_assert!`s in `render_to_texture` and one convention hold them together. A host that records window B before it submits window A paints B's list into A's target, and no type stops it. `damage_base` has six write sites.
-2. **Escalation is a sequence of resets.** `build_paint` is 112 lines. It holds `mode` and `plan` as two variables that must agree, calls `path` four times, `decide_panes` four times and `build` twice. Each escalation is one way, from partial to whole, so there are two end states and not five.
-3. **Hosts reach through the window's layers.** 71 non-test lines in `host` name `.frames.`, and 38 of them reach `.frames.ui`. `FrameLoop`'s engines are `pub(crate)` fields. A screenshot makes four stops on its way through, two on `Ui` and two on the driver, and `WindowDriver` mixes that lane with the present decision in 842 lines.
-4. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
-5. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
-6. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
+2. **Hosts reach through the window's layers.** 71 non-test lines in `host` name `.frames.`, and 38 of them reach `.frames.ui`. `FrameLoop`'s engines are `pub(crate)` fields. A screenshot makes four stops on its way through, two on `Ui` and two on the driver, and `WindowDriver` mixes that lane with the present decision in 842 lines.
+3. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
+4. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
+5. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
 
 ## Target design
 
@@ -160,32 +159,10 @@ pub(super) struct PaintJob<'f> {
 - Dropping a `BuiltFrame` on a failed acquire or a lost device is correct. The `Discarded` base already forces the next frame whole.
 - The move costs one copy of about 656 B a frame (40 × 16 B `URect`s and a length), which is negligible.
 
-### The present decision
-
-```rust
-fn build_paint<'f>(&mut self, mut ctx: BuildCtx<'f>, report: FrameReport) -> BuiltFrame<'f> {
-    // Forced frames and screenshots shape the plan first.
-    let Some(plan) = self.effective_plan(report) else { return self.still_frame() };
-    let built = match self.try_partial(&mut ctx, plan) {
-        Ok(built) => built,
-        Err(escalation) => self.whole(&mut ctx, plan.to_full(), escalation),
-    };
-    // Attached last: a `Result` that held the frontend's borrow would not release it on `Err`.
-    BuiltFrame::Paint(built.into_job(ctx.frontend))
-}
-```
-
-- `try_partial` runs each refusal once: the promote share, a stale backbuffer, too many captures, a kept target, too many scissors, a stale cutout census.
-- `whole` cannot refuse. It asserts `Census::Cur`.
-- `Escalation` keeps the route a refusal asks for, so a retained target that cannot keep its pixels still goes through the backbuffer, as it does today. Each current outcome holds.
-- The rule of a second build stays where it is needed: a stale census is the one refusal after a build.
-
-The pure parts move to `host/window_driver/present_decision.rs`: `promote_share`, `density_share`, `rows_per_mpx`, `Escalation`, the route choice.
-
 ### Module layout
 
 - `host/window_driver/mod.rs`: the driver and its stages.
-- `host/window_driver/present_decision.rs`: the pure decision above.
+- `host/window_driver/present_facts.rs`: the pure decision: `PresentFacts`, `Escalation`, the promote share.
 - `host/window_driver/screenshot_lane.rs`: `ScreenshotLane { requests, pending }`, with `take_from`, `is_capturing`, `deliver`, `capture_all`, `requeue_lost`, `drop_unpainted`.
 - `ui/overlay_stack.rs`: `OverlayStack`, moved out of `widget_core`.
 - `ui/resources/mod.rs`: `UiResources(Rc<SharedResources>)`.
@@ -233,16 +210,6 @@ The pure parts move to `host/window_driver/present_decision.rs`: `promote_share`
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
 
-## Batch 2: One escalation
-
-Files: `src/host/window_driver/mod.rs`, new `src/host/window_driver/present_decision.rs`, `src/host/window_driver/tests.rs`.
-
-- [ ] `build_paint`: replace the sequence of resets with `effective_plan`, `try_partial -> Result<_, Escalation>` and an infallible `whole`, after **The present decision**.
-- [ ] `path` closure: it takes `backbuffer_fresh` as a parameter for a value that holds for the whole call. Read it once.
-- [ ] Move the pure decision functions to `present_decision.rs`.
-- [ ] Test: a table over strategy, partial, capturing, fresh, pane overflow, scissor overflow and stale census, which asserts route, damage kind and build count for each row, with the expected row worked out by hand.
-- [ ] Keep `src/host/offscreen/tests/promote.rs` and `forced_frame.rs` unchanged, as they pin today's outcomes.
-
 ## Batch 3: The built frame
 
 Files: `src/host/window_driver/mod.rs`, `src/host/device_core.rs`, `src/host/headless_window.rs`, `src/host/winit/window/mod.rs`, `src/gpu/frame/submission.rs`.
@@ -250,6 +217,7 @@ Files: `src/host/window_driver/mod.rs`, `src/host/device_core.rs`, `src/host/hea
 - [ ] Add `BuiltFrame<'f>` and `PaintJob<'f>`. Delete `PresentPath` and `WindowDriver::scissors`.
 - [ ] `CpuFrame`: give it the lifetime and `built`. `DeviceCore::submit` loses `cpu`.
 - [ ] `render_to_texture`: rename it `submit`, and delete the `debug_assert!` that `PaintJob::new` replaces.
+- [ ] `build_painted` and `try_partial`: each takes `PresentPath` and asks it for a plan with an `expect`. Take the route and the plan, which `PresentPath`'s removal gives.
 - [ ] `damage_base`: three arms of `render_to_texture` set `Prev`. Write it once at the end of `submit`, which leaves four: `invalidate_target_contents`, the painted frame's `Discarded`, that one `Prev`, and the `Prev` of a frame below paint.
 - [ ] `Window::frame`: destructure `HostCore` into `cpu` and `device`, so `present` takes `device` alone.
 - [ ] `Window::acquire_and_present`: the `Ready` and `Suboptimal` arms repeat. Merge them.
