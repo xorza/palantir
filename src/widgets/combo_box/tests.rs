@@ -542,7 +542,11 @@ fn the_list_and_a_context_menu_on_the_combo_do_not_collide() {
     h.frame(|ui| record(ui, &mut selected));
     assert!(ComboBoxList::is_open(h.ui(), id));
     assert!(Menu::is_open(h.ui(), id));
-    assert_eq!(h.ui().forest().collisions.len(), 0, "two overlays, two ids");
+    assert_eq!(
+        h.ui().explicit_id_collision_count(),
+        0,
+        "two overlays, two ids"
+    );
     assert!(
         h.rect(ComboBoxList::menu_id(id)).is_some(),
         "the list records"

@@ -81,7 +81,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let duplicate_id = record_duplicate_ids(&mut h).id;
     // One collision pair is recorded and survives until the next `pre_record`.
     assert_eq!(
-        h.ui().forest.collisions.len(),
+        h.ui().explicit_id_collision_count(),
         1,
         "expected exactly one explicit collision recorded",
     );
@@ -192,7 +192,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let mut h = Harness::mono(SURFACE);
     record_cross_layer_duplicate_ids(&mut h);
     assert_eq!(
-        h.ui().forest.collisions.len(),
+        h.ui().explicit_id_collision_count(),
         1,
         "expected one collision pair across Main + Popup",
     );
@@ -319,7 +319,7 @@ fn collisions_do_not_record_into_debug_layer() {
         });
     });
     assert!(
-        !h.ui().forest.collisions.is_empty(),
+        h.ui().explicit_id_collision_count() > 0,
         "collision should have been recorded",
     );
     assert_eq!(

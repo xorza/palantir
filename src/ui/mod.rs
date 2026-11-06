@@ -1672,6 +1672,11 @@ pub(crate) mod internals {
     }
 
     impl Ui {
+        /// How many explicit-id collisions this frame outlined in magenta, for a scene's own test.
+        pub const fn explicit_id_collision_count(&self) -> usize {
+            self.forest.collisions.len()
+        }
+
         /// The shown theme, for in-place edits. Gated: apps build a [`Theme`] and call
         /// [`set_theme_for`](Ui::set_theme_for). Copy-on-write, so a handle from [`Ui::theme`]
         /// keeps its values.

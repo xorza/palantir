@@ -71,6 +71,11 @@ pub(crate) fn canvas_view() -> View {
     }
 }
 
+/// The board's frame around slide `k`, apart from [`id`]'s names, which belong to the slide.
+fn frame_id(k: usize) -> WidgetId {
+    WidgetId::from_hash(("reel.frame", k))
+}
+
 /// An id inside slide `k`.
 pub(crate) fn id(k: usize, name: &str) -> WidgetId {
     WidgetId::from_hash(("reel.slide", k, name))
@@ -164,7 +169,7 @@ impl App for Deck {
                 Panel::canvas().id_salt("reel.board").show(ui, |ui| {
                     for k in 0..SLIDES {
                         Panel::zstack()
-                            .id(id(k, "frame"))
+                            .id(frame_id(k))
                             .at(slide_origin(k))
                             .size((Sizing::fixed(SLIDE.x), Sizing::fixed(SLIDE.y)))
                             .chrome(Chrome::rounded(ground, Corners::all(24.0)))

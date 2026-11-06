@@ -39,6 +39,7 @@ mod timeline;
 
 use std::env;
 use std::io::{self, Write};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::Duration;
@@ -173,29 +174,63 @@ fn run(args: &Args) -> Result<(), String> {
     let slides = args.slide.map_or(0..SLIDES, |k| k..k + 1);
     let mut deck = Deck::new();
     deck::dress(h.ui_mut());
-    let first = slides.start;
-    let mut camera = deck::slide_view(first);
+    let mut pixels = Vec::new();
+    let frames = play(&mut h, &mut deck, slides, render.fps, |beat, h, deck| {
+        match beat {
+            Beat::Settle => h
+                .capture(deck, &mut Vec::new())
+                .map_err(|e| e.to_string())?,
+            Beat::Frame(n) => {
+                h.capture(deck, &mut pixels).map_err(|e| e.to_string())?;
+                sink.frame(n, &pixels)?;
+            }
+            Beat::SlideEnd { k, length } => {
+                writeln!(io::stderr(), "slide {k}: {:.1} s", length.as_secs_f32()).ok();
+            }
+        }
+        Ok(())
+    })?;
+    sink.finish(frame_time(frames, render.fps))
+}
+
+/// What [`play`] asks of its caller.
+#[derive(Clone, Copy, Debug)]
+enum Beat {
+    /// Draw a frame no one shows, so a step that reaches for a widget finds it laid out.
+    Settle,
+    /// Draw frame `n` of the reel.
+    Frame(u64),
+    /// Slide `k` ended, after `length`.
+    SlideEnd { k: usize, length: Duration },
+}
+
+/// Play `slides` at `fps`, scripted input and camera included, and answer how many frames it took.
+fn play(
+    h: &mut Harness,
+    deck: &mut Deck,
+    slides: Range<usize>,
+    fps: u32,
+    mut beat: impl FnMut(Beat, &mut Harness, &mut Deck) -> Result<(), String>,
+) -> Result<u64, String> {
+    let mut camera = deck::slide_view(slides.start);
     let mut cursor = SLIDE / 2.0 + Vec2::new(180.0, 120.0);
     deck.cursor = cursor;
-    // One frame before the first, so a step that reaches for a widget finds it laid out.
-    place_camera(&mut h, camera);
-    h.capture(&mut deck, &mut Vec::new())
-        .map_err(|e| e.to_string())?;
+    place_camera(h, camera);
+    beat(Beat::Settle, h, deck)?;
     let mut n = 0_u64;
-    let mut pixels = Vec::new();
     for k in slides {
-        let start = frame_time(n, render.fps);
+        let start = frame_time(n, fps);
         deck.now = start;
-        slides::start(&mut deck);
+        slides::start(deck);
         let mut runner = Runner::new(slides::steps(k), cursor, camera);
         let mut end = None;
         loop {
-            let now = frame_time(n, render.fps);
+            let now = frame_time(n, fps);
             if end.is_some_and(|end| now >= end) {
                 break;
             }
             deck.now = now;
-            runner.feed(now.saturating_sub(start), &mut h, &mut deck);
+            runner.feed(now.saturating_sub(start), h, deck);
             if end.is_none()
                 && let Some(done) = runner.finished()
             {
@@ -203,23 +238,17 @@ fn run(args: &Args) -> Result<(), String> {
             }
             deck.cursor = runner.cursor();
             deck.click = runner.last_click().map(|(at, place)| (start + at, place));
-            place_camera(&mut h, runner.camera());
+            place_camera(h, runner.camera());
             h.at(now);
-            h.capture(&mut deck, &mut pixels)
-                .map_err(|e| e.to_string())?;
-            sink.frame(n, &pixels)?;
+            beat(Beat::Frame(n), h, deck)?;
             n += 1;
         }
         cursor = runner.cursor();
         camera = runner.camera();
-        writeln!(
-            io::stderr(),
-            "slide {k}: {:.1} s",
-            (frame_time(n, render.fps) - start).as_secs_f32()
-        )
-        .ok();
+        let length = frame_time(n, fps) - start;
+        beat(Beat::SlideEnd { k, length }, h, deck)?;
     }
-    sink.finish(frame_time(n, render.fps))
+    Ok(n)
 }
 
 /// Point the canvas scroll at `view`, from the next frame.
@@ -457,9 +486,32 @@ mod tests {
     use palantir::glam::{UVec2, Vec2};
     use palantir::{Depth, Harness, RequestedGpu, SystemScale};
 
+    use crate::Beat;
     use crate::deck::{self, Deck};
     use crate::script::Runner;
     use crate::timeline::frame_time;
+
+    /// No two widgets of the board share an explicit id, which paints a magenta outline over a
+    /// render: the whole reel plays, its scripted input opening what it opens, at 10 frames a
+    /// second, as the board records every slide on every frame.
+    #[test]
+    fn no_slide_collides_an_explicit_id() {
+        let mut h = Harness::builder(UVec2::new(320, 180))
+            .system_scale(SystemScale::new(0.25).unwrap())
+            .depth(Depth::Compose)
+            .build();
+        let mut d = Deck::new();
+        deck::dress(h.ui_mut());
+        let frames = crate::play(&mut h, &mut d, 0..deck::SLIDES, 10, |beat, h, d| {
+            if !matches!(beat, Beat::SlideEnd { .. }) {
+                h.frame_app(d);
+                assert_eq!(h.ui().explicit_id_collision_count(), 0, "{beat:?}");
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert!(frames > 0);
+    }
 
     /// A slide rendered twice gives the same bytes: nothing reads the wall clock or a thread's
     /// timing. Slide 3 drives a switch, a slider, a combo box and typed text.
