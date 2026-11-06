@@ -29,7 +29,7 @@ const fn link_idx<const GRANULE: u32>(start: u32) -> usize {
 
 /// Flat storage carved into size-classed blocks, each freed block returned to its class's free list. Owners hold only a [`Span`]; allocation-free after warm-up.
 ///
-/// A free list's links live beside the slots, at 4 bytes per granule. Refused: the link inside a free block's first slot, as [`slab`](https://docs.rs/slab) keeps it in a `Vacant` variant, which an arena that hands out `&[T]` cannot have, and which made each element carry a `u32` in a field of another meaning, a row's content hash among them.
+/// A free list's links live beside the slots, at 4 bytes per granule; the second array's read did not rise above the noise on `integration/damage/cpu/shape_churn_*` on an Apple laptop, best of four runs 91.6 µs against 92.0 µs and 81.0 µs against 81.2 µs. Refused: the link inside a free block's first slot, as [`slab`](https://docs.rs/slab) keeps it in a `Vacant` variant, which an arena that hands out `&[T]` cannot have, and which made each element carry a `u32` in a field of another meaning, a row's content hash among them.
 ///
 /// `GRANULE` is the slot granularity: a span rounds up to a multiple of it. Coarse granules waste storage and cache density; fine ones mint a class per length, sharpening the drift bound. Short spans measured 3-7% slower coarse on `damage/workload/shape_churn_*`. One means exact fit.
 #[derive(Debug)]
@@ -81,10 +81,7 @@ impl<T: Copy, const GRANULE: u32> BlockArena<T, GRANULE> {
             span.start.is_multiple_of(GRANULE),
             "a block starts on a granule",
         );
-        debug_assert!(
-            !self.is_free(span.start, class),
-            "a block released twice",
-        );
+        debug_assert!(!self.is_free(span.start, class), "a block released twice");
         self.free_links[link_idx::<GRANULE>(span.start)] = self.free_heads[class];
         self.free_heads[class] = Some(NonMaxU32::index(span.start as usize));
     }
