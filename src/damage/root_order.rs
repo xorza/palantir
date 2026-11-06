@@ -44,14 +44,14 @@ impl RootOrder {
                     .enumerate()
                     .map(|(at, id)| (*id, NonMaxU32::index(at))),
             );
-            self.poss.sort_unstable_by_key(|(id, _)| id.as_u64());
+            self.poss.sort_unstable_by_key(|(id, _)| id.as_hash());
             self.matched.clear();
             self.extents.clear();
             for slot in &tree.roots {
                 let id = ids[slot.first_node.idx()];
                 let at = self
                     .poss
-                    .binary_search_by_key(&id.as_u64(), |(id, _)| id.as_u64())
+                    .binary_search_by_key(&id.as_hash(), |(id, _)| id.as_hash())
                     .ok()
                     .map(|found| self.poss[found].1);
                 self.matched.push(at);

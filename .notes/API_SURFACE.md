@@ -3115,6 +3115,9 @@ widget::Configurator
         pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self
 
+widget::ContentHash
+    struct ContentHash: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, NoUninit, Ord, PartialEq, PartialOrd
+
 widget::ContentType
     enum ContentType: Clone, Copy, Debug, Eq, PartialEq
         Mask = 0
@@ -3196,7 +3199,7 @@ widget::Mesh
         pub fn with_capacity(vertices: usize, idxs: usize) -> Self
         pub fn clear(&mut self)
         pub const fn is_noop(&self) -> bool
-        pub fn content_hash(&self) -> u64
+        pub fn content_hash(&self) -> ContentHash
         pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
         pub fn triangle(&mut self, a: u32, b: u32, c: u32)
         pub fn append(&mut self, other: &Self)

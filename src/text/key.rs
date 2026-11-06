@@ -14,7 +14,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::LineFit;
-use std::num::NonZeroU64;
+use std::num::NonZeroU16;
 
 /// The face a [`TextShapeKey`] is measured at: size, family, weight and slant, without text or width.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -29,10 +29,10 @@ pub(crate) struct QuantizedFace {
 ///
 /// Lossless, not a digest: the restore path rebuilds cosmic's `Metrics` and `Attrs` from the key alone.
 ///
-/// Absence is `Option<Self>`; the non-zero `text_hash` keeps that free.
+/// Absence is `Option<Self>`; the non-zero [`FaceBits`] keep that free at 24 bytes.
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(crate) struct TextShapeKey {
-    /// Source hash, kept off zero by [`Self::content_hash`] so `Option<TextShapeKey>` stays 24 bytes.
+    /// Source hash.
     ///
     /// **No layer serves a collision.** Two texts can share a hash, so every layer that answers
     /// from a `TextShapeKey` compares the bytes: the shaped-buffer cache on each hit, a reuse row
@@ -43,7 +43,7 @@ pub(crate) struct TextShapeKey {
     /// error; an exact hasher in its place (none is exact); the source itself here (the key would
     /// be neither `Copy` nor small). Cost: an O(len) compare per reused run per frame, and a copy
     /// of each reused run's text in its row.
-    pub(crate) text_hash: NonZeroU64,
+    pub(crate) text_hash: ContentHash,
     /// `font_size * 64`, rounded.
     size_q: u32,
     /// `max_width * 64`, rounded; `None` is unbounded. Always a multiple of 64: [`WrapBound::new`] snaps to whole px first.
@@ -65,18 +65,7 @@ impl TextShapeKey {
             Some(max_w_q) => max_w_q.get() as u64 >> 6,
             None => 0,
         };
-        (self.text_hash.get() ^ width ^ self.size_q as u64) & RENDERED_RUN_KEEP_SPREAD_MASK
-    }
-
-    /// A key's form of a source hash; zero maps to one to fit [`NonZeroU64`].
-    ///
-    /// One definition because four sites derive it and must agree.
-    pub(crate) const fn content_hash(source: ContentHash) -> NonZeroU64 {
-        // `unwrap_or` is not const on `Option<NonZeroU64>`.
-        match NonZeroU64::new(source.as_u64()) {
-            Some(hash) => hash,
-            None => NonZeroU64::MIN,
-        }
+        (self.text_hash.as_u64() ^ width ^ self.size_q as u64) & RENDERED_RUN_KEEP_SPREAD_MASK
     }
 
     /// The unbounded key for `text` at `font`, or `None` where the face has no valid metrics.
@@ -104,7 +93,7 @@ impl TextShapeKey {
             domain::FONT_LENGTH_RULE,
         );
         Self {
-            text_hash: Self::content_hash(text_hash),
+            text_hash,
             size_q: quantize_metric(font_size),
             max_w_q: None,
             lh_q: quantize_metric(line_height),
@@ -205,7 +194,7 @@ impl TextShapeKey {
 /// A [`TextShapeKey`] less what changes only the layout of its shape.
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(super) struct ShapeIdentity {
-    text_hash: NonZeroU64,
+    text_hash: ContentHash,
     family_q: u16,
     face_q: u16,
 }
@@ -213,8 +202,10 @@ pub(super) struct ShapeIdentity {
 /// Weight, slant, line align and line fit in one 16-bit field.
 ///
 /// Packing keeps the key at 24 bytes given the 10-bit weight. The bound half (align, fit) sits in bits 11..15, contiguous, as [`WrapBound`] rewrites exactly those; bit 15 is spare.
+///
+/// Never zero, as [`FontWeight`] is `1..=1000`, so this field holds the niche of `Option<TextShapeKey>` and a text keeps its true hash. Refused: a text hash kept off zero, a mapping that four sites had to share; `NonZeroU16::new_unchecked`, `unsafe` to save one comparison. Cost: one zero check when a key is made or takes a new bound.
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
-pub(crate) struct FaceBits(u16);
+struct FaceBits(NonZeroU16);
 
 const WEIGHT_MASK: u16 = (1 << 10) - 1;
 const SLANT_SHIFT: u32 = 10;
@@ -226,9 +217,15 @@ const FIT_MASK: u16 = 0b11 << FIT_SHIFT;
 const BOUND_MASK: u16 = ALIGN_MASK | FIT_MASK;
 
 impl FaceBits {
-    /// No range check: [`FontWeight`] is `1..=1000`, pinned inside [`WEIGHT_MASK`] below.
+    /// No range check past the zero check of [`Self::from_bits`]: [`FontWeight`] is `1..=1000`, pinned inside [`WEIGHT_MASK`] below.
     const fn new(weight: FontWeight, slant: FontSlant, align: LineAlign, fit: LineFit) -> Self {
-        Self(weight.get() | ((slant as u16) << SLANT_SHIFT) | Self::bound_bits(align, fit))
+        Self::from_bits(
+            weight.get() | ((slant as u16) << SLANT_SHIFT) | Self::bound_bits(align, fit),
+        )
+    }
+
+    const fn from_bits(bits: u16) -> Self {
+        Self(NonZeroU16::new(bits).expect("the weight bits are 1..=1000"))
     }
 
     /// Align and fit as bits; the one place their positions are spelled.
@@ -238,28 +235,28 @@ impl FaceBits {
 
     const fn with_bound(self, bound: u16) -> Self {
         debug_assert!(bound & !BOUND_MASK == 0);
-        Self((self.0 & !BOUND_MASK) | bound)
+        Self::from_bits((self.0.get() & !BOUND_MASK) | bound)
     }
 
     /// Weight and slant alone, what [`QuantizedFace`] compares.
     const fn face_only(self) -> u16 {
-        self.0 & !BOUND_MASK
+        self.0.get() & !BOUND_MASK
     }
 
     /// The decoders make the last arm total so release has no panic path; the bits were written by this crate, so a bad tag is a logic error.
     const fn weight(self) -> FontWeight {
-        FontWeight::from_raw(self.0 & WEIGHT_MASK)
+        FontWeight::from_raw(self.0.get() & WEIGHT_MASK)
     }
 
     const fn slant(self) -> FontSlant {
-        match self.0 & STYLE_MASK {
+        match self.0.get() & STYLE_MASK {
             0 => FontSlant::Normal,
             _ => FontSlant::Italic,
         }
     }
 
     const fn line_align(self) -> LineAlign {
-        match (self.0 & ALIGN_MASK) >> ALIGN_SHIFT {
+        match (self.0.get() & ALIGN_MASK) >> ALIGN_SHIFT {
             0 => LineAlign::Auto,
             1 => LineAlign::Left,
             2 => LineAlign::Center,
@@ -268,7 +265,7 @@ impl FaceBits {
     }
 
     const fn fit(self) -> LineFit {
-        match (self.0 & FIT_MASK) >> FIT_SHIFT {
+        match (self.0.get() & FIT_MASK) >> FIT_SHIFT {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,
             2 => LineFit::Ellipsis,

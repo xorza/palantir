@@ -3,10 +3,11 @@
     reason = "the raw `FxHasher` is the oracle the wrapper is checked against"
 )]
 
+use crate::common::content_hash::ContentHash;
 use crate::primitives::identity::widget_id::WidgetId;
 use rustc_hash::FxHasher;
 use std::collections;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 use std::num::NonZeroU64;
 use std::panic;
 
@@ -30,6 +31,22 @@ fn auto_hashes_location_via_fx() {
     let repeated: Vec<WidgetId> = (0..2).map(|_| id_and_loc().0).collect();
     assert_eq!(repeated[0], repeated[1]);
     assert_ne!(repeated[0], id);
+}
+
+/// `as_hash` carries the id's exact bits, so an order by it is the order of the bits, and `Hash` feeds
+/// a hasher the word that `write_u64` feeds it, which a tree hash and a child id both read.
+#[test]
+fn as_hash_carries_the_bits_of_the_id() {
+    assert_eq!(WidgetId::of_bits(7).as_hash(), ContentHash::from_u64(7));
+    assert!(WidgetId::of_bits(1).as_hash() < WidgetId::of_bits(2).as_hash());
+    assert!(WidgetId::of_bits(2).as_hash() < WidgetId::VIEWPORT.as_hash());
+    assert_eq!(WidgetId::VIEWPORT.as_hash().as_u64(), u64::MAX);
+
+    let mut fed = FxHasher::default();
+    WidgetId::of_bits(7).hash(&mut fed);
+    let mut written = FxHasher::default();
+    written.write_u64(7);
+    assert_eq!(fed.finish(), written.finish());
 }
 
 /// Ids from sequential inputs must spread across the low bits, each

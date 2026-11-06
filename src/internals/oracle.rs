@@ -159,14 +159,14 @@ fn sort_rows(rows: &mut [OwnedPaint]) {
 /// The order two frames' rows merge in: owner, content, exact screen rect.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct RowKey {
-    owner: u64,
+    owner: ContentHash,
     hash: ContentHash,
     screen: [u32; 4],
 }
 
 fn row_key(row: &OwnedPaint) -> RowKey {
     RowKey {
-        owner: row.owner.as_u64(),
+        owner: row.owner.as_hash(),
         hash: row.hash,
         screen: [
             row.screen.min.x.to_bits(),

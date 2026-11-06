@@ -50,10 +50,7 @@ pub(crate) fn pane_fill(filter: BackdropFilter, fill: &Brush, transparency: Redu
 /// Stable content hash for a gradient kind or curve ramp: the fill kind's word, which tells the kinds apart, then the value's `Hash`, captured at lowering so downstream cache keys stay context-free.
 #[inline]
 fn gradient_hash<G: hash::Hash>(kind: FillKind, g: &G) -> ContentHash {
-    let mut h = Hasher::new();
-    h.write_u32(kind.0);
-    g.hash(&mut h);
-    ContentHash::finish(&h)
+    ContentHash::of((kind.0, g))
 }
 
 fn gradient_brush<G: GradientGeometry>(

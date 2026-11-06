@@ -208,7 +208,7 @@ impl PaintRectCtx<'_> {
                 let (idx, s) = match item {
                     TreeItem::ShapeRecord(idx, s) => (idx, s),
                     TreeItem::Child(c) => {
-                        span.push_unpainted(ContentHash::from_u64(widget_ids[c.id.idx()].as_u64()));
+                        span.push_unpainted(widget_ids[c.id.idx()].as_hash());
                         continue;
                     }
                 };
@@ -312,7 +312,7 @@ impl PaintRectCtx<'_> {
                         shape_clip,
                     ),
                 };
-                span.push(screen, shape_hashes[idx as usize] ^ own_transform);
+                span.push(screen, shape_hashes[idx as usize].xor(own_transform));
             }
             debug_assert!(
                 text_runs.is_drained(),

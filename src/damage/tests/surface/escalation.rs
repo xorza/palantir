@@ -1,11 +1,13 @@
 //! The surface and output changes that force a full frame.
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
+use crate::common::hash::Hasher;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, frame_without_baseline, one_frame};
 use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
@@ -110,7 +112,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     h.prime(2, &mut scene);
     assert!(h.parts().engines.damage.counters.dirty().is_empty());
 
-    // Flip "small"'s prev `cascade_input`: 3000 of 4M area, far below the full-repaint threshold.
+    // Change "small"'s prev `cascade_input`, its visibility kept: 3000 of 4M area, far below the full-repaint threshold.
     let target_widget_id = WidgetId::from_hash("small");
     let snap = h
         .parts()
@@ -119,7 +121,12 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         .prev
         .get_mut(&target_widget_id)
         .expect("small in prev");
-    snap.cascade_input = CascadeInputHash(snap.cascade_input.0 ^ 1);
+    snap.cascade_input = CascadeInputHash::finish(
+        &Hasher::new(),
+        Rect::ZERO,
+        None,
+        snap.cascade_input.invisible(),
+    );
 
     let resize_plan = frame_without_baseline(h.resize(UVec2::new(1999, 2000)), &mut scene);
 

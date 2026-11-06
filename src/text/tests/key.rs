@@ -58,7 +58,7 @@ fn cache_key_discriminates_every_shaping_axis() {
     assert_eq!(base.slant(), FontSlant::Normal);
     assert_eq!(
         base.text_hash,
-        TextShapeKey::content_hash(hash::str("hi")),
+        hash::str("hi"),
         "direct shaping and authoring use the same canonical text hash",
     );
     assert_eq!(
@@ -68,33 +68,56 @@ fn cache_key_discriminates_every_shaping_axis() {
     );
 }
 
-/// A run with no key costs no more than one with a key, and no minted key holds the niche's bit pattern: without the mapping a string with raw hash zero cannot be keyed; without the width `ShapedText` grows by eight bytes per run.
+/// A run with no key costs no more than one with a key, as the face bits hold the niche: without it `ShapedText` grows by eight bytes per run. Every hash a text can have is a key's, zero included.
 #[test]
-fn an_absent_key_is_free_and_no_minted_key_claims_its_niche() {
+fn an_absent_key_is_free_and_a_key_holds_any_text_hash() {
+    assert_eq!(size_of::<TextShapeKey>(), 24);
     assert_eq!(
         size_of::<Option<TextShapeKey>>(),
-        size_of::<TextShapeKey>(),
-        "the non-zero text hash is what makes an absent key cost nothing",
+        24,
+        "the non-zero face bits are what make an absent key cost nothing",
     );
-    assert_eq!(
-        TextShapeKey::content_hash(ContentHash::default()).get(),
-        1,
-        "a run whose text hashes to zero must not claim the niche",
-    );
-    for raw in [1, 2, u64::MAX] {
-        assert_eq!(
-            TextShapeKey::content_hash(ContentHash::from_u64(raw)).get(),
-            raw,
-            "every other hash is carried through unchanged",
-        );
-    }
     for face in [shape(16.0).font, shape(64.0).leading(90.0).font] {
         for raw in [0, 1, u64::MAX].map(ContentHash::from_u64) {
-            assert_eq!(
-                TextShapeKey::unbounded(raw, keyed(face)).text_hash,
-                TextShapeKey::content_hash(raw),
-                "a minted key carries the mapped hash, not the raw one",
-            );
+            let key = TextShapeKey::unbounded(raw, keyed(face));
+            assert_eq!(key.text_hash, raw, "a key carries the true hash");
+        }
+    }
+}
+
+/// The lowest weight leaves only its bit 0 for the niche, and each slant and bound leaves it and the other fields as written. `WrapBound::new` folds the align of a truncating fit to `Auto`.
+#[test]
+fn the_face_bits_keep_every_field_at_the_lowest_weight() {
+    let lowest = FontWeight::new(1);
+    let haligns = [
+        (HAlign::Auto, LineAlign::Auto),
+        (HAlign::Left, LineAlign::Left),
+        (HAlign::Center, LineAlign::Center),
+        (HAlign::Right, LineAlign::Right),
+    ];
+    let fits = [
+        (LineFit::Wrap, true),
+        (LineFit::Clip, false),
+        (LineFit::Ellipsis, false),
+        (LineFit::EllipsisMiddle, false),
+    ];
+    for slant in [FontSlant::Normal, FontSlant::Italic] {
+        let font = keyed(shape(16.0).weight(lowest).slant(slant).font);
+        let key = TextShapeKey::unbounded(ContentHash::default(), font);
+        assert_eq!(key.weight(), lowest);
+        assert_eq!(key.slant(), slant);
+        assert_eq!(key.line_align(), LineAlign::Auto);
+        assert_eq!(key.fit(), LineFit::Wrap);
+        for (halign, align) in haligns {
+            for (fit, keeps_align) in fits {
+                let bound = key.with_bound(WrapBound::new(100.0, halign, fit));
+                assert_eq!(bound.weight(), lowest);
+                assert_eq!(bound.slant(), slant);
+                assert_eq!(bound.fit(), fit);
+                let want = if keeps_align { align } else { LineAlign::Auto };
+                assert_eq!(bound.line_align(), want);
+                assert_eq!(bound.unbounded_version(), key);
+            }
         }
     }
 }

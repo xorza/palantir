@@ -1,6 +1,7 @@
 //! App-supplied triangle geometry: the GPU vertex, the indexed mesh an app
 //! builds, and the screens that keep a malformed one from the renderer.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
@@ -113,10 +114,10 @@ impl Mesh {
     }
 
     /// Stable visual hash of vertices and indices, the same however the mesh was built.
-    pub fn content_hash(&self) -> u64 {
+    pub fn content_hash(&self) -> ContentHash {
         let mut h = self.vertex_hash.clone();
         h.write_u64(self.idx_hash.finish());
-        h.finish()
+        ContentHash::finish(&h)
     }
 
     /// Push `vertex`, hashing it and growing the bounds.

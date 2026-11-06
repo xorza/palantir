@@ -1,5 +1,6 @@
 //! What moving, adding and removing nodes damages.
 
+use crate::common::content_hash::ContentHash;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::host::harness::Harness;
@@ -11,6 +12,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
@@ -625,6 +627,48 @@ fn reparent_at_same_rect_damages_moved_subtree() {
     );
     let settled = frame(&mut h, |ui| build(ui, true));
     assert_eq!(settled, None, "reparent damage must not repeat");
+}
+
+/// A root that moves to another plane keeps its id, rect and content, but its compositing order flips, so its extent is damaged, as a reparent's is (`NodeSnapshot::parent_key`).
+#[test]
+fn a_root_moved_to_another_plane_damages_its_extent() {
+    const PROBE: Rect = Rect::new(45.0, 45.0, 2.0, 2.0);
+    let build = |ui: &mut Ui, layer: Layer| {
+        ui.layer(layer).fixed_at(Vec2::new(40.0, 40.0)).show(|ui| {
+            Block::new()
+                .id(WidgetId::from_hash("moved"))
+                .size(30.0)
+                .chrome(Chrome::fill(BLUE))
+                .show(ui);
+        });
+    };
+    let mut h = Harness::mono(DISPLAY.physical);
+    frame(&mut h, |ui| build(ui, Layer::Popup));
+    assert_eq!(
+        frame(&mut h, |ui| build(ui, Layer::Popup)),
+        None,
+        "a root that stays damages nothing",
+    );
+    let damage = frame(&mut h, |ui| build(ui, Layer::Tooltip));
+    let region = Damage::expect_partial(damage);
+    assert!(
+        region.any_intersects(PROBE),
+        "the moved root's extent must be damaged; region = {region:?}",
+    );
+    assert_eq!(
+        frame(&mut h, |ui| build(ui, Layer::Tooltip)),
+        None,
+        "the move must not damage again",
+    );
+
+    // 7 layers x 256 depths = 1792 planes, so no plane move can read as staying by chance.
+    let mut keys: Vec<ContentHash> = Layer::PAINT_ORDER
+        .into_iter()
+        .flat_map(|layer| (0..=u8::MAX).map(move |depth| ContentHash::of(Plane { layer, depth })))
+        .collect();
+    keys.sort_unstable();
+    keys.dedup();
+    assert_eq!(keys.len(), 1792);
 }
 
 /// The same move under a hidden ancestor damages nothing: the cascade reads inherited visibility, so the subtree owns no paint rows.

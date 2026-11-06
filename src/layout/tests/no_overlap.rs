@@ -1,5 +1,6 @@
 //! Showcase regressions where two Grid cells (or back-to-back grids in a vstack) painted over each other, pinned by arranged-rect order and `DrawText` x positions.
 
+use crate::common::content_hash::ContentHash;
 use crate::host::harness::Harness;
 use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun};
 use crate::internals::paint_capture::PaintCall;
@@ -320,13 +321,13 @@ fn text_layouts_full_showcase_drawtext_dump() {
     });
 
     let cmds = h.encode_paint();
-    let mut entries: Vec<(f32, f32, u64)> = Vec::new();
+    let mut entries: Vec<(f32, f32, ContentHash)> = Vec::new();
     for command in &cmds.calls {
         if let PaintCall::Text(payload) = command {
             entries.push((
                 payload.rect.min.x,
                 payload.rect.min.y,
-                payload.text.key.text_hash.get(),
+                payload.text.key.text_hash,
             ));
         }
     }
@@ -336,7 +337,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
             let (xj, yj, hj) = entries[j];
             assert!(
                 !(hi != hj && (xi - xj).abs() < 0.5 && (yi - yj).abs() < 0.5),
-                "two distinct texts at same (x,y): #{i} hash={hi:#x} vs #{j} hash={hj:#x} at ({xi}, {yi})",
+                "two distinct texts at same (x,y): #{i} hash={hi:?} vs #{j} hash={hj:?} at ({xi}, {yi})",
             );
         }
     }

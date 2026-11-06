@@ -24,8 +24,10 @@ pub(crate) struct NodeSnapshot {
     /// Fingerprint of last frame's cascade inputs at this node; see
     /// [`CascadeInputHash`]. This walk compares it and then overwrites it.
     pub(super) cascade_input: CascadeInputHash,
-    /// Paint-order position: the parent's `WidgetId` bits, or the plane's
-    /// layer and depth for a root. A reparented widget keeps every hash but its
-    /// compositing order flipped, so the skip tiers must not skip it.
-    pub(super) parent_key: u64,
+    /// Paint-order position: the parent's `WidgetId` bits, or the hash of the
+    /// plane for a root. A reparented widget keeps every hash but its compositing
+    /// order flipped, so the skip tiers must not skip it. Refused: an enum of a
+    /// widget id and a plane, 16 B against this struct's pinned 40 B; a compare
+    /// of hashes makes the promise of every other hash this walk reads.
+    pub(super) parent_key: ContentHash,
 }

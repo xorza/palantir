@@ -3,6 +3,7 @@
 //! [`NodeSnapshot`] is `Copy`, so [`PlaneWalk::classify`] decides on a copy and returns a plain [`Tier`]; deciding on a live map `Entry` would cost each arm its `&mut self`.
 
 use crate::cascade::paint::{PaintBlocks, PaintRows};
+use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::damage;
 use crate::damage::counters::DamageCounters;
@@ -40,7 +41,7 @@ enum Tier {
 struct Visit {
     i: usize,
     widget_id: WidgetId,
-    parent_key: u64,
+    parent_key: ContentHash,
 }
 
 /// One plane's structural diff, built per plane so mutable diff state is reborrowed from `DamageEngine`.
@@ -93,7 +94,7 @@ impl PlaneWalk<'_> {
         }
     }
 
-    fn snapshot(&self, i: usize, parent_key: u64, paint_span: Span) -> NodeSnapshot {
+    fn snapshot(&self, i: usize, parent_key: ContentHash, paint_span: Span) -> NodeSnapshot {
         NodeSnapshot {
             paint_span,
             hash: self.frame.tree.rollups.node[i],
@@ -103,13 +104,12 @@ impl PlaneWalk<'_> {
         }
     }
 
-    /// The `parent_key` node `i` sits under: its parent's `WidgetId` bits, or the plane's layer and depth for a root, so a subtree changing planes cannot read as unchanged.
-    fn parent_key(&self, i: usize) -> u64 {
-        if let Some(parent) = self.frame.tree.parent_of(i) {
-            return self.frame.tree.records.widget_id()[parent.idx()].as_u64();
+    /// The `parent_key` node `i` sits under: its parent's `WidgetId` bits, or the plane's hash for a root, so a subtree changing planes cannot read as unchanged.
+    fn parent_key(&self, i: usize) -> ContentHash {
+        match self.frame.tree.parent_of(i) {
+            Some(parent) => self.frame.tree.records.widget_id()[parent.idx()].as_hash(),
+            None => ContentHash::of(self.frame.plane),
         }
-        let plane = self.frame.plane;
-        (u64::from(plane.layer as u8) << 8) | u64::from(plane.depth)
     }
 
     /// The map read is the classification; writing arms re-probe the bucket. Deliberate and cheap: `prev` hashes by identity.

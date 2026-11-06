@@ -184,6 +184,7 @@ pub mod widget {
     pub use crate::animation::animation_key::AnimationKey;
     pub use crate::animation::animation_request::AnimationRequest;
     pub use crate::animation::animation_slot::AnimationSlot;
+    pub use crate::common::content_hash::ContentHash;
     pub use crate::primitives::geometry::circular_arc::CircularArc;
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
     pub use crate::primitives::geometry::mesh::Mesh;

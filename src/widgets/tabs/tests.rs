@@ -110,6 +110,8 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
         TabStrip::chip_id(strip_id(), TabKey::of(20_u64)),
         TabStrip::chip_id(strip_id(), TabKey::of(30_u64))
     );
+    assert_eq!(TabKey::of(10_u64), TabKey::of(10_u64));
+    assert_ne!(TabKey::of(10_u64), TabKey::of(20_u64));
 }
 
 /// The content records between the chip's padding and its close button, handed the chip it

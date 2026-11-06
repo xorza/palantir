@@ -17,8 +17,7 @@ impl ShapedTextRef {
     /// Pair a measured cache key with its recorded source. The O(1) hash comparison catches a mis-pairing here; [`Self::resolve_request`] checks the bytes on the way out.
     pub(crate) fn new(key: TextShapeKey, text: &RecordedText) -> Self {
         debug_assert_eq!(
-            key.text_hash,
-            TextShapeKey::content_hash(text.hash),
+            key.text_hash, text.hash,
             "shaped-text key paired with a different run's source bytes",
         );
         Self {

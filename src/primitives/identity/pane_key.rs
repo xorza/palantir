@@ -25,7 +25,7 @@ impl Default for PaneKey {
 /// can search, which `WidgetId`, a public type, does not offer.
 impl Ord for PaneKey {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        (self.owner.as_u64(), self.shape).cmp(&(other.owner.as_u64(), other.shape))
+        (self.owner.as_hash(), self.shape).cmp(&(other.owner.as_hash(), other.shape))
     }
 }
 

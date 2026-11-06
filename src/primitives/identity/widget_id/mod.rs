@@ -1,5 +1,6 @@
 //! The identity a widget's cross-frame state hangs off, and the hasher a map of them skips hashing with.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use std::collections::{HashMap, HashSet};
 use std::hash;
@@ -38,19 +39,23 @@ pub(crate) type WidgetIdSet = HashSet<WidgetId, BuildHasherDefault<IdHasher>>;
 
 /// A widget's identity across frames, derived from the call site and any [`Configure::id_salt`](crate::Configure::id_salt) above it, so the same call in the same place gives the same id. Cross-frame state, focus and animation key on it.
 ///
-/// Never zero, so `Option<WidgetId>` takes 8 B, as std's `ThreadId` does.
+/// Never zero, so `Option<WidgetId>` takes 8 B, as std's `ThreadId` and egui's `Id` do. Its own
+/// `NonZeroU64`, not a wrapper of [`ContentHash`], whose zero the niche
+/// refuses and which lacks the mix a `WidgetIdMap` trusts. Refused: a `NonZeroU64` base for every
+/// hash, which adds a zero branch to each `finish` and removes the zero of a default hash.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::NoUninit)]
 pub struct WidgetId(NonZeroU64);
 
 impl WidgetId {
-    /// Id of the `Layer::Main` synthetic viewport root. Hard-coded so refactors of `ui/mod.rs` don't shift it; a top-level `id_salt("k")` resolves to `VIEWPORT.with(from_hash("k").as_u64())`.
+    /// Id of the `Layer::Main` synthetic viewport root. Hard-coded so refactors of `ui/mod.rs` don't shift it; a top-level `id_salt("k")` resolves to `VIEWPORT.with(from_hash("k"))`.
     pub(crate) const VIEWPORT: Self = Self(NonZeroU64::MAX);
 
-    /// The id's bits, for a hash or an order that mixes them in.
+    /// The id's bits as a hash, for a row, a key or an order that mixes them in. Crate-private and
+    /// not a `From`, which would be public and blur the two public types.
     #[inline]
-    pub(crate) const fn as_u64(self) -> u64 {
-        self.0.get()
+    pub(crate) const fn as_hash(self) -> ContentHash {
+        ContentHash::from_u64(self.0.get())
     }
 
     /// An id from anything hashable, with no parent mixed in; [`Self::with`] derives a child.

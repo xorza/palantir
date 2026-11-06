@@ -186,6 +186,8 @@ fn a_reversal_runs_over_the_share_it_covered() {
 /// - 1 s in it lands on 16. Every value is a binary fraction, so exact.
 #[test]
 fn a_target_moving_under_its_key_is_followed() {
+    assert_eq!(AnimationKey::of(1_u8), AnimationKey::of(1_u8));
+    assert_ne!(AnimationKey::of(1_u8), AnimationKey::of(2_u8));
     let mut map = AnimationMapTyped::<f32>::default();
     let id = support::widget_id("keyed");
     let spec = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);

@@ -7,7 +7,6 @@
 - image handle with closure for reupload?
 - build-in colors
 - rich text edit
-- base hash type
 - separate input processing stage to avoid relayouts?
 
 - table widget: sortable header, virtual rows over a fixed row height

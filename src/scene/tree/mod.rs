@@ -308,7 +308,7 @@ impl Tree {
                     "the flag word and visibility overrun the Tab bit",
                 );
             }
-            cascade_static_hasher.write_u64(widget_ids[i].as_u64());
+            widget_ids[i].hash(&mut cascade_static_hasher);
             cascade_static_hasher.write_u64(
                 u64::from(subtree_ends[i].end())
                     | (u64::from(attrs[i].bits()) << 32)
@@ -353,7 +353,7 @@ impl Tree {
                     TreeItem::Child(c) => {
                         for hasher in [&mut lh, &mut ph] {
                             hasher.write_u8(0xFF);
-                            hasher.write_u64(widget_ids[c.id.idx()].as_u64());
+                            widget_ids[c.id.idx()].hash(hasher);
                         }
                         subtree_out[c.id.idx()].hash(&mut sh);
                         layout_subtree_out[c.id.idx()].hash(&mut lsh);
@@ -640,11 +640,7 @@ impl Tree {
 }
 
 fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash {
-    let mut h = Hasher::new();
-    h.write_usize(shapes);
-    h.write_usize(chrome_rows);
-    h.write_usize(nodes);
-    ContentHash::finish(&h)
+    ContentHash::of((shapes, chrome_rows, nodes))
 }
 
 #[cfg(test)]
