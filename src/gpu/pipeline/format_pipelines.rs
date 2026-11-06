@@ -30,14 +30,16 @@ pub(crate) struct FormatPipelines {
     pub(crate) raster: RasterVariants,
 }
 
-/// The format-independent resources [`FormatPipelines::new`] reads shaders and layouts from, handed over as a set so a new pipeline kind is one field.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct PipelineSources<'a> {
-    pub(crate) quad: &'a QuadPipeline,
-    pub(crate) mesh: &'a MeshPipeline,
-    pub(crate) image: &'a ImagePipeline,
-    pub(crate) curve: &'a CurvePipeline,
-    pub(crate) raster: &'a RasterProgram,
+/// The format-independent half of each pipeline kind, which holds its shader and layouts and which
+/// [`FormatPipelines`] builds from, one field per kind.
+#[derive(Debug)]
+pub(crate) struct Programs {
+    pub(crate) quad: QuadPipeline,
+    pub(crate) mesh: MeshPipeline,
+    pub(crate) image: ImagePipeline,
+    pub(crate) curve: CurvePipeline,
+    /// The one shader and group-0 layout both raster tenants draw through; see [`RasterProgram`].
+    pub(crate) raster: RasterProgram,
 }
 
 /// What a frame draws through, which its pipelines are built for: the stencil mode of its passes,
@@ -72,11 +74,7 @@ impl PipelineCensus {
 }
 
 impl FormatPipelines {
-    pub(crate) fn new(
-        gpu: &Gpu,
-        format: wgpu::TextureFormat,
-        sources: PipelineSources<'_>,
-    ) -> Self {
+    pub(crate) fn new(gpu: &Gpu, format: wgpu::TextureFormat, programs: &Programs) -> Self {
         let mut pipelines = Self {
             format,
             quad: QuadVariants::NONE,
@@ -85,38 +83,33 @@ impl FormatPipelines {
             curve: StencilVariant::NONE,
             raster: RasterVariants::NONE,
         };
-        pipelines.ensure(gpu, sources, PipelineCensus::common());
+        pipelines.ensure(gpu, programs, PipelineCensus::common());
         pipelines
     }
 
     /// Build what `census` draws through and the set lacks, before the frame's passes borrow it.
-    pub(crate) fn ensure(
-        &mut self,
-        gpu: &Gpu,
-        sources: PipelineSources<'_>,
-        census: PipelineCensus,
-    ) {
+    pub(crate) fn ensure(&mut self, gpu: &Gpu, programs: &Programs, census: PipelineCensus) {
         let target = VariantTarget {
             format: self.format,
             mode: census.stencil,
         };
         for draw in census.quads.iter() {
-            sources.quad.ensure_draw(&mut self.quad, gpu, target, draw);
+            programs.quad.ensure_draw(&mut self.quad, gpu, target, draw);
         }
         if census.stencil == StencilMode::Test {
-            sources.quad.ensure_masks(&mut self.quad, gpu, self.format);
+            programs.quad.ensure_masks(&mut self.quad, gpu, self.format);
         }
         if census.meshes {
-            sources.mesh.ensure(&mut self.mesh, gpu, target);
+            programs.mesh.ensure(&mut self.mesh, gpu, target);
         }
         if census.images {
-            sources.image.ensure(&mut self.image, gpu, target);
+            programs.image.ensure(&mut self.image, gpu, target);
         }
         if census.curves {
-            sources.curve.ensure(&mut self.curve, gpu, target);
+            programs.curve.ensure(&mut self.curve, gpu, target);
         }
         if census.rasters {
-            sources.raster.ensure(&mut self.raster, gpu, target);
+            programs.raster.ensure(&mut self.raster, gpu, target);
         }
     }
 

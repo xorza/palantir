@@ -36,7 +36,7 @@ WinitRuntime<T>
 │  │  └─ render_owners
 │  └─ device: DeviceCore
 │     ├─ spec: BackendSpec { image_store (shared), timing }
-│     └─ backend: WgpuBackend (19 fields, image_store (shared))
+│     └─ backend: WgpuBackend (programs, image_store (shared), …)
 ├─ windows: WindowSet
 │  └─ Window { window: Arc, surface, driver, translator, clock, remote, … }
 │     └─ driver: WindowDriver
@@ -90,7 +90,6 @@ The remaining gain is in the signatures:
 ## Root causes
 
 1. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
-2. **One orchestrator outgrew its stages.** `WgpuBackend::submit` is 299 lines.
 
 ## Target design
 
@@ -170,14 +169,6 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 # Part 2: Plan
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
-
-## Batch 7: Backend stages
-
-Files: `src/gpu/wgpu_backend/mod.rs`, `src/gpu/pipeline/format_pipelines.rs`.
-
-- [ ] `WgpuBackend`: `PipelineSources` is written out twice, as a helper on `&self` would borrow all 19 fields. Group `quad`, `mesh`, `image`, `curve` and `raster` in a `Programs` field with `sources()`.
-- [ ] `WgpuBackend::submit`: 299 lines. Split it at its seams: `prepare_target -> FrameTarget`, `ensure_pipelines`, `run_steps`.
-- [ ] `FrameUpload`: `clear` and `dims_undamaged` derive from its own `submission`. Delete both fields, and read them from `submission`.
 
 ## Batch 8: Layers and small signatures
 
