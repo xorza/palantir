@@ -597,7 +597,8 @@ mod record_store_tests {
 
     use glam::{UVec2, Vec2};
 
-    use crate::ui::app::App;
+    use crate::ui::app::{App, InputOutcome};
+    use crate::ui::update_ctx::UpdateCtx;
 
     use crate::display::frame_stamp::FrameStamp;
     use crate::host::window_driver::tests::config;
@@ -638,8 +639,9 @@ mod record_store_tests {
     }
 
     impl App for LifecycleApp {
-        fn update(&mut self, win: WindowToken, _ui: &Ui) {
+        fn update(&mut self, win: WindowToken, _ctx: UpdateCtx<'_>) -> InputOutcome {
             self.updates.push(win);
+            InputOutcome::Record
         }
 
         fn record(&mut self, win: WindowToken, _ui: &mut Ui) {

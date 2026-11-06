@@ -6,7 +6,8 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 
 /// The latest record pass's cascade and layout, read together: the cascade locates a widget and
-/// holds its transform, the layout its arranged rect. The engines write them after each pass.
+/// holds its transform, the layout its arranged rect. The engines write them after each pass. The
+/// encoder reads this too, under a type named for input, which is why it keeps a name of its own.
 #[derive(Debug, Default)]
 pub(crate) struct Arranged {
     pub(crate) cascade: Cascade,

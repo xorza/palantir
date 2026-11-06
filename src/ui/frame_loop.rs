@@ -24,7 +24,7 @@ use crate::scene::node::Node;
 use crate::scene::node::id_recipe::IdRecipe;
 use crate::shape::record_store::RecordStore;
 use crate::ui::Ui;
-use crate::ui::app::App;
+use crate::ui::app::{App, InputOutcome};
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan, RecordBaseline};
@@ -64,7 +64,9 @@ pub(crate) struct SubmitParts<'a> {
 /// sit beside the `Ui`, so a pass can hold `&ui.forest` while it writes `&mut layout`, and so a
 /// widget cannot reach them. The host's side of the window's seam is here for the same reason. This
 /// is the shape of Masonry's `RenderRoot`, the composition root a host gives events and asks to
-/// redraw.
+/// redraw. Refused: this logic in `WindowDriver`, as `host` sits far to the right of the layer order
+/// and needs nothing here beyond the port. [`FrameRuntime`](crate::ui::frame_runtime::FrameRuntime)
+/// stays on `Ui`, as a record reads its clock and writes its requests and wakes.
 ///
 /// Registers its token in the window directory for as long as it lives, so no close path can leave
 /// `Ui::is_window_open` true.
@@ -221,7 +223,7 @@ impl FrameLoop {
         self.ui.frame_runtime.set_display(display);
     }
 
-    /// Drives one application frame: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input, or `request_relayout`. Paint-only frames skip both. `damage_base` says whether last frame's damage snapshot still describes the surface.
+    /// Drives one application frame: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input [`App::update`] left to it, or `request_relayout`. Paint-only frames skip both. `damage_base` says whether last frame's damage snapshot still describes the surface.
     pub(crate) fn frame<T: App>(
         &mut self,
         stamp: FrameStamp,
@@ -274,20 +276,25 @@ impl FrameLoop {
             FramePlan::FullRecord { .. } => {
                 {
                     tracy::zone!("Ui::update_user");
+                    // On the first frame `update` runs ahead of the warmup, as an app sets up in it
+                    // and a record needs that. No frame is on screen then, so it reads no rects, and
+                    // nothing routes against the empty cascade: a Tab held from before frame 1 waits
+                    // for pass A's routing. Each later frame routes first, so `update` reads pass A's
+                    // focus.
                     if first_frame {
-                        // `update` runs before every record, as an app sets up in it, and the
-                        // input opens after the warmup: a press or a Tab before frame 1 meets the
-                        // warmup's frame, not an empty one that would spend it.
                         self.ui.input.snapshot_frame_quiescent();
-                        app.update(self.token, &self.ui);
-                        self.warmup(app);
-                        self.ui.input.open_stage();
                     } else {
-                        self.ui.input.open_stage();
-                        app.update(self.token, &self.ui);
+                        self.ui.input.open_update();
                     }
-                    app.input(self.token, self.ui.input_ctx());
-                    self.ui.input.close_stage();
+                    let outcome = app.update(self.token, self.ui.update_ctx());
+                    self.ui.input.close_update();
+                    if first_frame {
+                        self.warmup(app);
+                    }
+                    // As a second pass reads it: the edges are gone, so no record can react.
+                    if outcome == InputOutcome::Handled {
+                        self.ui.input.drain_per_frame_queues();
+                    }
                 }
                 let action_flag = {
                     tracy::zone!("Ui::record_pass.A");

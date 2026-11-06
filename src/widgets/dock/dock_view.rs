@@ -11,7 +11,7 @@ use crate::theme::dock::DockTheme;
 use crate::theme::menu::MenuTheme;
 use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
-use crate::ui::input_ctx::InputCtx;
+use crate::ui::update_ctx::UpdateCtx;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -50,7 +50,7 @@ use std::rc::Rc;
 /// # fn demo<D: DockTabs<Tab = Tab>>(ui: &mut Ui, dock: &mut DockState<Tab>, tabs: &mut D) {
 /// let id = WidgetId::from_hash("app.dock");
 /// let mut operations: Vec<DockOperation<Tab>> = Vec::new();
-/// DockView::scan(&mut ui.input_ctx(), id, dock, &mut operations);
+/// DockView::scan(&mut ui.update_ctx(), id, dock, &mut operations);
 /// for operation in operations.drain(..) {
 ///     dock.apply(operation);
 /// }
@@ -183,7 +183,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
             .default_size((Sizing::FILL, Sizing::FILL));
         let response = widget.response(ui);
         let id = response.id;
-        let carried = DockView::drag(&ui.input_ctx(), id);
+        let carried = DockView::drag(&ui.update_ctx(), id);
         // Classified before the walk, so the strip it lands in records its caret, and kept for
         // the scan that sees the release: the drop lands where the frame showed it.
         let drop = carried.and_then(|tab| {
@@ -229,7 +229,7 @@ impl<T: DockTab> DockView<'_, T> {
         ui.with_state::<DockOpBuf<T>, _>(dock, |ui, buf| {
             let operations = &mut buf.operations;
             operations.clear();
-            DockView::scan(&mut ui.input_ctx(), dock, state, operations);
+            DockView::scan(&mut ui.update_ctx(), dock, state, operations);
             for operation in operations.drain(..) {
                 state.apply(operation);
             }
@@ -246,7 +246,7 @@ impl<T: DockTab> DockView<'_, T> {
     ///
     /// **Run before the record, and apply what it emits.**
     pub fn scan(
-        ctx: &mut InputCtx<'_>,
+        ctx: &mut UpdateCtx<'_>,
         dock: WidgetId,
         state: &DockState<T>,
         operations: &mut Vec<DockOperation<T>>,
@@ -302,17 +302,17 @@ impl<T: DockTab> DockView<'_, T> {
         }
     }
 
-    fn drag(ctx: &InputCtx<'_>, dock: WidgetId) -> Option<T> {
+    fn drag(ctx: &UpdateCtx<'_>, dock: WidgetId) -> Option<T> {
         ctx.state::<TabDrag<T>>(dock).map(|drag| drag.tab)
     }
 
     /// Start carrying `tab`, with no drop yet.
-    fn start_drag(ctx: &mut InputCtx<'_>, dock: WidgetId, tab: T) {
+    fn start_drag(ctx: &mut UpdateCtx<'_>, dock: WidgetId, tab: T) {
         ctx.set_state(dock, TabDrag { tab, target: None });
     }
 
     /// End the drag and forget its drop.
-    fn end_drag(ctx: &mut InputCtx<'_>, dock: WidgetId) {
+    fn end_drag(ctx: &mut UpdateCtx<'_>, dock: WidgetId) {
         ctx.remove_state::<TabDrag<T>>(dock);
     }
 

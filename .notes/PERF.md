@@ -83,7 +83,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   under the viewport by one translation, and the refresh computes each again in screen space,
   spread over the tree-item walk and the rect math.
 - **An action frame records twice** (`typing`: two passes, and a full cascade rebuild as `""`
-  and `"x"` differ by one shape). That is the frame cycle's design.
+  and `"x"` differ by one shape), unless `App::update` answers `Handled`.
 - **The theming frame is a resize frame** since the shape store: `cpu/theming` 288 µs against
   `cpu/resizing` 261 µs local; layout 40 % and record 35 % on the fanless. Before, shaping was 37 %:
   a 60 s transition moves a font size one 1/64 px step about every 6 frames, and a run off

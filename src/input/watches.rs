@@ -5,7 +5,7 @@ use crate::primitives::input::keyboard::key_press::KeyPress;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::input::watch::{KeyboardWake, PointerWake};
 
-/// How far [`Watches`] had come when the input stage closed: each pass goes back to this, so its
+/// How far [`Watches`] had come when the update closed: each pass goes back to this, so its
 /// watches outlive the pass's reset. Refused: a second `Watches` to copy from, which holds each
 /// watch twice and copies them per pass.
 #[derive(Clone, Copy, Debug, Default)]
@@ -17,7 +17,7 @@ pub(super) struct WatchMark {
 }
 
 /// Per-`Ui` wake-gate registry, re-declared by widgets during record. Bounded by the reads one
-/// record makes, as each record starts from what the input stage declared, its capacity kept.
+/// record makes, as each record starts from what the update declared, its capacity kept.
 #[derive(Debug, Default)]
 pub(super) struct Watches {
     pub(super) pointer_mask: PointerWake,

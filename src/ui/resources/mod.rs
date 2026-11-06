@@ -2,6 +2,7 @@
 //! shaper, image and icon registries, clipboard, window directory, and the
 //! settings every window shares. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
 
+use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use crate::clipboard::Clipboard;
@@ -20,6 +21,8 @@ use crate::window::window_directory::WindowDirectory;
 
 pub(crate) mod app_settings;
 
+/// Shared by `Rc` on each window's `Ui`. Refused: a `CpuCore` that owns them, as `&mut Ui` has no
+/// lifetime, and lending them needs `Ui<'res>` at each of the 356 widget signatures.
 #[derive(Clone, Debug)]
 pub(crate) struct UiResources {
     text: TextShaper,
@@ -82,6 +85,11 @@ impl UiResources {
 
     pub(crate) const fn windows(&self) -> &WindowDirectory {
         &self.windows
+    }
+
+    /// The longest image side the device holds, `None` before a device attaches.
+    pub(super) fn max_image_dimension(&self) -> Option<NonZeroU32> {
+        self.device.texture_limit().max_dimension()
     }
 
     pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {

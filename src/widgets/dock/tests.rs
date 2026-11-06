@@ -1092,7 +1092,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     fn frame(h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels) {
         h.frame(|ui| {
             let mut operations = Vec::new();
-            DockView::scan(&mut ui.input_ctx(), dock(), d, &mut operations);
+            DockView::scan(&mut ui.update_ctx(), dock(), d, &mut operations);
             #[expect(clippy::iter_with_drain, reason = "the buffer is filled again below")]
             for operation in operations.drain(..) {
                 d.apply(operation);

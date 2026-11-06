@@ -11,13 +11,14 @@ use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::sense::Sense;
 use crate::ui::Ui;
-use crate::ui::app::App;
+use crate::ui::app::{App, InputOutcome};
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::MAX_CARRIED_RELAYOUTS;
 use crate::ui::frame_runtime::wake::WakeReasons;
-use crate::ui::input_ctx::InputCtx;
 use crate::ui::tests::support::{self, SURFACE};
+use crate::ui::update_ctx::UpdateCtx;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use crate::window::window_token::WindowToken;
@@ -80,7 +81,6 @@ fn frame_pass_count_matches_action_trigger() {
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::keyboard::modifiers::Modifiers;
 
-    use crate::primitives::input::sense::Sense;
     use crate::primitives::layout::sizing::Sizing;
     use glam::Vec2;
 
@@ -207,6 +207,179 @@ fn action_effect_runs_once_across_record_replay() {
         (true, Some(&false)),
         "the action edge shows in pass A and does not replay"
     );
+}
+
+/// An app whose update takes the click on [`Self::BUTTON`] and answers `outcome`, and whose
+/// record asks for a pass when `asks` is set.
+#[derive(Debug)]
+struct Handles {
+    outcome: InputOutcome,
+    asks: bool,
+    passes: u32,
+    seen_by_input: u32,
+    /// What each record pass read of the click.
+    seen_by_record: Vec<bool>,
+}
+
+impl Handles {
+    const BUTTON: &str = "handles.button";
+
+    const fn new(outcome: InputOutcome, asks: bool) -> Self {
+        Self {
+            outcome,
+            asks,
+            passes: 0,
+            seen_by_input: 0,
+            seen_by_record: Vec::new(),
+        }
+    }
+}
+
+impl App for Handles {
+    fn update(&mut self, _: WindowToken, ctx: UpdateCtx<'_>) -> InputOutcome {
+        if ctx
+            .input
+            .response_for(WidgetId::from_hash(Self::BUTTON))
+            .left
+            .clicked()
+        {
+            self.seen_by_input += 1;
+        }
+        self.outcome
+    }
+
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        self.passes += 1;
+        let clicked = Button::new()
+            .id(WidgetId::from_hash(Self::BUTTON))
+            .label("Go")
+            .size((100.0, 40.0))
+            .show(ui)
+            .left
+            .clicked();
+        self.seen_by_record.push(clicked);
+        if self.asks && self.passes == 1 {
+            ui.request_relayout();
+        }
+    }
+}
+
+/// One click by what the update returned: `Record` reads the edge in pass A and records again,
+/// `Handled` takes the edge from every record and records once, and a record that asks gets its
+/// pass all the same.
+#[test]
+fn a_click_records_by_the_update_answer() {
+    let button = WidgetId::from_hash(Handles::BUTTON);
+    for (outcome, asks, read) in [
+        (InputOutcome::Record, false, &[true, false][..]),
+        (InputOutcome::Handled, false, &[false][..]),
+        (InputOutcome::Handled, true, &[false, false][..]),
+    ] {
+        let mut h = Harness::mono(SURFACE);
+        let mut warm = Handles::new(InputOutcome::Record, false);
+        h.frame_app(&mut warm);
+        h.frame_app(&mut warm);
+        h.press(button, PointerButton::Left);
+        h.frame_app(&mut warm);
+        h.release(PointerButton::Left);
+
+        let mut app = Handles::new(outcome, asks);
+        let report = h.frame_app(&mut app);
+        assert_eq!(app.seen_by_input, 1, "{outcome:?}, asks {asks}");
+        assert_eq!(app.seen_by_record, read, "{outcome:?}, asks {asks}");
+        assert_eq!(
+            report.processing,
+            if read.len() == 2 {
+                FrameProcessing::DoubleLayout
+            } else {
+                FrameProcessing::SingleLayout
+            },
+            "{outcome:?}, asks {asks}",
+        );
+    }
+}
+
+/// An app that reads a key in its record, whose update answers `outcome`.
+struct KeyProbe {
+    outcome: InputOutcome,
+    read_in_record: bool,
+}
+impl App for KeyProbe {
+    fn update(&mut self, _: WindowToken, _: UpdateCtx<'_>) -> InputOutcome {
+        self.outcome
+    }
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        self.read_in_record |= ui.key_pressed(Key::Char('k'));
+    }
+}
+
+/// An app that adds up a wheel's pan in its record, whose update answers `outcome`.
+struct WheelProbe {
+    outcome: InputOutcome,
+    panned: Vec2,
+}
+impl App for WheelProbe {
+    fn update(&mut self, _: WindowToken, _: UpdateCtx<'_>) -> InputOutcome {
+        self.outcome
+    }
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        let response = Block::new()
+            .id(WidgetId::from_hash("wheel"))
+            .size(100.0)
+            .sense(Sense::SCROLL)
+            .show(ui);
+        self.panned += response.scroll.pan(1.0);
+    }
+}
+
+/// `Handled` takes edges and leaves levels: a press the stage handled keeps its capture, so the
+/// click that ends it reaches a record that the next frame's stage leaves it to, and a key is gone
+/// from the frame it arrived on.
+#[test]
+fn a_handled_frame_keeps_what_the_pointer_holds() {
+    let button = WidgetId::from_hash(Handles::BUTTON);
+    let mut h = Harness::mono(SURFACE);
+    let mut handled = Handles::new(InputOutcome::Handled, false);
+    h.frame_app(&mut handled);
+    h.frame_app(&mut handled);
+    h.press(button, PointerButton::Left);
+    h.frame_app(&mut handled);
+    assert!(h.ui().response_for(button).left.held(), "the capture holds");
+
+    h.release(PointerButton::Left);
+    let mut record = Handles::new(InputOutcome::Record, false);
+    h.frame_app(&mut record);
+    assert_eq!(record.seen_by_record, [true, false], "the click lands");
+
+    for (outcome, want) in [(InputOutcome::Record, true), (InputOutcome::Handled, false)] {
+        let mut h = Harness::mono(SURFACE);
+        let mut probe = KeyProbe {
+            outcome,
+            read_in_record: false,
+        };
+        h.frame_app(&mut probe);
+        h.key(Key::Char('k'));
+        h.frame_app(&mut probe);
+        assert_eq!(probe.read_in_record, want, "a key, {outcome:?}");
+    }
+
+    let wheel = WidgetId::from_hash("wheel");
+    let delta = Vec2::new(0.0, 12.0);
+    for (outcome, want) in [
+        (InputOutcome::Record, delta),
+        (InputOutcome::Handled, Vec2::ZERO),
+    ] {
+        let mut h = Harness::mono(SURFACE);
+        let mut probe = WheelProbe {
+            outcome,
+            panned: Vec2::ZERO,
+        };
+        h.frame_app(&mut probe);
+        h.frame_app(&mut probe);
+        h.scroll_pixels(wheel, delta);
+        h.frame_app(&mut probe);
+        assert_eq!(probe.panned, want, "a wheel, {outcome:?}");
+    }
 }
 
 /// What a test's subscriber writes.
@@ -393,9 +566,10 @@ fn update_sees_input_that_arrived_after_a_quiescent_pass() {
     }
 
     impl App for Probe {
-        fn update(&mut self, _win: WindowToken, ui: &Ui) {
-            let response = ui.response_for(self.id);
+        fn update(&mut self, _win: WindowToken, ctx: UpdateCtx<'_>) -> InputOutcome {
+            let response = ctx.input.response_for(self.id);
             self.seen.push(response.pressed() && response.pointer_over);
+            InputOutcome::Record
         }
 
         fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
@@ -419,36 +593,28 @@ fn update_sees_input_that_arrived_after_a_quiescent_pass() {
 #[derive(Debug, Default)]
 struct CountingApp {
     updates: u32,
-    inputs: u32,
     records: u32,
     relayout_on_next_record: bool,
     expected_pointer: Option<Vec2>,
 }
 
 impl App for CountingApp {
-    fn update(&mut self, win: WindowToken, ui: &Ui) {
+    fn update(&mut self, win: WindowToken, ctx: UpdateCtx<'_>) -> InputOutcome {
         assert_eq!(win, WindowToken(0));
-        assert_eq!(ui.display().physical, SURFACE);
+        assert_eq!(ctx.display().physical, SURFACE);
         assert_eq!(
             self.records,
             self.updates * 2,
             "update runs before any record of its frame"
         );
-        assert_eq!(ui.input().peek_pointer_pos(), self.expected_pointer);
-        self.updates += 1;
-    }
-
-    fn input(&mut self, win: WindowToken, ctx: InputCtx<'_>) {
-        assert_eq!(win, WindowToken(0));
-        assert_eq!(ctx.display().physical, SURFACE);
         assert_eq!(
             ctx.record_frame_id(),
-            u64::from(self.inputs),
+            u64::from(self.updates),
             "one id per recorded frame"
         );
         assert_eq!(ctx.input.peek_pointer_pos(), self.expected_pointer);
-        assert_eq!(self.inputs + 1, self.updates, "after this frame's update");
-        self.inputs += 1;
+        self.updates += 1;
+        InputOutcome::Record
     }
 
     fn record(&mut self, win: WindowToken, ui: &mut Ui) {
@@ -461,7 +627,7 @@ impl App for CountingApp {
     }
 }
 
-/// `App::update` and `App::input` run once per recorded frame and `App::record` once per pass: twice
+/// `App::update` runs once per recorded frame and `App::record` once per pass: twice
 /// on the cold first frame and on a relayout, never on a paint-only frame.
 #[test]
 fn app_lifecycle_follows_frame_plan_and_record_replays() {
@@ -474,7 +640,6 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     let processing = h.frame_app(&mut app).processing;
     assert_eq!(processing, FrameProcessing::SingleLayout);
     assert_eq!(app.updates, 1, "cold-start frame updates once");
-    assert_eq!(app.inputs, 1, "cold-start frame reads input once");
     assert_eq!(app.records, 2, "cold-start warmup and pass A both record");
 
     app.relayout_on_next_record = true;
@@ -485,7 +650,6 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
         .processing;
     assert_eq!(processing, FrameProcessing::DoubleLayout);
     assert_eq!(app.updates, 2, "relayout frame adds one update");
-    assert_eq!(app.inputs, 2, "relayout frame reads input once");
     assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
 
     h.ui_mut()
@@ -497,55 +661,52 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
         .processing;
     assert_eq!(processing, FrameProcessing::PaintOnly);
     assert_eq!(app.updates, 2, "paint-only frame skips update");
-    assert_eq!(app.inputs, 2, "paint-only frame skips input");
     assert_eq!(app.records, 4, "paint-only frame skips record");
 }
 
-fn stage_button(ui: &mut Ui, id: WidgetId) {
+fn probe_button(ui: &mut Ui, id: WidgetId) {
     Button::new().id(id).size(40.0).show(ui);
 }
 
 /// One frame's reads of a widget's click, the focus and a key.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct StageReads {
+struct UpdateReads {
     clicked: bool,
     focus: Option<WidgetId>,
     escape: bool,
 }
 
-/// Holds every frame's input stage and `update` to what its first record pass reads.
+/// Holds every frame's update and `update` to what its first record pass reads.
 #[derive(Debug)]
-struct StageProbe {
+struct UpdateProbe {
     first: WidgetId,
     second: WidgetId,
     updated: Option<WidgetId>,
-    stage: Option<StageReads>,
+    read: Option<UpdateReads>,
     clicks: u32,
     escapes: u32,
     last_focus: Option<WidgetId>,
 }
 
-impl App for StageProbe {
-    fn update(&mut self, _: WindowToken, ui: &Ui) {
-        self.updated = ui.focus();
-    }
-
-    fn input(&mut self, _: WindowToken, mut ctx: InputCtx<'_>) {
-        self.stage = Some(StageReads {
+impl App for UpdateProbe {
+    fn update(&mut self, _: WindowToken, mut ctx: UpdateCtx<'_>) -> InputOutcome {
+        self.updated = ctx.input.focus();
+        self.read = Some(UpdateReads {
             clicked: ctx.input.response_for(self.first).left.clicked(),
             focus: ctx.input.focus(),
             escape: ctx.key_pressed(Key::Escape),
         });
+        InputOutcome::Record
     }
 
     fn record(&mut self, _: WindowToken, ui: &mut Ui) {
-        let reads = StageReads {
+        let reads = UpdateReads {
             clicked: ui.response_for(self.first).left.clicked(),
             focus: ui.focus(),
             escape: ui.key_pressed(Key::Escape),
         };
-        if let Some(stage) = self.stage.take() {
-            assert_eq!(stage, reads, "the input stage and pass A read one frame");
+        if let Some(stage) = self.read.take() {
+            assert_eq!(stage, reads, "the update and pass A read one frame");
             assert_eq!(self.updated, reads.focus, "update reads that focus too");
             self.clicks += u32::from(reads.clicked);
             self.escapes += u32::from(reads.escape);
@@ -553,23 +714,23 @@ impl App for StageProbe {
         }
         let (first, second) = (self.first, self.second);
         Panel::hstack().id_salt("stage.row").show(ui, |ui| {
-            stage_button(ui, first);
-            stage_button(ui, second);
+            probe_button(ui, first);
+            probe_button(ui, second);
         });
     }
 }
 
-/// The input stage, `update` and pass A read one frame: a click's edge, a key's edge, and focus
+/// The update, `update` and pass A read one frame: a click's edge, a key's edge, and focus
 /// already moved by this frame's Tab. Tab from `first` lands on `second`.
 #[test]
-fn the_input_stage_reads_what_the_first_pass_reads() {
+fn the_update_reads_what_the_first_pass_reads() {
     let first = WidgetId::from_hash("stage.first");
     let second = WidgetId::from_hash("stage.second");
-    let mut probe = StageProbe {
+    let mut probe = UpdateProbe {
         first,
         second,
         updated: None,
-        stage: None,
+        read: None,
         clicks: 0,
         escapes: 0,
         last_focus: None,
@@ -595,17 +756,18 @@ fn the_input_stage_reads_what_the_first_pass_reads() {
     assert_eq!(probe.last_focus, Some(second));
 }
 
-/// Asks for a second pass each frame, with a key read in the input stage or none.
+/// Asks for a second pass each frame, with a key read in the update or none.
 #[derive(Debug)]
 struct WatchProbe {
     reads_key: bool,
 }
 
 impl App for WatchProbe {
-    fn input(&mut self, _: WindowToken, mut ctx: InputCtx<'_>) {
+    fn update(&mut self, _: WindowToken, mut ctx: UpdateCtx<'_>) -> InputOutcome {
         if self.reads_key {
             let _ = ctx.key_pressed(Key::Escape);
         }
+        InputOutcome::Record
     }
 
     fn record(&mut self, _: WindowToken, ui: &mut Ui) {
@@ -613,10 +775,10 @@ impl App for WatchProbe {
     }
 }
 
-/// A key the input stage reads stays watched past a second pass, whose reset would drop it: with
+/// A key the update reads stays watched past a second pass, whose reset would drop it: with
 /// nothing focused, only a watched press asks for a frame.
 #[test]
-fn a_watch_from_the_input_stage_outlives_a_second_pass() {
+fn a_watch_from_the_update_outlives_a_second_pass() {
     let asks_a_frame = |reads_key: bool| {
         let mut h = Harness::mono(SURFACE);
         let mut app = WatchProbe { reads_key };
@@ -631,42 +793,96 @@ fn a_watch_from_the_input_stage_outlives_a_second_pass() {
     assert!(!asks_a_frame(false));
 }
 
-/// Records a button with a state row, and reads both in the input stage.
+/// Records a button with a state row, and reads both in each update.
 #[derive(Debug, Default)]
 struct WarmProbe {
-    read: Option<(Option<Rect>, Option<u32>)>,
+    reads: Vec<(Option<Rect>, Option<u32>)>,
 }
 
 impl App for WarmProbe {
-    fn input(&mut self, _: WindowToken, ctx: InputCtx<'_>) {
+    fn update(&mut self, _: WindowToken, ctx: UpdateCtx<'_>) -> InputOutcome {
         let id = WidgetId::from_hash("warm");
-        self.read = Some((
+        self.reads.push((
             ctx.input.response_for(id).rect,
             ctx.state::<u32>(id).copied(),
         ));
+        InputOutcome::Record
     }
 
     fn record(&mut self, _: WindowToken, ui: &mut Ui) {
         let id = WidgetId::from_hash("warm");
-        stage_button(ui, id);
+        probe_button(ui, id);
         ui.set_state(id, 7_u32);
     }
 }
 
-/// The warmup runs before the first input stage, so that stage reads the rect it arranged and the
-/// state row it wrote: 40 x 40 at the origin, and 7.
+/// The first update runs ahead of the warmup, as an app sets up in it, so it reads no rect and no
+/// state row, as no frame is on screen. The next reads what the first frame left: 40 x 40 at the
+/// origin, and 7.
 #[test]
-fn the_first_input_stage_reads_what_the_warmup_arranged() {
+fn the_first_update_runs_ahead_of_the_warmup() {
     let mut h = Harness::cold(SURFACE);
     let mut app = WarmProbe::default();
     h.frame_app(&mut app);
+    h.ui_mut().request_repaint();
+    h.frame_app(&mut app);
     assert_eq!(
-        app.read,
-        Some((Some(Rect::new(0.0, 0.0, 40.0, 40.0)), Some(7)))
+        app.reads,
+        [
+            (None, None),
+            (Some(Rect::new(0.0, 0.0, 40.0, 40.0)), Some(7)),
+        ],
     );
 }
 
-/// Writes a state row in the input stage, and reads it in each record pass.
+/// Reads focus in each update and each record pass, over two Tab stops.
+#[derive(Debug, Default)]
+struct FocusProbe {
+    in_update: Vec<Option<WidgetId>>,
+    in_record: Vec<Option<WidgetId>>,
+}
+
+impl App for FocusProbe {
+    fn update(&mut self, _: WindowToken, ctx: UpdateCtx<'_>) -> InputOutcome {
+        self.in_update.push(ctx.input.focus());
+        InputOutcome::Record
+    }
+
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        self.in_record.push(ui.focus());
+        for salt in ["stop-a", "stop-b"] {
+            Block::new()
+                .id(WidgetId::from_hash(salt))
+                .size(40.0)
+                .focusable(true)
+                .show(ui);
+        }
+    }
+}
+
+/// A Tab before the window opens counts only over a focus set by then: it moves that focus from
+/// `a` to `b` in pass A's routing, past the first update and the warmup, which read `a`. With no
+/// focus it is dropped as it arrives, so no pass reads a move.
+#[test]
+fn a_tab_before_the_first_frame_moves_a_set_focus_in_its_first_pass() {
+    let (a, b) = (WidgetId::from_hash("stop-a"), WidgetId::from_hash("stop-b"));
+    let mut h = Harness::cold(SURFACE);
+    let mut app = FocusProbe::default();
+    h.ui_mut().set_focus(a);
+    h.key(Key::Tab);
+    h.frame_app(&mut app);
+    assert_eq!(app.in_update[0], Some(a));
+    assert_eq!(app.in_record[..2], [Some(a), Some(b)]);
+
+    let mut h = Harness::cold(SURFACE);
+    let mut app = FocusProbe::default();
+    h.key(Key::Tab);
+    h.frame_app(&mut app);
+    assert_eq!(app.in_update[0], None);
+    assert_eq!(app.in_record[..2], [None, None]);
+}
+
+/// Writes a state row in the update, and reads it in each record pass.
 #[derive(Debug, Default)]
 struct StateProbe {
     written: u32,
@@ -676,23 +892,24 @@ struct StateProbe {
 }
 
 impl App for StateProbe {
-    fn input(&mut self, _: WindowToken, mut ctx: InputCtx<'_>) {
+    fn update(&mut self, _: WindowToken, mut ctx: UpdateCtx<'_>) -> InputOutcome {
         self.written += 1;
         self.times.push(ctx.now());
         self.line_heights.push(ctx.theme().text.line_height());
         ctx.set_state(WidgetId::from_hash("row"), self.written);
+        InputOutcome::Record
     }
 
     fn record(&mut self, _: WindowToken, ui: &mut Ui) {
         let id = WidgetId::from_hash("row");
         self.read.push(ui.state::<u32>(id).copied());
-        stage_button(ui, id);
+        probe_button(ui, id);
     }
 }
 
-/// A state the input stage writes shows in that frame's first record pass.
+/// A state the update writes shows in that frame's first record pass.
 #[test]
-fn a_state_the_input_stage_writes_shows_in_the_first_pass() {
+fn a_state_the_update_writes_shows_in_the_first_pass() {
     let mut h = Harness::mono(SURFACE);
     let mut app = StateProbe::default();
     h.frame_app(&mut app);

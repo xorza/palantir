@@ -118,8 +118,7 @@ AnimationSpec
 
 App
     trait App
-        fn update(&mut self, _window: WindowToken, _ui: &Ui) { .. }
-        fn input(&mut self, _window: WindowToken, _ctx: InputCtx<'_>) { .. }
+        fn update(&mut self, _window: WindowToken, _ctx: UpdateCtx<'_>) -> InputOutcome { .. }
         fn record(&mut self, window: WindowToken, ui: &mut Ui)
         fn is_busy(&self) -> bool { .. }
         impl<F: FnMut(&mut Ui)> App for F
@@ -652,7 +651,7 @@ DockView
             pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response
         impl<T: DockTab> DockView<'_, T>
             pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, dock: WidgetId, state: &mut DockState<T>, tabs: &mut D)
-            pub fn scan(ctx: &mut InputCtx<'_>, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
+            pub fn scan(ctx: &mut UpdateCtx<'_>, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
         impl<'a, T: Debug> Debug for DockView<'a, T>
 
 Drag
@@ -1183,21 +1182,6 @@ Input
         pub fn is_hover_within(&self, ancestor: WidgetId) -> bool
         pub fn response_for(&self, id: WidgetId) -> Response
 
-InputCtx
-    struct InputCtx<'a>: Debug
-        pub input: &'a mut Input
-        pub fn key_pressed(&mut self, key: Key) -> bool
-        pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool
-        pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
-        pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
-        pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
-        pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S)
-        pub fn remove_state<S: 'static>(&mut self, id: WidgetId) -> Option<S>
-        pub const fn display(&self) -> Display
-        pub const fn theme(&self) -> &Rc<Theme>
-        pub const fn record_frame_id(&self) -> u64
-        pub const fn now(&self) -> Duration
-
 InputDelta
     struct InputDelta: Clone, Copy, Debug, Default, Eq, PartialEq
         pub repaint_requested: bool
@@ -1217,6 +1201,11 @@ InputEvent
         ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
         SurfaceFocusLost
+
+InputOutcome
+    enum InputOutcome: Clone, Copy, Debug, Default, Eq, PartialEq
+        Record
+        Handled
 
 InputPolicy
     enum InputPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -2722,7 +2711,7 @@ TranslateScale
 
 Ui
     struct Ui: Debug
-        pub fn input_ctx(&mut self) -> InputCtx<'_>
+        pub fn update_ctx(&mut self) -> UpdateCtx<'_>
         pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
         pub const fn scheme_theme(&self, scheme: ColorScheme) -> &Rc<Theme>
@@ -2825,6 +2814,27 @@ UnmetRequirements
         Downlevel { missing: DownlevelFlags }
         Limit { name: &'static str, required: u64, available: u64 }
         impl From<UnmetRequirements> for GpuRequestError
+
+UpdateCtx
+    struct UpdateCtx<'a>: Debug
+        pub input: &'a mut Input
+        pub fn key_pressed(&mut self, key: Key) -> bool
+        pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool
+        pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
+        pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
+        pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
+        pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S)
+        pub fn remove_state<S: 'static>(&mut self, id: WidgetId) -> Option<S>
+        pub const fn display(&self) -> Display
+        pub const fn theme(&self) -> &Rc<Theme>
+        pub const fn record_frame_id(&self) -> u64
+        pub const fn close_requested(&self) -> bool
+        pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot>
+        pub fn window_geometry(&self) -> WindowGeometry
+        pub fn clipboard(&self) -> Clipboard
+        pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge>
+        pub fn max_image_dimension(&self) -> Option<NonZeroU32>
+        pub const fn now(&self) -> Duration
 
 UserScale
     struct UserScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd

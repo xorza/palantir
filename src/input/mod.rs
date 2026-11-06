@@ -1,5 +1,6 @@
 //! [`Input`], the live input state machine: what survives across input events and the latest
-//! arranged frame they meet. The types it reads and hands out are in `primitives::input`.
+//! arranged frame they meet. The types it reads and hands out are in `primitives::input`. Refused: one
+//! merged module, a cycle through `scene`, which imports `Sense`, and `cascade`, which this imports.
 
 pub(crate) mod arranged;
 #[cfg(feature = "internals")]
@@ -64,10 +65,10 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 
 /// What input leaves behind between events: the pointer and what it routes to, each button's
 /// capture, focus, the modifiers and the IME composition, plus this frame's edges for the record
-/// passes to read. An app has it in [`InputCtx`](crate::InputCtx), once a frame, before any record.
+/// passes to read. An app has it in [`UpdateCtx`](crate::UpdateCtx), once a frame, before any record.
 ///
 /// What it answers holds wherever it is asked. A read that a scope routes, as a key press, is on
-/// [`InputCtx`](crate::InputCtx) and [`Ui`](crate::Ui), which know where they read from.
+/// [`UpdateCtx`](crate::UpdateCtx) and [`Ui`](crate::Ui), which know where they read from.
 ///
 /// It owns the latest arranged frame, the one thing an event means anything against, so no read
 /// takes it as a parameter. Refused: the cascade and layout on `Ui`, which threaded them through 27
@@ -110,11 +111,11 @@ pub struct Input {
     /// read (see [`EventOutcome::settles`]); taken by [`Self::take_action_flag`].
     frame_had_action: bool,
     signal_since_last_frame: InputSignal,
-    /// Wake-gate watches, rewound pre-record to [`Self::stage_subs`]. The masks persist across
+    /// Wake-gate watches, rewound pre-record to [`Self::update_subs`]. The masks persist across
     /// silent frames so a dormant popup is paged in by the next click.
     subs: Watches,
-    /// What this frame's input stage watched, which each of its record passes keeps.
-    stage_subs: WatchMark,
+    /// What this frame's update watched, which each of its record passes keeps.
+    update_subs: WatchMark,
     queue: InputQueue,
 }
 
@@ -141,27 +142,27 @@ impl Input {
             frame_had_action: false,
             signal_since_last_frame: InputSignal::default(),
             subs: Watches::default(),
-            stage_subs: WatchMark::default(),
+            update_subs: WatchMark::default(),
             queue: InputQueue::default(),
         }
     }
 
-    /// Open a recorded frame's input stage: drop last frame's watches, and route as its first pass
+    /// Open a recorded frame's update: drop last frame's watches, and route as its first pass
     /// will, so the stage and the pass read one focus.
-    pub(crate) fn open_stage(&mut self) {
+    pub(crate) fn open_update(&mut self) {
         self.subs.clear();
         self.route();
     }
 
-    /// Close the input stage: what it watched outlives each pass's reset.
-    pub(crate) const fn close_stage(&mut self) {
-        self.stage_subs = self.subs.mark();
+    /// Close the update: what it watched outlives each pass's reset.
+    pub(crate) const fn close_update(&mut self) {
+        self.update_subs = self.subs.mark();
     }
 
-    /// Start a record pass: drop last pass's watches, keep the input stage's, and resolve this
+    /// Start a record pass: drop last pass's watches, keep the update's, and resolve this
     /// pass's scope path once.
     pub(crate) fn pre_record(&mut self) {
-        self.subs.rewind(self.stage_subs);
+        self.subs.rewind(self.update_subs);
         self.route();
     }
 
@@ -901,7 +902,8 @@ impl Input {
     }
 
     /// Drain the per-frame input queues without touching cascade-dependent state.
-    /// The discarded pass needs empty queues so clicks do not double-fire.
+    /// A second pass needs empty queues so clicks do not double-fire, and a frame the update
+    /// handled needs them so no record reads what it acted on.
     pub(crate) fn drain_per_frame_queues(&mut self) {
         self.pointer.end_frame();
         self.keyboard.end_frame();

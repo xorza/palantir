@@ -9,7 +9,6 @@ pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
 mod frame_stats_readout;
 mod host_seam;
-pub(crate) mod input_ctx;
 pub(crate) mod inspected_widget;
 pub(crate) mod layer_scope;
 mod memory;
@@ -18,6 +17,7 @@ pub(crate) mod state;
 mod theme_pair;
 mod theme_transition;
 pub(crate) mod ui_preferences;
+pub(crate) mod update_ctx;
 mod window_theme;
 
 use crate::animation::animated::Animated;
@@ -83,12 +83,12 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::host_seam::HostSeam;
-use crate::ui::input_ctx::InputCtx;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::memory::Memory;
 use crate::ui::resources::UiResources;
 use crate::ui::ui_preferences::UiPreferences;
+use crate::ui::update_ctx::UpdateCtx;
 use crate::ui::window_theme::{Motion, WindowTheme};
 use crate::widget_core::overlay_stack::OverlayStack;
 use crate::window::cursor_icon::CursorIcon;
@@ -142,11 +142,10 @@ impl Ui {
         }
     }
 
-    /// The view [`App::input`](crate::App::input) has, for a helper the input stage and a record
-    /// both call.
+    /// The view [`App::update`](crate::App::update) has, for a helper it and a record both call.
     #[inline]
-    pub fn input_ctx(&mut self) -> InputCtx<'_> {
-        InputCtx::of(self)
+    pub fn update_ctx(&mut self) -> UpdateCtx<'_> {
+        UpdateCtx::of(self)
     }
 
     /// The input machine, which a harness asks where the pointer and its widgets are.
@@ -451,6 +450,10 @@ impl Ui {
         }
     }
 
+    /// A widget's first record has no rect, so what reads it takes this pass, as egui's `Grid` takes
+    /// through `request_discard`. An app that learns of the need in `App::update` keeps it for its
+    /// record, as this asks only in a record.
+    ///
     /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer
     /// a layout driver or [`App::update`](crate::App::update). Asked in the frame's second pass, it asks for the next
     /// frame. An app that asks in every pass has a relayout loop: after a few frames, it logs an
@@ -553,11 +556,7 @@ impl Ui {
     /// frame. Images land in the order they were asked for, one per frame, and the frame one
     /// lands in records.
     pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot> {
-        self.host
-            .window_frame
-            .screenshot
-            .as_deref()
-            .filter(|screenshot| screenshot.id() == id)
+        self.host.screenshot_taken(id)
     }
 
     /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.
@@ -625,7 +624,7 @@ impl Ui {
     /// Always `false` headless.
     #[inline]
     pub const fn close_requested(&self) -> bool {
-        self.host.window_frame.facts.close_requested
+        self.host.close_requested()
     }
 
     /// Veto the auto-close pending from [`Self::close_requested`].
@@ -642,24 +641,8 @@ impl Ui {
     /// logical pixels (see [`Display::system_logical_size`]), since the platform never
     /// hears about [`Self::set_user_scale`].
     pub fn window_geometry(&self) -> WindowGeometry {
-        let display = self.frame_runtime.stamp().display;
-        let physical = self
-            .host
-            .window_frame
-            .facts
-            .restored_size
-            .unwrap_or(display.physical);
-        // A window skips its frames while hidden, minimized included, so one that records has an
-        // extent, as `WindowConfig::with_geometry` asks.
-        debug_assert!(
-            physical.min_element() > 0,
-            "a recording window has a size: {physical}"
-        );
-        let scale = display.system_scale.get();
-        WindowGeometry {
-            inner_size: Size::new(physical.x as f32 / scale, physical.y as f32 / scale),
-            placement: self.host.window_frame.facts.placement,
-        }
+        self.host
+            .window_geometry(self.frame_runtime.stamp().display)
     }
 
     /// This app's debug-overlay flags, by value; modify then [`Self::set_debug_overlay`].
@@ -780,7 +763,7 @@ impl Ui {
     /// rejected, not shrunk.
     #[inline]
     pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
-        self.resources.device().texture_limit().max_dimension()
+        self.resources.max_image_dimension()
     }
 
     /// A handle on the host's clipboard, shared by every window of that host. A

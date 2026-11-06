@@ -48,6 +48,10 @@ common → primitives → {animation, text, display, window, clipboard, image_re
   `textureId` and the engine's `TextureRegistry` holds the producer. Refused: the callback carried
   as data, as egui's `PaintCallback` and iced's `shader::Primitive` do, which made `renderer` and
   `gpu` a cycle. Cost: one hash lookup per repainted `GpuView` per frame.
+- **A frame runs `App::update` once, then `App::record` in each pass.** `update` holds an
+  `UpdateCtx`, which cannot record, and answers what the record may read of the input
+  (`InputOutcome`). A host holds `FrameLoop`, which runs them, so no widget reaches the frame. Those
+  types' doc comments hold the decisions.
 - **`App` lives in `ui`**, beside the frame cycle that calls it, as winit's `ApplicationHandler`
   sits beside its event loop and eframe's `App` beside its run loop. Refused: a top-level `app`
   module for the contract alone, which made a cycle with `ui`.

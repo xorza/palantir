@@ -1,6 +1,9 @@
-//! [`InputCtx`]: what the input stage of a frame holds.
+//! [`UpdateCtx`]: what [`App::update`](crate::App::update) holds of a window.
 
+use crate::clipboard::Clipboard;
 use crate::display::Display;
+use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::image_handle::ImageHandle;
 use crate::input::Input;
 use crate::input::key_reader::KeyReader;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -9,35 +12,48 @@ use crate::primitives::input::keyboard::key_press::KeyPress;
 use crate::primitives::input::pointer::PointerEvent;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::input::watch::{KeyboardWake, PointerWake};
+use crate::primitives::paint::image::Image;
 use crate::theme::Theme;
 use crate::ui::Ui;
+use crate::ui::host_seam::HostSeam;
+use crate::ui::resources::UiResources;
 use crate::ui::state::StateMap;
+use crate::window::screenshot::{Screenshot, ScreenshotId};
+use crate::window::window_geometry::WindowGeometry;
+use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// What [`App::input`](crate::App::input) has of a window: its [`Input`], its widgets' state rows,
-/// the theme, the display and the time. A view of disjoint parts of the [`Ui`], which holds them for the record
-/// passes, as Masonry's `EventCtx` holds references to what each pass shares. Refused: the state
-/// rows on `Input`, whose logic never reads them; a `Ui` of references too, which changes each of
-/// its signatures for no gain to a caller.
+/// What [`App::update`](crate::App::update) has of a window: its [`Input`], its widgets' state
+/// rows, the host's facts, the shared resources, the theme, the display and the time. A view of
+/// disjoint parts of the [`Ui`], which holds them for the record passes, as Masonry's `EventCtx`
+/// holds references to what each pass shares. Each read's logic sits on the part that owns it, so
+/// this view and the `Ui` both call it. Refused: a `&Ui` beside it with [`Input`] moved out for the
+/// hook, where `ui.focus()` reads an empty input with no error; `Ui` over interior mutability, as
+/// egui's `Context` is, a lock on each read; `Input<'a>` over `&mut Ui` with `Deref`, a lifetime in
+/// each helper and 15 forwards; `&mut Ui` with a panic, as GPUI's `debug_assert_paint` checks its
+/// phases, which compiles wrong code; the state rows on `Input`, whose logic never reads them; a
+/// `Ui` of references too, which changes about 1500 signatures for no gain to a caller.
 ///
 /// A read that a scope routes reads from where the view was made: the window's root in
-/// [`App::input`](crate::App::input), so an overlay's claim silences it, and the record position
-/// through [`Ui::input_ctx`], so a helper reads inside an overlay it records in.
+/// [`App::update`](crate::App::update), so an overlay's claim silences it, and the record position
+/// through [`Ui::update_ctx`], so a helper reads inside an overlay it records in.
 ///
 /// It holds no part that records, so a stage that has only this cannot record:
 ///
 /// ```compile_fail,E0308
-/// # use palantir::{Button, InputCtx};
-/// fn input(ctx: &mut InputCtx<'_>) {
+/// # use palantir::{Button, UpdateCtx};
+/// fn input(ctx: &mut UpdateCtx<'_>) {
 ///     Button::new().show(ctx);
 /// }
 /// ```
 #[derive(Debug)]
-pub struct InputCtx<'a> {
+pub struct UpdateCtx<'a> {
     /// This frame's input. A helper that reads nothing a scope routes takes this alone.
     pub input: &'a mut Input,
     state: &'a mut StateMap,
+    host: &'a HostSeam,
+    resources: &'a UiResources,
     reader: KeyReader,
     theme: &'a Rc<Theme>,
     display: Display,
@@ -45,7 +61,7 @@ pub struct InputCtx<'a> {
     record_frame_id: u64,
 }
 
-impl<'a> InputCtx<'a> {
+impl<'a> UpdateCtx<'a> {
     /// The view of `ui`, from its parts.
     pub(super) fn of(ui: &'a mut Ui) -> Self {
         Self {
@@ -56,6 +72,8 @@ impl<'a> InputCtx<'a> {
             theme: ui.window_theme.shown(),
             input: &mut ui.input,
             state: &mut ui.memory.state,
+            host: &ui.host,
+            resources: &ui.resources,
         }
     }
 
@@ -131,6 +149,37 @@ impl<'a> InputCtx<'a> {
     #[inline]
     pub const fn record_frame_id(&self) -> u64 {
         self.record_frame_id
+    }
+
+    /// Whether the window manager asked this window to close this frame. See
+    /// [`Ui::close_requested`].
+    pub const fn close_requested(&self) -> bool {
+        self.host.close_requested()
+    }
+
+    /// The image `id` asked for, once it landed. See [`Ui::screenshot_taken`].
+    pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot> {
+        self.host.screenshot_taken(id)
+    }
+
+    /// The window's geometry. See [`Ui::window_geometry`].
+    pub fn window_geometry(&self) -> WindowGeometry {
+        self.host.window_geometry(self.display)
+    }
+
+    /// A handle on the host's clipboard. See [`Ui::clipboard`].
+    pub fn clipboard(&self) -> Clipboard {
+        self.resources.clipboard().clone()
+    }
+
+    /// Load `image`. See [`Ui::load_image`].
+    pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
+        self.resources.load_image(image)
+    }
+
+    /// The longest image side the device holds. See [`Ui::max_image_dimension`].
+    pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
+        self.resources.max_image_dimension()
     }
 
     /// Monotonic time of this frame. See [`Ui::now`].

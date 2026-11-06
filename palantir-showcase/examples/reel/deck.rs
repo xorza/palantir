@@ -496,7 +496,7 @@ impl Deck {
                 .show(ui, |ui| {
                     operations.clear();
                     let dock_id = id(7, "dock");
-                    DockView::scan(&mut ui.input_ctx(), dock_id, dock, operations);
+                    DockView::scan(&mut ui.update_ctx(), dock_id, dock, operations);
                     for operation in operations.drain(..) {
                         dock.apply(operation);
                     }

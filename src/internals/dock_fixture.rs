@@ -93,7 +93,7 @@ impl DockFixture {
     pub fn record_scanned(&mut self, ui: &mut Ui) {
         self.operations.clear();
         DockView::scan(
-            &mut ui.input_ctx(),
+            &mut ui.update_ctx(),
             Self::id(),
             &self.dock,
             &mut self.operations,

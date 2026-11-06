@@ -10,8 +10,8 @@
 //! | pass | when it runs | what it sees |
 //! |---|---|---|
 //! | warmup | the very first frame of a cold recorder | No input. Builds the cascade so pass A has something to hit-test. |
-//! | `App::input` | once, before pass A | Not a record: pass A's input and focus, with no way to record. |
-//! | A | always, except on a paint-only frame | The real input, including one-frame edges (`clicked`, `drag.started()`). |
+//! | `App::update` | once, before any record | Not a record: pass A's input and focus, with no way to record. On a cold recorder it runs ahead of the warmup, and reads no rects. |
+//! | A | always, except on a paint-only frame | The real input, including one-frame edges (`clicked`, `drag.started()`), unless `App::update` returned `Handled`. |
 //! | B | pass A acted or asked a relayout | The edges are gone. At most one retry. |
 //!
 //! A paint-only frame runs no record pass. The harness keeps no copy of the pointer position or
