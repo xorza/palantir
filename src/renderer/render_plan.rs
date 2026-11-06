@@ -8,7 +8,7 @@ use crate::primitives::paint::color::RgbaF32;
 pub(crate) struct RenderPlan {
     /// Surface clear color for this frame.
     pub(crate) clear: RgbaF32,
-    /// Whole surface or a damage region. `Partial` loads the backbuffer and paints inside the rects after a clear-colored pre-fill per scissor; coverage rides along for the present-path promote decision (`DIRECT_PROMOTE_COVERAGE`).
+    /// Whole surface or a damage region. `Partial` loads the backbuffer and paints inside the rects after a clear-colored pre-fill per scissor; coverage rides along for the present-path promote decision (`host::window_driver::promote_share`).
     pub(crate) damage: Damage,
 }
 

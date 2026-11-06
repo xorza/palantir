@@ -1,7 +1,8 @@
 //! The decisions a scenario can end in, each timed once, and which policy lands on which.
 
 use crate::damage::region::DAMAGE_RECT_CAP;
-use crate::damage::sweep::policy::{Decision, Policy};
+use crate::damage::region::{CollapsedDamage, DamageRegion, MergePolicy};
+use crate::damage::sweep::policy::{Decision, FrameFacts, Policy};
 use crate::primitives::geometry::rect::Rect;
 use std::fmt::Write;
 
@@ -138,7 +139,8 @@ impl Arms {
     /// repaint, every frame unmerged where the storage holds it, and for a single frame of a few
     /// rects each partition, so the best arm can be one no policy reaches. Since every policy
     /// lands on an arm, a new knob value needs no new measurement.
-    pub(super) fn of(frames: &[Vec<Rect>], surface: Rect, policies: &[Policy]) -> Self {
+    pub(super) fn of(frames: &[Vec<Rect>], facts: &FrameFacts, policies: &[Policy]) -> Self {
+        let surface = facts.surface;
         let visibles: Vec<Vec<Rect>> = frames.iter().map(|raw| visible(raw, surface)).collect();
         let mut arms: Vec<Arm> = Vec::new();
         let mut of_policy = Vec::with_capacity(policies.len());
@@ -158,12 +160,23 @@ impl Arms {
                     arms.len() - 1
                 })
         };
+        // A grid repeats each fold for every other knob, so each folds once.
+        let mut folds: Vec<(MergePolicy, Vec<CollapsedDamage>)> = Vec::new();
         for policy in policies {
-            let decisions = frames
+            let held = folds.iter().position(|(merge, _)| *merge == policy.merge);
+            let idx = held.unwrap_or_else(|| {
+                let collapsed = frames
+                    .iter()
+                    .map(|raw| DamageRegion::collapse_from(raw, policy.merge, surface))
+                    .collect();
+                folds.push((policy.merge, collapsed));
+                folds.len() - 1
+            });
+            of_policy.push(add(folds[idx]
+                .1
                 .iter()
-                .map(|raw| policy.decide(raw, surface))
-                .collect();
-            of_policy.push(add(decisions));
+                .map(|damage| policy.decide_collapsed(damage, facts))
+                .collect()));
         }
         add(vec![Decision::Full; frames.len()]);
         if visibles.iter().all(|raw| raw.len() <= DAMAGE_RECT_CAP) {

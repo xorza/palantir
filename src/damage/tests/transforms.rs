@@ -152,8 +152,7 @@ fn transform_animation_keeps_far_positions_split() {
     build(200.0, &mut h, &mut child_node);
 
     // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600. bbox 240×40 =
-    // 9600, SAH cost 6400 would merge under the default 20 000 budget; a budget
-    // of 0 pins the strict-overlap-only branch.
+    // 9600, SAH cost 6400; a budget of 0 keeps them apart whatever the default.
     let rects: Vec<Rect> = DamageRegion::collapse_from(
         &h.engines().damage.raw_rects,
         MergePolicy::with_budget(0.0),

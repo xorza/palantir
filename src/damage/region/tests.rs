@@ -105,19 +105,6 @@ fn add_keeps_pair_above_budget_split() {
     assert_eq!(region.rects().len(), 2);
 }
 
-/// An intersecting pair always merges, even at the tightest budget: separate
-/// overlapping scissor passes would paint the overlap twice.
-#[test]
-fn intersecting_pair_merges_at_zero_budget() {
-    let mut region = Fold::new(0.0);
-    // The bbox far exceeds the areas' sum, so only the intersect override merges them.
-    let a = Rect::new(40.0, 40.0, 250.0, 600.0);
-    let b = Rect::new(40.0, 140.0, 1450.0, 100.0);
-    region.add(a);
-    region.add(b);
-    assert_eq!(region.rects(), vec![a.union(b)]);
-}
-
 /// Distant disjoint rects stay split at any reasonable budget.
 #[test]
 fn add_keeps_far_corners_split() {
@@ -142,9 +129,9 @@ fn add_cascade_absorbs_through_bridge() {
     assert_eq!(region.rects(), vec![Rect::new(0.0, 0.0, 110.0, 10.0)]);
 }
 
-/// At the cap, the ninth rect triggers the min-growth fallback, which must respect the cap and re-absorb overlapped slots.
+/// At the cap, the ninth rect triggers the min-growth fallback, which must respect the cap. A slot the forced merge grows over stays its own while merging it wastes past the budget.
 #[test]
-fn min_growth_at_cap_reabsorbs_new_overlaps() {
+fn min_growth_at_cap_holds_the_cap() {
     let mut region = Fold::new(0.0);
     let corners = [
         Rect::new(0.0, 0.0, 5.0, 5.0),
@@ -191,42 +178,49 @@ fn min_growth_at_cap_reabsorbs_new_overlaps() {
 
     let extra = Rect::new(20.0, 0.0, 10.0, 10.0);
     region.add(extra);
-    let absorbed = target.union(extra).union(newly_overlapped);
+    let grown = target.union(extra);
     let rects = region.rects();
-    assert_eq!(rects.len(), DAMAGE_RECT_CAP - 1);
+    assert_eq!(rects.len(), DAMAGE_RECT_CAP);
+    assert!(rects.contains(&grown), "missing grown bbox: {rects:?}");
     assert!(
-        rects.contains(&absorbed),
-        "missing absorbed bbox: {rects:?}"
+        rects.contains(&newly_overlapped),
+        "the overlapped slot went: {rects:?}"
     );
+    assert!(grown.intersects(newly_overlapped));
     for filler in fillers {
         assert!(
             rects.contains(&filler),
             "missing filler {filler:?}: {rects:?}"
         );
     }
-    for (i, rect) in rects.iter().enumerate() {
-        for other in &rects[i + 1..] {
-            assert!(
-                !rect.intersects(*other),
-                "retained rects overlap: {rect:?}, {other:?}"
-            );
-        }
-    }
 }
 
-/// Four compact small rects collapse to one bbox under the default budget.
+/// Four compact small rects, 50 apart, under the default budget of 5,000: each row of two wastes
+/// 150 × 50 − 2 × 50 × 50 = 2,500 and merges, and the two rows would waste
+/// 150 × 150 − 2 × 150 × 50 = 7,500 and stay apart. At 8,000 they are one.
 #[test]
-fn compact_cluster_of_four_collapses_at_default_budget() {
-    let mut region = Fold::default_budget();
-    for r in [
+fn compact_cluster_of_four_merges_by_rows_at_default_budget() {
+    let squares = [
         Rect::new(100.0, 100.0, 50.0, 50.0),
         Rect::new(200.0, 100.0, 50.0, 50.0),
         Rect::new(100.0, 200.0, 50.0, 50.0),
         Rect::new(200.0, 200.0, 50.0, 50.0),
-    ] {
-        region.add(r);
-    }
-    assert_eq!(region.rects(), vec![Rect::new(100.0, 100.0, 150.0, 150.0)],);
+    ];
+    let fold = |budget_px| {
+        let mut region = Fold::new(budget_px);
+        for r in squares {
+            region.add(r);
+        }
+        region.rects()
+    };
+    assert_eq!(
+        fold(DEFAULT_PASS_BUDGET_PX),
+        vec![
+            Rect::new(100.0, 100.0, 150.0, 50.0),
+            Rect::new(100.0, 200.0, 150.0, 50.0),
+        ]
+    );
+    assert_eq!(fold(8_000.0), vec![Rect::new(100.0, 100.0, 150.0, 150.0)]);
 }
 
 /// Four rects approximating the "popup tab" overlay, swept across the budget:
@@ -308,4 +302,52 @@ fn rect_cap_bounds_the_fold() {
         ]
     );
     assert_eq!(fold(1), vec![Rect::new(0.0, 0.0, 510.0, 510.0)]);
+}
+
+/// A crosshair's strips stay apart: their bounds of 100 × 100 add
+/// 10,000 − 1,000 − 1,000 + 100 = 8,100 px², past a budget of 8,000 and under one of 8,200. A rect
+/// inside another goes at any budget, and the area counts their shared 100 px² once.
+#[test]
+fn an_overlapping_pair_merges_only_when_it_pays() {
+    let wide = Rect::new(0.0, 45.0, 100.0, 10.0);
+    let tall = Rect::new(45.0, 0.0, 10.0, 100.0);
+    let fold = |budget_px, rects: &[Rect]| {
+        let mut region = DamageRegion::default();
+        for r in rects {
+            region.add(*r, MergePolicy::with_budget(budget_px));
+        }
+        region
+    };
+    let split = fold(8_000.0, &[wide, tall]);
+    assert_eq!(split.iter_rects().count(), 2);
+    assert_eq!(split.total_area(), 1_900.0);
+    assert_eq!(
+        fold(8_200.0, &[wide, tall])
+            .iter_rects()
+            .collect::<Vec<_>>(),
+        [Rect::new(0.0, 0.0, 100.0, 100.0)]
+    );
+    let inside = Rect::new(50.0, 46.0, 4.0, 4.0);
+    assert_eq!(
+        fold(0.0, &[inside, wide]).iter_rects().collect::<Vec<_>>(),
+        [wide]
+    );
+    assert_eq!(
+        fold(0.0, &[wide, inside]).iter_rects().collect::<Vec<_>>(),
+        [wide]
+    );
+}
+
+/// Three rects sharing a pixel area are counted by strips: 10 × 10 twice, 5 px apart, share 5 × 10,
+/// and a third inside their overlap adds none, 150 in all.
+#[test]
+fn total_area_counts_overlaps_once() {
+    let mut region = DamageRegion::from_unmerged(&[
+        Rect::new(0.0, 0.0, 10.0, 10.0),
+        Rect::new(5.0, 0.0, 10.0, 10.0),
+        Rect::new(6.0, 2.0, 3.0, 3.0),
+    ]);
+    assert_eq!(region.total_area(), 150.0);
+    region = DamageRegion::from_unmerged(&[Rect::new(0.0, 0.0, 10.0, 10.0)]);
+    assert_eq!(region.total_area(), 100.0);
 }

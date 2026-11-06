@@ -382,29 +382,33 @@ pub(crate) fn atomic(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "damage", Scale::Sample);
 
     // One scenario per `DamageRegion::add` branch: **append** (8 disjoint rects, exactly under the cap), **min_growth** (16 disjoint, min-growth from the 9th; the cliff vs `append` is the cap-overflow cost), **cascade** (8 overlapping rects collapsing to 1).
-    let cases: &[(&str, Vec<Rect>)] = &[
+    let cases: &[(&str, usize, Vec<Rect>)] = &[
         (
             "append",
+            8,
             (0..8)
-                .map(|i| Rect::new(i as f32 * 1000.0, 0.0, 5.0, 5.0))
+                .map(|i| Rect::new(i as f32 * 2000.0, 0.0, 5.0, 5.0))
                 .collect(),
         ),
         (
             "min_growth",
+            8,
             (0..16)
-                .map(|i| Rect::new(i as f32 * 1000.0, 0.0, 5.0, 5.0))
+                .map(|i| Rect::new(i as f32 * 2000.0, 0.0, 5.0, 5.0))
                 .collect(),
         ),
         (
             "cascade",
+            1,
             (0..8)
                 .map(|i| Rect::new(i as f32 * 5.0, 0.0, 10.0, 10.0))
                 .collect(),
         ),
     ];
 
-    for (label, rects) in cases {
+    for (label, want, rects) in cases {
         let retained = DamageRegion::from_rects(rects).iter_rects().count();
+        assert_eq!(retained, *want, "{label} leaves another fold's branch");
         let case = format!("region_add/{label}/{}_in_{retained}_out", rects.len());
         group.bench_function(Backend::Cpu.case(&case), |b| {
             b.iter(|| black_box(DamageRegion::from_rects(rects).iter_rects().count()));
@@ -550,12 +554,10 @@ pub(crate) fn policy<S: Scene>(c: &mut Criterion, backends: &Backends) {
         group.bench_function(backend.case(name), |b| {
             let stage = Stage::SCENE;
             let raw = stage.raw_frames(&named(name));
+            let facts = stage.facts::<S>();
             let frames: Vec<PlayedFrame> = raw
                 .iter()
-                .map(|rects| {
-                    let decision = Policy::PRODUCTION.decide(rects, stage.surface());
-                    PlayedFrame::new(&decision, rects)
-                })
+                .map(|rects| PlayedFrame::new(&Policy::PRODUCTION.decide(rects, &facts), rects))
                 .collect();
             let mut player = Player::<S>::new(backends.device(TIMING), stage);
             player.settle(&frames);

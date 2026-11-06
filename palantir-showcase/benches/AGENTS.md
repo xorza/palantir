@@ -34,7 +34,7 @@ one id depth (`CaseGroup` holds it), so a filter on a level selects alike.
 ## The damage sweep
 
 `cargo damage-sweep` times what each way of repainting a frame's damage costs on this GPU, and
-scores every setting of the merge budget, the rect cap and the promote coverage against it. Its
+scores every setting of the merge budget, the rect cap and the promote rule against it. Its
 reasons sit in `src/damage/sweep/mod.rs`.
 
 ```sh
@@ -47,26 +47,34 @@ PALANTIR_BENCH_NO_GPU=1 cargo damage-sweep    # each decision, with the pair gri
 
 Each stage prints a table and a score:
 
-- **The table** has a row per scenario: the arm production takes, the cheapest arm, and the regret
-  between them, `tie` when the gap lies inside the two arms' spreads. An arm's name says which raw
+- **The table** has a row per scenario: the arm production takes, the cheapest arm, each with its
+  time and CPU half, the whole repaint, and the regret between them, read round by round, `tie`
+  when the gap lies inside the rounds' spread. An arm's name says which raw
   rects each repainted rect holds: `AB|C` is two scissors, `A*15/full` a cycle of 15 frames of `A`
   and a whole one, and past eight raw rects a count, `4 rects #2` the second arm of that count.
   A session's scenario is named by what it covers, as its counts move a few frames from run to run.
 - **The score** gives the five best policies, how many score better than production, and each knob
   swept with the others at production's values. A policy reads by its worst regret, then by its mean
   regret per frame, where a scenario of a scripted session counts its frames and a made one
-  counts one.
+  counts one. `mean %` is that regret as a share of each scenario's best frame, which compares
+  across hosts, and `longer %` the same with a frame read as its longer half.
 
 How to read it:
 
 - **A cost holds for this GPU.** A number never moves to another host; the stages only compare
   against each other on one. Run it on each GPU class, and a knob the classes disagree on is a
-  knob that wants a device rule.
+  knob that wants a device rule. A Linux board builds nothing: its binary is cross-built, as
+  `.notes/PERF.md` says.
+- **A frame's time is its two halves added**: the host until its submit returns, then the wait for
+  the device. In a window the two overlap, which `longer %` reads, and a policy that wins only one
+  way favors what its host is short of.
 - **Time alone.** A smaller repaint draws less power even at a tie.
 - **`dense` against `plain` asks whether a cost follows the draws**, as a replay per scissor makes
   it; **`dense_1x` and `dense_4k` against `dense`** whether it follows the pixels, while a budget
   counts logical px² whatever the scale.
 - **`scene` alone holds the session**, whose rects describe that screen.
+- **`scene_glass` against `scene` asks what panes add**: few rows, and much of a whole frame's cost
+  in its captures, which a partial frame leaves held.
 - **Rects scale with the surface**, so a share stays a share: `dense_4k`'s icons are 1.5× larger,
   which keeps the coverage and not the logical sizes.
 

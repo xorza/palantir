@@ -1,10 +1,10 @@
 //! Bounded set of screen-space damage rects produced by [`crate::damage::engine::DamageEngine::compute`] and consumed by the encoder filter and backend scissors.
 //!
-//! Merge policy: agglomerative clustering by the Surface Area Heuristic. A pair merges when `bbox(A,B).area() − A.area() − B.area()` (the extra pixels redrawn) is below [`MergePolicy::budget_px`], the per-pass setup cost, passed to each fold; the shipped values are [`MergePolicy::DEFAULT`].
+//! Merge policy: agglomerative clustering by the Surface Area Heuristic. A pair merges when `bbox(A,B).area() − A.area() − B.area() + shared` (the extra pixels redrawn) is below [`MergePolicy::budget_px`], the per-pass setup cost, passed to each fold; the shipped values are [`MergePolicy::DEFAULT`].
 //!
-//! `add(r)` grows a candidate by absorbing the cheapest slot until none meets the budget, then appends or, at [`MergePolicy::rect_cap`], forces the cheapest merge and resumes absorbing so no retained slots overlap. Containment is the same predicate's limit.
+//! `add(r)` grows a candidate by absorbing the cheapest slot until none meets the budget, then appends or, at [`MergePolicy::rect_cap`], forces the cheapest merge and resumes absorbing. A rect inside another goes at any budget.
 //!
-//! Intersecting pairs always merge regardless of budget: overlapping scissor passes would paint the overlap twice (`LoadOp::Load` each).
+//! Overlapping pairs are no special case: merged when their bounds waste little, and kept apart otherwise, as a crosshair's strips are, whose bounds are the whole surface. The repaint's scissors take the pixels they share once ([`RepaintScissors`](crate::renderer::repaint_scissors::RepaintScissors)). Refused: always merging them, which repainted a 4 % crosshair whole, 19 to 105 % past the cheapest frame on four GPUs (`cargo damage-sweep`).
 //!
 //! Unrelated tiny corners stay distinct (huge excess); nearby clusters collapse gradually.
 
@@ -12,11 +12,11 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::EPS;
 use tinyvec::ArrayVec;
 
-/// Maximum disjoint damage rects retained per frame; the merge policy guarantees `len ≤ DAMAGE_RECT_CAP`, so inline storage never spills.
+/// Maximum damage rects retained per frame; the merge policy guarantees `len ≤ DAMAGE_RECT_CAP`, so inline storage never spills.
 pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 
-/// Default per-pass setup cost, in extra-overdraw pixels. 20 000 px² collapses near pairs (axis-adjacent, animation-frame) without merging unrelated tiny corners; the isolated-pair GPU crossover is near 7 000 px², but clusters let each merge remove another pass.
-const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
+/// Default per-pass setup cost, in extra-overdraw pixels. 5 000 px² collapses near pairs (axis-adjacent, animation-frame) without merging unrelated tiny corners; the mean regret lies flat from 1 000 to 5 000 and rises past it on four GPUs (`cargo damage-sweep`).
+const DEFAULT_PASS_BUDGET_PX: f32 = 5_000.0;
 
 /// What a fold trades: the extra pixels one merge may redraw, and how many rects it keeps.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -35,7 +35,7 @@ impl MergePolicy {
     };
 }
 
-/// Set of disjoint damage rects in screen space. `Copy`, so [`crate::damage::Damage`] threads through `FrameOutput` and the encoder by value.
+/// Set of damage rects in screen space, which may overlap. `Copy`, so [`crate::damage::Damage`] threads through `FrameOutput` and the encoder by value.
 ///
 /// The rects and nothing else: the merge budget describes the fold, not the result, and the damaged fraction ([`CollapsedDamage`]) needs its surface.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -48,7 +48,7 @@ pub(crate) struct DamageRegion {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CollapsedDamage {
     pub(crate) region: DamageRegion,
-    /// Damaged fraction of the surface (`total_area / surface_area`), in logical space on both sides so it is DPI-independent.
+    /// Damaged fraction of the surface (`total_area / surface_area`), each pixel once, in logical space on both sides so it is DPI-independent.
     pub(crate) coverage: f32,
 }
 
@@ -89,9 +89,44 @@ impl DamageRegion {
         self.rects.iter().any(|d| r.intersects(*d))
     }
 
-    /// Sums per-rect areas; overlaps always merge and rects are surface-clipped, so no subtraction is needed.
+    /// The area the rects cover, each pixel once, as they are surface-clipped: their sum, less what
+    /// they share, in strips between the x edges where any two overlap. Bounded by the cap, and
+    /// with no overlap, as most frames have, one pass of the pairs.
     fn total_area(&self) -> f32 {
-        self.rects.iter().map(|r| r.area()).sum()
+        let rects = self.rects.as_slice();
+        let overlapped = rects
+            .iter()
+            .enumerate()
+            .any(|(i, a)| rects[i + 1..].iter().any(|b| a.intersects(*b)));
+        if !overlapped {
+            return rects.iter().map(|r| r.area()).sum();
+        }
+        let mut edges: ArrayVec<[f32; 2 * DAMAGE_RECT_CAP]> = ArrayVec::new();
+        for r in rects {
+            edges.push(r.min.x);
+            edges.push(r.max().x);
+        }
+        edges.sort_unstable_by(f32::total_cmp);
+        let mut area = 0.0;
+        for strip in edges.windows(2) {
+            let mut spans: ArrayVec<[(f32, f32); DAMAGE_RECT_CAP]> = rects
+                .iter()
+                .filter(|r| r.min.x <= strip[0] && r.max().x >= strip[1])
+                .map(|r| (r.min.y, r.max().y))
+                .collect();
+            spans.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+            let mut covered = 0.0;
+            let mut end = f32::NEG_INFINITY;
+            for (from, to) in spans {
+                let from = from.max(end);
+                if to > from {
+                    covered += to - from;
+                    end = to;
+                }
+            }
+            area += covered * (strip[1] - strip[0]);
+        }
+        area
     }
 
     /// Fold `r` into the region per the module policy, which is an argument because it describes this fold, not the result.
@@ -106,9 +141,9 @@ impl DamageRegion {
             return;
         }
         let mut candidate = r;
-        // Fused scan: early-out if a rect contains the candidate, note the first intersecting rect for an unconditional merge, and track the cheapest non-intersecting candidate for the budget grow. An intersection restarts the loop.
+        // Fused scan: early-out if a rect contains the candidate, note the first rect it contains for an unconditional merge, and track the cheapest rect for the budget grow. A merge restarts the loop.
         loop {
-            let mut intersect_idx: Option<usize> = None;
+            let mut swallowed_idx: Option<usize> = None;
             let mut best_idx: Option<usize> = None;
             let mut best_cost = f32::INFINITY;
             let cand_area = candidate.area();
@@ -117,17 +152,22 @@ impl DamageRegion {
                 if e.contains_rect(candidate) {
                     return;
                 }
-                if candidate.intersects(e) {
-                    intersect_idx = Some(i);
+                if candidate.contains_rect(e) {
+                    swallowed_idx = Some(i);
                     break;
                 }
-                let cost = candidate.union(e).area() - cand_area - e.area();
+                let shared = if candidate.intersects(e) {
+                    candidate.clamp_to(e).area()
+                } else {
+                    0.0
+                };
+                let cost = candidate.union(e).area() - cand_area - e.area() + shared;
                 if cost < best_cost {
                     best_cost = cost;
                     best_idx = Some(i);
                 }
             }
-            if let Some(i) = intersect_idx {
+            if let Some(i) = swallowed_idx {
                 let e = self.rects.swap_remove(i);
                 candidate = candidate.union(e);
                 continue;
@@ -174,8 +214,8 @@ pub(crate) mod internals {
             region
         }
 
-        /// A region of exactly `rects`, with no fold: they may overlap, which the repaint's
-        /// scissors keep disjoint, so a damage sweep can measure a split no fold keeps.
+        /// A region of exactly `rects`, with no fold, so a damage sweep can measure a split no fold
+        /// keeps.
         pub(crate) fn from_unmerged(rects: &[Rect]) -> Self {
             Self {
                 rects: rects.iter().copied().collect::<ArrayVec<_>>(),

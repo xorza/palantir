@@ -56,13 +56,13 @@ pub(crate) mod sweep;
 /// Coverage fraction above which [`Damage::new`] collapses straight to
 /// [`Damage::Full`]: past this, per-node filter, per-pass scissor, `Load` and
 /// backbuffer-copy bookkeeping costs more than redrawing everything. Checked
-/// against the coverage `DamageRegion::collapse_from` measured. The renderer's
-/// own lower promote threshold (`DIRECT_PROMOTE_COVERAGE`) is a present-path
-/// call kept out of this one.
+/// against the coverage `DamageRegion::collapse_from` measured. The desktop
+/// present path's promote share (`host::window_driver::promote_share`) is its own
+/// call, and reads below this on all but the densest screens.
 ///
-/// It can sit this high because the region keeps disjoint rects disjoint, so
-/// `coverage` is the sum of per-rect areas, not one bounding union: two tiny
-/// corners score near 0 %.
+/// It can sit this high because the region keeps far rects apart, so `coverage`
+/// is the area they cover, not one bounding union: two tiny corners score near
+/// 0 %.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
 /// Whether a frame's damage diffs against the last presented frame.

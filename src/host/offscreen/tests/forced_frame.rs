@@ -1,6 +1,7 @@
 //! A forced frame paints a decision on a still screen, as a damage sweep times it.
 
 use crate::damage::Damage;
+use crate::damage::dirty_panes::DirtyPanes;
 use crate::damage::region::DamageRegion;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
@@ -146,5 +147,11 @@ fn a_forced_frame_stales_the_panes_its_change_touches() {
         captures(partial(&[far]), &[far]),
         0,
         "the mark lasts one frame"
+    );
+    captures(Damage::Full, &[PANE]);
+    assert_eq!(
+        *host.window.driver.engines().damage.dirty_panes(),
+        DirtyPanes::default(),
+        "a whole frame reports no stale pane"
     );
 }

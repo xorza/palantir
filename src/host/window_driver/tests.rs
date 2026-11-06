@@ -54,15 +54,18 @@ const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
 mod present_mode_tests {
     use crate::damage::Damage;
     use crate::damage::region::{DamageRegion, MergePolicy};
-    use crate::damage::sweep::policy::{Decision, Policy};
+    use crate::damage::sweep::policy::{Decision, FrameFacts, Policy};
     use crate::damage::sweep::scenario::catalog;
     use crate::damage::sweep::stage::Stage;
     use crate::host::window_driver::PresentPath::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
-    use crate::host::window_driver::{PresentPath, present_path};
+    use crate::host::window_driver::{
+        PresentFacts, PresentPath, PresentStrategy, present_path, promote_share, rows_per_mpx,
+    };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
+    use glam::UVec2;
 
     /// 100×100 logical surface (10_000 px²) the partial fixtures collapse against:
     /// a `w×h` rect has `coverage = w·h / 10_000`.
@@ -87,42 +90,88 @@ mod present_mode_tests {
             damage: Damage::Partial(damage),
         }
     }
+    /// The path of `plan` on a scene whose promote share is 0.4.
+    fn path(plan: Option<RenderPlan>, strategy: PresentStrategy, fresh: bool) -> PresentPath {
+        present_path(
+            plan,
+            strategy,
+            PresentFacts {
+                backbuffer_fresh: fresh,
+                promote_share: Some(0.4),
+            },
+        )
+    }
+
+    /// `d / (d + 400)`: 400 rows on a million pixels read one half, 1,200 three quarters, none
+    /// nothing. Twice the rows on twice the pixels is the same density. Panes over all of the
+    /// surface count for 300 rows on a million pixels: 300 / 700 alone, 700 / 1,100 beside 400
+    /// rows, and half the surface half of that.
+    #[test]
+    fn the_promote_share_follows_the_scenes_density() {
+        let mpx = UVec2::new(1000, 1000);
+        assert_eq!(promote_share(400, 0.0, mpx), 0.5);
+        assert_eq!(promote_share(1200, 0.0, mpx), 0.75);
+        assert_eq!(promote_share(0, 0.0, mpx), 0.0);
+        assert_eq!(promote_share(800, 0.0, UVec2::new(2000, 1000)), 0.5);
+        assert_eq!(promote_share(0, 1.0, mpx), 300.0 / 700.0);
+        assert_eq!(promote_share(400, 1.0, mpx), 700.0 / 1100.0);
+        assert_eq!(promote_share(0, 0.5, mpx), 150.0 / 550.0);
+    }
+
     const DIRECT_FULL: PresentPath = Direct(RenderPlan {
         clear: RgbaF32::BLACK,
         damage: Damage::Full,
     });
 
     /// A sweep's production policy decides each scenario as the frame path does: the damage's
-    /// classification, then the desktop's present path, on a backbuffer that holds the last frame.
+    /// classification, then the desktop's present path, on a backbuffer that holds the last frame,
+    /// on a thin screen and on one so dense its share passes the full-repaint threshold.
     #[test]
     fn the_sweeps_production_policy_is_the_frame_paths() {
         let stage = Stage::SCENE;
         let surface = stage.surface();
-        for scenario in catalog() {
-            for raw in stage.raw_frames(&scenario) {
-                let collapsed = DamageRegion::collapse_from(&raw, MergePolicy::DEFAULT, surface);
-                let damage = Damage::new(collapsed).expect("a scenario damages something");
-                let plan = RenderPlan {
-                    clear: RgbaF32::BLACK,
-                    damage,
-                };
-                let real = match present_path(Some(plan), DirectAdaptive, true) {
-                    Direct(RenderPlan {
-                        damage: Damage::Full,
-                        ..
-                    }) => Decision::Full,
-                    ViaBackbuffer(RenderPlan {
-                        damage: Damage::Partial(damage),
-                        ..
-                    }) => Decision::partial(damage.region.iter_rects().collect()),
-                    other => panic!("{}: {other:?}", scenario.name),
-                };
-                assert_eq!(
-                    Policy::PRODUCTION.decide(&raw, surface),
-                    real,
-                    "{}",
-                    scenario.name
-                );
+        for (row_count, pane_share) in [(40_usize, 0.0), (400, 0.0), (400, 0.6), (40_000, 0.0)] {
+            let promote_share = promote_share(row_count, pane_share, stage.physical);
+            let facts = FrameFacts {
+                surface,
+                rows_per_mpx: rows_per_mpx(row_count, stage.physical),
+                pane_share,
+            };
+            for scenario in catalog() {
+                for raw in stage.raw_frames(&scenario) {
+                    let collapsed =
+                        DamageRegion::collapse_from(&raw, MergePolicy::DEFAULT, surface);
+                    let damage = Damage::new(collapsed).expect("a scenario damages something");
+                    let plan = RenderPlan {
+                        clear: RgbaF32::BLACK,
+                        damage,
+                    };
+                    let path = present_path(
+                        Some(plan),
+                        DirectAdaptive,
+                        PresentFacts {
+                            backbuffer_fresh: true,
+                            promote_share: Some(promote_share),
+                        },
+                    );
+                    let real = match path {
+                        Direct(RenderPlan {
+                            damage: Damage::Full,
+                            ..
+                        }) => Decision::Full,
+                        ViaBackbuffer(RenderPlan {
+                            damage: Damage::Partial(damage),
+                            ..
+                        }) => Decision::partial(damage.region.iter_rects().collect()),
+                        other => panic!("{}: {other:?}", scenario.name),
+                    };
+                    assert_eq!(
+                        Policy::PRODUCTION.decide(&raw, &facts),
+                        real,
+                        "{} at {row_count} rows",
+                        scenario.name
+                    );
+                }
             }
         }
     }
@@ -133,14 +182,14 @@ mod present_mode_tests {
         // copies it out.
         for fresh in [false, true] {
             assert_eq!(
-                present_path(Some(full()), BackbufferCopy, fresh),
+                path(Some(full()), BackbufferCopy, fresh),
                 ViaBackbuffer(full())
             );
             assert_eq!(
-                present_path(Some(partial(10.0, 10.0)), BackbufferCopy, fresh),
+                path(Some(partial(10.0, 10.0)), BackbufferCopy, fresh),
                 ViaBackbuffer(partial(10.0, 10.0))
             );
-            assert_eq!(present_path(None, BackbufferCopy, fresh), SkipCopy);
+            assert_eq!(path(None, BackbufferCopy, fresh), SkipCopy);
         }
     }
 
@@ -151,20 +200,17 @@ mod present_mode_tests {
     fn retained_paints_every_frame_into_the_target() {
         for fresh in [false, true] {
             for plan in [full(), partial(10.0, 10.0), partial(90.0, 90.0)] {
-                assert_eq!(present_path(Some(plan), Retained, fresh), Direct(plan));
+                assert_eq!(path(Some(plan), Retained, fresh), Direct(plan));
             }
-            assert_eq!(present_path(None, Retained, fresh), SkipNoop);
+            assert_eq!(path(None, Retained, fresh), SkipNoop);
         }
     }
 
     #[test]
     fn direct_adaptive_full_and_skip() {
         for fresh in [false, true] {
-            assert_eq!(
-                present_path(Some(full()), DirectAdaptive, fresh),
-                Direct(full())
-            );
-            assert_eq!(present_path(None, DirectAdaptive, fresh), SkipNoop);
+            assert_eq!(path(Some(full()), DirectAdaptive, fresh), Direct(full()));
+            assert_eq!(path(None, DirectAdaptive, fresh), SkipNoop);
         }
     }
 
@@ -172,11 +218,11 @@ mod present_mode_tests {
     fn direct_adaptive_small_partial_tracks_backbuffer_freshness() {
         let small = partial(10.0, 10.0);
         assert_eq!(
-            present_path(Some(small), DirectAdaptive, true),
+            path(Some(small), DirectAdaptive, true),
             ViaBackbuffer(small)
         );
         assert_eq!(
-            present_path(Some(small), DirectAdaptive, false),
+            path(Some(small), DirectAdaptive, false),
             ViaBackbuffer(full())
         );
     }
@@ -185,10 +231,7 @@ mod present_mode_tests {
     fn direct_adaptive_large_partial_promotes_to_direct() {
         let large = partial(80.0, 80.0);
         for fresh in [false, true] {
-            assert_eq!(
-                present_path(Some(large), DirectAdaptive, fresh),
-                DIRECT_FULL
-            );
+            assert_eq!(path(Some(large), DirectAdaptive, fresh), DIRECT_FULL);
         }
     }
 
@@ -200,14 +243,14 @@ mod present_mode_tests {
         for (w, h) in [(63.0, 63.0), (40.0, 100.0)] {
             assert!(
                 matches!(
-                    present_path(Some(partial(w, h)), DirectAdaptive, true),
+                    path(Some(partial(w, h)), DirectAdaptive, true),
                     ViaBackbuffer(_)
                 ),
                 "{w}×{h}",
             );
         }
         assert_eq!(
-            present_path(Some(partial(64.0, 64.0)), DirectAdaptive, true),
+            path(Some(partial(64.0, 64.0)), DirectAdaptive, true),
             DIRECT_FULL
         );
     }

@@ -258,6 +258,39 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   `backdrop_frame/gpu/blur/sliding` 699 → 656 µs (−6.2 %), `glass/under` −4.5 %,
   `modal/scrolling` −3.4 %; the rest within 1 %.
 
+- **A frame's repaint follows its scene and its rects' waste** (`cargo damage-sweep`, which holds
+  the catalog, the grid and how to read it). A pair of rects merges by the pixels its bounds add
+  past what the two cover, 5,000 px² at most, overlapping or not. A frame repaints whole past a
+  share of `d / (d + 400)`, of the density `d`: the rows that draw on the surface per million
+  physical pixels, and 300 for all of the surface under pane footprints. Sum of CPU and GPU, each
+  scenario's regret past its cheapest decision as a percent of that frame, over six stages of
+  content, scale and surface; `scene_glass`, added after, is without and with the pane term:
+
+  | host | mean, one share 0.4 and a 20,000 px² budget | mean, now | worst, then | worst, now | `scene_glass`, no pane term | with it |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | mac | 3.6 | 0.7 | 37 | 17 | 10.8 | 0.6 |
+  | handheld | 17.8 | 2.2 | 137 | 78 | 15.1 | 1.3 |
+  | windows | 3.7 | 0.4 | 105 | 30 | 12.3 | 0.0 |
+  | board | 15.8 | 2.8 | 243 | 42 | 14.6 | 0.6 |
+
+  Without the bare `plain` stage, the mean goes from 4.0 to 1.1. The worst left is a caret on a
+  screen of two rows, which repaints whole. Rows count as they draw: a child marker draws nothing,
+  and a frame culls a row off the surface however it repaints, so a long list or a zoomed-out graph
+  is no dense screen. The pane term's 200 scored 0.06 better than its 300, and reads a share of
+  about 0.26 on the screen where a toolbar's and a sidebar's stale rects cover 24 %, a cliff of 65
+  to 104 % a step past it. Refused, each from the best policy of its host group, read before rows
+  counted as they draw:
+  - always merging overlapping rects: a 4 % crosshair repainted whole, 19 to 105 % past its best
+    frame, mean 2.8 against 0.7 on mac, handheld and windows;
+  - the bounds as the measure, or whole past half the surface in bounds, as a tiler holds no canvas
+    there: 8.7 and 9.1 against 0.7, and on the board too, 4.7 and 4.6 against 1.1, as far small
+    rects read as the whole surface;
+  - a lower share on a stale backbuffer: at half, the board 2.7 → 1.1, the handheld 1.8 → 5.0;
+  - a first whole frame through the backbuffer, a second route and its state: 0.86 → 0.74, the
+    board 1.5 → 1.1;
+  - a floor under the share: 0.1 read 3.2 against 0.8 on mac, handheld and windows;
+  - a rect cap of 4: within 0.1 of 8, whose storage exists.
+
 ## Open
 
 - **A depth-ordered opaque pass on Apple GPUs** (run 10): with no quad blending the fanless's

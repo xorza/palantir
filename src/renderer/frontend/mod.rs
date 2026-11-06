@@ -9,6 +9,7 @@ pub(crate) mod paint_sink;
 pub(crate) mod payload;
 
 use crate::cascade::Cascade;
+use crate::cascade::paint::PaintRows;
 use crate::cascade::pane_row::PaneRow;
 use crate::common::tracy;
 use crate::display::frame_stamp::FrameStamp;
@@ -42,6 +43,35 @@ pub(crate) struct FrameScene<'a> {
 }
 
 impl FrameScene<'_> {
+    /// How many paint rows draw on the surface, over every plane: a child marker draws nothing, and
+    /// a frame culls a row off the surface however it repaints.
+    pub(crate) fn visible_row_count(&self) -> usize {
+        let surface = self.stamp.display.logical_rect();
+        self.forest
+            .trees
+            .iter_paint_order()
+            .map(|(plane, _)| {
+                self.cascade.planes[plane]
+                    .paint_arena
+                    .rows
+                    .screens()
+                    .filter(|screen| screen.intersects(surface))
+                    .count()
+            })
+            .sum()
+    }
+
+    /// The share of the surface the scene's pane footprints hold, each pane's counted alone, so
+    /// panes that overlap can read past one.
+    pub(crate) fn pane_share(&self) -> f32 {
+        let surface = self.stamp.display.logical_rect();
+        let area: f32 = self
+            .panes()
+            .map(|pane| pane.footprint.clamp_to(surface).area())
+            .sum();
+        area / surface.area()
+    }
+
     /// The scene's panes, planes and panes in paint order.
     pub(crate) fn panes(&self) -> impl Iterator<Item = &PaneRow> {
         self.forest

@@ -2,7 +2,7 @@
 
 use crate::damage::sweep::arms::visible;
 use crate::damage::sweep::error::SweepError;
-use crate::damage::sweep::policy::{Decision, Policy, union_area};
+use crate::damage::sweep::policy::{Decision, FrameFacts, Policy, union_area};
 use crate::damage::sweep::scenario::{Ranqd1, Scenario};
 use crate::damage::sweep::score::{PolicyScore, StageResults};
 use crate::damage::sweep::stage::Stage;
@@ -11,6 +11,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
+use std::time::Duration;
 
 /// How a column of a table lines up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,8 +57,14 @@ fn table(out: &mut dyn Write, heads: &[(&str, Align)], rows: &[Vec<String>]) -> 
     Ok(())
 }
 
+/// A time's µs in a CSV cell.
+fn us_cell(time: Duration) -> String {
+    format!("{:.2}", time.as_secs_f64() * 1e6)
+}
+
 /// A time in whole µs, with one digit under 100 µs, where the digit still says something.
-fn us(value: f64) -> String {
+fn us(time: Duration) -> String {
+    let value = time.as_secs_f64() * 1e6;
     if value < 100.0 {
         format!("{value:.1}")
     } else {
@@ -66,11 +73,11 @@ fn us(value: f64) -> String {
 }
 
 /// A regret: `tie` when it lies within the noise, which a `0` would read as measured to be none.
-fn regret_text(regret_us: f64) -> String {
-    if regret_us > 0.0 {
-        us(regret_us)
-    } else {
+fn regret_text(regret: Duration) -> String {
+    if regret.is_zero() {
         "tie".into()
+    } else {
+        us(regret)
     }
 }
 
@@ -94,7 +101,7 @@ fn percent(share: f32) -> String {
 
 /// How many distinct decisions `raw` ends in over the orders a fold can take it: every order up to
 /// four rects, past that a fixed set of shuffles, as the orders outgrow any run.
-pub(super) fn order_outcomes(raw: &[Rect], policy: &Policy, surface: Rect) -> usize {
+pub(super) fn order_outcomes(raw: &[Rect], policy: &Policy, facts: &FrameFacts) -> usize {
     const SHUFFLES: u32 = 24;
     fn permutations(rects: &mut Vec<Rect>, from: usize, each: &mut impl FnMut(&[Rect])) {
         if from + 1 >= rects.len() {
@@ -109,7 +116,7 @@ pub(super) fn order_outcomes(raw: &[Rect], policy: &Policy, surface: Rect) -> us
     }
     let mut seen: Vec<Decision> = Vec::new();
     let mut note = |rects: &[Rect]| {
-        let decision = policy.decide(rects, surface);
+        let decision = policy.decide(rects, facts);
         if !seen.contains(&decision) {
             seen.push(decision);
         }
@@ -146,9 +153,10 @@ fn repaint_share(decision: &Decision, surface: Rect) -> f32 {
 pub(super) fn decisions(
     out: &mut impl Write,
     stage: Stage,
+    facts: &FrameFacts,
     scenarios: &[Scenario],
 ) -> io::Result<()> {
-    let surface = stage.surface();
+    let surface = facts.surface;
     let production = Policy::PRODUCTION;
     let mut rows: Vec<Vec<String>> = Vec::new();
     for scenario in scenarios {
@@ -158,7 +166,7 @@ pub(super) fn decisions(
             if position > 0 && frames[position - 1] == *raw {
                 continue;
             }
-            let decision = production.decide(raw, surface);
+            let decision = production.decide(raw, facts);
             rows.push(vec![
                 if position == 0 {
                     scenario.name.clone()
@@ -172,17 +180,18 @@ pub(super) fn decisions(
                 },
                 percent(changed_share(raw, surface)),
                 percent(repaint_share(&decision, surface)),
-                order_outcomes(raw, &production, surface).to_string(),
+                order_outcomes(raw, &production, facts).to_string(),
             ]);
         }
     }
     writeln!(
         out,
-        "\nwhat production decides on {}: budget {} px², cap {}, promote above {:.2}",
+        "\nwhat production decides on {}: budget {} px², cap {}, promote {}, {:.0} rows per Mpx",
         stage.name,
         budget_text(production.merge.budget_px),
         production.merge.rect_cap,
-        production.promote_coverage
+        production.promote,
+        facts.rows_per_mpx,
     )?;
     writeln!(
         out,
@@ -211,28 +220,31 @@ pub(super) fn arms_table(out: &mut impl Write, results: &StageResults) -> io::Re
         .zip(&results.arms)
         .map(|(costs, arms)| {
             let picked = costs.of_policy[results.production];
-            let best = costs.best();
+            let standing = costs.sum();
+            let best = standing.best;
             let whole = arms
                 .iter()
                 .position(|arm| arm.frames.iter().all(|frame| *frame == Decision::Full))
                 .expect("a scenario has a whole repaint");
-            let regret = costs.regret_us(picked);
-            let pct = regret / costs.costs[best].mean_us * 100.0;
+            let regret = standing.regrets[picked].regret;
+            let pct = regret.as_secs_f64() / costs.costs[best].sum().mean.as_secs_f64() * 100.0;
             vec![
                 costs.name.clone(),
                 arms.len().to_string(),
                 arms[picked].label.clone(),
-                us(costs.costs[picked].mean_us),
+                us(costs.costs[picked].sum().mean),
+                us(costs.costs[picked].cpu),
                 arms[best].label.clone(),
-                us(costs.costs[best].mean_us),
-                us(costs.costs[whole].mean_us),
+                us(costs.costs[best].sum().mean),
+                us(costs.costs[best].cpu),
+                us(costs.costs[whole].sum().mean),
                 regret_text(regret),
-                if regret > 0.0 {
-                    format!("{pct:.1}")
-                } else {
+                if regret.is_zero() {
                     String::new()
+                } else {
+                    format!("{pct:.1}")
                 },
-                us(costs.costs[picked].spread_us + costs.costs[best].spread_us),
+                us(standing.regrets[picked].noise),
             ]
         })
         .collect();
@@ -243,8 +255,10 @@ pub(super) fn arms_table(out: &mut impl Write, results: &StageResults) -> io::Re
             ("arms", Align::Right),
             ("production", Align::Left),
             ("µs", Align::Right),
+            ("cpu", Align::Right),
             ("best", Align::Left),
             ("µs", Align::Right),
+            ("cpu", Align::Right),
             ("full µs", Align::Right),
             ("regret µs", Align::Right),
             ("%", Align::Right),
@@ -259,12 +273,14 @@ fn policy_row(policy: &Policy, score: &PolicyScore, results: &StageResults) -> V
     vec![
         budget_text(policy.merge.budget_px),
         policy.merge.rect_cap.to_string(),
-        format!("{:.1}", policy.promote_coverage),
-        regret_text(score.worst_regret_us),
+        policy.promote.to_string(),
+        regret_text(score.worst_regret),
         score
             .worst_scenario
             .map_or_else(String::new, |idx| results.costs[idx].name.clone()),
-        us(score.mean_regret_us),
+        us(score.mean_regret),
+        format!("{:.2}", score.mean_regret_pct),
+        format!("{:.2}", score.mean_longer_pct),
         if *policy == Policy::PRODUCTION {
             "production".into()
         } else {
@@ -273,13 +289,15 @@ fn policy_row(policy: &Policy, score: &PolicyScore, results: &StageResults) -> V
     ]
 }
 
-const POLICY_HEADS: [(&str, Align); 7] = [
+const POLICY_HEADS: [(&str, Align); 9] = [
     ("budget px²", Align::Right),
     ("cap", Align::Right),
     ("promote", Align::Right),
     ("worst µs", Align::Right),
     ("at", Align::Left),
     ("mean µs", Align::Right),
+    ("mean %", Align::Right),
+    ("longer %", Align::Right),
     ("", Align::Left),
 ];
 
@@ -289,13 +307,9 @@ fn ranked(scores: &[PolicyScore]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..scores.len()).collect();
     order.sort_by(|&a, &b| {
         scores[a]
-            .worst_regret_us
-            .total_cmp(&scores[b].worst_regret_us)
-            .then(
-                scores[a]
-                    .mean_regret_us
-                    .total_cmp(&scores[b].mean_regret_us),
-            )
+            .worst_regret
+            .cmp(&scores[b].worst_regret)
+            .then(scores[a].mean_regret.cmp(&scores[b].mean_regret))
     });
     order
 }
@@ -303,15 +317,9 @@ fn ranked(scores: &[PolicyScore]) -> Vec<usize> {
 /// How many policies score strictly better than the one at `idx`: its rank alone would count the
 /// ties an unmoved score leaves in front of it.
 pub(super) fn beating(scores: &[PolicyScore], idx: usize) -> usize {
-    let key = |score: &PolicyScore| (score.worst_regret_us, score.mean_regret_us);
-    let (worst, mean) = key(&scores[idx]);
-    scores
-        .iter()
-        .map(key)
-        .filter(|&(other_worst, other_mean)| {
-            other_worst < worst || (other_worst == worst && other_mean < mean)
-        })
-        .count()
+    let key = |score: &PolicyScore| (score.worst_regret, score.mean_regret);
+    let own = key(&scores[idx]);
+    scores.iter().map(key).filter(|other| *other < own).count()
 }
 
 /// Print the best policies of `policies`, how many beat production, and each knob swept alone with the
@@ -347,15 +355,20 @@ pub(super) fn policies_table(
             .collect();
         table(out, &POLICY_HEADS, &rows)
     };
+    let same_but = |p: &Policy, knob: &dyn Fn(&mut Policy)| {
+        let mut p = *p;
+        knob(&mut p);
+        p == production
+    };
     sweep(out, "budget alone", &|p| {
-        p.merge.rect_cap == production.merge.rect_cap
-            && p.promote_coverage == production.promote_coverage
+        same_but(p, &|p| p.merge.budget_px = production.merge.budget_px)
     })?;
     sweep(out, "cap alone", &|p| {
-        p.merge.budget_px == production.merge.budget_px
-            && p.promote_coverage == production.promote_coverage
+        same_but(p, &|p| p.merge.rect_cap = production.merge.rect_cap)
     })?;
-    sweep(out, "promote alone", &|p| p.merge == production.merge)
+    sweep(out, "promote alone", &|p| {
+        same_but(p, &|p| p.promote = production.promote)
+    })
 }
 
 /// One stage's CSV rows: an arm per frame position, and a policy per line.
@@ -370,21 +383,31 @@ impl Csv {
     pub(super) fn add(&mut self, policies: &[Policy], results: &StageResults) {
         let stage = results.stage;
         for (costs, arms) in results.costs.iter().zip(&results.arms) {
-            let best = costs.best();
             for (idx, (arm, cost)) in arms.iter().zip(&costs.costs).enumerate() {
-                for (position, position_us) in cost.position_us.iter().enumerate() {
+                let standing = costs.sum();
+                for (position, (position_time, frame)) in
+                    cost.sum().positions.iter().zip(&arm.frames).enumerate()
+                {
+                    let (rect_count, rect_area) = match frame {
+                        Decision::Full => (0, 0.0),
+                        Decision::Partial(rects) => (rects.len(), union_area(rects)),
+                    };
                     writeln!(
                         self.arms,
-                        "{},{},{},{},{},{},{},{position_us:.2},{:.2},{:.2}",
+                        "{},{},{},{},{},{},{},{},{},{},{},{},{},{rect_count},{rect_area:.0}",
                         stage.name,
                         costs.name,
                         costs.weight,
                         arm.label,
                         idx == costs.of_policy[results.production],
-                        idx == best,
+                        idx == standing.best,
                         position,
-                        cost.mean_us,
-                        cost.spread_us,
+                        us_cell(*position_time),
+                        us_cell(cost.sum().mean),
+                        us_cell(cost.cpu),
+                        us_cell(cost.gpu),
+                        us_cell(standing.regrets[idx].regret),
+                        us_cell(standing.regrets[idx].noise),
                     )
                     .expect("a string takes every write");
                 }
@@ -393,16 +416,19 @@ impl Csv {
         for (policy, score) in policies.iter().zip(&results.scores) {
             writeln!(
                 self.policies,
-                "{},{},{},{},{:.2},{},{:.2}",
+                "{},{},{},{},{},{:.2},{},{},{:.3},{:.3}",
                 stage.name,
                 budget_text(policy.merge.budget_px),
                 policy.merge.rect_cap,
-                policy.promote_coverage,
-                score.worst_regret_us,
+                policy.promote,
+                us_cell(score.worst_regret),
+                score.worst_regret_pct,
                 score
                     .worst_scenario
                     .map_or("", |idx| results.costs[idx].name.as_str()),
-                score.mean_regret_us,
+                us_cell(score.mean_regret),
+                score.mean_regret_pct,
+                score.mean_longer_pct,
             )
             .expect("a string takes every write");
         }
@@ -418,12 +444,12 @@ impl Csv {
         };
         write(
             "arms.csv",
-            "stage,scenario,weight,arm,production,best,position,position_us,mean_us,spread_us",
+            "stage,scenario,weight,arm,production,best,position,position_us,mean_us,cpu_us,gpu_us,regret_us,noise_us,rect_count,rect_area",
             &self.arms,
         )?;
         write(
             "policies.csv",
-            "stage,budget_px,rect_cap,promote,worst_regret_us,worst_scenario,mean_regret_us",
+            "stage,budget_px,rect_cap,promote,worst_regret_us,worst_regret_pct,worst_scenario,mean_regret_us,mean_regret_pct,mean_longer_pct",
             &self.policies,
         )
     }
@@ -434,14 +460,17 @@ mod tests {
     use crate::damage::region::{DAMAGE_RECT_CAP, MergePolicy};
     use crate::damage::sweep::arms::Arm;
     use crate::damage::sweep::error::SweepError;
-    use crate::damage::sweep::policy::{Decision, Policy};
+    use crate::damage::sweep::policy::{Decision, Policy, Promote};
     use crate::damage::sweep::report::{
-        Align, Csv, budget_text, changed_share, percent, ranked, regret_text, table, us,
+        Align, Csv, budget_text, changed_share, percent, ranked, regret_text, table, us, us_cell,
     };
-    use crate::damage::sweep::score::{ArmCost, PolicyScore, ScenarioCosts, StageResults};
+    use crate::damage::sweep::score::{
+        ArmCost, MetricCost, PolicyScore, ScenarioCosts, StageResults,
+    };
     use crate::damage::sweep::stage::Stage;
     use crate::primitives::geometry::rect::Rect;
     use std::error::Error;
+    use std::time::Duration;
     use std::{env, fs, process};
 
     /// Each column as wide as its widest cell, its numbers to the right, no trailing blanks.
@@ -475,10 +504,11 @@ mod tests {
         assert_eq!(percent(0.0), "0.00");
         assert_eq!(percent(0.0001), "0.01");
         assert_eq!(percent(1.0), "100.00");
-        assert_eq!(regret_text(0.0), "tie");
-        assert_eq!(regret_text(32.74), "32.7");
-        assert_eq!(us(99.94), "99.9");
-        assert_eq!(us(100.4), "100");
+        assert_eq!(regret_text(Duration::ZERO), "tie");
+        assert_eq!(regret_text(Duration::from_nanos(32_740)), "32.7");
+        assert_eq!(us(Duration::from_nanos(99_940)), "99.9");
+        assert_eq!(us(Duration::from_nanos(100_400)), "100");
+        assert_eq!(us_cell(Duration::from_nanos(1_234)), "1.23");
         assert_eq!(budget_text(20_000.0), "20000");
         assert_eq!(budget_text(f32::INFINITY), "inf");
     }
@@ -499,13 +529,16 @@ mod tests {
     /// The lowest worst first, the mean only between equals, however low it is elsewhere.
     #[test]
     fn policies_rank_by_their_worst_then_their_mean() {
-        let of = |worst_regret_us, mean_regret_us| PolicyScore {
-            worst_regret_us,
+        let of = |worst_us, mean_us| PolicyScore {
+            worst_regret: Duration::from_micros(worst_us),
+            worst_regret_pct: 0.0,
             worst_scenario: None,
-            mean_regret_us,
+            mean_regret: Duration::from_micros(mean_us),
+            mean_regret_pct: 0.0,
+            mean_longer_pct: 0.0,
         };
         assert_eq!(
-            ranked(&[of(5.0, 1.0), of(4.0, 9.0), of(5.0, 0.5), of(6.0, 0.0)]),
+            ranked(&[of(5, 2), of(4, 9), of(5, 1), of(6, 0)]),
             [1, 2, 0, 3]
         );
     }
@@ -540,60 +573,80 @@ mod tests {
     /// A row per arm and frame position, marked by who takes it, and a row per policy.
     #[test]
     fn the_csv_holds_each_position_and_policy() {
-        let cost = |position_us: Vec<f64>, mean_us, spread_us| ArmCost {
-            position_us,
-            mean_us,
-            spread_us,
+        let us = Duration::from_micros;
+        let cost = |positions: [u64; 2], mean_us: u64, cpu_us: u64| {
+            let metric = MetricCost {
+                positions: positions.map(us).to_vec(),
+                mean: us(mean_us),
+                rounds: vec![us(mean_us)],
+            };
+            ArmCost {
+                metrics: [metric.clone(), metric],
+                cpu: us(cpu_us),
+                gpu: us(mean_us - cpu_us),
+            }
         };
-        let arm = |label: &str| Arm {
+        let arm = |label: &str, frames| Arm {
             label: label.to_owned(),
-            frames: vec![Decision::Full; 2],
+            frames,
         };
+        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
         let other = Policy {
             merge: MergePolicy {
                 budget_px: f32::INFINITY,
                 rect_cap: DAMAGE_RECT_CAP,
             },
-            promote_coverage: 0.5,
+            promote: Promote::Coverage(0.5),
         };
         let results = StageResults {
             stage: Stage::SCENE,
             production: 0,
-            costs: vec![ScenarioCosts {
-                name: "seq/a".to_owned(),
-                weight: 3,
-                costs: vec![
-                    cost(vec![10.0, 30.0], 20.0, 1.0),
-                    cost(vec![12.0, 14.0], 13.0, 0.5),
-                ],
-                of_policy: vec![0, 1],
-            }],
-            arms: vec![vec![arm("A/full"), arm("full*2")]],
+            costs: vec![ScenarioCosts::new(
+                "seq/a".to_owned(),
+                3,
+                vec![cost([10, 30], 20, 5), cost([12, 14], 13, 4)],
+                vec![0, 1],
+            )],
+            arms: vec![vec![
+                arm(
+                    "A/full",
+                    vec![Decision::partial(vec![rect]), Decision::Full],
+                ),
+                arm("full*2", vec![Decision::Full; 2]),
+            ]],
             scores: vec![
                 PolicyScore {
-                    worst_regret_us: 7.0,
+                    worst_regret: us(7),
+                    worst_regret_pct: 53.846,
                     worst_scenario: Some(0),
-                    mean_regret_us: 7.0,
+                    mean_regret: us(7),
+                    mean_regret_pct: 53.846,
+                    mean_longer_pct: 53.846,
                 },
                 PolicyScore {
-                    worst_regret_us: 0.0,
+                    worst_regret: Duration::ZERO,
+                    worst_regret_pct: 0.0,
                     worst_scenario: None,
-                    mean_regret_us: 0.0,
+                    mean_regret: Duration::ZERO,
+                    mean_regret_pct: 0.0,
+                    mean_longer_pct: 0.0,
                 },
             ],
+            rows_per_mpx: 800.0,
         };
         let mut csv = Csv::default();
         csv.add(&[Policy::PRODUCTION, other], &results);
         assert_eq!(
             csv.arms,
-            "scene,seq/a,3,A/full,true,false,0,10.00,20.00,1.00\n\
-             scene,seq/a,3,A/full,true,false,1,30.00,20.00,1.00\n\
-             scene,seq/a,3,full*2,false,true,0,12.00,13.00,0.50\n\
-             scene,seq/a,3,full*2,false,true,1,14.00,13.00,0.50\n"
+            "scene,seq/a,3,A/full,true,false,0,10.00,20.00,5.00,15.00,7.00,0.00,1,100\n\
+             scene,seq/a,3,A/full,true,false,1,30.00,20.00,5.00,15.00,7.00,0.00,0,0\n\
+             scene,seq/a,3,full*2,false,true,0,12.00,13.00,4.00,9.00,0.00,0.00,0,0\n\
+             scene,seq/a,3,full*2,false,true,1,14.00,13.00,4.00,9.00,0.00,0.00,0,0\n"
         );
         assert_eq!(
             csv.policies,
-            "scene,20000,8,0.4,7.00,seq/a,7.00\nscene,inf,8,0.5,0.00,,0.00\n"
+            "scene,5000,8,d400p300,7.00,53.85,seq/a,7.00,53.846,53.846\n\
+             scene,inf,8,0.5,0.00,0.00,,0.00,0.000,0.000\n"
         );
     }
 }

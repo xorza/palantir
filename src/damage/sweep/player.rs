@@ -4,7 +4,7 @@ use crate::bench::scene::{Scene, SceneFrame};
 use crate::damage::Damage;
 use crate::damage::sweep::arms::Arm;
 use crate::damage::sweep::policy::Decision;
-use crate::damage::sweep::score::ArmCost;
+use crate::damage::sweep::score::{ArmCost, ArmSamples};
 use crate::damage::sweep::stage::Stage;
 use crate::gpu::bench_gpu::BenchGpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
@@ -48,6 +48,15 @@ impl PlayedFrame {
             .map(|(decision, changed)| Self::new(decision, changed))
             .collect()
     }
+}
+
+/// One frame's time in its two halves, which the device and the host overlap in a real window.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FrameTime {
+    /// Until the host returns, its submit last: the CPU half.
+    pub(crate) cpu: Duration,
+    /// From there until the device is done: the GPU half, and a wait's constant cost.
+    pub(crate) gpu: Duration,
 }
 
 /// How many frames an arm plays in a turn, and how many turns it takes.
@@ -130,13 +139,14 @@ impl<'a, S: Scene> Player<'a, S> {
             .paint()
     }
 
-    /// Paint `frame` and wait for the device, timing it all.
-    pub(crate) fn play(&mut self, frame: &PlayedFrame) -> Duration {
+    /// Paint `frame` and wait for the device, timing each half.
+    pub(crate) fn play(&mut self, frame: &PlayedFrame) -> FrameTime {
         let start = Instant::now();
         self.host.force_next_frame(frame.damage, &frame.changed);
         let paint = self.paint();
+        let submitted = Instant::now();
         self.gpu.wait();
-        let elapsed = start.elapsed();
+        let done = Instant::now();
         let want = match frame.damage {
             Damage::Full => FramePaint::Full,
             Damage::Partial(_) => FramePaint::Partial,
@@ -145,7 +155,10 @@ impl<'a, S: Scene> Player<'a, S> {
             paint, want,
             "the frame planned another paint than its arm's"
         );
-        elapsed
+        FrameTime {
+            cpu: submitted - start,
+            gpu: done - submitted,
+        }
     }
 
     /// One cycle untimed, so what the last arm left in the backbuffer and the canvases is gone.
@@ -157,31 +170,23 @@ impl<'a, S: Scene> Player<'a, S> {
 
     /// Each of `arms`' costs, the arms taking turns.
     pub(super) fn sample(&mut self, arms: &[Vec<PlayedFrame>], turns: Turns) -> Vec<ArmCost> {
-        let mut positions: Vec<Vec<Vec<f64>>> = arms
+        let mut samples: Vec<ArmSamples> = arms
             .iter()
-            .map(|frames| vec![Vec::new(); frames.len()])
+            .map(|frames| ArmSamples::new(frames.len(), turns))
             .collect();
-        let mut rounds: Vec<Vec<f64>> = vec![Vec::with_capacity(turns.rounds as usize); arms.len()];
         for round in 0..turns.rounds {
             for turn in 0..arms.len() {
                 let idx = arm_of_turn(round, turn, arms.len());
                 let frames = &arms[idx];
                 self.settle(frames);
-                let played = played_frames(turns.frames, frames.len());
-                let mut total_us = 0.0;
-                for at in 0..played {
+                samples[idx].start_round();
+                for at in 0..played_frames(turns.frames, frames.len()) {
                     let position = at % frames.len();
-                    let us = self.play(&frames[position]).as_secs_f64() * 1e6;
-                    positions[idx][position].push(us);
-                    total_us += us;
+                    let time = self.play(&frames[position]);
+                    samples[idx].push(position, time);
                 }
-                rounds[idx].push(total_us / played as f64);
             }
         }
-        positions
-            .iter_mut()
-            .zip(&mut rounds)
-            .map(|(positions, rounds)| ArmCost::of(positions, rounds))
-            .collect()
+        samples.iter_mut().map(ArmSamples::cost).collect()
     }
 }

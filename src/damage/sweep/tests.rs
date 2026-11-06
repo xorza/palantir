@@ -7,29 +7,44 @@ use crate::damage::sweep::args::SweepArgs;
 use crate::damage::sweep::arms::{Arms, partitions};
 use crate::damage::sweep::capture::{Captured, SeenFrames, kept, note, session};
 use crate::damage::sweep::error::SweepError;
-use crate::damage::sweep::player::{arm_of_turn, played_frames};
-use crate::damage::sweep::policy::{Decision, Policy, union_area};
+use crate::damage::sweep::player::{FrameTime, Turns, arm_of_turn, played_frames};
+use crate::damage::sweep::policy::{Decision, FrameFacts, Policy, Promote, union_area};
 use crate::damage::sweep::report::{beating, order_outcomes};
 use crate::damage::sweep::scenario::{REFERENCE, Scope, catalog, named, pair_grid};
-use crate::damage::sweep::score::{ArmCost, PolicyScore, ScenarioCosts, score};
+use crate::damage::sweep::score::{
+    ArmCost, ArmSamples, MetricCost, PolicyScore, ScenarioCosts, score,
+};
 use crate::damage::sweep::selected;
 use crate::damage::sweep::stage::Stage;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
+use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
+use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use std::collections::HashSet;
+use std::time::Duration;
 
 const SURFACE: Rect = Rect::new(0.0, 0.0, 1280.0, 720.0);
 
+/// A screen of 400 rows per Mpx, where production's promote share reads 0.5.
+const FACTS: FrameFacts = FrameFacts {
+    surface: SURFACE,
+    rows_per_mpx: 400.0,
+    pane_share: 0.0,
+};
+
 /// What production decides for the one frame of `name`.
 fn production(name: &str) -> Decision {
-    Policy::PRODUCTION.decide(&named(name).frames[0], SURFACE)
+    Policy::PRODUCTION.decide(&named(name).frames[0], &FACTS)
 }
 
 fn partial(rects: &[Rect]) -> Decision {
@@ -72,8 +87,8 @@ fn the_pair_grid_is_the_full_product() {
     assert_eq!(names.len(), grid.len());
 }
 
-/// The rects hand-worked in logical px on a 1280 × 720 window of 921,600 px², under a 20,000 px²
-/// budget and a promote at 0.4.
+/// The rects hand-worked in logical px on a 1280 × 720 window of 921,600 px², under a 5,000 px²
+/// budget and a promote share of 0.5.
 #[test]
 fn production_decides_each_archetype_as_worked_by_hand() {
     let sidebar = Rect::new(0.0, 0.0, 240.0, 720.0);
@@ -82,78 +97,141 @@ fn production_decides_each_archetype_as_worked_by_hand() {
     let cases = [
         // Bounds of 921,600 past 172,800 + 49,920 waste 698,880: split, at 24.2 %.
         ("pair/l_touching", partial(&[sidebar, toolbar])),
-        // Overlapping rects always merge, to the whole window.
-        ("pair/l_overlap", Decision::Full),
-        ("pair/cross_strips", Decision::Full),
+        // A pixel column of overlap changes nothing: 921,600 past 172,800 + 49,968 − 48 waste
+        // 698,880 again.
+        (
+            "pair/l_overlap",
+            partial(&[sidebar, Rect::new(239.0, 0.0, 1041.0, 48.0)]),
+        ),
+        // A crosshair's bounds are the window, so its strips stay apart.
+        (
+            "pair/cross_strips",
+            partial(&[
+                Rect::new(630.0, 0.0, 20.0, 720.0),
+                Rect::new(0.0, 350.0, 1280.0, 20.0),
+            ]),
+        ),
         // 400 × 65 = 26,000 past 2 × 12,800 wastes 400.
         (
             "pair/rows_gap1",
             partial(&[Rect::new(40.0, 100.0, 400.0, 65.0)]),
         ),
+        // 152 × 44 = 6,688 past 2 × 1,936 wastes 2,816.
+        (
+            "pair/icons_gap64",
+            partial(&[Rect::new(20.0, 8.0, 152.0, 44.0)]),
+        ),
         // 488 × 44 = 21,472 past 2 × 1,936 wastes 17,600.
         (
             "pair/icons_gap400",
-            partial(&[Rect::new(20.0, 8.0, 488.0, 44.0)]),
-        ),
-        // 1,088 × 44 = 47,872 past 2 × 1,936 wastes 44,000.
-        (
-            "pair/icons_gap1000",
             partial(&[
                 Rect::new(20.0, 8.0, 44.0, 44.0),
-                Rect::new(1064.0, 8.0, 44.0, 44.0),
+                Rect::new(464.0, 8.0, 44.0, 44.0),
             ]),
         ),
-        // 2 × 400 × 437 = 349,600, 37.9 %.
+        // 2 × 400 × 484 = 387,200, 42.0 %, under the share.
         (
-            "pair/panels_sum38",
+            "pair/panels_sum42",
             partial(&[
-                Rect::new(0.0, 0.0, 400.0, 437.0),
-                Rect::new(880.0, 283.0, 400.0, 437.0),
+                Rect::new(0.0, 0.0, 400.0, 484.0),
+                Rect::new(880.0, 236.0, 400.0, 484.0),
             ]),
         ),
-        // 2 × 400 × 484 = 387,200, 42.0 %.
-        ("pair/panels_sum42", Decision::Full),
         // 96 × 44 = 4,224 past 2 × 1,936 wastes 352; the clock stays far.
         (
             "triple/cluster_outlier",
             partial(&[Rect::new(20.0, 8.0, 96.0, 44.0), clock]),
         ),
-        ("one/block_45", Decision::Full),
+        ("one/block_55", Decision::Full),
     ];
     for (name, want) in cases {
         assert_eq!(production(name), want, "{name}");
     }
     assert!(
-        matches!(production("one/block_35"), Decision::Partial(rects) if rects.len() == 1),
-        "35 % stays partial"
+        matches!(production("one/block_45"), Decision::Partial(rects) if rects.len() == 1),
+        "45 % stays partial"
     );
 }
 
-/// Each knob changes a decision: the far icons split at a budget of 0, the farther ones join at a
-/// cap of 1, and 35 % goes whole under a promote of 0.3.
+/// Each knob changes a decision: near rows split at a budget of 0, far icons join at a cap of 1,
+/// and 35 % goes whole under a share of 0.3 and under a thin screen's density, where 40 rows per
+/// Mpx read a share of 40 / 440 = 0.09. The full-repaint threshold caps any share: 75 % goes whole
+/// at a density whose share reads 0.9.
 #[test]
 fn each_knob_moves_a_decision() {
-    let decide = |name: &str, policy: Policy| policy.decide(&named(name).frames[0], SURFACE);
-    let with = |budget_px, rect_cap, promote_coverage| Policy {
+    let decide = |name: &str, policy: Policy, facts: &FrameFacts| {
+        policy.decide(&named(name).frames[0], facts)
+    };
+    let merge = |budget_px, rect_cap| Policy {
         merge: MergePolicy {
             budget_px,
             rect_cap,
         },
-        promote_coverage,
+        ..Policy::PRODUCTION
     };
     assert_eq!(
-        decide("pair/icons_gap400", with(0.0, DAMAGE_RECT_CAP, 0.4)),
+        decide("pair/rows_gap1", merge(0.0, DAMAGE_RECT_CAP), &FACTS),
         partial(&[
-            Rect::new(20.0, 8.0, 44.0, 44.0),
-            Rect::new(464.0, 8.0, 44.0, 44.0)
+            Rect::new(40.0, 100.0, 400.0, 32.0),
+            Rect::new(40.0, 133.0, 400.0, 32.0),
         ])
     );
     assert_eq!(
-        decide("pair/icons_gap1000", with(20_000.0, 1, 0.4)),
+        decide("pair/icons_gap1000", merge(5_000.0, 1), &FACTS),
         partial(&[Rect::new(20.0, 8.0, 1088.0, 44.0)])
     );
+    let one_share = Policy {
+        promote: Promote::Coverage(0.3),
+        ..Policy::PRODUCTION
+    };
+    assert_eq!(decide("one/block_35", one_share, &FACTS), Decision::Full);
+    let thin = FrameFacts {
+        rows_per_mpx: 40.0,
+        ..FACTS
+    };
+    // Panes on half the surface count for 150 rows per Mpx under production: a thin screen's share
+    // of 0.09 rises to 190 / 590 = 0.32, which holds 25 % as partial, and does not under a rule that
+    // counts no pane.
+    let under_panes = FrameFacts {
+        pane_share: 0.5,
+        ..thin
+    };
+    let no_panes = Policy {
+        promote: Promote::Density {
+            half_rows_per_mpx: 400.0,
+            pane_rows_per_mpx: 0.0,
+        },
+        ..Policy::PRODUCTION
+    };
+    assert!(matches!(
+        decide("one/block_25", Policy::PRODUCTION, &under_panes),
+        Decision::Partial(_)
+    ));
     assert_eq!(
-        decide("one/block_35", with(20_000.0, DAMAGE_RECT_CAP, 0.3)),
+        decide("one/block_25", no_panes, &under_panes),
+        Decision::Full
+    );
+    assert_eq!(
+        decide("one/block_15", Policy::PRODUCTION, &thin),
+        Decision::Full
+    );
+    let wider_half = Policy {
+        promote: Promote::Density {
+            half_rows_per_mpx: 8.0,
+            pane_rows_per_mpx: 0.0,
+        },
+        ..Policy::PRODUCTION
+    };
+    assert!(matches!(
+        decide("one/block_15", wider_half, &thin),
+        Decision::Partial(_)
+    ));
+    let dense = FrameFacts {
+        rows_per_mpx: 7_200.0,
+        ..FACTS
+    };
+    assert_eq!(
+        decide("one/block_75", Policy::PRODUCTION, &dense),
         Decision::Full
     );
 }
@@ -161,7 +239,7 @@ fn each_knob_moves_a_decision() {
 #[test]
 fn the_grid_holds_production_and_every_combination() {
     let grid = Policy::grid();
-    assert_eq!(grid.len(), 11 * 5 * 9);
+    assert_eq!(grid.len(), 9 * 4 * (9 + 10 * 7));
     assert_eq!(grid.iter().filter(|p| **p == Policy::PRODUCTION).count(), 1);
 }
 
@@ -180,18 +258,16 @@ fn partitions_are_bells_numbers() {
 fn every_policy_lands_on_an_arm_of_its_own_decisions() {
     let policies = Policy::grid();
     for stage in Stage::ALL {
-        let surface = stage.surface();
+        let facts = FrameFacts {
+            surface: stage.surface(),
+            ..FACTS
+        };
         for scenario in catalog().iter().filter(|s| stage.runs(s.scope)) {
             let raw = stage.raw_frames(scenario);
-            let arms = Arms::of(&raw, surface, &policies);
+            let arms = Arms::of(&raw, &facts, &policies);
             for (policy, &arm) in policies.iter().zip(&arms.of_policy) {
                 for (frame, decision) in raw.iter().zip(&arms.arms[arm].frames) {
-                    assert_eq!(
-                        policy.decide(frame, surface),
-                        *decision,
-                        "{}",
-                        scenario.name
-                    );
+                    assert_eq!(policy.decide(frame, &facts), *decision, "{}", scenario.name);
                 }
             }
             for (idx, arm) in arms.arms.iter().enumerate() {
@@ -216,7 +292,7 @@ fn every_policy_lands_on_an_arm_of_its_own_decisions() {
 #[test]
 fn arms_cover_each_partition_of_a_few_rects() {
     let labels = |name: &str| {
-        let mut labels: Vec<String> = Arms::of(&named(name).frames, SURFACE, &Policy::grid())
+        let mut labels: Vec<String> = Arms::of(&named(name).frames, &FACTS, &Policy::grid())
             .arms
             .into_iter()
             .map(|arm| arm.label)
@@ -246,7 +322,7 @@ fn arms_read_what_is_visible() {
         Rect::new(5000.0, 0.0, 9.0, 9.0),
         Rect::new(1270.0, 0.0, 20.0, 20.0),
     ]];
-    let arms = Arms::of(&raw, SURFACE, &Policy::grid());
+    let arms = Arms::of(&raw, &FACTS, &Policy::grid());
     let unmerged = Decision::partial(vec![on, Rect::new(1270.0, 0.0, 10.0, 20.0)]);
     assert!(
         arms.arms
@@ -261,7 +337,7 @@ fn arms_read_what_is_visible() {
 /// Past eight raw rects an arm's name is a count, the singular read as one.
 #[test]
 fn a_many_rect_arm_is_named_by_its_count() {
-    let labels: Vec<String> = Arms::of(&named("many/rows_32").frames, SURFACE, &Policy::grid())
+    let labels: Vec<String> = Arms::of(&named("many/rows_32").frames, &FACTS, &Policy::grid())
         .arms
         .into_iter()
         .map(|arm| arm.label)
@@ -329,95 +405,155 @@ fn spinners_spread_over_the_window() {
 /// A cycle's arm names each frame, a repeat as a count: 15 carets, then the whole window.
 #[test]
 fn a_cycle_names_its_frames_in_runs() {
-    let arms = Arms::of(&named("seq/spike_1_in_16").frames, SURFACE, &Policy::grid());
+    let arms = Arms::of(&named("seq/spike_1_in_16").frames, &FACTS, &Policy::grid());
     let production = Policy::production_idx(&Policy::grid());
     assert_eq!(arms.arms[arms.of_policy[production]].label, "A*15/full");
 }
 
-/// Medians of [3, 1, 2] and [10, 20] are 2 and 15, whose mean is 8.5. Rounds of [4, 1, 3, 2] sort to
-/// 1, 2, 3, 4: quartiles of nearest rank 1 and 3, half their gap 1.
+/// Medians of [3, 1, 2] and [10, 20] µs are 2 and 15, whose mean is 8.5. The rounds stay as they
+/// are, for a pair across arms.
 #[test]
-fn an_arm_cost_reads_medians_and_the_rounds_spread() {
-    let cost = ArmCost::of(
-        &mut [vec![3.0, 1.0, 2.0], vec![10.0, 20.0]],
-        &mut [4.0, 1.0, 3.0, 2.0],
+fn a_metric_cost_reads_medians_of_its_positions() {
+    let rounds = vec![us(4), us(1), us(3), us(2)];
+    let cost = MetricCost::of(
+        &mut [vec![3_000, 1_000, 2_000], vec![10_000, 20_000]],
+        rounds.clone(),
     );
     assert_eq!(
         cost,
-        ArmCost {
-            position_us: vec![2.0, 15.0],
-            mean_us: 8.5,
-            spread_us: 1.0,
+        MetricCost {
+            positions: vec![us(2), us(15)],
+            mean: Duration::from_nanos(8_500),
+            rounds,
         }
     );
 }
 
-fn cost(mean_us: f64, spread_us: f64) -> ArmCost {
+/// An arm's frames under each metric. A frame of 3 µs CPU and 1 µs GPU, then 2 and 5, adds to 4 and
+/// 7 and reads 3 and 5 at its longer half, over one round of two positions; its medians of each
+/// half are 2.5 and 3.
+#[test]
+fn samples_read_each_metric_and_each_half() {
+    let time = |cpu_us, gpu_us| FrameTime {
+        cpu: us(cpu_us),
+        gpu: us(gpu_us),
+    };
+    let mut samples = ArmSamples::new(
+        2,
+        Turns {
+            rounds: 1,
+            frames: 2,
+        },
+    );
+    samples.start_round();
+    samples.push(0, time(3, 1));
+    samples.push(1, time(2, 5));
+    let cost = samples.cost();
+    assert_eq!(cost.metrics[0].positions, [us(4), us(7)]);
+    assert_eq!(cost.metrics[0].rounds, [Duration::from_nanos(5_500)]);
+    assert_eq!(cost.metrics[1].positions, [us(3), us(5)]);
+    assert_eq!(cost.metrics[1].rounds, [us(4)]);
+    assert_eq!(cost.cpu, Duration::from_nanos(2_500));
+    assert_eq!(cost.gpu, us(3));
+}
+
+const fn us(micros: u64) -> Duration {
+    Duration::from_micros(micros)
+}
+
+/// An arm with a mean and each round's mean in µs, alike under both metrics.
+fn cost(mean_us: u64, rounds_us: &[u64]) -> ArmCost {
+    let metric = MetricCost {
+        positions: vec![us(mean_us)],
+        mean: us(mean_us),
+        rounds: rounds_us.iter().copied().map(us).collect(),
+    };
     ArmCost {
-        position_us: vec![mean_us],
-        mean_us,
-        spread_us,
+        metrics: [metric.clone(), metric],
+        cpu: us(mean_us),
+        gpu: Duration::ZERO,
     }
 }
 
-/// Two policies over two scenarios.
+/// Two policies over two scenarios, each arm steady, so a gap reads whole.
 ///
-/// - `a`, weight 1: arms at 100 ± 1 and 110 ± 2, a gap of 10 past a noise of 3.
-/// - `b`, weight 3: arms at 200 ± 1 and 203 ± 1, a gap of 3 past a noise of 2.
+/// - `a`, weight 1: arms at 100 and 110, a gap of 10, 10 %.
+/// - `b`, weight 3: arms at 200 and 203, a gap of 3, 1.5 %.
 ///
-/// Policy 0 takes `a`'s best and `b`'s worse: worst 3, mean 3 × 3 / 4 = 2.25. Policy 1 takes `a`'s
-/// worse and `b`'s best: worst 10, mean 10 / 4 = 2.5.
+/// Policy 0 takes `a`'s best and `b`'s worse: worst 3, mean 3 × 3 / 4 = 2.25 µs and
+/// 1.5 × 3 / 4 = 1.125 %. Policy 1 takes `a`'s worse and `b`'s best: worst 10, mean 2.5 µs and 2.5 %.
 #[test]
 fn a_policy_scores_its_worst_and_weighted_mean_regret() {
     let scenarios = [
-        ScenarioCosts {
-            name: "a".into(),
-            weight: 1,
-            costs: vec![cost(100.0, 1.0), cost(110.0, 2.0)],
-            of_policy: vec![0, 1],
-        },
-        ScenarioCosts {
-            name: "b".into(),
-            weight: 3,
-            costs: vec![cost(200.0, 1.0), cost(203.0, 1.0)],
-            of_policy: vec![1, 0],
-        },
+        ScenarioCosts::new(
+            "a".into(),
+            1,
+            vec![cost(100, &[100]), cost(110, &[110])],
+            vec![0, 1],
+        ),
+        ScenarioCosts::new(
+            "b".into(),
+            3,
+            vec![cost(200, &[200]), cost(203, &[203])],
+            vec![1, 0],
+        ),
     ];
     assert_eq!(
         score(&scenarios, 2),
         [
             PolicyScore {
-                worst_regret_us: 3.0,
+                worst_regret: us(3),
+                worst_regret_pct: 1.5,
                 worst_scenario: Some(1),
-                mean_regret_us: 2.25,
+                mean_regret: Duration::from_nanos(2_250),
+                mean_regret_pct: 1.125,
+                mean_longer_pct: 1.125,
             },
             PolicyScore {
-                worst_regret_us: 10.0,
+                worst_regret: us(10),
+                worst_regret_pct: 10.0,
                 worst_scenario: Some(0),
-                mean_regret_us: 2.5,
+                mean_regret: Duration::from_nanos(2_500),
+                mean_regret_pct: 2.5,
+                mean_longer_pct: 2.5,
             },
         ]
     );
 }
 
-/// A gap inside the two arms' spreads reads as none, at the boundary too: 2 against 1 + 1 is a tie,
-/// while the same arms at 2.5 are not.
+/// A gap reads round for round, so a device that slows between rounds moves both arms: rounds of
+/// 100/102, 200/202, 300/302 are a steady gap of 2, where their own medians alone could not tell.
+/// Gaps of 2 with a spread of 4 lie inside it: rounds 100/96, 100/104, 100/102, 100/102 sort their
+/// gaps to −4, 2, 2, 4, of median 2 and half interquartile range (2 − (−4)) / 2 = 3, a tie. An arm
+/// faster than the best by its mean reads a negative gap, which is no regret.
 #[test]
-fn a_regret_within_the_noise_reads_as_none() {
-    let of = |gap: f64| ScenarioCosts {
-        name: "a".into(),
-        weight: 1,
-        costs: vec![cost(100.0, 1.0), cost(100.0 + gap, 1.0)],
-        of_policy: vec![1],
+fn a_regret_pairs_rounds_and_a_gap_inside_the_noise_reads_as_none() {
+    let of = |rounds_a: &[u64], rounds_b: &[u64]| {
+        ScenarioCosts::new(
+            "a".into(),
+            1,
+            vec![cost(100, rounds_a), cost(101, rounds_b)],
+            vec![1],
+        )
     };
-    assert_eq!(of(2.0).regret_us(1), 0.0);
-    assert_eq!(of(2.5).regret_us(1), 2.5);
+    let steady = of(&[100, 200, 300], &[102, 202, 302]);
+    assert_eq!(steady.sum().regrets[1].regret, us(2));
+    assert_eq!(steady.sum().regrets[1].noise, Duration::ZERO);
+    assert_eq!(steady.sum().regrets[0].regret, Duration::ZERO);
+    let noisy = of(&[100, 100, 100, 100], &[96, 104, 102, 102]);
+    assert_eq!(noisy.sum().regrets[1].noise, us(3));
+    assert_eq!(noisy.sum().regrets[1].regret, Duration::ZERO);
+    let faster = of(&[100, 100, 100], &[90, 90, 90]);
+    assert_eq!(faster.sum().regrets[1].regret, Duration::ZERO);
     assert_eq!(
-        score(&[of(1.0)], 1),
+        score(&[noisy], 1),
         [PolicyScore {
-            worst_regret_us: 0.0,
+            worst_regret: Duration::ZERO,
+            worst_regret_pct: 0.0,
             worst_scenario: None,
-            mean_regret_us: 0.0,
+            mean_regret: Duration::ZERO,
+            mean_regret_pct: 0.0,
+            mean_longer_pct: 0.0,
         }]
     );
 }
@@ -426,18 +562,15 @@ fn a_regret_within_the_noise_reads_as_none() {
 /// did not move stand beside it, whatever order a sort left them in.
 #[test]
 fn only_a_strictly_better_score_beats_a_policy() {
-    let of = |worst_regret_us, mean_regret_us| PolicyScore {
-        worst_regret_us,
+    let of = |worst_us, mean_us| PolicyScore {
+        worst_regret: us(worst_us),
+        worst_regret_pct: 0.0,
         worst_scenario: None,
-        mean_regret_us,
+        mean_regret: us(mean_us),
+        mean_regret_pct: 0.0,
+        mean_longer_pct: 0.0,
     };
-    let scores = [
-        of(5.0, 1.0),
-        of(5.0, 1.0),
-        of(5.0, 0.5),
-        of(4.0, 9.0),
-        of(6.0, 0.0),
-    ];
+    let scores = [of(5, 2), of(5, 2), of(5, 1), of(4, 9), of(6, 0)];
     assert_eq!(beating(&scores, 0), 2);
     assert_eq!(beating(&scores, 3), 0);
     assert_eq!(beating(&scores, 4), 4);
@@ -464,21 +597,24 @@ fn order_outcomes_finds_a_fold_that_depends_on_its_order() {
             budget_px: 30.0,
             rect_cap: DAMAGE_RECT_CAP,
         },
-        promote_coverage: 0.9,
+        promote: Promote::Coverage(0.9),
     };
-    let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
+    let facts = FrameFacts {
+        surface: Rect::new(0.0, 0.0, 100.0, 100.0),
+        ..FACTS
+    };
     let hook = [
         Rect::new(0.0, 0.0, 10.0, 10.0),
         Rect::new(12.0, 0.0, 10.0, 10.0),
         Rect::new(12.0, 12.0, 10.0, 10.0),
     ];
-    assert_eq!(order_outcomes(&hook, &policy, surface), 2);
+    assert_eq!(order_outcomes(&hook, &policy, &facts), 2);
     let row = [
         Rect::new(0.0, 0.0, 10.0, 10.0),
         Rect::new(12.0, 0.0, 10.0, 10.0),
         Rect::new(24.0, 0.0, 10.0, 10.0),
     ];
-    assert_eq!(order_outcomes(&row, &policy, surface), 1);
+    assert_eq!(order_outcomes(&row, &policy, &facts), 1);
 }
 
 /// The dense stage at 4K holds the reference window at 1.5×, the 1× one at 1×. A glass frame's rect
@@ -503,9 +639,78 @@ fn a_stage_scales_rects_and_adds_the_panes_they_touch() {
     );
     // The middle block reaches the middle pane, (500, 200) + 320 × 220, and not the one at
     // (40, 400) + 240 × 240.
+    // A square under the toolbar reaches it, and its rect reaches the sidebar's footprint, as a
+    // walk stales the panes above a stale one; the popup stays out of both.
+    assert_eq!(
+        stage("scene_glass").raw_frames(&named("one/under_toolbar"))[0],
+        [
+            Rect::new(300.0, 20.0, 12.0, 12.0),
+            Rect::new(0.0, 0.0, 1280.0, 48.0),
+            Rect::new(0.0, 48.0, 240.0, 672.0),
+        ]
+    );
     let touched = &stage("glass").raw_frames(&named("one/block_05"))[0];
     assert_eq!(touched.len(), 2);
     assert_eq!(touched[1], Rect::new(500.0, 200.0, 320.0, 220.0));
+}
+
+/// A scene counts the rows that draw on its surface: a filled block, and neither a block far off the
+/// window nor the marker its parent holds for each child.
+#[test]
+fn a_scene_counts_the_rows_that_draw_on_the_surface() {
+    let count = |far_blocks: u32| {
+        let mut h = Harness::builder(glam::UVec2::new(100, 100)).mono().build();
+        let block = |ui: &mut Ui, salt: u32, at: (f32, f32)| {
+            Block::new()
+                .id_salt(("visible-rows", salt))
+                .at(at)
+                .size((Sizing::fixed(10.0), Sizing::fixed(10.0)))
+                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .show(ui);
+        };
+        h.frame(|ui| {
+            Panel::canvas()
+                .id_salt("visible-rows")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    block(ui, 0, (10.0, 10.0));
+                    for far in 0..far_blocks {
+                        block(ui, far + 1, (500.0, 500.0));
+                    }
+                });
+        });
+        h.ui().frame_scene().visible_row_count()
+    };
+    assert_eq!(count(0), 1);
+    assert_eq!(count(3), 1);
+}
+
+/// Two panes over a whole window read a share of 2, each counted alone, and none reads 0.
+#[test]
+fn a_scene_reads_the_share_its_panes_hold() {
+    let share = |pane_count| {
+        let mut h = Harness::builder(glam::UVec2::new(100, 100)).mono().build();
+        let record = |ui: &mut Ui| {
+            Panel::canvas()
+                .id_salt("share-panes")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for _ in 0..pane_count {
+                        ui.add_shape(
+                            Shape::rect()
+                                .at(Rect::new(0.0, 0.0, 100.0, 100.0))
+                                .fill(RgbaF32::TRANSPARENT)
+                                .backdrop_filter(BackdropFilter::blur(2.0)),
+                        );
+                    }
+                });
+        };
+        h.frame(record);
+        h.ui().frame_scene().pane_share()
+    };
+    assert_eq!(share(0), 0.0);
+    assert_eq!(share(1), 1.0);
+    assert_eq!(share(2), 2.0);
 }
 
 /// Which scopes a stage runs: core everywhere, the catalog on the two bench-surface screens, and a

@@ -11,8 +11,10 @@
 //!   the ABBA order `palantir-showcase/benches/AGENTS.md` asks of two builds. Refused: a criterion
 //!   case per arm, one run after another; WebRender keeps a command of its own too,
 //!   [`wrench bench`](https://searchfox.org/firefox-main/source/gfx/wr/wrench/src/bench.rs).
-//! - **Regret is the score.** It is an arm's cost past the scenario's best; a policy reads as its
-//!   worst regret first, as a frame is judged by its worst case, then as its mean per frame.
+//! - **Regret is the score.** It is an arm's cost past the scenario's best, the median of the gaps
+//!   of its rounds, as a GPU's clock moves arms alike between rounds and only a paired gap cancels
+//!   it. A policy reads as its worst regret first, as a frame is judged by its worst case, then as
+//!   its mean per frame, and as a percent of each best frame, which compares across hosts.
 //! - **Scenarios weigh what happens.** A made scenario counts as one frame, and a scripted session
 //!   over the screen adds its frequent frames by count, so a mean reflects use and the catalog
 //!   keeps the rare frames a mean would hide.
@@ -66,7 +68,7 @@ fn selected<'a>(stage: Stage, all: &'a [Scenario], filter: Option<&str>) -> Vec<
 }
 
 /// Print each case and how many arms it has.
-fn list(
+fn list<S: Scene>(
     out: &mut impl Write,
     filter: Option<&str>,
     scenarios: &[Scenario],
@@ -74,8 +76,9 @@ fn list(
 ) -> io::Result<()> {
     let mut total = 0;
     for stage in Stage::ALL {
+        let facts = stage.facts::<S>();
         for scenario in selected(stage, scenarios, filter) {
-            let arms = Arms::of(&stage.raw_frames(scenario), stage.surface(), policies);
+            let arms = Arms::of(&stage.raw_frames(scenario), &facts, policies);
             total += arms.arms.len();
             writeln!(
                 out,
@@ -100,21 +103,21 @@ struct Measure<'a> {
 impl Measure<'_> {
     /// Time `scenarios` on `stage`.
     fn stage<S: Scene>(&self, stage: Stage, scenarios: &[&Scenario]) -> StageResults {
-        let surface = stage.surface();
+        let facts = stage.facts::<S>();
         let mut player = Player::<S>::new(self.gpu, stage);
         let mut costs = Vec::with_capacity(scenarios.len());
         let mut all_arms = Vec::with_capacity(scenarios.len());
         for scenario in scenarios {
             let raw = stage.raw_frames(scenario);
-            let Arms { arms, of_policy } = Arms::of(&raw, surface, self.policies);
+            let Arms { arms, of_policy } = Arms::of(&raw, &facts, self.policies);
             let played: Vec<Vec<PlayedFrame>> =
                 arms.iter().map(|arm| PlayedFrame::of(arm, &raw)).collect();
-            costs.push(ScenarioCosts {
-                name: scenario.name.clone(),
-                weight: scenario.weight,
-                costs: player.sample(&played, self.turns),
+            costs.push(ScenarioCosts::new(
+                scenario.name.clone(),
+                scenario.weight,
+                player.sample(&played, self.turns),
                 of_policy,
-            });
+            ));
             all_arms.push(arms);
         }
         StageResults {
@@ -123,6 +126,7 @@ impl Measure<'_> {
             scores: score(&costs, self.policies.len()),
             costs,
             arms: all_arms,
+            rows_per_mpx: facts.rows_per_mpx,
         }
     }
 }
@@ -142,7 +146,7 @@ fn run_args<S: Scene>(args: &SweepArgs, out: &mut impl Write) -> Result<(), Swee
     scenarios.extend(captured.scenarios);
     let policies = Policy::grid();
     if args.list {
-        list(out, filter, &scenarios, &policies)?;
+        list::<S>(out, filter, &scenarios, &policies)?;
         return Ok(());
     }
     let backends = Backends::probe();
@@ -152,7 +156,7 @@ fn run_args<S: Scene>(args: &SweepArgs, out: &mut impl Write) -> Result<(), Swee
             .into_iter()
             .cloned()
             .collect();
-        report::decisions(out, Stage::SCENE, &chosen)?;
+        report::decisions(out, Stage::SCENE, &Stage::SCENE.facts::<S>(), &chosen)?;
         return Ok(());
     }
     let measure = Measure {
@@ -177,11 +181,12 @@ fn run_args<S: Scene>(args: &SweepArgs, out: &mut impl Write) -> Result<(), Swee
         let results = measure.stage::<S>(stage, &chosen);
         writeln!(
             out,
-            "\n== {} ({} × {} at {}×, in {:.0} s) ==",
+            "\n== {} ({} × {} at {}×, {:.0} rows per Mpx, in {:.0} s) ==",
             stage.name,
             stage.physical.x,
             stage.physical.y,
             stage.scale.get(),
+            results.rows_per_mpx,
             started.elapsed().as_secs_f64()
         )?;
         report::arms_table(out, &results)?;

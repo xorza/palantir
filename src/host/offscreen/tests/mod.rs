@@ -445,6 +445,7 @@ mod canvas;
 mod forced_frame;
 mod held_cutouts;
 mod lazy_pipelines;
+mod promote;
 mod recovery;
 mod theme_transition;
 

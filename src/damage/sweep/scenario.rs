@@ -171,6 +171,12 @@ const INSPECTOR: Rect = Rect::new(1000.0, 0.0, 280.0, 720.0);
 const ONE_RECT_PCTS: [u32; 8] = [1, 5, 15, 25, 35, 45, 55, 75];
 
 fn single_rects(out: &mut Vec<Scenario>) {
+    // A small change under the toolbar of a stage with panes, which stales it and what it reaches.
+    out.push(Scenario::still(
+        "one/under_toolbar",
+        Scope::Core,
+        &[Rect::new(300.0, 20.0, 12.0, 12.0)],
+    ));
     for pct in ONE_RECT_PCTS {
         let coverage = pct as f32 / 100.0;
         out.push(Scenario::still(
@@ -490,6 +496,11 @@ fn sequences(out: &mut Vec<Scenario>) {
         vec![vec![CARET], vec![block(0.6)]],
     ));
     out.push(Scenario::new("seq/spike_1_in_16", Scope::Core, spike));
+    let window = Rect::new(0.0, 0.0, REFERENCE.x, REFERENCE.y);
+    let burst: Vec<Vec<Rect>> = (0..16)
+        .map(|i| vec![if i < 8 { window } else { CARET }])
+        .collect();
+    out.push(Scenario::new("seq/burst_8_in_16", Scope::Core, burst));
     out.push(Scenario::new(
         "seq/sliding_card",
         Scope::Primary,

@@ -1,15 +1,18 @@
 //! A policy: the knob values that turn a frame's raw rects into what it repaints.
 
-use crate::damage::Damage;
-use crate::damage::region::{DAMAGE_RECT_CAP, DamageRegion, MergePolicy};
-use crate::host::window_driver::DIRECT_PROMOTE_COVERAGE;
+use crate::damage::region::{CollapsedDamage, DAMAGE_RECT_CAP, DamageRegion, MergePolicy};
+use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
+use crate::host::window_driver::{
+    PROMOTE_HALF_ROWS_PER_MPX, PROMOTE_PANE_ROWS_PER_MPX, density_share,
+};
 use crate::primitives::geometry::rect::Rect;
 use std::cmp::Ordering;
+use std::fmt;
 
 /// What one frame repaints.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Decision {
-    /// A direct whole repaint.
+    /// A direct whole repaint, which leaves the backbuffer stale.
     Full,
     /// These rects through the backbuffer, in a canonical order, so two folds that end alike
     /// compare equal.
@@ -46,68 +49,146 @@ impl Decision {
     }
 }
 
-/// One setting of the knobs a sweep scores. The full-repaint threshold is not one: on the desktop
-/// path the lower promote value already sends every frame past it direct.
+/// What a frame's decision reads beside its rects: how much screen, and how much on it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct FrameFacts {
+    /// The logical window.
+    pub(crate) surface: Rect,
+    /// The scene's density: the rows that draw on the surface per million physical pixels.
+    pub(crate) rows_per_mpx: f32,
+    /// The share of the surface pane footprints hold, each pane's counted alone.
+    pub(crate) pane_share: f32,
+}
+
+/// The coverage past which a frame repaints whole.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Promote {
+    /// One share, whatever the screen holds.
+    Coverage(f32),
+    /// `d / (d + half)` of the density `d`: the rows that draw per million physical pixels, and
+    /// `pane_rows_per_mpx` for all the surface held by pane footprints, as a whole frame captures
+    /// and blurs every pane and a partial one only those its change reached.
+    Density {
+        half_rows_per_mpx: f32,
+        pane_rows_per_mpx: f32,
+    },
+}
+
+impl Promote {
+    fn share(self, facts: &FrameFacts) -> f32 {
+        match self {
+            Self::Coverage(share) => share,
+            Self::Density {
+                half_rows_per_mpx,
+                pane_rows_per_mpx,
+            } => density_share(
+                facts.rows_per_mpx + pane_rows_per_mpx * facts.pane_share,
+                half_rows_per_mpx,
+            ),
+        }
+    }
+}
+
+impl fmt::Display for Promote {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Coverage(share) => write!(f, "{share:.1}"),
+            Self::Density {
+                half_rows_per_mpx,
+                pane_rows_per_mpx,
+            } => write!(f, "d{half_rows_per_mpx:.0}p{pane_rows_per_mpx:.0}"),
+        }
+    }
+}
+
+/// One setting of the knobs a sweep scores.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Policy {
     pub(crate) merge: MergePolicy,
-    /// Coverage past which a frame repaints whole.
-    pub(crate) promote_coverage: f32,
+    pub(crate) promote: Promote,
 }
 
 impl Policy {
     /// What the desktop ships.
     pub(crate) const PRODUCTION: Self = Self {
         merge: MergePolicy::DEFAULT,
-        promote_coverage: DIRECT_PROMOTE_COVERAGE,
+        promote: Promote::Density {
+            half_rows_per_mpx: PROMOTE_HALF_ROWS_PER_MPX,
+            pane_rows_per_mpx: PROMOTE_PANE_ROWS_PER_MPX,
+        },
     };
 
     /// The budgets a grid sweeps: from strict overlap to one rect, doubling around the shipped
     /// value, as a cost ratio moves by factors.
-    const BUDGETS_PX: [f32; 11] = [
+    const BUDGETS_PX: [f32; 9] = [
         0.0,
         1_000.0,
         2_500.0,
-        5_000.0,
-        7_000.0,
-        10_000.0,
         MergePolicy::DEFAULT.budget_px,
+        10_000.0,
+        20_000.0,
         40_000.0,
         80_000.0,
-        160_000.0,
         f32::INFINITY,
     ];
 
-    /// The caps a grid sweeps: one rect, as WebRender; Slint's 3; and the shipped storage.
-    const RECT_CAPS: [usize; 5] = [1, 2, 3, 4, DAMAGE_RECT_CAP];
+    /// The caps a grid sweeps: one rect, as WebRender; and up to the shipped storage.
+    const RECT_CAPS: [usize; 4] = [1, 2, 4, DAMAGE_RECT_CAP];
 
-    /// The promote values a grid sweeps.
-    const PROMOTES: [f32; 9] = [
-        0.1,
-        0.2,
-        0.3,
-        DIRECT_PROMOTE_COVERAGE,
-        0.5,
-        0.6,
-        0.7,
-        0.8,
-        0.9,
+    /// The one shares a grid sweeps.
+    const SHARES: [f32; 9] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+
+    /// The densities a promote reads one half at, the shipped one among them.
+    const HALVES: [f32; 10] = [
+        100.0,
+        150.0,
+        220.0,
+        300.0,
+        PROMOTE_HALF_ROWS_PER_MPX,
+        500.0,
+        620.0,
+        800.0,
+        1000.0,
+        1400.0,
+    ];
+
+    /// What all of the surface under panes counts for, in rows per Mpx, the shipped value among them.
+    const PANE_ROWS: [f32; 7] = [
+        0.0,
+        100.0,
+        200.0,
+        PROMOTE_PANE_ROWS_PER_MPX,
+        500.0,
+        1000.0,
+        3000.0,
     ];
 
     /// Every combination of the knob values, [`Self::PRODUCTION`] among them.
     pub(super) fn grid() -> Vec<Self> {
-        let mut grid = Vec::with_capacity(
-            Self::BUDGETS_PX.len() * Self::RECT_CAPS.len() * Self::PROMOTES.len(),
-        );
+        let densities = Self::HALVES.into_iter().flat_map(|half_rows_per_mpx| {
+            Self::PANE_ROWS
+                .into_iter()
+                .map(move |pane_rows_per_mpx| Promote::Density {
+                    half_rows_per_mpx,
+                    pane_rows_per_mpx,
+                })
+        });
+        let promotes: Vec<Promote> = Self::SHARES
+            .into_iter()
+            .map(Promote::Coverage)
+            .chain(densities)
+            .collect();
+        let mut grid =
+            Vec::with_capacity(Self::BUDGETS_PX.len() * Self::RECT_CAPS.len() * promotes.len());
         for budget_px in Self::BUDGETS_PX {
             for rect_cap in Self::RECT_CAPS {
-                for promote_coverage in Self::PROMOTES {
+                for &promote in &promotes {
                     grid.push(Self {
                         merge: MergePolicy {
                             budget_px,
                             rect_cap,
                         },
-                        promote_coverage,
+                        promote,
                     });
                 }
             }
@@ -122,13 +203,24 @@ impl Policy {
             .expect("the grid holds production")
     }
 
-    /// What a frame of `raw` rects repaints on `surface`.
-    pub(crate) fn decide(&self, raw: &[Rect], surface: Rect) -> Decision {
-        let collapsed = DamageRegion::collapse_from(raw, self.merge, surface);
-        if collapsed.coverage > self.promote_coverage {
+    /// What a frame of `raw` rects repaints.
+    pub(crate) fn decide(&self, raw: &[Rect], facts: &FrameFacts) -> Decision {
+        let collapsed = DamageRegion::collapse_from(raw, self.merge, facts.surface);
+        self.decide_collapsed(&collapsed, facts)
+    }
+
+    /// [`Self::decide`] over a frame's rects already folded by this policy's merge. Past the
+    /// full-repaint threshold a frame is whole before the promote share is read.
+    pub(super) fn decide_collapsed(
+        &self,
+        damage: &CollapsedDamage,
+        facts: &FrameFacts,
+    ) -> Decision {
+        let share = self.promote.share(facts).min(FULL_REPAINT_THRESHOLD);
+        if damage.coverage > share {
             Decision::Full
         } else {
-            Decision::partial(collapsed.region.iter_rects().collect())
+            Decision::partial(damage.region.iter_rects().collect())
         }
     }
 }

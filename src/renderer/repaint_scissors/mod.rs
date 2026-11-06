@@ -123,7 +123,8 @@ pub(crate) struct PartialScissors {
 }
 
 /// The damage rects, and a footprint for each pane a partial frame captures, each footprint room
-/// for the four pieces a damage rect inside it leaves.
+/// for the four pieces a damage rect inside it leaves. Damage rects that overlap split each other
+/// too, and past the cap the frame paints whole.
 const SCISSOR_CAP: usize = DAMAGE_RECT_CAP + 4 * PaneCaptures::PARTIAL_CAP;
 
 impl PartialScissors {

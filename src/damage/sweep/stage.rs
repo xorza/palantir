@@ -1,8 +1,11 @@
 //! Where a sweep measures: a screen's content on a surface.
 
 use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE, Scene, SceneFrame};
+use crate::damage::sweep::policy::FrameFacts;
 use crate::damage::sweep::scenario::{REFERENCE, Scenario, Scope};
 use crate::display::system_scale::SystemScale;
+use crate::host::harness::Harness;
+use crate::host::window_driver::rows_per_mpx;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -10,6 +13,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::ui::bench::settle_look;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
@@ -26,7 +30,20 @@ pub(crate) enum Content {
     Plain,
     /// [`Self::Dense`] under two frosted panes, whose captures a change under them repeats.
     Glass,
+    /// The bench's screen under a toolbar, a sidebar and a popup of frosted glass: few rows, and
+    /// much of a whole frame's cost in its panes.
+    SceneGlass,
 }
+
+/// The panes of [`Content::SceneGlass`].
+const SCENE_PANES: [Rect; 3] = [
+    Rect::new(0.0, 0.0, 1280.0, 48.0),
+    Rect::new(0.0, 48.0, 240.0, 672.0),
+    Rect::new(500.0, 200.0, 320.0, 220.0),
+];
+
+/// How far a pane's footprint reaches past its rect, near what its frosted blur reads.
+const PANE_REACH: f32 = 48.0;
 
 const DENSE_ROWS: u32 = 36;
 const DENSE_COLS: u32 = 32;
@@ -94,8 +111,9 @@ impl Stage {
     };
 
     /// Every stage: the two whole screens, then one change at a time from the dense one: no
-    /// content, a quarter of the pixels of the same window, more pixels of the same aspect, and panes.
-    pub(crate) const ALL: [Self; 6] = [
+    /// content, a quarter of the pixels of the same window, more pixels of the same aspect, and
+    /// panes; and panes over the bench's own screen.
+    pub(crate) const ALL: [Self; 7] = [
         Self::SCENE,
         Self {
             name: "dense",
@@ -124,7 +142,21 @@ impl Stage {
             content: Content::Glass,
             ..Self::SCENE
         },
+        Self {
+            name: "scene_glass",
+            content: Content::SceneGlass,
+            ..Self::SCENE
+        },
     ];
+
+    /// This stage's panes on the reference window.
+    const fn panes(&self) -> &'static [Rect] {
+        match self.content {
+            Content::Scene | Content::Dense | Content::Plain => &[],
+            Content::Glass => &PANES,
+            Content::SceneGlass => &SCENE_PANES,
+        }
+    }
 
     /// The logical window of this stage's surface.
     pub(crate) fn surface(&self) -> Rect {
@@ -135,6 +167,24 @@ impl Stage {
             self.physical.x as f32 / scale,
             self.physical.y as f32 / scale,
         )
+    }
+
+    /// What a frame's decision reads on this stage, from a record of its content under the look
+    /// its frames are timed in.
+    pub(crate) fn facts<S: Scene>(&self) -> FrameFacts {
+        let mut h = Harness::builder(self.physical)
+            .system_scale(self.scale)
+            .build();
+        let mut scene = SceneFrame::<S>::default();
+        h.frame(|ui| self.record(&mut scene, ui));
+        settle_look(h.ui_mut(), 1);
+        h.frame(|ui| self.record(&mut scene, ui));
+        let frame_scene = h.ui().frame_scene();
+        FrameFacts {
+            surface: self.surface(),
+            rows_per_mpx: rows_per_mpx(frame_scene.visible_row_count(), self.physical),
+            pane_share: frame_scene.pane_share(),
+        }
     }
 
     /// Whether this stage measures scenarios of `scope`.
@@ -150,9 +200,8 @@ impl Stage {
     }
 
     /// The raw rects of `scenario`'s frames on this stage: scaled to its window, and where a rect
-    /// touches a pane, that pane's rect after them, as a damage walk pushes a stale pane's. A walk
-    /// reads the pane's footprint and this its rect, so a rect inside the blur's reach alone stales
-    /// the pane without adding its rect.
+    /// reaches a pane, within [`PANE_REACH`] of it, that pane's rect after them, as a damage walk
+    /// pushes a stale pane's.
     pub(crate) fn raw_frames(&self, scenario: &Scenario) -> Vec<Vec<Rect>> {
         let surface = self.surface();
         scenario
@@ -160,11 +209,11 @@ impl Stage {
             .iter()
             .map(|frame| {
                 let mut raw: Vec<Rect> = frame.iter().map(|r| scaled(*r, surface)).collect();
-                if self.content == Content::Glass {
-                    for pane in PANES.map(|pane| scaled(pane, surface)) {
-                        if raw.iter().any(|r| r.intersects(pane)) {
-                            raw.push(pane);
-                        }
+                for pane in self.panes() {
+                    let pane = scaled(*pane, surface);
+                    let footprint = pane.inflated(PANE_REACH);
+                    if raw.iter().any(|r| r.intersects(footprint)) {
+                        raw.push(pane);
                     }
                 }
                 raw
@@ -184,21 +233,26 @@ impl Stage {
                     .chrome(Chrome::fill(RgbaF32::srgb(0.1, 0.1, 0.12)))
                     .show(ui, |_| {});
             }
-            Content::Glass => {
+            Content::Glass | Content::SceneGlass => {
                 let surface = self.surface();
+                let panes = self.panes();
                 Panel::zstack()
                     .id_salt("sweep-glass")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        dense(ui);
+                        if self.content == Content::Glass {
+                            dense(ui);
+                        } else {
+                            scene.record(ui);
+                        }
                         Panel::canvas()
                             .id_salt("sweep-panes")
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                for pane in PANES {
+                                for pane in panes {
                                     ui.add_shape(
                                         Shape::rect()
-                                            .at(scaled(pane, surface))
+                                            .at(scaled(*pane, surface))
                                             .fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
                                             .backdrop_filter(BackdropFilter {
                                                 saturation: 1.8,

@@ -99,3 +99,31 @@ fn the_cull_margin_is_the_padding_and_the_slack_in_logical_px() {
     assert_eq!(repaint_scissors::cull_margin(1.0), 3.0);
     assert_eq!(repaint_scissors::cull_margin(2.0), 1.5);
 }
+
+/// Damage rects that overlap reach the pass disjoint. At scale 2 with a padding of 2, a crosshair's
+/// wide strip takes (0, 42) + 100 × 14, and its tall one keeps what that leaves of
+/// (42, 0) + 14 × 100: a band above and a band below.
+#[test]
+fn overlapping_damage_rects_take_disjoint_scissors() {
+    let damage = DamageRegion::collapse_from(
+        &[
+            Rect::new(0.0, 22.0, 50.0, 5.0),
+            Rect::new(22.0, 0.0, 5.0, 50.0),
+        ],
+        MergePolicy::with_budget(0.0),
+        Rect::new(0.0, 0.0, 50.0, 50.0),
+    );
+    assert_eq!(damage.region.iter_rects().count(), 2);
+    let repaint = RepaintScissors::new(Damage::Partial(damage), &display(), []).unwrap();
+    let RepaintScissors::Partial(scissors) = repaint else {
+        panic!("a partial damage takes partial scissors");
+    };
+    assert_eq!(
+        scissors.iter().collect::<Vec<_>>(),
+        [
+            URect::new(0, 42, 100, 14),
+            URect::new(42, 0, 14, 42),
+            URect::new(42, 56, 14, 44),
+        ]
+    );
+}

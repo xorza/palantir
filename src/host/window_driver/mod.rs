@@ -5,7 +5,7 @@
 //! windows share one renderer without sharing frame-local geometry.
 
 use crate::common::tracy;
-use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
+use crate::damage::Damage;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::system_scale::SystemScale;
@@ -181,21 +181,57 @@ pub(super) enum PresentPath {
     ViaBackbuffer(RenderPlan),
 }
 
-/// Coverage above which [`PresentStrategy::DirectAdaptive`] promotes a `Partial`
-/// to a direct full repaint. Below [`FULL_REPAINT_THRESHOLD`] (asserted), so a
-/// promotable partial isn't already `Full`. The backbuffer path pays a whole-surface
-/// copy per frame; measured crossover is near 0.40 (`frame` bench, a mobile AMD iGPU:
-/// `scrolling` 7.8 ms via backbuffer vs 6.8 ms direct; a tiny partial 3.3 ms via
-/// backbuffer). Area only proxies cost, so the line sits under the expensive band.
-pub(crate) const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;
+/// The density at which [`promote_share`] reads one half, in rows that draw on the surface per
+/// million physical pixels.
+pub(crate) const PROMOTE_HALF_ROWS_PER_MPX: f32 = 400.0;
 
-// Retuning either threshold past the other would silently kill promotion.
-const _: () = assert!(DIRECT_PROMOTE_COVERAGE < FULL_REPAINT_THRESHOLD);
+/// What all of the surface under pane footprints counts for in [`promote_share`]'s density, in the
+/// same rows per million physical pixels.
+pub(crate) const PROMOTE_PANE_ROWS_PER_MPX: f32 = 300.0;
+
+/// A scene's rows per million physical pixels.
+pub(crate) fn rows_per_mpx(row_count: usize, physical: UVec2) -> f32 {
+    row_count as f32 / (physical.x as f32 * physical.y as f32 / 1e6)
+}
+
+/// The share of the surface a damage may cover before a whole repaint is cheaper, at a density
+/// that reads one half at `half_rows_per_mpx`.
+pub(crate) fn density_share(rows_per_mpx: f32, half_rows_per_mpx: f32) -> f32 {
+    rows_per_mpx / (rows_per_mpx + half_rows_per_mpx)
+}
+
+/// The share of the surface a damage may cover before [`PresentStrategy::DirectAdaptive`] paints a
+/// whole frame direct: `d / (d + 400)` of the density `d`, the rows that draw on the surface per
+/// million physical pixels, and 300 for all of the surface under pane footprints.
+///
+/// A partial frame pays a copy of the whole surface, and saves the rows and the pixels outside its
+/// damage and the captures of the panes it leaves, so a denser scene makes more damage worth a
+/// partial frame, and an empty one makes none. Both sides scale with the surface, which leaves the
+/// density. The numbers are in `.notes/PERF.md`.
+///
+/// Refused: one share, 0.4 when this was written, whose best value ran from 0.1 on a plain screen
+/// to 0.7 on a dense one; the bounds as the measure, on a tiler too, whose partial frame moves them;
+/// a lower share on a stale backbuffer, and a first whole frame through the backbuffer, which helped
+/// one GPU and cost another.
+fn promote_share(row_count: usize, pane_share: f32, physical: UVec2) -> f32 {
+    density_share(
+        rows_per_mpx(row_count, physical) + PROMOTE_PANE_ROWS_PER_MPX * pane_share,
+        PROMOTE_HALF_ROWS_PER_MPX,
+    )
+}
+
+/// What [`present_path`] reads of the target beside the plan.
+#[derive(Clone, Copy, Debug)]
+struct PresentFacts {
+    backbuffer_fresh: bool,
+    /// [`promote_share`] of a partial frame. It walks the paint rows, so no other frame pays.
+    promote_share: Option<f32>,
+}
 
 fn present_path(
     plan: Option<RenderPlan>,
     strategy: PresentStrategy,
-    backbuffer_fresh: bool,
+    facts: PresentFacts,
 ) -> PresentPath {
     match strategy {
         PresentStrategy::DirectAdaptive => match plan {
@@ -203,9 +239,10 @@ fn present_path(
             Some(p) => match p.damage {
                 Damage::Full => PresentPath::Direct(p),
                 Damage::Partial(damage) => {
-                    if damage.coverage > DIRECT_PROMOTE_COVERAGE {
+                    let share = facts.promote_share.expect("a partial frame has its share");
+                    if damage.coverage > share {
                         PresentPath::Direct(p.to_full())
-                    } else if backbuffer_fresh {
+                    } else if facts.backbuffer_fresh {
                         PresentPath::ViaBackbuffer(p)
                     } else {
                         PresentPath::ViaBackbuffer(p.to_full())
@@ -461,9 +498,27 @@ impl WindowDriver {
             ));
         }
         let strategy = self.strategy;
-        let path = |plan: Option<RenderPlan>, fresh: bool| match plan {
+        let partial = report
+            .plan
+            .is_some_and(|plan| matches!(plan.damage, Damage::Partial(_)));
+        let promote_share = partial.then(|| {
+            let scene = self.ui.frame_scene();
+            promote_share(
+                scene.visible_row_count(),
+                scene.pane_share(),
+                scene.stamp.display.physical,
+            )
+        });
+        let path = |plan: Option<RenderPlan>, backbuffer_fresh: bool| match plan {
             Some(plan) if capturing => PresentPath::ViaBackbuffer(plan.to_full()),
-            plan => present_path(plan, strategy, fresh),
+            plan => present_path(
+                plan,
+                strategy,
+                PresentFacts {
+                    backbuffer_fresh,
+                    promote_share,
+                },
+            ),
         };
         let mut mode = path(report.plan, self.stream.is_backbuffer_fresh());
         if !matches!(mode, PresentPath::SkipNoop) {
