@@ -10,13 +10,13 @@ use crate::common::span::Span;
 use crate::damage::node_snapshot::NodeSnapshot;
 use crate::damage::region::{CollapsedDamage, DamageRegion};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
-use crate::input::interaction::response_state::ResponseState;
-use crate::input_state::target_scroll_delta::TargetScrollDelta;
+use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::layout::cache::measure_snapshot::MeasureSnapshot;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::paint::brush::Brush;
@@ -110,12 +110,12 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()` under `cfg(test)`. One value for both profiles: the scene's
 /// `cfg(debug_assertions)` check fields sit on each plane's `Tree`, which `Forest` keeps on the
 /// heap.
-const UI_SIZE: usize = 2992;
+const UI_SIZE: usize = 3016;
 
 /// Expected `size_of::<FrameLoop>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const FRAME_LOOP_SIZE: usize = 5408;
+const FRAME_LOOP_SIZE: usize = 5432;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)
@@ -200,7 +200,7 @@ const PINS: &[Pin] = &[
     pin::<Paint>("cascade::Paint", 24, 8),
     pin::<ResponseState>("input::ResponseState", 136, 4),
     pin::<Widget>("widget_core::Widget", 128, 8),
-    pin::<TargetScrollDelta>("input_state::TargetScrollDelta", 32, 8),
+    pin::<TargetScrollDelta>("input::TargetScrollDelta", 32, 8),
     pin::<DamageRegion>("damage::DamageRegion", 132, 4),
     pin::<CollapsedDamage>("damage::CollapsedDamage", 136, 4),
     pin::<NodeSnapshot>("damage::node_snapshot::NodeSnapshot", 40, 8),

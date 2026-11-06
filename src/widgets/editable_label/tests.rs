@@ -2,10 +2,10 @@ use crate::theme::Theme;
 use glam::{UVec2, Vec2};
 
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::slot_defaults::SlotDefaults;

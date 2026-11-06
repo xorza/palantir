@@ -185,7 +185,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
                 s.operations.clear();
                 let dock_id = WidgetId::from_hash("showcase::dock");
-                DockView::scan(ui, dock_id, &s.dock, &mut s.operations);
+                DockView::scan(&mut ui.input_ctx(), dock_id, &s.dock, &mut s.operations);
                 s.apply_operations();
                 let mut panes = Panes {
                     k,

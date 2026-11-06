@@ -3,10 +3,10 @@
 
 pub(crate) mod split_half;
 
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;

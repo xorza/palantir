@@ -1,8 +1,8 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::Theme;
@@ -109,7 +109,7 @@ fn a_chip_is_a_tab_stop_while_the_caller_keeps_it_one() {
 /// as a second shape.
 #[test]
 fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
-    use crate::input::pointer::PointerButton;
+    use crate::primitives::input::pointer::PointerButton;
     use crate::primitives::paint::stroke::Stroke;
     use crate::shape::paint::shape_stroke::ShapeStroke;
 

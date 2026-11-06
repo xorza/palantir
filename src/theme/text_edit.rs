@@ -2,10 +2,10 @@
 //! selection colors that have no state.
 
 use crate::animation::animation_spec::AnimationSpec;
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 use crate::primitives::paint::stroke::Stroke;

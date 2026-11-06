@@ -1,4 +1,4 @@
-use crate::input::pointer::PointerButton;
+use crate::primitives::input::pointer::PointerButton;
 use crate::widgets::text_edit::tests::*;
 
 #[derive(Debug)]

@@ -4,8 +4,8 @@
 
 use crate::host::harness::Harness;
 use crate::host::harness::internals::Passes;
-use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;

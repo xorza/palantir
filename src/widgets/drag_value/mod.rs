@@ -1,12 +1,12 @@
 //! The scrubbable number field: drag to change, click to type.
 
-use crate::input::key_class::{KeyClass, KeyFilter};
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
-use crate::input::watch::KeyboardWake;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::key_class::{KeyClass, KeyFilter};
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::watch::KeyboardWake;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;

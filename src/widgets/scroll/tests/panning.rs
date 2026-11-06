@@ -2,13 +2,13 @@
 
 use crate::display::Display;
 use crate::host::harness::Harness;
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
-use crate::input::scroll_targets::ScrollTargets;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::scroll_targets::ScrollTargets;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;

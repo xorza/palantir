@@ -11,10 +11,10 @@ use crate::display;
 use crate::host::winit::input::{
     KeyDownFacts, Press, ime_event, key_down, normalize_modifiers, shift_wheel,
 };
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
-use crate::input::zoom_factor::ZoomFactor;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::zoom_factor::ZoomFactor;
 
 /// The pointer's **physical** position, retained across events because a
 /// scale change invalidates the logical one and re-deriving needs it before

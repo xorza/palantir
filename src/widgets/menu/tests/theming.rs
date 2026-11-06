@@ -1,10 +1,10 @@
 //! Row pitch, the shortcut gutter, separators, radius, and per-instance overrides of each.
 
 use crate::host::harness::Harness;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;

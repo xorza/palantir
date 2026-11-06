@@ -1,10 +1,10 @@
 //! What a pinch, a wheel and a modifier do to the scale.
 
 use crate::host::harness::Harness;
-use crate::input::input_event::InputEvent;
-use crate::input::zoom_factor::ZoomFactor;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
@@ -289,7 +289,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
 
 #[test]
 fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
-    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::primitives::input::keyboard::modifiers::Modifiers;
 
     // Touchpad pixels under ctrl zoom: two lines' worth is two notches.
     let mut h = Harness::mono(SURFACE);
@@ -333,7 +333,7 @@ fn wheel_zoom_step_is_font_independent() {
     // One wheel line is one zoom notch regardless of font size.
     let expected = 1.03_f32.powf(-1.0);
     for font_size in [12.0_f32, 16.0, 24.0] {
-        use crate::input::keyboard::modifiers::Modifiers;
+        use crate::primitives::input::keyboard::modifiers::Modifiers;
 
         let mut h = Harness::mono(SURFACE);
         h.ui_mut().theme_mut().text.font_size = font_size;
@@ -519,7 +519,7 @@ fn zoom_config_clamps_to_its_own_range() {
 /// `Ctrl` zooms only the Ctrl wheel, `Always` both, `PinchOnly` neither.
 #[test]
 fn zoom_modifier_picks_which_wheel_zooms() {
-    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::primitives::input::keyboard::modifiers::Modifiers;
     use crate::widgets::scroll::zoom_config::ZoomModifier;
 
     let id = WidgetId::from_hash("modded");

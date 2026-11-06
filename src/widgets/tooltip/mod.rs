@@ -1,11 +1,12 @@
 //! The hover tooltip: the widget, its per-trigger hover clock, and the app-global
 //! state letting a second tooltip skip the delay.
 
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerEvent;
-use crate::input::sense::Sense;
-use crate::input::watch::PointerWake;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerEvent;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::watch::PointerWake;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
@@ -17,7 +18,6 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use std::rc::Rc;

@@ -1,5 +1,6 @@
 //! A strip over a content area, bound to the caller's page index.
 
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::theme::menu::MenuTheme;
@@ -7,7 +8,6 @@ use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::reindex;

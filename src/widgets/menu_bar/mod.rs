@@ -1,9 +1,9 @@
 //! The application menu bar: a row of titles, each opening its menu, one open at a time.
 
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;

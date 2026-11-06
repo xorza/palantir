@@ -1,7 +1,7 @@
 //! The bundle a widget wears whole and the rule picking one look from a response.
 
 use crate::animation::animation_key::AnimationKey;
-use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::look_plan::LookPlan;
 use crate::theme::look::slot_defaults::SlotDefaults;

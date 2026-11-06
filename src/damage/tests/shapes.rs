@@ -566,7 +566,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
 /// The focus ring arriving damages that node only: it rides the chrome row, whose hash carries it.
 #[test]
 fn a_focus_ring_damages_only_its_node() {
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::key::Key;
     use crate::widgets::block::Block;
 
     let [a, b] = ["a", "b"].map(WidgetId::from_hash);

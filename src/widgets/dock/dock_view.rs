@@ -1,8 +1,9 @@
 //! The dock widget: the split walk, one strip-over-content pane per group, and the drag-docking gesture.
 
-use crate::input::keyboard::key::Key;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::scene::layer::Layer;
@@ -10,9 +11,9 @@ use crate::theme::dock::DockTheme;
 use crate::theme::menu::MenuTheme;
 use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
+use crate::ui::input_ctx::InputCtx;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, NodeIdx};
@@ -49,7 +50,7 @@ use std::rc::Rc;
 /// # fn demo<D: DockTabs<Tab = Tab>>(ui: &mut Ui, dock: &mut DockState<Tab>, tabs: &mut D) {
 /// let id = WidgetId::from_hash("app.dock");
 /// let mut operations: Vec<DockOperation<Tab>> = Vec::new();
-/// DockView::scan(ui, id, dock, &mut operations);
+/// DockView::scan(&mut ui.input_ctx(), id, dock, &mut operations);
 /// for operation in operations.drain(..) {
 ///     dock.apply(operation);
 /// }
@@ -182,7 +183,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
             .default_size((Sizing::FILL, Sizing::FILL));
         let response = widget.response(ui);
         let id = response.id;
-        let carried = DockView::drag(ui, id);
+        let carried = DockView::drag(&ui.input_ctx(), id);
         // Classified before the walk, so the strip it lands in records its caret, and kept for
         // the scan that sees the release: the drop lands where the frame showed it.
         let drop = carried.and_then(|tab| {
@@ -228,7 +229,7 @@ impl<T: DockTab> DockView<'_, T> {
         ui.with_state::<DockOpBuf<T>, _>(dock, |ui, buf| {
             let operations = &mut buf.operations;
             operations.clear();
-            DockView::scan(ui, dock, state, operations);
+            DockView::scan(&mut ui.input_ctx(), dock, state, operations);
             for operation in operations.drain(..) {
                 state.apply(operation);
             }
@@ -245,21 +246,21 @@ impl<T: DockTab> DockView<'_, T> {
     ///
     /// **Run before the record, and apply what it emits.**
     pub fn scan(
-        ui: &mut Ui,
+        ctx: &mut InputCtx<'_>,
         dock: WidgetId,
         state: &DockState<T>,
         operations: &mut Vec<DockOperation<T>>,
     ) {
         if let Some(group) = state
             .groups()
-            .find(|g| g.id != state.focused() && ui.is_focus_within(g.id.pane_id(dock)))
+            .find(|g| g.id != state.focused() && ctx.input.is_focus_within(g.id.pane_id(dock)))
         {
             operations.push(DockOperation::FocusPane { group: group.id });
         }
-        let mut dragged = Self::drag(ui, dock);
+        let mut dragged = Self::drag(ctx, dock);
         for group in state.groups() {
             let hits = TabStrip::scan(
-                ui,
+                ctx.input,
                 group.id.strip_id(dock),
                 group.tabs.iter().map(|&tab| TabKey::of(tab)),
             );
@@ -274,45 +275,45 @@ impl<T: DockTab> DockView<'_, T> {
                 && let Some(tab) = tab_at(hits.drag_started)
             {
                 dragged = Some(tab);
-                Self::start_drag(ui, dock, tab);
+                Self::start_drag(ctx, dock, tab);
             }
         }
         let Some(tab) = dragged else {
             return;
         };
         let Some(address) = state.find_tab(tab) else {
-            Self::end_drag(ui, dock);
+            Self::end_drag(ctx, dock);
             return;
         };
-        if ui.shortcut_pressed(Key::Escape) {
-            Self::end_drag(ui, dock);
+        if ctx.shortcut_pressed(Key::Escape) {
+            Self::end_drag(ctx, dock);
             return;
         }
         let chip = TabStrip::chip_id(address.group.strip_id(dock), TabKey::of(tab));
-        if ui.response_for(chip).left.drag.stopped() {
-            let shown = ui.state::<TabDrag<T>>(dock).and_then(|d| d.target);
+        if ctx.input.response_for(chip).left.drag.stopped() {
+            let shown = ctx.state::<TabDrag<T>>(dock).and_then(|d| d.target);
             if let Some(target) = shown {
                 operations.push(DockOperation::MoveTab {
                     tab,
                     to: target.drop(),
                 });
             }
-            Self::end_drag(ui, dock);
+            Self::end_drag(ctx, dock);
         }
     }
 
-    fn drag(ui: &Ui, dock: WidgetId) -> Option<T> {
-        ui.state::<TabDrag<T>>(dock).map(|drag| drag.tab)
+    fn drag(ctx: &InputCtx<'_>, dock: WidgetId) -> Option<T> {
+        ctx.state::<TabDrag<T>>(dock).map(|drag| drag.tab)
     }
 
     /// Start carrying `tab`, with no drop yet.
-    fn start_drag(ui: &mut Ui, dock: WidgetId, tab: T) {
-        ui.set_state(dock, TabDrag { tab, target: None });
+    fn start_drag(ctx: &mut InputCtx<'_>, dock: WidgetId, tab: T) {
+        ctx.set_state(dock, TabDrag { tab, target: None });
     }
 
     /// End the drag and forget its drop.
-    fn end_drag(ui: &mut Ui, dock: WidgetId) {
-        ui.remove_state::<TabDrag<T>>(dock);
+    fn end_drag(ctx: &mut InputCtx<'_>, dock: WidgetId) {
+        ctx.remove_state::<TabDrag<T>>(dock);
     }
 
     /// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels, as it does over a drop [`DockState::accepts_move`] refuses.

@@ -1,10 +1,10 @@
 //! A decorated leaf rectangle: chrome, size, margin, no body.
 
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 
 /// A leaf rectangle with optional chrome, size, margin and `Sense`: dividers, hit areas, swatches, spacers. Content inside needs a [`Panel`](crate::Panel).

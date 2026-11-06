@@ -1,7 +1,7 @@
 //! The horizontal value slider and what a frame of it reports.
 
-use crate::input::sense::Sense;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;

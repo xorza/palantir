@@ -1,8 +1,8 @@
 //! One interactive node's row in the hit-test table.
 
-use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::sense::Sense;
 
 /// One interactive row: a node whose effective `sense` is nonempty or which is
 /// focusable. Pushed in paint order, so a reverse scan yields topmost-first.

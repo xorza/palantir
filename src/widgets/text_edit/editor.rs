@@ -1,11 +1,11 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::watch::KeyboardWake;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::watch::KeyboardWake;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::menu::menu_separator::MenuSeparator;

@@ -1,9 +1,9 @@
 //! [`OverlayScope`] — a dismissible overlay's claim on its layer.
 
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -201,8 +201,8 @@ impl OverlayScope {
 #[cfg(test)]
 mod tests {
     use crate::host::harness::Harness;
-    use crate::input::keyboard::key::Key;
     use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::layout::sizing::Sizing;
     use crate::scene::layer::Layer;
     use crate::ui::Ui;

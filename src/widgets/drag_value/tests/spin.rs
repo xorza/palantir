@@ -1,10 +1,10 @@
 //! The focused chip as a spin button.
 
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::drag_value::tests::support::{TYPED, deferred_frame};

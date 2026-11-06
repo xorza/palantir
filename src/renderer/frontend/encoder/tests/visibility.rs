@@ -1,9 +1,9 @@
 //! Disabled and hidden subtrees, against the hit index that mirrors them.
 
 use crate::host::harness::Harness;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;

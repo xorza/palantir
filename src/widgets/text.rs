@@ -1,5 +1,6 @@
 //! The standalone text leaf: labels, paragraphs and headings.
 
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -14,7 +15,6 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 
 /// Standalone shaped-text leaf for labels, paragraphs and headings. **By default a

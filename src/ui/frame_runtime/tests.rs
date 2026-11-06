@@ -7,7 +7,7 @@ use crate::common::time::MAX_ANIMATION_DT;
 use crate::damage::DamageBase;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::input::policy::{InputPolicy, InputSignal};
+use crate::primitives::input::policy::{InputPolicy, InputSignal};
 use crate::ui::frame_runtime::FrameClassifyInput;
 use crate::ui::frame_runtime::FramePlan;
 use crate::ui::frame_runtime::FrameRuntime;

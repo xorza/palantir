@@ -1,6 +1,6 @@
 use crate::host::harness::Harness;
-use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -102,7 +102,7 @@ fn the_hue_texture_follows_the_model() {
 /// The hue bar's right end is hue 1, not 0: a drag past the edge and End store 1, Home 0; steps past either end wrap.
 #[test]
 fn the_hue_bar_keeps_both_ends() {
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::key::Key;
 
     let id = WidgetId::from_hash("strip-hue-ends");
     let mut h = harness();
@@ -144,7 +144,7 @@ fn the_hue_bar_keeps_both_ends() {
 /// clamping at the ends.
 #[test]
 fn page_and_arrow_keys_step_the_alpha_bar() {
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::key::Key;
 
     let id = WidgetId::from_hash("strip-alpha-page");
     let mut h = harness();

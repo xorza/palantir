@@ -213,8 +213,8 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
 /// Enter, which WAI-ARIA leaves to the form, and a letter move none and reach the app.
 #[test]
 fn space_activates_a_focused_toggle() {
-    use crate::input::key_class::KeyFilter;
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::key_class::KeyFilter;
+    use crate::primitives::input::keyboard::key::Key;
     use crate::widgets::panel::Panel;
 
     for kind in [Toggle::Checkbox, Toggle::Switch, Toggle::Radio] {

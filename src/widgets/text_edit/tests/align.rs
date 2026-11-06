@@ -2,8 +2,8 @@
 
 use crate::primitives::geometry::size::Size;
 
-use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::align::Align;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;

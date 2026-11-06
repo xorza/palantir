@@ -1,6 +1,7 @@
 //! The push button: a labeled, themed leaf reporting pointer-button clicks.
 
-use crate::input::sense::Sense;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::Align;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -13,7 +14,7 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{InnerResponse, Response};
+use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
 
 /// A clickable, themed rectangle carrying an optional label.

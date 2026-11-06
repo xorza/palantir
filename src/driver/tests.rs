@@ -1,9 +1,9 @@
 use crate::driver::error::LocateError;
 use crate::driver::locator::{Found, Locate, Locator, Reach};
 use crate::host::harness::Harness;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;

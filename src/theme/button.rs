@@ -1,8 +1,8 @@
 //! What a button wears in each of its four interaction states.
 
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;

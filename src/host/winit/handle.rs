@@ -182,7 +182,7 @@ impl<T: 'static> HostHandle<T> {
 mod tests {
     use crate::host::winit::handle::UserEvent;
     use crate::host::winit::wake_latch::WakeLatch;
-    use crate::input::input_event::InputEvent;
+    use crate::primitives::input::input_event::InputEvent;
     use crate::window::window_token::WindowToken;
 
     #[test]

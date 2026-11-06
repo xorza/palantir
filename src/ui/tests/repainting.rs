@@ -5,12 +5,12 @@ use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
 use crate::image_registry::texture_limit::TextureLimit;
-use crate::input::keyboard::key::Key;
-use crate::input::policy::InputPolicy;
-use crate::input::policy::InputSignal;
 use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::policy::InputPolicy;
+use crate::primitives::input::policy::InputSignal;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -526,9 +526,7 @@ fn input_policy_routes_paint_only_gate() {
         let mut h = Harness::mono(SURFACE);
         h.ui_mut().set_input_policy(InputPolicy::OnDelta);
         let _ = h.frame(|ui| body(ui, half));
-        h.ui_mut()
-            .input
-            .set_focus(Some(WidgetId::from_hash("editor")));
+        h.ui_mut().input.set_focus(WidgetId::from_hash("editor"));
 
         h.key(Key::Enter);
         assert_eq!(

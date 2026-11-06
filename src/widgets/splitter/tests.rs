@@ -2,9 +2,9 @@
 
 use crate::host::harness::Harness;
 use crate::host::harness::internals::Passes;
-use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::theme::Theme;
@@ -550,8 +550,8 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
 /// A focused divider takes the window splitter's keys through the drag's mapping, held by `min_pane`. Seam at `400 r + 0.5`: an arrow moves `r` by 10 / 400 = 0.025, and with Shift ten of those, 0.25; End holds at 1 − 50 / 400 = 0.875; Home at 0.125. Each key commits once.
 #[test]
 fn a_focused_divider_moves_by_the_keys_within_the_floors() {
-    use crate::input::keyboard::key::Key;
-    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::modifiers::Modifiers;
     use crate::primitives::math::domain;
 
     let mut h = Harness::mono(SURFACE);

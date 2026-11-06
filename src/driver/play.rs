@@ -4,12 +4,12 @@
 use crate::driver::action::Action;
 use crate::driver::error::PlayError;
 use crate::driver::locator::{Locator, Reach};
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::pointer::PointerButton;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
-use crate::input_state::capture::DRAG_THRESHOLD;
+use crate::input::capture::DRAG_THRESHOLD;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use glam::Vec2;
 use std::fmt::Debug;
 use std::time::Duration;

@@ -1,7 +1,7 @@
 //! The saturation/value area of a color picker, and the texture it paints itself with.
 
-use crate::input::keyboard::key::Key;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::{ColorModel, HUE_BLOCK};

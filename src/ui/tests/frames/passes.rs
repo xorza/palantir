@@ -5,17 +5,20 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::common::sync::MutexExt;
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::host::harness::Harness;
-use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::MAX_CARRIED_RELAYOUTS;
 use crate::ui::frame_runtime::wake::WakeReasons;
+use crate::ui::input_ctx::InputCtx;
 use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
@@ -73,11 +76,11 @@ fn cascade_visible_to_relayout_pass() {
 /// `FrameLoop::frame` re-records when the frame had routed input that could drive a state mutation, else runs the closure once.
 #[test]
 fn frame_pass_count_matches_action_trigger() {
-    use crate::input::input_event::InputEvent;
-    use crate::input::keyboard::key::Key;
-    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::primitives::input::input_event::InputEvent;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::modifiers::Modifiers;
 
-    use crate::input::sense::Sense;
+    use crate::primitives::input::sense::Sense;
     use crate::primitives::layout::sizing::Sizing;
     use glam::Vec2;
 
@@ -416,6 +419,7 @@ fn update_sees_input_that_arrived_after_a_quiescent_pass() {
 #[derive(Debug, Default)]
 struct CountingApp {
     updates: u32,
+    inputs: u32,
     records: u32,
     relayout_on_next_record: bool,
     expected_pointer: Option<Vec2>,
@@ -425,8 +429,21 @@ impl App for CountingApp {
     fn update(&mut self, win: WindowToken, ui: &Ui) {
         assert_eq!(win, WindowToken(0));
         assert_eq!(ui.display().physical, SURFACE);
-        assert_eq!(ui.input().pointer_pos(), self.expected_pointer);
+        assert_eq!(
+            self.records,
+            self.updates * 2,
+            "update runs before any record of its frame"
+        );
+        assert_eq!(ui.input().peek_pointer_pos(), self.expected_pointer);
         self.updates += 1;
+    }
+
+    fn input(&mut self, win: WindowToken, ctx: InputCtx<'_>) {
+        assert_eq!(win, WindowToken(0));
+        assert_eq!(ctx.display().physical, SURFACE);
+        assert_eq!(ctx.input.peek_pointer_pos(), self.expected_pointer);
+        assert_eq!(self.inputs + 1, self.updates, "after this frame's update");
+        self.inputs += 1;
     }
 
     fn record(&mut self, win: WindowToken, ui: &mut Ui) {
@@ -439,8 +456,8 @@ impl App for CountingApp {
     }
 }
 
-/// `App::update` runs once per recorded frame and `App::record` once per pass: twice on the cold
-/// first frame and on a relayout, never on a paint-only frame.
+/// `App::update` and `App::input` run once per recorded frame and `App::record` once per pass: twice
+/// on the cold first frame and on a relayout, never on a paint-only frame.
 #[test]
 fn app_lifecycle_follows_frame_plan_and_record_replays() {
     let mut h = Harness::cold(SURFACE);
@@ -452,6 +469,7 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     let processing = h.frame_app(&mut app).processing;
     assert_eq!(processing, FrameProcessing::SingleLayout);
     assert_eq!(app.updates, 1, "cold-start frame updates once");
+    assert_eq!(app.inputs, 1, "cold-start frame reads input once");
     assert_eq!(app.records, 2, "cold-start warmup and pass A both record");
 
     app.relayout_on_next_record = true;
@@ -462,6 +480,7 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
         .processing;
     assert_eq!(processing, FrameProcessing::DoubleLayout);
     assert_eq!(app.updates, 2, "relayout frame adds one update");
+    assert_eq!(app.inputs, 2, "relayout frame reads input once");
     assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
 
     h.ui_mut()
@@ -473,7 +492,207 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
         .processing;
     assert_eq!(processing, FrameProcessing::PaintOnly);
     assert_eq!(app.updates, 2, "paint-only frame skips update");
+    assert_eq!(app.inputs, 2, "paint-only frame skips input");
     assert_eq!(app.records, 4, "paint-only frame skips record");
+}
+
+fn stage_button(ui: &mut Ui, id: WidgetId) {
+    Button::new().id(id).size(40.0).show(ui);
+}
+
+/// One frame's reads of a widget's click, the focus and a key.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct StageReads {
+    clicked: bool,
+    focus: Option<WidgetId>,
+    escape: bool,
+}
+
+/// Holds every frame's input stage and `update` to what its first record pass reads.
+#[derive(Debug)]
+struct StageProbe {
+    first: WidgetId,
+    second: WidgetId,
+    updated: Option<WidgetId>,
+    stage: Option<StageReads>,
+    clicks: u32,
+    escapes: u32,
+    last_focus: Option<WidgetId>,
+}
+
+impl App for StageProbe {
+    fn update(&mut self, _: WindowToken, ui: &Ui) {
+        self.updated = ui.focus();
+    }
+
+    fn input(&mut self, _: WindowToken, mut ctx: InputCtx<'_>) {
+        self.stage = Some(StageReads {
+            clicked: ctx.input.response_for(self.first).left.clicked(),
+            focus: ctx.input.focus(),
+            escape: ctx.key_pressed(Key::Escape),
+        });
+    }
+
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        let reads = StageReads {
+            clicked: ui.response_for(self.first).left.clicked(),
+            focus: ui.focus(),
+            escape: ui.key_pressed(Key::Escape),
+        };
+        if let Some(stage) = self.stage.take() {
+            assert_eq!(stage, reads, "the input stage and pass A read one frame");
+            assert_eq!(self.updated, reads.focus, "update reads that focus too");
+            self.clicks += u32::from(reads.clicked);
+            self.escapes += u32::from(reads.escape);
+            self.last_focus = reads.focus;
+        }
+        let (first, second) = (self.first, self.second);
+        Panel::hstack().id_salt("stage.row").show(ui, |ui| {
+            stage_button(ui, first);
+            stage_button(ui, second);
+        });
+    }
+}
+
+/// The input stage, `update` and pass A read one frame: a click's edge, a key's edge, and focus
+/// already moved by this frame's Tab. Tab from `first` lands on `second`.
+#[test]
+fn the_input_stage_reads_what_the_first_pass_reads() {
+    let first = WidgetId::from_hash("stage.first");
+    let second = WidgetId::from_hash("stage.second");
+    let mut probe = StageProbe {
+        first,
+        second,
+        updated: None,
+        stage: None,
+        clicks: 0,
+        escapes: 0,
+        last_focus: None,
+    };
+    let mut h = Harness::mono(SURFACE);
+    for _ in 0..2 {
+        h.frame_app(&mut probe);
+    }
+
+    h.click(Vec2::new(10.0, 10.0));
+    h.frame_app(&mut probe);
+    assert_eq!(probe.clicks, 1);
+
+    h.key(Key::Escape);
+    h.frame_app(&mut probe);
+    assert_eq!(probe.escapes, 1);
+
+    h.ui_mut().set_focus(first);
+    h.frame_app(&mut probe);
+    assert_eq!(probe.last_focus, Some(first));
+    h.key(Key::Tab);
+    h.frame_app(&mut probe);
+    assert_eq!(probe.last_focus, Some(second));
+}
+
+/// Asks for a second pass each frame, with a key read in the input stage or none.
+#[derive(Debug)]
+struct WatchProbe {
+    reads_key: bool,
+}
+
+impl App for WatchProbe {
+    fn input(&mut self, _: WindowToken, mut ctx: InputCtx<'_>) {
+        if self.reads_key {
+            let _ = ctx.key_pressed(Key::Escape);
+        }
+    }
+
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        ui.request_relayout();
+    }
+}
+
+/// A key the input stage reads stays watched past a second pass, whose reset would drop it: with
+/// nothing focused, only a watched press asks for a frame.
+#[test]
+fn a_watch_from_the_input_stage_outlives_a_second_pass() {
+    let asks_a_frame = |reads_key: bool| {
+        let mut h = Harness::mono(SURFACE);
+        let mut app = WatchProbe { reads_key };
+        h.frame_app(&mut app);
+        h.ui_mut().request_repaint();
+        let report = h.frame_app(&mut app);
+        assert_eq!(report.processing, FrameProcessing::DoubleLayout);
+        h.on_input(InputEvent::key_down(Key::Escape))
+            .repaint_requested
+    };
+    assert!(asks_a_frame(true));
+    assert!(!asks_a_frame(false));
+}
+
+/// Records a button with a state row, and reads both in the input stage.
+#[derive(Debug, Default)]
+struct WarmProbe {
+    read: Option<(Option<Rect>, Option<u32>)>,
+}
+
+impl App for WarmProbe {
+    fn input(&mut self, _: WindowToken, ctx: InputCtx<'_>) {
+        let id = WidgetId::from_hash("warm");
+        self.read = Some((
+            ctx.input.response_for(id).rect,
+            ctx.state::<u32>(id).copied(),
+        ));
+    }
+
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        let id = WidgetId::from_hash("warm");
+        stage_button(ui, id);
+        ui.set_state(id, 7_u32);
+    }
+}
+
+/// The warmup runs before the first input stage, so that stage reads the rect it arranged and the
+/// state row it wrote: 40 x 40 at the origin, and 7.
+#[test]
+fn the_first_input_stage_reads_what_the_warmup_arranged() {
+    let mut h = Harness::cold(SURFACE);
+    let mut app = WarmProbe::default();
+    h.frame_app(&mut app);
+    assert_eq!(
+        app.read,
+        Some((Some(Rect::new(0.0, 0.0, 40.0, 40.0)), Some(7)))
+    );
+}
+
+/// Writes a state row in the input stage, and reads it in each record pass.
+#[derive(Debug, Default)]
+struct StateProbe {
+    written: u32,
+    times: Vec<Duration>,
+    read: Vec<Option<u32>>,
+}
+
+impl App for StateProbe {
+    fn input(&mut self, _: WindowToken, mut ctx: InputCtx<'_>) {
+        self.written += 1;
+        self.times.push(ctx.now());
+        ctx.set_state(WidgetId::from_hash("row"), self.written);
+    }
+
+    fn record(&mut self, _: WindowToken, ui: &mut Ui) {
+        let id = WidgetId::from_hash("row");
+        self.read.push(ui.state::<u32>(id).copied());
+        stage_button(ui, id);
+    }
+}
+
+/// A state the input stage writes shows in that frame's first record pass.
+#[test]
+fn a_state_the_input_stage_writes_shows_in_the_first_pass() {
+    let mut h = Harness::mono(SURFACE);
+    let mut app = StateProbe::default();
+    h.frame_app(&mut app);
+    h.ui_mut().request_repaint();
+    h.at(Duration::from_millis(16)).frame_app(&mut app);
+    assert_eq!(app.read, [Some(1), Some(2)]);
+    assert_eq!(app.times, [Duration::ZERO, Duration::from_millis(16)]);
 }
 
 /// A paint-only frame repaints the retained tree, so a move of what that tree was built under

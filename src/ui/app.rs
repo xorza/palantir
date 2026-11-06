@@ -1,6 +1,7 @@
 //! The per-window, per-frame hook a host calls.
 
 use crate::ui::Ui;
+use crate::ui::input_ctx::InputCtx;
 use crate::window::window_token::WindowToken;
 
 /// Application lifecycle driven by a host for each window that records.
@@ -11,10 +12,20 @@ use crate::window::window_token::WindowToken;
 /// to follow another's asks no window to follow it in turn, so a change a record pass makes with
 /// no input, wake or animation of its own shows in the other windows at their next frame.
 pub trait App {
-    /// Runs once before the first record pass of a fully recorded frame, for work that must not replay. `ui` is read-only, and reads the state the frame starts with: focus before this frame's Tab and arrow presses move it, which the first record pass sees moved.
+    /// Runs once before any record of a fully recorded frame, the first frame's warmup included,
+    /// for work that must not replay and is not input. `ui` is read-only, and reads what the first
+    /// record pass reads: focus has already moved for this frame's Tab and arrow presses.
     fn update(&mut self, _window: WindowToken, _ui: &Ui) {}
 
-    /// Build the UI for `window`. May replay (warmup, action input, relayout) with no action input after the first pass, so unconditional effects belong in [`Self::update`].
+    /// Runs once a fully recorded frame, after [`Self::update`] and before any record, with this
+    /// frame's input: its clicks, its keys and its drags, against the rects of the last frame. A
+    /// state this writes shows in the first record pass. An [`InputCtx`] holds no [`Ui`], so nothing
+    /// can record here, as [`eframe`](https://docs.rs/eframe/latest/eframe/trait.App.html)'s `logic`
+    /// runs before its `ui`. Refused: one hook with both, as a `&Ui` and an [`InputCtx`] cannot exist
+    /// at one time.
+    fn input(&mut self, _window: WindowToken, _ctx: InputCtx<'_>) {}
+
+    /// Build the UI for `window`. May replay (warmup, action input, relayout) with no action input after the first pass, so unconditional effects belong in [`Self::update`] or [`Self::input`].
     fn record(&mut self, window: WindowToken, ui: &mut Ui);
 
     /// Whether work the app waits on runs off the frame and will [wake](crate::Waker) the window

@@ -1,5 +1,6 @@
 //! The thin divider rule, on either axis.
 
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
@@ -11,7 +12,6 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 
 /// A thin divider rule: the theme's `thickness` tall across the parent's width, or wide as a

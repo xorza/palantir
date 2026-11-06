@@ -5,11 +5,11 @@ use glam::{UVec2, Vec2};
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
 use crate::primitives::geometry::arrow;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::theme::color_scheme::ColorScheme;

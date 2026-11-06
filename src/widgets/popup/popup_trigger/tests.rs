@@ -90,7 +90,7 @@ fn open_close_and_a_disabled_trigger() {
 /// A keyboard-opened popup takes focus and returns it to the trigger on Escape; a click-opened one leaves focus on the trigger.
 #[test]
 fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::key::Key;
     use crate::widgets::block::Block;
 
     let item = WidgetId::from_hash("popup-item");
@@ -139,8 +139,8 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
 /// silenced. A popup that merely stopped recording would hold them one frame more.
 #[test]
 fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
-    use crate::input::keyboard::key::Key;
-    use crate::input::shortcut::Shortcut;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::shortcut::Shortcut;
     use crate::widgets::menu::Menu;
 
     /// Open, close and probe one trigger kind by the shared trigger id.

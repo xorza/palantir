@@ -2,10 +2,11 @@
 
 use std::rc::Rc;
 
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::{Align, HAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -19,7 +20,6 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;

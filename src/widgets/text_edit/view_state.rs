@@ -1,9 +1,9 @@
 //! The editor's viewport: where the text block is scrolled to, and when the caret
 //! blinks.
 
-use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::shape::paint_animation::PaintAnimation;

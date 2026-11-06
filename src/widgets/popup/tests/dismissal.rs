@@ -1,10 +1,10 @@
 //! What closes a popup, and how long it takes to settle.
 
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
-use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -150,7 +150,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     });
 
     // Escape dismisses it; focus makes the wake-gate deliver the chord.
-    h.ui_mut().input_mut().set_focus(Some(content));
+    h.ui_mut().input_mut().set_focus(content);
     h.key(Key::Escape);
     assert!(
         h.frame_value(|ui| build(ui, true)),
@@ -160,11 +160,11 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     // Host stops showing it. `Main` must read again at once, though the popup is still in last frame's cascade; counted inside the record, the only place the queue is live.
     h.ui_mut()
         .input_mut()
-        .set_focus(Some(WidgetId::from_hash("main-bg")));
+        .set_focus(WidgetId::from_hash("main-bg"));
     h.key(Key::Escape);
     let seen = h.frame_value(|ui| {
         build(ui, false);
-        ui.input().keyboard_events(Layer::Main.into()).len()
+        ui.input().keyboard_events_at(Layer::Main.into()).len()
     });
     assert_eq!(seen, 1, "the frame after dismissal must reach Main");
 }

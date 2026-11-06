@@ -1,10 +1,10 @@
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
@@ -192,7 +192,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
 /// drops the claim; `release` is pinned in `input::tests::keyboard`).
 #[test]
 fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
-    use crate::input::watch::{KeyboardWake, PointerWake};
+    use crate::primitives::input::watch::{KeyboardWake, PointerWake};
     const SURFACE: UVec2 = UVec2::new(400, 300);
 
     let scene = |ui: &mut Ui, open: &mut bool| {
@@ -315,7 +315,7 @@ fn opened_marks_the_first_frame_an_overlay_shows() {
 /// that only stops recording keeps the keys that next frame, so the key goes nowhere.
 #[test]
 fn closing_from_outside_gives_the_input_back_at_once() {
-    use crate::input::watch::KeyboardWake;
+    use crate::primitives::input::watch::KeyboardWake;
     use crate::primitives::layout::anchor::Anchor;
 
     #[derive(Clone, Copy, Debug, PartialEq)]

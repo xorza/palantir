@@ -1,7 +1,7 @@
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key_text::KeyText;
-use crate::input::pointer::PointerButton;
-use crate::input::policy::FocusPolicy;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key_text::KeyText;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::policy::FocusPolicy;
 use crate::widgets::text_edit::tests::*;
 
 #[test]

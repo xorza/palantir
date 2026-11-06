@@ -1,7 +1,8 @@
 //! A color chip over a checker for translucent colors.
 
-use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -13,7 +14,6 @@ use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use std::rc::Rc;

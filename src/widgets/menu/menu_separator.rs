@@ -1,10 +1,10 @@
 //! The rule a context menu draws between groups of rows.
 
+use crate::primitives::input::interaction::response::Response;
 use crate::theme::separator::SeparatorTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widgets::separator::Separator;
 use std::rc::Rc;
 

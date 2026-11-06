@@ -1,7 +1,7 @@
 //! What a menu bar's titles wear, closed and open, and which of the two applies.
 
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::WidgetLook;

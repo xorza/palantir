@@ -6,11 +6,11 @@ use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, Physic
 
 use crate::common::platform::Platform;
 use crate::common::span::Span;
-use crate::input::ime_preedit::ImePreedit;
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_text::KeyText;
-use crate::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::ime_preedit::ImePreedit;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::key_text::KeyText;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
 
 pub(super) mod translator;
 

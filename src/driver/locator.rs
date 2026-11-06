@@ -1,9 +1,9 @@
 //! [`Locator`]: where an input lands, by what the window shows rather than by pixels.
 
 use crate::driver::error::LocateError;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::sense::Sense;
 use crate::ui::Ui;
 use crate::ui::inspected_widget::InspectedWidget;
 use glam::Vec2;

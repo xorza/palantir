@@ -3,14 +3,14 @@
 use glam::{UVec2, Vec2};
 
 use crate::host::harness::Harness;
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::pointer::PointerButton;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::shape::paint::curve_basis::CurveBasis;
@@ -639,8 +639,8 @@ fn travel_needs_focus_inside_the_strip() {
 /// A focused strip takes Ctrl+Tab and lets bare Tab pass to the app root.
 #[test]
 fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
-    use crate::input::key_class::KeyFilter;
-    use crate::input::shortcut::{Shortcut, ShortcutMods};
+    use crate::primitives::input::key_class::KeyFilter;
+    use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 
     let scene = |ui: &mut Ui, probe: Shortcut| {
         Panel::vstack()

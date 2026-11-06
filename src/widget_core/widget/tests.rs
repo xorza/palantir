@@ -1,11 +1,11 @@
 use crate::host::harness::Harness;
-use crate::input::sense::Sense;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;

@@ -1,6 +1,6 @@
 //! What a value-writing widget reports about the value it writes through.
 
-use crate::widget_core::response::Response;
+use crate::primitives::input::interaction::response::Response;
 
 /// What a widget that writes a bound value reports about it.
 ///

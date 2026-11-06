@@ -119,6 +119,7 @@ AnimationSpec
 App
     trait App
         fn update(&mut self, _window: WindowToken, _ui: &Ui) { .. }
+        fn input(&mut self, _window: WindowToken, _ctx: InputCtx<'_>) { .. }
         fn record(&mut self, window: WindowToken, ui: &mut Ui)
         fn is_busy(&self) -> bool { .. }
         impl<F: FnMut(&mut Ui)> App for F
@@ -651,7 +652,7 @@ DockView
             pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response
         impl<T: DockTab> DockView<'_, T>
             pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, dock: WidgetId, state: &mut DockState<T>, tabs: &mut D)
-            pub fn scan(ui: &mut Ui, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
+            pub fn scan(ctx: &mut InputCtx<'_>, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
         impl<'a, T: Debug> Debug for DockView<'a, T>
 
 Drag
@@ -1162,6 +1163,38 @@ InnerResponse
         impl<R: Clone> Clone for InnerResponse<R>
         impl<R: Copy> Copy for InnerResponse<R>
         impl<R: Debug> Debug for InnerResponse<R>
+
+Input
+    struct Input: Debug
+        pub const fn focus_first_within(&mut self, ancestor: WidgetId)
+        pub const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd)
+        pub const fn focus(&self) -> Option<WidgetId>
+        pub const fn modifiers(&mut self) -> Modifiers
+        pub const fn peek_modifiers(&self) -> Modifiers
+        pub const fn pointer_pos(&mut self) -> Option<Vec2>
+        pub const fn peek_pointer_pos(&self) -> Option<Vec2>
+        pub const fn set_focus(&mut self, id: WidgetId)
+        pub const fn clear_focus(&mut self)
+        pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
+        pub fn key_held(&mut self, key: Key) -> bool
+        pub fn key_released(&mut self, key: Key) -> bool
+        pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_
+        pub fn is_focus_within(&self, ancestor: WidgetId) -> bool
+        pub fn is_hover_within(&self, ancestor: WidgetId) -> bool
+        pub fn response_for(&self, id: WidgetId) -> Response
+
+InputCtx
+    struct InputCtx<'a>: Debug
+        pub input: &'a mut Input
+        pub fn key_pressed(&mut self, key: Key) -> bool
+        pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool
+        pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
+        pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
+        pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
+        pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S)
+        pub fn remove_state<S: 'static>(&mut self, id: WidgetId) -> Option<S>
+        pub const fn display(&self) -> Display
+        pub const fn now(&self) -> Duration
 
 InputDelta
     struct InputDelta: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -2687,6 +2720,7 @@ TranslateScale
 
 Ui
     struct Ui: Debug
+        pub fn input_ctx(&mut self) -> InputCtx<'_>
         pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
         pub const fn scheme_theme(&self, scheme: ColorScheme) -> &Rc<Theme>

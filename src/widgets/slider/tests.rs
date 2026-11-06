@@ -1,10 +1,10 @@
 use crate::host::harness::Harness;
-use crate::input::pointer::PointerButton;
 use crate::internals::panic_probe;
 use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
@@ -228,8 +228,8 @@ fn an_integer_target_lands_on_whole_values() {
 /// is a whole edit; unfocused or disabled, keys move nothing.
 #[test]
 fn a_focused_slider_walks_by_key() {
-    use crate::input::keyboard::key::Key;
-    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::modifiers::Modifiers;
 
     /// Modifiers, key, range, step, and where 5.0 lands.
     type Case = (Modifiers, Key, (f64, f64), Option<f64>, f64);
@@ -300,7 +300,7 @@ fn a_focused_slider_walks_by_key() {
 /// `2^53 + 1 + 1e16`, where a round trip through `f64` dropped the 1.
 #[test]
 fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::key::Key;
 
     let id = WidgetId::from_hash("slider-unit");
     let press = |record: &mut dyn FnMut(&mut Ui)| {

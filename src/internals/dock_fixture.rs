@@ -92,7 +92,12 @@ impl DockFixture {
     /// Record one frame through the two-call surface: scan responses into the reused operation buffer, apply, then show.
     pub fn record_scanned(&mut self, ui: &mut Ui) {
         self.operations.clear();
-        DockView::scan(ui, Self::id(), &self.dock, &mut self.operations);
+        DockView::scan(
+            &mut ui.input_ctx(),
+            Self::id(),
+            &self.dock,
+            &mut self.operations,
+        );
         for operation in self.operations.drain(..) {
             self.dock.apply(operation);
         }

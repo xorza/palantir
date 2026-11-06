@@ -1,11 +1,11 @@
 //! The drop-down selector: a trigger that opens a popup list, and the
 //! open/closed flag one trigger site keeps between frames.
 
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::paint::stroke::Stroke;

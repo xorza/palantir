@@ -5,8 +5,8 @@
 
 use crate::damage::Damage;
 use crate::host::harness::Harness;
-use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
@@ -105,8 +105,8 @@ fn changed_and_committed_are_edges() {
 /// Arrows step 0.005 (Shift: ten), PageUp/PageDown page the value axis by 0.1, Home/End jump saturation.
 #[test]
 fn keys_walk_both_axes() {
-    use crate::input::keyboard::key::Key;
-    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::modifiers::Modifiers;
 
     let shift = Modifiers::SHIFT;
     let cases = [

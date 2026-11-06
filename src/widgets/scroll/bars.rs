@@ -1,11 +1,12 @@
 //! The scrollbar overlay: what it reserves from the viewport, the per-axis
 //! track/thumb pair, and how bar interaction folds into the scroll offset.
 
-use crate::input::interaction::response_state::ResponseState;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
@@ -14,7 +15,6 @@ use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::scroll_state::{ScrollState, ThumbTravel};
 use crate::widgets::scroll::{Scroll, ScrollGeometry};

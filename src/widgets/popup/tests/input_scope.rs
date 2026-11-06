@@ -1,12 +1,12 @@
 //! What the layers below see while a popup is open, per click-outside mode.
 
 use crate::host::harness::Harness;
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
-use crate::input::sense::Sense;
-use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
@@ -252,7 +252,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
         }
     }
 
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::key::Key;
     use crate::widgets::text_edit::TextEdit;
 
     let field = WidgetId::from_hash("filter-field");

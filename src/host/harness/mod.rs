@@ -10,6 +10,7 @@
 //! | pass | when it runs | what it sees |
 //! |---|---|---|
 //! | warmup | the very first frame of a cold recorder | No input. Builds the cascade so pass A has something to hit-test. |
+//! | `App::input` | once, before pass A | Not a record: pass A's input and focus, with no way to record. |
 //! | A | always, except on a paint-only frame | The real input, including one-frame edges (`clicked`, `drag.started()`). |
 //! | B | pass A acted or asked a relayout | The edges are gone. At most one retry. |
 //!
@@ -65,24 +66,24 @@ use crate::host::harness::harness_builder::{HarnessBuilder, TARGET_LABEL};
 use crate::host::harness::harness_session::HarnessSession;
 use crate::host::headless_window::{HeadlessDepth, HeadlessFrame, HeadlessWindow};
 use crate::host::window_driver::{FrameSpec, TargetKey};
-use crate::input::input_event::InputEvent;
-use crate::input::interaction::input_delta::InputDelta;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::pointer::PointerButton;
-use crate::input::sense::Sense;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
-use crate::input::zoom_factor::ZoomFactor;
-use crate::input_state::capture::DRAG_THRESHOLD;
+use crate::input::capture::DRAG_THRESHOLD;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::input_delta::InputDelta;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
+use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::reduction::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::inspected_widget::InspectedWidget;
-use crate::widget_core::response::Response;
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
@@ -425,7 +426,7 @@ impl Harness {
                     "{button:?} is already held; release it before pressing it again",
                 );
                 self.held[button.idx()] = Some(PressOrigin {
-                    at: self.window.driver.frames.input().pointer_pos(),
+                    at: self.window.driver.frames.ui.input().peek_pointer_pos(),
                 });
             }
             InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
@@ -584,6 +585,7 @@ impl Harness {
             .window
             .driver
             .frames
+            .ui
             .input()
             .modifiers_after_held_input();
         self.hold_modifiers(mods.held());
@@ -599,6 +601,7 @@ impl Harness {
             .window
             .driver
             .frames
+            .ui
             .input()
             .modifiers_after_held_input()
             == mods
@@ -664,7 +667,7 @@ impl Harness {
             panic!("{id:?} has no arranged rect: it did not record, or no frame ran")
         });
         let pos = response.transform.apply_point(layout.min + local);
-        let cascade = &self.window.driver.frames.input().arranged.cascade;
+        let cascade = &self.window.driver.frames.ui.input().arranged.cascade;
         let routing = cascade
             .hit_rows()
             .iter()
@@ -686,6 +689,7 @@ impl Harness {
         self.window
             .driver
             .frames
+            .ui
             .input()
             .arranged
             .cascade
@@ -789,7 +793,7 @@ impl Harness {
     }
 
     fn deliver_held_input(&mut self, app: &mut impl App) {
-        while self.window.driver.frames.input().has_held_input() {
+        while self.window.driver.frames.ui.input().has_held_input() {
             self.drive(app);
         }
     }
@@ -878,12 +882,12 @@ pub(crate) mod internals {
     use crate::ui::frame_loop::FrameLoop;
     #[cfg(test)]
     use crate::{
-        input::input_event::InputEvent,
-        input::interaction::input_delta::InputDelta,
         internals::paint_capture::PaintCapture,
         primitives::geometry::rect::Rect,
         primitives::geometry::translate_scale::TranslateScale,
         primitives::identity::widget_id::WidgetId,
+        primitives::input::input_event::InputEvent,
+        primitives::input::interaction::input_delta::InputDelta,
         primitives::layout::sizing::Sizing,
         primitives::math::animatable::Animatable,
         renderer::frontend::Frontend,
@@ -1148,6 +1152,7 @@ pub(crate) mod internals {
             self.window
                 .driver
                 .frames
+                .ui
                 .input()
                 .arranged
                 .cascade

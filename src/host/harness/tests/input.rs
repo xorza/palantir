@@ -96,7 +96,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.hold_modifiers(ctrl);
     harness.key(Key::Char('b'));
     assert_eq!(
-        harness.ui().input().modifiers(),
+        harness.ui().input().peek_modifiers(),
         ctrl,
         "the key does not consume the chord",
     );
@@ -104,7 +104,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.hold_modifiers(Modifiers::NONE);
     harness.key(Key::Char('c'));
     assert_eq!(
-        harness.ui().input().modifiers(),
+        harness.ui().input().peek_modifiers(),
         Modifiers::NONE,
         "…and it stays cleared once set back",
     );
@@ -114,7 +114,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.on_input(InputEvent::ModifiersChanged(ctrl));
     harness.hold_modifiers(Modifiers::NONE);
     assert_eq!(
-        harness.ui().input().modifiers(),
+        harness.ui().input().peek_modifiers(),
         Modifiers::NONE,
         "hold_modifiers clears a set the raw door installed",
     );
@@ -134,7 +134,7 @@ fn typed_text_arrives_as_one_press_per_char() {
     let keys: Vec<_> = harness
         .ui()
         .input()
-        .keyboard_events(Layer::Main.into())
+        .keyboard_events_at(Layer::Main.into())
         .iter()
         .map(|press| format!("{:?}", press.key))
         .collect();

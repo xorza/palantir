@@ -33,9 +33,9 @@ the GPU encodes sRGB at the swapchain write.
 A top-level module imports only modules to its left:
 
 ```text
-common → primitives → {animation, text, input, display, window, clipboard, image_registry,
+common → primitives → {animation, text, display, window, clipboard, image_registry,
                        diagnostics}
-       → shape → icons → scene → layout → cascade → {damage, input_state}
+       → shape → icons → scene → layout → cascade → {damage, input}
        → renderer → gpu → theme → ui → widget_core → widgets → driver → host
 ```
 

@@ -1,8 +1,8 @@
 //! Keyboard travel along one axis, shared by every widget whose value the arrow keys move.
 
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::ui::Ui;
 use crate::widget_core::widget::Widget;
 

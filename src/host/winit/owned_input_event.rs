@@ -1,6 +1,6 @@
 //! [`OwnedInputEvent`]: an [`InputEvent`] that owns its text.
 
-use crate::input::input_event::InputEvent;
+use crate::primitives::input::input_event::InputEvent;
 
 /// An [`InputEvent`] whose IME text is owned, so it outlives the text it was built from and
 /// crosses threads, as a [`Remote`](crate::Remote) sends it.
@@ -31,10 +31,10 @@ impl From<InputEvent<'_>> for OwnedInputEvent {
 mod tests {
     use crate::common::span::Span;
     use crate::host::winit::owned_input_event::OwnedInputEvent;
-    use crate::input::ime_preedit::ImePreedit;
-    use crate::input::input_event::InputEvent;
-    use crate::input::keyboard::key::Key;
-    use crate::input::pointer::PointerButton;
+    use crate::primitives::input::ime_preedit::ImePreedit;
+    use crate::primitives::input::input_event::InputEvent;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::pointer::PointerButton;
     use glam::Vec2;
 
     /// Each event comes back as it went in, the text of both IME variants included; `InputEvent`

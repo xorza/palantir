@@ -9,6 +9,7 @@ pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
 mod frame_stats_readout;
 mod host_seam;
+pub(crate) mod input_ctx;
 pub(crate) mod inspected_widget;
 pub(crate) mod layer_scope;
 mod memory;
@@ -36,22 +37,23 @@ use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::input::ime_preedit::ImePreedit;
-use crate::input::interaction::pointer_action::PointerAction;
-use crate::input::key_class::KeyClass;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::pointer::PointerEvent;
-use crate::input::policy::FocusPolicy;
-use crate::input::policy::InputPolicy;
-use crate::input::shortcut::Shortcut;
-use crate::input::watch::{KeyboardWake, PointerWake};
-use crate::input_state::Input;
-use crate::input_state::key_reader::KeyReader;
+use crate::input::Input;
+use crate::input::key_reader::KeyReader;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::ime_preedit::ImePreedit;
+use crate::primitives::input::interaction::pointer_action::PointerAction;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::key_class::KeyClass;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::key_press::KeyPress;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::pointer::PointerEvent;
+use crate::primitives::input::policy::FocusPolicy;
+use crate::primitives::input::policy::InputPolicy;
+use crate::primitives::input::shortcut::Shortcut;
+use crate::primitives::input::watch::{KeyboardWake, PointerWake};
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::animatable::Animatable;
@@ -81,6 +83,7 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::host_seam::HostSeam;
+use crate::ui::input_ctx::InputCtx;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::memory::Memory;
@@ -88,7 +91,6 @@ use crate::ui::resources::UiResources;
 use crate::ui::ui_preferences::UiPreferences;
 use crate::ui::window_theme::{Motion, WindowTheme};
 use crate::widget_core::overlay_stack::OverlayStack;
-use crate::widget_core::response::Response;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::screenshot::{Screenshot, ScreenshotId};
 use crate::window::vsync::Vsync;
@@ -133,11 +135,23 @@ impl Ui {
             window_theme: WindowTheme::new(resources.color_scheme()),
             resources,
             memory: Memory::default(),
-            input: Input::default(),
+            input: Input::new(),
             frame_runtime: FrameRuntime::default(),
             host: HostSeam::default(),
             overlays: OverlayStack::default(),
         }
+    }
+
+    /// The view [`App::input`](crate::App::input) has, for a helper the input stage and a record
+    /// both call.
+    #[inline]
+    pub fn input_ctx(&mut self) -> InputCtx<'_> {
+        InputCtx::of(self)
+    }
+
+    /// The input machine, which a harness asks where the pointer and its widgets are.
+    pub(crate) const fn input(&self) -> &Input {
+        &self.input
     }
 
     /// A handle that asks this window for a frame from any thread: see [`Waker`].
@@ -336,7 +350,7 @@ impl Ui {
     #[inline]
     pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent] {
         self.input.watch_pointer(wake);
-        self.input.pointer_events(self.forest.cur_plane())
+        self.input.pointer_events_at(self.forest.cur_plane())
     }
 
     /// This frame's presses, in arrival order, and a watch of `wake`. A press reaches the
@@ -346,7 +360,7 @@ impl Ui {
     #[inline]
     pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress] {
         self.input.watch_keyboard(wake);
-        self.input.keyboard_events(self.forest.cur_plane())
+        self.input.keyboard_events_at(self.forest.cur_plane())
     }
 
     /// `true` if `key` went down this frame, OS repeats included, whatever the modifiers,
@@ -364,7 +378,7 @@ impl Ui {
     #[inline]
     pub fn key_pressed(&mut self, key: Key) -> bool {
         let reader = self.key_reader();
-        self.input.key_pressed(reader, key)
+        self.input.key_pressed_at(reader, key)
     }
 
     /// `true` if `key` is down now, whatever the modifiers: from its press to its release, or
@@ -391,14 +405,14 @@ impl Ui {
     #[inline]
     pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool {
         let reader = self.key_reader();
-        self.input.shortcut_pressed(reader, shortcut.into())
+        self.input.shortcut_pressed_at(reader, shortcut.into())
     }
 
     /// [`Self::key_pressed`] read as `reader` rather than the record position.
     #[inline]
     pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, key: Key) -> bool {
         let reader = self.key_reader_as(reader);
-        self.input.key_pressed(reader, key)
+        self.input.key_pressed_at(reader, key)
     }
 
     /// [`Self::shortcut_pressed`] read inside `reader`, as the scope around it, rather than at
@@ -411,14 +425,14 @@ impl Ui {
         shortcut: impl Into<Shortcut>,
     ) -> bool {
         let reader = self.key_reader_as(reader);
-        self.input.shortcut_pressed(reader, shortcut.into())
+        self.input.shortcut_pressed_at(reader, shortcut.into())
     }
 
-    /// [`Input::class_pressed`] read inside `reader`, as [`Self::shortcut_pressed_as`] is.
+    /// [`Input::class_pressed_at`] read inside `reader`, as [`Self::shortcut_pressed_as`] is.
     #[inline]
     pub(crate) fn class_pressed_as(&mut self, reader: WidgetId, class: KeyClass) -> bool {
         let reader = self.key_reader_as(reader);
-        self.input.class_pressed(reader, class)
+        self.input.class_pressed_at(reader, class)
     }
 
     /// The key reader at this record position.
@@ -905,7 +919,7 @@ impl Ui {
     #[inline]
     #[track_caller]
     pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: Option<&Chrome>) {
-        let ring = if self.input.focused() == Some(resolved.id()) && self.input.focus_visible() {
+        let ring = if self.input.focus() == Some(resolved.id()) && self.input.focus_visible() {
             let theme = &self.theme().focus_ring;
             Stroke::new(domain::color(theme.color), domain::length(theme.width))
         } else {
@@ -950,7 +964,7 @@ impl Ui {
     /// `Widget::response`.
     pub fn response_for(&self, id: WidgetId) -> Response {
         let loc = self.last_frame_location(id);
-        let mut state = self.input.response_for(id, loc);
+        let mut state = self.input.response_state(id, loc);
         // Cascade lags a frame; fold in this frame's ancestor-disabled so a newly
         // disabled subtree paints disabled at once.
         state.merge_disabled(self.forest.ancestor_disabled());
@@ -1099,7 +1113,7 @@ impl Ui {
     /// Currently focused widget id, or `None`.
     #[inline]
     pub const fn focus(&self) -> Option<WidgetId> {
-        self.input.focused()
+        self.input.focus()
     }
 
     /// True when focus sits on `ancestor` or in its subtree, per the most recent
@@ -1208,13 +1222,13 @@ impl Ui {
     /// disabled or hidden) loses it as the frame ends.
     #[inline]
     pub const fn set_focus(&mut self, id: WidgetId) {
-        self.input.set_focus(Some(id));
+        self.input.set_focus(id);
     }
 
     /// Leave nothing focused; same routing lag as [`Self::set_focus`].
     #[inline]
     pub const fn clear_focus(&mut self) {
-        self.input.set_focus(None);
+        self.input.clear_focus();
     }
 
     /// Ask for IME text this frame, with `area` (logical px) the caret's rect, beside which the
@@ -1275,7 +1289,6 @@ impl Ui {
     /// [`Self::is_hover_within`].
     #[inline]
     pub const fn pointer_pos(&mut self) -> Option<Vec2> {
-        self.input.watch_pointer(PointerWake::MOVE);
         self.input.pointer_pos()
     }
 
@@ -1283,7 +1296,6 @@ impl Ui {
     /// gated on something that already woke the frame, use [`Self::peek_modifiers`].
     #[inline]
     pub const fn modifiers(&mut self) -> Modifiers {
-        self.watch_keyboard(KeyboardWake::MODIFIER);
         self.input.modifiers()
     }
 
@@ -1291,14 +1303,14 @@ impl Ui {
     /// when another event guarantees the frame; stale for continuously derived paint.
     #[inline]
     pub const fn peek_pointer_pos(&self) -> Option<Vec2> {
-        self.input.pointer_pos()
+        self.input.peek_pointer_pos()
     }
 
     /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch. Use the
     /// watched read when a bare modifier press must repaint on its own.
     #[inline]
     pub const fn peek_modifiers(&self) -> Modifiers {
-        self.input.modifiers()
+        self.input.peek_modifiers()
     }
 
     /// What a press on a non-focusable widget does to focus. See [`FocusPolicy`].
@@ -1341,14 +1353,14 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::cascade::Cascade;
     #[cfg(test)]
-    use crate::input::pointer::PointerEvent;
-    #[cfg(test)]
-    use crate::input_state::Input;
+    use crate::input::Input;
     use crate::layout::Layout;
     #[cfg(test)]
     use crate::layout::plane_layout::PlaneLayout;
     #[cfg(test)]
     use crate::primitives::geometry::rect::Rect;
+    #[cfg(test)]
+    use crate::primitives::input::pointer::PointerEvent;
     #[cfg(test)]
     use crate::scene::endpoint::Endpoint;
     use crate::scene::forest::Forest;
@@ -1408,13 +1420,8 @@ pub(crate) mod internals {
             &self.input.arranged.cascade
         }
 
-        /// The input machine, for tests asserting routing state the public surface hides.
-        pub(crate) const fn input(&self) -> &Input {
-            &self.input
-        }
-
-        /// [`Self::input`], mutably, for tests that drive routing state.
-        pub(crate) fn input_mut(&mut self) -> &mut Input {
+        /// The input machine, mutably, for tests that drive routing state.
+        pub(crate) const fn input_mut(&mut self) -> &mut Input {
             &mut self.input
         }
 
@@ -1463,7 +1470,7 @@ pub(crate) mod internals {
 
         /// [`Ui::pointer_events`] read between frames, where a read watches nothing.
         pub(crate) fn captured_pointer_events(&self) -> &[PointerEvent] {
-            self.input.pointer_events(self.forest.cur_plane())
+            self.input.pointer_events_at(self.forest.cur_plane())
         }
     }
 

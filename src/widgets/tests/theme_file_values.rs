@@ -6,11 +6,12 @@
 use crate::theme::color_scheme::ColorScheme;
 
 use crate::host::harness::Harness;
-use crate::input::interaction::response_state::ResponseState;
-use crate::input::shortcut::Shortcut;
 use crate::internals::dock_fixture::DockFixture;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -21,7 +22,6 @@ use crate::text::shaper::TextShaper;
 use crate::theme::Theme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widgets::button::Button;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::color_picker::ColorPicker;

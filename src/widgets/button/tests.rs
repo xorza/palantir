@@ -49,10 +49,10 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
 /// A Button is a Tab stop a click focuses; a focused one is clicked by Space and Enter once per press via `clicked()`, while an unfocused or disabled one takes neither. It takes no other key from the app's scope around it: a letter reaches the app, and Enter does not.
 #[test]
 fn space_and_enter_click_a_focused_button() {
-    use crate::input::key_class::KeyFilter;
-    use crate::input::keyboard::key::Key;
-    use crate::input::shortcut::{Shortcut, ShortcutMods};
     use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::input::key_class::KeyFilter;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
     use crate::ui::Ui;
     use crate::widgets::panel::Panel;
 
@@ -266,12 +266,12 @@ fn a_label_truncates_to_one_line_in_a_narrow_button() {
 /// beside a live drag.
 #[test]
 fn an_activation_key_under_a_held_press_keeps_the_gesture() {
-    use crate::input::interaction::button_phase::ButtonPhase;
-    use crate::input::interaction::button_state::ButtonState;
-    use crate::input::interaction::drag::Drag;
-    use crate::input::keyboard::key::Key;
-    use crate::input::pointer::PointerButton;
     use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::input::interaction::button_phase::ButtonPhase;
+    use crate::primitives::input::interaction::button_state::ButtonState;
+    use crate::primitives::input::interaction::drag::Drag;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::pointer::PointerButton;
     use crate::ui::Ui;
     use glam::Vec2;
 

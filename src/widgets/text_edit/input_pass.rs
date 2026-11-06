@@ -1,11 +1,11 @@
 //! One frame's pointer and keyboard dispatch for a TextEdit.
 
-use crate::input::interaction::response_state::ResponseState;
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::watch::KeyboardWake;
+use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::key_press::KeyPress;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::watch::KeyboardWake;
 use crate::text::probe::{Caret, TextProbe};
 use crate::ui::Ui;
 use crate::widgets::text_edit::action::EditAction;

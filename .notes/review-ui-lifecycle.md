@@ -14,19 +14,20 @@ Each stage of a frame has one type, and each type offers only what its stage may
 |---|---|---|---|
 | Frame | The host | `FrameLoop` (crate-private) | `Ui`, the three engines, the window token |
 | Non-input work | `App::update` | `&Ui` | No change |
-| Input | `App::input` (new) | `&mut Input` | Pointer, keyboard, focus, `Arranged` |
+| Input | `App::input` | `InputCtx<'_>` | Nothing: borrows `Input` and the state rows from `Ui` |
 | Record | `App::record` | `&mut Ui` | `Input`, `Forest`, `Memory`, theme, resources, `FrameRuntime`, `HostSeam`, overlays |
 
 ```rust
 pub trait App {
     fn update(&mut self, window: WindowToken, ui: &Ui) {}              // no change
-    fn input(&mut self, window: WindowToken, input: &mut Input) {}     // new, once a frame
+    fn input(&mut self, window: WindowToken, ctx: InputCtx<'_>) {}     // once a frame
     fn record(&mut self, window: WindowToken, ui: &mut Ui);            // no change
     fn settle_policy(&self) -> SettlePolicy { SettlePolicy::OnAction } // new
     fn is_busy(&self) -> bool { false }                                // no change
 }
 
-pub struct Input { pointer, keyboard, focus, /* ... */ arranged: Arranged } // no lifetime, no wrapper
+pub struct Input { pointer, keyboard, focus, /* ... */ arranged: Arranged }
+pub struct InputCtx<'a> { pub input: &'a mut Input, state: &'a mut StateMap, display, now }
 pub struct Ui { input: Input, forest: Forest, /* ... */ }
 
 pub(crate) struct FrameLoop { ui: Ui, layout: LayoutEngine, cascade: CascadeEngine, /* ... */ }
@@ -87,12 +88,25 @@ GPUI's `Window` show.
   `ui.key_pressed(k)` reads at the record position, and `input.key_pressed(k)` reads as the window's
   root, on the main plane, so a modal's scope silences it. `ui.input()` gives a record the `&mut Input`
   that a shared helper takes.
-- **`App::input` is a second hook, and `update` stays.** A `&Ui` and a `&mut Input` cannot exist at one
-  time while `Ui` owns `Input`, so one hook cannot hold both. Darkroom's `update` reads
-  `window_geometry`, `clipboard` and `close_requested`, which are not input. This changes the
-  earlier refusal of a second hook. Refused: moving the `Input` out of the `Ui` during the hook, which
-  makes each `&Ui` input read answer from an empty value with no error. Cost: `input` cannot read
-  `Ui`, so an app keeps what it needs from `update`, as `Display` in Darkroom.
+- **The input phase has a view, `InputCtx`, and `Ui` is the record context.** The view holds disjoint
+  parts of `Ui`: `Input`, the state rows, the display and the time. Masonry's contexts hold references
+  to shared state in the same way. Refused: the state rows on `Input`, whose logic never reads them, a
+  hack that a build of it showed; a `Ui<'a>` of references too, as Masonry has, which changes about
+  1500 signatures for no gain to a caller; a shared core with `Deref`; a `DockDrag` the caller owns,
+  which leaves the phase with no display or time.
+- **A read that a scope routes is on the type that knows where it reads from.** `InputCtx` holds a
+  reader: the window's root in `App::input`, the record position from `Ui::input_ctx`. `Input` keeps
+  only what holds anywhere. Refused: a root read on `Input`, as `DockView::run` inside an overlay then
+  lost its Esc, which a test showed.
+- **A field belongs where its logic reads it.** So `Input` keeps `Arranged`, as 27 of its reads need
+  it, and `Memory` keeps the state rows.
+- **`App::input` is a second hook, and `update` stays.** A `&Ui` and an `InputCtx` cannot exist at one
+  time, so one hook cannot hold both. Darkroom's `update` reads `window_geometry`, `clipboard` and
+  `close_requested`, which are not input.
+- **The input vocabulary is in `primitives::input`, and `crate::input` is the machine.** One top-level
+  folder is input, and `Input` sits in a module of its name. Refused: a plain merge, a cycle through
+  `scene`, which imports `Sense`, and `cascade`, which the machine imports; two folders under any
+  names. Public paths do not change.
 - **`FrameLoop` owns a frame.** It replaces `Ui::frame`, `FrameCycle`, `FrameEngines` and `FrameInput`.
   The 16 host methods move to it, so a widget cannot reach them, since it holds only `&mut Ui`. It is a
   child module of `ui`, so it reads `Ui`'s private fields. This is the shape of Masonry's `RenderRoot`,
@@ -115,9 +129,10 @@ GPUI's `Window` show.
   the check runs pass B anyway and compares the rollup hashes with pass A. A difference is an error
   that names the frame. `Harness` turns it on, and a window leaves it off. It is a switch and not a
   debug check, as a diagnostic must be.
-- **The warmup runs before `update` and `input`.** The cascade is then full, so a click before frame 1
-  reaches the input stage. Cost: the first record runs before the first `update`, which the doc of
-  `App::record` already allows.
+- **On the first frame, `update` runs before the warmup, and the input stage after it.** An app sets up
+  in `update`, and a record needs that, which a test showed when the warmup ran first. The input stage
+  opens after the warmup, so a press or a Tab before frame 1 meets its frame. Each later frame opens
+  input before `update`, so `update` reads pass A's focus.
 - **`request_relayout` stays record-only.** An app that learns of the need in `input` keeps it for its
   record, as Darkroom does now with `Relayout`.
 - **Refused: retained handlers** (`on_click` closures or messages, as in iced, GPUI and Flutter). Their
@@ -169,51 +184,23 @@ A scratch copy removed the action trigger of pass B and changed nothing else. Th
 ## Public API change
 
 ```text
-+ struct Input                                     (with the input methods, `pub` as on `Ui`)
-+ Ui::input(&mut self) -> &mut Input
-+ App::input(&mut self, window: WindowToken, input: &mut Input)
++ struct Input, struct InputCtx<'a>
++ Ui::input_ctx
++ App::input(&mut self, window: WindowToken, ctx: InputCtx<'_>)
 + App::settle_policy(&self) -> SettlePolicy
 + enum SettlePolicy { OnAction, OnRequest }
-~ DockView::scan(input: &mut Input, ..)            (was ui: &mut Ui)
-~ DockOperation, DockState                         (hold the tab drag)
+~ DockView::scan(ctx: &mut InputCtx<'_>, ..)        (was ui: &mut Ui)
 ```
 
 # Part 2: Plan
 
-## Batch 3: the input stage
-
-Files: `src/ui/app.rs`, `src/ui/frame_loop.rs`, `src/input_state/`, `src/widgets/dock/`,
-`src/widgets/tabs/tab_strip.rs`, `src/host/harness/mod.rs`.
-
-- [ ] `input_state/mod.rs`: make `Input` public, and add the public reads as the window's root:
-  `key_pressed(key)`, `shortcut_pressed(shortcut)` and `response_for(id)`. The reads that take a
-  `KeyReader` stay crate-private under another name, for `Ui`. These wait for this batch, as a read
-  with no caller is dead code.
-
-- [ ] `ui/frame_loop.rs`: `update` runs before input opens, so it sees another focus than pass A.
-  Open input first: scopes, focus traversal and the quiescent snapshot.
-- [ ] `ui/app.rs`: add `App::input`, and run it once a frame after `update`.
-- [ ] `input_state/mod.rs:108`: watches clear before each pass, which would drop a watch from
-  `App::input`. Keep those across each pass's clear.
-- [ ] `ui/frame_loop.rs`: move the warmup ahead of `update`.
-- [ ] `widgets/dock/dock_view.rs:193,310,315`: `scan` and `show` hold a tab drag in `Ui` state, which an
-  `Input` cannot reach. Hold it on `DockState`, written by new `DockOperation` cases, as every other
-  decision of the dock arrives. `scan` takes `&mut Input`, and `TabStrip::scan` takes `&Input`.
-- [ ] `host/harness/mod.rs:9`: add the input stage to the table of passes.
-
-Tests: a key read on `Input` and on `Ui` at the root agree, and a modal's scope silences the one on
-`Input`. `input` runs once when pass B and the warmup run. `input` reads the same edges, focus and grants
-as pass A. A key read only in `input` stays watched after a frame with pass B. A `compile_fail` doctest:
-a widget's `show` and an `add_shape` do not compile on `Input`.
-
 ## Batch 4: Darkroom moves its prepass
 
-Files: `darkroom/src/gui/app/mod.rs`, `session/mod.rs`, `main_window/mod.rs`, `pane/graph_ui/`. Needs
-batch 3.
+Files: `darkroom/src/gui/app/mod.rs`, `session/mod.rs`, `main_window/mod.rs`, `pane/graph_ui/`.
 
 - [ ] `session/mod.rs:112`: navigation and the prepass run in `record`. Move them to `App::input`, with
   helpers on `&mut Input`.
-- [ ] `main_window/mod.rs:109`: `GraphCtx::new` reads `ui.display()`. Keep the `Display` from `update`.
+- [ ] `main_window/mod.rs:109`: `GraphCtx::new` reads `ui.display()`. Read `ctx.display()`.
 - [ ] `pane/graph_ui/mod.rs:287`: delete the guards for a replayed prepass, as `appearing`'s two-pass
   allowance.
 - [ ] `pane/graph_ui/`: `CanvasGeometry` reads rects. Rebuild it in `input`, and again in pass B, as that
@@ -224,7 +211,7 @@ Pass counts do not change in this batch.
 ## Batch 5: pass B on request
 
 Files: `src/ui/app.rs`, `src/ui/frame_loop.rs`, `src/widgets/` (splitter, menu bar, popup, tabs, color
-button, drag value), `darkroom/src/gui/app/`. Needs batch 3 for palantir and batch 4 for Darkroom.
+button, drag value), `darkroom/src/gui/app/`. Needs batch 4 for Darkroom.
 
 - [ ] `ui/app.rs`: add `SettlePolicy` and `App::settle_policy`.
 - [ ] `ui/frame_loop.rs`: run pass B on an action only under `OnAction`, and add the runtime check.

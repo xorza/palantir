@@ -1,10 +1,10 @@
 //! Which rows reach the hit index, in what order, carrying which rect.
 
 use crate::host::harness::Harness;
-use crate::input::scroll_targets::ScrollTargets;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::scroll_targets::ScrollTargets;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
@@ -80,7 +80,7 @@ fn tab_stops_are_live_focusable_stops_in_record_order() {
 
 #[test]
 fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
-    use crate::input::sense::Sense;
+    use crate::primitives::input::sense::Sense;
     use crate::widgets::block::Block;
 
     let inert = WidgetId::from_hash("inert");

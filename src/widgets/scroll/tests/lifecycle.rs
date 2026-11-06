@@ -1,9 +1,9 @@
 //! What a scroll records while it lives, and what is swept when it goes.
 
 use crate::host::harness::Harness;
-use crate::input::interaction::drag::Drag;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::drag::Drag;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;

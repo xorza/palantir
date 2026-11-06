@@ -1,10 +1,10 @@
 //! [`RadioGroup`]: one pick from a set, over the shared value its options write through, as
 //! WAI-ARIA's radio group pattern works it from the keyboard.
 
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::sizing::Sizing;

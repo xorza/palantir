@@ -14,11 +14,10 @@ use crate::display;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::gpu::gpu_paint::gpu_views::GpuViews;
-use crate::input::input_event::InputEvent;
-use crate::input::interaction::input_delta::InputDelta;
-use crate::input_state::Input;
 use crate::layout::engine::LayoutEngine;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
@@ -100,11 +99,6 @@ impl FrameLoop {
             damage: DamageEngine::default(),
             token,
         }
-    }
-
-    /// The input machine, which a harness asks where the pointer and its widgets are.
-    pub(crate) const fn input(&self) -> &Input {
-        &self.ui.input
     }
 
     /// No frame has been stamped yet.
@@ -280,11 +274,20 @@ impl FrameLoop {
             FramePlan::FullRecord { .. } => {
                 {
                     tracy::zone!("Ui::update_user");
-                    self.ui.input.snapshot_frame_quiescent();
-                    app.update(self.token, &self.ui);
-                }
-                if first_frame {
-                    self.warmup(app);
+                    if first_frame {
+                        // `update` runs before every record, as an app sets up in it, and the
+                        // input opens after the warmup: a press or a Tab before frame 1 meets the
+                        // warmup's frame, not an empty one that would spend it.
+                        self.ui.input.snapshot_frame_quiescent();
+                        app.update(self.token, &self.ui);
+                        self.warmup(app);
+                        self.ui.input.open_stage();
+                    } else {
+                        self.ui.input.open_stage();
+                        app.update(self.token, &self.ui);
+                    }
+                    app.input(self.token, self.ui.input_ctx());
+                    self.ui.input.close_stage();
                 }
                 let action_flag = {
                     tracy::zone!("Ui::record_pass.A");
@@ -408,11 +411,11 @@ impl FrameLoop {
     ///
     /// - nothing consumes the real queues (pass B's `drain_per_frame_queues` would discard a pre-frame click),
     /// - no watcher fires (`watch_*` bypasses hit-testing and would see pre-frame events twice),
-    /// - no press resolves focus against an empty hit index ([`FocusPolicy`](crate::input::policy::FocusPolicy) would read it as a press on nothing).
+    /// - no press resolves focus against an empty hit index ([`FocusPolicy`](crate::primitives::input::policy::FocusPolicy) would read it as a press on nothing).
     ///
     /// The scratch starts with the real focus, and the real input keeps what the pass asked of it (`set_focus`, `clear_focus`, `withdraw_input_scope`). Afterwards the real input is restored and `pointer_pos` re-routed against the new cascade. Relayout/repaint requests are withdrawn, else frame 1 runs three record passes instead of two.
     ///
-    /// [`Input`]: crate::input_state::Input
+    /// [`Input`]: crate::input::Input
     fn warmup<T: App>(&mut self, app: &mut T) {
         tracy::zone!("Ui::record_pass.warmup");
         let scratch = self.ui.input.warmup_scratch();

@@ -1,10 +1,10 @@
 //! What a disclosure header wears, and how far its body is inset.
 
 use crate::animation::animation_spec::AnimationSpec;
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::look::WidgetLook;

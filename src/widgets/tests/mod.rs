@@ -6,9 +6,10 @@ mod style_override;
 mod theme_file_values;
 
 use crate::host::harness::Harness;
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
@@ -17,7 +18,6 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widgets::block::Block;
 use crate::widgets::grid::Grid;
 use crate::widgets::menu::Menu;
@@ -626,8 +626,8 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
 /// A widget with its own input scope takes its keys under an application root's scope.
 #[test]
 fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
-    use crate::input::key_class::KeyFilter;
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::key_class::KeyFilter;
+    use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::layout::axis::Axis;
     use crate::primitives::paint::color::color_coords::ColorCoords;
     use crate::primitives::paint::color::color_model::ColorModel;

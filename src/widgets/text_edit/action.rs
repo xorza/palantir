@@ -1,10 +1,10 @@
 //! Host-backed editing actions shared by keyboard and menu dispatch.
 
 use crate::clipboard::Clipboard;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_press::KeyPress;
-use crate::input::shortcut::Shortcut;
-use crate::input::shortcut::ShortcutMods;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::key_press::KeyPress;
+use crate::primitives::input::shortcut::Shortcut;
+use crate::primitives::input::shortcut::ShortcutMods;
 use crate::widgets::text_edit::editor::Editor;
 use crate::widgets::text_edit::history::HistoryStep;
 

@@ -2,9 +2,9 @@
 //! from outside reads them.
 
 use crate::cascade::Cascade;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::input::sense::Sense;
 use crate::scene::forest::Forest;
 use crate::scene::tree::Tree;
 use crate::shape::record::ShapeRecord;
@@ -112,8 +112,8 @@ fn own_text(tree: &Tree, store: &RecordStore, root: usize, listed: &WidgetIdSet)
 #[cfg(test)]
 mod tests {
     use crate::host::harness::Harness;
-    use crate::input::sense::Sense;
     use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::input::sense::Sense;
     use crate::primitives::layout::sizing::Sizing;
     use crate::ui::Ui;
     use crate::ui::inspected_widget::InspectedWidget;

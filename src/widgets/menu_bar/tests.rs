@@ -1,7 +1,7 @@
 use super::*;
 use crate::host::harness::Harness;
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::color_scheme::ColorScheme;

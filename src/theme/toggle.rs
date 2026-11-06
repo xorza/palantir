@@ -1,9 +1,9 @@
 //! What the three two-state toggles wear; one theme serves checkbox, radio and switch.
 
 use crate::animation::animation_spec::AnimationSpec;
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;

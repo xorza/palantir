@@ -1,9 +1,9 @@
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::layout::axis::Axis;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;

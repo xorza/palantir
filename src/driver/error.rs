@@ -2,7 +2,7 @@
 //! could not be played.
 
 use crate::driver::locator::Found;
-use crate::input_state::capture::DRAG_THRESHOLD;
+use crate::input::capture::DRAG_THRESHOLD;
 use glam::Vec2;
 use std::error;
 use std::fmt::{self, Display, Formatter};

@@ -1,9 +1,9 @@
 //! One sweep: the point under the cursor stays under it at every scale.
 
 use crate::host::harness::Harness;
-use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;

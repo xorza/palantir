@@ -7,9 +7,9 @@ use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::host::winit::input::translator::{PointerTrace, Translator};
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
 
 fn wheel(delta: MouseScrollDelta) -> WindowEvent {
     WindowEvent::MouseWheel {

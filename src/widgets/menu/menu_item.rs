@@ -1,7 +1,8 @@
 //! One activatable row inside a menu.
 
-use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::align::{Align, HAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::text::text_input::TextInput;
@@ -12,7 +13,6 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 

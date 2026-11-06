@@ -1,6 +1,6 @@
-use crate::input::input_event::InputEvent;
-use crate::input::pointer::PointerButton;
-use crate::input::scroll_targets::ScrollTargets;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::scroll_targets::ScrollTargets;
 use crate::widgets::block::Block;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;

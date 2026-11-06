@@ -1,7 +1,7 @@
 //! What a drag value wears: one set of looks for the scrub chip and the text field it becomes
 //! while typed into, and the field's caret, selection and placeholder.
 
-use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::WidgetLook;

@@ -1,9 +1,9 @@
 //! The drag gesture: what continues it, what ends it, and what never starts it.
 
 use crate::host::harness::Harness;
-use crate::input::pointer::PointerButton;
-use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;

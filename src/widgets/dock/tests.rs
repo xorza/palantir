@@ -4,11 +4,11 @@
 use glam::{UVec2, Vec2};
 
 use crate::host::harness::Harness;
-use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::theme::Theme;
@@ -1092,7 +1092,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     fn frame(h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels) {
         h.frame(|ui| {
             let mut operations = Vec::new();
-            DockView::scan(ui, dock(), d, &mut operations);
+            DockView::scan(&mut ui.input_ctx(), dock(), d, &mut operations);
             #[expect(clippy::iter_with_drain, reason = "the buffer is filled again below")]
             for operation in operations.drain(..) {
                 d.apply(operation);
@@ -1264,6 +1264,52 @@ fn a_layout_deeper_than_the_default_cap_loads() {
         "the default cap applies to new splits on the loaded state",
     );
     assert!(loaded.with_max_depth(6).can_split(group));
+}
+
+/// Esc ends a chip drag where the dock records: at the window's root, and inside an overlay whose
+/// claim silences every plane below it, which a read for the window's root would not reach.
+#[test]
+fn escape_ends_a_chip_drag_at_the_root_and_inside_an_overlay() {
+    use crate::primitives::input::key_class::KeyFilter;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::scene::layer::Layer;
+    use crate::widgets::dock::tab_drag::TabDrag;
+
+    fn frame(h: &mut Harness, d: &mut DockState<Tab>, overlay: bool) {
+        h.frame(|ui| {
+            let mut tabs = Labels;
+            if overlay {
+                ui.layer(Layer::Popup).show(|ui| {
+                    let mut root = Panel::zstack().id_salt("claim").size(Sizing::FILL);
+                    root.configure().input_scope(KeyFilter::ALL).blocks_below();
+                    root.show(ui, |ui| DockView::run(ui, dock(), d, &mut tabs));
+                });
+            } else {
+                DockView::run(ui, dock(), d, &mut tabs);
+            }
+        });
+    }
+
+    for overlay in [false, true] {
+        let mut d = seeded();
+        let mut h = Harness::mono(UVec2::new(800, 400));
+        for _ in 0..3 {
+            frame(&mut h, &mut d, overlay);
+        }
+        let strip = d.primary().id.strip_id(dock());
+        let chip = TabStrip::chip_id(strip, TabKey::of(Tab::Prefs));
+        let at = h.rect(chip).expect("the chip is arranged").center();
+        h.press(at, PointerButton::Left);
+        frame(&mut h, &mut d, overlay);
+        h.drag_to(at + Vec2::new(0.0, 60.0));
+        frame(&mut h, &mut d, overlay);
+        let carried = |h: &Harness| h.ui().state::<TabDrag<Tab>>(dock()).map(|drag| drag.tab);
+        assert_eq!(carried(&h), Some(Tab::Prefs), "overlay {overlay}: carried");
+
+        h.key(Key::Escape);
+        frame(&mut h, &mut d, overlay);
+        assert_eq!(carried(&h), None, "overlay {overlay}: Esc ends the drag");
+    }
 }
 
 /// A chip drag's carried tab is kept on the dock's own id and leaves with it.

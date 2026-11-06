@@ -1,0 +1,20 @@
+//! A scroll accumulation bound to the widget it was routed to.
+
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
+
+/// Scroll accumulated this frame for one routed target, so events arriving before a retarget stay with the widget under the pointer when they landed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TargetScrollDelta {
+    pub(crate) target: WidgetId,
+    pub(crate) delta: ScrollDelta,
+}
+
+impl TargetScrollDelta {
+    pub(crate) const fn new(target: WidgetId) -> Self {
+        Self {
+            target,
+            delta: ScrollDelta::NONE,
+        }
+    }
+}

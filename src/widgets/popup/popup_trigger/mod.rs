@@ -1,6 +1,7 @@
 //! A popup a trigger widget opens and closes by clicking.
 
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
@@ -8,7 +9,6 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::response::Response;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};

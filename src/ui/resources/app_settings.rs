@@ -2,7 +2,7 @@
 
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
-use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
+use crate::input::capture::DOUBLE_CLICK_INTERVAL;
 use crate::primitives::reduction::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::ui_preferences::UiPreferences;

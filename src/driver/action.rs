@@ -2,9 +2,9 @@
 //! plays.
 
 use crate::driver::locator::Locator;
-use crate::input::pointer::PointerButton;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
-use crate::input::zoom_factor::ZoomFactor;
+use crate::primitives::input::pointer::PointerButton;
+use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
+use crate::primitives::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 use std::convert::Infallible;
 use std::time::Duration;

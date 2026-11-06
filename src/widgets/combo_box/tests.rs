@@ -366,8 +366,8 @@ fn disabling_an_open_trigger_closes_its_list() {
 /// drive it from outside.
 #[test]
 fn the_keys_open_a_closed_list_and_change_no_pick() {
-    use crate::input::keyboard::key::Key;
-    use crate::input::keyboard::modifiers::Modifiers;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::modifiers::Modifiers;
 
     static OPTIONS: [&str; 3] = ["A", "B", "C"];
     static MISSING: &str = "Missing";
@@ -442,7 +442,7 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
 /// Keyboard path: Enter on the focused combo opens it with focus on the first row; Tab and arrows walk the rows in the list it traps; Enter picks and closes; focus returns to the combo.
 #[test]
 fn the_keyboard_alone_picks_from_the_dropdown() {
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::keyboard::key::Key;
 
     static OPTIONS: [&str; 3] = ["A", "B", "C"];
     let id = WidgetId::from_hash("combo-walk");

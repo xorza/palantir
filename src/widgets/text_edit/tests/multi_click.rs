@@ -1,5 +1,5 @@
-use crate::input::input_event::InputEvent;
-use crate::input::pointer::PointerButton;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::pointer::PointerButton;
 use crate::widgets::text_edit::tests::*;
 
 /// Double-click selects the word, triple-click the buffer; dispatch follows the input layer's `press_count` run (within `DOUBLE_CLICK_INTERVAL`/`DOUBLE_CLICK_RADIUS` on the event-time clock, hence the idle frame before the pause press).

@@ -101,7 +101,7 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
     assert_eq!(observed.len(), 2, "warmup + real");
     assert_eq!(
         observed[0], None,
-        "warmup pass must see Input::default() — no pointer",
+        "warmup pass must see Input::new() — no pointer",
     );
     assert_eq!(
         observed[1],
@@ -223,8 +223,8 @@ fn warmup_keeps_focus_requests() {
 /// A scope withdrawn during warmup is gone for the visible pass.
 #[test]
 fn warmup_keeps_scope_releases() {
-    use crate::input::key_class::KeyFilter;
-    use crate::input::keyboard::key::Key;
+    use crate::primitives::input::key_class::KeyFilter;
+    use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::layout::sizing::Sizing;
 
     let root = WidgetId::from_hash("warmup-root");

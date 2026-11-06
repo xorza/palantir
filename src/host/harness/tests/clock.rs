@@ -3,7 +3,7 @@
 use crate::driver::agent_window::AgentWindow;
 use crate::host::harness::tests::support::{self, INSIDE, SURFACE};
 use crate::host::harness::*;
-use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
+use crate::input::capture::DOUBLE_CLICK_INTERVAL;
 use crate::internals::panic_probe;
 use crate::ui::resources::UiResources;
 use std::cell;

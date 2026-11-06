@@ -1,6 +1,7 @@
 //! The indeterminate activity spinner, rotating on the paint clock.
 
 use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
@@ -16,7 +17,6 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use glam::Vec2;
 

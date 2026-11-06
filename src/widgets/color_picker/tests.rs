@@ -1,7 +1,7 @@
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;

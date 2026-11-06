@@ -1,7 +1,7 @@
 //! The shared scaffold behind the color picker's value areas: the field and the strips.
 
-use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::image::{Image, ImageFit};
 use crate::shape::Shape;
@@ -112,9 +112,9 @@ impl ValueArea<'_> {
 #[cfg(test)]
 mod tests {
     use crate::host::harness::Harness;
-    use crate::input::keyboard::key::Key;
-    use crate::input::pointer::PointerButton;
     use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::input::keyboard::key::Key;
+    use crate::primitives::input::pointer::PointerButton;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::color_coords::ColorCoords;
     use crate::scene::layer::Layer;

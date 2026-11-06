@@ -1,15 +1,17 @@
 //! The chip row on its own: geometry, selection cap, close button, overflow, keyboard travel, drag sensing.
 
-use crate::input::interaction::response_state::ResponseState;
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
+use crate::input::Input;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -31,7 +33,6 @@ use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
@@ -190,16 +191,16 @@ impl<'a> TabStrip<'a> {
     /// What the chips keyed `keys` under `strip` reported last frame, read before the strip records,
     /// as a caller that acts a phase early does. The same fold as [`TabStripResponse`]'s.
     pub(crate) fn scan(
-        ui: &Ui,
+        input: &Input,
         strip: WidgetId,
         keys: impl IntoIterator<Item = TabKey>,
     ) -> ChipHits {
         let mut hits = ChipHits::default();
         for (slot, key) in keys.into_iter().enumerate() {
-            let close = ui.response_for(Self::close_id(strip, key));
+            let close = input.response_for(Self::close_id(strip, key));
             hits.add(
                 slot,
-                &ui.response_for(Self::chip_id(strip, key)),
+                &input.response_for(Self::chip_id(strip, key)),
                 Some(&close),
             );
         }

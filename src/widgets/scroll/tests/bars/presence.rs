@@ -1,11 +1,11 @@
 //! When a bar exists at all, and what retires it.
 
 use crate::host::harness::Harness;
-use crate::input::input_event::InputEvent;
-use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;

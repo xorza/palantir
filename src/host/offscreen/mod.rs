@@ -19,8 +19,8 @@ use crate::host::headless_window::{
     HeadlessDepth, HeadlessFrame, HeadlessSettings, HeadlessWindow,
 };
 use crate::host::window_driver::PresentStrategy;
-use crate::input::input_event::InputEvent;
-use crate::input::interaction::input_delta::InputDelta;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::reduction::Reduction;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;

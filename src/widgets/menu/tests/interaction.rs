@@ -1,13 +1,13 @@
 //! What opens the menu, what dismisses it, and what an item reports.
 
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;

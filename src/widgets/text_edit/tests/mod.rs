@@ -13,11 +13,11 @@ use crate::widgets::text_edit::unicode::{
 use crate::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::modifiers::Modifiers;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::key_press::KeyPress;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;

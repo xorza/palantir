@@ -4,8 +4,8 @@
 use crate::bench::scene::{BENCH_DPR, BENCH_SURFACE, Scene};
 use crate::damage::sweep::scenario::{Scenario, Scope};
 use crate::host::harness::Harness;
-use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::input::input_event::InputEvent;
 use crate::ui::frame_report::FramePaint;
 use glam::Vec2;
 use std::collections::BTreeMap;

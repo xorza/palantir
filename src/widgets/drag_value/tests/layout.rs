@@ -1,11 +1,11 @@
 //! The box the field keeps while editing, under scale and inside a caller's node.
 
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;

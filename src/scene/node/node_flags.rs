@@ -1,7 +1,7 @@
 //! The per-node bitset column: sense, disabled, clip mode, key scope.
 
-use crate::input::key_class::KeyFilter;
-use crate::input::sense::Sense;
+use crate::primitives::input::key_class::KeyFilter;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 

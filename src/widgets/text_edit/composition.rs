@@ -1,6 +1,6 @@
 //! The input method's live composition, as a field shows it.
 
-use crate::input::ime_preedit::ImePreedit;
+use crate::primitives::input::ime_preedit::ImePreedit;
 use std::ops::Range;
 
 /// What the input method is composing, copied out of `Ui` so the pass can show it while

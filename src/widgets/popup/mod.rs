@@ -3,10 +3,10 @@
 pub(crate) mod popup_trigger;
 pub(crate) mod trigger_state;
 
-use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::chrome::Chrome;

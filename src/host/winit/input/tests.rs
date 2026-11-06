@@ -7,10 +7,10 @@ use crate::common::platform::Platform;
 use crate::host::winit::input::{
     KeyDownFacts, Press, key_down, logical_key, normalize_modifiers, physical_key, shift_wheel,
 };
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::key_text::KeyText;
-use crate::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::key_text::KeyText;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
 
 #[test]
 fn logical_keys_map_to_native_vocabulary() {

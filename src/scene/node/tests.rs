@@ -1,5 +1,5 @@
-use crate::input::sense::Sense;
 use crate::internals::panic_probe;
+use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::scroll_axes::ScrollAxes;

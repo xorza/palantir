@@ -1,9 +1,9 @@
 //! Click-to-edit: the draft buffer, and every way it can end.
 
 use crate::host::harness::Harness;
-use crate::input::keyboard::key::Key;
-use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;

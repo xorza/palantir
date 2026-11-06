@@ -1,7 +1,7 @@
-use crate::input::interaction::button_phase::ButtonPhase;
-use crate::input::interaction::button_state::ButtonState;
-use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::input::interaction::button_phase::ButtonPhase;
+use crate::primitives::input::interaction::button_state::ButtonState;
+use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;

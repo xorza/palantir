@@ -2,12 +2,12 @@
 
 use crate::common::span::Span;
 use crate::host::harness::Harness;
-use crate::input::ime_preedit::ImePreedit;
-use crate::input::input_event::InputEvent;
-use crate::input::keyboard::key::Key;
-use crate::input::keyboard::modifiers::Modifiers;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::ime_preedit::ImePreedit;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::shape::paint::quad_shape::QuadShape;

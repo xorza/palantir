@@ -4,14 +4,15 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
-use crate::input::key_class::{KeyClass, KeyFilter};
-use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
+use crate::primitives::input::key_class::{KeyClass, KeyFilter};
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
@@ -35,7 +36,7 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{InnerResponse, Response};
+use crate::widget_core::response::InnerResponse;
 use glam::Vec2;
 use std::panic::Location;
 

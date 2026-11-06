@@ -3,10 +3,10 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::Ui;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::response::Response;
 use crate::widgets::popup::Popup;
 use glam::Vec2;
 use std::marker::PhantomData;

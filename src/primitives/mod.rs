@@ -201,6 +201,7 @@ macro_rules! f16x4_lanes {
 
 pub(crate) mod geometry;
 pub(crate) mod identity;
+pub(crate) mod input;
 pub(crate) mod layout;
 pub(crate) mod math;
 pub(crate) mod packed;

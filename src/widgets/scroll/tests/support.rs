@@ -1,9 +1,9 @@
 //! The scroll panel a test drives, and what its offsets are read back through.
 
 use crate::host::harness::Harness;
-use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::endpoint::Endpoint;
 use crate::ui::Ui;
