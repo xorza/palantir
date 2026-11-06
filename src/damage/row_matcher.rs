@@ -1,7 +1,7 @@
 //! Pairing one node's paint rows against last frame's, and turning the unpaired into damage.
 
-use crate::cascade::paint::Paint;
-use crate::common::block_arena::BlockArena;
+use crate::cascade::paint::{Paint, PaintBlocks};
+use crate::common::content_hash::ContentHash;
 use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 use crate::damage;
@@ -84,7 +84,7 @@ impl RowMatcher {
     /// Order check: swapped exact pairs still flip their overlap. This leg only reports it; the caller emits the overlap, which needs tree context.
     pub(super) fn diff_changed_leg(
         &mut self,
-        paints: &mut BlockArena<Paint>,
+        paints: &mut PaintBlocks,
         out: &mut Vec<Rect>,
         change: PaintsChange<'_>,
         places: &mut RowPlaces<'_>,
@@ -290,7 +290,7 @@ impl RowMatcher {
 /// Sort key: hash-major (one order serves both the exact and move passes), then the screen rect's bits with `-0.0` normalized. Key-equal rows are confirmed with `Paint ==` so NaN screens cannot false-pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct PaintKey {
-    hash: u64,
+    hash: ContentHash,
     screen_bits: [u32; 4],
 }
 
@@ -299,7 +299,7 @@ impl PaintKey {
         // `f + 0.0` folds -0.0 onto +0.0 and leaves every other bit pattern, NaN included, unchanged.
         let n = |f: f32| (f + 0.0).to_bits();
         Self {
-            hash: p.hash.0,
+            hash: p.hash,
             screen_bits: [
                 n(p.screen.min.x),
                 n(p.screen.min.y),

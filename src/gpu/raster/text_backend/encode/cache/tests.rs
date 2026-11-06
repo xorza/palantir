@@ -3,6 +3,7 @@
 use super::*;
 use crate::common::counters::CounterSet;
 use crate::text::key::TextShapeKey;
+use glam::{IVec2, U16Vec2, UVec2};
 
 /// The scale rung is this fixture's only axis, so one run identity stands for the text across every row.
 fn key(scale_q: u32) -> EncodedKey {

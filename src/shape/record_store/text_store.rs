@@ -1,6 +1,5 @@
 //! The record pass's text arena.
 
-use crate::common::content_hash::ContentHash;
 use crate::common::hash;
 use crate::common::span::Span;
 use crate::primitives::text::interned_str::InternedStr;
@@ -100,9 +99,6 @@ impl TextStore {
     /// carries.
     pub(crate) fn record(&self, text: InternedStr) -> RecordedText {
         self.assert_cur(text);
-        RecordedText::new(
-            text.span,
-            ContentHash(hash::str(&self.bytes[text.span.range()])),
-        )
+        RecordedText::new(text.span, hash::str(&self.bytes[text.span.range()]))
     }
 }

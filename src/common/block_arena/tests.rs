@@ -3,26 +3,15 @@
 use super::*;
 use crate::common::counters::CounterSet;
 
-/// The cheapest thing satisfying the trait: the link is the whole
-/// element, so a test can read a slot back and say what it holds.
+/// The cheapest thing satisfying the trait: a test can read a slot back and say what it holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Slot(u32);
 
-impl BlockSlot for Slot {
-    /// The coarse setting, so these cases pin the rounding, not the exact-fit degenerate case;
-    /// `Paint`'s granule of one is covered by the damage tests.
-    const GRANULE: u32 = 4;
+/// The coarse setting, so these cases pin the rounding, not the exact-fit degenerate case;
+/// `PaintBlocks`'s granule of one is covered by the damage tests.
+const GRANULE: u32 = 4;
 
-    fn free_link(next: Option<NonMaxU32>) -> Self {
-        Self(NonMaxU32::to_raw(next))
-    }
-
-    fn next_free(self) -> Option<NonMaxU32> {
-        NonMaxU32::from_raw(self.0)
-    }
-}
-
-fn store(arena: &mut BlockArena<Slot>, tags: impl Iterator<Item = u32>) -> Span {
+fn store(arena: &mut BlockArena<Slot, GRANULE>, tags: impl Iterator<Item = u32>) -> Span {
     let items: Vec<Slot> = tags.map(Slot).collect();
     arena.store(&items)
 }
@@ -32,16 +21,16 @@ fn store(arena: &mut BlockArena<Slot>, tags: impl Iterator<Item = u32>) -> Span 
 #[test]
 fn size_classes_round_up_to_the_granule() {
     for (len, class) in [(1u32, 0usize), (4, 0), (5, 1), (8, 1), (9, 2), (40, 9)] {
-        assert_eq!(block_class::<Slot>(len), class, "len {len}");
+        assert_eq!(block_class::<GRANULE>(len), class, "len {len}");
         assert!(
-            block_capacity::<Slot>(class) >= len,
+            block_capacity::<GRANULE>(class) >= len,
             "class {class} must hold the length that chose it",
         );
     }
     for class in [0usize, 1, 2, 9] {
-        assert_eq!(block_capacity::<Slot>(class), 4 * (class as u32 + 1));
+        assert_eq!(block_capacity::<GRANULE>(class), 4 * (class as u32 + 1));
         assert_eq!(
-            block_class::<Slot>(block_capacity::<Slot>(class)),
+            block_class::<GRANULE>(block_capacity::<GRANULE>(class)),
             class,
             "a class's own capacity must map back to it",
         );
@@ -52,7 +41,7 @@ fn size_classes_round_up_to_the_granule() {
 /// stops growing the arena after the first store.
 #[test]
 fn a_released_block_is_the_next_one_handed_out() {
-    let mut arena = BlockArena::<Slot>::default();
+    let mut arena = BlockArena::<Slot, GRANULE>::default();
     let first = store(&mut arena, 0..3);
     assert_eq!((first.start, first.len), (0, 3));
     assert_eq!(arena.slots.len(), 4, "3 entries round up to a 4-slot block");
@@ -76,7 +65,7 @@ fn a_released_block_is_the_next_one_handed_out() {
 /// freed, whatever is parked elsewhere.
 #[test]
 fn a_block_is_only_reused_within_its_own_class() {
-    let mut arena = BlockArena::<Slot>::default();
+    let mut arena = BlockArena::<Slot, GRANULE>::default();
     // 2 → class 0 (4 slots), 5 → class 1 (8), 9 → class 2 (12).
     let small = store(&mut arena, 0..2);
     let medium = store(&mut arena, 100..105);
@@ -104,14 +93,17 @@ fn a_block_is_only_reused_within_its_own_class() {
 }
 
 /// LIFO within a class, the reason the free list is a chain, not a queue: the block handed back is
-/// the most recently released and so the most likely still in cache.
+/// the most recently released and so the most likely still in cache. The links live beside the
+/// slots, so a release changes no slot.
 #[test]
 fn a_class_hands_back_the_most_recently_freed_block() {
-    let mut arena = BlockArena::<Slot>::default();
+    let mut arena = BlockArena::<Slot, GRANULE>::default();
     let spans: Vec<Span> = (0..3).map(|i| store(&mut arena, i..i + 3)).collect();
+    let before = arena.slots.clone();
     for span in &spans {
         arena.release(*span);
     }
+    assert_eq!(arena.slots, before);
     // Released 0, 1, 2 — so they come back 2, 1, 0.
     for want in spans.iter().rev() {
         assert_eq!(store(&mut arena, 0..3), *want);
@@ -123,7 +115,7 @@ fn a_class_hands_back_the_most_recently_freed_block() {
 /// entries it wrote — the slack past its length belongs to nobody.
 #[test]
 fn a_shorter_span_sees_only_its_own_entries() {
-    let mut arena = BlockArena::<Slot>::default();
+    let mut arena = BlockArena::<Slot, GRANULE>::default();
     let four = store(&mut arena, 10..14);
     arena.release(four);
     // 2 and 4 share class 0, so this takes the 4-slot block.
@@ -137,7 +129,7 @@ fn a_shorter_span_sees_only_its_own_entries() {
 /// nor corrupts a class when it is released.
 #[test]
 fn an_empty_span_owns_no_block() {
-    let mut arena = BlockArena::<Slot>::default();
+    let mut arena = BlockArena::<Slot, GRANULE>::default();
     let empty = arena.store(&[]);
     assert_eq!((empty.start, empty.len), (0, 0));
     assert_eq!(arena.slots.len(), 0);
@@ -152,7 +144,7 @@ fn an_empty_span_owns_no_block() {
 /// no longer holds blocks, and the next store would hand out an index into somebody else's entries.
 #[test]
 fn clear_drops_the_free_lists_with_the_storage() {
-    let mut arena = BlockArena::<Slot>::default();
+    let mut arena = BlockArena::<Slot, GRANULE>::default();
     let span = store(&mut arena, 0..3);
     arena.release(span);
     arena.clear();

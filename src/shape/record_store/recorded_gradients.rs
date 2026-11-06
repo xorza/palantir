@@ -21,7 +21,7 @@ impl RecordedGradients {
     /// `ShapeBrush::Gradient` carries.
     pub(crate) fn intern(&mut self, hash: ContentHash, gradient: RecordedGradient) -> GradientId {
         self.index.widen_for(self.records.len() + 1);
-        if let Some(id) = self.index.get(hash.0)
+        if let Some(id) = self.index.get(hash)
             && self.records[id.0 as usize] == gradient
         {
             return id;
@@ -32,7 +32,7 @@ impl RecordedGradients {
         );
         let id = GradientId(self.records.len() as u32);
         self.records.push(gradient);
-        self.index.put(hash.0, id);
+        self.index.put(hash, id);
         id
     }
 
@@ -79,13 +79,13 @@ impl Default for GradientIndex {
 impl GradientIndex {
     /// The record `content_hash` last minted *this frame*, if any.
     #[inline]
-    fn get(&self, content_hash: u64) -> Option<GradientId> {
+    fn get(&self, content_hash: ContentHash) -> Option<GradientId> {
         let slot = self.slots[self.at(content_hash)];
         (slot.stamp == self.stamp).then_some(GradientId(slot.id))
     }
 
     #[inline]
-    fn put(&mut self, content_hash: u64, id: GradientId) {
+    fn put(&mut self, content_hash: ContentHash, id: GradientId) {
         let at = self.at(content_hash);
         self.slots[at] = GradientSlot {
             stamp: self.stamp,
@@ -95,12 +95,12 @@ impl GradientIndex {
 
     /// The hash is a full 64-bit content hash, so its low bits need no mixing.
     #[inline]
-    fn at(&self, content_hash: u64) -> usize {
+    fn at(&self, content_hash: ContentHash) -> usize {
         debug_assert!(
             !self.slots.is_empty(),
             "the gradient index is read only after `widen_for` sized it",
         );
-        content_hash as usize & (self.slots.len() - 1)
+        content_hash.as_u64() as usize & (self.slots.len() - 1)
     }
 
     /// Widen to index `records` records at [`SLOTS_PER_RECORD`], unless the table already does. The widened table starts empty (a record keeps no hash), costing only dedup for the rest of the frame.

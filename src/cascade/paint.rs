@@ -2,9 +2,8 @@
 //! plus the per-node index into it. Split from the rest of the cascade
 //! because only damage's per-shape legs and the paint-animation wake read it.
 
-use crate::common::block_arena::BlockSlot;
+use crate::common::block_arena::BlockArena;
 use crate::common::content_hash::ContentHash;
-use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::scene::tree::paint_animations::PaintAnimationEntry;
@@ -14,32 +13,17 @@ use crate::scene::tree::paint_animations::PaintAnimationEntry;
 /// into the span so damage sees z-order changes as row reorders.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Paint {
-    /// Screen-space rect after parent transform + clip. Child markers carry
-    /// `Rect::ZERO`.
+    /// Screen-space rect after the transform the row paints under and its clip.
+    /// Child markers carry `Rect::ZERO`.
     pub(crate) screen: Rect,
-    /// Authoring hash: the chrome row hash, the shape hash, or for a child
-    /// marker the child's `WidgetId` bits.
+    /// Authoring hash: the chrome row hash, the shape hash with its panel's
+    /// own transform, or for a child marker the child's `WidgetId` bits.
     pub(crate) hash: ContentHash,
 }
 
-/// The free-list link rides in `hash`; free blocks are never read as rows.
-/// This is the damage arena's element, not `PaintArena::rows`.
-impl BlockSlot for Paint {
-    /// Exact fit: paint spans are a handful of rows, and a larger granule
-    /// measurably cost cache density on `damage/workload/shape_churn_*`.
-    const GRANULE: u32 = 1;
-
-    fn free_link(next: Option<NonMaxU32>) -> Self {
-        Self {
-            screen: Rect::ZERO,
-            hash: ContentHash(u64::from(NonMaxU32::to_raw(next))),
-        }
-    }
-
-    fn next_free(self) -> Option<NonMaxU32> {
-        NonMaxU32::from_raw(self.hash.0 as u32)
-    }
-}
+/// The damage arena, not `PaintArena::rows`. Exact fit: paint spans are a handful of rows, and a
+/// larger granule measurably cost cache density on `damage/workload/shape_churn_*`.
+pub(crate) type PaintBlocks = BlockArena<Paint, 1>;
 
 /// Per-layer paint state: the [`Paint`] arena plus a per-node index into it.
 #[derive(Debug, Default)]

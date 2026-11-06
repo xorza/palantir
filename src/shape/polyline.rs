@@ -175,7 +175,7 @@ impl sealed::LowerShape for PolylineShape<'_> {
             | ((cap as u64) << 8)
             | (join as u64);
         h.write_u64(style);
-        let content_hash = h.finish();
+        let content_hash = ContentHash::finish(&h);
 
         ShapeRecord::Polyline {
             width: stroke.width,
@@ -185,7 +185,7 @@ impl sealed::LowerShape for PolylineShape<'_> {
             points: staged.points,
             colors: staged.colors,
             bbox,
-            content_hash: ContentHash(content_hash),
+            content_hash,
         }
     }
 }

@@ -201,12 +201,14 @@ impl PaintRectCtx<'_> {
         if has_shapes || has_children {
             let mut text_runs = TextRuns::new(layout.text_spans[node.idx()]);
             let shape_hashes = tree.shapes.hashes.as_slice();
+            // A shape wider than the clip keeps its hash and its clipped screen rect while its panel's own transform moves it, so only its row's hash can tell the row diff that its pixels moved. Chrome paints under the parent's transform, so its row stays out.
+            let own_transform = tree.panel(node).transform_hash();
             let widget_ids = tree.records.widget_id();
             for item in tree.tree_items(node) {
                 let (idx, s) = match item {
                     TreeItem::ShapeRecord(idx, s) => (idx, s),
                     TreeItem::Child(c) => {
-                        span.push_unpainted(ContentHash(widget_ids[c.id.idx()].as_u64()));
+                        span.push_unpainted(ContentHash::from_u64(widget_ids[c.id.idx()].as_u64()));
                         continue;
                     }
                 };
@@ -310,7 +312,7 @@ impl PaintRectCtx<'_> {
                         shape_clip,
                     ),
                 };
-                span.push(screen, shape_hashes[idx as usize]);
+                span.push(screen, shape_hashes[idx as usize] ^ own_transform);
             }
             debug_assert!(
                 text_runs.is_drained(),

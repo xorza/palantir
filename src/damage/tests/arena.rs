@@ -2,10 +2,8 @@
 //! never move, and no frame pays for another's shape churn.
 //!
 //! Row counts are `1 + shapes` (chrome at row 0, then one row per shape).
-//! [`Paint::GRANULE`] is one, so a block is exactly its span's length and each
-//! row count is its own size class.
-//!
-//! [`Paint::GRANULE`]: crate::common::block_arena::BlockSlot::GRANULE
+//! [`PaintBlocks`](crate::cascade::paint::PaintBlocks)'s granule is one, so a block is exactly its
+//! span's length and each row count is its own size class.
 
 use crate::common::counters::CounterSet;
 use crate::common::span::Span;

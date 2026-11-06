@@ -46,7 +46,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let mut resolver = GradientResolver::default();
     let brush = ShapeBrush::Gradient {
         id: GradientId(0),
-        hash: ContentHash(0),
+        hash: ContentHash::default(),
     };
 
     let mut pass = resolver.begin(&gradients, &mut atlas);

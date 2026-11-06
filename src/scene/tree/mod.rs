@@ -323,7 +323,7 @@ impl Tree {
             let chrome = ex.chrome.map(|s| chrome_tab[s.idx()].hash);
             ph.write_u8(u8::from(chrome.is_some()) | (u8::from(transformed.is_some()) << 1));
             if let Some(hash) = chrome {
-                ph.write_u64(hash.0);
+                hash.hash(&mut ph);
             }
             if let Some(panel) = transformed {
                 panel.hash_transform(&mut ph);
@@ -345,7 +345,7 @@ impl Tree {
             for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
                     TreeItem::ShapeRecord(idx, shape) => {
-                        ph.write_u64(shape_hashes[idx as usize].0);
+                        shape_hashes[idx as usize].hash(&mut ph);
                         if shape.hash_layout_inputs(&mut lh) {
                             has_direct_text = true;
                         }
@@ -355,8 +355,8 @@ impl Tree {
                             hasher.write_u8(0xFF);
                             hasher.write_u64(widget_ids[c.id.idx()].as_u64());
                         }
-                        sh.write_u64(subtree_out[c.id.idx()].0);
-                        lsh.write_u64(layout_subtree_out[c.id.idx()].0);
+                        subtree_out[c.id.idx()].hash(&mut sh);
+                        layout_subtree_out[c.id.idx()].hash(&mut lsh);
                         has_children = true;
                     }
                 }
@@ -387,23 +387,23 @@ impl Tree {
                     scrollbar_defs[usize::from(id)].def.hash_visual(&mut lh);
                 }
             }
-            let layout_hash = lh.finish();
-            ph.write_u64(layout_hash);
-            let node_hash = ph.finish();
-            node_out[i] = ContentHash(node_hash);
+            let layout_hash = ContentHash::finish(&lh);
+            layout_hash.hash(&mut ph);
+            let node_hash = ContentHash::finish(&ph);
+            node_out[i] = node_hash;
 
             // A childless subtree is the node alone: its hash is the rollup.
             if has_children {
-                sh.write_u64(node_hash);
-                lsh.write_u64(layout_hash);
-                subtree_out[i] = ContentHash(sh.finish());
-                layout_subtree_out[i] = ContentHash(lsh.finish());
+                node_hash.hash(&mut sh);
+                layout_hash.hash(&mut lsh);
+                subtree_out[i] = ContentHash::finish(&sh);
+                layout_subtree_out[i] = ContentHash::finish(&lsh);
             } else {
-                subtree_out[i] = ContentHash(node_hash);
-                layout_subtree_out[i] = ContentHash(layout_hash);
+                subtree_out[i] = node_hash;
+                layout_subtree_out[i] = layout_hash;
             }
         }
-        *cascade_static = ContentHash(cascade_static_hasher.finish());
+        *cascade_static = ContentHash::finish(&cascade_static_hasher);
     }
 
     pub(crate) fn push_scrollbars_def(&mut self, def: ResolvedScrollbarsDef) -> ScrollbarsDefId {
@@ -644,7 +644,7 @@ fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash 
     h.write_usize(shapes);
     h.write_usize(chrome_rows);
     h.write_usize(nodes);
-    ContentHash(h.finish())
+    ContentHash::finish(&h)
 }
 
 #[cfg(test)]

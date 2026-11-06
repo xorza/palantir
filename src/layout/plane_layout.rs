@@ -79,6 +79,6 @@ impl PlaneLayout {
         for rect in &self.rect {
             rect.hash_visual(&mut h);
         }
-        self.rect_hash = ContentHash(h.finish());
+        self.rect_hash = ContentHash::finish(&h);
     }
 }

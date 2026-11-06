@@ -239,7 +239,7 @@ impl ShapeRecord {
                 points: _,
                 colors: _,
                 bbox: _,
-            } => h.write_u64(content_hash.0),
+            } => content_hash.hash(&mut h),
             // The shaping inputs are layout's as well as paint's, so one method feeds
             // both hashes.
             Self::Text {
@@ -270,7 +270,7 @@ impl ShapeRecord {
             } => {
                 hash_optional_rect(*local_rect, &mut h);
                 tint.hash(&mut h);
-                h.write_u64(content_hash.0);
+                content_hash.hash(&mut h);
             }
             // `ImageSource`'s discriminant goes in first to keep a texture draw and a
             // view composite apart; the shared placement fields are hashed once, around
@@ -371,12 +371,12 @@ impl ShapeRecord {
                     CurveRamp::None => h.write_u8(*cap as u8),
                     CurveRamp::Interned { id: _, hash } => {
                         h.write_u8(*cap as u8 | 0x80);
-                        h.write_u64(hash.0);
+                        hash.hash(&mut h);
                     }
                 }
             }
         }
-        ContentHash(h.finish())
+        ContentHash::finish(&h)
     }
 
     /// Feeds what layout reads from this record into `h`, answering whether there was anything. Only text is read by layout (text, face, wrap, alignment); color and origin are paint, so a recolored label still hits the measure cache.

@@ -121,7 +121,7 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
         .hash_parts()
         .payload,
         match ramp(&mut store, &ColorRamp::new(stops)) {
-            CurveRamp::Interned { hash, .. } => hash.0,
+            CurveRamp::Interned { hash, .. } => hash.as_u64(),
             CurveRamp::None => panic!("a ramp always interns"),
         },
     ];

@@ -5,8 +5,8 @@ use std::num::{NonZeroU16, NonZeroU32};
 
 /// One niche-index type over `$int`: the value stored inverted, so `None` takes the niche of
 /// `$int::MAX`, `Option<Self>` is as wide as `$int`, and a column of `None` is zeroed memory. A
-/// macro, as std's `NonZero<T>` cannot be named generically on stable; one encoding and one API
-/// for both widths. Refused: the 16-bit index stored as index plus one beside the inverted 32-bit
+/// macro, as std's `NonZero<T>` cannot be named generically on stable; one encoding for both
+/// widths. Refused: the 16-bit index stored as index plus one beside the inverted 32-bit
 /// one, two encodings of one idea with their raw reads shaped apart.
 macro_rules! non_max {
     ($(#[$meta:meta])* $name:ident, $int:ty, $nonzero:ty) => {
@@ -53,25 +53,6 @@ macro_rules! non_max {
             pub(crate) const fn idx(self) -> usize {
                 self.get() as usize
             }
-
-            /// The encoding a foreign field of the integer holds, which [`Self::from_raw`] reads
-            /// back: the stored bits, and zero for `None`.
-            #[inline]
-            pub(crate) const fn to_raw(index: Option<Self>) -> $int {
-                match index {
-                    Some(index) => index.0.get(),
-                    None => 0,
-                }
-            }
-
-            /// Reads back [`Self::to_raw`]; `None` for zero.
-            #[inline]
-            pub(crate) const fn from_raw(raw: $int) -> Option<Self> {
-                match <$nonzero>::new(raw) {
-                    Some(raw) => Some(Self(raw)),
-                    None => None,
-                }
-            }
         }
     };
 }
@@ -91,6 +72,27 @@ non_max!(
     u32,
     NonZeroU32
 );
+
+impl NonMaxU16 {
+    /// The encoding a foreign field of the integer holds, which [`Self::from_raw`] reads back: the
+    /// stored bits, and zero for `None`.
+    #[inline]
+    pub(crate) const fn to_raw(index: Option<Self>) -> u16 {
+        match index {
+            Some(index) => index.0.get(),
+            None => 0,
+        }
+    }
+
+    /// Reads back [`Self::to_raw`]; `None` for zero.
+    #[inline]
+    pub(crate) const fn from_raw(raw: u16) -> Option<Self> {
+        match NonZeroU16::new(raw) {
+            Some(raw) => Some(Self(raw)),
+            None => None,
+        }
+    }
+}
 
 impl NonMaxU32 {
     /// `value`, or [`Self::LAST`] for `u32::MAX`.
@@ -126,13 +128,6 @@ mod tests {
         assert_eq!(NonMaxU32::saturating(u32::MAX), last);
         assert_eq!(NonMaxU32::saturating(7).get(), 7);
         assert_eq!(NonMaxU32::index(41).idx(), 41);
-        assert_eq!(NonMaxU32::to_raw(Some(zero)), u32::MAX);
-        assert_eq!(NonMaxU32::to_raw(Some(last)), 1);
-        assert_eq!(NonMaxU32::to_raw(None), 0);
-        assert_eq!(NonMaxU32::from_raw(0), None);
-        for value in [Some(zero), Some(last), None] {
-            assert_eq!(NonMaxU32::from_raw(NonMaxU32::to_raw(value)), value);
-        }
         assert_eq!(size_of::<Option<NonMaxU32>>(), 4);
 
         let first = NonMaxU16::index(0);

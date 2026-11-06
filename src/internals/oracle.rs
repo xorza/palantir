@@ -4,6 +4,7 @@ use crate::cascade::Cascade;
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
 use crate::cascade::internals::OwnedPaint;
+use crate::common::content_hash::ContentHash;
 use crate::damage::Damage;
 use crate::host::harness::Harness;
 use crate::layout::Layout;
@@ -159,14 +160,14 @@ fn sort_rows(rows: &mut [OwnedPaint]) {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct RowKey {
     owner: u64,
-    hash: u64,
+    hash: ContentHash,
     screen: [u32; 4],
 }
 
 fn row_key(row: &OwnedPaint) -> RowKey {
     RowKey {
         owner: row.owner.as_u64(),
-        hash: row.hash.0,
+        hash: row.hash,
         screen: [
             row.screen.min.x.to_bits(),
             row.screen.min.y.to_bits(),

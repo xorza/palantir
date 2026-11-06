@@ -35,7 +35,7 @@ impl ShapeBrush {
             },
             Self::Gradient { id: _, hash } => BrushHash {
                 tag: 1,
-                payload: hash.0,
+                payload: hash.as_u64(),
             },
         }
     }
@@ -66,7 +66,7 @@ mod tests {
         let gradient = |id, hash| {
             ShapeBrush::Gradient {
                 id: GradientId(id),
-                hash: ContentHash(hash),
+                hash: ContentHash::from_u64(hash),
             }
             .hash_parts()
         };

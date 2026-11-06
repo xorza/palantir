@@ -12,7 +12,7 @@ use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use std::hash::Hasher as _;
+use std::hash::Hash as _;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
 ///
@@ -61,9 +61,9 @@ impl Shapes {
     pub(crate) fn fold_paint_animation(&mut self, idx: u32, animation: &PaintAnimation) {
         let slot = &mut self.hashes[idx as usize];
         let mut h = Hasher::new();
-        h.write_u64(slot.0);
+        slot.hash(&mut h);
         animation.hash_static(&mut h);
-        *slot = ContentHash(h.finish());
+        *slot = ContentHash::finish(&h);
     }
 
     /// Append an already-lowered record, returning its index.

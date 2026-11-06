@@ -20,6 +20,6 @@ impl RecordedText {
 
 impl Hash for RecordedText {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.hash.0);
+        self.hash.hash(state);
     }
 }

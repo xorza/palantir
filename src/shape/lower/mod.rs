@@ -53,7 +53,7 @@ fn gradient_hash<G: hash::Hash>(kind: FillKind, g: &G) -> ContentHash {
     let mut h = Hasher::new();
     h.write_u32(kind.0);
     g.hash(&mut h);
-    ContentHash(h.finish())
+    ContentHash::finish(&h)
 }
 
 fn gradient_brush<G: GradientGeometry>(
@@ -137,7 +137,7 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
     shadow.hash(&mut h);
     backdrop.hash(&mut h);
     h.write_u8(brush.tag);
-    let hash = ContentHash(h.finish());
+    let hash = ContentHash::finish(&h);
     ChromeRow {
         fill,
         border,

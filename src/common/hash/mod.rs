@@ -11,6 +11,7 @@
     reason = "the one wrapper of FxHasher, which `clippy.toml` refuses everywhere else"
 )]
 
+use crate::common::content_hash::ContentHash;
 use foldhash::SharedSeed;
 use foldhash::quality::SeedableRandomState;
 use rustc_hash::FxHasher;
@@ -21,8 +22,10 @@ use std::hash::{self, BuildHasher as _, Hasher as _};
 /// under the process's random seed, so no text can be written to collide with another on
 /// purpose; two texts still meet by chance about once in 2^64. Stable within a process, which is
 /// as long as a hash is kept.
-pub(crate) fn str(s: &str) -> u64 {
-    SeedableRandomState::with_seed(0, SharedSeed::global_random()).hash_one(s)
+pub(crate) fn str(s: &str) -> ContentHash {
+    ContentHash::from_u64(
+        SeedableRandomState::with_seed(0, SharedSeed::global_random()).hash_one(s),
+    )
 }
 
 /// `FxHasher` plus an inherent [`Self::pod_slice`]; implements `Hasher`.

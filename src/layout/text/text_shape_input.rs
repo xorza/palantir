@@ -1,5 +1,6 @@
 //! One recorded text run as the layout pass reads it.
 
+use crate::common::content_hash::ContentHash;
 use crate::primitives::layout::align::HAlign;
 use crate::primitives::text::interned_text::InternedText;
 use crate::scene::tree::Tree;
@@ -19,7 +20,7 @@ pub(crate) struct TextShapeInput<'a> {
     /// Content hash kept on the [`RecordedText`] so [`Self::shape_request`] need not rescan the bytes.
     ///
     /// [`RecordedText`]: crate::primitives::text::recorded_text::RecordedText
-    pub(crate) text_hash: u64,
+    pub(crate) text_hash: ContentHash,
     pub(crate) font: ShapingFont,
     pub(crate) wrap: TextWrap,
     /// From `Shape::Text.align`; with wrap on, cosmic-text bakes per-line offsets into the shaped buffer,
@@ -96,7 +97,7 @@ fn text_shape_input<'a>(
         } => Some(TextShapeInput {
             ordinal: checked_text_ordinal(ordinal),
             text: interned_text.resolve(text.span),
-            text_hash: text.hash.0,
+            text_hash: text.hash,
             font: *font,
             wrap: *wrap,
             halign: align.halign(),
@@ -114,6 +115,7 @@ fn checked_text_ordinal(idx: usize) -> u16 {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::content_hash::ContentHash;
     use crate::common::hash;
     use crate::internals::panic_probe;
     use crate::layout::text::text_shape_input::{TextShapeInput, checked_text_ordinal};
@@ -143,7 +145,7 @@ mod tests {
         slant: FontSlant::Normal,
     };
 
-    fn input(text_hash: u64) -> TextShapeInput<'static> {
+    fn input(text_hash: ContentHash) -> TextShapeInput<'static> {
         TextShapeInput {
             ordinal: 0,
             text: "hello",
@@ -172,6 +174,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "text paired with a key minted from different bytes")]
     fn a_stale_retained_hash_is_rejected() {
-        let _ = input(1).shape_request();
+        let _ = input(ContentHash::from_u64(1)).shape_request();
     }
 }

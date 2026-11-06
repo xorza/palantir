@@ -279,10 +279,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
 
 /// Reproduces the darkroom graph-canvas regression: a panel with
 /// `Panel::transform` and direct shapes shifts its own transform every pan
-/// frame. Those shapes paint inside the self-transform so their pixels move,
-/// but `cascade_input` tracks only ancestor state. The fix: own transform
-/// folds into `node_hash`, so the diff's `e.get().hash == cur_node_hash`
-/// guard fails and the Occupied arm pushes both prev and curr rects.
+/// frame. Those shapes paint inside the self-transform so their pixels move.
 #[test]
 fn self_transform_shift_damages_direct_shapes() {
     let mut h = Harness::mono(UVec2::new(200, 200));
@@ -311,16 +308,90 @@ fn self_transform_shift_damages_direct_shapes() {
     build(20.0, &mut h);
     let region = h.damage_region();
 
-    // Translating self by dx=20 moves the shape's pixels from [40, 70] ×
-    // [40, 70] to [60, 90] × [40, 70]. Damage covers at least [40, 90] × [40, 70].
-    let covered = region.iter_rects().any(|r| {
-        r.min.x <= 40.5 && r.min.y <= 40.5 && r.max().x >= 90.0 - 0.5 && r.max().y >= 70.0 - 0.5
-    });
-    assert!(
-        covered,
-        "self-transform shift on a panel with direct shapes must \
-         damage both old and new shape positions. region = {region:?}",
-    );
+    // Translating self by dx=20 moves the shape's pixels from [40, 70] × [40, 70] to [60, 90] ×
+    // [40, 70], and the two overlap, so one rect covers [40, 90] × [40, 70].
+    let rects: Vec<Rect> = region.iter_rects().collect();
+    assert_eq!(rects, [Rect::new(40.0, 40.0, 50.0, 30.0)]);
+}
+
+/// A panel's own transform moves its direct shapes though their clipped paint rect and their hash
+/// stay the same, as a shape wider than the clip does: a pan, a zoom and a return to identity each
+/// damage what the shape covers, 100 × 100, and a frame with no change damages nothing. Darkroom's
+/// canvas dots are such a shape.
+#[test]
+fn self_transform_shift_with_invariant_clipped_paint_rect_contributes_damage() {
+    let moved = TranslateScale::from_translation(Vec2::new(5.0, 0.0));
+    for (from, to) in [
+        (TranslateScale::IDENTITY, moved),
+        (
+            TranslateScale::IDENTITY,
+            TranslateScale::new(Vec2::ZERO, 1.5),
+        ),
+        (moved, TranslateScale::IDENTITY),
+    ] {
+        let mut h = Harness::mono(UVec2::new(100, 100));
+        let build = |transform: TranslateScale, h: &mut Harness| {
+            h.frame(|ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("clip"))
+                    .clip_rect()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        Panel::canvas()
+                            .id(WidgetId::from_hash("xform"))
+                            .transform(transform)
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                ui.add_shape(
+                                    Shape::rect()
+                                        .at(Rect::new(-200.0, -200.0, 500.0, 500.0))
+                                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                                );
+                            });
+                    });
+            });
+        };
+        build(from, &mut h);
+        build(to, &mut h);
+        let region = h.damage_region();
+        let rects: Vec<Rect> = region.iter_rects().collect();
+        assert_eq!(
+            rects,
+            [Rect::new(0.0, 0.0, 100.0, 100.0)],
+            "{from:?} to {to:?}"
+        );
+        build(to, &mut h);
+        assert_eq!(h.damage_region().iter_rects().count(), 0, "{to:?} held");
+    }
+}
+
+/// A panel's chrome paints under its parent's transform, so its own transform moves only its direct
+/// shapes: a 5 × 5 shape at (10, 10) moved 1 to the right damages its old and new place, x 10..16
+/// and y 10..15, and not the 100 × 100 fill.
+#[test]
+fn self_transform_shift_leaves_the_panels_own_chrome_alone() {
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let build = |dx: f32, h: &mut Harness| {
+        h.frame(|ui| {
+            Panel::canvas()
+                .id(WidgetId::from_hash("xform"))
+                .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+                .size((Sizing::FILL, Sizing::FILL))
+                .chrome(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(10.0, 10.0, 5.0, 5.0))
+                            .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                    );
+                });
+        });
+    };
+    build(0.0, &mut h);
+    build(1.0, &mut h);
+    let region = h.damage_region();
+    let rects: Vec<Rect> = region.iter_rects().collect();
+    assert_eq!(rects, [Rect::new(10.0, 10.0, 6.0, 5.0)]);
 }
 
 /// Pin the moved-subtree tier: a transformed parent over an

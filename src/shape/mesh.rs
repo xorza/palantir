@@ -72,7 +72,7 @@ impl sealed::LowerShape for MeshShape<'_> {
             vertices: staged.vertices,
             idxs: staged.idxs,
             bbox: mesh.bbox(),
-            content_hash: ContentHash(mesh.content_hash()),
+            content_hash: ContentHash::from_u64(mesh.content_hash()),
         }
     }
 }

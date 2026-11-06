@@ -5,9 +5,8 @@
 //! a slot rectangle to another glyph, and a template with the old uv would draw
 //! that glyph. Growth needs no check; a side's grow keeps every rectangle.
 
-use crate::common::block_arena::{BlockArena, BlockSlot};
+use crate::common::block_arena::BlockArena;
 use crate::common::expiry_wheel::ExpiryWheel;
-use crate::common::non_max::NonMaxU32;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -16,10 +15,8 @@ use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::RasterPass;
 use crate::gpu::raster::text_backend::encode::{EncodedKey, EncodedRunKey};
 use crate::gpu::raster::text_backend::encoded_counters::EncodedCounters;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::render::GlyphRasterKey;
-use glam::{IVec2, U16Vec2, UVec2};
 
 #[derive(Clone, Copy, Debug)]
 struct EncodedEntry {
@@ -38,22 +35,8 @@ const CHUNK_BYTES: usize = 8;
 #[derive(Clone, Copy, Debug)]
 struct TextChunk([u8; CHUNK_BYTES]);
 
-/// The link rides in the first four bytes: nothing reads a free block's text.
-impl BlockSlot for TextChunk {
-    /// 64-byte blocks: most labels fit one.
-    const GRANULE: u32 = 8;
-
-    fn free_link(next: Option<NonMaxU32>) -> Self {
-        let mut bytes = [0; CHUNK_BYTES];
-        bytes[..4].copy_from_slice(&NonMaxU32::to_raw(next).to_le_bytes());
-        Self(bytes)
-    }
-
-    fn next_free(self) -> Option<NonMaxU32> {
-        let [a, b, c, d, ..] = self.0;
-        NonMaxU32::from_raw(u32::from_le_bytes([a, b, c, d]))
-    }
-}
+/// 64-byte blocks: most labels fit one.
+type TextBlocks = BlockArena<TextChunk, 8>;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedGlyph {
@@ -62,31 +45,9 @@ pub(crate) struct EncodedGlyph {
     pub(crate) generation: u32,
 }
 
-/// The link rides in `atlas_slot`: a free block is not a glyph, so nothing reads
-/// its slots until re-allocation overwrites them.
-impl BlockSlot for EncodedGlyph {
-    /// Four slots of slack lets a run whose glyph count shifts by one land in the class
-    /// its predecessor freed; exact fit would mint a class per count.
-    const GRANULE: u32 = 4;
-
-    fn free_link(next: Option<NonMaxU32>) -> Self {
-        Self {
-            instance: RasterQuad {
-                pos: IVec2::ZERO,
-                dim: U16Vec2::ZERO,
-                size: UVec2::ZERO,
-                uv_and_kind: 0,
-                color: RgbaF16::TRANSPARENT,
-            },
-            atlas_slot: NonMaxU32::to_raw(next),
-            generation: 0,
-        }
-    }
-
-    fn next_free(self) -> Option<NonMaxU32> {
-        NonMaxU32::from_raw(self.atlas_slot)
-    }
-}
+/// Four slots of slack lets a run whose glyph count shifts by one land in the class its predecessor
+/// freed; exact fit would mint a class per count.
+type GlyphBlocks = BlockArena<EncodedGlyph, 4>;
 
 /// Age-bounded cache of encoded runs over a [`BlockArena`]. Alloc-free after
 /// warmup. Why blocks rather than compaction: [the arena's
@@ -94,8 +55,8 @@ impl BlockSlot for EncodedGlyph {
 #[derive(Debug)]
 pub(crate) struct EncodedCache {
     map: FxHashMap<EncodedKey, EncodedEntry>,
-    arena: BlockArena<EncodedGlyph>,
-    texts: BlockArena<TextChunk>,
+    arena: GlyphBlocks,
+    texts: TextBlocks,
     /// Where [`Self::settle`] chunks a run's text before storing it.
     text_scratch: Vec<TextChunk>,
     /// Where [`Self::stage`] accumulates a row's glyphs before its length is known.
@@ -296,7 +257,7 @@ impl EncodedCache {
 }
 
 /// Whether `entry` was encoded from `text`, by its bytes.
-fn holds(texts: &BlockArena<TextChunk>, entry: &EncodedEntry, text: &str) -> bool {
+fn holds(texts: &TextBlocks, entry: &EncodedEntry, text: &str) -> bool {
     entry.text_len as usize == text.len()
         && texts.slots[entry.text.range()]
             .iter()
@@ -347,7 +308,9 @@ pub(crate) mod internals {
     use crate::common::counters::CounterSet;
     #[cfg(test)]
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::text::key::TextShapeKey;
+    use glam::{IVec2, U16Vec2, UVec2};
 
     /// What a unit test outside this module may ask a live cache. [`EncodedKey`]'s
     /// fields are private to `encode`, so a key only names a row across frames.

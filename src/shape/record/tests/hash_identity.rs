@@ -131,7 +131,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         vertices: Span::new(0, 3),
         idxs: Span::new(0, 3),
         bbox: Rect::ZERO,
-        content_hash: ContentHash(0xdead_beef),
+        content_hash: ContentHash::from_u64(0xdead_beef),
     };
     let b = ShapeRecord::Mesh {
         local_rect: None,
@@ -139,7 +139,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         vertices: Span::new(1234, 3),
         idxs: Span::new(5678, 3),
         bbox: Rect::ZERO,
-        content_hash: ContentHash(0xdead_beef),
+        content_hash: ContentHash::from_u64(0xdead_beef),
     };
     assert_eq!(a.content_hash(), b.content_hash());
 
@@ -149,7 +149,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         vertices: Span::new(0, 3),
         idxs: Span::new(0, 3),
         bbox: Rect::ZERO,
-        content_hash: ContentHash(0xdead_beef),
+        content_hash: ContentHash::from_u64(0xdead_beef),
     };
     let zero = with_rect(Rect::ZERO).content_hash();
     assert_eq!(
@@ -331,7 +331,7 @@ fn text_shape(line_height: f32, weight: FontWeight, local_origin: Option<Vec2>) 
 fn text_face(font: ShapingFont, local_origin: Option<Vec2>) -> ShapeRecord {
     ShapeRecord::Text {
         local_origin,
-        text: RecordedText::new(Span::default(), ContentHash(hash::str("hi"))),
+        text: RecordedText::new(Span::default(), hash::str("hi")),
         color: RgbaF32::WHITE.to_f16(),
         font,
         wrap: TextWrap::Truncate,
@@ -339,8 +339,8 @@ fn text_face(font: ShapingFont, local_origin: Option<Vec2>) -> ShapeRecord {
     }
 }
 
-fn hash_shape(s: &ShapeRecord) -> u64 {
-    s.content_hash().0
+fn hash_shape(s: &ShapeRecord) -> ContentHash {
+    s.content_hash()
 }
 
 /// Pin: every authoring-relevant `ShapeRecord::Text` field participates in the

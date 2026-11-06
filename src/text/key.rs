@@ -1,6 +1,7 @@
 //! Canonical shaped-run identity: shaping parameters quantized into a
 //! stable, purely integral cache key.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash;
 use crate::common::non_max::NonMaxU32;
 use crate::primitives::layout::align::HAlign;
@@ -67,12 +68,12 @@ impl TextShapeKey {
         (self.text_hash.get() ^ width ^ self.size_q as u64) & RENDERED_RUN_KEEP_SPREAD_MASK
     }
 
-    /// Content hash for a raw source hash; raw zero maps to one to fit [`NonZeroU64`].
+    /// A key's form of a source hash; zero maps to one to fit [`NonZeroU64`].
     ///
     /// One definition because four sites derive it and must agree.
-    pub(crate) const fn content_hash(raw: u64) -> NonZeroU64 {
+    pub(crate) const fn content_hash(source: ContentHash) -> NonZeroU64 {
         // `unwrap_or` is not const on `Option<NonZeroU64>`.
-        match NonZeroU64::new(raw) {
+        match NonZeroU64::new(source.as_u64()) {
             Some(hash) => hash,
             None => NonZeroU64::MIN,
         }
@@ -89,7 +90,7 @@ impl TextShapeKey {
     /// The key `text_hash` shapes under at `font`, before any width.
     ///
     /// Callers screen the face first, so an invalid one is a logic error (debug-asserted); unscreened, a NaN size would quantize silently.
-    pub(crate) fn unbounded(text_hash: u64, font: ShapingFont) -> Self {
+    pub(crate) fn unbounded(text_hash: ContentHash, font: ShapingFont) -> Self {
         let ShapingFont {
             font_size,
             line_height,
@@ -365,6 +366,7 @@ const fn dequantize(value: u32) -> f32 {
 // Also built by the `text_atlas` benchmark.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::common::content_hash::ContentHash;
     use crate::text::family_keys::FamilyKey;
     use crate::text::font_slant::FontSlant;
     use crate::text::font_weight::FontWeight;
@@ -376,7 +378,7 @@ pub(crate) mod internals {
         /// first family a table keys, so it builds no table.
         pub(crate) fn fixture() -> Self {
             Self::unbounded(
-                1,
+                ContentHash::from_u64(1),
                 ShapingFont {
                     font_size: 16.0,
                     line_height: 16.0,

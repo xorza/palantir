@@ -1,9 +1,8 @@
 //! The damage pass: the cross-frame snapshots it diffs against, and the walk that turns this frame's changes into a region.
 
 use crate::cascade::Cascade;
-use crate::cascade::paint::Paint;
+use crate::cascade::paint::PaintBlocks;
 use crate::cascade::paint::PaintRows;
-use crate::common::block_arena::BlockArena;
 use crate::common::tracy;
 use crate::damage::counters::DamageCounters;
 use crate::damage::dirty_panes::DirtyPanes;
@@ -27,7 +26,7 @@ use std::time::Duration;
 pub(crate) struct DamageEngine {
     /// Last frame's snapshot, **only for widgets with paint rows** (see the module doc). `WidgetId` is unique across planes (`SeenIds::resolve`), so the bare key is safe.
     pub(super) prev: WidgetIdMap<NodeSnapshot>,
-    pub(super) paints: BlockArena<Paint>,
+    pub(super) paints: PaintBlocks,
     /// What the last presented frame was painted under, or `None`: the frame-wide half of the baseline [`Self::prev`] holds per widget. See [`FrameBaseline`], [`Self::note_presented`].
     presented: Option<FrameBaseline>,
     matcher: RowMatcher,

@@ -4,7 +4,7 @@ use crate::cascade::cascade_source::CascadeSource;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::scene::tree::root_slot::RootSlot;
-use std::hash::Hasher as _;
+use std::hash::{Hash as _, Hasher as _};
 
 /// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run) reads. Equal keys skip the run; how much else two keys share picks what the run keeps ([`CascadeReuse`]).
 ///
@@ -40,8 +40,8 @@ impl CascadeKey {
         for (plane, tree) in forest.trees.iter_paint_order() {
             structure.write_u8(plane.layer.idx() as u8);
             structure.write_u8(plane.depth);
-            structure.write_u64(tree.fingerprint.cascade_static.0);
-            rects.write_u64(layout[plane].rect_hash().0);
+            tree.fingerprint.cascade_static.hash(&mut structure);
+            layout[plane].rect_hash().hash(&mut rects);
             // Destructured, so a new root input fails to compile until the key names it.
             for &RootSlot {
                 first_node,
@@ -51,7 +51,7 @@ impl CascadeKey {
             {
                 // The placement reaches the walk only as rects, which `rects` names.
                 structure.write_u8(layer.idx() as u8);
-                paint.write_u64(tree.rollups.subtree[first_node.idx()].0);
+                tree.rollups.subtree[first_node.idx()].hash(&mut paint);
             }
             // A root moving between planes is a paint change too.
             paint.write_u8(u8::MAX);
@@ -59,9 +59,9 @@ impl CascadeKey {
         Self {
             scale: display.scale_factor().to_bits(),
             font_epoch,
-            structure: ContentHash(structure.finish()),
-            rects: ContentHash(rects.finish()),
-            paint: ContentHash(paint.finish()),
+            structure: ContentHash::finish(&structure),
+            rects: ContentHash::finish(&rects),
+            paint: ContentHash::finish(&paint),
         }
     }
 

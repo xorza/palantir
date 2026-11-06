@@ -1,4 +1,5 @@
 use super::*;
+use crate::common::content_hash::ContentHash;
 use crate::common::hash;
 use crate::internals::panic_probe;
 use crate::primitives::text::recorded_text::RecordedText;
@@ -76,19 +77,19 @@ fn an_absent_key_is_free_and_no_minted_key_claims_its_niche() {
         "the non-zero text hash is what makes an absent key cost nothing",
     );
     assert_eq!(
-        TextShapeKey::content_hash(0).get(),
+        TextShapeKey::content_hash(ContentHash::default()).get(),
         1,
         "a run whose text hashes to zero must not claim the niche",
     );
     for raw in [1, 2, u64::MAX] {
         assert_eq!(
-            TextShapeKey::content_hash(raw).get(),
+            TextShapeKey::content_hash(ContentHash::from_u64(raw)).get(),
             raw,
             "every other hash is carried through unchanged",
         );
     }
     for face in [shape(16.0).font, shape(64.0).leading(90.0).font] {
-        for raw in [0, 1, u64::MAX] {
+        for raw in [0, 1, u64::MAX].map(ContentHash::from_u64) {
             assert_eq!(
                 TextShapeKey::unbounded(raw, keyed(face)).text_hash,
                 TextShapeKey::content_hash(raw),
@@ -315,7 +316,7 @@ fn quantized_key_shaping_is_insertion_order_independent() {
 
 fn key_for(recorded: &RecordedText) -> TextShapeKey {
     TextShapeKey::unbounded(
-        recorded.hash.0,
+        recorded.hash,
         keyed(GlyphFont {
             font_size: 16.0,
             line_height: 19.2,
@@ -332,7 +333,7 @@ fn shaped_text_ref_resolves_the_recorded_pair() {
     let mut store = RecordStore::default();
     let interned = store.text.intern("hi");
     let recorded = store.text.record(interned);
-    assert_eq!(recorded.hash.0, hash::str("hi"));
+    assert_eq!(recorded.hash, hash::str("hi"));
     let key = key_for(&recorded);
     let text_ref = ShapedTextRef::new(key, &recorded);
 

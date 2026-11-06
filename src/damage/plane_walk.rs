@@ -2,8 +2,7 @@
 //!
 //! [`NodeSnapshot`] is `Copy`, so [`PlaneWalk::classify`] decides on a copy and returns a plain [`Tier`]; deciding on a live map `Entry` would cost each arm its `&mut self`.
 
-use crate::cascade::paint::{Paint, PaintRows};
-use crate::common::block_arena::BlockArena;
+use crate::cascade::paint::{PaintBlocks, PaintRows};
 use crate::common::span::Span;
 use crate::damage;
 use crate::damage::counters::DamageCounters;
@@ -48,7 +47,7 @@ struct Visit {
 #[derive(Debug)]
 pub(super) struct PlaneWalk<'a> {
     pub(super) prev: &'a mut WidgetIdMap<NodeSnapshot>,
-    pub(super) paints: &'a mut BlockArena<Paint>,
+    pub(super) paints: &'a mut PaintBlocks,
     pub(super) matcher: &'a mut RowMatcher,
     pub(super) raw_rects: &'a mut Vec<Rect>,
     /// Marks each node's rects with its first paint row, for the panes' forward walk.
