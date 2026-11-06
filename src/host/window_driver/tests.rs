@@ -45,7 +45,7 @@ fn new_driver(token: WindowToken, shared: &UiResources, config: DriverConfig) ->
 
 impl WindowDriver {
     /// [`Self::build_paint`] on placements of its own, as a test with no held cutouts builds.
-    fn build_alone(&mut self, frontend: &mut Frontend, report: FrameReport) -> CpuFrame {
+    fn build_alone<'f>(&mut self, frontend: &'f mut Frontend, report: FrameReport) -> CpuFrame<'f> {
         let ctx = BuildCtx {
             frontend,
             placements: &mut CutoutPlacements::default(),
@@ -54,12 +54,12 @@ impl WindowDriver {
     }
 
     /// A painted frame's CPU half under `stamp`, with no target noted and no device.
-    fn paint_at<T: App>(
+    fn paint_at<'f, T: App>(
         &mut self,
-        frontend: &mut Frontend,
+        frontend: &'f mut Frontend,
         stamp: FrameStamp,
         app: &mut T,
-    ) -> CpuFrame {
+    ) -> CpuFrame<'f> {
         let report = self.frames.frame(stamp, self.damage_base, app);
         self.build_alone(frontend, report)
     }
@@ -83,10 +83,12 @@ mod present_mode_tests {
     use crate::damage::sweep::policy::{Decision, FrameFacts, Policy};
     use crate::damage::sweep::scenario::catalog;
     use crate::damage::sweep::stage::Stage;
-    use crate::host::window_driver::PresentPath::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
+    use crate::gpu::frame::submission::Route;
+    use crate::host::window_driver::PresentStrategy;
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
-    use crate::host::window_driver::present_facts::{PresentFacts, promote_share, rows_per_mpx};
-    use crate::host::window_driver::{PresentPath, PresentStrategy};
+    use crate::host::window_driver::present_facts::{
+        PaintPath, PresentFacts, promote_share, rows_per_mpx,
+    };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
@@ -116,7 +118,7 @@ mod present_mode_tests {
         }
     }
     /// The path of `plan` on a scene whose promote share is 0.4.
-    fn path(plan: Option<RenderPlan>, strategy: PresentStrategy, fresh: bool) -> PresentPath {
+    fn path(plan: RenderPlan, strategy: PresentStrategy, fresh: bool) -> PaintPath {
         PresentFacts {
             strategy,
             capturing: false,
@@ -142,7 +144,7 @@ mod present_mode_tests {
         assert_eq!(promote_share(0, 0.5, mpx), 150.0 / 550.0);
     }
 
-    const DIRECT_FULL: PresentPath = Direct(RenderPlan {
+    const DIRECT_FULL: PaintPath = PaintPath::direct(RenderPlan {
         clear: RgbaF32::BLACK,
         damage: Damage::Full,
     });
@@ -159,8 +161,11 @@ mod present_mode_tests {
                     backbuffer_fresh: fresh,
                     promote_share: None,
                 };
-                assert_eq!(facts.path(Some(full())), ViaBackbuffer(full()));
-                assert_eq!(facts.path(Some(partial(10.0, 10.0))), ViaBackbuffer(full()));
+                assert_eq!(facts.path(full()), PaintPath::through_backbuffer(full()));
+                assert_eq!(
+                    facts.path(partial(10.0, 10.0)),
+                    PaintPath::through_backbuffer(full())
+                );
             }
         }
     }
@@ -194,16 +199,12 @@ mod present_mode_tests {
                         backbuffer_fresh: true,
                         promote_share: Some(promote_share),
                     }
-                    .path(Some(plan));
-                    let real = match path {
-                        Direct(RenderPlan {
-                            damage: Damage::Full,
-                            ..
-                        }) => Decision::Full,
-                        ViaBackbuffer(RenderPlan {
-                            damage: Damage::Partial(damage),
-                            ..
-                        }) => Decision::partial(damage.region.iter_rects().collect()),
+                    .path(plan);
+                    let real = match (path.route, path.plan.damage) {
+                        (Route::Direct, Damage::Full) => Decision::Full,
+                        (Route::ViaBackbuffer, Damage::Partial(damage)) => {
+                            Decision::partial(damage.region.iter_rects().collect())
+                        }
                         other => panic!("{}: {other:?}", scenario.name),
                     };
                     assert_eq!(
@@ -219,39 +220,37 @@ mod present_mode_tests {
 
     #[test]
     fn backbuffer_copy_fills_target_through_backbuffer() {
-        // Fresh target each call: paint via the backbuffer (Full or Partial), skip
-        // copies it out.
+        // Fresh target each call: paint via the backbuffer (Full or Partial).
         for fresh in [false, true] {
             assert_eq!(
-                path(Some(full()), BackbufferCopy, fresh),
-                ViaBackbuffer(full())
+                path(full(), BackbufferCopy, fresh),
+                PaintPath::through_backbuffer(full())
             );
             assert_eq!(
-                path(Some(partial(10.0, 10.0)), BackbufferCopy, fresh),
-                ViaBackbuffer(partial(10.0, 10.0))
+                path(partial(10.0, 10.0), BackbufferCopy, fresh),
+                PaintPath::through_backbuffer(partial(10.0, 10.0))
             );
-            assert_eq!(path(None, BackbufferCopy, fresh), SkipCopy);
         }
     }
 
     /// A retained target keeps its pixels, so every painted frame paints into it as planned,
-    /// however much it covers and whatever the backbuffer holds, and a still frame presents
-    /// nothing.
+    /// however much it covers and whatever the backbuffer holds.
     #[test]
     fn retained_paints_every_frame_into_the_target() {
         for fresh in [false, true] {
             for plan in [full(), partial(10.0, 10.0), partial(90.0, 90.0)] {
-                assert_eq!(path(Some(plan), Retained, fresh), Direct(plan));
+                assert_eq!(path(plan, Retained, fresh), PaintPath::direct(plan));
             }
-            assert_eq!(path(None, Retained, fresh), SkipNoop);
         }
     }
 
     #[test]
-    fn direct_adaptive_full_and_skip() {
+    fn direct_adaptive_paints_a_whole_frame_direct() {
         for fresh in [false, true] {
-            assert_eq!(path(Some(full()), DirectAdaptive, fresh), Direct(full()));
-            assert_eq!(path(None, DirectAdaptive, fresh), SkipNoop);
+            assert_eq!(
+                path(full(), DirectAdaptive, fresh),
+                PaintPath::direct(full())
+            );
         }
     }
 
@@ -259,12 +258,12 @@ mod present_mode_tests {
     fn direct_adaptive_small_partial_tracks_backbuffer_freshness() {
         let small = partial(10.0, 10.0);
         assert_eq!(
-            path(Some(small), DirectAdaptive, true),
-            ViaBackbuffer(small)
+            path(small, DirectAdaptive, true),
+            PaintPath::through_backbuffer(small)
         );
         assert_eq!(
-            path(Some(small), DirectAdaptive, false),
-            ViaBackbuffer(full())
+            path(small, DirectAdaptive, false),
+            PaintPath::through_backbuffer(full())
         );
     }
 
@@ -272,7 +271,7 @@ mod present_mode_tests {
     fn direct_adaptive_large_partial_promotes_to_direct() {
         let large = partial(80.0, 80.0);
         for fresh in [false, true] {
-            assert_eq!(path(Some(large), DirectAdaptive, fresh), DIRECT_FULL);
+            assert_eq!(path(large, DirectAdaptive, fresh), DIRECT_FULL);
         }
     }
 
@@ -282,18 +281,13 @@ mod present_mode_tests {
         // promotes. 63×63 (0.3969) and 64×64 (0.4096) straddle the line, and 40×100
         // = 4_000 sits on it as `0.4f32`, which only a strict compare keeps.
         for (w, h) in [(63.0, 63.0), (40.0, 100.0)] {
-            assert!(
-                matches!(
-                    path(Some(partial(w, h)), DirectAdaptive, true),
-                    ViaBackbuffer(_)
-                ),
+            assert_eq!(
+                path(partial(w, h), DirectAdaptive, true).route,
+                Route::ViaBackbuffer,
                 "{w}×{h}",
             );
         }
-        assert_eq!(
-            path(Some(partial(64.0, 64.0)), DirectAdaptive, true),
-            DIRECT_FULL
-        );
+        assert_eq!(path(partial(64.0, 64.0), DirectAdaptive, true), DIRECT_FULL);
     }
 }
 
@@ -303,12 +297,13 @@ mod output_validity_tests {
     use crate::host::window_driver::tests::new_driver;
     use glam::UVec2;
 
+    use crate::gpu::frame::submission::Route;
     use crate::gpu::surface::capture::Capture;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::window_driver::tests::{config, spec};
     use crate::host::window_driver::{
-        FrameSpec, PendingScreenshot, PresentPath, PresentStrategy, WindowDriver,
+        BuiltFrame, FrameSpec, PendingScreenshot, PresentStrategy, WindowDriver,
     };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
@@ -532,6 +527,35 @@ mod output_validity_tests {
         assert_eq!(driver.screenshot_requests.len(), 0);
     }
 
+    /// A built frame dropped unsubmitted, as a failed acquire or a lost device leaves it, leaves
+    /// the base discarded, so the next frame of the same scene paints whole; one that completed
+    /// paints nothing.
+    #[test]
+    fn a_frame_dropped_unsubmitted_makes_the_next_frame_whole() {
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(test_device());
+        for (submitted, next_paints) in [(false, true), (true, false)] {
+            let mut driver = new_driver(
+                WindowToken(1),
+                &shared,
+                config(PresentStrategy::DirectAdaptive, true),
+            );
+            let mut app = |_: &mut Ui| {};
+            let at = spec(UVec2::new(100, 80), 1.0);
+            let first = driver.record(at, &mut app);
+            let _ = driver.build_alone(&mut frontend, first);
+            if submitted {
+                // What the GPU half does, which `offscreen::tests` runs on a device.
+                driver.damage_base = DamageBase::Prev;
+            }
+            let next = driver.record(at, &mut app);
+            assert_eq!(next.plan.is_some(), next_paints, "submitted: {submitted}");
+            if next_paints {
+                assert_eq!(next.plan.map(|plan| plan.damage), Some(Damage::Full));
+            }
+        }
+    }
+
     #[test]
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
@@ -554,21 +578,24 @@ mod output_validity_tests {
                 damage: Damage::Full,
             })),
         );
-        assert!(matches!(paint.mode, PresentPath::Direct(_)));
+        assert_eq!(
+            paint.built.path().map(|path| path.route),
+            Some(Route::Direct)
+        );
         assert!(
             !driver.output_valid(),
             "paint stays pending until acquire and submit complete"
         );
 
         // The GPU half completes the paint (`offscreen::tests` runs it); a driver
-        // without one has no submit, so the SkipNoop precondition is set here.
+        // without one has no submit, so a still frame's precondition is set here.
         driver.damage_base = DamageBase::Prev;
 
         let skip = driver.build_alone(&mut frontend, report(None));
-        assert!(matches!(skip.mode, PresentPath::SkipNoop));
+        assert!(matches!(skip.built, BuiltFrame::Still));
         assert!(
             driver.output_valid(),
-            "SkipNoop preserves valid target pixels"
+            "a still frame preserves valid target pixels"
         );
         assert!(
             !skip.report.repaint_requested,
@@ -586,7 +613,7 @@ mod output_validity_tests {
             scale: 1.0,
         });
         let waiting = driver.build_alone(&mut frontend, report(None));
-        assert!(matches!(waiting.mode, PresentPath::SkipNoop));
+        assert!(matches!(waiting.built, BuiltFrame::Still));
         assert!(
             waiting.report.repaint_requested,
             "a pending screenshot asks for the next frame"
@@ -597,10 +624,10 @@ mod output_validity_tests {
 
         driver.strategy = PresentStrategy::BackbufferCopy;
         let skip_copy = driver.build_alone(&mut frontend, report(None));
-        assert!(matches!(skip_copy.mode, PresentPath::SkipCopy));
+        assert!(matches!(skip_copy.built, BuiltFrame::CopyBackbuffer));
         assert!(
             !driver.output_valid(),
-            "SkipCopy stays pending until the copy is submitted"
+            "a copy stays pending until it is submitted"
         );
     }
 }
@@ -961,12 +988,11 @@ mod cutout_census_tests {
     use crate::damage::{Damage, DamageBase};
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
+    use crate::gpu::frame::submission::Route;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::render_owner_id::RenderOwners;
-    use crate::host::window_driver::{
-        BuildCtx, DriverSpec, PresentPath, PresentStrategy, WindowDriver,
-    };
+    use crate::host::window_driver::{BuildCtx, DriverSpec, PresentStrategy, WindowDriver};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
@@ -1047,10 +1073,9 @@ mod cutout_census_tests {
             };
             let frame = driver.build_paint(ctx, report);
             driver.damage_base = DamageBase::Prev;
-            match frame.mode {
-                PresentPath::ViaBackbuffer(plan) => plan.damage,
-                mode => panic!("a painting frame through the backbuffer, not {mode:?}"),
-            }
+            let path = frame.built.path().expect("a painting frame");
+            assert_eq!(path.route, Route::ViaBackbuffer);
+            path.plan.damage
         };
         assert!(matches!(damage(3, false), Damage::Full), "the first frame");
         assert!(
@@ -1344,13 +1369,12 @@ mod screenshot_tests {
 mod escalation_tests {
     use crate::damage::Damage;
     use crate::damage::region::{DamageRegion, MergePolicy};
+    use crate::gpu::frame::submission::Route;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
-    use crate::host::window_driver::present_facts::PresentFacts;
+    use crate::host::window_driver::present_facts::{PaintPath, PresentFacts};
     use crate::host::window_driver::tests::{config, new_driver, spec};
-    use crate::host::window_driver::{
-        BuildCtx, FrameSpec, PresentPath, PresentStrategy, TargetKey,
-    };
+    use crate::host::window_driver::{BuildCtx, FrameSpec, PresentStrategy, TargetKey};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::layout::sizing::Sizing;
@@ -1432,7 +1456,7 @@ mod escalation_tests {
         }
     }
 
-    fn run(row: Row) -> PresentPath {
+    fn run(row: Row) -> PaintPath {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(test_device());
         let mut driver = new_driver(WindowToken(1), &shared, config(row.strategy, true));
@@ -1460,14 +1484,14 @@ mod escalation_tests {
             frontend: &mut frontend,
             placements: &mut CutoutPlacements::default(),
         };
-        let mode = driver.build_painted(ctx, facts.path(Some(plan)), facts);
+        let job = driver.build_painted(ctx, facts.path(plan), facts);
         assert_eq!(
-            driver.scissors.is_partial(),
+            job.fitted.scissors.is_partial(),
             !row.whole,
             "{}: the scissors fit the path",
             row.what
         );
-        mode
+        job.fitted.path
     }
 
     /// A composed frame past the capture cap builds whole under a whole frame's tickets, so a pane
@@ -1646,12 +1670,8 @@ mod escalation_tests {
             },
         ];
         for row in table {
-            let mode = run(row);
-            let (through_backbuffer, plan) = match mode {
-                PresentPath::Direct(plan) => (false, plan),
-                PresentPath::ViaBackbuffer(plan) => (true, plan),
-                other => panic!("{}: {other:?}", row.what),
-            };
+            let PaintPath { route, plan } = run(row);
+            let through_backbuffer = route == Route::ViaBackbuffer;
             assert_eq!(through_backbuffer, row.through_backbuffer, "{}", row.what);
             assert_eq!(
                 matches!(plan.damage, Damage::Full),
@@ -1664,10 +1684,12 @@ mod escalation_tests {
 }
 
 mod capture_path_tests {
+    use crate::gpu::frame::submission::Route;
     use crate::host::window_driver::TargetKey;
+    use crate::host::window_driver::present_facts::PaintPath;
     use crate::host::window_driver::tests::new_driver;
     use crate::host::window_driver::tests::{config, spec};
-    use crate::host::window_driver::{FrameSpec, PresentPath, PresentStrategy};
+    use crate::host::window_driver::{FrameSpec, PresentStrategy};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -1684,7 +1706,7 @@ mod capture_path_tests {
 
     /// The present path of a fresh window's first frame, whole, under one pane at `pane` on a
     /// 100 × 80 target that gives a copy when `gives_copy` is.
-    fn first_frame(pane: Rect, gives_copy: bool) -> PresentPath {
+    fn first_frame(pane: Rect, gives_copy: bool) -> PaintPath {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(test_device());
         let mut driver = new_driver(
@@ -1719,7 +1741,11 @@ mod capture_path_tests {
                 });
         };
         let stamp = driver.stamp(&spec);
-        driver.paint_at(&mut frontend, stamp, &mut app).mode
+        driver
+            .paint_at(&mut frontend, stamp, &mut app)
+            .built
+            .path()
+            .expect("a first frame paints")
     }
 
     /// A whole frame paints straight into the target unless its captures cannot copy out of it,
@@ -1734,16 +1760,12 @@ mod capture_path_tests {
             (small, false, true, "a target that gives no copy"),
             (whole, true, true, "a capture of the whole surface"),
         ] {
-            let mode = first_frame(pane, gives_copy);
+            let path = first_frame(pane, gives_copy);
             assert_eq!(
-                matches!(mode, PresentPath::ViaBackbuffer(_)),
+                path.route == Route::ViaBackbuffer,
                 through,
-                "{what}: {mode:?}"
+                "{what}: {path:?}"
             );
-            assert!(!matches!(
-                mode,
-                PresentPath::SkipNoop | PresentPath::SkipCopy
-            ));
         }
     }
 }

@@ -12,7 +12,7 @@ use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
 use crate::host::cpu_core::CpuCore;
-use crate::host::window_driver::{BuildCtx, CpuFrame, FrameSpec, PresentPath, WindowDriver};
+use crate::host::window_driver::{BuildCtx, BuiltFrame, CpuFrame, FrameSpec, WindowDriver};
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::ui::app::App;
 use std::rc::Rc;
@@ -85,13 +85,13 @@ impl DeviceCore {
     /// The CPU half of a frame that paints, the one sequence every painting host runs: build the
     /// pipelines of its target's format, hand over a screenshot the device finished, drop what
     /// evicted panes held, then record `app` and build the draw list through `cpu`'s frontend.
-    pub(super) fn frame<T: App>(
+    pub(super) fn frame<'c, T: App>(
         &mut self,
-        cpu: &mut CpuCore,
+        cpu: &'c mut CpuCore,
         driver: &mut WindowDriver,
         spec: FrameSpec,
         app: &mut T,
-    ) -> CpuFrame {
+    ) -> CpuFrame<'c> {
         self.backend.prepare_format(spec.target.format);
         driver.deliver_screenshot(&self.backend);
         driver.forget_evicted_panes(&mut self.backend);
@@ -105,15 +105,20 @@ impl DeviceCore {
         )
     }
 
-    /// The GPU half: draw the frame recorded through `cpu` into `target` by `mode`.
+    /// Whether `built` has a target to reach: it draws something, on a device that lives. A lost
+    /// device paints nothing, and its recovery wakes the window again.
+    pub(super) fn will_submit(&self, built: &BuiltFrame<'_>) -> bool {
+        !matches!(built, BuiltFrame::Still) && !self.gpu().is_lost()
+    }
+
+    /// The GPU half: draw `built` into `target`.
     pub(super) fn submit(
         &mut self,
-        cpu: &mut CpuCore,
         driver: &mut WindowDriver,
         target: RenderTarget<'_>,
-        mode: PresentPath,
+        built: BuiltFrame<'_>,
     ) {
-        driver.render_to_texture(&mut cpu.frontend, &mut self.backend, target, mode);
+        driver.submit(&mut self.backend, target, built);
     }
 
     /// Close a window: the backend drops what it keeps for its render owner, `GpuView` targets

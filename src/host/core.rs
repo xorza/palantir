@@ -55,6 +55,7 @@ impl HostCore {
 mod tests {
     use crate::damage::Damage;
     use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::frame::submission::Route;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::render_target::TargetFormat;
@@ -64,7 +65,7 @@ mod tests {
     use crate::host::host_options::HostOptions;
     use crate::host::window_driver::TargetKey;
     use crate::host::window_driver::WindowDriver;
-    use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, PresentStrategy};
+    use crate::host::window_driver::{CpuFrame, FrameSpec, PresentStrategy};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
@@ -97,7 +98,7 @@ mod tests {
         let target =
             OwnedTarget::window(&gpu, "palantir.test.core", size, TargetFormat::RGBA8_SRGB);
         let spec = FrameSpec::at_rest(TargetKey::of(target.as_target()));
-        let CpuFrame { mode, .. } =
+        let CpuFrame { built, .. } =
             core.device
                 .frame(&mut core.cpu, &mut drawn, spec, &mut |_: &mut Ui| {});
         assert!(
@@ -106,8 +107,7 @@ mod tests {
                 .has_format_pipelines(spec.target.format),
             "the record built the target format's pipelines, so the submit compiles none"
         );
-        core.device
-            .submit(&mut core.cpu, &mut drawn, target.as_target(), mode);
+        core.device.submit(&mut drawn, target.as_target(), built);
         assert!(
             drawn
                 .frames
@@ -117,6 +117,52 @@ mod tests {
                 .is_some()
         );
         assert_eq!(idle.frames.ui.gpu_pass_stats().last_main_pass_cpu(), None);
+    }
+
+    /// A frame has a target to reach when it draws something on a device that lives: a first frame
+    /// paints; a still one holds the last frame on a swapchain and copies it where the target
+    /// holds nothing; and past a loss, a first frame reaches nothing.
+    #[test]
+    fn a_frame_submits_what_draws_on_a_device_that_lives() {
+        let gpu = isolated_headless_test_gpu();
+        let mut core = HostCore::new(gpu.handles(), &OPTIONS, TextShaper::test_mono());
+        let target = OwnedTarget::window(
+            &gpu,
+            "palantir.test.core.submits",
+            UVec2::splat(8),
+            TargetFormat::RGBA8_SRGB,
+        );
+        let spec = FrameSpec::at_rest(TargetKey::of(target.as_target()));
+        let mut app = |_: &mut Ui| {};
+        for (token, strategy, still_submits) in [
+            (WindowToken(0), PresentStrategy::DirectAdaptive, false),
+            (WindowToken(1), PresentStrategy::BackbufferCopy, true),
+        ] {
+            let mut window = core.open(token, strategy);
+            let CpuFrame { built, .. } =
+                core.device
+                    .frame(&mut core.cpu, &mut window, spec, &mut app);
+            assert!(core.device.will_submit(&built), "{strategy:?}: first");
+            core.device.submit(&mut window, target.as_target(), built);
+            let CpuFrame { built, .. } =
+                core.device
+                    .frame(&mut core.cpu, &mut window, spec, &mut app);
+            assert_eq!(
+                core.device.will_submit(&built),
+                still_submits,
+                "{strategy:?}: still"
+            );
+            core.device.submit(&mut window, target.as_target(), built);
+            core.device.close(window);
+        }
+
+        gpu.lose();
+        let mut window = core.open(WindowToken(2), PresentStrategy::DirectAdaptive);
+        let CpuFrame { built, .. } = core
+            .device
+            .frame(&mut core.cpu, &mut window, spec, &mut app);
+        assert!(built.path().is_some(), "a first frame builds whole");
+        assert!(!core.device.will_submit(&built), "the device is lost");
     }
 
     /// A closing window gives back to the backend the cutout cells its plan holds, and only its own:
@@ -185,14 +231,13 @@ mod tests {
                     .chrome(Chrome::fill(RgbaF32::hex(fill)))
                     .show(ui);
             };
-            let CpuFrame { mode, .. } = core.device.frame(
+            let CpuFrame { built, .. } = core.device.frame(
                 &mut core.cpu,
                 driver,
                 FrameSpec::at_rest(TargetKey::of(target.as_target())),
                 &mut app,
             );
-            core.device
-                .submit(&mut core.cpu, driver, target.as_target(), mode);
+            core.device.submit(driver, target.as_target(), built);
             let [r, g, b, _] = target.read_back().get_pixel(4, 4).0;
             u32::from_be_bytes([0, r, g, b])
         };
@@ -262,16 +307,17 @@ mod tests {
                         });
                 };
                 let spec = FrameSpec::at_rest(TargetKey::of(target.as_target()));
-                let CpuFrame { mode, .. } =
+                let CpuFrame { built, .. } =
                     core.device.frame(&mut core.cpu, window, spec, &mut app);
                 if round == 2 {
+                    let path = built.path().expect("a new block paints");
+                    assert_eq!(path.route, Route::ViaBackbuffer);
                     assert!(
-                        matches!(mode, PresentPath::ViaBackbuffer(plan) if matches!(plan.damage, Damage::Partial(_))),
-                        "window {i} repaints its block alone: {mode:?}"
+                        matches!(path.plan.damage, Damage::Partial(_)),
+                        "window {i} repaints its block alone: {path:?}"
                     );
                 }
-                core.device
-                    .submit(&mut core.cpu, window, target.as_target(), mode);
+                core.device.submit(window, target.as_target(), built);
                 assert_eq!(
                     rgb(target, 20, 20),
                     FILLS[i],

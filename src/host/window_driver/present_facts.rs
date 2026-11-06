@@ -1,7 +1,8 @@
 //! How a frame reaches its target, worked out from plain facts with no device.
 
 use crate::damage::Damage;
-use crate::host::window_driver::{PresentPath, PresentStrategy};
+use crate::gpu::frame::submission::Route;
+use crate::host::window_driver::PresentStrategy;
 use crate::renderer::render_plan::RenderPlan;
 use glam::UVec2;
 
@@ -44,6 +45,29 @@ pub(super) fn promote_share(row_count: usize, pane_share: f32, physical: UVec2) 
     )
 }
 
+/// How a frame that paints reaches its target, with the plan its draw list is built for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PaintPath {
+    pub(crate) route: Route,
+    pub(crate) plan: RenderPlan,
+}
+
+impl PaintPath {
+    pub(super) const fn direct(plan: RenderPlan) -> Self {
+        Self {
+            route: Route::Direct,
+            plan,
+        }
+    }
+
+    pub(super) const fn through_backbuffer(plan: RenderPlan) -> Self {
+        Self {
+            route: Route::ViaBackbuffer,
+            plan,
+        }
+    }
+}
+
 /// The whole path a refused partial frame takes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Escalation {
@@ -67,43 +91,35 @@ pub(super) struct PresentFacts {
 }
 
 impl PresentFacts {
-    /// How a frame of `plan` reaches its target; `None` is a frame with nothing to draw.
-    pub(super) fn path(self, plan: Option<RenderPlan>) -> PresentPath {
-        let Some(plan) = plan else {
-            return match self.strategy {
-                PresentStrategy::BackbufferCopy => PresentPath::SkipCopy,
-                PresentStrategy::DirectAdaptive | PresentStrategy::Retained => {
-                    PresentPath::SkipNoop
-                }
-            };
-        };
+    /// How a frame of `plan` first means to reach its target.
+    pub(super) fn path(self, plan: RenderPlan) -> PaintPath {
         if self.capturing {
-            return PresentPath::ViaBackbuffer(plan.to_full());
+            return PaintPath::through_backbuffer(plan.to_full());
         }
         match self.strategy {
             PresentStrategy::DirectAdaptive => match plan.damage {
-                Damage::Full => PresentPath::Direct(plan),
+                Damage::Full => PaintPath::direct(plan),
                 Damage::Partial(damage) => {
                     let share = self.promote_share.expect("a partial frame has its share");
                     if damage.coverage > share {
-                        PresentPath::Direct(plan.to_full())
+                        PaintPath::direct(plan.to_full())
                     } else if self.backbuffer_fresh {
-                        PresentPath::ViaBackbuffer(plan)
+                        PaintPath::through_backbuffer(plan)
                     } else {
-                        PresentPath::ViaBackbuffer(plan.to_full())
+                        PaintPath::through_backbuffer(plan.to_full())
                     }
                 }
             },
-            PresentStrategy::BackbufferCopy => PresentPath::ViaBackbuffer(plan),
-            PresentStrategy::Retained => PresentPath::Direct(plan),
+            PresentStrategy::BackbufferCopy => PaintPath::through_backbuffer(plan),
+            PresentStrategy::Retained => PaintPath::direct(plan),
         }
     }
 
     /// The path of `whole`, the plan a partial frame refused by `escalation` paints instead.
-    pub(super) fn whole_path(self, whole: RenderPlan, escalation: Escalation) -> PresentPath {
+    pub(super) fn whole_path(self, whole: RenderPlan, escalation: Escalation) -> PaintPath {
         match escalation {
-            Escalation::ByStrategy => self.path(Some(whole)),
-            Escalation::ThroughBackbuffer => PresentPath::ViaBackbuffer(whole),
+            Escalation::ByStrategy => self.path(whole),
+            Escalation::ThroughBackbuffer => PaintPath::through_backbuffer(whole),
         }
     }
 }

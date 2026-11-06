@@ -5,18 +5,17 @@ use std::cell::Cell;
 use super::*;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
+use crate::gpu::frame::submission::Route;
 use crate::gpu::render_owner_id::RenderOwners;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::headless_window::record_window_commands;
-use crate::host::window_driver::PresentPath;
-use crate::host::window_driver::{CpuFrame, DriverSpec, WindowDriver};
+use crate::host::window_driver::{BuiltFrame, CpuFrame, DriverSpec, WindowDriver};
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::render_plan::RenderPlan;
 use crate::shape::Shape;
 use crate::ui::resources::UiResources;
 use crate::widget_core::configure::Configure;
@@ -148,20 +147,10 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
             .chrome(Chrome::fill(color.get()))
             .show(ui);
     };
-    let mut frame = |host: &mut OffscreenHost| {
-        let target = texture.as_target();
-        let spec = host.spec(target);
-        let CpuFrame { mode, .. } = host.record(spec, &mut app);
-        host.submit(target, mode);
-        mode
-    };
-    assert!(matches!(
-        frame(&mut host),
-        PresentPath::Direct(RenderPlan {
-            damage: Damage::Full,
-            ..
-        })
-    ));
+    let mut frame = |host: &mut OffscreenHost| host.frame_path(texture.as_target(), &mut app);
+    let path = frame(&mut host).expect("the first frame paints");
+    assert_eq!(path.route, Route::Direct);
+    assert_eq!(path.plan.damage, Damage::Full);
     gpu.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture: texture.as_target().texture(),
@@ -182,13 +171,9 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
         },
     );
     color.set(RgbaF32::new(1.0, 0.0, 0.0, 1.0));
-    assert!(matches!(
-        frame(&mut host),
-        PresentPath::Direct(RenderPlan {
-            damage: Damage::Partial(_),
-            ..
-        })
-    ));
+    let path = frame(&mut host).expect("a change paints");
+    assert_eq!(path.route, Route::Direct);
+    assert!(matches!(path.plan.damage, Damage::Partial(_)));
     let image = texture.read_back();
     assert_eq!(
         *image.get_pixel(1, 1),
@@ -205,7 +190,7 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
         Rgba([0, 0, 0, 255]),
         "the kept clear"
     );
-    assert_eq!(frame(&mut host), PresentPath::SkipNoop, "a still frame");
+    assert_eq!(frame(&mut host), None, "a still frame");
 }
 
 /// A retained target never keeps a damage outline: with the outline on, a partial frame
@@ -251,19 +236,17 @@ fn a_retained_target_keeps_no_damage_outline() {
             damage_rect: outline,
             ..DebugOverlayConfig::default()
         });
-        let target = texture.as_target();
-        let spec = retained.spec(target);
         let mut app = scene(frame % 2 == 1);
-        let CpuFrame { mode, .. } = retained.record(spec, &mut app);
-        let what = format!("frame {frame}: {mode:?}");
-        let (route, plan) = match mode {
-            PresentPath::ViaBackbuffer(plan) => (true, plan),
-            PresentPath::Direct(plan) => (false, plan),
-            PresentPath::SkipCopy | PresentPath::SkipNoop => panic!("{what}"),
-        };
-        assert_eq!(route, via_backbuffer, "{what}");
-        assert_eq!(matches!(plan.damage, Damage::Partial(_)), partial, "{what}");
-        retained.submit(target, mode);
+        let path = retained
+            .frame_path(texture.as_target(), &mut app)
+            .expect("each frame changes something");
+        let what = format!("frame {frame}: {path:?}");
+        assert_eq!(path.route == Route::ViaBackbuffer, via_backbuffer, "{what}");
+        assert_eq!(
+            matches!(path.plan.damage, Damage::Partial(_)),
+            partial,
+            "{what}"
+        );
     }
     let reference = gpu.target("palantir.offscreen.unoutlined", UVec2::new(32, 16));
     host(false).frame(reference.as_target(), &mut scene(false));
@@ -313,19 +296,17 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
         (true, true, false, true),
         (false, true, true, false),
     ] {
-        let target = texture.as_target();
-        let spec = host.spec(target);
         let mut app = scene(under, away);
-        let CpuFrame { mode, .. } = host.record(spec, &mut app);
-        let what = format!("under {under}, away {away}: {mode:?}");
-        let (route, plan) = match mode {
-            PresentPath::ViaBackbuffer(plan) => (true, plan),
-            PresentPath::Direct(plan) => (false, plan),
-            PresentPath::SkipCopy | PresentPath::SkipNoop => panic!("{what}"),
-        };
-        assert_eq!(route, via_backbuffer, "{what}");
-        assert_eq!(matches!(plan.damage, Damage::Partial(_)), partial, "{what}");
-        host.submit(target, mode);
+        let path = host
+            .frame_path(texture.as_target(), &mut app)
+            .expect("each frame changes something");
+        let what = format!("under {under}, away {away}: {path:?}");
+        assert_eq!(path.route == Route::ViaBackbuffer, via_backbuffer, "{what}");
+        assert_eq!(
+            matches!(path.plan.damage, Damage::Partial(_)),
+            partial,
+            "{what}"
+        );
     }
 }
 
@@ -346,25 +327,22 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
     };
 
     for (frame, paints) in [(0, true), (1, false)] {
-        let target = texture.as_target();
-        let spec = host.spec(target);
-        let CpuFrame { mode, .. } = host.record(spec, &mut app);
-        assert_eq!(
-            matches!(mode, PresentPath::Direct(_) | PresentPath::ViaBackbuffer(_)),
-            paints,
-            "frame {frame}: {mode:?}",
-        );
-        if !paints {
-            assert_eq!(mode, PresentPath::SkipCopy, "a still frame re-presents");
-        }
-        assert!(
-            !host.window.driver.output_valid(),
-            "frame {frame}: {mode:?} is pending until the GPU half runs",
-        );
-        host.submit(target, mode);
+        host.halves(texture.as_target(), &mut app, |built, driver| {
+            assert_eq!(built.path().is_some(), paints, "frame {frame}");
+            if !paints {
+                assert!(
+                    matches!(built, BuiltFrame::CopyBackbuffer),
+                    "a still frame re-presents"
+                );
+            }
+            assert!(
+                !driver.output_valid(),
+                "frame {frame} is pending until the GPU half runs",
+            );
+        });
         assert!(
             host.window.driver.output_valid(),
-            "frame {frame}: {mode:?} is complete once submitted",
+            "frame {frame} is complete once submitted",
         );
     }
 }

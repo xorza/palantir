@@ -16,7 +16,6 @@ use crate::gpu::test_gpu::{
     isolated_headless_test_gpu_capped,
 };
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
-use crate::host::window_driver::CpuFrame;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::{ONE_COLOR, TWO_COLORS};
@@ -356,10 +355,7 @@ fn a_host_recovers_from_a_second_loss_inside_a_frame() {
     let second = isolated_headless_test_gpu();
     host.recover(second.handles());
     let lost = second.target("palantir.test.recovery.second", SIZE);
-    let spec = host.spec(lost.as_target());
-    let CpuFrame { mode, .. } = host.record(spec, &mut scene);
-    second.lose();
-    host.submit(lost.as_target(), mode);
+    host.halves(lost.as_target(), &mut scene, |_, _| second.lose());
     assert!(host.is_device_lost());
     assert_eq!(scene.refills, 1);
 
@@ -396,10 +392,7 @@ fn a_loss_inside_a_frame_that_grows_a_buffer_submits_nothing_that_panics() {
     };
     let target = gpu.target("palantir.test.recovery.grow", UVec2::splat(SIDE));
     host.frame(target.as_target(), &mut |_: &mut Ui| {});
-    let spec = host.spec(target.as_target());
-    let CpuFrame { mode, .. } = host.record(spec, &mut blocks);
-    gpu.lose();
-    host.submit(target.as_target(), mode);
+    host.halves(target.as_target(), &mut blocks, |_, _| gpu.lose());
     assert!(host.is_device_lost());
 }
 

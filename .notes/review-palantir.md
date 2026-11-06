@@ -65,40 +65,36 @@ WinitRuntime::draw
       │  │     └─ record_pass(app) → record_user(app) → App::record
       │  └─ WindowDriver::build_paint(BuildCtx { frontend, placements }, report)
       │     └─ build, RenderStream::plan_cutouts → CutoutPlan
-      └─ Window::present(core, cpu_frame)
-         └─ acquire_and_present(core, mode)
-            └─ DeviceCore::submit(cpu, driver, target, mode)
-               └─ WindowDriver::render_to_texture(frontend, backend, target, mode)
+      └─ Window::present(device, cpu_frame)
+         └─ acquire_and_present(device, built) → submit_and_present
+            └─ DeviceCore::submit(driver, target, built)
+               └─ WindowDriver::submit(backend, target, built) → submit_paint(job)
                   └─ WgpuBackend::submit → upload_frame, passes
 ```
 
-What rides down that stack, counted as the signatures that take it:
+What rides down that stack, counted as the signatures that take it. The hop count stays, as each value reaches real work:
 
-| Value | Today | Target | What changes |
-|---|---|---|---|
-| `app` | 6 | 7 | `record_frame` adds a stage: the app is the frame's input |
-| `frontend` | 4, three inside `BuildCtx` | 4 | Nothing further |
-| `placements` | 5, three inside `BuildCtx` | 5 | Nothing further |
-| `mode`, `scissors`, the buffer | 5, and two fields | 4 | One `BuiltFrame` holds what three places held |
-| `cpu` at submit | 1, which only hands over `frontend` | 0 | Removed |
+| Value | Signatures | Where it stops |
+|---|---|---|
+| `app` | 6 | `App::record`, the frame's input |
+| `frontend` | 4, three inside `BuildCtx` | `Frontend::build` |
+| `placements` | 5, three inside `BuildCtx` | `CutoutPlan::build` |
+| `built` | 4 | `WindowDriver::submit`, one value in place of `mode`, `scissors` and the buffer |
 
-The hop count does not fall further, and that is the honest result: most of these values reach real work. The remaining gain is in the signatures and the types:
+The remaining gain is in the signatures:
 
 | Signature today | Target |
 |---|---|
-| `DeviceCore::submit(cpu, driver, target, mode)` | `submit(driver, target, built)` |
-| `render_to_texture(frontend, backend, target, mode)` | `submit(backend, target, built)` |
 | `list_panes(tree, layout, lc, display_scale)` | `list_panes(source, lc)` |
 | `ToggleFace::paint(ui, id, slot, chrome, checked)` | `paint(ui, toggle_box)` |
 | `double_click` in five `Input` signatures | A field on `Input` |
 
 ## Root causes
 
-1. **A built frame has no owner.** Its parts are `PresentPath` on the host's stack, `WindowDriver::scissors`, `Frontend::buffer` and the encoder's gradient epoch. Five `debug_assert!`s in `render_to_texture` and one convention hold them together. A host that records window B before it submits window A paints B's list into A's target, and no type stops it. `damage_base` has six write sites.
-2. **Hosts reach through the window's layers.** 71 non-test lines in `host` name `.frames.`, and 38 of them reach `.frames.ui`. `FrameLoop`'s engines are `pub(crate)` fields. A screenshot makes four stops on its way through, two on `Ui` and two on the driver, and `WindowDriver` mixes that lane with the present decision in 842 lines.
-3. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
-4. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
-5. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
+1. **Hosts reach through the window's layers.** 71 non-test lines in `host` name `.frames.`, and 38 of them reach `.frames.ui`. `FrameLoop`'s engines are `pub(crate)` fields. A screenshot makes four stops on its way through, two on `Ui` and two on the driver, and `WindowDriver` mixes that lane with the present decision in 842 lines.
+2. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
+3. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
+4. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
 
 ## Target design
 
@@ -131,33 +127,6 @@ Window::frame
 ```
 
 A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::compose` at `Depth::Compose`, then `WindowDriver::finish_unpainted`.
-
-### The built frame
-
-```rust
-/// What a frame's GPU half does. It borrows the frontend, so no other window can build until
-/// this one is submitted or dropped.
-pub(super) enum BuiltFrame<'f> {
-    /// Nothing to draw, and the target holds the last frame.
-    Still,
-    /// Nothing to draw, and the target takes the backbuffer's copy.
-    CopyBackbuffer,
-    Paint(PaintJob<'f>),
-}
-
-pub(super) struct PaintJob<'f> {
-    route: Route,
-    plan: RenderPlan,
-    scissors: RepaintScissors,
-    frontend: &'f mut Frontend,
-}
-```
-
-- `PresentPath` goes, as `Route` plus `RenderPlan` hold the same two facts.
-- `WindowDriver::scissors` goes. `PaintJob::new` is the one place that pairs a plan with its scissors, which replaces a `debug_assert!`.
-- `submit` consumes the value, so a stale `mode` from an earlier frame cannot exist.
-- Dropping a `BuiltFrame` on a failed acquire or a lost device is correct. The `Discarded` base already forces the next frame whole.
-- The move costs one copy of about 656 B a frame (40 × 16 B `URect`s and a length), which is negligible.
 
 ### Module layout
 
@@ -209,20 +178,6 @@ pub(super) struct PaintJob<'f> {
 # Part 2: Plan
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
-
-## Batch 3: The built frame
-
-Files: `src/host/window_driver/mod.rs`, `src/host/device_core.rs`, `src/host/headless_window.rs`, `src/host/winit/window/mod.rs`, `src/gpu/frame/submission.rs`.
-
-- [ ] Add `BuiltFrame<'f>` and `PaintJob<'f>`. Delete `PresentPath` and `WindowDriver::scissors`.
-- [ ] `CpuFrame`: give it the lifetime and `built`. `DeviceCore::submit` loses `cpu`.
-- [ ] `render_to_texture`: rename it `submit`, and delete the `debug_assert!` that `PaintJob::new` replaces.
-- [ ] `build_painted` and `try_partial`: each takes `PresentPath` and asks it for a plan with an `expect`. Take the route and the plan, which `PresentPath`'s removal gives.
-- [ ] `damage_base`: three arms of `render_to_texture` set `Prev`. Write it once at the end of `submit`, which leaves four: `invalidate_target_contents`, the painted frame's `Discarded`, that one `Prev`, and the `Prev` of a frame below paint.
-- [ ] `Window::frame`: destructure `HostCore` into `cpu` and `device`, so `present` takes `device` alone.
-- [ ] `Window::acquire_and_present`: the `Ready` and `Suboptimal` arms repeat. Merge them.
-- [ ] `HeadlessWindow::paint_frame` and `Window::present`: each spells the lost-device skip its own way. Keep one spelling through `DeviceCore`.
-- [ ] Test: dropping a `BuiltFrame` unsubmitted leaves the next frame `Damage::Full`.
 
 ## Batch 4: One level to the window
 

@@ -371,7 +371,9 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::surface::render_target::RenderTarget;
     #[cfg(test)]
-    use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, TargetKey};
+    use crate::host::window_driver::present_facts::PaintPath;
+    #[cfg(test)]
+    use crate::host::window_driver::{BuiltFrame, CpuFrame, FrameSpec, TargetKey, WindowDriver};
     #[cfg(test)]
     use crate::ui::app::App;
 
@@ -396,19 +398,41 @@ pub(crate) mod internals {
             self.window.spec(TargetKey::of(target), self.time.now())
         }
 
-        /// The CPU half of a frame that paints, as [`Self::frame`] runs it, for a test that
-        /// reads or holds the frame between its halves.
+        /// The CPU half of a frame that paints, as [`Self::frame`] runs it, for a test of a frame
+        /// that is never presented.
         #[cfg(test)]
-        pub(super) fn record(&mut self, spec: FrameSpec, app: &mut impl App) -> CpuFrame {
+        pub(super) fn record(&mut self, spec: FrameSpec, app: &mut impl App) -> CpuFrame<'_> {
             self.device
                 .frame(&mut self.window.cpu, &mut self.window.driver, spec, app)
         }
 
-        /// The GPU half of the frame [`Self::record`] recorded, onto `target` by `mode`.
+        /// Both halves of a frame onto `target`, as [`Self::frame`] runs them whatever the device
+        /// holds, with `between` run after the first: for a test that reads or holds the frame
+        /// between them.
         #[cfg(test)]
-        pub(super) fn submit(&mut self, target: RenderTarget<'_>, mode: PresentPath) {
-            self.device
-                .submit(&mut self.window.cpu, &mut self.window.driver, target, mode);
+        pub(super) fn halves<R>(
+            &mut self,
+            target: RenderTarget<'_>,
+            app: &mut impl App,
+            between: impl FnOnce(&BuiltFrame<'_>, &WindowDriver) -> R,
+        ) -> R {
+            let spec = self.spec(target);
+            let CpuFrame { built, .. } =
+                self.device
+                    .frame(&mut self.window.cpu, &mut self.window.driver, spec, app);
+            let read = between(&built, &self.window.driver);
+            self.device.submit(&mut self.window.driver, target, built);
+            read
+        }
+
+        /// A frame's path onto `target`, `None` where it draws nothing.
+        #[cfg(test)]
+        pub(super) fn frame_path(
+            &mut self,
+            target: RenderTarget<'_>,
+            app: &mut impl App,
+        ) -> Option<PaintPath> {
+            self.halves(target, app, |built, _| built.path())
         }
 
         /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.

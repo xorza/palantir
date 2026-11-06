@@ -2,9 +2,10 @@
 //! stays partial under follows the rows and the panes on the surface.
 
 use crate::damage::Damage;
+use crate::gpu::frame::submission::Route;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
-use crate::host::window_driver::{CpuFrame, PresentPath};
+use crate::host::window_driver::present_facts::PaintPath;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -69,7 +70,7 @@ fn record(ui: &mut Ui, screen: Screen, big: RgbaF32, tiny: RgbaF32) {
 }
 
 /// The path of the frame that flips the big block, on a backbuffer the frame before left fresh.
-fn path_of_a_tenth(screen: Screen) -> PresentPath {
+fn path_of_a_tenth(screen: Screen) -> PaintPath {
     let gpu = headless_test_gpu();
     let mut host = OffscreenHost::builder(gpu.handles())
         .shaper(TextShaper::test_mono())
@@ -80,16 +81,14 @@ fn path_of_a_tenth(screen: Screen) -> PresentPath {
     let tiny = Cell::new(RgbaF32::hex(0x602040));
     let mut app = |ui: &mut Ui| record(ui, screen, big.get(), tiny.get());
     let frame = |host: &mut OffscreenHost, app: &mut dyn FnMut(&mut Ui)| {
-        let spec = host.spec(target.as_target());
         let mut app = |ui: &mut Ui| app(ui);
-        let CpuFrame { mode, .. } = host.record(spec, &mut app);
-        host.submit(target.as_target(), mode);
-        mode
+        host.frame_path(target.as_target(), &mut app)
+            .expect("each frame changes something")
     };
-    frame(&mut host, &mut app);
+    let _ = frame(&mut host, &mut app);
     // A small change, which paints through the backbuffer and leaves it fresh.
     tiny.set(RgbaF32::hex(0x20A040));
-    frame(&mut host, &mut app);
+    let _ = frame(&mut host, &mut app);
     big.set(RgbaF32::hex(0xA04020));
     frame(&mut host, &mut app)
 }
@@ -103,10 +102,9 @@ fn the_scene_decides_how_a_partial_frame_paints() {
         filler_count: 0,
         pane: false,
     };
-    assert!(matches!(
-        path_of_a_tenth(thin),
-        PresentPath::Direct(plan) if plan.damage == Damage::Full
-    ));
+    let path = path_of_a_tenth(thin);
+    assert_eq!(path.route, Route::Direct);
+    assert_eq!(path.plan.damage, Damage::Full);
     for screen in [
         Screen {
             filler_count: 400,
@@ -118,11 +116,9 @@ fn the_scene_decides_how_a_partial_frame_paints() {
         },
     ] {
         let path = path_of_a_tenth(screen);
+        assert_eq!(path.route, Route::ViaBackbuffer, "{screen:?}");
         assert!(
-            matches!(
-                path,
-                PresentPath::ViaBackbuffer(plan) if matches!(plan.damage, Damage::Partial(_))
-            ),
+            matches!(path.plan.damage, Damage::Partial(_)),
             "{screen:?}: {path:?}"
         );
     }

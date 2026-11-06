@@ -19,7 +19,9 @@ use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
-use crate::host::window_driver::present_facts::{Escalation, PresentFacts, promote_share};
+use crate::host::window_driver::present_facts::{
+    Escalation, PaintPath, PresentFacts, promote_share,
+};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::{BuildPlan, FrameOutput, Frontend};
@@ -53,9 +55,6 @@ pub(super) struct WindowDriver {
     strategy: PresentStrategy,
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
-    /// The scissors the frame the CPU half built repaints inside, which its GPU half submits:
-    /// worked out once, where an overflow can still make the frame whole.
-    scissors: RepaintScissors,
     /// The captures this window's panes hold, which decide what a frame captures again.
     pane_captures: PaneCaptures,
     /// The images a recorded frame asked for, until a frame paints them: ones the host did not
@@ -167,22 +166,42 @@ pub(super) enum PresentStrategy {
     Retained,
 }
 
-/// How a frame reaches the target, sealed in `build_paint` so the GPU half submits
-/// the plan the draw list was built for.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum PresentPath {
-    SkipCopy,
-    SkipNoop,
-    Direct(RenderPlan),
-    ViaBackbuffer(RenderPlan),
+/// What a frame's GPU half does, sealed in [`WindowDriver::build_paint`]. A frame that paints holds
+/// the one frontend its draw list sits in, so no other window can build until this one is submitted
+/// or dropped. Dropped, as on a failed acquire or a lost device, its base stays discarded, so the
+/// next frame paints whole.
+#[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "built once a frame on the stack; boxing it would allocate per frame"
+)]
+pub(super) enum BuiltFrame<'f> {
+    /// Nothing to draw, and the target holds the last frame.
+    Still,
+    /// Nothing to draw, and the target takes the backbuffer's copy of the last frame.
+    CopyBackbuffer,
+    Paint(PaintJob<'f>),
 }
 
-impl PresentPath {
-    /// The plan a frame on this path paints by; `None` for a frame that draws nothing.
-    const fn plan(self) -> Option<RenderPlan> {
-        match self {
-            Self::SkipCopy | Self::SkipNoop => None,
-            Self::Direct(plan) | Self::ViaBackbuffer(plan) => Some(plan),
+/// A built frame that paints: its path and scissors, and its draw list.
+#[derive(Debug)]
+pub(super) struct PaintJob<'f> {
+    fitted: Fitted,
+    frontend: &'f mut Frontend,
+}
+
+/// A frame's path, and the scissors fitted to its plan.
+#[derive(Debug)]
+struct Fitted {
+    path: PaintPath,
+    scissors: RepaintScissors,
+}
+
+impl Fitted {
+    const fn whole(path: PaintPath) -> Self {
+        Self {
+            path,
+            scissors: RepaintScissors::Full,
         }
     }
 }
@@ -190,17 +209,16 @@ impl PresentPath {
 /// What a frame that paints builds with, past its record: the frontend every window composes
 /// through, and the backend's placements its shadow cutouts plan at cells of.
 #[derive(Debug)]
-pub(super) struct BuildCtx<'a> {
-    pub(super) frontend: &'a mut Frontend,
-    pub(super) placements: &'a mut CutoutPlacements,
+pub(super) struct BuildCtx<'f, 'p> {
+    pub(super) frontend: &'f mut Frontend,
+    pub(super) placements: &'p mut CutoutPlacements,
 }
 
-/// The CPU half's result: the report plus the [`PresentPath`] sealed at
-/// draw-list-build time.
+/// The CPU half's result: the report, and what the GPU half does.
 #[derive(Debug)]
-pub(super) struct CpuFrame {
+pub(super) struct CpuFrame<'f> {
     pub(super) report: FrameReport,
-    pub(super) mode: PresentPath,
+    pub(super) built: BuiltFrame<'f>,
 }
 
 impl WindowDriver {
@@ -220,7 +238,6 @@ impl WindowDriver {
             target_outlined: false,
             strategy,
             target: None,
-            scissors: RepaintScissors::Full,
             pane_captures: PaneCaptures::default(),
             screenshot_requests: Vec::new(),
             captures: VecDeque::new(),
@@ -369,8 +386,12 @@ impl WindowDriver {
     }
 
     /// Decide how the frame `report` describes reaches its target, and build its draw list. Seals
-    /// the [`PresentPath`]: a promoted or resynced Partial builds a Full list.
-    pub(super) fn build_paint(&mut self, ctx: BuildCtx<'_>, mut report: FrameReport) -> CpuFrame {
+    /// the [`BuiltFrame`]: a promoted or resynced Partial builds a Full list.
+    pub(super) fn build_paint<'f>(
+        &mut self,
+        ctx: BuildCtx<'f, '_>,
+        mut report: FrameReport,
+    ) -> CpuFrame<'f> {
         tracy::zone!();
         #[cfg(feature = "internals")]
         self.apply_forced(&mut report);
@@ -386,84 +407,98 @@ impl WindowDriver {
                 RenderPlan::to_full,
             ));
         }
-        let partial = report
-            .plan
-            .is_some_and(|plan| matches!(plan.damage, Damage::Partial(_)));
-        let facts = PresentFacts {
-            strategy: self.strategy,
-            capturing,
-            backbuffer_fresh: self.stream.is_backbuffer_fresh(),
-            promote_share: partial.then(|| {
-                let scene = self.frames.frame_scene();
-                promote_share(
-                    scene.visible_row_count(),
-                    scene.pane_share(),
-                    scene.stamp.display.physical,
-                )
-            }),
+        let built = if let Some(plan) = report.plan {
+            let facts = PresentFacts {
+                strategy: self.strategy,
+                capturing,
+                backbuffer_fresh: self.stream.is_backbuffer_fresh(),
+                promote_share: matches!(plan.damage, Damage::Partial(_)).then(|| {
+                    let scene = self.frames.frame_scene();
+                    promote_share(
+                        scene.visible_row_count(),
+                        scene.pane_share(),
+                        scene.stamp.display.physical,
+                    )
+                }),
+            };
+            BuiltFrame::Paint(self.build_painted(ctx, facts.path(plan), facts))
+        } else if self.strategy == PresentStrategy::BackbufferCopy {
+            BuiltFrame::CopyBackbuffer
+        } else {
+            debug_assert_eq!(
+                self.damage_base,
+                DamageBase::Prev,
+                "a discarded base paints whole, so a frame with nothing to draw holds the last"
+            );
+            BuiltFrame::Still
         };
-        let first = facts.path(report.plan);
-        if !matches!(first, PresentPath::SkipNoop) {
+        if !matches!(built, BuiltFrame::Still) {
             self.damage_base = DamageBase::Discarded;
         }
-        let mode = if first.plan().is_some() {
-            self.build_painted(ctx, first, facts)
-        } else {
-            first
-        };
         // The host runs frames until each screenshot lands, as nothing else wakes it then.
         if capturing || !self.captures.is_empty() {
             report.repaint_requested = true;
         }
-        CpuFrame { report, mode }
+        CpuFrame { report, built }
     }
 
     /// Build the frame `first` paints: as it says when it can, else whole.
-    fn build_painted(
+    fn build_painted<'f>(
         &mut self,
-        mut ctx: BuildCtx<'_>,
-        first: PresentPath,
+        mut ctx: BuildCtx<'f, '_>,
+        first: PaintPath,
         facts: PresentFacts,
-    ) -> PresentPath {
-        let plan = first.plan().expect("a frame that paints has a plan");
-        let mode = if matches!(plan.damage, Damage::Full) {
-            self.build_whole(&mut ctx, plan);
-            first
+    ) -> PaintJob<'f> {
+        let mut fitted = if matches!(first.plan.damage, Damage::Full) {
+            self.build_whole(&mut ctx, first.plan);
+            Fitted::whole(first)
         } else {
             match self.try_partial(&mut ctx, first, facts) {
-                Ok(mode) => mode,
+                Ok(fitted) => fitted,
                 Err(escalation) => {
-                    let whole = plan.to_full();
+                    let whole = first.plan.to_full();
                     self.build_whole(&mut ctx, whole);
-                    facts.whole_path(whole, escalation)
+                    Fitted::whole(facts.whole_path(whole, escalation))
                 }
             }
         };
         self.pane_captures.settle(&ctx.frontend.buffer);
-        self.capture_path(mode, &ctx.frontend.buffer)
+        fitted.path = self.capture_path(fitted.path, &ctx.frontend.buffer);
+        debug_assert!(
+            matches!(
+                (fitted.path.plan.damage, &fitted.scissors),
+                (Damage::Full, RepaintScissors::Full)
+                    | (Damage::Partial(_), RepaintScissors::Partial(_))
+            ),
+            "the scissors are fitted to the frame's plan"
+        );
+        PaintJob {
+            fitted,
+            frontend: ctx.frontend,
+        }
     }
 
-    /// Build the partial frame `mode` paints and return its path, through the backbuffer if the
-    /// target cannot keep its pixels. Each refusal is one way, so a frame runs this once and then
-    /// [`Self::build_whole`], which cannot refuse.
+    /// Build the partial frame `path` paints, through the backbuffer if the target cannot keep its
+    /// pixels. Each refusal is one way, so a frame runs this once and then [`Self::build_whole`],
+    /// which cannot refuse.
     fn try_partial(
         &mut self,
-        ctx: &mut BuildCtx<'_>,
-        mode: PresentPath,
+        ctx: &mut BuildCtx<'_, '_>,
+        path: PaintPath,
         facts: PresentFacts,
-    ) -> Result<PresentPath, Escalation> {
-        let plan = mode.plan().expect("a frame that paints has a plan");
+    ) -> Result<Fitted, Escalation> {
+        let plan = path.plan;
         // More panes capture than the repaint holds scissors for.
         if self.decide_panes(plan) == Settled::Overflow {
             return Err(Escalation::ByStrategy);
         }
-        let mode = if self.loses_kept_pixels(mode) {
+        let path = if self.loses_kept_pixels(path.route) {
             if !facts.backbuffer_fresh {
                 return Err(Escalation::ThroughBackbuffer);
             }
-            PresentPath::ViaBackbuffer(plan)
+            PaintPath::through_backbuffer(plan)
         } else {
-            mode
+            path
         };
         // The disjoint scissors outgrow their cap.
         let display = self.frames.frame_scene().stamp.display;
@@ -483,13 +518,12 @@ impl WindowDriver {
         if census != Census::Cur {
             return Err(Escalation::ByStrategy);
         }
-        self.scissors = scissors;
-        Ok(mode)
+        Ok(Fitted { path, scissors })
     }
 
     /// Build the whole frame `plan` paints. A whole frame captures every pane and keeps no pixel,
     /// so nothing can refuse it.
-    fn build_whole(&mut self, ctx: &mut BuildCtx<'_>, plan: RenderPlan) {
+    fn build_whole(&mut self, ctx: &mut BuildCtx<'_, '_>, plan: RenderPlan) {
         debug_assert!(matches!(plan.damage, Damage::Full));
         let settled = self.decide_panes(plan);
         debug_assert_eq!(
@@ -502,7 +536,6 @@ impl WindowDriver {
             self.stream
                 .plan_cutouts(&ctx.frontend.buffer, &RepaintScissors::Full, ctx.placements);
         debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
-        self.scissors = RepaintScissors::Full;
     }
 
     /// The ledger's tickets for a frame painted by `plan`.
@@ -531,46 +564,43 @@ impl WindowDriver {
             .collect_live_targets(&mut frontend.buffer.live_targets);
     }
 
-    /// Whether a partial frame on `mode` cannot paint in the target it keeps its pixels in: only a
+    /// Whether a partial frame on `route` cannot paint in the target it keeps its pixels in: only a
     /// retained target paints a partial frame direct, and it cannot when it holds the last frame's
     /// damage outline, or a pane may capture from a target that gives no copy. Decided before the
     /// frame builds, from the tickets, as the partial draw list culls what a whole frame would
     /// paint.
-    fn loses_kept_pixels(&self, mode: PresentPath) -> bool {
+    fn loses_kept_pixels(&self, route: Route) -> bool {
         let gives_copy = self.target.is_some_and(|target| target.gives_copy);
-        matches!(mode, PresentPath::Direct(_))
+        route == Route::Direct
             && (self.target_outlined || (!gives_copy && self.pane_captures.may_capture()))
     }
 
-    /// `mode` for a frame whose panes capture as `buffer` says: a direct whole frame paints
+    /// `path` for a frame whose panes capture as `buffer` says: a direct whole frame paints
     /// through the backbuffer when its captures cannot copy out of the target, which gives no
     /// copy, or would copy more than the surface holds, where its blurs read the backbuffer and
     /// the copy onto the target moves the surface once; the backbuffer may be new, as the frame
     /// is whole. A direct partial frame keeps its pixels in the target alone, so its captures copy
     /// out of it ([`Self::loses_kept_pixels`]).
-    fn capture_path(&self, mode: PresentPath, buffer: &RenderBuffer) -> PresentPath {
-        let PresentPath::Direct(plan) = mode else {
-            return mode;
-        };
+    fn capture_path(&self, path: PaintPath, buffer: &RenderBuffer) -> PaintPath {
         let captured = buffer.captured_area();
-        if captured == 0 {
-            return mode;
+        if path.route != Route::Direct || captured == 0 {
+            return path;
         }
         let target = self
             .target
             .expect("a frame that captures has noted its target");
-        if matches!(plan.damage, Damage::Partial(_)) {
+        if matches!(path.plan.damage, Damage::Partial(_)) {
             debug_assert!(
                 target.gives_copy,
                 "a partial frame's captures copy out of it"
             );
-            return mode;
+            return path;
         }
         let surface = u64::from(target.physical.x) * u64::from(target.physical.y);
         if !target.gives_copy || captured >= surface {
-            PresentPath::ViaBackbuffer(plan)
+            PaintPath::through_backbuffer(path.plan)
         } else {
-            mode
+            path
         }
     }
 
@@ -579,21 +609,20 @@ impl WindowDriver {
         backend.retire_stream(&mut self.stream);
     }
 
-    /// GPU submit against a caller-supplied texture, dispatching on the sealed
-    /// [`PresentPath`]. [`PresentPath::SkipCopy`] copies the backbuffer onto the target.
-    pub(super) fn render_to_texture(
+    /// The GPU half: draw `built` into `target`. Whatever `built` holds, the target then holds this
+    /// frame, so the next frame's damage diffs against it.
+    pub(super) fn submit(
         &mut self,
-        frontend: &mut Frontend,
         backend: &mut WgpuBackend,
         target: RenderTarget<'_>,
-        mode: PresentPath,
+        built: BuiltFrame<'_>,
     ) {
         tracy::zone!();
         let size = target.size();
         let display_physical = self.frames.ui.display().physical;
         debug_assert!(
             size == display_physical,
-            "render_to_texture: target size {}x{} doesn't match the display physical \
+            "submit: target size {}x{} doesn't match the display physical \
              size ({}x{}) that `record` ran against — scissor / viewport math \
              would be off. Update `Display.physical` on resize before the next \
              `record`.",
@@ -605,7 +634,7 @@ impl WindowDriver {
         debug_assert!(
             self.target
                 .is_some_and(|key| key.physical == size && key.format == target.format()),
-            "render_to_texture: target ({}x{}, {:?}) differs from the one \
+            "submit: target ({}x{}, {:?}) differs from the one \
              `note_target` declared ({:?}), so the retained backbuffer / damage \
              baseline were never invalidated for it",
             size.x,
@@ -613,43 +642,46 @@ impl WindowDriver {
             target.format(),
             self.target,
         );
+        match built {
+            BuiltFrame::Still => {}
+            BuiltFrame::CopyBackbuffer => {
+                // Nothing to draw implies the previous frame painted at this size and format, so
+                // the backbuffer exists and matches.
+                backend.copy_backbuffer_to_surface(&self.stream, target);
+                self.target_outlined = false;
+            }
+            BuiltFrame::Paint(job) => self.submit_paint(backend, target, job),
+        }
+        self.damage_base = DamageBase::Prev;
+    }
+
+    /// Paint `job` into `target`, and take each screenshot the frame owes from it.
+    fn submit_paint(
+        &mut self,
+        backend: &mut WgpuBackend,
+        target: RenderTarget<'_>,
+        job: PaintJob<'_>,
+    ) {
+        let PaintJob {
+            fitted:
+                Fitted {
+                    path: PaintPath { route, plan },
+                    scissors,
+                },
+            frontend,
+        } = job;
         debug_assert!(
-            !matches!(mode, PresentPath::Direct(_))
-                || frontend.buffer.captured_area() == 0
-                || target.gives_copy(),
+            route != Route::Direct || frontend.buffer.captured_area() == 0 || target.gives_copy(),
             "a direct frame's captures copy out of the target"
         );
         debug_assert!(
             self.strategy == PresentStrategy::Retained
-                || !matches!(mode, PresentPath::Direct(plan) if matches!(plan.damage, Damage::Partial(_))),
+                || route != Route::Direct
+                || matches!(plan.damage, Damage::Full),
             "a direct partial frame loads the target, which only a retained one keeps: a \
              swapchain image holds nothing at acquire"
         );
-        let (plan, route) = match mode {
-            PresentPath::SkipNoop => {
-                self.damage_base = DamageBase::Prev;
-                return;
-            }
-            PresentPath::SkipCopy => {
-                // A `Skip` implies the previous frame painted at this size and format, so the
-                // backbuffer exists and matches.
-                backend.copy_backbuffer_to_surface(&self.stream, target);
-                self.damage_base = DamageBase::Prev;
-                self.target_outlined = false;
-                return;
-            }
-            PresentPath::Direct(plan) => (plan, Route::Direct),
-            PresentPath::ViaBackbuffer(plan) => (plan, Route::ViaBackbuffer),
-        };
         let FrameOutput { buffer, gradients } = frontend.output();
-        debug_assert!(
-            matches!(
-                (plan.damage, &self.scissors),
-                (Damage::Full, RepaintScissors::Full)
-                    | (Damage::Partial(_), RepaintScissors::Partial(_))
-            ),
-            "the scissors are the ones the CPU half fitted to this plan"
-        );
         let debug_overlay = self.frames.ui.debug_overlay();
         self.target_outlined = debug_overlay.damage_rect;
         let SubmitParts {
@@ -667,7 +699,7 @@ impl WindowDriver {
                 gradients,
                 gpu_views,
                 clear: submission::frame_clear(plan.clear, buffer),
-                scissors: &self.scissors,
+                scissors: &scissors,
                 route,
                 overlay: FrameOverlay {
                     dim_undamaged: debug_overlay.dim_undamaged,
@@ -675,7 +707,6 @@ impl WindowDriver {
                 },
             },
         );
-        self.damage_base = DamageBase::Prev;
         let display = self.frames.ui.display();
         for request in self.screenshot_requests.drain(..) {
             debug_assert_eq!(
@@ -710,12 +741,25 @@ pub(crate) mod internals {
     use crate::display::system_scale::SystemScale;
     use crate::host::window_driver::WindowDriver;
     #[cfg(test)]
-    use crate::host::window_driver::{FrameSpec, TargetKey};
+    use crate::host::window_driver::present_facts::PaintPath;
+    #[cfg(test)]
+    use crate::host::window_driver::{BuiltFrame, FrameSpec, TargetKey};
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
     use crate::ui::frame_report::FrameReport;
     #[cfg(test)]
     use std::time::Duration;
+
+    #[cfg(test)]
+    impl BuiltFrame<'_> {
+        /// The path of a frame that paints, for a test that reads it.
+        pub(crate) const fn path(&self) -> Option<PaintPath> {
+            match self {
+                Self::Still | Self::CopyBackbuffer => None,
+                Self::Paint(job) => Some(job.fitted.path),
+            }
+        }
+    }
 
     #[cfg(test)]
     impl FrameSpec {

@@ -130,9 +130,9 @@ impl HeadlessWindow {
         let HeadlessCanvas { device, target } = canvas;
         self.take_wake();
         let spec = self.spec(TargetKey::of(target), now);
-        let CpuFrame { report, mode } = device.frame(&mut self.cpu, &mut self.driver, spec, app);
-        if !device.gpu().is_lost() {
-            device.submit(&mut self.cpu, &mut self.driver, target, mode);
+        let CpuFrame { report, built } = device.frame(&mut self.cpu, &mut self.driver, spec, app);
+        if device.will_submit(&built) {
+            device.submit(&mut self.driver, target, built);
         }
         record_window_commands(&mut self.driver, &mut self.commands);
         report

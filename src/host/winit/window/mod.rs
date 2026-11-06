@@ -15,10 +15,11 @@ use winit::window::Window as WinitWindow;
 use crate::common::platform::PLATFORM;
 use crate::common::tracy::{self, FrameSet};
 use crate::display::system_scale::SystemScale;
-use crate::gpu::surface::window_surface::{Acquired, Prepared, WindowSurface};
+use crate::gpu::surface::window_surface::{Acquired, Prepared, SurfaceFrame, WindowSurface};
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
-use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, TargetKey, WindowDriver};
+use crate::host::device_core::DeviceCore;
+use crate::host::window_driver::{BuiltFrame, CpuFrame, FrameSpec, TargetKey, WindowDriver};
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
@@ -374,14 +375,13 @@ impl Window {
                 refresh_millihertz: facts.refresh_millihertz,
                 now: self.clock.now(),
             };
-            let cpu = core
-                .device
-                .frame(&mut core.cpu, &mut self.driver, spec, app);
+            let HostCore { cpu, device } = core;
+            let frame = device.frame(cpu, &mut self.driver, spec, app);
             let summary =
                 self.remote
-                    .after_frame(&self.driver.frames.ui, &cpu.report, app.is_busy());
-            let ran_app = cpu.report.processing.ran_app();
-            self.next = self.present(core, cpu);
+                    .after_frame(&self.driver.frames.ui, &frame.report, app.is_busy());
+            let ran_app = frame.report.processing.ran_app();
+            self.next = self.present(device, frame);
             Some(RanFrame { summary, ran_app })
         };
 
@@ -393,13 +393,12 @@ impl Window {
         ran
     }
 
-    fn present(&mut self, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
-        let CpuFrame { report, mode } = cpu;
-        // A lost device paints nothing; its recovery wakes the window again.
-        let outcome = if report.plan.is_none() || core.device.gpu().is_lost() {
-            AcquireOutcome::Skipped
+    fn present(&mut self, device: &mut DeviceCore, frame: CpuFrame<'_>) -> FramePresent {
+        let CpuFrame { report, built } = frame;
+        let outcome = if device.will_submit(&built) {
+            self.acquire_and_present(device, built)
         } else {
-            self.acquire_and_present(core, mode)
+            AcquireOutcome::Skipped
         };
         let decision = self.schedule.after(outcome, &report);
         if decision.rebuild {
@@ -416,21 +415,19 @@ impl Window {
         }
     }
 
-    /// Acquire the swapchain image and, if it came, draw `mode` into it and present.
-    fn acquire_and_present(&mut self, core: &mut HostCore, mode: PresentPath) -> AcquireOutcome {
+    /// Acquire the swapchain image and, if it came, draw `built` into it and present.
+    fn acquire_and_present(
+        &mut self,
+        device: &mut DeviceCore,
+        built: BuiltFrame<'_>,
+    ) -> AcquireOutcome {
         match self.surface.acquire() {
             Acquired::Ready(frame) => {
-                core.device
-                    .submit(&mut core.cpu, &mut self.driver, frame.target(), mode);
-                self.window.pre_present_notify();
-                frame.present(core.device.gpu());
+                self.submit_and_present(device, frame, built);
                 AcquireOutcome::Presented
             }
             Acquired::Suboptimal(frame) => {
-                core.device
-                    .submit(&mut core.cpu, &mut self.driver, frame.target(), mode);
-                self.window.pre_present_notify();
-                frame.present(core.device.gpu());
+                self.submit_and_present(device, frame, built);
                 AcquireOutcome::Suboptimal(self.surface.size())
             }
             Acquired::Outdated => {
@@ -455,6 +452,17 @@ impl Window {
             }
             Acquired::Occluded => AcquireOutcome::Occluded,
         }
+    }
+
+    fn submit_and_present(
+        &mut self,
+        device: &mut DeviceCore,
+        frame: SurfaceFrame,
+        built: BuiltFrame<'_>,
+    ) {
+        device.submit(&mut self.driver, frame.target(), built);
+        self.window.pre_present_notify();
+        frame.present(device.gpu());
     }
 
     /// Settle what the frame produced: drain the recorder's window commands (an
