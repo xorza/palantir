@@ -3,7 +3,6 @@
 use crate::animation::animation_request::AnimationRequest;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
@@ -16,7 +15,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::toggle_row::{Settled, ToggleFace, ToggleRow};
+use crate::widgets::toggle_row::{Settled, ToggleBox, ToggleFace, ToggleRow};
 use glam::Vec2;
 
 /// Boolean toggle drawn as a pill track with a sliding knob; takes a `&mut bool` and a click flips it. Visuals come from `theme.switch` ([`crate::ToggleTheme`]). Layout and parts mirror [`crate::Checkbox`] (`HStack [track, label]`, one `Sense::CLICK` target), and the knob is `id.with("knob")`; the track is a `Canvas`, and one [`Ui::animate`] row from off to on places the knob and blends its ink.
@@ -86,7 +85,15 @@ impl ToggleFace for Knob<'_> {
         Some(SwitchTrack::from_slot(slot).height * 0.5)
     }
 
-    fn paint(ui: &mut Ui, id: WidgetId, slot: &ToggleTheme, chrome: &Chrome, checked: bool) {
+    fn paint(
+        ui: &mut Ui,
+        ToggleBox {
+            id,
+            slot,
+            chrome,
+            checked,
+        }: ToggleBox<'_>,
+    ) {
         // The track's content box starts where the layout's fold of its border puts it.
         let [border, ..] = chrome.fold_padding(Spacing::ZERO).to_array();
         let geometry = SwitchTrack::from_slot(slot).knob(border);

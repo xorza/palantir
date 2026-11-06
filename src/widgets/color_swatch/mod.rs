@@ -15,7 +15,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::widget::Widget;
-use crate::widgets::checkerboard::Checkerboard;
+use crate::widgets::checkerboard::{Checkerboard, Chip};
 use std::rc::Rc;
 
 /// A chip painting one color, over a checkerboard when it is translucent.
@@ -72,7 +72,15 @@ impl<'a> ColorSwatch<'a> {
         let inset = look.chrome.border.width;
 
         widget.record(ui, Some(&look.chrome), |ui| {
-            checker.paint_chip(ui, color, size, inset, veil);
+            checker.paint_chip(
+                ui,
+                Chip {
+                    color,
+                    size,
+                    inset,
+                    veil,
+                },
+            );
         });
         response
     }

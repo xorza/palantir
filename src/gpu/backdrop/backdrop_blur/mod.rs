@@ -263,6 +263,16 @@ pub(crate) struct BackdropBlur {
     target: Option<TargetSource>,
 }
 
+/// A texture a blur pass renders and another samples, as [`BackdropBlur::sampled`] makes it.
+#[derive(Clone, Copy, Debug)]
+struct SampledSpec {
+    label: &'static str,
+    format: wgpu::TextureFormat,
+    size: UVec2,
+    /// Whether its format filters, which picks the group's sampler.
+    filters: bool,
+}
+
 impl BackdropBlur {
     /// This family's shader body.
     pub(crate) const SHADER: ShaderBody = ShaderBody {
@@ -399,10 +409,12 @@ impl BackdropBlur {
                     filters,
                     target: self.sampled(
                         gpu,
-                        "palantir.backdrop.capture",
-                        format.get(),
-                        grown(UVec2::ZERO, size, self.ceiling),
-                        filters,
+                        SampledSpec {
+                            label: "palantir.backdrop.capture",
+                            format: format.get(),
+                            size: grown(UVec2::ZERO, size, self.ceiling),
+                            filters,
+                        },
                     ),
                     peak: UVec2::ZERO,
                 });
@@ -412,10 +424,12 @@ impl BackdropBlur {
         if have.x < size.x || have.y < size.y {
             self.captures[at].target = self.sampled(
                 gpu,
-                "palantir.backdrop.capture",
-                format.get(),
-                grown(have, size, self.ceiling),
-                self.captures[at].filters,
+                SampledSpec {
+                    label: "palantir.backdrop.capture",
+                    format: format.get(),
+                    size: grown(have, size, self.ceiling),
+                    filters: self.captures[at].filters,
+                },
             );
         }
         at
@@ -480,21 +494,22 @@ impl BackdropBlur {
         }
         self.scratch = Some(self.sampled(
             gpu,
-            "palantir.backdrop.scratch",
-            LEVEL_FORMAT,
-            grown(have, size, self.ceiling),
-            true,
+            SampledSpec {
+                label: "palantir.backdrop.scratch",
+                format: LEVEL_FORMAT,
+                size: grown(have, size, self.ceiling),
+                filters: true,
+            },
         ));
     }
 
-    fn sampled(
-        &self,
-        gpu: &Gpu,
-        label: &'static str,
-        format: wgpu::TextureFormat,
-        size: UVec2,
-        filters: bool,
-    ) -> Sampled {
+    fn sampled(&self, gpu: &Gpu, spec: SampledSpec) -> Sampled {
+        let SampledSpec {
+            label,
+            format,
+            size,
+            filters,
+        } = spec;
         let texture = texel::texture_2d(
             gpu,
             TargetSpec {
@@ -600,10 +615,12 @@ impl BackdropBlur {
             if texel::size(&capture.target.texture) != want {
                 self.captures[at].target = self.sampled(
                     gpu,
-                    "palantir.backdrop.capture",
-                    capture.format.get(),
-                    want,
-                    capture.filters,
+                    SampledSpec {
+                        label: "palantir.backdrop.capture",
+                        format: capture.format.get(),
+                        size: want,
+                        filters: capture.filters,
+                    },
                 );
             }
             self.captures[at].peak = UVec2::ZERO;

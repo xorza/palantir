@@ -242,7 +242,16 @@ impl PaneResources {
             },
             &[bytemuck::cast_slice(&spectrum_table)],
         );
-        let group = composite_group(gpu, layout, &atlas, &slot_buffer, &sampler, &spectrum);
+        let group = composite_group(
+            gpu,
+            layout,
+            CompositeParts {
+                atlas: &atlas,
+                slots: &slot_buffer,
+                sampler: &sampler,
+                spectrum: &spectrum,
+            },
+        );
         Self {
             blur: BackdropBlur::new(gpu),
             atlas,
@@ -259,10 +268,12 @@ impl PaneResources {
         self.group = composite_group(
             gpu,
             layout,
-            &self.atlas,
-            &self.slot_buffer,
-            &self.sampler,
-            &self.spectrum,
+            CompositeParts {
+                atlas: &self.atlas,
+                slots: &self.slot_buffer,
+                sampler: &self.sampler,
+                spectrum: &self.spectrum,
+            },
         );
         self.group_capacity = self.slot_buffer.capacity();
     }
@@ -298,15 +309,27 @@ fn composite_layout(gpu: &Gpu) -> wgpu::BindGroupLayout {
         })
 }
 
+/// What the group a pane's quad reads its result through binds.
+#[derive(Clone, Copy, Debug)]
+struct CompositeParts<'a> {
+    atlas: &'a PackedAtlas,
+    slots: &'a DynamicBuffer<BackdropSlot>,
+    sampler: &'a wgpu::Sampler,
+    spectrum: &'a wgpu::Buffer,
+}
+
 /// The group over the results atlas, its sampler, the slot table and the spectrum.
 fn composite_group(
     gpu: &Gpu,
     layout: &wgpu::BindGroupLayout,
-    atlas: &PackedAtlas,
-    slots: &DynamicBuffer<BackdropSlot>,
-    sampler: &wgpu::Sampler,
-    spectrum: &wgpu::Buffer,
+    parts: CompositeParts<'_>,
 ) -> wgpu::BindGroup {
+    let CompositeParts {
+        atlas,
+        slots,
+        sampler,
+        spectrum,
+    } = parts;
     gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("palantir.backdrop.composite"),
         layout,

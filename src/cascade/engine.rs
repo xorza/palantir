@@ -584,59 +584,88 @@ impl CascadeEngine {
         while let Some(popped) = self.stack.pop() {
             finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
         }
-        list_panes(tree, layout, lc, display_scale);
+        source.list_panes(lc);
         true
     }
 }
 
-/// Rebuild `lc.panes` from the panes `tree` recorded, each at its paint row and that row's screen,
-/// and `lc.pane_rows` from them.
-fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_scale: f32) {
-    lc.panes.clear();
-    let widget_ids = tree.records.widget_id();
-    for entry in &tree.panes {
-        let node = entry.node.idx();
-        let span = lc.paint_arena.node_spans[node];
-        if span.len == 0 {
-            continue;
+impl TreeSource<'_> {
+    /// Rebuild `lc.panes` from the panes `tree` recorded, each at its paint row and that row's
+    /// screen, and `lc.pane_rows` from them.
+    fn list_panes(self, lc: &mut PlaneCascade) {
+        let Self {
+            tree,
+            display_scale,
+            ..
+        } = self;
+        lc.panes.clear();
+        let widget_ids = tree.records.widget_id();
+        for entry in &tree.panes {
+            let node = entry.node.idx();
+            let span = lc.paint_arena.node_spans[node];
+            if span.len == 0 {
+                continue;
+            }
+            debug_assert!(
+                entry.row < span.len,
+                "a pane's row lies in its owner's span"
+            );
+            let row = span.start + entry.row;
+            let rect = lc.paint_arena.rows[row as usize].screen;
+            if rect.is_paint_empty() {
+                continue;
+            }
+            let paint_row = after_children(tree, lc, entry).max(row);
+            let backdrop = match entry.origin {
+                PaneOrigin::Chrome => tree.chrome(entry.node).and_then(|row| row.backdrop),
+                PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
+            }
+            .expect("a listed pane has a backdrop");
+            let shape_scale = lc.shape_scales[node];
+            let scale = shape_scale * display_scale;
+            let plan = BlurPlan::new(backdrop.sigma() * scale);
+            let narrowest = self
+                .narrowest_side(entry, rect, shape_scale)
+                .map(|n| n * display_scale);
+            lc.panes.push(PaneRow {
+                key: PaneKey {
+                    owner: widget_ids[node],
+                    shape: entry.row,
+                },
+                row,
+                paint_row,
+                rect,
+                plan,
+                footprint: rect.inflated(
+                    PaneRow::reach(plan, backdrop.lens_margin(scale, narrowest)) / display_scale,
+                ),
+            });
         }
-        debug_assert!(
-            entry.row < span.len,
-            "a pane's row lies in its owner's span"
-        );
-        let row = span.start + entry.row;
-        let rect = lc.paint_arena.rows[row as usize].screen;
-        if rect.is_paint_empty() {
-            continue;
-        }
-        let paint_row = after_children(tree, lc, entry).max(row);
-        let backdrop = match entry.origin {
-            PaneOrigin::Chrome => tree.chrome(entry.node).and_then(|row| row.backdrop),
-            PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
-        }
-        .expect("a listed pane has a backdrop");
-        let shape_scale = lc.shape_scales[node];
-        let scale = shape_scale * display_scale;
-        let plan = BlurPlan::new(backdrop.sigma() * scale);
-        let narrowest =
-            narrowest_side(tree, layout, entry, rect, shape_scale).map(|n| n * display_scale);
-        lc.panes.push(PaneRow {
-            key: PaneKey {
-                owner: widget_ids[node],
-                shape: entry.row,
-            },
-            row,
-            paint_row,
-            rect,
-            plan,
-            footprint: rect.inflated(
-                PaneRow::reach(plan, backdrop.lens_margin(scale, narrowest)) / display_scale,
-            ),
-        });
+        lc.pane_rows.clear();
+        lc.pane_rows.extend(lc.panes.iter().map(|pane| pane.row));
+        lc.pane_rows.sort_unstable();
     }
-    lc.pane_rows.clear();
-    lc.pane_rows.extend(lc.panes.iter().map(|pane| pane.row));
-    lc.pane_rows.sort_unstable();
+
+    /// The narrowest side, in logical px, of a pane drawn whole at `rect` on the screen, which a
+    /// lens reads inside of: a shape's quad that no paint animation turns and no clip cuts. `None`
+    /// for a turning or clipped pane, whose screen rect is not its own, and for chrome, whose lift
+    /// this walk does not keep.
+    fn narrowest_side(self, entry: &PaneEntry, rect: Rect, shape_scale: f32) -> Option<f32> {
+        let Self { tree, layout, .. } = self;
+        if entry.origin != PaneOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
+            return None;
+        }
+        let ShapeRecord::Quad(quad) = &tree.shapes.records[entry.shape_idx as usize] else {
+            return None;
+        };
+        let local = quad.bbox_local(layout.rect[entry.node.idx()].size).size;
+        let (w, h) = (local.w * shape_scale, local.h * shape_scale);
+        // The lift and a clip that misses the pane round the size within a few f32 ulps; a clip
+        // that cuts less than this lets a sample out by less than the pixel `PaneRow::reach` rounds
+        // out.
+        let whole = |screen: f32, lifted: f32| screen >= lifted * (1.0 - 1e-5);
+        (whole(rect.size.w, w) && whole(rect.size.h, h)).then_some(w.min(h))
+    }
 }
 
 /// The first row past the subtree of the last child `entry`'s node records before the pane, `0`
@@ -669,31 +698,6 @@ fn after_children(tree: &Tree, lc: &PlaneCascade, entry: &PaneEntry) -> u32 {
         "a subtree's rows lie in one run, before the next node's"
     );
     end
-}
-
-/// The narrowest side, in logical px, of a pane drawn whole at `rect` on the screen, which a lens
-/// reads inside of: a shape's quad that no paint animation turns and no clip cuts. `None` for a
-/// turning or clipped pane, whose screen rect is not its own, and for chrome, whose lift this
-/// walk does not keep.
-fn narrowest_side(
-    tree: &Tree,
-    layout: &PlaneLayout,
-    entry: &PaneEntry,
-    rect: Rect,
-    shape_scale: f32,
-) -> Option<f32> {
-    if entry.origin != PaneOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
-        return None;
-    }
-    let ShapeRecord::Quad(quad) = &tree.shapes.records[entry.shape_idx as usize] else {
-        return None;
-    };
-    let local = quad.bbox_local(layout.rect[entry.node.idx()].size).size;
-    let (w, h) = (local.w * shape_scale, local.h * shape_scale);
-    // The lift and a clip that misses the pane round the size within a few f32 ulps; a clip that
-    // cuts less than this lets a sample out by less than the pixel `PaneRow::reach` rounds out.
-    let whole = |screen: f32, lifted: f32| screen >= lifted * (1.0 - 1e-5);
-    (whole(rect.size.w, w) && whole(rect.size.h, h)).then_some(w.min(h))
 }
 
 #[cfg(feature = "internals")]

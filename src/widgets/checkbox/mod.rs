@@ -1,8 +1,6 @@
 //! The box-and-label boolean toggle and its pair of click responses.
 
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -13,7 +11,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
-use crate::widgets::toggle_row::{Settled, ToggleFace, ToggleRow};
+use crate::widgets::toggle_row::{Settled, ToggleBox, ToggleFace, ToggleRow};
 
 /// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
 ///
@@ -77,7 +75,7 @@ impl ToggleFace for Check<'_> {
         None
     }
 
-    fn paint(ui: &mut Ui, _: WidgetId, slot: &ToggleTheme, _: &Chrome, checked: bool) {
+    fn paint(ui: &mut Ui, ToggleBox { slot, checked, .. }: ToggleBox<'_>) {
         if checked {
             let width = domain::length_at_least(slot.indicator_width, 0.0);
             ui.add_shape(

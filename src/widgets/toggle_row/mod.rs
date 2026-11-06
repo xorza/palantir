@@ -47,9 +47,19 @@ pub(crate) trait ToggleFace {
     /// The corner radius forced onto the box chrome, so the radio pip and the switch track read
     /// as pills whatever radius a theme sets; `None` keeps the theme's.
     fn pill(slot: &ToggleTheme) -> Option<f32>;
-    /// Paints inside the box of the toggle `id`. `chrome` is the box's resolved chrome, as the
-    /// switch insets its knob by the animating border width.
-    fn paint(ui: &mut Ui, id: WidgetId, slot: &ToggleTheme, chrome: &Chrome, checked: bool);
+    /// Paints inside the box.
+    fn paint(ui: &mut Ui, toggle: ToggleBox<'_>);
+}
+
+/// A toggle's box as its face paints inside it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ToggleBox<'a> {
+    /// The toggle's id, which the box's derives from.
+    pub(crate) id: WidgetId,
+    pub(crate) slot: &'a ToggleTheme,
+    /// The box's resolved chrome, as the switch insets its knob by the animating border width.
+    pub(crate) chrome: &'a Chrome,
+    pub(crate) checked: bool,
 }
 
 /// What an activation did to a toggle's bound value.
@@ -114,7 +124,15 @@ impl ToggleRow<'_> {
             F::boxed(slot)
                 .id(id.with("box"))
                 .record(ui, Some(&look.chrome), |ui| {
-                    F::paint(ui, id, slot, &look.chrome, checked);
+                    F::paint(
+                        ui,
+                        ToggleBox {
+                            id,
+                            slot,
+                            chrome: &look.chrome,
+                            checked,
+                        },
+                    );
                 });
             if !label.is_empty() {
                 Text::new(label)

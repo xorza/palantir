@@ -2,7 +2,7 @@
 
 use crate::primitives::layout::offer;
 
-use crate::layout::drivers::grid::grid_track_store::{GridAxisId, GridTrackStore};
+use crate::layout::drivers::grid::grid_track_store::{GridAxis, GridTrackStore};
 use crate::layout::drivers::grid::{self, Grid};
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::measured::ContentMeasure;
@@ -76,8 +76,8 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
                 }
                 let range = pass.intrinsic_range(c, Axis::X);
                 let col_ranges = pass.grid_mut().track_state.ranges_mut(cols.id);
-                grid::distribute_span(cols.tracks, span, cols.gap, range.min, col_ranges.min);
-                grid::distribute_span(cols.tracks, span, cols.gap, range.max, col_ranges.max);
+                cols.distribute_span(span, range.min, col_ranges.min);
+                cols.distribute_span(span, range.max, col_ranges.max);
             }
         }
     }
@@ -158,8 +158,8 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
             }
             let (size, floor) = (pass.desired(c).h, pass.floor(c).h);
             let row_ranges = pass.grid_mut().track_state.ranges_mut(rows.id);
-            grid::distribute_span(rows.tracks, span, rows.gap, floor, row_ranges.min);
-            grid::distribute_span(rows.tracks, span, rows.gap, size, row_ranges.max);
+            rows.distribute_span(span, floor, row_ranges.min);
+            rows.distribute_span(span, size, row_ranges.max);
         }
     }
 
@@ -190,7 +190,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
             }
             let need = axis.main(pass.desired(c));
             let extents = pass.grid_mut().track_state.extents_mut(grid_axis.id);
-            grid::distribute_span(grid_axis.tracks, span, grid_axis.gap, need, extents);
+            grid_axis.distribute_span(span, need, extents);
         }
     }
 
@@ -204,8 +204,8 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
     let col_gaps = cols.gap.gaps_between(col_count);
     let row_gaps = rows.gap.gaps_between(row_count);
     let grid_sizing_h = tree.records.layout()[node.idx()].size.h();
-    let fill_w = FillShare::of(grid_sizing_w, inner_avail.w, cols.tracks, tracks, cols.id);
-    let fill_h = FillShare::of(grid_sizing_h, inner_avail.h, rows.tracks, tracks, rows.id);
+    let fill_w = cols.fill_share(grid_sizing_w, inner_avail.w, tracks);
+    let fill_h = rows.fill_share(grid_sizing_h, inner_avail.h, tracks);
     let total_w = grid::sum_non_fill(cols.tracks, tracks.sizes(cols.id)) + fill_w.extent + col_gaps;
     let total_h = grid::sum_non_fill(rows.tracks, tracks.sizes(rows.id)) + fill_h.extent + row_gaps;
     let floor_w = floor_non_fill(
@@ -250,20 +250,15 @@ struct FillShare {
     stable_from: f32,
 }
 
-impl FillShare {
-    /// The share of `tracks`, resolved as axis `id` of `store`, on a grid sized `sizing` offered
+impl GridAxis<'_> {
+    /// The share of this axis's tracks, resolved in `store`, on a grid sized `sizing` offered
     /// `avail`.
-    fn of(
-        sizing: Sizing,
-        avail: f32,
-        tracks: &[Track],
-        store: &GridTrackStore,
-        id: GridAxisId,
-    ) -> Self {
+    fn fill_share(self, sizing: Sizing, avail: f32, store: &GridTrackStore) -> FillShare {
+        let Self { tracks, id, .. } = self;
         let held = grid::fill_extent(tracks, store.extents(id));
         let stable_from = store.stable_from(id);
         if sizing.is_hug() || !avail.is_finite() || !grid::has_fill(tracks) {
-            return Self {
+            return FillShare {
                 extent: held,
                 stable_from,
             };
@@ -272,12 +267,12 @@ impl FillShare {
         if held <= resolved {
             // A larger offer gives the Fill tracks no less, so the hold stands from this offer
             // up; a smaller one may cap it.
-            Self {
+            FillShare {
                 extent: held,
                 stable_from: stable_from.max(avail),
             }
         } else {
-            Self {
+            FillShare {
                 extent: resolved,
                 stable_from: offer::AT_OFFER_ONLY,
             }

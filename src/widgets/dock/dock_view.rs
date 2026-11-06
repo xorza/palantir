@@ -187,7 +187,11 @@ impl<'a, T: DockTab> DockView<'a, T> {
         // Classified before the walk, so the strip it lands in records its caret, and kept for
         // the scan that sees the release: the drop lands where the frame showed it.
         let drop = carried.and_then(|tab| {
-            DockView::drop_target(ui, id, state, allowed_splits, edge_fraction)
+            let rules = SplitRules {
+                allowed: allowed_splits,
+                edge_fraction,
+            };
+            DockView::drop_target(ui, id, state, rules)
                 .filter(|target| state.accepts_move(tab, target.drop()))
         });
         if let Some(tab) = carried {
@@ -321,9 +325,12 @@ impl<T: DockTab> DockView<'_, T> {
         ui: &mut Ui,
         dock: WidgetId,
         state: &DockState<T>,
-        allowed: AllowedSplits,
-        edge_fraction: f32,
+        rules: SplitRules,
     ) -> Option<DropTarget> {
+        let SplitRules {
+            allowed,
+            edge_fraction,
+        } = rules;
         let p = ui.pointer_pos()?;
         let (group, pane) = state.groups().find_map(|g| {
             let rect = ui.response_for(g.id.pane_id(dock)).rect?;
@@ -385,6 +392,14 @@ impl<T: DockTab> TabMenuTarget<T> {
     fn chip(&self, dock: WidgetId) -> WidgetId {
         TabStrip::chip_id(self.group.strip_id(dock), TabKey::of(self.tab))
     }
+}
+
+/// Where a dock lets a carried tab split a pane.
+#[derive(Clone, Copy, Debug)]
+struct SplitRules {
+    allowed: AllowedSplits,
+    /// Reach of the split wedges in from each edge.
+    edge_fraction: f32,
 }
 
 #[derive(Debug)]

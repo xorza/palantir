@@ -14,6 +14,8 @@ mod hot_struct_sizes;
 #[cfg(test)]
 pub(crate) mod layout_rig;
 #[cfg(test)]
+mod module_order;
+#[cfg(test)]
 pub(crate) mod oracle;
 pub(crate) mod paint_capture;
 #[cfg(test)]

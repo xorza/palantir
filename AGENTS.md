@@ -30,7 +30,7 @@ Each frame rebuilds the tree and runs **record → layout (measure, arrange) →
 encode + compose → paint**, one top-level module per step. Color is linear-RGB f32 on the CPU;
 the GPU encodes sRGB at the swapchain write.
 
-A top-level module imports only modules to its left:
+A top-level module imports only modules to its left, as `internals::module_order` tests:
 
 ```text
 common → primitives → {animation, text, display, window, clipboard, image_registry,

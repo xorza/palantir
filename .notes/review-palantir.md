@@ -80,16 +80,9 @@ What rides down that stack, counted as the signatures that take it. The hop coun
 | `placements` | 5, three inside `BuildCtx` | `CutoutPlan::build` |
 | `built` | 4 | `WindowDriver::submit`, one value in place of `mode`, `scissors` and the buffer |
 
-The remaining gain is in the signatures:
-
-| Signature today | Target |
-|---|---|
-| `list_panes(tree, layout, lc, display_scale)` | `list_panes(source, lc)` |
-| `ToggleFace::paint(ui, id, slot, chrome, checked)` | `paint(ui, toggle_box)` |
-
 ## Root causes
 
-1. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
+Batches 1 to 8 removed each structural cause. Only the stale names of Batch 9 remain.
 
 ## Target design
 
@@ -128,7 +121,7 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 - `host/window_driver/mod.rs`: the driver and its stages.
 - `host/window_driver/present_facts.rs`: the pure decision: `PresentFacts`, `Escalation`, the promote share.
 - `host/window_driver/screenshot_lane.rs`: `ScreenshotLane`, each screenshot from the ask to the image.
-- `ui/overlay_stack.rs`: `OverlayStack`, moved out of `widget_core`.
+- `ui/overlay_stack.rs`: `OverlayStack`, moved out of `widget_core`. `internals/module_order.rs` holds the order.
 - `ui/resources/shared_device.rs`: `SharedDevice`, moved out of `renderer`, as only `UiResources` holds it now.
 
 ### Shared ownership
@@ -169,18 +162,6 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 # Part 2: Plan
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
-
-## Batch 8: Layers and small signatures
-
-Files: `src/widget_core/overlay_stack.rs`, `src/ui/mod.rs`, `src/widget_core/overlay_scope.rs`, `src/widgets/modal/mod.rs`, `src/internals/`, `src/cascade/engine.rs`, `src/widgets/toggle_row/mod.rs`, `src/widgets/checkbox/mod.rs`, `src/widgets/radio_group/mod.rs`, `src/widgets/switch/mod.rs`, `src/widgets/checkerboard.rs`, `src/widgets/dock/dock_view.rs`, `src/gpu/backdrop/backdrops/mod.rs`, `src/gpu/backdrop/backdrop_blur/mod.rs`, `src/layout/drivers/grid/`.
-
-This batch has no dependency, so it can run first.
-
-- [ ] `OverlayStack`: move it to `src/ui/overlay_stack.rs`, which removes the `ui → widget_core` edge.
-- [ ] Add a test under `internals` that scans each `crate::` path in `src/` against one table of the order, with `golden`, `internals`, `bench` and bench files outside it, as `AGENTS.md` says. It proves it can fail on a seeded line, so a clean run says something.
-- [ ] `cascade::engine::list_panes` and `narrowest_side`: `tree`, `layout` and `display_scale` are the fields of `TreeSource` in the same file. Take `TreeSource`.
-- [ ] `ToggleFace::paint`: five parameters, and two of four impls ignore two. Take one `ToggleBox<'_> { id, slot, chrome, checked }`.
-- [ ] `Checkerboard::paint_chip`, `DockView::drop_target`, `composite_group`, `Backdrops::sampled`, `grid::distribute_span`, the grid `of`: each takes five or six. Give each a param struct under the four-parameter rule.
 
 ## Batch 9: Stale names
 

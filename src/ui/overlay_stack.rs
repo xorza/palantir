@@ -150,7 +150,7 @@ impl OverlayStack {
 #[cfg(test)]
 mod tests {
     use crate::primitives::identity::widget_id::WidgetId;
-    use crate::widget_core::overlay_stack::OverlayStack;
+    use crate::ui::overlay_stack::OverlayStack;
 
     /// A close reaches the innermost overlay alone; one asked outside every overlay is dropped.
     #[test]

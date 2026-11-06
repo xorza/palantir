@@ -9,7 +9,6 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
 use crate::scene::node::node_mode::NodeMode;
 use crate::shape::Shape;
@@ -23,7 +22,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::button::Button;
-use crate::widgets::toggle_row::{Settled, ToggleFace, ToggleRow};
+use crate::widgets::toggle_row::{Settled, ToggleBox, ToggleFace, ToggleRow};
 use std::rc::Rc;
 
 /// How a [`RadioGroup`]'s options draw. The keys work alike in each, so the look changes what the
@@ -409,7 +408,7 @@ impl<T: PartialEq> ToggleFace for Pick<'_, T> {
     }
 
     /// A dot inside the round box while checked.
-    fn paint(ui: &mut Ui, _: WidgetId, slot: &ToggleTheme, _: &Chrome, checked: bool) {
+    fn paint(ui: &mut Ui, ToggleBox { slot, checked, .. }: ToggleBox<'_>) {
         if checked {
             let pip = slot.box_side();
             let inset = domain::length_at_least(slot.indicator_inset, 0.0);

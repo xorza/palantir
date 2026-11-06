@@ -18,6 +18,15 @@ pub(crate) struct Checkerboard {
     cell: f32,
 }
 
+/// A color chip as [`Checkerboard::paint_chip`] paints it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Chip {
+    pub(crate) color: RgbaF32,
+    pub(crate) size: Size,
+    pub(crate) inset: f32,
+    pub(crate) veil: Option<RgbaF32>,
+}
+
 impl Checkerboard {
     pub(crate) const fn new(theme: &ColorPickerTheme) -> Self {
         Self {
@@ -29,14 +38,13 @@ impl Checkerboard {
 
     /// A chip's content inside its frame's border, `inset` wide: the pattern when `color` is
     /// translucent, then the color, then `veil` over both when the chip is disabled.
-    pub(crate) fn paint_chip(
-        &self,
-        ui: &mut Ui,
-        color: RgbaF32,
-        size: Size,
-        inset: f32,
-        veil: Option<RgbaF32>,
-    ) {
+    pub(crate) fn paint_chip(&self, ui: &mut Ui, chip: Chip) {
+        let Chip {
+            color,
+            size,
+            inset,
+            veil,
+        } = chip;
         let inside = Rect::new(
             inset,
             inset,
