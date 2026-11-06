@@ -226,18 +226,18 @@ impl OffscreenHost {
 
     /// The window's `Ui`, for what no method here reads.
     pub const fn ui(&self) -> &Ui {
-        &self.window.driver.ui
+        &self.window.driver.frames.ui
     }
 
     /// The window's `Ui`, to change what no method here changes.
     pub const fn ui_mut(&mut self) -> &mut Ui {
-        &mut self.window.driver.ui
+        &mut self.window.driver.frames.ui
     }
 
     /// Delivers one input event to the window's `Ui` and reports whether it asks for a repaint, stamped with the time the next frame reads.
     pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         let now = self.time.now();
-        self.window.driver.ui.on_input(event, now)
+        self.window.driver.frames.on_input(event, now)
     }
 
     /// Move the host's time forward by `dt`; events fed afterward and the next frame carry it.

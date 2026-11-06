@@ -278,7 +278,7 @@ mod output_validity_tests {
     use crate::window::screenshot::{ScreenshotId, ScreenshotRequest};
     use std::time::Duration;
 
-    use crate::damage::Damage;
+    use crate::damage::{Damage, DamageBase};
 
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::ui::resources::UiResources;
@@ -306,12 +306,13 @@ mod output_validity_tests {
         let mut commands = WindowCommands::default();
 
         driver
+            .frames
             .ui
             .open_window(opened, WindowConfig::new("inspector"));
-        driver.ui.request_cursor(CursorIcon::Pointer);
-        driver.ui.window_frame_mut().facts.close_requested = true;
+        driver.frames.ui.request_cursor(CursorIcon::Pointer);
+        driver.frames.ui.window_frame_mut().facts.close_requested = true;
 
-        let output = driver.drain_window_output(&mut commands);
+        let output = driver.frames.drain_window_output(&mut commands);
         assert_eq!(output.cursor, CursorIcon::Pointer);
         assert_eq!(
             output.vsync,
@@ -323,23 +324,31 @@ mod output_validity_tests {
             [Seen::Open(opened, "inspector"), Seen::Close(token)],
             "an un-vetoed close becomes this window's own close command"
         );
-        assert!(driver.ui.window_requests().commands.seen().is_empty());
+        assert!(
+            driver
+                .frames
+                .ui
+                .window_requests()
+                .commands
+                .seen()
+                .is_empty()
+        );
         // Drained by `append`, not `mem::take`, so the recorder keeps its buffer.
-        let capacity = driver.ui.window_requests().commands.capacity();
+        let capacity = driver.frames.ui.window_requests().commands.capacity();
         assert!(capacity > 0);
 
-        driver.ui.window_frame_mut().facts.close_requested = true;
-        driver.ui.keep_open();
+        driver.frames.ui.window_frame_mut().facts.close_requested = true;
+        driver.frames.ui.keep_open();
         let mut vetoed = WindowCommands::default();
-        driver.drain_window_output(&mut vetoed);
+        driver.frames.drain_window_output(&mut vetoed);
         assert!(vetoed.seen().is_empty());
 
         let mut settled = WindowCommands::default();
-        driver.drain_window_output(&mut settled);
+        driver.frames.drain_window_output(&mut settled);
         assert!(settled.seen().is_empty());
-        assert!(!driver.ui.window_requests().close_vetoed);
+        assert!(!driver.frames.ui.window_requests().close_vetoed);
         assert_eq!(
-            driver.ui.window_requests().commands.capacity(),
+            driver.frames.ui.window_requests().commands.capacity(),
             capacity,
             "draining must not hand away the recorder's buffer"
         );
@@ -354,21 +363,38 @@ mod output_validity_tests {
         let mut driver = driver(WindowToken(3), &shared);
         let mut commands = WindowCommands::default();
 
-        assert_eq!(driver.ui.vsync(), Vsync::On, "vsync is on unless asked off");
-        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::On);
-
-        driver.ui.set_vsync(Vsync::Off);
-        assert_eq!(driver.ui.vsync(), Vsync::Off, "the setter reads back");
-        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::Off);
         assert_eq!(
-            driver.drain_window_output(&mut commands).vsync,
+            driver.frames.ui.vsync(),
+            Vsync::On,
+            "vsync is on unless asked off"
+        );
+        assert_eq!(
+            driver.frames.drain_window_output(&mut commands).vsync,
+            Vsync::On
+        );
+
+        driver.frames.ui.set_vsync(Vsync::Off);
+        assert_eq!(
+            driver.frames.ui.vsync(),
+            Vsync::Off,
+            "the setter reads back"
+        );
+        assert_eq!(
+            driver.frames.drain_window_output(&mut commands).vsync,
+            Vsync::Off
+        );
+        assert_eq!(
+            driver.frames.drain_window_output(&mut commands).vsync,
             Vsync::Off,
             "the level survives the drain that delivered it",
         );
 
-        driver.ui.set_vsync(Vsync::On);
-        driver.ui.set_vsync(Vsync::Off);
-        assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::Off);
+        driver.frames.ui.set_vsync(Vsync::On);
+        driver.frames.ui.set_vsync(Vsync::Off);
+        assert_eq!(
+            driver.frames.drain_window_output(&mut commands).vsync,
+            Vsync::Off
+        );
     }
 
     fn report(plan: Option<RenderPlan>) -> FrameReport {
@@ -421,11 +447,11 @@ mod output_validity_tests {
         };
         // Whether noting `spec` cleared what a kept target holds.
         let mut clears = |spec: &FrameSpec| {
-            driver.output_valid = true;
+            driver.damage_base = DamageBase::Prev;
             driver.stream.assume_backbuffer_fresh();
             driver.note_target(spec);
-            assert_eq!(driver.output_valid, driver.stream.is_backbuffer_fresh());
-            !driver.output_valid
+            assert_eq!(driver.output_valid(), driver.stream.is_backbuffer_fresh());
+            !driver.output_valid()
         };
         for (label, spec, want) in [
             ("the first target", first, true),
@@ -450,9 +476,12 @@ mod output_validity_tests {
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
-        assert!(!driver.output_valid, "first frame has no presented output");
+        assert!(
+            !driver.output_valid(),
+            "first frame has no presented output"
+        );
 
-        driver.output_valid = true;
+        driver.damage_base = DamageBase::Prev;
         let paint = driver.finish_cpu_frame(
             &mut frontend,
             &mut CutoutPlacements::default(),
@@ -463,13 +492,13 @@ mod output_validity_tests {
         );
         assert!(matches!(paint.mode, PresentPath::Direct(_)));
         assert!(
-            !driver.output_valid,
+            !driver.output_valid(),
             "paint stays pending until acquire and submit complete"
         );
 
         // The GPU half completes the paint (`offscreen::tests` runs it); a driver
         // without one has no submit, so the SkipNoop precondition is set here.
-        driver.output_valid = true;
+        driver.damage_base = DamageBase::Prev;
 
         let skip = driver.finish_cpu_frame(
             &mut frontend,
@@ -478,7 +507,7 @@ mod output_validity_tests {
         );
         assert!(matches!(skip.mode, PresentPath::SkipNoop));
         assert!(
-            driver.output_valid,
+            driver.output_valid(),
             "SkipNoop preserves valid target pixels"
         );
         assert!(
@@ -522,7 +551,7 @@ mod output_validity_tests {
         );
         assert!(matches!(skip_copy.mode, PresentPath::SkipCopy));
         assert!(
-            !driver.output_valid,
+            !driver.output_valid(),
             "SkipCopy stays pending until the copy is submitted"
         );
     }
@@ -561,6 +590,7 @@ mod lifecycle_tests {
 }
 
 mod record_store_tests {
+    use crate::damage::DamageBase;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::host::window_driver::tests::new_driver;
     use std::time::Duration;
@@ -618,7 +648,7 @@ mod record_store_tests {
     }
 
     fn snapshot(driver: &WindowDriver) -> RecordPayloadSnapshot {
-        let store = driver.ui.record_store();
+        let store = driver.frames.ui.record_store();
         RecordPayloadSnapshot {
             mesh_vertices: store.mesh_vertices.clone(),
             mesh_idxs: store.mesh_idxs.clone(),
@@ -673,7 +703,7 @@ mod record_store_tests {
             config(PresentStrategy::DirectAdaptive, false),
         );
         assert_eq!(window.strategy, PresentStrategy::DirectAdaptive);
-        assert!(!window.ui.pixel_snap());
+        assert!(!window.frames.pixel_snap());
         let mut app = LifecycleApp::default();
 
         let _ = window.cpu_frame(
@@ -777,7 +807,7 @@ mod record_store_tests {
             &mut app_a,
             FrameDepth::Paint(&mut CutoutPlacements::default()),
         );
-        window_a.output_valid = true;
+        window_a.damage_base = DamageBase::Prev;
         let retained = snapshot(&window_a);
         assert_eq!(retained.mesh_vertices.len(), 3);
         assert_eq!(retained.polyline_points.len(), 4);
@@ -797,7 +827,7 @@ mod record_store_tests {
             &mut app_b,
             FrameDepth::Paint(&mut CutoutPlacements::default()),
         );
-        window_b.output_valid = true;
+        window_b.damage_base = DamageBase::Prev;
         assert_eq!(snapshot(&window_a), retained);
 
         let paint_only = window_a.cpu_frame(
@@ -842,7 +872,10 @@ mod display_tests {
         assert_eq!(plain.scale_factor(), 2.0);
         assert!(!plain.pixel_snap, "the snap comes from the host, not here");
 
-        driver.ui.set_user_scale(UserScale::new(1.25).unwrap());
+        driver
+            .frames
+            .ui
+            .set_user_scale(UserScale::new(1.25).unwrap());
         let zoomed = driver.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
         assert_eq!(
             zoomed.system_scale,
@@ -871,9 +904,9 @@ mod display_tests {
             config(PresentStrategy::DirectAdaptive, true),
         );
 
-        first.ui.set_user_scale(UserScale::new(1.5).unwrap());
+        first.frames.ui.set_user_scale(UserScale::new(1.5).unwrap());
 
-        assert_eq!(second.ui.user_scale(), UserScale::new(1.5).unwrap());
+        assert_eq!(second.frames.ui.user_scale(), UserScale::new(1.5).unwrap());
         assert_eq!(
             second
                 .stamp(&spec(UVec2::new(400, 400), 1.0))
@@ -892,7 +925,7 @@ mod cutout_census_tests {
 
     use glam::UVec2;
 
-    use crate::damage::Damage;
+    use crate::damage::{Damage, DamageBase};
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
@@ -976,7 +1009,7 @@ mod cutout_census_tests {
             tick.set(tick_now);
             let depth = FrameDepth::Paint(&mut placements);
             let frame = driver.cpu_frame(&mut frontend, display, &mut app, depth);
-            driver.output_valid = true;
+            driver.damage_base = DamageBase::Prev;
             match frame.mode {
                 PresentPath::ViaBackbuffer(plan) => plan.damage,
                 mode => panic!("a painting frame through the backbuffer, not {mode:?}"),

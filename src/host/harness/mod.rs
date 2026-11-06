@@ -251,7 +251,7 @@ impl Harness {
         };
         #[cfg(test)]
         {
-            harness.window.driver.ui.theme_mut().text.font_size = FIXTURE_FONT_SIZE;
+            harness.window.driver.frames.ui.theme_mut().text.font_size = FIXTURE_FONT_SIZE;
         }
         harness.sync_display();
         harness.mark_warm();
@@ -284,7 +284,13 @@ impl Harness {
         self.deliver_held_input(&mut |ui: &mut Ui| {
             record(ui);
         });
-        let mut warmup = self.window.driver.ui.frame_runtime().is_first_frame();
+        let mut warmup = self
+            .window
+            .driver
+            .frames
+            .ui
+            .frame_runtime()
+            .is_first_frame();
         let mut first = None;
         self.step(|ui| {
             // `record` runs on every pass: skipping it would record an empty tree.
@@ -347,7 +353,7 @@ impl Harness {
     /// Move the clock past the double-click interval, so the next press starts a new run of
     /// clicks. Runs no frame.
     pub fn advance_past_double_click(&mut self) -> &mut Self {
-        let interval = self.window.driver.ui.double_click_interval();
+        let interval = self.window.driver.frames.ui.double_click_interval();
         self.advance(interval + Duration::from_millis(1))
     }
 
@@ -425,13 +431,13 @@ impl Harness {
                     "{button:?} is already held; release it before pressing it again",
                 );
                 self.held[button.idx()] = Some(PressOrigin {
-                    at: self.window.driver.ui.input().pointer_pos(),
+                    at: self.window.driver.frames.ui.input().pointer_pos(),
                 });
             }
             InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
             _ => {}
         }
-        self.window.driver.ui.on_input(event, self.time)
+        self.window.driver.frames.on_input(event, self.time)
     }
 
     /// Move the pointer to `at`.
@@ -580,7 +586,13 @@ impl Harness {
         if mods == ShortcutMods::NONE {
             return send(self);
         }
-        let held = self.window.driver.ui.input().modifiers_after_held_input();
+        let held = self
+            .window
+            .driver
+            .frames
+            .ui
+            .input()
+            .modifiers_after_held_input();
         self.hold_modifiers(mods.held());
         let delta = send(self);
         self.hold_modifiers(held);
@@ -590,7 +602,15 @@ impl Harness {
     /// Hold `mods` from now on. Sends nothing when they are held already, counting input that
     /// waits for a later frame.
     pub fn hold_modifiers(&mut self, mods: Modifiers) -> InputDelta {
-        if self.window.driver.ui.input().modifiers_after_held_input() == mods {
+        if self
+            .window
+            .driver
+            .frames
+            .ui
+            .input()
+            .modifiers_after_held_input()
+            == mods
+        {
             InputDelta::default()
         } else {
             self.on_input(InputEvent::ModifiersChanged(mods))
@@ -621,20 +641,20 @@ impl Harness {
     /// closure app reads it here; a [session](Self::session) lists the same through
     /// [`AgentWindow::widgets`](crate::AgentWindow::widgets).
     pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget> {
-        InspectedWidget::visible(&self.window.driver.ui, filter)
+        InspectedWidget::visible(&self.window.driver.frames.ui, filter)
     }
 
     /// `id`'s visible rect in the last frame: after transforms and clips, what the pointer hits.
     /// [`Self::arranged`] is the rect a layout test means; the two differ only under a
     /// transform or a clip.
     pub fn rect(&self, id: WidgetId) -> Option<Rect> {
-        self.window.driver.ui.response_for(id).rect
+        self.window.driver.frames.ui.response_for(id).rect
     }
 
     /// `id`'s arranged rect in the last frame: before transforms, not clipped; `None` when `id`
     /// did not arrange in it.
     pub fn arranged(&self, id: WidgetId) -> Option<Rect> {
-        self.window.driver.ui.response_for(id).layout_rect
+        self.window.driver.frames.ui.response_for(id).layout_rect
     }
 
     /// The window point of `local`, a point in `id`'s arranged space, through every ancestor
@@ -647,12 +667,12 @@ impl Harness {
     /// hovers.
     #[track_caller]
     pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2 {
-        let response = self.window.driver.ui.response_for(id);
+        let response = self.window.driver.frames.ui.response_for(id);
         let layout = response.layout_rect.unwrap_or_else(|| {
             panic!("{id:?} has no arranged rect: it did not record, or no frame ran")
         });
         let pos = response.transform.apply_point(layout.min + local);
-        let cascade = self.window.driver.ui.cascade();
+        let cascade = self.window.driver.frames.ui.cascade();
         let routing = cascade
             .hit_rows()
             .iter()
@@ -671,13 +691,18 @@ impl Harness {
 
     /// The topmost widget a hover at `pos` reaches.
     pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
-        self.window.driver.ui.cascade().hit_test(pos, Sense::hovers)
+        self.window
+            .driver
+            .frames
+            .ui
+            .cascade()
+            .hit_test(pos, Sense::hovers)
     }
 
     /// `id`'s state row of type `S`, as [`Ui::state`] reads it; `None` when there is no such
     /// row.
     pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
-        self.window.driver.ui.state::<S>(id)
+        self.window.driver.frames.ui.state::<S>(id)
     }
 
     /// Every window the frames opened or closed, oldest first: a harness has one window, and
@@ -697,6 +722,7 @@ impl Harness {
     pub fn clipboard_text(&self) -> Option<String> {
         self.window
             .driver
+            .frames
             .ui
             .clipboard()
             .text()
@@ -707,6 +733,7 @@ impl Harness {
     pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self {
         self.window
             .driver
+            .frames
             .ui
             .clipboard()
             .set_text(text)
@@ -760,16 +787,16 @@ impl Harness {
 
     /// The window's `Ui`, for what no method here reads.
     pub const fn ui(&self) -> &Ui {
-        &self.window.driver.ui
+        &self.window.driver.frames.ui
     }
 
     /// The window's `Ui`, to change what no method here changes.
     pub const fn ui_mut(&mut self) -> &mut Ui {
-        &mut self.window.driver.ui
+        &mut self.window.driver.frames.ui
     }
 
     fn deliver_held_input(&mut self, app: &mut impl App) {
-        while self.window.driver.ui.input().has_held_input() {
+        while self.window.driver.frames.ui.input().has_held_input() {
             self.drive(app);
         }
     }
@@ -800,18 +827,18 @@ impl Harness {
     /// right.
     fn sync_display(&mut self) {
         let stamp = self.window.driver.stamp(&self.spec());
-        self.window.driver.ui.set_display(stamp.display);
+        self.window.driver.frames.set_display(stamp.display);
     }
 
     fn mark_warm(&mut self) {
         let stamp = self.window.driver.stamp(&self.spec());
-        self.window.driver.ui.set_prev_stamp(Some(stamp));
+        self.window.driver.frames.set_prev_stamp(Some(stamp));
     }
 
     /// The point `at` names, for an input method.
     #[track_caller]
     fn aim(&self, at: &Locator) -> Vec2 {
-        at.find(&(), &self.window.driver.ui)
+        at.find(&(), &self.window.driver.frames.ui)
             .unwrap_or_else(|error| panic!("{error}"))
             .point
     }
@@ -852,11 +879,10 @@ pub(crate) mod internals {
     use crate::damage::Damage;
     use crate::damage::region::{CollapsedDamage, DamageRegion, MergePolicy};
     use crate::host::harness::{Harness, HarnessPaint};
-    use crate::host::window_driver::internals::DriverParts;
     use crate::renderer::frontend::BuildPlan;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::ui::frame_engines::FrameEngines;
+    use crate::ui::frame_loop::FrameLoop;
     #[cfg(test)]
     use crate::{
         input::input_event::InputEvent,
@@ -907,7 +933,7 @@ pub(crate) mod internals {
         /// it: the encode and compose alone, as a bench times them.
         pub(crate) fn rebuild(&mut self, plan: RenderPlan) -> &RenderBuffer {
             self.window.cpu.frontend.build(
-                self.window.driver.ui.frame_scene(),
+                self.window.driver.frames.frame_scene(),
                 BuildPlan::without_panes(plan),
             );
             &self.window.cpu.frontend.buffer
@@ -917,7 +943,7 @@ pub(crate) mod internals {
         /// [`Depth::Compose`](crate::Depth::Compose), it paints nothing.
         pub fn paint_full(&mut self) {
             let plan = RenderPlan {
-                clear: self.window.driver.ui.theme().window_bg,
+                clear: self.window.driver.frames.ui.theme().window_bg,
                 damage: Damage::Full,
             };
             self.window
@@ -938,21 +964,21 @@ pub(crate) mod internals {
             target.read_back()
         }
 
-        pub(crate) const fn engines(&self) -> &FrameEngines {
-            self.window.driver.engines()
+        /// The window's `Ui` and the engines its frames run on.
+        pub(crate) const fn frames(&self) -> &FrameLoop {
+            &self.window.driver.frames
         }
 
-        /// The window's `Ui` and the engines its frames run on, borrowed at once.
-        pub(crate) const fn parts(&mut self) -> DriverParts<'_> {
-            self.window.driver.parts()
+        pub(crate) const fn frames_mut(&mut self) -> &mut FrameLoop {
+            &mut self.window.driver.frames
         }
 
         /// This frame's raw damage rects, collapsed as the damage engine collapses them.
         pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
             DamageRegion::collapse_from(
-                self.engines().damage.raw_rects(),
+                self.frames().damage.raw_rects(),
                 MergePolicy::DEFAULT,
-                self.window.driver.ui.display().logical_rect(),
+                self.window.driver.frames.ui.display().logical_rect(),
             )
         }
 
@@ -1026,7 +1052,7 @@ pub(crate) mod internals {
         /// [`Self::mono`] with a cold recorder: frame 1 runs the warmup pass.
         pub(crate) fn cold(size: UVec2) -> Self {
             let mut harness = Self::mono(size);
-            harness.window.driver.ui.set_prev_stamp(None);
+            harness.window.driver.frames.set_prev_stamp(None);
             harness
         }
 
@@ -1054,7 +1080,13 @@ pub(crate) mod internals {
 
         /// [`Self::frame_passes`] over exactly one frame, as [`Self::step`].
         pub(crate) fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
-            let mut warmup = self.window.driver.ui.frame_runtime().is_first_frame();
+            let mut warmup = self
+                .window
+                .driver
+                .frames
+                .ui
+                .frame_runtime()
+                .is_first_frame();
             let mut values = Vec::new();
             let report = self.step(|ui| {
                 let value = record(ui);
@@ -1106,7 +1138,7 @@ pub(crate) mod internals {
 
         /// `id`'s map from arranged space to the window, unchecked, unlike [`Self::point_in`].
         pub(crate) fn transform(&self, id: WidgetId) -> TranslateScale {
-            self.window.driver.ui.response_for(id).transform
+            self.window.driver.frames.ui.response_for(id).transform
         }
 
         /// The center of `id`'s visible rect, unchecked.
@@ -1119,18 +1151,20 @@ pub(crate) mod internals {
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             self.window
                 .driver
+                .frames
                 .ui
                 .forest()
                 .node_for_widget_id(Layer::Main, id)
         }
 
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {
-            self.window.driver.ui.cascade().endpoint(id)
+            self.window.driver.frames.ui.cascade().endpoint(id)
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
             self.window
                 .driver
+                .frames
                 .ui
                 .tree(Layer::Main)
                 .children(parent)
@@ -1141,15 +1175,21 @@ pub(crate) mod internals {
         pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
             self.window
                 .driver
+                .frames
                 .ui
                 .tree(Layer::Main)
                 .children(parent)
-                .map(|child| self.window.driver.ui.layout(Layer::Main).rect[child.id.idx()])
+                .map(|child| self.window.driver.frames.ui.layout(Layer::Main).rect[child.id.idx()])
                 .collect()
         }
 
         pub(crate) fn animation_row_count<T: Animatable>(&mut self) -> usize {
-            self.window.driver.ui.animation_mut().row_count::<T>()
+            self.window
+                .driver
+                .frames
+                .ui
+                .animation_mut()
+                .row_count::<T>()
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {
@@ -1162,11 +1202,11 @@ pub(crate) mod internals {
 
         fn encode(&self, damage: Damage) -> PaintCapture {
             let plan = RenderPlan {
-                clear: self.window.driver.ui.theme().window_bg,
+                clear: self.window.driver.frames.ui.theme().window_bg,
                 damage,
             };
             encoder::internals::encode(
-                self.window.driver.ui.frame_scene(),
+                self.window.driver.frames.frame_scene(),
                 &mut Encoder::default(),
                 plan,
             )

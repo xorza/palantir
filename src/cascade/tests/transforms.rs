@@ -200,7 +200,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     // Surface scale 1, so physical equals logical; the child's rounded rect is the only quad.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        h.ui().frame_scene(),
+        h.frames().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
             clear: h.ui().theme().window_bg,
             damage: Damage::Full,

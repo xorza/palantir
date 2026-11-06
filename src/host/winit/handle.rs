@@ -68,7 +68,7 @@ impl<T> fmt::Debug for UserEvent<T> {
 /// [`WinitHost::handle`](super::WinitHost::handle) before `run`.
 pub struct HostHandle<T: 'static> {
     pub(super) sender: EventSender<T>,
-    pub(super) frames: Arc<FrameLog>,
+    pub(super) frame_log: Arc<FrameLog>,
 }
 
 /// Where a handle's events go: the event loop, or in this crate's tests a channel a loop of
@@ -99,7 +99,7 @@ impl<T: 'static> Clone for HostHandle<T> {
         };
         Self {
             sender,
-            frames: Arc::clone(&self.frames),
+            frame_log: Arc::clone(&self.frame_log),
         }
     }
 }
@@ -132,7 +132,7 @@ impl<T: 'static> HostHandle<T> {
     /// The last frame `window` ran, or `None` before its first frame, after it closes, and
     /// once the loop ends. A window skips its frames while hidden, so its summary holds still.
     pub(crate) fn last_frame(&self, window: WindowToken) -> Option<FrameSummary> {
-        self.frames.get(window)
+        self.frame_log.get(window)
     }
 
     /// Whether `window` ran a frame and has not closed; `false` before its first frame and once
@@ -144,7 +144,7 @@ impl<T: 'static> HostHandle<T> {
     /// Whether `window` is minimized or occluded, which holds its frames until it shows; `false`
     /// once it closes and once the loop ends.
     pub fn is_hidden(&self, window: WindowToken) -> bool {
-        self.frames.is_hidden(window)
+        self.frame_log.is_hidden(window)
     }
 
     /// Schedules `f` on the main thread with `&mut` the app before the next

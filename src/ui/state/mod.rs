@@ -4,7 +4,7 @@
 //!
 //! A row is keyed by `(WidgetId, T)`: one id holds one row of each `T`, each in its own store, as an `EditableLabel` keeps its own row beside the `TextEditState` of the editor it records under the same id.
 //!
-//! When a widget stops being recorded, `FrameCycle::finalize_frame` calls `sweep_removed` once per frame; each store `swap_remove`s the row and patches the swapped neighbor via the `owners` vec in O(1).
+//! When a widget stops being recorded, `FrameLoop::finalize_frame` calls `sweep_removed` once per frame; each store `swap_remove`s the row and patches the swapped neighbor via the `owners` vec in O(1).
 
 use crate::primitives::identity::typed_stores::{Drained, TypedStore, TypedStores};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};

@@ -459,7 +459,7 @@ impl InputState {
 
     /// Feed a palantir-native input event, hit-tested against this frame's latest
     /// cascade. `now` is the arrival time on the host's clock (see
-    /// [`Ui::on_input`](crate::Ui::on_input)).
+    /// [`FrameLoop::on_input`](crate::ui::frame_loop::FrameLoop::on_input)).
     pub(crate) fn on_input(
         &mut self,
         event: InputEvent<'_>,
@@ -797,7 +797,7 @@ impl InputState {
         EventOutcome::repaint(observable)
     }
 
-    /// Read and reset [`Self::frame_had_action`]; [`crate::Ui::frame`] uses it to decide on a
+    /// Read and reset [`Self::frame_had_action`]; [`FrameLoop::frame`](crate::ui::frame_loop::FrameLoop::frame) uses it to decide on a
     /// discarded pre-pass.
     pub(crate) fn take_action_flag(&mut self) -> bool {
         mem::take(&mut self.frame_had_action)

@@ -6,7 +6,7 @@ use crate::widgets::text_edit::tests::*;
 
 const EDITOR: &str = "response-editor";
 
-/// Drives one frame and keeps each record pass's edges: `Ui::frame` re-records on relayout, so a per-frame edge
+/// Drives one frame and keeps each record pass's edges: `FrameLoop::frame` re-records on relayout, so a per-frame edge
 /// shows only in pass A.
 fn frame(h: &mut Harness, buf: &mut String) -> Passes<TextEditResponse> {
     h.frame_passes(|ui| {

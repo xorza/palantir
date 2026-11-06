@@ -15,7 +15,7 @@ use crate::widgets::{block::Block, button::Button, panel::Panel};
 #[test]
 fn prev_frame_empty_before_first_frame() {
     let mut h = Harness::mono(SURFACE);
-    assert!(h.parts().engines.damage.prev().is_empty());
+    assert!(h.frames_mut().damage.prev().is_empty());
 }
 
 /// After the first frame, painting widgets land in `prev` with their arranged rect and hash, chromeless parents via child-marker rows (union of paint-empty screens); a rowless node stays out.
@@ -34,19 +34,19 @@ fn prev_frame_captures_nodes_with_rows() {
             });
     });
     let frame_node = frame_node.unwrap();
-    let prev = h.engines().damage.prev();
+    let prev = h.frames().damage.prev();
     let snap = &prev[&WidgetId::from_hash("a")];
 
     assert!(prev.contains_key(&WidgetId::from_hash("root")));
     assert!(!prev.contains_key(&WidgetId::from_hash("empty")));
     assert_eq!(
-        h.engines()
+        h.frames()
             .damage
             .prev_paint_rect(WidgetId::from_hash("root")),
         Some(Rect::ZERO),
     );
     assert_eq!(
-        h.engines()
+        h.frames()
             .damage
             .prev_paint_rect(WidgetId::from_hash("a"))
             .unwrap(),
@@ -72,8 +72,7 @@ fn prev_frame_drops_disappeared_widgets() {
             });
     });
     assert!(
-        h.parts()
-            .engines
+        h.frames_mut()
             .damage
             .prev()
             .contains_key(&WidgetId::from_hash("gone"))
@@ -85,8 +84,7 @@ fn prev_frame_drops_disappeared_widgets() {
             .show(ui, |_| {});
     });
     assert!(
-        !h.parts()
-            .engines
+        !h.frames_mut()
             .damage
             .prev()
             .contains_key(&WidgetId::from_hash("gone"))
@@ -106,10 +104,10 @@ fn prev_frame_updates_on_authoring_change() {
         }
     };
     h.frame(paint(RgbaF32::srgb(0.2, 0.4, 0.8)));
-    let h1 = h.parts().engines.damage.prev()[&WidgetId::from_hash("a")].hash;
+    let h1 = h.frames_mut().damage.prev()[&WidgetId::from_hash("a")].hash;
 
     h.frame(paint(RgbaF32::srgb(0.9, 0.4, 0.8)));
-    let h2 = h.parts().engines.damage.prev()[&WidgetId::from_hash("a")].hash;
+    let h2 = h.frames_mut().damage.prev()[&WidgetId::from_hash("a")].hash;
     assert_ne!(h1, h2);
 }
 
@@ -118,18 +116,18 @@ fn prev_frame_updates_on_authoring_change() {
 fn the_laid_out_scale_moves_with_the_frame_not_the_write() {
     use crate::display::user_scale::UserScale;
     let h = Harness::cold(glam::UVec2::new(200, 100));
-    assert_eq!(h.ui().laid_out_scale(), None, "nothing laid out yet");
+    assert_eq!(h.frames().laid_out_scale(), None, "nothing laid out yet");
     let mut h = Harness::builder(glam::UVec2::new(200, 100))
         .mono()
         .system_scale(SystemScale::new(2.0).unwrap())
         .build();
     h.frame(|_| {});
-    assert_eq!(h.ui().laid_out_scale(), Some(2.0));
+    assert_eq!(h.frames().laid_out_scale(), Some(2.0));
 
     let bigger = UserScale::ONE.stepped_up();
     h.ui_mut().set_user_scale(bigger);
     assert_eq!(
-        h.ui().laid_out_scale(),
+        h.frames().laid_out_scale(),
         Some(2.0),
         "a write between frames does not move the cascade's scale",
     );

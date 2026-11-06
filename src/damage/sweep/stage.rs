@@ -179,7 +179,7 @@ impl Stage {
         h.frame(|ui| self.record(&mut scene, ui));
         settle_look(h.ui_mut(), 1);
         h.frame(|ui| self.record(&mut scene, ui));
-        let frame_scene = h.ui().frame_scene();
+        let frame_scene = h.frames().frame_scene();
         FrameFacts {
             surface: self.surface(),
             rows_per_mpx: rows_per_mpx(frame_scene.visible_row_count(), self.physical),

@@ -14,7 +14,7 @@
 //! 3. **Removed-widget diff and rollover.** [`SeenIds::rollover`] puts ids present
 //!    in the last painted frame but absent now into `removed` (for damage, text,
 //!    measure cache, state, animation), then swaps `cur` and `prev`, once per
-//!    frame from `FrameCycle::finalize_frame`. Ids seen only in a discarded pass go
+//!    frame from `FrameLoop::finalize_frame`. Ids seen only in a discarded pass go
 //!    to `discarded` at the next `pre_record` and fold into `removed`, or their rows
 //!    would leak and resume stale.
 //!

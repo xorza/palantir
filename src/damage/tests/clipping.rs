@@ -127,7 +127,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .show(ui, build);
         });
         let prev_rect = h
-            .engines()
+            .frames()
             .damage
             .prev_paint_rect(WidgetId::from_hash("card"))
             .expect("card painted last frame");

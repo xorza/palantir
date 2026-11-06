@@ -49,7 +49,7 @@ fn window_requests_reach_the_host_after_the_frame() {
         !h.ui().is_window_open(open),
         "empty live set ⇒ nothing open"
     );
-    h.ui().window_directory().add(open);
+    h.ui().resources.windows().add(open);
     assert!(h.ui().is_window_open(open));
     assert!(!h.ui().is_window_open(close), "only `open` is live");
 

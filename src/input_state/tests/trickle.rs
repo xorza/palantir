@@ -348,7 +348,7 @@ fn a_press_of_a_held_button_ends_the_lost_capture_without_a_click() {
     h.prime(2, watched_scene);
     h.press(TARGET, PointerButton::Left);
     h.step(watched_scene);
-    h.ui_mut().on_input(
+    h.frames_mut().on_input(
         InputEvent::PointerPressed(PointerButton::Left),
         Duration::ZERO,
     );

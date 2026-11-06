@@ -45,24 +45,27 @@ fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
 fn a_quiet_frame_records_no_command_and_clears_the_veto() {
     let shared = UiResources::isolated_mono();
     let mut quiet = driver(WindowToken(1), &shared);
-    quiet.ui.keep_open();
-    quiet.ui.set_vsync(Vsync::Off);
-    quiet.ui.request_cursor(CursorIcon::Text);
+    quiet.frames.ui.keep_open();
+    quiet.frames.ui.set_vsync(Vsync::Off);
+    quiet.frames.ui.request_cursor(CursorIcon::Text);
     let mut commands = WindowCommands::default();
 
     record_window_commands(&mut quiet, &mut commands);
 
     assert!(commands.as_slice().is_empty());
     assert!(
-        !quiet.ui.window_requests().close_vetoed,
+        !quiet.frames.ui.window_requests().close_vetoed,
         "a veto against a close that was never requested must not persist"
     );
     assert_eq!(
-        quiet.ui.vsync(),
+        quiet.frames.ui.vsync(),
         Vsync::Off,
         "a level the host cannot apply is still the one the app set",
     );
-    assert_eq!(quiet.ui.window_requests().levels.cursor, CursorIcon::Text);
+    assert_eq!(
+        quiet.frames.ui.window_requests().levels.cursor,
+        CursorIcon::Text
+    );
 }
 
 /// A frame's opens and closes are recorded in the order called, and the next frame's replace
@@ -72,9 +75,10 @@ fn a_frame_records_its_window_commands_and_the_next_replaces_them() {
     let shared = UiResources::isolated_mono();
     let mut host = driver(WindowToken(1), &shared);
     let mut commands = WindowCommands::default();
-    host.ui
+    host.frames
+        .ui
         .open_window(WindowToken(9), WindowConfig::new("other"));
-    host.ui.close_window(WindowToken(4));
+    host.frames.ui.close_window(WindowToken(4));
 
     record_window_commands(&mut host, &mut commands);
     assert!(matches!(

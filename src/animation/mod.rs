@@ -61,7 +61,7 @@ impl AnimationMap {
 
     /// Drop every row that render frame `render_frame_id` did not tick: a removed widget's, and a
     /// slot its caller stopped asking for. Once per recorded frame, from
-    /// `FrameCycle::finalize_frame`; a row ticked under an id no widget recorded stays.
+    /// `FrameLoop::finalize_frame`; a row ticked under an id no widget recorded stays.
     ///
     /// A typed map that drains to empty is dropped ([`Drained::Drop`]), so an app gone idle holds none.
     pub(crate) fn sweep(&mut self, render_frame_id: u64) {

@@ -1,4 +1,4 @@
-//! Per-frame damage detection, computed in [`Ui::frame`](crate::Ui::frame)
+//! Per-frame damage detection, computed in [`FrameLoop::frame`](crate::ui::frame_loop::FrameLoop::frame)
 //! after `compute_rollups`, rebuilding the prev-frame snapshot in the same
 //! pass. `PlaneWalk::classify` reads `DamageEngine.prev` to pick a tier and
 //! the tier's arm writes the same key back; the read repeats so a live `Entry`

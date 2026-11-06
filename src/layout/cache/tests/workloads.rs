@@ -29,7 +29,7 @@ fn adversarial_workloads_retain_one_row_per_node() {
         "viewport + {DEEP_DEPTH} nested panels + leaf",
     );
     assert_eq!(
-        deep.engines().layout.cache.captured_desired().len(),
+        deep.frames().layout.cache.captured_desired().len(),
         deep_nodes,
         "deep trees retain one row per node",
     );
@@ -46,7 +46,7 @@ fn adversarial_workloads_retain_one_row_per_node() {
     );
     let broad_nodes = 1 + panel_count + leaf_count;
     assert_eq!(
-        broad.engines().layout.cache.captured_desired().len(),
+        broad.frames().layout.cache.captured_desired().len(),
         broad_nodes,
         "balanced trees retain one row per node",
     );
@@ -66,7 +66,7 @@ fn localized_change_hits_unchanged_sibling_subtrees() {
         let _ = h.frame(|ui| build_broad_variant(ui, None));
         let _ = h.frame(|ui| build_broad_variant(ui, Some(change)));
         let top = h.ui().tree(Layer::Main).records.widget_id()[1];
-        let hits = h.parts().engines.layout.scratch.counters.cache_hits();
+        let hits = h.frames_mut().layout.scratch.counters.cache_hits();
         assert_eq!(
             hits.len(),
             21,

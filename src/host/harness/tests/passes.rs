@@ -37,7 +37,7 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
         .mono()
         .system_scale(SystemScale::new(2.0).unwrap())
         .build();
-    scaled.ui_mut().set_prev_stamp(None);
+    scaled.frames_mut().set_prev_stamp(None);
     scaled.frame(|ui| {
         passes.0 += 1;
         support::button(ui);

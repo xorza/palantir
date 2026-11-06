@@ -1,11 +1,11 @@
 //! `WindowDriver`: the target-agnostic state one host target owns around the
-//! shared renderer: its [`Ui`] and its [`RenderStream`], which keeps what its frames hold on the
-//! device. The host owns the time and hands it in with each [`FrameSpec`]. CPU scratch
+//! shared renderer: its [`FrameLoop`] and its [`RenderStream`], which keeps what its frames hold on
+//! the device. The host owns the time and hands it in with each [`FrameSpec`]. CPU scratch
 //! lives on the shared [`Frontend`], shared GPU resources on the `WgpuBackend`, so N
 //! windows share one renderer without sharing frame-local geometry.
 
 use crate::common::tracy;
-use crate::damage::Damage;
+use crate::damage::{Damage, DamageBase};
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::system_scale::SystemScale;
@@ -25,14 +25,10 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::ui::app::App;
-use crate::ui::frame_engines::FrameEngines;
-use crate::ui::frame_input::FrameInput;
+use crate::ui::frame_loop::{FrameLoop, SubmitParts};
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
-use crate::ui::{SubmitParts, Ui};
 use crate::window::screenshot::{Screenshot, ScreenshotRequest};
-use crate::window::window_commands::WindowCommands;
-use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::collections::VecDeque;
@@ -41,16 +37,13 @@ use std::time::Duration;
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
 #[derive(Debug)]
 pub(super) struct WindowDriver {
-    pub(super) token: WindowToken,
-    pub(super) ui: Ui,
-    /// The layout / cascade / damage engines, held here out of authoring code's reach.
-    engines: FrameEngines,
+    /// The window's `Ui` and the engines its frames run on.
+    pub(super) frames: FrameLoop,
     /// What the window's frames keep on the device.
     stream: RenderStream,
-    /// Whether the last frame completed its presentation. Invalid while a paint/copy
-    /// is pending or after target invalidation, so the next frame drops its damage
-    /// baseline.
-    output_valid: bool,
+    /// What the next frame's damage diffs against: the last frame, once it completed its
+    /// presentation. Discarded while a paint/copy is pending or after target invalidation.
+    damage_base: DamageBase,
     /// Whether the target holds the damage outline the last painted frame drew onto it, which a
     /// frame that keeps the target's pixels would keep too.
     target_outlined: bool,
@@ -279,15 +272,6 @@ pub(super) struct CpuFrame {
     pub(super) mode: PresentPath,
 }
 
-/// Retires this driver's token from the
-/// [`WindowDirectory`](crate::window::window_directory::WindowDirectory) on drop,
-/// so no close path can leave `Ui::is_window_open` true.
-impl Drop for WindowDriver {
-    fn drop(&mut self) {
-        self.ui.window_directory().remove(self.token);
-    }
-}
-
 impl WindowDriver {
     /// A driver as `spec` says over the shared [`UiResources`], on a detached stream until the
     /// host [attaches](Self::attach) its device's; registered in the window directory here, as
@@ -298,13 +282,10 @@ impl WindowDriver {
             owner,
             strategy,
         } = spec;
-        resources.windows().add(token);
         Self {
-            token,
-            engines: FrameEngines::new(resources),
-            ui: Ui::new(resources.clone()),
+            frames: FrameLoop::new(token, resources),
             stream: RenderStream::detached(owner, CutoutMode::Shade),
-            output_valid: false,
+            damage_base: DamageBase::Discarded,
             target_outlined: false,
             strategy,
             target: None,
@@ -348,8 +329,8 @@ impl WindowDriver {
         let display = Display {
             physical: spec.target.physical,
             system_scale: spec.system_scale,
-            user_scale: self.ui.user_scale(),
-            pixel_snap: self.ui.pixel_snap(),
+            user_scale: self.frames.ui.user_scale(),
+            pixel_snap: self.frames.pixel_snap(),
             refresh_millihertz: spec.refresh_millihertz,
         };
         FrameStamp::new(display, spec.now)
@@ -382,7 +363,7 @@ impl WindowDriver {
     /// [`Self::note_target`] makes it when the key moves, and the winit host when its
     /// swapchain rebuilds at the same key (new images: a lost, stale or repaced one).
     pub(super) const fn invalidate_target_contents(&mut self) {
-        self.output_valid = false;
+        self.damage_base = DamageBase::Discarded;
         self.stream.invalidate();
     }
 
@@ -401,15 +382,11 @@ impl WindowDriver {
         depth: FrameDepth<'_>,
     ) -> CpuFrame {
         tracy::zone!();
-        let report = self.ui.frame(
-            &mut self.engines,
-            FrameInput::new(stamp, self.output_valid, self.token),
-            app,
-        );
+        let report = self.frames.frame(stamp, self.damage_base, app);
         match depth {
             FrameDepth::Paint(placements) => self.finish_cpu_frame(frontend, placements, report),
             depth @ (FrameDepth::Record | FrameDepth::Compose) => {
-                self.ui
+                self.frames
                     .take_screenshot_requests(&mut self.screenshot_requests);
                 self.screenshot_requests.clear();
                 if matches!(depth, FrameDepth::Compose)
@@ -417,7 +394,7 @@ impl WindowDriver {
                 {
                     self.compose(frontend, plan);
                 }
-                self.output_valid = true;
+                self.damage_base = DamageBase::Prev;
                 CpuFrame {
                     report,
                     mode: PresentPath::SkipNoop,
@@ -472,7 +449,7 @@ impl WindowDriver {
             self.screenshot_requests.insert(requeued, request);
             requeued += 1;
         }
-        self.ui.set_screenshot_taken(landed);
+        self.frames.set_screenshot_taken(landed);
     }
 
     fn finish_cpu_frame(
@@ -483,7 +460,7 @@ impl WindowDriver {
     ) -> CpuFrame {
         #[cfg(feature = "internals")]
         self.apply_forced(&mut report);
-        self.ui
+        self.frames
             .take_screenshot_requests(&mut self.screenshot_requests);
         // A screenshot reads the backbuffer, so its frame paints all of it there, whatever
         // damage or present strategy the frame had.
@@ -491,7 +468,7 @@ impl WindowDriver {
         if capturing {
             report.plan = Some(report.plan.map_or(
                 RenderPlan {
-                    clear: self.ui.theme().window_bg,
+                    clear: self.frames.ui.theme().window_bg,
                     damage: Damage::Full,
                 },
                 RenderPlan::to_full,
@@ -502,7 +479,7 @@ impl WindowDriver {
             .plan
             .is_some_and(|plan| matches!(plan.damage, Damage::Partial(_)));
         let promote_share = partial.then(|| {
-            let scene = self.ui.frame_scene();
+            let scene = self.frames.frame_scene();
             promote_share(
                 scene.visible_row_count(),
                 scene.pane_share(),
@@ -522,7 +499,7 @@ impl WindowDriver {
         };
         let mut mode = path(report.plan, self.stream.is_backbuffer_fresh());
         if !matches!(mode, PresentPath::SkipNoop) {
-            self.output_valid = false;
+            self.damage_base = DamageBase::Discarded;
         }
         if let PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) = mode {
             // More panes capture than the repaint holds scissors for: the frame paints whole,
@@ -543,7 +520,7 @@ impl WindowDriver {
             }
             // The disjoint scissors outgrow their cap: the frame paints whole, known before it
             // builds.
-            let display = self.ui.frame_scene().stamp.display;
+            let display = self.frames.frame_scene().stamp.display;
             let scissors = if let Some(scissors) = RepaintScissors::new(
                 plan.damage,
                 &display,
@@ -583,11 +560,11 @@ impl WindowDriver {
 
     /// The ledger's tickets for a frame painted by `plan`.
     fn decide_panes(&mut self, plan: RenderPlan) -> Settled {
-        let scene = self.ui.frame_scene();
+        let scene = self.frames.frame_scene();
         self.pane_captures.decide(
             scene.panes(),
             scene.stamp.display,
-            PaneDamage::of(plan, self.engines.damage.dirty_panes()),
+            PaneDamage::of(plan, self.frames.damage.dirty_panes()),
         )
     }
 
@@ -596,13 +573,13 @@ impl WindowDriver {
     /// a culled unchanged view keeps its texture.
     fn build(&self, frontend: &mut Frontend, plan: RenderPlan) {
         frontend.build(
-            self.ui.frame_scene(),
+            self.frames.frame_scene(),
             BuildPlan {
                 render: plan,
                 panes: self.pane_captures.tickets(),
             },
         );
-        self.ui
+        self.frames
             .gpu_views()
             .collect_live_targets(&mut frontend.buffer.live_targets);
     }
@@ -674,12 +651,6 @@ impl WindowDriver {
         backend.retire_stream(&mut self.stream);
     }
 
-    /// [`Ui::drain_window_output`] bound to this driver's token; the offscreen
-    /// adapter drains into a dropped scratch buffer.
-    pub(super) fn drain_window_output(&mut self, commands: &mut WindowCommands) -> WindowOutput {
-        self.ui.drain_window_output(self.token, commands)
-    }
-
     /// GPU submit against a caller-supplied texture, dispatching on the sealed
     /// [`PresentPath`]. [`PresentPath::SkipCopy`] copies the backbuffer onto the target.
     pub(super) fn render_to_texture(
@@ -691,7 +662,7 @@ impl WindowDriver {
     ) {
         tracy::zone!();
         let size = target.size();
-        let display_physical = self.ui.display().physical;
+        let display_physical = self.frames.ui.display().physical;
         debug_assert!(
             size == display_physical,
             "render_to_texture: target size {}x{} doesn't match the display physical \
@@ -728,14 +699,14 @@ impl WindowDriver {
         );
         let (plan, route) = match mode {
             PresentPath::SkipNoop => {
-                self.output_valid = true;
+                self.damage_base = DamageBase::Prev;
                 return;
             }
             PresentPath::SkipCopy => {
                 // A `Skip` implies the previous frame painted at this size and format, so the
                 // backbuffer exists and matches.
                 backend.copy_backbuffer_to_surface(&self.stream, target);
-                self.output_valid = true;
+                self.damage_base = DamageBase::Prev;
                 self.target_outlined = false;
                 return;
             }
@@ -751,13 +722,13 @@ impl WindowDriver {
             ),
             "the scissors are the ones the CPU half fitted to this plan"
         );
-        let debug_overlay = self.ui.debug_overlay();
+        let debug_overlay = self.frames.ui.debug_overlay();
         self.target_outlined = debug_overlay.damage_rect;
         let SubmitParts {
             stats,
             store,
             gpu_views,
-        } = self.ui.submit_parts();
+        } = self.frames.submit_parts();
         backend.submit(
             &mut self.stream,
             target,
@@ -776,8 +747,8 @@ impl WindowDriver {
                 },
             },
         );
-        self.output_valid = true;
-        let display = self.ui.display();
+        self.damage_base = DamageBase::Prev;
+        let display = self.frames.ui.display();
         for request in self.screenshot_requests.drain(..) {
             debug_assert_eq!(
                 route,
@@ -805,19 +776,12 @@ impl WindowDriver {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::damage::Damage;
+    #[cfg(test)]
+    use crate::damage::DamageBase;
     use crate::host::window_driver::WindowDriver;
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::ui::Ui;
-    use crate::ui::frame_engines::FrameEngines;
     use crate::ui::frame_report::FrameReport;
-
-    /// A driver's `Ui` and engines, for a bench that runs one step of a frame on them.
-    #[derive(Debug)]
-    pub(crate) struct DriverParts<'a> {
-        pub(crate) ui: &'a mut Ui,
-        pub(crate) engines: &'a mut FrameEngines,
-    }
 
     /// What the next frame paints in place of its own damage.
     #[derive(Debug, Default)]
@@ -845,19 +809,14 @@ pub(crate) mod internals {
                 return;
             };
             report.plan = Some(RenderPlan {
-                clear: self.ui.theme().window_bg,
+                clear: self.frames.ui.theme().window_bg,
                 damage,
             });
             // A whole frame captures every pane and reports none stale.
             if matches!(damage, Damage::Full) {
                 return;
             }
-            let changed = &self.forced.changed;
-            for pane in self.ui.frame_scene().panes() {
-                if changed.iter().any(|rect| rect.intersects(pane.footprint)) {
-                    self.engines.damage.force_stale_pane(pane.key);
-                }
-            }
+            self.frames.force_stale_panes(&self.forced.changed);
         }
 
         /// Shade every shadow corner instead of baking tables: the visual suite's reference.
@@ -865,22 +824,10 @@ pub(crate) mod internals {
             self.stream.disable_cutout_tables();
         }
 
-        pub(crate) const fn engines(&self) -> &FrameEngines {
-            &self.engines
-        }
-
-        /// The `Ui` and the engines its frames run on, borrowed at once.
-        pub(crate) const fn parts(&mut self) -> DriverParts<'_> {
-            DriverParts {
-                ui: &mut self.ui,
-                engines: &mut self.engines,
-            }
-        }
-
         /// Whether the target holds this driver's last output; read by offscreen tests.
         #[cfg(test)]
         pub(crate) const fn output_valid(&self) -> bool {
-            self.output_valid
+            matches!(self.damage_base, DamageBase::Prev)
         }
 
         /// Whether a partial frame of this driver painted a damage canvas.

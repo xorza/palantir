@@ -1,12 +1,10 @@
-//! One frame's plain-data report from [`Ui::frame`].
-//!
-//! [`Ui::frame`]: crate::ui::Ui::frame
+//! One frame's plain-data report from [`FrameLoop::frame`](crate::ui::frame_loop::FrameLoop::frame).
 
 use crate::damage::Damage;
 use crate::renderer::render_plan::RenderPlan;
 use std::time::Duration;
 
-/// How `Ui::frame` resolved this frame: which passes ran. Crate-private, since it names the internal pass structure; consumers read [`FramePaint`].
+/// How `FrameLoop::frame` resolved this frame: which passes ran. Crate-private, since it names the internal pass structure; consumers read [`FramePaint`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FrameProcessing {
     /// Paint-anim-only short-circuit: no record, layout or cascade; only damage + encode + paint against the retained tree.
@@ -37,7 +35,7 @@ pub enum FramePaint {
     Partial,
 }
 
-/// What one call to [`Ui::frame`](crate::Ui) did, and what the host owes
+/// What one frame did, and what the host owes
 /// the next one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FrameReport {
@@ -46,7 +44,7 @@ pub struct FrameReport {
     /// Absolute Ui-time deadline at which the host should wake and run another frame; `None` for no scheduled wake. Set by [`crate::Ui::request_repaint_after`] and by a paint animation's next step.
     pub repaint_at: Option<Duration>,
     pub(crate) plan: Option<RenderPlan>,
-    /// Which passes ran, see [`FrameProcessing`]; `FrameCycle::run` asserts it against the paint outcome and tests read it.
+    /// Which passes ran, see [`FrameProcessing`]; `FrameLoop::frame` asserts it against the paint outcome and tests read it.
     pub(crate) processing: FrameProcessing,
 }
 

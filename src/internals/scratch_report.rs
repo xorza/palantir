@@ -91,7 +91,7 @@ impl Report {
                 h.frame(|ui| state.render(scale, ui));
             }
         }
-        let engines = h.engines();
+        let engines = h.frames();
         Self {
             scale,
             nodes: h.ui().forest().total_nodes(),

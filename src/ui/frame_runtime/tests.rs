@@ -19,7 +19,7 @@ struct Case {
     label: &'static str,
     prev: bool,
     display_changed: bool,
-    damage_baseline_valid: bool,
+    damage_base: DamageBase,
     wake: WakeReasons,
     repaint_requested: bool,
     input_policy: InputPolicy,
@@ -43,7 +43,7 @@ const QUIET: Case = Case {
     label: "quiet",
     prev: true,
     display_changed: false,
-    damage_baseline_valid: true,
+    damage_base: DamageBase::Prev,
     wake: WakeReasons::ANIMATION,
     repaint_requested: false,
     input_policy: InputPolicy::OnDelta,
@@ -76,7 +76,7 @@ fn frame_classification_covers_external_entry_facts() {
         },
         Case {
             label: "invalid prior output",
-            damage_baseline_valid: false,
+            damage_base: DamageBase::Discarded,
             expected: FramePlan::FullRecord {
                 base: DamageBase::Discarded,
             },
@@ -197,7 +197,7 @@ fn frame_classification_covers_external_entry_facts() {
         let actual = runtime.take_frame_plan(FrameClassifyInput {
             display,
             record_baseline: BASELINE,
-            damage_baseline_valid: case.damage_baseline_valid,
+            damage_base: case.damage_base,
             input_policy: case.input_policy,
             input_signal: case.input_signal,
             close_requested: case.close_requested,

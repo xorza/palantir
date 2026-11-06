@@ -119,8 +119,15 @@ mod tests {
         );
         core.device
             .submit(&mut core.cpu, &mut drawn, target.as_target(), mode);
-        assert!(drawn.ui.gpu_pass_stats().last_main_pass_cpu().is_some());
-        assert_eq!(idle.ui.gpu_pass_stats().last_main_pass_cpu(), None);
+        assert!(
+            drawn
+                .frames
+                .ui
+                .gpu_pass_stats()
+                .last_main_pass_cpu()
+                .is_some()
+        );
+        assert_eq!(idle.frames.ui.gpu_pass_stats().last_main_pass_cpu(), None);
     }
 
     /// A closing window gives back to the backend the cutout cells its plan holds, and only its own:

@@ -679,7 +679,7 @@ fn a_scene_counts_the_rows_that_draw_on_the_surface() {
                     }
                 });
         });
-        h.ui().frame_scene().visible_row_count()
+        h.frames().frame_scene().visible_row_count()
     };
     assert_eq!(count(0), 1);
     assert_eq!(count(3), 1);
@@ -706,7 +706,7 @@ fn a_scene_reads_the_share_its_panes_hold() {
                 });
         };
         h.frame(record);
-        h.ui().frame_scene().pane_share()
+        h.frames().frame_scene().pane_share()
     };
     assert_eq!(share(0), 0.0);
     assert_eq!(share(1), 1.0);

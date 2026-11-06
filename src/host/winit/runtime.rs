@@ -45,7 +45,7 @@ pub(super) struct WinitRuntime<T: 'static> {
     /// The failed attempts of a device recovery under way.
     recovery: RecoveryBackoff,
     /// Each window's last frame, which the [`HostHandle`]s read.
-    frames: Arc<FrameLog>,
+    frame_log: Arc<FrameLog>,
     /// The handle each window's [`Waker`] asks for its frames through.
     handle: HostHandle<T>,
     /// Follows the system's settings while the host runs; dropping it ends the following.
@@ -103,14 +103,14 @@ impl<T: App + 'static> WinitRuntime<T> {
         // Before the first `Ui`, so it starts in the system's scheme.
         let _ = system.apply(&core.cpu.resources);
         let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
-        driver.ui.set_waker(Self::waker(&handle, token));
+        driver.frames.set_waker(Self::waker(&handle, token));
         let create_app = bootstrap
             .create_app
             .take()
             .expect("bootstrap app factory already consumed");
         let pending_tasks = mem::take(&mut bootstrap.pending_tasks);
 
-        let frames = Arc::clone(&handle.frames);
+        let frame_log = Arc::clone(&handle.frame_log);
         let own_handle = handle.clone();
         let system_preferences = {
             let handle = handle.clone();
@@ -119,7 +119,7 @@ impl<T: App + 'static> WinitRuntime<T> {
                 handle.send(UserEvent::SystemPreferences(preferences)).ok();
             })
         };
-        let mut app = create_app(&mut driver.ui, handle);
+        let mut app = create_app(&mut driver.frames.ui, handle);
         for task in pending_tasks {
             task(&mut app);
         }
@@ -139,7 +139,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             windows,
             pending_commands: WindowCommands::default(),
             recovery: RecoveryBackoff::default(),
-            frames,
+            frame_log,
             handle: own_handle,
             _system_preferences: system_preferences,
         };
@@ -185,7 +185,8 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Publish whether the window at `slot` is hidden, for the handles to read.
     pub(super) fn log_visibility(&mut self, slot: WindowSlot) {
         let win = self.windows.at(slot);
-        self.frames.set_hidden(win.driver.token, win.is_hidden());
+        self.frame_log
+            .set_hidden(win.driver.frames.token(), win.is_hidden());
     }
 
     /// Paint one window; it drains its commands into the pending queue. A lost device is replaced
@@ -207,7 +208,8 @@ impl<T: App + 'static> WinitRuntime<T> {
             Instant::now(),
             |win| {
                 let ran = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)?;
-                self.frames.record(win.driver.token, ran.summary);
+                self.frame_log
+                    .record(win.driver.frames.token(), ran.summary);
                 Some(ran.ran_app)
             },
             Instant::now,
@@ -269,7 +271,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// new surface.
     fn attach_new_device(&mut self) -> Result<(), WinitHostError> {
         let first = self.windows.iter_mut().next().expect("a window draws");
-        let token = first.driver.token;
+        let token = first.driver.frames.token();
         let gpu = self
             .surfaces
             .reopen(&first.window, &mut first.surface)
@@ -363,7 +365,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             )
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let mut driver = self.core.open(token, PresentStrategy::DirectAdaptive);
-        driver.ui.set_waker(Self::waker(&self.handle, token));
+        driver.frames.set_waker(Self::waker(&self.handle, token));
         self.windows.push(Window::new(OpenedWindow {
             window,
             surface,
@@ -391,7 +393,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             driver,
             ..
         } = win;
-        self.frames.remove(driver.token);
+        self.frame_log.remove(driver.frames.token());
         self.core.device.close(driver);
         drop(surface);
         debug_assert_eq!(
@@ -406,6 +408,6 @@ impl<T: App + 'static> WinitRuntime<T> {
 /// again after a pause.
 fn renew_surface(surfaces: &SurfaceManager, win: &mut Window, max_texture_dim: NonZeroU32) {
     if let Err(error) = surfaces.renew(&win.window, &mut win.surface, max_texture_dim) {
-        tracing::error!(token = ?win.driver.token, %error, "window surface not made again");
+        tracing::error!(token = ?win.driver.frames.token(), %error, "window surface not made again");
     }
 }

@@ -470,7 +470,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     frame(&mut h, |ui| build(true, ui)); // settle
 
     let prev_shapes = h
-        .engines()
+        .frames()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"));
     assert_eq!(prev_shapes.len(), 3);
@@ -479,7 +479,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 
     frame(&mut h, |ui| build(false, ui));
 
-    let post = h.parts().engines.damage.prev[&WidgetId::from_hash("canvas")];
+    let post = h.frames_mut().damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(
         post.paint_span.len, 2,
         "snapshot tail must be trimmed to the new paint count",
@@ -539,7 +539,7 @@ fn shape_added_in_middle_damages_only_new() {
     frame(&mut h, |ui| build(false, ui)); // settle
 
     let prev_shapes: Vec<_> = h
-        .engines()
+        .frames()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))
         .to_vec();
@@ -549,11 +549,11 @@ fn shape_added_in_middle_damages_only_new() {
 
     frame(&mut h, |ui| build(true, ui)); // insert green between
 
-    let post = h.parts().engines.damage.prev[&WidgetId::from_hash("canvas")];
+    let post = h.frames_mut().damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
     let cur_shapes: Vec<_> = h
-        .engines()
+        .frames()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))
         .to_vec();
@@ -759,15 +759,15 @@ fn a_hidden_container_takes_no_snapshot() {
             });
     });
     assert!(
-        h.parts().engines.damage.prev.contains_key(&shown),
+        h.frames_mut().damage.prev.contains_key(&shown),
         "a painting sibling is in the map, so the frame filled it",
     );
     assert!(
-        !h.parts().engines.damage.prev.contains_key(&hidden),
+        !h.frames_mut().damage.prev.contains_key(&hidden),
         "a rowless container must not take a snapshot",
     );
     assert!(
-        !h.parts().engines.damage.prev.contains_key(&hidden_child),
+        !h.frames_mut().damage.prev.contains_key(&hidden_child),
         "a `Visible` child under it is rowless for the same reason",
     );
 }
@@ -814,7 +814,7 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
         }
         for (widget_id, what) in [(child, "child"), (grandchild, "grandchild")] {
             assert!(
-                !h.parts().engines.damage.prev.contains_key(&widget_id),
+                !h.frames_mut().damage.prev.contains_key(&widget_id),
                 "{vis:?}: the {what} paints nothing now, so its snapshot must go",
             );
         }
@@ -851,7 +851,7 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
     let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| deck(ui, false));
     frame(&mut h, |ui| deck(ui, true));
-    let raw = &h.engines().damage.raw_rects;
+    let raw = &h.frames().damage.raw_rects;
     assert_eq!(raw.len(), 199, "{raw:?}");
     assert!(raw.iter().all(|&r| r == CARD));
 }

@@ -55,7 +55,6 @@ use crate::theme::palette::Palette;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::ui_preferences::UiPreferences;
-use crate::window::window_token::WindowToken;
 use criterion::Criterion;
 use glam::UVec2;
 use std::rc::Rc;
@@ -559,10 +558,7 @@ fn record<S: Scene>(c: &mut Criterion) {
         h.frame(|ui| state.record(ui));
         let mut app = |ui: &mut Ui| state.record(ui);
         let mut pass = || {
-            let parts = h.parts();
-            parts
-                .ui
-                .record_alone(parts.engines, WindowToken(0), &mut app);
+            h.frames_mut().record_alone(&mut app);
         };
         pass();
         b.iter(&mut pass);

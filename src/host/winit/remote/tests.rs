@@ -116,7 +116,7 @@ struct Loop {
     h: Harness,
     app: Counter,
     remote: RemoteEnd,
-    frames: Arc<FrameLog>,
+    frame_log: Arc<FrameLog>,
     start: Instant,
     repaint: bool,
 }
@@ -132,7 +132,7 @@ impl Loop {
         if self.repaint {
             self.h.wait_for_gpu();
         }
-        self.frames.record(WINDOW, summary);
+        self.frame_log.record(WINDOW, summary);
     }
 
     /// Serve `events` until a quit: an event of another window is dropped, as no window holds it.
@@ -168,7 +168,7 @@ impl Loop {
                     task(&mut self.app);
                 }
                 UserEvent::Quit => {
-                    self.frames.remove(WINDOW);
+                    self.frame_log.remove(WINDOW);
                     return;
                 }
                 _ => continue,
@@ -181,10 +181,10 @@ impl Loop {
 /// A handle to a loop of the test's own on a thread of its own.
 fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
     let (sender, events) = mpsc::channel();
-    let frames = Arc::new(FrameLog::default());
+    let frame_log = Arc::new(FrameLog::default());
     let handle = HostHandle {
         sender: EventSender::Channel(sender),
-        frames: Arc::clone(&frames),
+        frame_log: Arc::clone(&frame_log),
     };
     let thread = thread::spawn(move || {
         let gpu = headless_test_gpu();
@@ -194,7 +194,7 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
                 .build(),
             app: Counter::default(),
             remote: RemoteEnd::default(),
-            frames,
+            frame_log,
             start: Instant::now(),
             repaint: false,
         };
@@ -314,13 +314,13 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
     // A query runs between frames, a hidden window's too, so its answer outlasts the ticks that
     // give up a wait for a hidden window's frame.
-    handle.frames.set_hidden(WINDOW, true);
+    handle.frame_log.set_hidden(WINDOW, true);
     let slow = remote.query(|app, _| {
         thread::sleep(TICK * 4);
         app.clicks
     });
     assert_eq!(slow, Ok(0));
-    handle.frames.set_hidden(WINDOW, false);
+    handle.frame_log.set_hidden(WINDOW, false);
 
     remote.settle().unwrap();
     handle.run_on_main(|app| app.busy = true).unwrap();

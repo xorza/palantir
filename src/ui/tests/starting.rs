@@ -26,7 +26,7 @@ fn empty_ui_drives_a_frame_safely() {
     // Empty first frame has damage `None`; force `Full`.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        h.ui().frame_scene(),
+        h.frames().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
             clear: h.ui().theme().window_bg,
             damage: Damage::Full,
@@ -38,8 +38,8 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.groups.is_empty());
 
     assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 1);
-    assert!(h.parts().engines.damage.prev().is_empty());
-    assert!(h.parts().engines.damage.counters().dirty().is_empty());
+    assert!(h.frames_mut().damage.prev().is_empty());
+    assert!(h.frames_mut().damage.counters().dirty().is_empty());
     assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
@@ -54,7 +54,7 @@ fn empty_then_populated_frame() {
     });
     assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 2);
     // The rowless user Panel gets no prev entry; the viewport root tracks it as a child marker.
-    assert_eq!(h.parts().engines.damage.prev().len(), 1);
+    assert_eq!(h.frames_mut().damage.prev().len(), 1);
 }
 
 /// Pin: `Display::logical_rect` divides by both scale factors.

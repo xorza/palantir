@@ -78,7 +78,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     );
 }
 
-/// `Ui::frame` settles dismissal in one host call: pass 1 sees the barrier click and sets `dismissed`, the host flips `open`, pass 2 records no popup, so no stale frame reaches submit.
+/// `FrameLoop::frame` settles dismissal in one host call: pass 1 sees the barrier click and sets `dismissed`, the host flips `open`, pass 2 records no popup, so no stale frame reaches submit.
 #[test]
 fn run_frame_settles_popup_dismissal_in_one_call() {
     let mut h = Harness::mono(SURFACE);

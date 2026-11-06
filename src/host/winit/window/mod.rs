@@ -154,7 +154,7 @@ impl Window {
         });
         // Seed the recorder's pacing level from the opened swapchain, so `Ui::vsync` is
         // truthful before any frame.
-        driver.ui.seed_vsync(surface.vsync());
+        driver.frames.seed_vsync(surface.vsync());
         Self {
             inner: native::physical_size(&window),
             restored,
@@ -180,7 +180,7 @@ impl Window {
 
     /// Ask the window for the screenshot a remote wants, which a later frame hands back.
     pub(super) fn ask_shot(&mut self, ask: ShotAsk) {
-        self.remote.ask_shot(&mut self.driver.ui, ask);
+        self.remote.ask_shot(&mut self.driver.frames.ui, ask);
         self.next = FramePresent::Immediate;
     }
 
@@ -189,10 +189,10 @@ impl Window {
         let scale = self.translation_scale();
         // Stamped where the event arrived: the frame clock stands still between frames.
         let now = self.input_epoch.elapsed();
-        let ui = &mut self.driver.ui;
+        let frames = &mut self.driver.frames;
         let mut repaint_requested = false;
         let trace = self.translator.translate(event, scale, |input| {
-            repaint_requested |= ui.on_input(input, now).repaint_requested;
+            repaint_requested |= frames.on_input(input, now).repaint_requested;
         });
         self.note_pointer(trace, scale);
         repaint_requested
@@ -203,7 +203,7 @@ impl Window {
     pub(super) fn on_sent_input(&mut self, event: InputEvent<'_>) {
         let scale = self.translation_scale();
         let now = self.input_epoch.elapsed();
-        self.driver.ui.on_input(event, now);
+        self.driver.frames.on_input(event, now);
         self.note_pointer(PointerTrace::of_input(event, scale), scale);
         self.remote.note_sent();
         self.next = FramePresent::Immediate;
@@ -212,7 +212,7 @@ impl Window {
     /// Run `task` with `&mut` `app` and this window's `Ui`, then ask for a frame that records, as
     /// [`Self::on_sent_input`] does for an input.
     pub(super) fn on_query<T>(&mut self, app: &mut T, task: QueryTask<T>) {
-        self.remote.run_query(app, &mut self.driver.ui, task);
+        self.remote.run_query(app, &mut self.driver.frames.ui, task);
         self.next = FramePresent::Immediate;
     }
 
@@ -222,7 +222,7 @@ impl Window {
     /// restates the pointer when it moves.
     fn translation_scale(&self) -> f32 {
         self.driver
-            .ui
+            .frames
             .laid_out_scale()
             .unwrap_or_else(|| self.effective_scale())
     }
@@ -241,7 +241,7 @@ impl Window {
         {
             let now = self.input_epoch.elapsed();
             self.driver
-                .ui
+                .frames
                 .on_input(InputEvent::PointerMoved(logical), now);
         }
     }
@@ -250,7 +250,11 @@ impl Window {
     /// read live since the user scale is written inside a frame. Events between frames
     /// use [`Self::translation_scale`].
     pub(super) fn effective_scale(&self) -> f32 {
-        self.driver.ui.user_scale().applied_to(self.system_scale)
+        self.driver
+            .frames
+            .ui
+            .user_scale()
+            .applied_to(self.system_scale)
     }
 
     /// This frame's [`SystemFacts`], asking the windowing system only after an event
@@ -334,7 +338,7 @@ impl Window {
         }
         // Also where the previous frame's veto is asserted spent (`Ui::set_window_facts`).
         // `finish` is outside the occlusion branch, so every frame reaches the drain.
-        self.driver.ui.set_window_facts(WindowFacts {
+        self.driver.frames.set_window_facts(WindowFacts {
             close_requested: self.close_requested,
             placement: facts.placement,
             restored_size: self.restored,
@@ -373,9 +377,9 @@ impl Window {
             let cpu = core
                 .device
                 .record(&mut core.cpu, &mut self.driver, spec, app);
-            let summary = self
-                .remote
-                .after_frame(&self.driver.ui, &cpu.report, app.is_busy());
+            let summary =
+                self.remote
+                    .after_frame(&self.driver.frames.ui, &cpu.report, app.is_busy());
             let ran_app = cpu.report.processing.ran_app();
             self.next = self.present(core, cpu);
             Some(RanFrame { summary, ran_app })
@@ -457,13 +461,13 @@ impl Window {
     /// un-vetoed close request becomes this window's close command), push the cursor,
     /// apply a vsync change, and consume the one-shot close request.
     fn finish(&mut self, commands: &mut WindowCommands) {
-        let output = self.driver.drain_window_output(commands);
+        let output = self.driver.frames.drain_window_output(commands);
         if self.levels.set_cursor(output.cursor) {
             self.window.set_cursor(native::cursor(output.cursor));
         }
         self.set_vsync(output.vsync);
         self.set_ime_area(output.ime_area);
-        let color_scheme = self.driver.ui.color_scheme();
+        let color_scheme = self.driver.frames.ui.color_scheme();
         if self.levels.set_color_scheme(color_scheme) {
             self.window
                 .set_theme(Some(native::color_scheme(color_scheme)));

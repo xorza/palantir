@@ -289,12 +289,11 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     let viewport_first = scroll_viewport(h.ui(), scroll_id);
     assert_eq!(after_first.h, 92.0);
 
-    h.parts().engines.layout.forget_last_run();
+    h.frames_mut().layout.forget_last_run();
     h.frame(build);
     let after_second = scroll_content(h.ui(), scroll_id);
     assert!(
-        h.parts()
-            .engines
+        h.frames_mut()
             .layout
             .cache_hits()
             .contains(&WidgetId::VIEWPORT),
@@ -313,13 +312,13 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        h.parts().engines.cascade.counters.ran(),
+        h.frames_mut().cascade.counters.ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        !h.parts().engines.cascade.counters.ran(),
+        !h.frames_mut().cascade.counters.ran(),
         "unchanged scroll frame skips the cascade"
     );
 
@@ -327,7 +326,7 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&h).offset().y, 50.0, "offset advanced");
     assert!(
-        h.parts().engines.cascade.counters.ran(),
+        h.frames_mut().cascade.counters.ran(),
         "scroll offset change must re-run the cascade (it moves the arranged rects)",
     );
 }

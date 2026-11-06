@@ -28,32 +28,32 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(ui, 50.0));
     assert!(
-        h.parts().engines.cascade.counters.ran(),
+        h.frames_mut().cascade.counters.ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 50.0));
     assert!(
-        !h.parts().engines.cascade.counters.ran(),
+        !h.frames_mut().cascade.counters.ran(),
         "unchanged frame skips the cascade"
     );
 
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        h.parts().engines.cascade.counters.ran(),
+        h.frames_mut().cascade.counters.ran(),
         "authoring change re-runs the cascade"
     );
 
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        !h.parts().engines.cascade.counters.ran(),
+        !h.frames_mut().cascade.counters.ran(),
         "settles back to skipping"
     );
 
     h.resize(UVec2::new(SURFACE.x + 1, SURFACE.y));
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        h.parts().engines.cascade.counters.ran(),
+        h.frames_mut().cascade.counters.ran(),
         "a surface change that moves a rect re-runs the cascade"
     );
 }
@@ -73,17 +73,17 @@ fn the_key_covers_authoring_input_classes() {
         let mut h = Harness::mono(SURFACE);
         h.frame(|ui| base(ui));
         assert!(
-            h.parts().engines.cascade.counters.ran(),
+            h.frames_mut().cascade.counters.ran(),
             "{label}: first frame runs the cascade"
         );
         h.frame(|ui| base(ui));
         assert!(
-            !h.parts().engines.cascade.counters.ran(),
+            !h.frames_mut().cascade.counters.ran(),
             "{label}: unchanged frame skips the cascade"
         );
         h.frame(|ui| changed(ui));
         assert!(
-            h.parts().engines.cascade.counters.ran(),
+            h.frames_mut().cascade.counters.ran(),
             "{label}: toggling it must re-run the cascade — the input is \
              missing from the tree hashes the cascade key folds",
         );
@@ -131,14 +131,14 @@ fn the_key_covers_the_font_database() {
     };
     h.prime(2, record);
     assert!(
-        !h.parts().engines.cascade.counters.ran(),
+        !h.frames_mut().cascade.counters.ran(),
         "premise: an unchanged tree skips the cascade",
     );
 
     h.ui().load_font(INTER).expect("the bundled Inter loads");
     h.frame(record);
     assert!(
-        h.parts().engines.cascade.counters.ran(),
+        h.frames_mut().cascade.counters.ran(),
         "a font load must re-run the cascade — the epoch is missing from \
          the key",
     );
@@ -164,12 +164,12 @@ fn the_key_covers_layer_and_root_identity() {
         let mut h = Harness::mono(SURFACE);
         h.prime(2, |ui| base(ui));
         assert!(
-            !h.parts().engines.cascade.counters.ran(),
+            !h.frames_mut().cascade.counters.ran(),
             "{label}: unchanged frame skips the cascade"
         );
         h.frame(|ui| changed(ui));
         assert!(
-            h.parts().engines.cascade.counters.ran(),
+            h.frames_mut().cascade.counters.ran(),
             "{label}: identity change must re-run the cascade",
         );
     };

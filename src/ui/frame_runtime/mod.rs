@@ -22,7 +22,7 @@ use std::time::Duration;
 /// edits on consecutive frames.
 pub(crate) const MAX_CARRIED_RELAYOUTS: u8 = 8;
 
-/// What `Ui::frame` does this frame, decided at entry from fired wake reasons,
+/// What `FrameLoop::frame` does this frame, decided at entry from fired wake reasons,
 /// input state and prior-frame validity. The variants make a paint-only frame
 /// with a discarded damage base unrepresentable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,7 +56,7 @@ pub(super) struct RecordBaseline {
 pub(super) struct FrameClassifyInput {
     pub(super) display: Display,
     pub(super) record_baseline: RecordBaseline,
-    pub(super) damage_baseline_valid: bool,
+    pub(super) damage_base: DamageBase,
     pub(super) input_policy: InputPolicy,
     pub(super) input_signal: InputSignal,
     pub(super) close_requested: bool,
@@ -75,7 +75,7 @@ pub(crate) struct FrameRuntime {
     /// gathered into steps: rows step in offset space, where a small delta keeps its precision,
     /// and a frame that spent nothing would record in full and paint no motion.
     pub(super) dt: f32,
-    /// Bumped once per [`crate::Ui::frame`], before either record pass, so a
+    /// Bumped once per [`FrameLoop::frame`](crate::ui::frame_loop::FrameLoop::frame), before either record pass, so a
     /// settling pass cannot double-advance animation. Counts `PaintOnly`
     /// frames too, unlike [`Self::record_frame_id`].
     pub(super) render_frame_id: u64,
@@ -135,7 +135,7 @@ impl FrameRuntime {
     }
 
     /// Fold this frame's outcome into [`Self::record_frame_id`] and the settle tally.
-    /// Called once per [`crate::Ui::frame`] after the pass count is known, so
+    /// Called once per [`FrameLoop::frame`](crate::ui::frame_loop::FrameLoop::frame) after the pass count is known, so
     /// the overlay always reads both through the previous frame.
     pub(super) const fn note_processing(&mut self, processing: FrameProcessing) {
         match processing {
@@ -244,7 +244,7 @@ impl FrameRuntime {
     }
 
     /// No frame has been stamped yet: no previous display to compare and no
-    /// retained pixels. Shared by the plan classifier and `FrameCycle::run`.
+    /// retained pixels. Shared by the plan classifier and `FrameLoop::frame`.
     pub(crate) const fn is_first_frame(&self) -> bool {
         self.prev_stamp.is_none()
     }
@@ -265,11 +265,12 @@ impl FrameRuntime {
         let display_changed = self
             .prev_stamp
             .is_some_and(|prev| !prev.display.raster_eq(&input.display));
-        let force_full = first_frame || display_changed || !input.damage_baseline_valid;
+        let force_full =
+            first_frame || display_changed || input.damage_base == DamageBase::Discarded;
         if force_full {
             tracing::debug!(
                 display_changed,
-                damage_baseline_invalid = !input.damage_baseline_valid,
+                damage_base = ?input.damage_base,
                 first_frame,
                 "damage.invalidate_prev"
             );

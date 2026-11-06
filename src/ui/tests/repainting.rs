@@ -28,6 +28,7 @@ use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
+use crate::ui::frame_loop::FrameLoop;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{self, SURFACE};
@@ -281,7 +282,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(h.ui().record_frame_id(), recorded + 1);
 }
 
-/// Regression: `Ui::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.
+/// Regression: `FrameLoop::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
     fn body(ui: &mut Ui, half: Duration) {
@@ -340,12 +341,12 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
-    fn rows(ui: &Ui, encoder: &mut Encoder) -> Vec<LutRow> {
+    fn rows(frames: &FrameLoop, encoder: &mut Encoder) -> Vec<LutRow> {
         let plan = RenderPlan {
-            clear: ui.theme().window_bg,
+            clear: frames.ui.theme().window_bg,
             damage: Damage::Full,
         };
-        encoder::internals::encode(ui.frame_scene(), encoder, plan)
+        encoder::internals::encode(frames.frame_scene(), encoder, plan)
             .calls
             .iter()
             .filter_map(|command| match command {
@@ -373,7 +374,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let half = Duration::from_millis(500);
 
     a.frame(|ui| window_a(ui, half));
-    let original_row = rows(a.ui(), &mut encoder)[0];
+    let original_row = rows(a.frames(), &mut encoder)[0];
     let _ = encoder.flush_gradients();
 
     b.frame(|ui| {
@@ -393,14 +394,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             }
         });
     });
-    let b_rows: HashSet<LutRow> = rows(b.ui(), &mut encoder).into_iter().collect();
+    let b_rows: HashSet<LutRow> = rows(b.frames(), &mut encoder).into_iter().collect();
     assert_eq!(b_rows.len(), (INITIAL_ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
     let _ = encoder.flush_gradients();
 
     let report = a.at(half).frame(|ui| window_a(ui, half));
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
-    let resolved_row = rows(a.ui(), &mut encoder)[0];
+    let resolved_row = rows(a.frames(), &mut encoder)[0];
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",

@@ -1,12 +1,10 @@
-//! The recorder: [`Ui`], the handle a widget or host authors a frame through,
-//! and the retained state that frame reads and writes.
+//! The recorder: [`Ui`], the handle a widget authors a frame through, and the retained state that
+//! frame reads and writes. `frame_loop` holds it and runs the frame.
 
 pub(crate) mod app;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-mod frame_cycle;
-pub(crate) mod frame_engines;
-pub(crate) mod frame_input;
+pub(crate) mod frame_loop;
 pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
 mod frame_stats_readout;
@@ -33,16 +31,13 @@ use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display::Display;
-use crate::display::frame_stamp::FrameStamp;
 use crate::display::user_scale::UserScale;
-use crate::gpu::gpu_paint::gpu_views::{GpuViews, RecordedView};
+use crate::gpu::gpu_paint::gpu_views::RecordedView;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::input::ime_preedit::ImePreedit;
-use crate::input::input_event::InputEvent;
-use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
 use crate::input::key_class::KeyClass;
 use crate::input::keyboard::key::Key;
@@ -70,7 +65,6 @@ use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
-use crate::renderer::frontend::FrameScene;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -80,7 +74,6 @@ use crate::scene::seen_ids::ResolvedId;
 use crate::scene::tree::NodeChrome;
 use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
-use crate::shape::record_store::RecordStore;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
 use crate::text::font_source::FontSource;
@@ -88,11 +81,6 @@ use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
-use crate::ui::app::App;
-use crate::ui::frame_cycle::FrameCycle;
-use crate::ui::frame_engines::FrameEngines;
-use crate::ui::frame_input::FrameInput;
-use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::host_seam::HostSeam;
@@ -105,15 +93,11 @@ use crate::ui::window_theme::{Motion, WindowTheme};
 use crate::widget_core::overlay_stack::OverlayStack;
 use crate::widget_core::response::Response;
 use crate::window::cursor_icon::CursorIcon;
-use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
+use crate::window::screenshot::{Screenshot, ScreenshotId};
 use crate::window::vsync::Vsync;
 use crate::window::waker::Waker;
-use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
-use crate::window::window_directory::WindowDirectory;
-use crate::window::window_frame_state::WindowFacts;
 use crate::window::window_geometry::WindowGeometry;
-use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::Vec2;
 use std::fmt;
@@ -121,17 +105,9 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// The parts of a [`Ui`] a submit borrows at once ([`Ui::submit_parts`]).
-#[derive(Debug)]
-pub(crate) struct SubmitParts<'a> {
-    pub(crate) stats: &'a mut GpuPassStats,
-    pub(crate) store: &'a RecordStore,
-    pub(crate) gpu_views: &'a GpuViews,
-}
-
 /// Recorder + input/response broker. Coordinates are logical pixels;
 /// `Display::scale_factor` converts to physical at the wgpu boundary. Fields are
-/// private so widgets, host and encoder share one method surface.
+/// private so widgets share one method surface.
 #[derive(Debug)]
 pub struct Ui {
     forest: Forest,
@@ -153,24 +129,11 @@ pub struct Ui {
     overlays: OverlayStack,
 }
 
-/// Widget- and host-facing authoring API; mostly one-line delegations to sealed subsystems.
+/// Widget-facing authoring API; mostly one-line delegations to sealed subsystems. The host's side
+/// is on `FrameLoop`.
 impl Ui {
-    pub(crate) const fn frame_scene(&self) -> FrameScene<'_> {
-        FrameScene {
-            forest: &self.forest,
-            layout: &self.layout,
-            cascade: &self.cascade,
-            stamp: self.frame_runtime.stamp(),
-        }
-    }
-
-    /// Whether the host snaps axis-aligned paint edges to physical pixels, in every window.
-    pub(crate) fn pixel_snap(&self) -> bool {
-        self.resources.settings().pixel_snap()
-    }
-
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
-    pub(crate) fn new(resources: UiResources) -> Self {
+    fn new(resources: UiResources) -> Self {
         Self {
             forest: Forest::new(resources.text().family_keys()),
             window_theme: WindowTheme::new(resources.color_scheme()),
@@ -183,11 +146,6 @@ impl Ui {
             host: HostSeam::default(),
             overlays: OverlayStack::default(),
         }
-    }
-
-    /// The window's host sets the waker its [`Self::waker`] hands out.
-    pub(crate) fn set_waker(&mut self, waker: Waker) {
-        self.host.waker = waker;
     }
 
     /// A handle that asks this window for a frame from any thread: see [`Waker`].
@@ -351,44 +309,12 @@ impl Ui {
     /// epoch, so the frame records again under it. A frame that snaps motion
     /// (`Self::motion_snaps`) snaps the theme; a scheme change starts its transition at the theme
     /// shown, so the frame that adopts it shows no step yet. The frame a running transition owes is asked
-    /// for after the frame's plan takes this one's requests (`FrameCycle::run`).
-    pub(crate) fn advance_theme(&mut self) {
+    /// for after the frame's plan takes this one's requests (`FrameLoop::frame`).
+    fn advance_theme(&mut self) {
         let motion = self.theme_motion();
         let resolved = self.resources.color_scheme();
         self.window_theme
             .advance(self.frame_runtime.dt, resolved, motion);
-    }
-
-    /// Drive one application frame for `input.window` via [`FrameCycle`]. Pass the
-    /// same `engines` every frame; a fresh set discards the measure cache, cascade and
-    /// damage baseline, forcing a full repaint.
-    pub(crate) fn frame<T: App>(
-        &mut self,
-        engines: &mut FrameEngines,
-        input: FrameInput,
-        app: &mut T,
-    ) -> FrameReport {
-        FrameCycle::new(self, engines).run(input, app)
-    }
-
-    /// The scale the current cascade was laid out at; a host divides event
-    /// positions by it. `None` before the first frame.
-    #[cfg(any(test, feature = "winit"))]
-    pub(crate) fn laid_out_scale(&self) -> Option<f32> {
-        self.frame_runtime
-            .prev_stamp
-            .map(|stamp| stamp.display.scale_factor())
-    }
-
-    /// Feed an event that arrived at `now`. The winit host stamps it on an input clock
-    /// of its own, which runs on while a hidden window's frame clock skips the span,
-    /// so two presses either side never read as a double click; the offscreen host
-    /// stamps it from the source its frames read. The [`InputDelta`] says whether
-    /// to redraw.
-    #[inline]
-    pub(crate) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
-        self.input
-            .on_input(event, input_ctx(&self.cascade, &self.resources), now)
     }
 
     // `peek_*` reads without declaring a wake. `watch_keyboard` and plain reads declare
@@ -522,7 +448,7 @@ impl Ui {
     }
 
     /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer
-    /// a layout driver or [`App::update`]. Asked in the frame's second pass, it asks for the next
+    /// a layout driver or [`App::update`](crate::App::update). Asked in the frame's second pass, it asks for the next
     /// frame. An app that asks in every pass has a relayout loop: after a few frames, it logs an
     /// error and asks no more frames.
     ///
@@ -531,7 +457,7 @@ impl Ui {
     /// Panics outside a record pass.
     #[track_caller]
     pub fn request_relayout(&mut self) {
-        // `FrameCycle::run` clears the flag before the app runs, so a call outside a
+        // `FrameLoop::frame` clears the flag before the app runs, so a call outside a
         // record would be dropped silently.
         assert!(
             self.forest.is_recording(),
@@ -630,20 +556,6 @@ impl Ui {
             .filter(|screenshot| screenshot.id() == id)
     }
 
-    /// Move the images this frame asked for onto `into`, as the driver takes them once the frame
-    /// is recorded.
-    pub(crate) fn take_screenshot_requests(&mut self, into: &mut Vec<ScreenshotRequest>) {
-        into.append(&mut self.host.window_requests.screenshots);
-    }
-
-    /// Hand the next frame the image that landed for it, or none.
-    pub(crate) fn set_screenshot_taken(&mut self, screenshot: Option<Screenshot>) {
-        if screenshot.is_some() {
-            self.frame_runtime.request_repaint();
-        }
-        self.host.window_frame.screenshot = screenshot.map(Box::new);
-    }
-
     /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.
     pub fn request_repaint_after(&mut self, after: Duration) {
         tracing::trace!(
@@ -720,42 +632,6 @@ impl Ui {
 
     // The recorder-host seam: two methods the host writes before a frame, two it reads after.
 
-    /// Publish this frame's window-manager facts. Asserts the previous close veto
-    /// did not survive; [`Self::drain_window_output`] clears it.
-    #[cfg(feature = "winit")]
-    pub(crate) fn set_window_facts(&mut self, facts: WindowFacts) {
-        debug_assert!(
-            !self.host.window_requests.close_vetoed,
-            "a veto outlived the frame that raised it",
-        );
-        self.host.window_frame.facts = facts;
-    }
-
-    /// Seed the pacing level from the swapchain the host opened, so a control
-    /// writing its value back does not override an explicit present mode.
-    #[cfg(feature = "winit")]
-    #[inline]
-    pub(crate) const fn seed_vsync(&mut self, vsync: Vsync) {
-        self.host.window_requests.levels.vsync = vsync;
-    }
-
-    /// Drain this frame's window scratch into `commands` and return the levels the host applies
-    /// afterwards; see
-    /// [`WindowRequests::drain`](crate::window::window_requests::WindowRequests::drain).
-    pub(crate) fn drain_window_output(
-        &mut self,
-        token: WindowToken,
-        commands: &mut WindowCommands,
-    ) -> WindowOutput {
-        let close_requested = self.host.window_frame.facts.close_requested;
-        let levels = self
-            .host
-            .window_requests
-            .drain(token, close_requested, commands);
-        self.host.window_frame.facts = WindowFacts::default();
-        levels
-    }
-
     /// This window's geometry for persist-and-restore: where it sits, and the size it returns
     /// to from maximized, its live size while it is not maximized. Placement position is
     /// `None` where the platform reports none (Wayland). In the window manager's
@@ -815,7 +691,7 @@ impl Ui {
     /// This frame's diagnostic counters, for the [`frame_stats`] overlay.
     ///
     /// [`frame_stats`]: crate::diagnostics::frame_stats
-    pub(crate) fn frame_stats(&self) -> FrameStats {
+    fn frame_stats(&self) -> FrameStats {
         FrameStats {
             record_frame_id: self.frame_runtime.record_frame_id,
             render_frame_id: self.frame_runtime.render_frame_id,
@@ -830,12 +706,6 @@ impl Ui {
     #[inline]
     pub fn is_window_open(&self, token: WindowToken) -> bool {
         self.resources.windows().contains(token)
-    }
-
-    /// The app-global live-window set behind [`Self::is_window_open`].
-    #[inline]
-    pub(crate) const fn window_directory(&self) -> &WindowDirectory {
-        self.resources.windows()
     }
 
     /// Attach a paint primitive to the active node. Direct text counts toward
@@ -922,27 +792,12 @@ impl Ui {
         self.resources.clipboard().clone()
     }
 
-    /// Record `view`: refresh its row in [`Self::gpu_views`] and append an image
+    /// Record `view`: refresh its row in the window's `GpuViews` and append an image
     /// shape carrying the row's target and `epoch` to the active node.
     pub(crate) fn gpu_view(&mut self, view: RecordedView) {
         let frame = self.frame_runtime.render_frame_id;
         let target = self.memory.gpu_views.record(view, frame);
         self.forest.add_gpu_view(target.id, target.epoch);
-    }
-
-    /// Every `GpuView` this window records, which its frames paint through.
-    pub(crate) const fn gpu_views(&self) -> &GpuViews {
-        &self.memory.gpu_views
-    }
-
-    /// What a submit of the last frame reads, and where it publishes the window's GPU samples,
-    /// borrowed at once.
-    pub(crate) fn submit_parts(&mut self) -> SubmitParts<'_> {
-        SubmitParts {
-            stats: &mut self.host.gpu_pass_stats,
-            store: &self.forest.record_store,
-            gpu_views: &self.memory.gpu_views,
-        }
     }
 
     /// Format `args` into the record-pass text storage and return an arena-backed
@@ -1498,7 +1353,7 @@ impl Ui {
 }
 
 /// The doors past [`Ui`]'s private fields, for white-box suites and benches.
-/// What a host's harness reads and seeds.
+/// What a host's harness reads.
 impl Ui {
     /// The input machine, for tests asserting routing state the public surface hides.
     pub(crate) const fn input(&self) -> &InputState {
@@ -1511,17 +1366,6 @@ impl Ui {
 
     pub(crate) const fn frame_runtime(&self) -> &FrameRuntime {
         &self.frame_runtime
-    }
-
-    /// Set the last frame's stamp. `Some` makes the next frame warm (skips warmup); `None` is a
-    /// cold start.
-    pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
-        self.frame_runtime.set_prev_stamp(stamp);
-    }
-
-    /// Replace the display the next frame lays out at, as the window driver does.
-    pub(crate) const fn set_display(&mut self, display: Display) {
-        self.frame_runtime.set_display(display);
     }
 }
 

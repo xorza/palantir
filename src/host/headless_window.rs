@@ -94,7 +94,7 @@ impl HeadlessWindow {
         settings: &HeadlessSettings,
     ) -> Self {
         let wake = Arc::<WakeSignal>::default();
-        driver.ui.set_waker(wake.waker());
+        driver.frames.set_waker(wake.waker());
         let _ = settings.preferences.apply(&cpu.resources);
         Self {
             cpu,
@@ -111,7 +111,7 @@ impl HeadlessWindow {
     /// window commands, and paint while the device lives.
     pub(super) fn frame(&mut self, app: &mut impl App, frame: HeadlessFrame<'_>) -> FrameReport {
         if self.wake.take() {
-            self.driver.ui.request_repaint();
+            self.driver.frames.ui.request_repaint();
         }
         let report = match frame.depth {
             HeadlessDepth::Record { target } => {
@@ -178,7 +178,7 @@ impl HeadlessWindow {
     pub(super) fn set_preferences(&mut self, change: impl FnOnce(&mut SystemPreferences)) {
         change(&mut self.preferences);
         if self.preferences.apply(&self.cpu.resources) {
-            self.driver.ui.request_repaint();
+            self.driver.frames.ui.request_repaint();
         }
     }
 
@@ -194,5 +194,5 @@ impl HeadlessWindow {
 /// and closes are kept for the app to read.
 pub(super) fn record_window_commands(driver: &mut WindowDriver, commands: &mut WindowCommands) {
     commands.clear();
-    driver.drain_window_output(commands);
+    driver.frames.drain_window_output(commands);
 }

@@ -72,7 +72,7 @@ impl<S: Scene> Session<'_, S> {
         }
         let surface = self.h.ui().display().logical_rect();
         let mut key: RectBits = Vec::new();
-        for r in self.h.parts().engines.damage.raw_rects() {
+        for r in self.h.frames_mut().damage.raw_rects() {
             let clipped = r.clamp_to(surface);
             let bits =
                 [clipped.min.x, clipped.min.y, clipped.size.w, clipped.size.h].map(f32::to_bits);

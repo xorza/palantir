@@ -25,12 +25,12 @@ pub(crate) fn atomic<S: Scene>(c: &mut Criterion) {
             let mut out = Layout::default();
             let run = |h: &mut Harness, out: &mut Layout| {
                 if miss {
-                    h.parts().engines.layout.cache.forget_all();
+                    h.frames_mut().layout.cache.forget_all();
                 } else {
-                    h.parts().engines.layout.forget_last_run();
+                    h.frames_mut().layout.forget_last_run();
                 }
-                let parts = h.parts();
-                parts.engines.layout.run(parts.ui.forest(), surface, out);
+                let frames = h.frames_mut();
+                frames.layout.run(frames.ui.forest(), surface, out);
             };
             run(&mut h, &mut out);
             let rects = &out[Plane::MAIN].rect;

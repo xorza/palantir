@@ -141,7 +141,7 @@ pub struct WinitHost<T: 'static> {
     phase: HostPhase<T>,
     event_loop: Option<EventLoop<UserEvent<T>>>,
     proxy: EventLoopProxy<UserEvent<T>>,
-    frames: Arc<FrameLog>,
+    frame_log: Arc<FrameLog>,
 }
 
 impl<T: 'static> fmt::Debug for WinitHost<T> {
@@ -258,7 +258,7 @@ where
             }),
             event_loop: Some(event_loop),
             proxy,
-            frames: Arc::default(),
+            frame_log: Arc::default(),
         })
     }
 
@@ -291,7 +291,7 @@ where
     pub fn handle(&self) -> HostHandle<T> {
         HostHandle {
             sender: EventSender::Proxy(self.proxy.clone()),
-            frames: Arc::clone(&self.frames),
+            frame_log: Arc::clone(&self.frame_log),
         }
     }
 
@@ -310,7 +310,7 @@ where
     pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
         let event_loop_result = event_loop.run_app(&mut self);
-        self.frames.clear();
+        self.frame_log.clear();
         let failure = match self.phase {
             HostPhase::Failed(error) => Some(error),
             HostPhase::Bootstrap(_) | HostPhase::Running(_) => None,

@@ -8,6 +8,7 @@ use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
+use crate::ui::frame_loop::FrameLoop;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -15,7 +16,7 @@ use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
 /// The magenta outlines the encoder emitted for this frame's explicit-id collisions, in physical pixels. Selected by stroke width, the only 3 px stroke the encoder emits.
-fn collision_outlines(ui: &Ui) -> Vec<Rect> {
+fn collision_outlines(frames: &FrameLoop) -> Vec<Rect> {
     use crate::damage::Damage;
     use crate::renderer::frontend::{BuildPlan, Frontend};
     use crate::renderer::render_plan::RenderPlan;
@@ -23,9 +24,9 @@ fn collision_outlines(ui: &Ui) -> Vec<Rect> {
     // Share Ui's record store so mesh/polyline bytes pushed at record time are visible at compose.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        ui.frame_scene(),
+        frames.frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: ui.theme().window_bg,
+            clear: frames.ui.theme().window_bg,
             damage: Damage::Full,
         }),
     );
@@ -98,7 +99,7 @@ fn duplicate_explicit_widget_ids_are_outlined() {
     let mut h = Harness::mono(UVec2::new(100, 100));
     let button_node = record_duplicate_ids(&mut h).first_node;
     let button_rect = h.ui().layout[Plane::MAIN].rect[button_node.idx()];
-    let outlines = collision_outlines(h.ui());
+    let outlines = collision_outlines(h.frames());
     assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
     let matched = outlines.iter().any(|rect| {
         (rect.min.x - button_rect.min.x).abs() < 1.0
@@ -175,7 +176,7 @@ fn a_collision_under_a_transform_is_outlined_where_it_paints() {
                 }
             });
     });
-    let mut outlines = collision_outlines(h.ui());
+    let mut outlines = collision_outlines(h.frames());
     outlines.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
     assert_eq!(
         outlines,
@@ -219,7 +220,7 @@ fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
     let pair = h.ui().forest.collisions[0];
     let main_rect = h.ui().layout[Plane::MAIN].rect[pair.first.node.idx()];
     let popup_rect = h.ui().layout[Plane::base(Layer::Popup)].rect[pair.second.node.idx()];
-    let outlines = collision_outlines(h.ui());
+    let outlines = collision_outlines(h.frames());
     assert_eq!(
         outlines,
         [main_rect, popup_rect],
@@ -281,10 +282,10 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
         h.ui().layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key;
     assert_ne!(cold_main_key, cold_popup_key);
 
-    h.parts().engines.layout.forget_last_run();
+    h.frames_mut().layout.forget_last_run();
     h.frame(&mut record);
     assert!(
-        !h.parts().engines.layout.cache_hits().is_empty(),
+        !h.frames_mut().layout.cache_hits().is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
     let main_node = node_for(&h, Layer::Main, main_id);

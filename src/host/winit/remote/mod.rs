@@ -303,7 +303,7 @@ impl<T: 'static> Remote<T> {
                     error
                 });
             }
-            self.handle.frames.wait(self.tick);
+            self.handle.frame_log.wait(self.tick);
         }
     }
 }
