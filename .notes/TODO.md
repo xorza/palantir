@@ -7,6 +7,8 @@
 - image handle with closure for reupload?
 - build-in colors
 - rich text edit
+- audit entities - hostcore cpucore devicecore window windowdriver windowset, etc
+- remove update
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
