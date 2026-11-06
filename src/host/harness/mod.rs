@@ -1172,7 +1172,9 @@ pub(crate) mod internals {
                 .ui
                 .tree(Layer::Main)
                 .children(parent)
-                .map(|child| self.window.driver.frames.ui.layout(Layer::Main).rect[child.id.idx()])
+                .map(|child| {
+                    self.window.driver.frames.ui.plane_layout(Layer::Main).rect[child.id.idx()]
+                })
                 .collect()
         }
 

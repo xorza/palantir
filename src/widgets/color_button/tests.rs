@@ -28,7 +28,7 @@ fn harness() -> Harness {
 
 /// Nodes the popup layer holds; zero while closed.
 fn panel_nodes(h: &Harness) -> usize {
-    h.ui().layout(Layer::Popup).rect.len()
+    h.ui().plane_layout(Layer::Popup).rect.len()
 }
 
 /// One click on a chip at the surface's corner; press and release take a frame each.

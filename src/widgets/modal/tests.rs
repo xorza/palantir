@@ -84,7 +84,7 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
         let backdrop = h.node_of(id).expect("modal backdrop recorded");
         assert_eq!(backdrop.plane.layer, Layer::Modal);
         assert_eq!(
-            h.ui().layout(Layer::Modal).rect[backdrop.node.idx()],
+            h.ui().plane_layout(Layer::Modal).rect[backdrop.node.idx()],
             Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
         );
         let row = h

@@ -394,7 +394,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
 fn body_rect(h: &Harness, id: WidgetId) -> Rect {
     let body = h.node_of(id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
-    h.ui().layout(Layer::Popup).rect[body.node.idx()]
+    h.ui().plane_layout(Layer::Popup).rect[body.node.idx()]
 }
 
 /// An open popup stays where its first frame landed it: near the bottom edge a 200 px body in a

@@ -23,7 +23,7 @@ pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F)
 
 /// Thumb rects (outer-local) for `scroll_key`: `Sense::DRAG` leaves under an overlay Canvas; 0–2 rects, vertical then horizontal.
 pub(super) fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
-    let layout = ui.layout(Layer::Main);
+    let layout = ui.plane_layout(Layer::Main);
     let outer_id = WidgetId::from_hash(scroll_key);
     let scroll_id = outer_id.with("viewport");
     let node = |id: WidgetId| ui.cascade().endpoint(id).map(|at| at.node);

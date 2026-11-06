@@ -250,7 +250,7 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     // `text_spans[node]` has one entry per `ShapeRecord::Text`: a single text
     // shape, on the block child carrying the alignment.
     let node = block_of(h.ui(), node);
-    let main = h.ui().layout(Layer::Main);
+    let main = h.ui().plane_layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
     let key = main.text_shapes[span.start as usize].buffer_key();
@@ -348,7 +348,7 @@ fn placeholder_per_line_aligns_under_wrap() {
         shape_text.contains("type a paragraph"),
         "rendered text must be the placeholder, got {shape_text:?}",
     );
-    let main = h.ui().layout(Layer::Main);
+    let main = h.ui().plane_layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
     let key = main.text_shapes[span.start as usize].buffer_key();

@@ -452,7 +452,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
 
     let mut h = Harness::new(UVec2::new(200, 200));
     h.frame(body);
-    let key = h.ui().layout(Layer::Main).text_shapes[0].buffer_key();
+    let key = h.ui().plane_layout(Layer::Main).text_shapes[0].buffer_key();
     h.ui().shaper().drop_cosmic_buffers();
     assert!(
         !h.ui().shaper().has_cosmic_buffer(key),
@@ -474,7 +474,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     let measure_calls = h.ui().shaper().measure_calls();
     h.ui_mut().request_repaint();
     h.frame(body);
-    let replayed_key = h.ui().layout(Layer::Main).text_shapes[0].buffer_key();
+    let replayed_key = h.ui().plane_layout(Layer::Main).text_shapes[0].buffer_key();
     assert_eq!(replayed_key, key);
     assert_eq!(
         h.ui().shaper().measure_calls(),

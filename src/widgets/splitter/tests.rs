@@ -538,7 +538,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
         });
         let first = h.node_for_widget_id(split_id().with("first"));
         let second = h.node_for_widget_id(split_id().with("second"));
-        let rects = &h.ui().layout(Layer::Main).rect;
+        let rects = &h.ui().plane_layout(Layer::Main).rect;
         assert_eq!(
             [rects[first.idx()].size.w, rects[second.idx()].size.w],
             expected,

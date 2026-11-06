@@ -358,7 +358,8 @@ fn below_scene(top: f32) -> impl FnMut(&mut Ui) -> bool {
 /// opens nothing.
 #[test]
 fn a_menu_below_toggles_on_a_click_and_hangs_from_its_trigger() {
-    let body = |h: &Harness| h.ui().layout(Layer::Menu).rect[menu_body(h, trigger_id()).idx()];
+    let body =
+        |h: &Harness| h.ui().plane_layout(Layer::Menu).rect[menu_body(h, trigger_id()).idx()];
     for (top, flips) in [(40.0, false), (340.0, true)] {
         let mut scene = below_scene(top);
         let mut h = Harness::mono(SURFACE);

@@ -153,7 +153,7 @@ impl CascadeRunFixture {
 fn source_of(h: &Harness, display: Display) -> CascadeSource<'_> {
     CascadeSource {
         forest: h.ui().forest(),
-        layout: h.ui().layout_tables(),
+        layout: h.ui().layout(),
         display,
         font_epoch: h.ui().font_epoch(),
     }

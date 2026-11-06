@@ -177,12 +177,12 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
 
     let mut h = Harness::mono(UVec2::splat(300));
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
-    let base = h.ui().layout(Layer::Main).rect_hash();
+    let base = h.ui().plane_layout(Layer::Main).rect_hash();
 
     // Same geometry, same paint.
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
-        h.ui().layout(Layer::Main).rect_hash(),
+        h.ui().plane_layout(Layer::Main).rect_hash(),
         base,
         "an identical frame must hash equal, or the cascade walks every node",
     );
@@ -190,14 +190,14 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     // Same geometry, different paint: clean subtrees must still skip.
     h.frame(build(50.0, RgbaF32::srgb(0.0, 1.0, 0.0)));
     assert_eq!(
-        h.ui().layout(Layer::Main).rect_hash(),
+        h.ui().plane_layout(Layer::Main).rect_hash(),
         base,
         "a paint-only change must not move the rect hash",
     );
 
     // Geometry moved: must invalidate.
     h.frame(build(80.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
-    let moved = h.ui().layout(Layer::Main).rect_hash();
+    let moved = h.ui().plane_layout(Layer::Main).rect_hash();
     assert_ne!(
         moved, base,
         "a resized child must move the rect hash, or its rows go stale under a clean ancestor",
@@ -206,7 +206,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     // A function of geometry, not a counter: the original size returns the original hash.
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
-        h.ui().layout(Layer::Main).rect_hash(),
+        h.ui().plane_layout(Layer::Main).rect_hash(),
         base,
         "the hash must be a pure function of the arranged rects",
     );

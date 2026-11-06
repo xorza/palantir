@@ -607,7 +607,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     h.frame(&mut scene);
 
     for layer in Layer::PAINT_ORDER {
-        for rect in &h.ui().layout(layer).rect {
+        for rect in &h.ui().plane_layout(layer).rect {
             assert!(
                 rect.min.is_finite() && rect.size.w.is_finite() && rect.size.h.is_finite(),
                 "{layer:?}: {rect:?}",

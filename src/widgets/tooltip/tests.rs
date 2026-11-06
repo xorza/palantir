@@ -108,7 +108,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     let bubble = ui.rect(bubble_id).expect("tooltip bubble");
     let shaped = ui
         .ui()
-        .layout(Layer::Tooltip)
+        .plane_layout(Layer::Tooltip)
         .text_shapes
         .first()
         .expect("tooltip text shaped");
@@ -144,7 +144,7 @@ fn tooltip_text_inherits_the_ambient_leading() {
     });
     let shaped = h
         .ui()
-        .layout(Layer::Tooltip)
+        .plane_layout(Layer::Tooltip)
         .text_shapes
         .first()
         .expect("tooltip text shaped");

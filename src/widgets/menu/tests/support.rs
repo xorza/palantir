@@ -41,7 +41,7 @@ pub(super) fn menu_rows(h: &Harness, for_id: WidgetId) -> Vec<MenuRow> {
     let ends = tree.records.subtree_end();
     let body_end = ends[body].end() as usize;
     let ids = tree.records.widget_id();
-    let rects = &h.ui().layout(Layer::Menu).rect;
+    let rects = &h.ui().plane_layout(Layer::Menu).rect;
     let mut rows = Vec::new();
     let mut i = body + 1;
     while i < body_end {

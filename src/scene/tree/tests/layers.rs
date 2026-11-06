@@ -111,7 +111,7 @@ fn ui_layer_size_caps_overlay_available() {
         });
         let popup_tree = h.ui().tree(Layer::Popup);
         let root = popup_tree.roots[0].first_node.idx();
-        let rect = h.ui().layout(Layer::Popup).rect[root];
+        let rect = h.ui().plane_layout(Layer::Popup).rect[root];
         assert_eq!(rect.min, anchor, "cap={cap:?}");
         assert_eq!(rect.size, *expected, "cap={cap:?}");
     }

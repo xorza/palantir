@@ -583,7 +583,7 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
     CascadeEngine::default().run_full(
         CascadeSource {
             forest: ui.forest(),
-            layout: ui.layout_tables(),
+            layout: ui.layout(),
             display: ui.display(),
             font_epoch: ui.font_epoch(),
         },

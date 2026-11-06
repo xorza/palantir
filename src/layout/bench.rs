@@ -41,7 +41,7 @@ pub(crate) fn atomic<S: Scene>(c: &mut Criterion) {
             );
             assert_eq!(
                 *rects,
-                h.ui().layout_tables()[Plane::MAIN].rect,
+                h.ui().layout()[Plane::MAIN].rect,
                 "the frame's own layout"
             );
             b.iter(|| {

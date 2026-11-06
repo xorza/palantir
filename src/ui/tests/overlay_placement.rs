@@ -32,7 +32,7 @@ fn placed(mut place: impl FnMut(&mut Ui)) -> Rect {
             .show(ui, &mut place);
     });
     let root = h.ui().tree(Layer::Popup).roots[0].first_node.idx();
-    h.ui().layout(Layer::Popup).rect[root]
+    h.ui().plane_layout(Layer::Popup).rect[root]
 }
 
 /// `Anchor`'s three answers for a 120x100 body on a 400x300 surface:

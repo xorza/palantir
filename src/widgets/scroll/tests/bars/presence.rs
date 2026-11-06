@@ -219,7 +219,7 @@ fn both_axes_bars_dont_overlap_at_corner() {
 }
 
 fn raw_bar_rects(ui: &Ui, scroll_key: &str) -> Vec<(&'static str, Rect)> {
-    let layout = ui.layout(Layer::Main);
+    let layout = ui.plane_layout(Layer::Main);
     let scroll_id = WidgetId::from_hash(scroll_key).with("viewport");
     let mut out = Vec::new();
     for tag in ["vtrack", "vthumb", "htrack", "hthumb"] {

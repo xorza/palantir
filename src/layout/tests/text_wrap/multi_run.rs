@@ -28,13 +28,13 @@ use glam::UVec2;
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     let mut h = Harness::new(UVec2::new(400, 400));
     let leaf = h.frame_value(build_multi_text_leaf);
-    let span = h.ui().layout(Layer::Main).text_spans[leaf.idx()];
+    let span = h.ui().plane_layout(Layer::Main).text_spans[leaf.idx()];
     assert_eq!(
         span.len, 2,
         "leaf with two ShapeRecord::Text should record two text-shape entries"
     );
-    let first = h.ui().layout(Layer::Main).text_shapes[span.start as usize];
-    let second = h.ui().layout(Layer::Main).text_shapes[(span.start + 1) as usize];
+    let first = h.ui().plane_layout(Layer::Main).text_shapes[span.start as usize];
+    let second = h.ui().plane_layout(Layer::Main).text_shapes[(span.start + 1) as usize];
     assert_eq!(first.extent.size, Size::new(26.0, 16.0), "`first` at 14 px");
     assert_eq!(
         second.extent.size,
@@ -88,14 +88,14 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
 fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
     let mut h = Harness::new(UVec2::new(400, 400));
     let f1_leaf = h.frame_value(build_multi_text_leaf);
-    let f1_span = h.ui().layout(Layer::Main).text_spans[f1_leaf.idx()];
-    let f1_first = h.ui().layout(Layer::Main).text_shapes[f1_span.start as usize];
-    let f1_second = h.ui().layout(Layer::Main).text_shapes[(f1_span.start + 1) as usize];
+    let f1_span = h.ui().plane_layout(Layer::Main).text_spans[f1_leaf.idx()];
+    let f1_first = h.ui().plane_layout(Layer::Main).text_shapes[f1_span.start as usize];
+    let f1_second = h.ui().plane_layout(Layer::Main).text_shapes[(f1_span.start + 1) as usize];
     let f2_leaf = h.frame_value(build_multi_text_leaf);
-    let f2_span = h.ui().layout(Layer::Main).text_spans[f2_leaf.idx()];
+    let f2_span = h.ui().plane_layout(Layer::Main).text_spans[f2_leaf.idx()];
     assert_eq!(f2_span.len, 2, "frame 2 must restore both text-shape slots");
-    let f2_first = h.ui().layout(Layer::Main).text_shapes[f2_span.start as usize];
-    let f2_second = h.ui().layout(Layer::Main).text_shapes[(f2_span.start + 1) as usize];
+    let f2_first = h.ui().plane_layout(Layer::Main).text_shapes[f2_span.start as usize];
+    let f2_second = h.ui().plane_layout(Layer::Main).text_shapes[(f2_span.start + 1) as usize];
 
     assert_eq!(
         (f1_first.key, f1_second.key),

@@ -49,7 +49,7 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     });
 
     let layouts = h.ui().tree(Layer::Main).records.layout();
-    let rects = &h.ui().layout(Layer::Main).rect;
+    let rects = &h.ui().plane_layout(Layer::Main).rect;
     assert_eq!(
         layouts[inherited.idx()].margin,
         Spacing::xy(0.0, 5.0),
@@ -121,7 +121,7 @@ fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
             })
             .inner
     });
-    let rects = &h.ui().layout(Layer::Main).rect;
+    let rects = &h.ui().plane_layout(Layer::Main).rect;
     let d = rects[default.idx()];
     assert_eq!(
         (d.min.x, d.size.w),

@@ -109,7 +109,7 @@ pub(crate) fn assert_layout_matches_cold(h: &Harness, msg: &str) {
     let mut cold = Layout::default();
     engine.run(h.ui().forest(), h.ui().display().logical_rect(), &mut cold);
     for (plane, tree) in h.ui().forest().trees.iter_paint_order() {
-        let (warm, cold) = (h.ui().layout(plane), &cold[plane]);
+        let (warm, cold) = (h.ui().plane_layout(plane), &cold[plane]);
         for (node, id) in tree.records.widget_id().iter().enumerate() {
             let at = || format!("{msg}: {plane:?} node {node} ({id:?})");
             assert_eq!(warm.rect[node], cold.rect[node], "rect of {}", at());
@@ -136,7 +136,7 @@ fn assert_cascade_matches_cold(h: &Harness) {
     CascadeEngine::default().run(
         CascadeSource {
             forest: h.ui().forest(),
-            layout: h.ui().layout_tables(),
+            layout: h.ui().layout(),
             display: h.ui().display(),
             font_epoch: h.ui().font_epoch(),
         },

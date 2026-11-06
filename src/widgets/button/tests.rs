@@ -252,7 +252,7 @@ fn a_label_truncates_to_one_line_in_a_narrow_button() {
 
     // One line: the stock 19.203125 px line, its block rounded up to 20 px.
     assert_eq!(h.ui().theme().text.line_height(), 19.203_125);
-    let layout = h.ui().layout(Layer::Main);
+    let layout = h.ui().plane_layout(Layer::Main);
     let span = layout.text_spans[node.idx()];
     assert_eq!(span.len, 1);
     assert_eq!(

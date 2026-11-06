@@ -1383,7 +1383,7 @@ pub(crate) mod internals {
         }
 
         /// The whole layout table, for callers that walk every plane.
-        pub(crate) const fn layout_tables(&self) -> &Layout {
+        pub(crate) const fn layout(&self) -> &Layout {
             &self.input.arranged.layout
         }
 
@@ -1428,8 +1428,8 @@ pub(crate) mod internals {
         }
 
         /// One plane's arranged columns; a `Layer` names its base plane. Callers wanting the whole
-        /// table use [`Self::layout_tables`].
-        pub(crate) fn layout(&self, plane: impl Into<Plane>) -> &PlaneLayout {
+        /// table use [`Self::layout`].
+        pub(crate) fn plane_layout(&self, plane: impl Into<Plane>) -> &PlaneLayout {
             &self.input.arranged.layout[plane.into()]
         }
 

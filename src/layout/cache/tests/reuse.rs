@@ -144,7 +144,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         .measure
         .desired
         .clone();
-    let first_rects = h.ui().layout(Layer::Main).rect.clone();
+    let first_rects = h.ui().plane_layout(Layer::Main).rect.clone();
 
     run_frame(&mut h, build);
     let second = snap_for(&h, WidgetId::from_hash("a")).unwrap();
@@ -154,7 +154,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         first_desired,
         h.frames_mut().layout.cache.prev.nodes.measure.desired
     );
-    assert_eq!(first_rects, h.ui().layout(Layer::Main).rect);
+    assert_eq!(first_rects, h.ui().plane_layout(Layer::Main).rect);
     assert_eq!(
         h.frames_mut().layout.scratch.counters.cache_hits().len(),
         1,
@@ -390,28 +390,28 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
     let mut nodes = Vec::new();
     run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let cold_fill = h.ui().layout(Layer::Main).text_spans[nodes[0].idx()];
-    let cold_hug = h.ui().layout(Layer::Main).text_spans[nodes[1].idx()];
+    let cold_fill = h.ui().plane_layout(Layer::Main).text_spans[nodes[0].idx()];
+    let cold_hug = h.ui().plane_layout(Layer::Main).text_spans[nodes[1].idx()];
     assert_eq!(cold_hug, Span::new(0, 1));
     assert_eq!(cold_fill, Span::new(1, 1));
     let inner = snap_for(&h, WidgetId::from_hash("solver-order")).unwrap();
     assert_eq!(inner.snap.text_shapes, Span::new(0, 2));
-    let cold_fill_key = h.ui().layout(Layer::Main).text_shapes[cold_fill.start as usize].key;
-    let cold_hug_key = h.ui().layout(Layer::Main).text_shapes[cold_hug.start as usize].key;
+    let cold_fill_key = h.ui().plane_layout(Layer::Main).text_shapes[cold_fill.start as usize].key;
+    let cold_hug_key = h.ui().plane_layout(Layer::Main).text_shapes[cold_hug.start as usize].key;
     assert_ne!(cold_fill_key, cold_hug_key);
 
     run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let warm_fill = h.ui().layout(Layer::Main).text_spans[nodes[0].idx()];
-    let warm_hug = h.ui().layout(Layer::Main).text_spans[nodes[1].idx()];
+    let warm_fill = h.ui().plane_layout(Layer::Main).text_spans[nodes[0].idx()];
+    let warm_hug = h.ui().plane_layout(Layer::Main).text_spans[nodes[1].idx()];
     assert_eq!(warm_fill, cold_fill);
     assert_eq!(warm_hug, cold_hug);
     assert_eq!(
-        h.ui().layout(Layer::Main).text_shapes[warm_fill.start as usize].key,
+        h.ui().plane_layout(Layer::Main).text_shapes[warm_fill.start as usize].key,
         cold_fill_key
     );
     assert_eq!(
-        h.ui().layout(Layer::Main).text_shapes[warm_hug.start as usize].key,
+        h.ui().plane_layout(Layer::Main).text_shapes[warm_hug.start as usize].key,
         cold_hug_key
     );
     assert!(
@@ -633,8 +633,8 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
         h.frames_mut().layout.scratch.counters.kept_runs() - before
     };
     assert_eq!(kept(&mut h, color, popup_at), 0, "the first frame runs");
-    let rects = h.ui().layout(Layer::Main).rect.clone();
-    let popup = h.ui().layout(Layer::Popup).rect.clone();
+    let rects = h.ui().plane_layout(Layer::Main).rect.clone();
+    let popup = h.ui().plane_layout(Layer::Popup).rect.clone();
     assert_eq!(kept(&mut h, color, popup_at), 1, "an unchanged frame keeps");
     color = RgbaF32::srgb(0.9, 0.4, 0.8);
     assert_eq!(kept(&mut h, color, popup_at), 1, "a recolor keeps");
@@ -646,8 +646,8 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
             .cache_hits()
             .is_empty()
     );
-    assert_eq!(h.ui().layout(Layer::Main).rect, rects);
-    assert_eq!(h.ui().layout(Layer::Popup).rect, popup);
+    assert_eq!(h.ui().plane_layout(Layer::Main).rect, rects);
+    assert_eq!(h.ui().plane_layout(Layer::Popup).rect, popup);
 
     h.resize(UVec2::new(240, 200));
     assert_eq!(kept(&mut h, color, popup_at), 0, "a resize runs");
@@ -657,7 +657,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     popup_at = Vec2::new(25.0, 35.0);
     assert_eq!(kept(&mut h, color, popup_at), 0, "a moved overlay runs");
     assert_eq!(
-        h.ui().layout(Layer::Popup).rect[0],
+        h.ui().plane_layout(Layer::Popup).rect[0],
         Rect::new(30.0, 40.0, 30.0, 10.0),
     );
     assert_eq!(kept(&mut h, color, popup_at), 1);

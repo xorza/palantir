@@ -147,7 +147,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     let node = harness.node_for_widget_id(inner);
     assert_eq!(
         arranged,
-        harness.ui().layout(Layer::Main).rect[node.idx()],
+        harness.ui().plane_layout(Layer::Main).rect[node.idx()],
         "layout_rect == the arrange output for that widget's node",
     );
 

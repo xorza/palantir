@@ -24,7 +24,7 @@ use glam::UVec2;
 fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
     let mut h = Harness::new(UVec2::new(400, 400));
     let scene = h.frame_value(build_wrapping_container_text);
-    let layout = h.ui().layout(Layer::Main);
+    let layout = h.ui().plane_layout(Layer::Main);
     assert_eq!(layout.text_shapes.len(), 1);
     let container_rect = layout.rect[scene.container.idx()];
     let child_rect = layout.rect[scene.child.idx()];
@@ -48,7 +48,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         .collect();
     assert_eq!(draw_keys, [shaped.buffer_key()]);
     let leaf = h.frame_value(|ui| Text::new("leaf-only").show(ui).node(ui));
-    let layout = h.ui().layout(Layer::Main);
+    let layout = h.ui().plane_layout(Layer::Main);
     assert_eq!(layout.text_shapes.len(), 1);
     assert_eq!(layout.text_spans[leaf.idx()].len, 1);
 }
@@ -75,7 +75,7 @@ fn container_text_replays_at_its_width_and_reshapes_at_another() {
             .node(ui)
     };
     let run_of = |h: &Harness, node: NodeId| {
-        let layout = h.ui().layout(Layer::Main);
+        let layout = h.ui().plane_layout(Layer::Main);
         let span = layout.text_spans[node.idx()];
         assert_eq!(span.len, 1, "the container owns one run");
         let shaped = layout.text_shapes[span.start as usize];
@@ -140,7 +140,10 @@ fn container_text_under_a_shown_ancestor_shapes_what_it_did_not_replay() {
         }
     };
     let node = h.frame_value(build(Visibility::Hidden));
-    assert_eq!(h.ui().layout(Layer::Main).text_spans[node.idx()].len, 0);
+    assert_eq!(
+        h.ui().plane_layout(Layer::Main).text_spans[node.idx()].len,
+        0
+    );
     let node = h.frame_value(build(Visibility::Visible));
     let container = h.ui().tree(Layer::Main).records.widget_id()[node.idx()];
     assert!(
@@ -148,7 +151,7 @@ fn container_text_under_a_shown_ancestor_shapes_what_it_did_not_replay() {
         "fixture: the container's subtree hits the cache"
     );
     assert_eq!(
-        h.ui().layout(Layer::Main).text_spans[node.idx()].len,
+        h.ui().plane_layout(Layer::Main).text_spans[node.idx()].len,
         1,
         "the shown container shapes its run"
     );
@@ -160,7 +163,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     let mut h = Harness::new(surface);
     let hidden_node =
         h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Hidden));
-    let hidden_layout = h.ui().layout(Layer::Main);
+    let hidden_layout = h.ui().plane_layout(Layer::Main);
     assert_eq!(
         hidden_layout.rect[hidden_node.idx()].size,
         Size::new(100.0, 100.0),
@@ -170,14 +173,14 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
 
     let collapsed_node =
         h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Collapsed));
-    let collapsed_layout = h.ui().layout(Layer::Main);
+    let collapsed_layout = h.ui().plane_layout(Layer::Main);
     assert_eq!(collapsed_layout.rect[collapsed_node.idx()].size, Size::ZERO);
     assert_eq!(collapsed_layout.text_spans[collapsed_node.idx()].len, 0);
     assert!(collapsed_layout.text_shapes.is_empty());
 
     let visible_node =
         h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Visible));
-    let visible_layout = h.ui().layout(Layer::Main);
+    let visible_layout = h.ui().plane_layout(Layer::Main);
     assert_eq!(
         visible_layout.rect[visible_node.idx()].size,
         Size::new(100.0, 100.0),
@@ -205,7 +208,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
                 })
                 .inner
         });
-        let layout = h.ui().layout(Layer::Main);
+        let layout = h.ui().plane_layout(Layer::Main);
         assert_eq!(
             layout.rect[owner.idx()].size,
             owner_size,
@@ -227,7 +230,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
 fn container_and_child_text_keep_independent_order_across_cache_hit() {
     let mut h = Harness::new(UVec2::new(400, 400));
     let first_scene = h.frame_value(build_interleaved_container_text);
-    let first_layout = h.ui().layout(Layer::Main);
+    let first_layout = h.ui().plane_layout(Layer::Main);
     assert_eq!(first_layout.text_shapes.len(), 3);
     let first_parent_span = first_layout.text_spans[first_scene.container.idx()];
     let first_child_span = first_layout.text_spans[first_scene.child.idx()];
@@ -264,7 +267,7 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
             .is_empty(),
         "second identical frame should exercise measure-cache replay",
     );
-    let second_layout = h.ui().layout(Layer::Main);
+    let second_layout = h.ui().plane_layout(Layer::Main);
     assert_eq!(second_layout.text_shapes.len(), 3);
     let second_parent_span = second_layout.text_spans[second_scene.container.idx()];
     let second_child_span = second_layout.text_spans[second_scene.child.idx()];
