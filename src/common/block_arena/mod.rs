@@ -21,6 +21,12 @@ const fn block_capacity<const GRANULE: u32>(class: usize) -> u32 {
     (class as u32 + 1) * GRANULE
 }
 
+/// Where the link of the block at `start` lives in `free_links`.
+#[inline]
+const fn link_idx<const GRANULE: u32>(start: u32) -> usize {
+    (start / GRANULE) as usize
+}
+
 /// Flat storage carved into size-classed blocks, each freed block returned to its class's free list. Owners hold only a [`Span`]; allocation-free after warm-up.
 ///
 /// A free list's links live beside the slots, at 4 bytes per granule. Refused: the link inside a free block's first slot, as [`slab`](https://docs.rs/slab) keeps it in a `Vacant` variant, which an arena that hands out `&[T]` cannot have, and which made each element carry a `u32` in a field of another meaning, a row's content hash among them.
@@ -61,7 +67,7 @@ impl<T: Copy, const GRANULE: u32> BlockArena<T, GRANULE> {
 
     /// Hands `span`'s block back to its class, recovered from `span.len` via [`block_class`].
     ///
-    /// **The caller must not use `span` again:** a double release links the block twice and the next two stores get the same block.
+    /// **The caller must not use `span` again.** A second release while the block is free links it to itself, so every later store of the class would get that one block; debug builds panic here, at the cost of a walk of the class's free list. A stale release after another owner took the block looks like a first release and is not caught.
     pub(crate) fn release(&mut self, span: Span) {
         if span.len == 0 {
             return;
@@ -75,8 +81,24 @@ impl<T: Copy, const GRANULE: u32> BlockArena<T, GRANULE> {
             span.start.is_multiple_of(GRANULE),
             "a block starts on a granule",
         );
-        self.free_links[(span.start / GRANULE) as usize] = self.free_heads[class];
+        debug_assert!(
+            !self.is_free(span.start, class),
+            "a block released twice",
+        );
+        self.free_links[link_idx::<GRANULE>(span.start)] = self.free_heads[class];
         self.free_heads[class] = Some(NonMaxU32::index(span.start as usize));
+    }
+
+    /// Whether the block at `start` is on `class`'s free list. Ends at the list's end, as a list has no cycle while [`Self::release`] refuses a free block.
+    fn is_free(&self, start: u32, class: usize) -> bool {
+        let mut at = self.free_heads[class];
+        while let Some(block) = at {
+            if block.get() == start {
+                return true;
+            }
+            at = self.free_links[link_idx::<GRANULE>(block.get())];
+        }
+        false
     }
 
     /// Drops every block, live and free, keeping capacity.
@@ -95,7 +117,7 @@ impl<T: Copy, const GRANULE: u32> BlockArena<T, GRANULE> {
             self.free_heads.resize(class + 1, None);
         }
         if let Some(head) = self.free_heads[class] {
-            self.free_heads[class] = self.free_links[head.idx() / GRANULE as usize];
+            self.free_heads[class] = self.free_links[link_idx::<GRANULE>(head.get())];
             self.counters.reuses.bump();
             return head.get();
         }

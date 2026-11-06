@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::common::counters::CounterSet;
+use crate::internals::panic_probe;
 
 /// The cheapest thing satisfying the trait: a test can read a slot back and say what it holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +110,27 @@ fn a_class_hands_back_the_most_recently_freed_block() {
         assert_eq!(store(&mut arena, 0..3), *want);
     }
     assert_eq!(arena.slots.len(), 12, "three blocks, all recycled");
+}
+
+/// A second release of a free block panics, at the head of its list and behind it. A release of a
+/// block taken again is a first release, which `a_released_block_is_the_next_one_handed_out` holds.
+#[test]
+fn a_double_release_panics() {
+    let message = "a block released twice";
+    panic_probe::assert_panics_with(message, || {
+        let mut arena = BlockArena::<Slot, GRANULE>::default();
+        let span = store(&mut arena, 0..3);
+        arena.release(span);
+        arena.release(span);
+    });
+    panic_probe::assert_panics_with(message, || {
+        let mut arena = BlockArena::<Slot, GRANULE>::default();
+        let behind = store(&mut arena, 0..3);
+        let head = store(&mut arena, 3..6);
+        arena.release(behind);
+        arena.release(head);
+        arena.release(behind);
+    });
 }
 
 /// A shorter span reusing a longer one's block must expose only the
