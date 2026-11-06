@@ -1,6 +1,6 @@
-//! The app-global resources of one host, shared by every window's recorder, the one frontend and the one backend:
-//! shaper, image and icon registries, clipboard, window directory, and the
-//! settings every window shares. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
+//! The app-global resources of one host, shared by every window's recorder: shaper, image and icon
+//! registries, clipboard, window directory, and the settings every window shares, so recorders in
+//! two windows resolve the same font, texture and scale.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -13,26 +13,33 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use crate::renderer::shared_device::SharedDevice;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::resources::app_settings::AppSettings;
+use crate::ui::resources::shared_device::SharedDevice;
 use crate::window::window_directory::WindowDirectory;
 
 pub(crate) mod app_settings;
+pub(crate) mod shared_device;
 
-/// Shared by `Rc` on each window's `Ui`. Refused: a `CpuCore` that owns them, as `&mut Ui` has no
-/// lifetime, and lending them needs `Ui<'res>` at each of the 356 widget signatures.
+/// One `Rc` over what a host shares, cloned onto each window's `Ui`. Refused: a `CpuCore` that owns
+/// them, as `&mut Ui` has no lifetime, and lending them needs `Ui<'res>` at each of the 356 widget
+/// signatures; an `Rc` per resource, for one concept.
 #[derive(Clone, Debug)]
-pub(crate) struct UiResources {
+pub(crate) struct UiResources(Rc<SharedResources>);
+
+/// What the windows of a host share. A handle an app or the backend holds apart, as [`TextShaper`]
+/// and [`Clipboard`], stays a refcounted handle of its own.
+#[derive(Debug)]
+struct SharedResources {
     text: TextShaper,
     images: ImageRegistry,
     icons: IconRegistry,
     /// The ceiling a registered image is measured against (`Ui::max_image_dimension`) and the
-    /// attach epoch, shared with every clone and the frontend; no ceiling until a device attaches.
-    device: Rc<SharedDevice>,
+    /// attach epoch; no ceiling until a device attaches.
+    device: SharedDevice,
     clipboard: Clipboard,
-    settings: Rc<AppSettings>,
+    settings: AppSettings,
     windows: WindowDirectory,
 }
 
@@ -40,64 +47,64 @@ impl UiResources {
     /// Resources whose images go to `images`, the registry over the host's texture store; the
     /// default registry is a deviceless recorder's.
     pub(crate) fn new(text: TextShaper, clipboard: Clipboard, images: ImageRegistry) -> Self {
-        Self {
+        Self(Rc::new(SharedResources {
             text,
             images,
             icons: IconRegistry::default(),
-            device: Rc::default(),
+            device: SharedDevice::default(),
             clipboard,
-            settings: Rc::default(),
+            settings: AppSettings::default(),
             windows: WindowDirectory::default(),
-        }
+        }))
     }
 
-    pub(crate) const fn text(&self) -> &TextShaper {
-        &self.text
+    pub(crate) fn text(&self) -> &TextShaper {
+        &self.0.text
     }
 
-    pub(crate) const fn icons(&self) -> &IconRegistry {
-        &self.icons
+    pub(crate) fn icons(&self) -> &IconRegistry {
+        &self.0.icons
     }
 
-    pub(crate) const fn device(&self) -> &Rc<SharedDevice> {
-        &self.device
+    pub(crate) fn device(&self) -> &SharedDevice {
+        &self.0.device
     }
 
     /// The recorders' side of a device attach, at startup and after a loss alike: note the
     /// device's `texture_limit` in a new epoch.
     pub(crate) fn attach_device(&self, texture_limit: TextureLimit) {
-        self.device.attach(texture_limit);
+        self.0.device.attach(texture_limit);
     }
 
-    pub(crate) const fn clipboard(&self) -> &Clipboard {
-        &self.clipboard
+    pub(crate) fn clipboard(&self) -> &Clipboard {
+        &self.0.clipboard
     }
 
     /// The settings every window shares.
     pub(crate) fn settings(&self) -> &AppSettings {
-        &self.settings
+        &self.0.settings
     }
 
     /// The scheme every window shows now: the preference resolved against the system's.
     pub(crate) fn color_scheme(&self) -> ColorScheme {
-        self.settings.color_scheme()
+        self.0.settings.color_scheme()
     }
 
-    pub(crate) const fn windows(&self) -> &WindowDirectory {
-        &self.windows
+    pub(crate) fn windows(&self) -> &WindowDirectory {
+        &self.0.windows
     }
 
     /// The longest image side the device holds, `None` before a device attaches.
     pub(super) fn max_image_dimension(&self) -> Option<NonZeroU32> {
-        self.device.texture_limit().max_dimension()
+        self.0.device.texture_limit().max_dimension()
     }
 
     pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
-        self.device.texture_limit().accepts(image.size)?;
+        self.0.device.texture_limit().accepts(image.size)?;
         Ok(ImageHandle::new(
             TextureId::reserve(),
             image,
-            self.images.clone(),
+            self.0.images.clone(),
         ))
     }
 }

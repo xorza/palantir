@@ -13,7 +13,6 @@ use crate::host::core::HostCore;
 use crate::host::system_preferences::SystemPreferences;
 use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
-use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::QueryTask;
@@ -44,9 +43,8 @@ pub(super) struct WinitRuntime<T: 'static> {
     pending_commands: WindowCommands,
     /// The failed attempts of a device recovery under way.
     recovery: RecoveryBackoff,
-    /// Each window's last frame, which the [`HostHandle`]s read.
-    frame_log: Arc<FrameLog>,
-    /// The handle each window's [`Waker`] asks for its frames through.
+    /// The handle each window's [`Waker`] asks for its frames through, and whose frame log holds
+    /// each window's last frame for the handles to read.
     handle: HostHandle<T>,
     /// Follows the system's settings while the host runs; dropping it ends the following.
     _system_preferences: Subscription,
@@ -110,7 +108,6 @@ impl<T: App + 'static> WinitRuntime<T> {
             .expect("bootstrap app factory already consumed");
         let pending_tasks = mem::take(&mut bootstrap.pending_tasks);
 
-        let frame_log = Arc::clone(&handle.frame_log);
         let own_handle = handle.clone();
         let system_preferences = {
             let handle = handle.clone();
@@ -139,7 +136,6 @@ impl<T: App + 'static> WinitRuntime<T> {
             windows,
             pending_commands: WindowCommands::default(),
             recovery: RecoveryBackoff::default(),
-            frame_log,
             handle: own_handle,
             _system_preferences: system_preferences,
         };
@@ -185,7 +181,8 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Publish whether the window at `slot` is hidden, for the handles to read.
     pub(super) fn log_visibility(&mut self, slot: WindowSlot) {
         let win = self.windows.at(slot);
-        self.frame_log
+        self.handle
+            .frame_log
             .set_hidden(win.driver.token(), win.is_hidden());
     }
 
@@ -208,7 +205,9 @@ impl<T: App + 'static> WinitRuntime<T> {
             Instant::now(),
             |win| {
                 let ran = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)?;
-                self.frame_log.record(win.driver.token(), ran.summary);
+                self.handle
+                    .frame_log
+                    .record(win.driver.token(), ran.summary);
                 Some(ran.ran_app)
             },
             Instant::now,
@@ -392,7 +391,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             driver,
             ..
         } = win;
-        self.frame_log.remove(driver.token());
+        self.handle.frame_log.remove(driver.token());
         self.core.device.close(driver);
         drop(surface);
         debug_assert_eq!(

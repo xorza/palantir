@@ -3,18 +3,17 @@ use crate::window::window_directory::WindowDirectory;
 use crate::window::window_token::WindowToken;
 
 #[test]
-fn directory_clones_observe_the_same_live_windows() {
-    let host = WindowDirectory::default();
-    let recorder = host.clone();
+fn a_directory_holds_the_live_windows() {
+    let directory = WindowDirectory::default();
 
-    host.add(WindowToken(1));
-    host.add(WindowToken(2));
-    assert!(recorder.contains(WindowToken(1)));
-    assert!(recorder.contains(WindowToken(2)));
+    directory.add(WindowToken(1));
+    directory.add(WindowToken(2));
+    assert!(directory.contains(WindowToken(1)));
+    assert!(directory.contains(WindowToken(2)));
 
-    host.remove(WindowToken(1));
-    assert!(!recorder.contains(WindowToken(1)));
-    assert!(recorder.contains(WindowToken(2)));
+    directory.remove(WindowToken(1));
+    assert!(!directory.contains(WindowToken(1)));
+    assert!(directory.contains(WindowToken(2)));
 }
 
 /// Two drivers under one token, or dropping a never-added token, is a host bug the directory refuses.

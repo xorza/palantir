@@ -31,8 +31,8 @@ WinitRuntime<T>
 ├─ surfaces: SurfaceManager
 ├─ core: HostCore
 │  ├─ cpu: CpuCore
-│  │  ├─ resources: UiResources (7 separate refcounted fields)
-│  │  ├─ frontend: Frontend { encoder, composer (Rc<SharedDevice>), buffer }
+│  │  ├─ resources: UiResources (one Rc<SharedResources>)
+│  │  ├─ frontend: Frontend { encoder, composer, buffer }
 │  │  └─ render_owners
 │  └─ device: DeviceCore
 │     ├─ spec: BackendSpec { image_store (shared), timing }
@@ -49,8 +49,7 @@ WinitRuntime<T>
 │        ├─ stream: RenderStream
 │        ├─ damage_base, target, target_outlined, pane_captures
 │        └─ screenshots: ScreenshotLane { requests, pending }
-├─ frame_log: Arc<FrameLog>   (also inside handle)
-└─ handle: HostHandle<T>
+└─ handle: HostHandle<T> { frame_log: Arc<FrameLog>, … }
 ```
 
 One painted frame, 9 named frames deep to the app:
@@ -91,9 +90,8 @@ The remaining gain is in the signatures:
 
 ## Root causes
 
-1. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
-2. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
-3. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
+1. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
+2. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
 
 ## Target design
 
@@ -133,17 +131,13 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 - `host/window_driver/present_facts.rs`: the pure decision: `PresentFacts`, `Escalation`, the promote share.
 - `host/window_driver/screenshot_lane.rs`: `ScreenshotLane`, each screenshot from the ask to the image.
 - `ui/overlay_stack.rs`: `OverlayStack`, moved out of `widget_core`.
-- `ui/resources/mod.rs`: `UiResources(Rc<SharedResources>)`.
+- `ui/resources/shared_device.rs`: `SharedDevice`, moved out of `renderer`, as only `UiResources` holds it now.
 
 ### Shared ownership
 
 | Holder | Verdict | Why |
 |---|---|---|
-| `UiResources.settings: Rc<AppSettings>` | **Replace** with a field of `SharedResources` | One `Rc` serves |
-| `UiResources.device: Rc<SharedDevice>` | **Replace** with a field of `SharedResources` | One `Rc` serves |
-| `WindowDirectory.tokens: Rc<RefCell<_>>` | **Replace** with `RefCell` in `SharedResources` | Only `UiResources` holds it |
-| `Composer.device: Rc<SharedDevice>` | **Replace** with a `TextureLimit` value | `Frontend::attach_device` already carries the limit |
-| `WinitRuntime.frame_log: Arc<FrameLog>` | **Replace** with `handle.frame_log` | The runtime holds that handle |
+| `UiResources(Rc<SharedResources>)` | Keep | `&mut Ui` has no lifetime to lend from, and every window shares it |
 | `Rc<Theme>`, 21 `Rc::clone(ui.theme())` | Keep | An immutable value too costly to copy, and it must outlive a `&mut Ui` reborrow |
 | `TextShaper(Rc<Shared>)`, `RefCell` | Keep | Public, and two hosts may share one through `OffscreenHostBuilder::shaper` |
 | `FamilyKeys(Rc<RefCell<_>>)` | Keep | Each window's `Forest` keys text as it records, with no reach to the shaper |
@@ -158,8 +152,6 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 | `Gpu.pipeline_turn: Arc<Mutex<()>>` | Keep | Decided in `AGENTS.md`, **Pipeline builds** |
 | `Remote` `given_up: Arc<AtomicBool>` | Keep | Two threads share it |
 | `common::id_counter` atomics | Keep | Ids stay unique across hosts in a process |
-
-`UiResources` falls from 64 B to 8 B on `Ui`. A settings read still takes one pointer chase, so `Ui::animate` pays nothing new. A text read takes two in place of one, on a path that then shapes text.
 
 ### Refused
 
@@ -178,16 +170,6 @@ A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::c
 # Part 2: Plan
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
-
-## Batch 5: One shared owner
-
-Files: `src/ui/resources/mod.rs`, `src/ui/resources/app_settings.rs`, `src/window/window_directory/mod.rs`, `src/renderer/frontend/mod.rs`, `src/renderer/frontend/composer/mod.rs`, `src/renderer/frontend/composer/session.rs`, `src/host/cpu_core.rs`, `src/host/winit/runtime.rs`, `src/internals/hot_struct_sizes.rs`.
-
-- [ ] `UiResources`: seven refcounted fields for one concept. Make it `UiResources(Rc<SharedResources>)`, and hold `AppSettings`, `SharedDevice` and `WindowDirectory` by value inside it.
-- [ ] `WindowDirectory.tokens`: drop the `Rc`.
-- [ ] `Composer.device`: replace it with a `TextureLimit` set through `Frontend::attach_device`, and take the `Rc` off `Frontend::new`. Test: an attach moves the `GpuView` ceiling in the next build.
-- [ ] `WinitRuntime.frame_log`: read `self.handle.frame_log`.
-- [ ] `hot_struct_sizes`: update `UI_SIZE` and `FRAME_LOOP_SIZE`.
 
 ## Batch 6: Frame stages
 

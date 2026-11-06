@@ -307,7 +307,6 @@ mod output_validity_tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::test_device;
     use crate::renderer::render_plan::RenderPlan;
     use crate::window::screenshot::{ScreenshotId, ScreenshotRequest};
     use std::time::Duration;
@@ -532,7 +531,7 @@ mod output_validity_tests {
     #[test]
     fn a_frame_dropped_unsubmitted_makes_the_next_frame_whole() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         for (submitted, next_paints) in [(false, true), (true, false)] {
             let mut driver = new_driver(
                 WindowToken(1),
@@ -558,7 +557,7 @@ mod output_validity_tests {
     #[test]
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         let mut driver = new_driver(
             WindowToken(1),
             &shared,
@@ -682,7 +681,6 @@ mod record_store_tests {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::test_device;
 
     use crate::shape::Shape;
 
@@ -770,7 +768,7 @@ mod record_store_tests {
     #[test]
     fn a_frame_forwards_token_through_app_lifecycle() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         let token = WindowToken(17);
         let mut window = new_driver(
             token,
@@ -803,7 +801,7 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         let mut window_a = new_driver(
             WindowToken(1),
             &shared,
@@ -998,7 +996,6 @@ mod cutout_census_tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::test_device;
     use crate::shape::Shape;
     use crate::ui::Ui;
     use crate::ui::resources::UiResources;
@@ -1015,7 +1012,7 @@ mod cutout_census_tests {
     #[test]
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         let spec = DriverSpec {
             token: WindowToken(1),
             owner: RenderOwners::default().reserve(),
@@ -1380,7 +1377,6 @@ mod escalation_tests {
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::test_device;
     use crate::renderer::render_buffer::backdrop_row::PaneSource;
     use crate::renderer::render_plan::RenderPlan;
     use crate::shape::Shape;
@@ -1457,7 +1453,7 @@ mod escalation_tests {
 
     fn run(row: Row) -> PaintPath {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         let mut driver = new_driver(WindowToken(1), &shared, config(row.strategy, true));
         let base = spec(PHYSICAL, 1.0);
         let spec = FrameSpec {
@@ -1499,7 +1495,7 @@ mod escalation_tests {
     #[test]
     fn a_composed_frame_past_the_cap_captures_every_pane() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         let mut driver = new_driver(WindowToken(1), &shared, config(Retained, true));
         driver.note_target(&spec(PHYSICAL, 1.0));
         let mut app = |ui: &mut Ui| bars(ui, 10);
@@ -1695,7 +1691,6 @@ mod capture_path_tests {
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::test_device;
     use crate::shape::Shape;
     use crate::ui::Ui;
     use crate::ui::resources::UiResources;
@@ -1708,7 +1703,7 @@ mod capture_path_tests {
     /// 100 × 80 target that gives a copy when `gives_copy` is.
     fn first_frame(pane: Rect, gives_copy: bool) -> PaintPath {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(test_device());
+        let mut frontend = Frontend::for_test();
         let mut driver = new_driver(
             WindowToken(1),
             &shared,

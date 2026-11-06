@@ -9,7 +9,6 @@ use crate::renderer::frontend::Frontend;
 use crate::text::shaper::TextShaper;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
-use std::rc::Rc;
 
 /// The [`UiResources`] every window of a host shares, and the one CPU [`Frontend`] each frame
 /// composes through. A host that paints pairs it with a
@@ -38,7 +37,7 @@ impl CpuCore {
 
     /// The core over `resources`, which other cores may share.
     pub(super) fn over(resources: UiResources, options: &HostOptions) -> Self {
-        let frontend = Frontend::new(Rc::clone(resources.device()));
+        let frontend = Frontend::new();
         resources.settings().set_pixel_snap(options.pixel_snap);
         Self {
             resources,

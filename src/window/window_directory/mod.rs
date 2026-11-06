@@ -2,14 +2,13 @@
 
 use crate::window::window_token::WindowToken;
 use std::cell::RefCell;
-use std::rc::Rc;
 
 /// App-global set of live window identities shared by the host lifecycle and every recorder. A `Ui` answers [`Ui::is_window_open`](crate::Ui::is_window_open) but can't see the host's winit window list, so this projects it to the one fact a recorder needs.
 ///
 /// **A `WindowDriver` registers**: `build` adds its token and `Drop` removes it, so the set is "the drivers that exist" by construction, and an unbuilt builder leaves nothing.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct WindowDirectory {
-    tokens: Rc<RefCell<Vec<WindowToken>>>,
+    tokens: RefCell<Vec<WindowToken>>,
 }
 
 impl WindowDirectory {

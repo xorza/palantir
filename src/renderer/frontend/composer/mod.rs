@@ -5,15 +5,14 @@
 //! buffer it fills, and [`geometry`] is the arithmetic both are cut with.
 
 use crate::display::frame_stamp::FrameStamp;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
 use crate::renderer::frontend::composer::paint_order::PaintOrder;
 use crate::renderer::frontend::composer::polyline_scratch::PolylineScratch;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::shared_device::SharedDevice;
 use crate::shape::record_store::RecordStore;
-use std::rc::Rc;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -42,7 +41,7 @@ mod transform_stack;
 /// `RenderBuffer` being filled; the split is by lifetime. Nothing here takes
 /// an output buffer. [`Frontend`](crate::renderer::frontend::Frontend)
 /// orchestrates encode and compose.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Composer {
     /// The nested clips the walk has open: scissor plus rounded-mask chain per level.
     clip: ClipStack,
@@ -51,21 +50,15 @@ pub(crate) struct Composer {
     polyline: PolylineScratch,
     /// Which draws may reorder within a group, and where groups and text batches close.
     order: PaintOrder,
-    /// Holds the device ceiling: the composer downsamples any composited `GpuView` whose physical
-    /// rect exceeds it.
-    device: Rc<SharedDevice>,
+    /// The device ceiling: the composer downsamples any composited `GpuView` whose physical rect
+    /// exceeds it.
+    texture_limit: TextureLimit,
 }
 
 impl Composer {
-    /// New composer under `device`'s texture limit, all scratch empty.
-    pub(crate) fn new(device: Rc<SharedDevice>) -> Self {
-        Self {
-            clip: ClipStack::default(),
-            transform: TransformStack::default(),
-            polyline: PolylineScratch::default(),
-            order: PaintOrder::default(),
-            device,
-        }
+    /// The composer's side of a device attach: downsample under the device's `texture_limit`.
+    pub(crate) const fn attach_device(&mut self, texture_limit: TextureLimit) {
+        self.texture_limit = texture_limit;
     }
 
     /// Open a compose session over `out`: stamp the display, reset scratch and
@@ -117,7 +110,7 @@ pub(crate) mod internals {
                 transform,
                 polyline,
                 order,
-                device: _,
+                texture_limit: _,
             } = self;
             clip.scratch_bytes()
                 + transform.scratch_bytes()

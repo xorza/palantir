@@ -9,7 +9,7 @@ use crate::ui::ui_preferences::UiPreferences;
 use std::cell::Cell;
 use std::time::Duration;
 
-/// Settings every window of a host shares, held once through an `Rc` in
+/// Settings every window of a host shares, held once in
 /// [`UiResources`](crate::ui::resources::UiResources), and whether any moved since the host last
 /// asked: windows that did not record are asleep, so a write raises the signal and the host's
 /// [`Self::take_change`] repaints them all. Writing the held value is not a change, so a

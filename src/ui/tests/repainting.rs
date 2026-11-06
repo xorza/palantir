@@ -431,7 +431,7 @@ fn a_new_device_makes_each_window_record_once() {
     );
 
     let limit = NonZeroU32::new(4096).unwrap();
-    shared.device().attach(TextureLimit::from_device(limit));
+    shared.attach_device(TextureLimit::from_device(limit));
     for ui in [&mut a, &mut b] {
         let processing = |ui: &mut Harness, at| ui.at(at).frame(|ui| body(ui, half)).processing;
         assert_eq!(processing(ui, half * 2), FrameProcessing::SingleLayout);

@@ -355,8 +355,7 @@ impl PaintSink for ComposeSession<'_> {
             // A recorder with no device has no ceiling.
             let max = self
                 .composer
-                .device
-                .texture_limit()
+                .texture_limit
                 .max_dimension()
                 .map_or(u32::MAX, NonZeroU32::get);
             let cap = i64::from(max);
