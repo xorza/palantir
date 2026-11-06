@@ -12,7 +12,7 @@ use crate::host::device_core::DeviceCore;
 use crate::host::host_options::HostOptions;
 use crate::host::system_preferences::SystemPreferences;
 use crate::host::wake_signal::WakeSignal;
-use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, TargetKey, WindowDriver};
+use crate::host::window_driver::{CpuFrame, FrameSpec, TargetKey, WindowDriver};
 use crate::text::font_scope::FontScope;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
@@ -23,9 +23,9 @@ use std::vec::Drain;
 
 /// A headless host's one window: the CPU core, the window's driver, the wakes its waker sends, the
 /// display facts the host reports, and the window commands its last frame recorded. Each frame
-/// runs through [`Self::frame`], so the two headless hosts keep only their clock and their
-/// target. Refused: a field and a method of each copied into both hosts, which drifted (the
-/// window commands, the system's preferences).
+/// runs through [`Self::record_frame`], [`Self::compose_frame`] or [`Self::paint_frame`], so the
+/// two headless hosts keep only their clock and their target. Refused: a field and a method of
+/// each copied into both hosts, which drifted (the window commands, the system's preferences).
 #[derive(Debug)]
 pub(super) struct HeadlessWindow {
     pub(super) cpu: CpuCore,
@@ -61,28 +61,12 @@ impl HeadlessSettings {
     }
 }
 
-/// One frame of a [`HeadlessWindow`]: how far it runs, on which target, and its time.
+/// What a [`HeadlessWindow`]'s painted frame paints with and on: its frame is laid out for this
+/// texture's key, so no frame lays out for a texture other than the one it paints.
 #[derive(Debug)]
-pub(super) struct HeadlessFrame<'a> {
-    pub(super) depth: HeadlessDepth<'a>,
-    pub(super) now: Duration,
-}
-
-/// How far a [`HeadlessFrame`] runs, and the target it is laid out for: a frame that paints
-/// holds the device and the texture it paints, whose key it is laid out for, so no frame paints
-/// without them or lays out for a texture other than the one it paints.
-#[derive(Debug)]
-pub(super) enum HeadlessDepth<'a> {
-    Record {
-        target: TargetKey,
-    },
-    Compose {
-        target: TargetKey,
-    },
-    Paint {
-        device: &'a mut DeviceCore,
-        target: RenderTarget<'a>,
-    },
+pub(super) struct HeadlessCanvas<'a> {
+    pub(super) device: &'a mut DeviceCore,
+    pub(super) target: RenderTarget<'a>,
 }
 
 impl HeadlessWindow {
@@ -107,37 +91,58 @@ impl HeadlessWindow {
         }
     }
 
-    /// Run one frame of `app`: take the waker's wake, record to `frame.depth`, keep the frame's
-    /// window commands, and paint while the device lives.
-    pub(super) fn frame(&mut self, app: &mut impl App, frame: HeadlessFrame<'_>) -> FrameReport {
+    /// One frame of `app` at `now` that records through damage and builds no draw list, laid out
+    /// for `target`.
+    pub(super) fn record_frame(
+        &mut self,
+        app: &mut impl App,
+        target: TargetKey,
+        now: Duration,
+    ) -> FrameReport {
+        self.take_wake();
+        let report = self.driver.record(self.spec(target, now), app);
+        self.driver.finish_unpainted();
+        record_window_commands(&mut self.driver, &mut self.commands);
+        report
+    }
+
+    /// [`Self::record_frame`] that also builds the draw list, on the CPU, and paints nothing.
+    pub(super) fn compose_frame(
+        &mut self,
+        app: &mut impl App,
+        target: TargetKey,
+        now: Duration,
+    ) -> FrameReport {
+        let report = self.record_frame(app, target, now);
+        if let Some(plan) = report.plan {
+            self.driver.compose(&mut self.cpu.frontend, plan);
+        }
+        report
+    }
+
+    /// One frame of `app` at `now` that paints on `canvas` while its device lives.
+    pub(super) fn paint_frame(
+        &mut self,
+        app: &mut impl App,
+        canvas: HeadlessCanvas<'_>,
+        now: Duration,
+    ) -> FrameReport {
+        let HeadlessCanvas { device, target } = canvas;
+        self.take_wake();
+        let spec = self.spec(TargetKey::of(target), now);
+        let CpuFrame { report, mode } = device.frame(&mut self.cpu, &mut self.driver, spec, app);
+        if !device.gpu().is_lost() {
+            device.submit(&mut self.cpu, &mut self.driver, target, mode);
+        }
+        record_window_commands(&mut self.driver, &mut self.commands);
+        report
+    }
+
+    /// A frame opens by taking the waker's wake.
+    fn take_wake(&mut self) {
         if self.wake.take() {
             self.driver.frames.ui.request_repaint();
         }
-        let report = match frame.depth {
-            HeadlessDepth::Record { target } => {
-                let spec = self.spec(target, frame.now);
-                self.cpu
-                    .record(&mut self.driver, spec, app, FrameDepth::Record)
-                    .report
-            }
-            HeadlessDepth::Compose { target } => {
-                let spec = self.spec(target, frame.now);
-                self.cpu
-                    .record(&mut self.driver, spec, app, FrameDepth::Compose)
-                    .report
-            }
-            HeadlessDepth::Paint { device, target } => {
-                let spec = self.spec(TargetKey::of(target), frame.now);
-                let CpuFrame { report, mode } =
-                    device.record(&mut self.cpu, &mut self.driver, spec, app);
-                if !device.gpu().is_lost() {
-                    device.submit(&mut self.cpu, &mut self.driver, target, mode);
-                }
-                report
-            }
-        };
-        record_window_commands(&mut self.driver, &mut self.commands);
-        report
     }
 
     /// The frame `target` describes at `now`, at the scale and refresh rate the host reports.

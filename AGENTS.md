@@ -136,7 +136,7 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 
 - **A host owns its windows; the frame step is the core's.** A host that paints holds a
   `HostCore`, its `CpuCore` and its `DeviceCore`, each its own type, and runs every frame through
-  `DeviceCore::record` and `DeviceCore::submit` on its `WindowDriver`; a harness below
+  `DeviceCore::frame` and `DeviceCore::submit` on its `WindowDriver`; a harness below
   `Depth::Gpu` holds the `CpuCore` alone. The two headless hosts share one private
   `HeadlessWindow`, which runs their frame, and each keeps only its clock and its target.
   Refused: one core with an optional device half, which every host that always paints

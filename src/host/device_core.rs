@@ -12,7 +12,7 @@ use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
 use crate::host::cpu_core::CpuCore;
-use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentPath, WindowDriver};
+use crate::host::window_driver::{BuildCtx, CpuFrame, FrameSpec, PresentPath, WindowDriver};
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::ui::app::App;
 use std::rc::Rc;
@@ -82,10 +82,10 @@ impl DeviceCore {
         self.backend.gpu()
     }
 
-    /// Run the CPU half of a frame that paints, on `cpu`: build the pipelines of its target's
-    /// format, hand over a screenshot the device finished, drop what evicted panes held, then
-    /// [record](CpuCore::record).
-    pub(super) fn record<T: App>(
+    /// The CPU half of a frame that paints, the one sequence every painting host runs: build the
+    /// pipelines of its target's format, hand over a screenshot the device finished, drop what
+    /// evicted panes held, then record `app` and build the draw list through `cpu`'s frontend.
+    pub(super) fn frame<T: App>(
         &mut self,
         cpu: &mut CpuCore,
         driver: &mut WindowDriver,
@@ -95,8 +95,14 @@ impl DeviceCore {
         self.backend.prepare_format(spec.target.format);
         driver.deliver_screenshot(&self.backend);
         driver.forget_evicted_panes(&mut self.backend);
-        let placements = self.backend.cutout_placements_mut();
-        cpu.record(driver, spec, app, FrameDepth::Paint(placements))
+        let report = driver.record(spec, app);
+        driver.build_paint(
+            BuildCtx {
+                frontend: &mut cpu.frontend,
+                placements: self.backend.cutout_placements_mut(),
+            },
+            report,
+        )
     }
 
     /// The GPU half: draw the frame recorded through `cpu` into `target` by `mode`.

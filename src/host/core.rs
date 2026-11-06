@@ -54,7 +54,6 @@ impl HostCore {
 #[cfg(test)]
 mod tests {
     use crate::damage::Damage;
-    use crate::display::system_scale::SystemScale;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::surface::owned_target::OwnedTarget;
@@ -80,7 +79,6 @@ mod tests {
     use crate::widgets::panel::Panel;
     use crate::window::window_token::WindowToken;
     use glam::UVec2;
-    use std::time::Duration;
 
     /// What every test core is built with: bundled fonts, no GPU timing.
     const OPTIONS: HostOptions = HostOptions::new(FontScope::Bundled);
@@ -98,19 +96,10 @@ mod tests {
         let size = UVec2::splat(16);
         let target =
             OwnedTarget::window(&gpu, "palantir.test.core", size, TargetFormat::RGBA8_SRGB);
-        let spec = FrameSpec {
-            target: TargetKey {
-                physical: size,
-                format: TargetFormat::RGBA8_SRGB,
-                gives_copy: target.as_target().gives_copy(),
-            },
-            system_scale: SystemScale::ONE,
-            refresh_millihertz: None,
-            now: Duration::ZERO,
-        };
+        let spec = FrameSpec::at_rest(TargetKey::of(target.as_target()));
         let CpuFrame { mode, .. } =
             core.device
-                .record(&mut core.cpu, &mut drawn, spec, &mut |_: &mut Ui| {});
+                .frame(&mut core.cpu, &mut drawn, spec, &mut |_: &mut Ui| {});
         assert!(
             core.device
                 .backend()
@@ -141,16 +130,11 @@ mod tests {
             return;
         }
         let size = UVec2::splat(512);
-        let spec = FrameSpec {
-            target: TargetKey {
-                physical: size,
-                format: TargetFormat::RGBA8_SRGB,
-                gives_copy: true,
-            },
-            system_scale: SystemScale::ONE,
-            refresh_millihertz: None,
-            now: Duration::ZERO,
-        };
+        let spec = FrameSpec::at_rest(TargetKey {
+            physical: size,
+            format: TargetFormat::RGBA8_SRGB,
+            gives_copy: true,
+        });
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .auto_id()
@@ -172,7 +156,7 @@ mod tests {
             core.open(WindowToken(1), PresentStrategy::BackbufferCopy),
         ];
         for window in &mut windows {
-            let _ = core.device.record(&mut core.cpu, window, spec, &mut app);
+            let _ = core.device.frame(&mut core.cpu, window, spec, &mut app);
         }
         let uses = |core: &mut HostCore| core.device.backend_mut().cutout_placements_mut().uses();
         assert_eq!(uses(&mut core), 2, "a use of the one key a window");
@@ -187,16 +171,6 @@ mod tests {
     fn attaching_a_new_device_reaches_every_window() {
         const FILLS: [u32; 2] = [0xd23f7a, 0x2f6fd0];
         let size = UVec2::splat(8);
-        let spec_on = |target: &OwnedTarget| FrameSpec {
-            target: TargetKey {
-                physical: size,
-                format: TargetFormat::RGBA8_SRGB,
-                gives_copy: target.as_target().gives_copy(),
-            },
-            system_scale: SystemScale::ONE,
-            refresh_millihertz: None,
-            now: Duration::ZERO,
-        };
         let paint = |core: &mut HostCore, driver: &mut WindowDriver, gpu: &Gpu, fill: u32| {
             let target = OwnedTarget::window(
                 gpu,
@@ -211,9 +185,12 @@ mod tests {
                     .chrome(Chrome::fill(RgbaF32::hex(fill)))
                     .show(ui);
             };
-            let CpuFrame { mode, .. } =
-                core.device
-                    .record(&mut core.cpu, driver, spec_on(&target), &mut app);
+            let CpuFrame { mode, .. } = core.device.frame(
+                &mut core.cpu,
+                driver,
+                FrameSpec::at_rest(TargetKey::of(target.as_target())),
+                &mut app,
+            );
             core.device
                 .submit(&mut core.cpu, driver, target.as_target(), mode);
             let [r, g, b, _] = target.read_back().get_pixel(4, 4).0;
@@ -284,18 +261,9 @@ mod tests {
                             }
                         });
                 };
-                let spec = FrameSpec {
-                    target: TargetKey {
-                        physical: size,
-                        format: TargetFormat::RGBA8_SRGB,
-                        gives_copy: target.as_target().gives_copy(),
-                    },
-                    system_scale: SystemScale::ONE,
-                    refresh_millihertz: None,
-                    now: Duration::ZERO,
-                };
+                let spec = FrameSpec::at_rest(TargetKey::of(target.as_target()));
                 let CpuFrame { mode, .. } =
-                    core.device.record(&mut core.cpu, window, spec, &mut app);
+                    core.device.frame(&mut core.cpu, window, spec, &mut app);
                 if round == 2 {
                     assert!(
                         matches!(mode, PresentPath::ViaBackbuffer(plan) if matches!(plan.damage, Damage::Partial(_))),

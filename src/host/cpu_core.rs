@@ -2,14 +2,11 @@
 
 use crate::gpu::render_owner_id::RenderOwners;
 use crate::host::host_options::HostOptions;
-use crate::host::window_driver::{
-    CpuFrame, DriverSpec, FrameDepth, FrameSpec, PresentStrategy, WindowDriver,
-};
+use crate::host::window_driver::{DriverSpec, PresentStrategy, WindowDriver};
 use crate::image_registry::ImageRegistry;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::renderer::frontend::Frontend;
 use crate::text::shaper::TextShaper;
-use crate::ui::app::App;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use std::rc::Rc;
@@ -67,21 +64,5 @@ impl CpuCore {
             strategy,
         };
         WindowDriver::new(spec, &self.resources)
-    }
-
-    /// Run the CPU half of the frame `spec` describes to `depth`: note its target, and record
-    /// `app` under the display minted from `spec`. A frame that paints runs through
-    /// [`DeviceCore::record`](crate::host::device_core::DeviceCore::record), which hands over
-    /// the device's part first.
-    pub(super) fn record<T: App>(
-        &mut self,
-        driver: &mut WindowDriver,
-        spec: FrameSpec,
-        app: &mut T,
-        depth: FrameDepth<'_>,
-    ) -> CpuFrame {
-        driver.note_target(&spec);
-        let stamp = driver.stamp(&spec);
-        driver.cpu_frame(&mut self.frontend, stamp, app, depth)
     }
 }

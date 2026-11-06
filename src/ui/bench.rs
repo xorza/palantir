@@ -165,7 +165,7 @@ pub(crate) fn bench_host(g: &BenchGpu, time: OffscreenTime) -> OffscreenHost {
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` plus a standalone `Frontend`,
 /// stopping before any GPU submit. Time comes from a real `Instant` as in
-/// `WindowDriver::cpu_frame`; a frozen clock could classify frames `PaintOnly` and
+/// `WindowDriver::record`; a frozen clock could classify frames `PaintOnly` and
 /// skip the record closure.
 #[derive(Debug)]
 struct CpuHarness {

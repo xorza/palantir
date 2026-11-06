@@ -64,7 +64,7 @@ use crate::gpu::surface::render_target::TargetFormat;
 use crate::host::device_core::DeviceCore;
 use crate::host::harness::harness_builder::{HarnessBuilder, TARGET_LABEL};
 use crate::host::harness::harness_session::HarnessSession;
-use crate::host::headless_window::{HeadlessDepth, HeadlessFrame, HeadlessWindow};
+use crate::host::headless_window::{HeadlessCanvas, HeadlessWindow};
 use crate::host::window_driver::{FrameSpec, TargetKey};
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::primitives::geometry::rect::Rect;
@@ -180,22 +180,6 @@ impl HarnessPaint {
             physical: size,
             format: TargetFormat::RGBA8_SRGB,
             gives_copy: true,
-        }
-    }
-
-    /// How far the next frame runs, on the target [`Self::target_key`] names.
-    fn depth(&mut self) -> HeadlessDepth<'_> {
-        match self {
-            Self::Record { size } => HeadlessDepth::Record {
-                target: Self::unpainted(*size),
-            },
-            Self::Compose { size } => HeadlessDepth::Compose {
-                target: Self::unpainted(*size),
-            },
-            Self::Gpu { target, device } => HeadlessDepth::Paint {
-                device,
-                target: target.as_target(),
-            },
         }
     }
 
@@ -802,13 +786,25 @@ impl Harness {
     /// commands, and paint onto the target at [`Depth::Gpu`](crate::Depth::Gpu) while the device
     /// lives.
     fn drive(&mut self, app: &mut impl App) -> FrameReport {
-        let report = self.window.frame(
-            app,
-            HeadlessFrame {
-                depth: self.paint.depth(),
-                now: self.time,
-            },
-        );
+        let now = self.time;
+        let report = match &mut self.paint {
+            HarnessPaint::Record { size } => {
+                self.window
+                    .record_frame(app, HarnessPaint::unpainted(*size), now)
+            }
+            HarnessPaint::Compose { size } => {
+                self.window
+                    .compose_frame(app, HarnessPaint::unpainted(*size), now)
+            }
+            HarnessPaint::Gpu { target, device } => self.window.paint_frame(
+                app,
+                HeadlessCanvas {
+                    device,
+                    target: target.as_target(),
+                },
+                now,
+            ),
+        };
         for command in self.window.drain_commands() {
             log_window_command(&mut self.window_commands, command);
         }

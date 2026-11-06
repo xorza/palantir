@@ -53,19 +53,18 @@ WinitRuntime<T>
 └─ handle: HostHandle<T>
 ```
 
-One painted frame, 10 named frames deep to the app:
+One painted frame, 9 named frames deep to the app:
 
 ```text
 WinitRuntime::draw
 └─ WindowSet::run
    └─ Window::frame
-      ├─ DeviceCore::record(cpu, driver, spec, app)
-      │  └─ CpuCore::record(driver, spec, app, FrameDepth::Paint(placements))
-      │     └─ WindowDriver::cpu_frame(frontend, stamp, app, depth)
-      │        ├─ FrameLoop::frame(stamp, base, app)
-      │        │  └─ record_pass(app) → record_user(app) → App::record
-      │        └─ finish_cpu_frame(frontend, placements, report)
-      │           └─ build, plan_cutouts → RenderStream → CutoutPlan
+      ├─ DeviceCore::frame(cpu, driver, spec, app)
+      │  ├─ WindowDriver::record(spec, app)
+      │  │  └─ FrameLoop::frame(stamp, base, app)
+      │  │     └─ record_pass(app) → record_user(app) → App::record
+      │  └─ WindowDriver::build_paint(BuildCtx { frontend, placements }, report)
+      │     └─ build, RenderStream::plan_cutouts → CutoutPlan
       └─ Window::present(core, cpu_frame)
          └─ acquire_and_present(core, mode)
             └─ DeviceCore::submit(cpu, driver, target, mode)
@@ -77,19 +76,16 @@ What rides down that stack, counted as the signatures that take it:
 
 | Value | Today | Target | What changes |
 |---|---|---|---|
-| `app` | 7 | 7 | Nothing: the app is the frame's input |
-| `frontend` | 3 | 3 | It rides in one `BuildCtx`, and only after the record ends |
-| `placements` | 6, two of them inside an enum | 4 | It rides in the same `BuildCtx` |
+| `app` | 6 | 7 | `record_frame` adds a stage: the app is the frame's input |
+| `frontend` | 2, inside `BuildCtx` | 3 | `try_partial` and `whole` add a stage |
+| `placements` | 3, the first inside `BuildCtx` | 4 | The same stage |
 | `mode`, `scissors`, the buffer | 5, and two fields | 4 | One `BuiltFrame` holds what three places held |
 | `cpu` at submit | 1, which only hands over `frontend` | 0 | Removed |
-| `FrameDepth` | 2 | 0 | Removed, with `HeadlessDepth` |
 
-The hop count falls little, and that is the honest result: most of these values reach real work. The gain is in the signatures and the types:
+The hop count does not fall further, and that is the honest result: most of these values reach real work. The remaining gain is in the signatures and the types:
 
 | Signature today | Target |
 |---|---|
-| `cpu_frame(frontend, stamp, app, depth)` | `record(spec, app)`, `compose(frontend, report)`, `build_paint(ctx, report)` |
-| `CpuCore::record(driver, spec, app, depth)` | Removed |
 | `DeviceCore::submit(cpu, driver, target, mode)` | `submit(driver, target, built)` |
 | `render_to_texture(frontend, backend, target, mode)` | `submit(backend, target, built)` |
 | `list_panes(tree, layout, lc, display_scale)` | `list_panes(source, lc)` |
@@ -98,13 +94,12 @@ The hop count falls little, and that is the honest result: most of these values 
 
 ## Root causes
 
-1. **One call runs three stages.** `cpu_frame` records, decides the present path and builds, under a `FrameDepth` parameter. So `frontend` and `placements` ride through `CpuCore::record` and `cpu_frame`, which need them only after the record ends. Four enums hold one fact: `Depth`, `HarnessPaint`, `HeadlessDepth`, `FrameDepth`.
-2. **A built frame has no owner.** Its parts are `PresentPath` on the host's stack, `WindowDriver::scissors`, `Frontend::buffer` and the encoder's gradient epoch. Five `debug_assert!`s in `render_to_texture` and one convention hold them together. A host that records window B before it submits window A paints B's list into A's target, and no type stops it. `damage_base` has six write sites.
-3. **Escalation is a sequence of resets.** `finish_cpu_frame` is 107 lines. It holds `mode` and `plan` as two variables that must agree, calls `path` four times, `decide_panes` four times and `build` twice. Each escalation is one way, from partial to whole, so there are two end states and not five.
-4. **Hosts reach through the window's layers.** 71 non-test lines in `host` name `.frames.`, and 38 of them reach `.frames.ui`. `FrameLoop`'s engines are `pub(crate)` fields. A screenshot makes four stops on its way through, two on `Ui` and two on the driver, and `WindowDriver` mixes that lane with the present decision in 842 lines.
-5. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
-6. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
-7. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
+1. **A built frame has no owner.** Its parts are `PresentPath` on the host's stack, `WindowDriver::scissors`, `Frontend::buffer` and the encoder's gradient epoch. Five `debug_assert!`s in `render_to_texture` and one convention hold them together. A host that records window B before it submits window A paints B's list into A's target, and no type stops it. `damage_base` has six write sites.
+2. **Escalation is a sequence of resets.** `build_paint` is 112 lines. It holds `mode` and `plan` as two variables that must agree, calls `path` four times, `decide_panes` four times and `build` twice. Each escalation is one way, from partial to whole, so there are two end states and not five.
+3. **Hosts reach through the window's layers.** 71 non-test lines in `host` name `.frames.`, and 38 of them reach `.frames.ui`. `FrameLoop`'s engines are `pub(crate)` fields. A screenshot makes four stops on its way through, two on `Ui` and two on the driver, and `WindowDriver` mixes that lane with the present decision in 842 lines.
+4. **One shared concept holds many refcounts, and some facts have two routes.** `UiResources` clones seven handles for one idea, the host's shared state. `Composer` holds an `Rc<SharedDevice>` for a limit that `Frontend::attach_device` already receives. `WinitRuntime` holds `frame_log` beside the `handle` that contains it.
+5. **The module order has no check.** `AGENTS.md` states the order, and `ui/mod.rs` imports `widget_core::overlay_stack` against it. That one edge is the only shipped violation, found by a scan of each `crate::` path. `OverlayStack` imports only `primitives`.
+6. **Two orchestrators outgrew their stages.** `FrameLoop::frame` is 199 lines and `WgpuBackend::submit` is 299. `frame_runtime.begin_pass` is a per-pass reset outside `pre_record`, the place whose doc says each such reset goes.
 
 ## Target design
 
@@ -124,7 +119,7 @@ These rules make the design one design, and each later change tests against them
 ```text
 Window::frame
 ├─ DeviceCore::frame(cpu, driver, spec, app) -> CpuFrame<'cpu>
-│  ├─ backend.prepare_format, driver.take_device_news(backend)
+│  ├─ backend.prepare_format, driver.deliver_screenshot, driver.forget_evicted_panes
 │  ├─ WindowDriver::record(spec, app) -> FrameReport
 │  │  └─ FrameLoop::frame(stamp, base, app)
 │  │     ├─ open_frame(stamp, base) -> FramePlan
@@ -136,7 +131,7 @@ Window::frame
       └─ WindowDriver::submit(backend, target, built)
 ```
 
-A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::compose` at `Depth::Compose`. `FrameDepth` and `HeadlessDepth` go, and `CpuCore::record` goes with them.
+A harness below `Depth::Gpu` calls `WindowDriver::record`, then `WindowDriver::compose` at `Depth::Compose`, then `WindowDriver::finish_unpainted`.
 
 ### The built frame
 
@@ -224,7 +219,7 @@ The pure parts move to `host/window_driver/present_decision.rs`: `promote_share`
 ### Refused
 
 - **A `HostCore` method for each step**: `OffscreenHost` and `Harness` hold `cpu` inside `HeadlessWindow` and `device` beside it, so `HostCore` is not on their path.
-- **A `Frame<'a>` context that holds `app`, `frontend` and `backend` for the whole stack**: it hides which stage reads what, which is the defect in root cause 1.
+- **A `Frame<'a>` context that holds `app`, `frontend` and `backend` for the whole stack**: it hides which stage reads what, which is the defect the stage split removed.
 - **Typestate markers on `WindowDriver`** (`WindowDriver<Recorded>`): a driver lives in a `Vec` across frames, and a consumed value gives the same guarantee at no cost to its type.
 - **Merging `WindowDriver` into `FrameLoop`**: `FrameLoop` sits in `ui`, left of `host`, and it needs nothing from the device.
 - **Merging the text clock and `DisplayFrames`**: they look alike, but a `TextShaper` can span two hosts and a backend cannot, so each keeps its own round.
@@ -238,23 +233,11 @@ The pure parts move to `host/window_driver/present_decision.rs`: `promote_share`
 
 Each batch leaves the build and the tests green. Whoever addresses an item deletes it. No batch changes the public API, so `.notes/API_SURFACE.md` stays as it is.
 
-## Batch 1: Push the depth up
-
-Files: `src/host/window_driver/mod.rs`, `src/host/cpu_core.rs`, `src/host/device_core.rs`, `src/host/headless_window.rs`, `src/host/harness/mod.rs`, `src/host/offscreen/mod.rs`, `src/host/core.rs`, `AGENTS.md`.
-
-- [ ] `WindowDriver::cpu_frame`: it takes `frontend` and `FrameDepth` and runs the record below them. Split it into `record(spec, app) -> FrameReport`, `compose(frontend, report)` and `build_paint`.
-- [ ] `CpuCore::record`: it only forwards. Delete it, and move `note_target` and `stamp` into `WindowDriver::record`.
-- [ ] `FrameDepth`: delete it. `DeviceCore::record` becomes `DeviceCore::frame`, the one painted sequence.
-- [ ] `HeadlessDepth` and `HeadlessFrame`: they mirror `HarnessPaint`. Give `HeadlessWindow` `record_frame`, `compose_frame` and `paint_frame`, and let `HarnessPaint` match at its own level. `OffscreenHost` calls `paint_frame` alone.
-- [ ] `WindowDriver::plan_cutouts`: a one-line forward. Call `RenderStream::plan_cutouts` directly.
-- [ ] `src/host/core.rs` tests: the `FrameSpec` literal repeats. Add one `spec_of(&target)` fixture.
-- [ ] `AGENTS.md`, **Harness**: update `DeviceCore::record` to the new name.
-
 ## Batch 2: One escalation
 
 Files: `src/host/window_driver/mod.rs`, new `src/host/window_driver/present_decision.rs`, `src/host/window_driver/tests.rs`.
 
-- [ ] `finish_cpu_frame`: replace the sequence of resets with `effective_plan`, `try_partial -> Result<_, Escalation>` and an infallible `whole`, after **The present decision**.
+- [ ] `build_paint`: replace the sequence of resets with `effective_plan`, `try_partial -> Result<_, Escalation>` and an infallible `whole`, after **The present decision**.
 - [ ] `path` closure: it takes `backbuffer_fresh` as a parameter for a value that holds for the whole call. Read it once.
 - [ ] Move the pure decision functions to `present_decision.rs`.
 - [ ] Test: a table over strategy, partial, capturing, fresh, pane overflow, scissor overflow and stale census, which asserts route, damage kind and build count for each row, with the expected row worked out by hand.
@@ -281,7 +264,7 @@ Files: `src/ui/frame_loop.rs`, `src/host/window_driver/mod.rs`, new `src/host/wi
 - [ ] `WindowDriver.frames`: make it private. Add `ui()`, `ui_mut()`, `token()` and the few host calls, and move the 71 `.frames.` lines to them.
 - [ ] `FrameLoop::frame_scene` and `scene_of`: `scene_of` exists for one bench reach. Keep one of them.
 - [ ] Add `ScreenshotLane`, and move `screenshot_requests`, `captures`, `deliver_screenshot` and the capture loop into it.
-- [ ] `finish_cpu_frame`: it writes `report.repaint_requested` after the report exists. Return the lane's need beside the report, and let `FrameReport` stay what the frame said.
+- [ ] `build_paint`: it writes `report.repaint_requested` after the report exists. Return the lane's need beside the report, and let `FrameReport` stay what the frame said.
 
 ## Batch 5: One shared owner
 

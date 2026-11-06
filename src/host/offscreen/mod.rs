@@ -15,9 +15,7 @@ use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
 use crate::host::device_core::DeviceCore;
-use crate::host::headless_window::{
-    HeadlessDepth, HeadlessFrame, HeadlessSettings, HeadlessWindow,
-};
+use crate::host::headless_window::{HeadlessCanvas, HeadlessSettings, HeadlessWindow};
 use crate::host::window_driver::PresentStrategy;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
@@ -348,15 +346,14 @@ impl OffscreenHost {
     /// multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200%
     /// render).
     pub fn frame(&mut self, target: RenderTarget<'_>, app: &mut impl App) -> FrameReport {
-        self.window.frame(
+        let now = self.time.now();
+        self.window.paint_frame(
             app,
-            HeadlessFrame {
-                depth: HeadlessDepth::Paint {
-                    device: &mut self.device,
-                    target,
-                },
-                now: self.time.now(),
+            HeadlessCanvas {
+                device: &mut self.device,
+                target,
             },
+            now,
         )
     }
 }
@@ -404,7 +401,7 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(super) fn record(&mut self, spec: FrameSpec, app: &mut impl App) -> CpuFrame {
             self.device
-                .record(&mut self.window.cpu, &mut self.window.driver, spec, app)
+                .frame(&mut self.window.cpu, &mut self.window.driver, spec, app)
         }
 
         /// The GPU half of the frame [`Self::record`] recorded, onto `target` by `mode`.

@@ -164,7 +164,7 @@ pub(super) enum PresentStrategy {
     Retained,
 }
 
-/// How a frame reaches the target, sealed in `cpu_frame` so the GPU half submits
+/// How a frame reaches the target, sealed in `build_paint` so the GPU half submits
 /// the plan the draw list was built for.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum PresentPath {
@@ -251,17 +251,12 @@ fn present_path(
     }
 }
 
-/// How far a frame's CPU half runs, chosen by the host.
+/// What a frame that paints builds with, past its record: the frontend every window composes
+/// through, and the backend's placements its shadow cutouts plan at cells of.
 #[derive(Debug)]
-pub(super) enum FrameDepth<'a> {
-    /// Record through damage, and build no draw list: a host with no device and no pixels, as a
-    /// unit test runs.
-    Record,
-    /// Build the draw list too, and submit nothing: the whole CPU pipeline, with no device.
-    Compose,
-    /// Build the draw list a target is painted by, and plan its shadow cutouts at cells of the
-    /// backend's placements.
-    Paint(&'a mut CutoutPlacements),
+pub(super) struct BuildCtx<'a> {
+    pub(super) frontend: &'a mut Frontend,
+    pub(super) placements: &'a mut CutoutPlacements,
 }
 
 /// The CPU half's result: the report plus the [`PresentPath`] sealed at
@@ -321,7 +316,7 @@ impl WindowDriver {
             .splice(0..0, self.captures.drain(..).map(|pending| pending.request));
     }
 
-    /// The stamp of the frame `spec` describes, as [`Self::cpu_frame`] takes it.
+    /// The stamp of the frame `spec` describes, as [`Self::record`] runs it.
     ///
     /// The one place the user scale and the host's pixel snapping reach a frame: both are read
     /// here, as either can move mid-frame, so a copy held by the host would paint a stale frame.
@@ -351,7 +346,7 @@ impl WindowDriver {
 
     /// Declare the target of the frame `spec` describes. A change invalidates retained pixels and
     /// the damage baseline.
-    pub(super) fn note_target(&mut self, spec: &FrameSpec) {
+    fn note_target(&mut self, spec: &FrameSpec) {
         let key = spec.target;
         if self.target != Some(key) {
             self.target = Some(key);
@@ -367,40 +362,24 @@ impl WindowDriver {
         self.stream.invalidate();
     }
 
-    /// The shared CPU half: app lifecycle, record through damage, then the draw-list
-    /// build if the frame paints. Seals the [`PresentPath`] (a promoted or resynced
-    /// Partial builds a Full list).
-    ///
-    /// A frame below [`FrameDepth::Paint`] presents nothing, so it keeps the damage baseline, as
-    /// no target exists to lose it, and drops the screenshots asked in it, as no device takes
-    /// them: no image lands for them, as for an empty ask.
-    pub(super) fn cpu_frame<T: App>(
-        &mut self,
-        frontend: &mut Frontend,
-        stamp: FrameStamp,
-        app: &mut T,
-        depth: FrameDepth<'_>,
-    ) -> CpuFrame {
+    /// The stage every host runs: the app's lifecycle under the display minted from `spec`, record
+    /// through damage. The host picks what follows: [`Self::build_paint`] for a frame that paints,
+    /// else [`Self::finish_unpainted`].
+    pub(super) fn record<T: App>(&mut self, spec: FrameSpec, app: &mut T) -> FrameReport {
         tracy::zone!();
-        let report = self.frames.frame(stamp, self.damage_base, app);
-        match depth {
-            FrameDepth::Paint(placements) => self.finish_cpu_frame(frontend, placements, report),
-            depth @ (FrameDepth::Record | FrameDepth::Compose) => {
-                self.frames
-                    .take_screenshot_requests(&mut self.screenshot_requests);
-                self.screenshot_requests.clear();
-                if matches!(depth, FrameDepth::Compose)
-                    && let Some(plan) = report.plan
-                {
-                    self.compose(frontend, plan);
-                }
-                self.damage_base = DamageBase::Prev;
-                CpuFrame {
-                    report,
-                    mode: PresentPath::SkipNoop,
-                }
-            }
-        }
+        self.note_target(&spec);
+        let stamp = self.stamp(&spec);
+        self.frames.frame(stamp, self.damage_base, app)
+    }
+
+    /// Close a frame that paints nothing, as a host with no device runs. It keeps the damage
+    /// baseline, as no target exists to lose it, and drops the screenshots asked in it, as no
+    /// device takes them: no image lands for them, as for an empty ask.
+    pub(super) fn finish_unpainted(&mut self) {
+        self.frames
+            .take_screenshot_requests(&mut self.screenshot_requests);
+        self.screenshot_requests.clear();
+        self.damage_base = DamageBase::Prev;
     }
 
     /// Build the draw list of `plan` under the panes it captures, as a painted frame builds it,
@@ -452,12 +431,14 @@ impl WindowDriver {
         self.frames.set_screenshot_taken(landed);
     }
 
-    fn finish_cpu_frame(
-        &mut self,
-        frontend: &mut Frontend,
-        placements: &mut CutoutPlacements,
-        mut report: FrameReport,
-    ) -> CpuFrame {
+    /// Decide how the frame `report` describes reaches its target, and build its draw list. Seals
+    /// the [`PresentPath`]: a promoted or resynced Partial builds a Full list.
+    pub(super) fn build_paint(&mut self, ctx: BuildCtx<'_>, mut report: FrameReport) -> CpuFrame {
+        tracy::zone!();
+        let BuildCtx {
+            frontend,
+            placements,
+        } = ctx;
         #[cfg(feature = "internals")]
         self.apply_forced(&mut report);
         self.frames
@@ -536,7 +517,11 @@ impl WindowDriver {
             self.build(frontend, plan);
             // The pixels this partial frame keeps show a cutout form the frame no longer picks:
             // it paints whole.
-            if self.plan_cutouts(&frontend.buffer, &scissors, placements) == Census::Cur {
+            if self
+                .stream
+                .plan_cutouts(&frontend.buffer, &scissors, placements)
+                == Census::Cur
+            {
                 self.scissors = scissors;
             } else {
                 let full = plan.to_full();
@@ -544,7 +529,8 @@ impl WindowDriver {
                 self.decide_panes(full);
                 self.build(frontend, full);
                 let census =
-                    self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full, placements);
+                    self.stream
+                        .plan_cutouts(&frontend.buffer, &RepaintScissors::Full, placements);
                 debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
                 self.scissors = RepaintScissors::Full;
             }
@@ -637,15 +623,6 @@ impl WindowDriver {
         }
     }
 
-    fn plan_cutouts(
-        &mut self,
-        buffer: &RenderBuffer,
-        scissors: &RepaintScissors,
-        placements: &mut CutoutPlacements,
-    ) -> Census {
-        self.stream.plan_cutouts(buffer, scissors, placements)
-    }
-
     /// Give back what `backend` keeps for this window, as it closes on that device.
     pub(super) fn retire(&mut self, backend: &mut WgpuBackend) {
         backend.retire_stream(&mut self.stream);
@@ -666,9 +643,9 @@ impl WindowDriver {
         debug_assert!(
             size == display_physical,
             "render_to_texture: target size {}x{} doesn't match the display physical \
-             size ({}x{}) that `cpu_frame` ran against — scissor / viewport math \
+             size ({}x{}) that `record` ran against — scissor / viewport math \
              would be off. Update `Display.physical` on resize before the next \
-             `cpu_frame`.",
+             `record`.",
             size.x,
             size.y,
             display_physical.x,
@@ -778,10 +755,30 @@ pub(crate) mod internals {
     use crate::damage::Damage;
     #[cfg(test)]
     use crate::damage::DamageBase;
+    #[cfg(test)]
+    use crate::display::system_scale::SystemScale;
     use crate::host::window_driver::WindowDriver;
+    #[cfg(test)]
+    use crate::host::window_driver::{FrameSpec, TargetKey};
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_plan::RenderPlan;
     use crate::ui::frame_report::FrameReport;
+    #[cfg(test)]
+    use std::time::Duration;
+
+    #[cfg(test)]
+    impl FrameSpec {
+        /// A frame laid out for `target`, at scale 1 and time zero, with no refresh rate. Test
+        /// values: a host states each field from what it knows.
+        pub(crate) const fn at_rest(target: TargetKey) -> Self {
+            Self {
+                target,
+                system_scale: SystemScale::ONE,
+                refresh_millihertz: None,
+                now: Duration::ZERO,
+            }
+        }
+    }
 
     /// What the next frame paints in place of its own damage.
     #[derive(Debug, Default)]

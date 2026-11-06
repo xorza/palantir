@@ -376,7 +376,7 @@ impl Window {
             };
             let cpu = core
                 .device
-                .record(&mut core.cpu, &mut self.driver, spec, app);
+                .frame(&mut core.cpu, &mut self.driver, spec, app);
             let summary =
                 self.remote
                     .after_frame(&self.driver.frames.ui, &cpu.report, app.is_busy());
