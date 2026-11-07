@@ -16,7 +16,7 @@ concurrency:
 
 # The driver's commit that the drive table's `version` takes.
 env:
-  DRIVE_REV: 2c6fd5a1285ca493e404e0d28e0cce5a15fab2a2
+  DRIVE_REV: 271baf137770ad5ff14c3089bf82eee70025fcb6
 
 # `xorza/rust-ci` holds the steps each repository and OS shares. Its actions read bash, and a `run`
 # gets `pipefail` only from a named shell.
