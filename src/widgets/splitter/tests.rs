@@ -106,13 +106,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
 
     // Double-click (seam at 350.5) resets to the center: layout takes 0.5 on pass A, the binding commits on pass B.
     let seam = Vec2::new(350.5, 50.0);
-    h.press(seam, PointerButton::Left);
-    frame_with(&mut h, &mut ratio);
-    h.release(PointerButton::Left);
-    frame_with(&mut h, &mut ratio);
-    h.press(seam, PointerButton::Left);
-    frame_with(&mut h, &mut ratio);
-    h.release(PointerButton::Left);
+    h.double_click(seam);
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.len(), 2, "premise: a double-click records twice");
     assert_eq!(ratio, 0.5, "the reset writes the center, got {ratio}");

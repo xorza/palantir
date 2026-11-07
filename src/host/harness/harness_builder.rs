@@ -5,7 +5,7 @@ use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::harness::{Harness, HarnessPaint, Seal};
+use crate::host::harness::{Harness, HarnessPaint};
 use crate::host::headless_window::{HeadlessSettings, HeadlessWindow};
 use crate::host::host_core::HostCore;
 use crate::host::host_cpu::HostCpu;
@@ -58,6 +58,18 @@ impl Depth {
     }
 }
 
+/// How a session's [settle](crate::AgentWindow::settle) and [play](crate::AgentWindow::play) run
+/// the frames.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SettlePace {
+    /// The clock's step before each frame.
+    pub(super) frame_dt: Duration,
+    /// The frames that ask for another before the window reads as unsettled.
+    pub(super) settle_frames: u32,
+    /// The real time a settle waits for a wake while the app is busy.
+    pub(super) background_wait: Duration,
+}
+
 /// The settings a [`Harness`] opens with. [`Harness::builder`] sets the defaults each setter
 /// names.
 #[derive(Debug)]
@@ -67,9 +79,7 @@ pub struct HarnessBuilder {
     settings: HeadlessSettings,
     depth: Depth,
     strategy: PresentStrategy,
-    frame_dt: Duration,
-    settle_frames: u32,
-    background_wait: Duration,
+    pace: SettlePace,
 }
 
 impl HarnessBuilder {
@@ -79,9 +89,11 @@ impl HarnessBuilder {
             settings: HeadlessSettings::new(FontScope::Bundled),
             depth: Depth::Record,
             strategy: PresentStrategy::Retained,
-            frame_dt: Duration::from_nanos(16_666_667),
-            settle_frames: 600,
-            background_wait: Duration::from_secs(30),
+            pace: SettlePace {
+                frame_dt: Duration::from_nanos(16_666_667),
+                settle_frames: 600,
+                background_wait: Duration::from_secs(30),
+            },
         }
     }
 
@@ -161,7 +173,7 @@ impl HarnessBuilder {
     /// At [`Self::build`], when `dt` is zero or past the longest step an animation integrates,
     /// 0.1 s.
     pub const fn frame_dt(mut self, dt: Duration) -> Self {
-        self.frame_dt = dt;
+        self.pace.frame_dt = dt;
         self
     }
 
@@ -173,14 +185,14 @@ impl HarnessBuilder {
     ///
     /// At [`Self::build`], when `frames` is 0.
     pub const fn settle_frames(mut self, frames: u32) -> Self {
-        self.settle_frames = frames;
+        self.pace.settle_frames = frames;
         self
     }
 
     /// How long, in real time, a session's [settle](crate::AgentWindow::settle) waits for a [wake](crate::Waker) while the app
     /// [is busy](crate::App::is_busy) and asks no frame; 30 s by default.
     pub const fn background_wait(mut self, wait: Duration) -> Self {
-        self.background_wait = wait;
+        self.pace.background_wait = wait;
         self
     }
 
@@ -219,17 +231,19 @@ impl HarnessBuilder {
     }
 
     fn open(self, cpu: HostCpu, frames: WindowFrames, paint: HarnessPaint) -> Harness {
-        Harness::assert_frame_dt(self.frame_dt);
-        assert!(self.frame_dt > Duration::ZERO, "a frame takes some time");
-        assert!(self.settle_frames > 0, "a settle runs at least one frame");
+        Harness::assert_frame_dt(self.pace.frame_dt);
+        assert!(
+            self.pace.frame_dt > Duration::ZERO,
+            "a frame takes some time"
+        );
+        assert!(
+            self.pace.settle_frames > 0,
+            "a settle runs at least one frame"
+        );
         Harness::open(
             HeadlessWindow::open(cpu, frames, &self.settings),
-            Seal {
-                paint,
-                frame_dt: self.frame_dt,
-                settle_frames: self.settle_frames,
-                background_wait: self.background_wait,
-            },
+            paint,
+            self.pace,
         )
     }
 }

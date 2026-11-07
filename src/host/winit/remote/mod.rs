@@ -84,7 +84,7 @@ impl<T: 'static> Debug for Remote<T> {
 impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// Wait for a frame that saw every event this remote sent, asks no repaint and finds the app
     /// not [busy](crate::App::is_busy), as a [`HarnessSession`](crate::HarnessSession) waits on
-    /// its clock; returns the frames the window ran meanwhile.
+    /// its clock; returns the frames the window recorded meanwhile.
     ///
     /// # Errors
     ///
@@ -101,17 +101,14 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
 
     /// Play `actions` in order as a person at the window would, in real time, settling after
     /// each, as a [`HarnessSession`](crate::HarnessSession) plays them. Returns the frames the window
-    /// ran meanwhile.
+    /// recorded meanwhile.
     ///
     /// # Errors
     ///
     /// [`ActError`], naming the step it stopped at.
     fn play<X: Locate<T>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError> {
         let first = self.record_frame_id();
-        let mut stage = RemoteStage { remote: self };
-        for (ran, action) in actions.iter().enumerate() {
-            play::play(&mut stage, action).map_err(|error| ActError { ran, error })?;
-        }
+        play::play_all(&mut RemoteStage { remote: self }, actions)?;
         Ok(self.frames_since(first))
     }
 
@@ -275,7 +272,7 @@ impl<T: 'static> Remote<T> {
 
     /// The frames recorded since `first`.
     fn frames_since(&self, first: u64) -> u32 {
-        u32::try_from(self.record_frame_id().saturating_sub(first)).unwrap_or(u32::MAX)
+        play::frames_recorded(first, self.record_frame_id())
     }
 
     /// Wait for a frame `until` names. A busy app's wait for its next frame starts again at each,

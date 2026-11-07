@@ -5,8 +5,8 @@ use crate::driver::error::{ActError, LocateError, PlayError};
 use crate::driver::locator::{Found, Locator};
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
-use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
+use crate::host::harness::{Harness, device_answered};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
@@ -214,10 +214,8 @@ fn play_acts_as_a_person() {
     assert_eq!(app.twin_b, 1);
 
     assert!(matches!(
-        h.play(
-            &mut app,
-            &[Action::Move("One".into()), Action::click("Hidden")]
-        ),
+        h.session(&mut app)
+            .play(&[Action::Move("One".into()), Action::click("Hidden")]),
         Err(ActError {
             ran: 1,
             error: PlayError::Locate(LocateError::OffScreen { .. }),
@@ -225,10 +223,8 @@ fn play_acts_as_a_person() {
     ));
 
     assert!(matches!(
-        h.play(
-            &mut app,
-            &[Action::Move("Off".into()), Action::click("Off")]
-        ),
+        h.session(&mut app)
+            .play(&[Action::Move("Off".into()), Action::click("Off")]),
         Err(ActError {
             ran: 1,
             error: PlayError::Locate(LocateError::Disabled { .. }),
@@ -259,16 +255,14 @@ fn play_acts_as_a_person() {
         .unwrap();
     assert_eq!(app.double, 1, "one double click");
 
-    h.play(
-        &mut app,
-        &[
+    h.session(&mut app)
+        .play(&[
             Action::click(edit()),
             Action::Type("hello".to_owned()),
             Action::InsertText(", world".to_owned()),
             Action::Key(Shortcut::key(Key::Enter)),
-        ],
-    )
-    .unwrap();
+        ])
+        .unwrap();
     assert_eq!(app.committed.as_deref(), Some("hello, world"));
 }
 
@@ -280,14 +274,12 @@ fn a_key_down_step_holds_its_key_until_a_key_up_step() {
     let space = Key::Char(' ');
     let held = Cell::new(false);
     let mut app = |ui: &mut Ui| held.set(ui.key_held(space));
-    h.play(
-        &mut app,
-        &[Action::<Infallible>::KeyDown(Shortcut::new(
+    h.session(&mut app)
+        .play(&[Action::<Infallible>::KeyDown(Shortcut::new(
             ShortcutMods::SHIFT,
             space,
-        ))],
-    )
-    .unwrap();
+        ))])
+        .unwrap();
     assert!(held.get());
     assert_eq!(h.ui().input().modifiers_after_held_input(), Modifiers::NONE);
     h.session(&mut app)
@@ -304,21 +296,17 @@ fn a_step_settles_and_lets_go() {
     let mut app = Board::default();
     h.session(&mut app).settle().unwrap();
     let before = h.time;
-    h.play(
-        &mut app,
-        &[Action::<Infallible>::Wait(Duration::from_millis(100))],
-    )
-    .unwrap();
+    h.session(&mut app)
+        .play(&[Action::<Infallible>::Wait(Duration::from_millis(100))])
+        .unwrap();
     assert!(h.time >= before + Duration::from_millis(100));
-    h.play(
-        &mut app,
-        &[Action::<Infallible>::Click {
+    h.session(&mut app)
+        .play(&[Action::<Infallible>::Click {
             at: "One".into(),
             button: PointerButton::Left,
             mods: ShortcutMods::CTRL | ShortcutMods::SHIFT,
-        }],
-    )
-    .unwrap();
+        }])
+        .unwrap();
     assert_eq!(app.one, 1);
     assert_eq!(h.ui().input().modifiers_after_held_input(), Modifiers::NONE);
 }
@@ -528,10 +516,10 @@ fn a_capture_is_one_frame_at_the_parked_clock() {
     h.session(&mut app).settle().unwrap();
     let at = Duration::from_secs(7);
     h.at(at);
-    let frames = h.frames;
+    let frames = h.ui().render_frame_id();
     let mut pixels = Vec::new();
     h.capture(&mut app, &mut pixels).unwrap();
-    assert_eq!(h.frames, frames + 1, "one frame");
+    assert_eq!(h.ui().render_frame_id(), frames + 1, "one frame");
     assert_eq!(h.time, at, "the clock stays");
     assert_eq!(pixels.len(), 120 * 80 * 4);
     let shot = h.session(&mut app).shot(None).unwrap();
@@ -607,7 +595,8 @@ fn input_aims_by_text_id_and_point() {
 /// A read hands back the app and the last frame, and runs no frame and moves no clock, as a find
 /// through it does, which also says when a locator names nothing; the next caret blink only paints,
 /// so `record_frame_id` holds. A query changes the app and asks a repaint, so the frame at the same
-/// blink records: `record_frame_id` moves by exactly 1.
+/// blink records: `record_frame_id` moves by exactly 1. A settle over a blink's frame alone runs
+/// that frame and returns 0.
 #[test]
 fn a_session_reads_with_no_frame_and_queries_with_one() {
     let blink = Duration::from_secs(1);
@@ -616,7 +605,7 @@ fn a_session_reads_with_no_frame_and_queries_with_one() {
     h.session(&mut app).settle().unwrap();
     h.session(&mut app).play(&[Action::click(edit())]).unwrap();
     let recorded = h.ui().record_frame_id();
-    let (frames, time) = (h.frames, h.time);
+    let (frames, time) = (h.ui().render_frame_id(), h.time);
 
     let read = h
         .session(&mut app)
@@ -633,7 +622,7 @@ fn a_session_reads_with_no_frame_and_queries_with_one() {
             .find(&Locator::<Infallible>::from("Missing")),
         Err(PlayError::Locate(LocateError::NotFound { .. }))
     ));
-    assert_eq!(h.frames, frames, "a read runs no frame");
+    assert_eq!(h.ui().render_frame_id(), frames, "a read runs no frame");
     assert_eq!(h.time, time, "a read moves no clock");
     h.advance(blink);
     h.frame_app(&mut app);
@@ -645,7 +634,11 @@ fn a_session_reads_with_no_frame_and_queries_with_one() {
         Ok(())
     );
     assert_eq!(app.text, "typed");
-    assert_eq!(h.frames, frames + 1, "a query runs no frame by itself");
+    assert_eq!(
+        h.ui().render_frame_id(),
+        frames + 1,
+        "a query runs no frame by itself"
+    );
     h.advance(blink);
     h.frame_app(&mut app);
     assert_eq!(
@@ -653,6 +646,25 @@ fn a_session_reads_with_no_frame_and_queries_with_one() {
         recorded + 1,
         "the frame after a query records"
     );
+
+    let rendered = h.ui().render_frame_id();
+    h.advance(blink);
+    assert_eq!(
+        h.session(&mut app).settle(),
+        Ok(0),
+        "a settle counts the frames recorded, and the blink's frame only paints"
+    );
+    assert_eq!(h.ui().render_frame_id(), rendered + 1);
+
+    // A `Wait` of 100 ms is 6 frames of 1/60 s, and its settle one more: 7 run. No blink falls in
+    // them, so each records, and `play` counts all 7.
+    let (recorded, rendered) = (h.ui().record_frame_id(), h.ui().render_frame_id());
+    let played = h
+        .session(&mut app)
+        .play(&[Action::<Infallible>::Wait(Duration::from_millis(100))]);
+    assert_eq!(h.ui().render_frame_id(), rendered + 7);
+    assert_eq!(played, Ok(7));
+    assert_eq!(h.ui().record_frame_id(), recorded + 7);
 }
 
 /// A white 2 × 1 logical block at the origin over a black clear. At scale 1 on 8 × 6 it covers
@@ -694,4 +706,18 @@ fn a_new_display_reads_back_the_new_size_and_scale() {
             assert_eq!(pixel.0, want, "{size} at ({x}, {y})");
         }
     }
+}
+
+/// Only a wait that finished lets a step go on, and each other names its own cause.
+#[test]
+fn a_device_wait_reads_as_its_own_case() {
+    assert_eq!(device_answered(GpuWait::Done), Ok(()));
+    assert_eq!(
+        device_answered(GpuWait::DeviceLost),
+        Err(PlayError::DeviceLost)
+    );
+    assert_eq!(
+        device_answered(GpuWait::TimedOut),
+        Err(PlayError::GpuTimedOut)
+    );
 }

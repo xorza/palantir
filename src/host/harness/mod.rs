@@ -51,16 +51,17 @@
 
 pub(crate) mod harness_builder;
 pub(crate) mod harness_session;
-mod play;
 
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::display::system_scale::SystemScale;
+use crate::driver::error::PlayError;
 use crate::driver::locator::Locator;
+use crate::driver::play::{self, BUSY_SETTLE_WAITS};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::harness::harness_builder::{HarnessBuilder, TARGET_LABEL};
+use crate::host::harness::harness_builder::{HarnessBuilder, SettlePace, TARGET_LABEL};
 use crate::host::harness::harness_session::HarnessSession;
 use crate::host::headless_window::{HeadlessCanvas, HeadlessWindow};
 use crate::host::host_device::HostDevice;
@@ -86,7 +87,7 @@ use crate::ui::window_frames::present::{FrameSpec, TargetKey};
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The ambient font size this crate's unit tests frame at, pinned so the default text size can
 /// move without their hand-computed text metrics moving with it, as the visual suite pins its
@@ -128,14 +129,9 @@ pub struct Harness {
     /// The time of the frame after a session's last press, which its next press waits out
     /// the double-click interval from.
     last_press: Option<Duration>,
-    frame_dt: Duration,
-    settle_frames: u32,
-    /// The real time a settle waits for a wake while the app is busy.
-    background_wait: Duration,
+    pace: SettlePace,
     /// Every change the frames made to a window, oldest first ([`log_window_command`]).
     window_commands: Vec<WindowCommand>,
-    /// Frames run, which a settle counts by.
-    frames: u32,
 }
 
 /// How far a harness's frames run, with the window's size: kept by the texture of a window that
@@ -190,15 +186,6 @@ impl HarnessPaint {
     }
 }
 
-/// What [`HarnessBuilder::build`] seals besides the window.
-#[derive(Debug)]
-struct Seal {
-    paint: HarnessPaint,
-    frame_dt: Duration,
-    settle_frames: u32,
-    background_wait: Duration,
-}
-
 /// Where a held button went down; `None` when the pointer was off the window.
 #[derive(Clone, Copy, Debug)]
 struct PressOrigin {
@@ -220,22 +207,19 @@ impl Harness {
         HarnessBuilder::new(size)
     }
 
-    fn open(window: HeadlessWindow, seal: Seal) -> Self {
+    fn open(window: HeadlessWindow, paint: HarnessPaint, pace: SettlePace) -> Self {
         let mut harness = Self {
             window,
-            paint: seal.paint,
+            paint,
             time: Duration::ZERO,
             held: [None; PointerButton::COUNT],
             last_press: None,
-            frame_dt: seal.frame_dt,
-            settle_frames: seal.settle_frames,
-            background_wait: seal.background_wait,
+            pace,
             window_commands: Vec::new(),
-            frames: 0,
         };
         #[cfg(test)]
         {
-            harness.window.frames.ui_mut().theme_mut().text.font_size = FIXTURE_FONT_SIZE;
+            harness.ui_mut().theme_mut().text.font_size = FIXTURE_FONT_SIZE;
         }
         harness.sync_display();
         harness.mark_warm();
@@ -328,7 +312,7 @@ impl Harness {
     /// Move the clock past the double-click interval, so the next press starts a new run of
     /// clicks. Runs no frame.
     pub fn advance_past_double_click(&mut self) -> &mut Self {
-        let interval = self.window.frames.ui().double_click_interval();
+        let interval = self.ui().double_click_interval();
         self.advance(interval + Duration::from_millis(1))
     }
 
@@ -406,7 +390,7 @@ impl Harness {
                     "{button:?} is already held; release it before pressing it again",
                 );
                 self.held[button.idx()] = Some(PressOrigin {
-                    at: self.window.frames.ui().input().peek_pointer_pos(),
+                    at: self.ui().input().peek_pointer_pos(),
                 });
             }
             InputEvent::PointerReleased(button) => self.held[button.idx()] = None,
@@ -452,6 +436,21 @@ impl Harness {
         let pressed = self.press(at, PointerButton::Left);
         let released = self.release(PointerButton::Left);
         either(pressed, released)
+    }
+
+    /// Two left clicks at `at` as one run of clicks: a frame each for two presses and two releases.
+    /// On a clock that holds still they are a double click; the second lands where the first did,
+    /// with no second look at `at`.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::press`].
+    #[track_caller]
+    pub fn double_click(&mut self, at: impl Into<Locator>) -> InputDelta {
+        let first = self.click(at);
+        let pressed = self.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        let released = self.release(PointerButton::Left);
+        either(either(first, pressed), released)
     }
 
     /// [`Self::click`] with the right button.
@@ -561,7 +560,7 @@ impl Harness {
         if mods == ShortcutMods::NONE {
             return send(self);
         }
-        let held = self.window.frames.ui().input().modifiers_after_held_input();
+        let held = self.ui().input().modifiers_after_held_input();
         self.hold_modifiers(mods.held());
         let delta = send(self);
         self.hold_modifiers(held);
@@ -571,7 +570,7 @@ impl Harness {
     /// Hold `mods` from now on. Sends nothing when they are held already, counting input that
     /// waits for a later frame.
     pub fn hold_modifiers(&mut self, mods: Modifiers) -> InputDelta {
-        if self.window.frames.ui().input().modifiers_after_held_input() == mods {
+        if self.ui().input().modifiers_after_held_input() == mods {
             InputDelta::default()
         } else {
             self.on_input(InputEvent::ModifiersChanged(mods))
@@ -603,20 +602,20 @@ impl Harness {
     /// closure app reads it here; a [session](Self::session) lists the same through
     /// [`AgentWindow::widgets`](crate::AgentWindow::widgets).
     pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget> {
-        InspectedWidget::visible(self.window.frames.ui(), filter)
+        InspectedWidget::visible(self.ui(), filter)
     }
 
     /// `id`'s visible rect in the last frame: after transforms and clips, what the pointer hits.
     /// [`Self::arranged`] is the rect a layout test means; the two differ only under a
     /// transform or a clip.
     pub fn rect(&self, id: WidgetId) -> Option<Rect> {
-        self.window.frames.ui().response_for(id).rect
+        self.ui().response_for(id).rect
     }
 
     /// `id`'s arranged rect in the last frame: before transforms, not clipped; `None` when `id`
     /// did not arrange in it.
     pub fn arranged(&self, id: WidgetId) -> Option<Rect> {
-        self.window.frames.ui().response_for(id).layout_rect
+        self.ui().response_for(id).layout_rect
     }
 
     /// The window point of `local`, a point in `id`'s arranged space, through every ancestor
@@ -629,12 +628,12 @@ impl Harness {
     /// hovers.
     #[track_caller]
     pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2 {
-        let response = self.window.frames.ui().response_for(id);
+        let response = self.ui().response_for(id);
         let layout = response.layout_rect.unwrap_or_else(|| {
             panic!("{id:?} has no arranged rect: it did not record, or no frame ran")
         });
         let pos = response.transform.apply_point(layout.min + local);
-        let cascade = self.window.frames.ui().cascade();
+        let cascade = self.ui().cascade();
         let routing = cascade
             .hit_rows()
             .iter()
@@ -653,17 +652,13 @@ impl Harness {
 
     /// The topmost widget a hover at `pos` reaches.
     pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
-        self.window
-            .frames
-            .ui()
-            .cascade()
-            .hit_test(pos, Sense::hovers)
+        self.ui().cascade().hit_test(pos, Sense::hovers)
     }
 
     /// `id`'s state row of type `S`, as [`Ui::state`] reads it; `None` when there is no such
     /// row.
     pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
-        self.window.frames.ui().state::<S>(id)
+        self.ui().state::<S>(id)
     }
 
     /// Every window the frames opened or closed, oldest first: a harness has one window, and
@@ -681,9 +676,7 @@ impl Harness {
     ///
     /// When no clipboard answers; the harness's own, in memory, always does.
     pub fn clipboard_text(&self) -> Option<String> {
-        self.window
-            .frames
-            .ui()
+        self.ui()
             .clipboard()
             .text()
             .expect("the harness clipboard is in memory")
@@ -691,9 +684,7 @@ impl Harness {
 
     /// Put `text` on the window's clipboard, for a paste to come.
     pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self {
-        self.window
-            .frames
-            .ui()
+        self.ui()
             .clipboard()
             .set_text(text)
             .expect("the harness clipboard is in memory");
@@ -709,6 +700,19 @@ impl Harness {
             HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => GpuWait::Done,
             HarnessPaint::Gpu { device, .. } => device.wait_for_gpu(&self.window.frames),
         }
+    }
+
+    /// Block until a [`Waker`](crate::Waker) of this window wakes it, or `timeout` passes, in
+    /// real time; whether a wake waits for the next frame. For a caller that waits on work it
+    /// knows of, past what [a session's settle](crate::AgentWindow::settle) waits for.
+    pub fn wait_for_wake(&self, timeout: Duration) -> bool {
+        self.window.wait_for_wake(timeout)
+    }
+
+    /// Whether a [`Waker`](crate::Waker) of this window woke it since the last frame, which the
+    /// next frame takes.
+    pub fn has_pending_wake(&self) -> bool {
+        self.window.is_wake_pending()
     }
 
     /// Whether the device this harness paints with is lost, as
@@ -744,6 +748,32 @@ impl Harness {
         self.window.recover(device, gpu);
     }
 
+    /// Render one frame of `app` at the clock as it stands, where [`Self::at`] parks it, and write
+    /// the window's pixels into `pixels` in the target's format
+    /// ([`Depth::Gpu`](crate::Depth::Gpu)'s `format`): rows top down with no
+    /// padding, 4 bytes a pixel of 8-bit sRGB RGBA by default, 8 of `Rgba16Float`. That frame
+    /// alone: no held input is delivered, the clock does not move, and no frame waits for the
+    /// picture to land, as [a session's shot](crate::AgentWindow::shot) does. For a recording,
+    /// which sets each frame's time.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
+    /// [`PlayError::DeviceLost`] when the device is lost before the pixels come back, and
+    /// [`PlayError::GpuTimedOut`] when it does not finish the frame in time; `pixels` is left
+    /// empty on either.
+    pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError> {
+        if !self.paint.paints() {
+            return Err(PlayError::NoPixels);
+        }
+        self.drive(app);
+        let target = self
+            .paint
+            .target_mut()
+            .expect("a harness that paints holds a target");
+        device_answered(target.copy_texels(pixels))
+    }
+
     /// The window's `Ui`, for what no method here reads.
     pub const fn ui(&self) -> &Ui {
         self.window.frames.ui()
@@ -755,7 +785,7 @@ impl Harness {
     }
 
     fn deliver_held_input(&mut self, app: &mut impl App) {
-        while self.window.frames.ui().input().has_held_input() {
+        while self.ui().input().has_held_input() {
             self.drive(app);
         }
     }
@@ -786,8 +816,63 @@ impl Harness {
         for command in self.window.drain_commands() {
             log_window_command(&mut self.window_commands, command);
         }
-        self.frames += 1;
         report
+    }
+
+    /// Frames of `app` until it settles, as [a session's settle](crate::AgentWindow::settle) runs
+    /// them; the frames recorded. Only a frame that asks for another counts against
+    /// [`settle_frames`](crate::HarnessBuilder::settle_frames): a frame a busy app's wake brought
+    /// is its progress, and the wait for the next wake starts again after each.
+    fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
+        let first = self.ui().record_frame_id();
+        let began = Instant::now();
+        let busy_limit = self.pace.background_wait.saturating_mul(BUSY_SETTLE_WAITS);
+        let mut asking = 0;
+        loop {
+            let report = self.next_frame(app);
+            let busy = app.is_busy();
+            let screenshots = self.window.frames.has_pending_screenshots();
+            // A wake that is no busy work's progress asks for frames as an animation does.
+            if report.repaint_requested || screenshots || (self.window.is_wake_pending() && !busy) {
+                // A lost device lands no screenshot and paints no frame an animation asks for.
+                if self.is_device_lost() {
+                    return Err(PlayError::DeviceLost);
+                }
+                asking += 1;
+                if asking == self.pace.settle_frames {
+                    return Err(PlayError::Unsettled {
+                        frames: self.pace.settle_frames,
+                    });
+                }
+                if screenshots {
+                    device_answered(self.wait_for_gpu())?;
+                }
+                continue;
+            }
+            if busy {
+                let waited = began.elapsed();
+                if waited > busy_limit {
+                    return Err(PlayError::StillBusy { waited });
+                }
+            }
+            if self.window.is_wake_pending() {
+                continue;
+            }
+            if !busy {
+                return Ok(play::frames_recorded(first, self.ui().record_frame_id()));
+            }
+            if !self.window.wait_for_wake(self.pace.background_wait) {
+                return Err(PlayError::Busy {
+                    waited: self.pace.background_wait,
+                });
+            }
+        }
+    }
+
+    /// One frame of `app`, one frame's time after the last.
+    fn next_frame(&mut self, app: &mut impl App) -> FrameReport {
+        self.advance(self.pace.frame_dt);
+        self.frame_app(app)
     }
 
     fn spec(&self) -> FrameSpec {
@@ -809,7 +894,7 @@ impl Harness {
     /// The point `at` names, for an input method.
     #[track_caller]
     fn aim(&self, at: &Locator) -> Vec2 {
-        at.find(&(), self.window.frames.ui())
+        at.find(&(), self.ui())
             .unwrap_or_else(|error| panic!("{error}"))
             .point
     }
@@ -835,6 +920,17 @@ fn log_window_command(log: &mut Vec<WindowCommand>, command: WindowCommand) {
         );
     if !held_open {
         log.push(command);
+    }
+}
+
+/// What a wait for the device means to a player. A wait that timed out ends the step: the device
+/// hangs, and another wait would hold the caller for the whole bound again, as many as
+/// [`settle_frames`](crate::HarnessBuilder::settle_frames) times.
+const fn device_answered(wait: GpuWait) -> Result<(), PlayError> {
+    match wait {
+        GpuWait::Done => Ok(()),
+        GpuWait::DeviceLost => Err(PlayError::DeviceLost),
+        GpuWait::TimedOut => Err(PlayError::GpuTimedOut),
     }
 }
 
@@ -870,7 +966,7 @@ pub(crate) mod internals {
         scene::layer::Layer,
         scene::tree::node_id::NodeId,
         ui::Ui,
-        ui::app::App,
+        ui::app::{App, RecordPass},
         ui::frame_report::FrameReport,
         ui::resources::UiResources,
         widget_core::configure::Configure,
@@ -914,7 +1010,7 @@ pub(crate) mod internals {
         /// [`Depth::Compose`](crate::Depth::Compose), it paints nothing.
         pub fn paint_full(&mut self) {
             let plan = RenderPlan {
-                clear: self.window.frames.ui().theme().window_bg,
+                clear: self.ui().theme().window_bg,
                 damage: Damage::Full,
             };
             self.window
@@ -949,7 +1045,7 @@ pub(crate) mod internals {
             DamageRegion::collapse_from(
                 self.frames().damage().raw_rects(),
                 MergePolicy::DEFAULT,
-                self.window.frames.ui().display().logical_rect(),
+                self.ui().display().logical_rect(),
             )
         }
 
@@ -1051,13 +1147,10 @@ pub(crate) mod internals {
 
         /// [`Self::frame_passes`] over exactly one frame, as [`Self::step`].
         pub(crate) fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
-            let mut warmup = self.window.frames.is_first_frame();
             let mut values = Vec::new();
             let report = self.step(|ui| {
                 let value = record(ui);
-                if warmup {
-                    warmup = false;
-                } else {
+                if ui.record_pass() != RecordPass::Warmup {
                     values.push(value);
                 }
             });
@@ -1103,7 +1196,7 @@ pub(crate) mod internals {
 
         /// `id`'s map from arranged space to the window, unchecked, unlike [`Self::point_in`].
         pub(crate) fn transform(&self, id: WidgetId) -> TranslateScale {
-            self.window.frames.ui().response_for(id).transform
+            self.ui().response_for(id).transform
         }
 
         /// The center of `id`'s visible rect, unchecked.
@@ -1114,21 +1207,15 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
-            self.window
-                .frames
-                .ui()
-                .forest()
-                .node_for_widget_id(Layer::Main, id)
+            self.ui().forest().node_for_widget_id(Layer::Main, id)
         }
 
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {
-            self.window.frames.ui().cascade().endpoint(id)
+            self.ui().cascade().endpoint(id)
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {
-            self.window
-                .frames
-                .ui()
+            self.ui()
                 .tree(Layer::Main)
                 .children(parent)
                 .map(|child| child.id)
@@ -1136,17 +1223,15 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn main_child_rects(&self, parent: NodeId) -> Vec<Rect> {
-            self.window
-                .frames
-                .ui()
+            self.ui()
                 .tree(Layer::Main)
                 .children(parent)
-                .map(|child| self.window.frames.ui().plane_layout(Layer::Main).rect[child.id.idx()])
+                .map(|child| self.ui().plane_layout(Layer::Main).rect[child.id.idx()])
                 .collect()
         }
 
         pub(crate) fn animation_row_count<T: Animatable>(&mut self) -> usize {
-            self.window.frames.ui_mut().animation_mut().row_count::<T>()
+            self.ui_mut().animation_mut().row_count::<T>()
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {
@@ -1159,14 +1244,10 @@ pub(crate) mod internals {
 
         fn encode(&self, damage: Damage) -> PaintCapture {
             let plan = RenderPlan {
-                clear: self.window.frames.ui().theme().window_bg,
+                clear: self.ui().theme().window_bg,
                 damage,
             };
-            encoder::internals::encode(
-                self.window.frames.ui().frame_scene(),
-                &mut Encoder::default(),
-                plan,
-            )
+            encoder::internals::encode(self.ui().frame_scene(), &mut Encoder::default(), plan)
         }
     }
 }

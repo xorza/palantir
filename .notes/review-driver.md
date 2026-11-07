@@ -13,17 +13,6 @@ could not reach, as Playwright's locators and actionability checks do. A settle 
 `pumpAndSettle`. A remote queries between two frames, as Flutter's driver extension and Slint's MCP
 server do. One set of rules plays over a `Stage`, so both players agree, and a test holds them to it.
 
-## Root causes
-
-1. **Harness state and code sit where they do by history.** `impl Harness` is split across `play.rs`, a
-   frame counter counts other frames than the remote's, and three settings are stored in three structs.
-
-## Target design
-
-- **Data.** `Harness::frames` goes: both players count `record_frame_id`.
-- **Module layout.** `harness/play.rs` goes. The verbs and `HarnessStage` move to `harness_session.rs`,
-  and the rest of `impl Harness` to `mod.rs`, as one major struct holds its file.
-
 ## Ownership
 
 Every shared-ownership case in the scope:
@@ -52,25 +41,6 @@ Every shared-ownership case in the scope:
 - **`Harness::state`, `rect` and `clipboard_text` stay.** They are sugar over `Ui`, and tests read better.
 
 # Part 2: plan
-
-## Batch 6: the harness's shape
-
-Files: `src/host/harness/*`.
-
-- [ ] `harness/play.rs` holds `impl Harness` and the session's work, and the session's verbs only forward
-  to `pub(super)` methods. Target: the verbs and `HarnessStage` in `harness_session.rs`, `wait_for_wake`,
-  `has_pending_wake`, `capture` and the settle in `mod.rs`, `play.rs` deleted.
-- [ ] **API** `settle` and `play` return different counts: the harness counts every frame, and a remote only
-  those that record. `AgentWindow` says "the frames run" for both. Target: `record_frame_id` on both, the
-  field `Harness::frames` deleted, and the doc says recorded frames. Update `Ok(11)` in the settle test
-  if a paint-only frame moved it.
-- [ ] `frame_dt`, `settle_frames` and `background_wait` live on `HarnessBuilder`, `Seal` and `Harness`.
-  Target: one `SettlePace` struct on all, `Seal` reduced to it and the paint, or gone.
-- [ ] `internals` `step_passes` keeps a `warmup` flag. Target: `ui.record_pass() != RecordPass::Warmup`, as
-  `frame_value` reads it now.
-- [ ] `mod.rs` writes `self.window.frames.ui()` 20 times beside `Self::ui`. Target: `self.ui()`.
-- [ ] **API** `Harness` has no `double_click` while `Action::DoubleClick` exists, and tests write two clicks
-  by hand. Target: `Harness::double_click(at)`.
 
 ## Batch 7: names and the modifier rule
 

@@ -94,8 +94,7 @@ fn each_batch_lands_one_button_change_per_frame() {
     // [P, R, P, R]: four frames; arrival times, not frames, decide the double-click.
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.click(TARGET);
-    h.click(TARGET);
+    h.double_click(TARGET);
     assert_eq!(
         step_until_idle(&mut h),
         [down(1), up_click(1), down(2), up_click(2)],

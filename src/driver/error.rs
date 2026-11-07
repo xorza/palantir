@@ -111,7 +111,9 @@ pub enum PlayError {
     /// or an app that asks a repaint every frame. The step that failed is the caller's to name, as
     /// an [`ActError`] does by its index.
     Unsettled {
-        /// The frames run.
+        /// What the wait ran to: on a harness its bound in frames,
+        /// [`settle_frames`](crate::HarnessBuilder::settle_frames), and on a remote, whose bound
+        /// is real time, the frames the window recorded within it.
         frames: u32,
     },
     /// A drag that moves `travel` logical pixels, under the threshold a drag starts at, so the

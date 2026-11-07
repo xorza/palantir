@@ -50,15 +50,12 @@ fn harness() -> Harness {
 /// Double-click the label `id` and run the frame its editor opens in.
 fn open(h: &mut Harness, id: WidgetId, editable: bool) {
     let hit = h.rect(id).expect("label arranged").center();
+    h.double_click(hit);
     for _ in 0..2 {
-        h.click(hit);
         h.frame(|ui| {
             record(ui, id, editable);
         });
     }
-    h.frame(|ui| {
-        record(ui, id, editable);
-    });
 }
 
 /// The label holds its rect across the swap to its editor and back, for the default theme, with

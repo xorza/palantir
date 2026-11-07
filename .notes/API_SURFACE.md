@@ -983,9 +983,6 @@ HAlign
 
 Harness
     struct Harness: Debug
-        pub fn wait_for_wake(&self, timeout: Duration) -> bool
-        pub fn has_pending_wake(&self) -> bool
-        pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError>
         pub const WINDOW: WindowToken
         pub fn new(size: UVec2) -> Self
         pub const fn builder(size: UVec2) -> HarnessBuilder
@@ -1010,6 +1007,7 @@ Harness
         pub fn press(&mut self, at: impl Into<Locator>, button: PointerButton) -> InputDelta
         pub fn release(&mut self, button: PointerButton) -> InputDelta
         pub fn click(&mut self, at: impl Into<Locator>) -> InputDelta
+        pub fn double_click(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn right_click(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn drag_to(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn scroll_pixels(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta
@@ -1032,8 +1030,11 @@ Harness
         pub fn clipboard_text(&self) -> Option<String>
         pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self
         pub fn wait_for_gpu(&self) -> GpuWait
+        pub fn wait_for_wake(&self, timeout: Duration) -> bool
+        pub fn has_pending_wake(&self) -> bool
         pub fn is_device_lost(&self) -> bool
         pub fn recover(&mut self, gpu: Gpu)
+        pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError>
         pub const fn ui(&self) -> &Ui
         pub const fn ui_mut(&mut self) -> &mut Ui
 

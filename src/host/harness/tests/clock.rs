@@ -53,6 +53,12 @@ fn one_clock_stamps_both_frames_and_input() {
         !fifth.left.double_clicked(),
         "at + frame separates press runs the same way advance does",
     );
+
+    // One call plays the same run the two clicks above did.
+    harness.advance_past_double_click();
+    harness.double_click(INSIDE);
+    let sixth = harness.response_in(support::target(), support::button);
+    assert!(sixth.left.double_clicked(), "one call is one double click");
 }
 
 #[test]

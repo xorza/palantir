@@ -16,7 +16,7 @@ use crate::window::screenshot::Screenshot;
 /// methods on each host, which a driver still joined through an enum of its own.
 pub trait AgentWindow<A> {
     /// Play `actions` in order, settling after each; the first that fails stops the rest. Returns
-    /// the frames run.
+    /// the frames recorded: a frame that only paints, as a caret's blink does, does not count.
     ///
     /// # Errors
     ///
@@ -24,7 +24,7 @@ pub trait AgentWindow<A> {
     fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>;
 
     /// Run the window until a frame asks no repaint and the app is not [busy](crate::App::is_busy);
-    /// returns the frames run.
+    /// returns the frames recorded, as [`Self::play`] counts them.
     ///
     /// # Errors
     ///

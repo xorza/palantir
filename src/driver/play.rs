@@ -2,7 +2,7 @@
 //! stepped clock and a live window on real time play the same steps.
 
 use crate::driver::action::Action;
-use crate::driver::error::PlayError;
+use crate::driver::error::{ActError, PlayError};
 use crate::driver::locator::{Locator, Reach};
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::primitives::input::input_event::InputEvent;
@@ -44,6 +44,23 @@ pub(crate) trait Stage<X> {
 
     /// Take now, a frame after a press, as that press's time.
     fn note_press(&mut self);
+}
+
+/// Play `actions` in order on `stage`; the first that fails stops the rest.
+pub(crate) fn play_all<X: Debug>(
+    stage: &mut impl Stage<X>,
+    actions: &[Action<X>],
+) -> Result<(), ActError> {
+    for (ran, action) in actions.iter().enumerate() {
+        play(stage, action).map_err(|error| ActError { ran, error })?;
+    }
+    Ok(())
+}
+
+/// The frames recorded between the record frame ids `first` and `last`, as a player returns them.
+/// A frame that only paints moves no id.
+pub(crate) fn frames_recorded(first: u64, last: u64) -> u32 {
+    u32::try_from(last.saturating_sub(first)).unwrap_or(u32::MAX)
 }
 
 /// Play `action` on `stage` and settle. Every locator resolves before any input goes in, and a

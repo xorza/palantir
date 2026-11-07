@@ -3,12 +3,16 @@
 use crate::driver::action::Action;
 use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{ActError, PlayError};
-use crate::driver::locator::Locate;
-use crate::host::harness::Harness;
+use crate::driver::locator::{Locate, Locator, Reach};
+use crate::driver::play::{self, Stage};
+use crate::host::harness::{Harness, device_answered};
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::input::input_event::InputEvent;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::window::screenshot::Screenshot;
+use glam::Vec2;
+use std::time::Duration;
 
 /// A [`Harness`] with the app it runs, from [`Harness::session`]: the [`AgentWindow`] verbs, as a
 /// [`Remote`](crate::Remote) offers them on a live window. Borrowed for as long as the steps take,
@@ -24,13 +28,23 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     /// the first that fails stops the rest. Every locator of a step resolves before its input
     /// goes in, and a button or a modifier it holds is always released, so a failed step leaves
     /// nothing held. Separate presses wait out the double-click interval, and a press moves the
-    /// pointer first and settles, so it lands on what the pointer hovers. Returns the frames run.
+    /// pointer first and settles, so it lands on what the pointer hovers. Returns the frames
+    /// recorded.
     ///
     /// # Errors
     ///
     /// [`ActError`], naming the step it stopped at.
     fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError> {
-        self.harness.play(self.app, actions)
+        let first = self.harness.ui().record_frame_id();
+        let mut stage = HarnessStage {
+            h: self.harness,
+            app: self.app,
+        };
+        play::play_all(&mut stage, actions)?;
+        Ok(play::frames_recorded(
+            first,
+            self.harness.ui().record_frame_id(),
+        ))
     }
 
     /// Run frames of the app, the clock moving one frame's time before each, until one asks no
@@ -38,7 +52,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     /// [wake](crate::Waker) waits, and the app is not [busy](App::is_busy). While the app is busy
     /// and asks nothing, the settle waits in real time for each wake its work sends, as long as
     /// the work goes on. A caret blink asks a timed wake, not a repaint, so it settles. Returns
-    /// the frames run.
+    /// the frames recorded.
     ///
     /// # Errors
     ///
@@ -64,7 +78,31 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     /// and [`PlayError::Unsettled`] when the picture has not landed after the builder's
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames).
     fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
-        self.harness.shot(self.app, region)
+        let h = &mut *self.harness;
+        if !h.paint.paints() {
+            return Err(PlayError::NoPixels);
+        }
+        let asked = h
+            .ui_mut()
+            .request_screenshot(region)
+            .ok_or(PlayError::EmptyRegion)?;
+        // The frame paints the image; once the device's copy is back, the next frame lands it,
+        // after any image an earlier ask is owed, one a frame.
+        h.next_frame(self.app);
+        for _ in 0..h.pace.settle_frames {
+            device_answered(h.wait_for_gpu())?;
+            h.next_frame(self.app);
+            if let Some(shot) = h.ui().screenshot_taken(asked) {
+                return Ok(shot.clone());
+            }
+        }
+        // The last frame's submit can find the loss.
+        if h.is_device_lost() {
+            return Err(PlayError::DeviceLost);
+        }
+        Err(PlayError::Unsettled {
+            frames: h.pace.settle_frames,
+        })
     }
 
     /// `f` on the app and the last frame, at once: no frame runs and the clock holds still.
@@ -85,5 +123,58 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         let answer = f(self.app, ui);
         ui.request_repaint();
         Ok(answer)
+    }
+}
+
+/// A harness and the app it plays, as a [`Stage`] on the harness's stepped clock.
+struct HarnessStage<'a, A> {
+    h: &'a mut Harness,
+    app: &'a mut A,
+}
+
+impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
+    fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError> {
+        Ok(at.point_for(self.app, self.h.ui(), reach)?)
+    }
+
+    /// A modifier change that holds what is held already sends nothing, which would wait a frame.
+    fn input(&mut self, event: InputEvent<'_>) {
+        match event {
+            InputEvent::ModifiersChanged(mods) => self.h.hold_modifiers(mods),
+            event => self.h.on_input(event),
+        };
+    }
+
+    fn frame(&mut self) -> Result<(), PlayError> {
+        self.h.next_frame(self.app);
+        Ok(())
+    }
+
+    fn settle(&mut self) -> Result<(), PlayError> {
+        self.h.settle_frames_of(self.app).map(drop)
+    }
+
+    fn wait(&mut self, dt: Duration) -> Result<(), PlayError> {
+        let end = self.h.time + dt;
+        while self.h.time < end {
+            self.h.next_frame(self.app);
+        }
+        Ok(())
+    }
+
+    fn space_press(&mut self) -> Result<(), PlayError> {
+        let Some(pressed) = self.h.last_press else {
+            return Ok(());
+        };
+        let interval = self.h.ui().double_click_interval();
+        let since = self.h.time.saturating_sub(pressed);
+        if since <= interval {
+            self.h.advance(interval - since + Duration::from_millis(1));
+        }
+        Ok(())
+    }
+
+    fn note_press(&mut self) {
+        self.h.last_press = Some(self.h.time);
     }
 }
