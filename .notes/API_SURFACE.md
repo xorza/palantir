@@ -852,6 +852,7 @@ Gpu
         pub fn new(device: Device, queue: Queue) -> Self
         pub const fn device(&self) -> &Device
         pub const fn queue(&self) -> &Queue
+        pub fn lose(&self)
         pub fn max_texture_dim(&self) -> NonZeroU32
 
 GpuFrameCtx

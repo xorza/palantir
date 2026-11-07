@@ -74,6 +74,19 @@ impl Gpu {
         &self.queue
     }
 
+    /// Lose the device, as a GPU hang does, to see an app recover: every clone reads it lost, and
+    /// every host and window that paints with the device paints nothing until it is given a new
+    /// one.
+    ///
+    /// `Device::destroy` makes every later call a no-op, as wgpu's own device-loss tests use it,
+    /// and the wait runs the lost callback, as a real loss runs it inside the call that finds the
+    /// loss. Unlike a driver's loss, it does not end the process in a blocking wait.
+    pub fn lose(&self) {
+        self.device.destroy();
+        let _ = self.drain(WAIT_TIMEOUT);
+        debug_assert!(self.is_lost(), "the lost callback ran");
+    }
+
     pub(crate) fn requirements_met(&self) -> Result<(), UnmetRequirements> {
         DeviceRequirements::met_by(&self.device)
     }
@@ -203,8 +216,9 @@ impl Gpu {
     /// and Zed's readback wait.
     ///
     /// The wait is fatal on a device it finds lost, so only a caller that asks to block reaches it:
-    /// an offscreen host's `wait_for_gpu`, a read-back, a bench, a test. A device its owner
-    /// destroyed is not lost to the driver, so the wait returns and runs its lost callback.
+    /// an offscreen host's `wait_for_gpu`, a read-back, [`Self::lose`], a bench, a test. A device
+    /// its owner destroyed is not lost to the driver, so the wait returns and runs its lost
+    /// callback.
     #[expect(
         clippy::disallowed_methods,
         reason = "the one blocking wait, behind the health check"
@@ -245,15 +259,6 @@ pub(crate) mod internals {
         /// keep the device's own.
         pub(crate) const fn put_backbuffer_by(&mut self, out: BackbufferOut) {
             self.backbuffer_out = out;
-        }
-
-        /// Lose the device, as a GPU hang does: `Device::destroy` makes every later call a no-op,
-        /// as wgpu's own device-loss tests use it, and the wait runs the lost callback, as a real
-        /// loss runs it inside the call that finds the loss.
-        pub(crate) fn lose(&self) {
-            self.device.destroy();
-            self.wait();
-            debug_assert!(self.is_lost(), "the lost callback ran");
         }
     }
 }

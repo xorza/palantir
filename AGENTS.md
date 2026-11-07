@@ -109,8 +109,9 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
   `panic = "abort"`. Cost: a loss in a blocking wait ends the process, as in Zed.
 - **The texture limit is shared state**, as the new adapter's can be smaller. Refused: asking for
   the old limits, which fails a recovery onto a smaller GPU.
-- **Tests lose a real device**, an isolated one, through `Gpu::lose`, as wgpu's tests do. By
-  hand, `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root resets the GPU for every app.
+- **Tests lose a real device**, an isolated one, through `Gpu::lose`, as wgpu's tests do. It is
+  public, as the harness is, so an app's tests and agents see the app recover too. By hand,
+  `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root resets the GPU for every app.
 
 ## Harness
 
