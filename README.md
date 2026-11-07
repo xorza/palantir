@@ -29,8 +29,8 @@ declaration, good-looking and fast. I made it.
   between their min- and max-content widths as auto table columns do, Fill
   items share the rest as WPF star tracks do, and nothing shrinks below its
   min-content floor.
-- **Fast** — a full 2560×1440 app screen costs 78–130 µs of CPU per frame
-  when nothing changed and 196–329 µs while the window resizes, and a
+- **Fast** — a full 2560×1440 app screen costs 18–81 µs of CPU per frame
+  when nothing changed and 44–194 µs while the window resizes, and a
   steady-state frame allocates nothing. See [Performance](#performance).
 - **Widgets included** — buttons, text and text editing, sliders, checkboxes,
   combo boxes, scroll and pan-zoom views, grids, tabs, a dock, popups, modals,
@@ -126,36 +126,31 @@ builds a `Stepper` entirely against the published API.
 ## Performance
 
 The `frame` bench drives the showcase's first page on a 2560×1440 surface at
-2× scale. The numbers below predate that page: they come from a larger synthetic
-screen, about five times its nodes, and wait for a new run on each machine.
-Each scenario runs two ways: the deviceless **CPU pipeline** (record →
+2× scale. Each scenario runs two ways: the deviceless **CPU pipeline** (record →
 measure → arrange → cascade → damage → encode + compose), and the full
 public path through `OffscreenHost`, the **CPU + GPU frame**, with the GPU
 drained before the next iteration.
 
-|                                    | High-end Intel laptop<br>high-end NVIDIA GPU | Mobile AMD<br>integrated GPU | Fanless Apple laptop |
-| ---------------------------------- | ----------------------------------: | -------------------------------: | -----------------------------------: |
-| **CPU pipeline**                   |                                     |                                  |                                      |
-| `cached`                           |                               91 µs |                           130 µs |                                78 µs |
-| `hovering`                         |                              104 µs |                           152 µs |                                87 µs |
-| `partial`                          |                              125 µs |                           181 µs |                               105 µs |
-| `alternating`                      |                              145 µs |                           203 µs |                               118 µs |
-| `scrolling`                        |                              161 µs |                           221 µs |                               130 µs |
-| `resizing`                         |                              242 µs |                           329 µs |                               196 µs |
-| `typing`                           |                              283 µs |                           392 µs |                               228 µs |
-| **CPU + GPU frame**                |                                     |                                  |                                      |
-| `cached`                           |                               92 µs |                           135 µs |                                79 µs |
-| `hovering`                         |                              257 µs |                          1.55 ms |                               327 µs |
-| `partial`                          |                              299 µs |                          1.55 ms |                               346 µs |
-| `alternating`                      |                              394 µs |                          2.49 ms |                               681 µs |
-| `scrolling`                        |                              397 µs |                          2.28 ms |                               650 µs |
-| `resizing`                         |                              549 µs |                          2.25 ms |                               745 µs |
-| `typing`                           |                              649 µs |                          2.57 ms |                               785 µs |
-| **Per `cached` CPU frame**         |                                     |                                  |                                      |
-| instructions retired               |                              1.98 M |                           1.71 M |                               1.74 M |
-| cycles                             |                               453 K |                            490 K |                                285 K |
-| IPC                                |                                4.37 |                             3.49 |                                  6.1 |
-| clock                              |                           ~5.07 GHz |                         4.58 GHz |                             4.32 GHz |
+|                     | Apple M5<br>Metal | Raspberry Pi 5<br>V3D, Vulkan | Steam Deck<br>RADV, Vulkan |
+| ------------------- | ----------------: | ----------------------------: | -------------------------: |
+| **CPU pipeline**    |                   |                               |                            |
+| `cached`            |           18.2 µs |                       80.7 µs |                    51.7 µs |
+| `hovering`          |           21.7 µs |                        102 µs |                    64.8 µs |
+| `partial`           |           28.4 µs |                        138 µs |                    87.4 µs |
+| `alternating`       |           31.9 µs |                        150 µs |                     138 µs |
+| `scrolling`         |           34.7 µs |                        155 µs |                    99.0 µs |
+| `resizing`          |           43.9 µs |                        194 µs |                     127 µs |
+| `typing`            |           52.2 µs |                        241 µs |                     154 µs |
+| `theming`           |           70.6 µs |                        343 µs |                     224 µs |
+| **CPU + GPU frame** |                   |                               |                            |
+| `cached`            |           18.3 µs |                       83.2 µs |                    66.9 µs |
+| `hovering`          |            261 µs |                       2.46 ms |                     661 µs |
+| `partial`           |            276 µs |                       2.74 ms |                     753 µs |
+| `alternating`       |            348 µs |                       6.73 ms |                    1.04 ms |
+| `scrolling`         |            315 µs |                       5.49 ms |                     797 µs |
+| `resizing`          |            318 µs |                       5.27 ms |                     930 µs |
+| `typing`            |            292 µs |                       2.65 ms |                     894 µs |
+| `theming`           |            398 µs |                       6.19 ms |                    1.57 ms |
 
 - **Scenarios.** `cached` changes nothing, so layout hits its cache and
   damage skips the paint. `hovering` moves the pointer between two widgets,
@@ -163,11 +158,10 @@ drained before the next iteration.
   `alternating` takes a scroll step, then a counter tick. `scrolling` moves a
   transform. `resizing` changes the surface size every frame, so every
   measure runs again. `typing` types a character into a focused field, then
-  deletes it.
-- **Counters.** The x86 counts come from `perf stat`, pinned to one core; the
-  Apple counts from `/usr/bin/time -l`, unpinned, as macOS has no core affinity.
-  Each count is the difference between two measurement windows, so process
-  startup cancels out.
+  deletes it. `theming` blends two themes at a new phase every frame, so text
+  reshapes and rasterizes anew.
+- **Run.** Each number is the median of one full run. The Raspberry Pi and the
+  Steam Deck run pinned to one core; the Apple M5 runs unpinned.
 - **Build.** The x86 build sets `-C target-cpu=x86-64-v3` (see
   [Recommended build flag](#recommended-build-flag)); an aarch64 build sets
   no flag.
