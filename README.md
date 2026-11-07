@@ -170,7 +170,7 @@ The bench screen, the showcase's first page:
 
 ![Frame bench screen](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
 
-The worst-case frame in a Tracy capture of a window resize on a fanless Apple laptop:
+The worst-case frame in a Tracy capture of a window resize on an Apple M5:
 
 ![Tracy capture of one frame](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/tracy-frame.png)
 
