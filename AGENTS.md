@@ -400,6 +400,11 @@ of the crates.
 
 - **A change to the public API also runs `cargo drive surface`** and commits the
   `.notes/API_SURFACE.md` it writes. The gate chain does not run it, and CI fails on any difference.
+- **CI runs on [`xorza/rust-ci`](https://github.com/xorza/rust-ci)**: the same lane on every OS, and a failure that
+  names its crashes and failed tests. Its README holds the decisions it shares with its other callers.
+- **x64 CI builds x86-64-v3**, as a local gate and Darkroom do. Refused: a `RUSTFLAGS` env, which
+  replaces the config's flags and tests a build that nothing ships. Cost: x64 lanes do not compile the
+  runtime F16C detection of `src/primitives/packed/half_simd/x86_64.rs`.
 - **Every test run needs a GPU adapter**; a headless machine needs a software Vulkan driver
   (Mesa lavapipe).
 - **A slow first GPU test can be the build folder, not the GPU.** The first Metal call lists the

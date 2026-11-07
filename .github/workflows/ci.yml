@@ -40,11 +40,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: xorza/rust-ci/setup@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/setup@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
         with:
           apt-packages: libxkbcommon-dev
-      - uses: xorza/rust-ci/lavapipe@9629682b748c30f471b2904c9c85a520765cb542 # master
-      - uses: xorza/rust-ci/crash-capture@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/lavapipe@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
+      - uses: xorza/rust-ci/crash-capture@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
       # The gate of AGENTS.md, one step per command, each run past an earlier failure, so one run
       # reports every lane. The build apart from the run, so each shows its own time.
       - run: cargo fmt --all --check
@@ -58,26 +58,26 @@ jobs:
         run: cargo --locked gate-ship-nowinit
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-test --no-run
-      - uses: xorza/rust-ci/test@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/test@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
         if: ${{ !cancelled() }}
         timeout-minutes: 30
         with:
           command: cargo --locked gate-test
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-test-nowinit --no-run
-      - uses: xorza/rust-ci/test@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/test@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
         if: ${{ !cancelled() }}
         timeout-minutes: 30
         with:
           command: cargo --locked gate-test-nowinit
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-doc
-      - uses: xorza/rust-ci/test@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/test@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
         if: ${{ !cancelled() }}
         timeout-minutes: 30
         with:
           command: cargo --locked gate-doctest
-      - uses: xorza/rust-ci/failure-report@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/failure-report@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
         if: failure()
 
   api-surface:
@@ -88,7 +88,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: xorza/rust-ci/setup@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/setup@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
       - run: cargo install --locked --git https://github.com/xorza/drive --rev "$DRIVE_REV"
       # The committed surface must be what the tree renders: a change to the public API shows
       # here as a diff until `.notes/API_SURFACE.md` is regenerated with it.
@@ -103,4 +103,4 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: xorza/rust-ci/workflow-check@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/workflow-check@5c6e2c57d2c89c894225a4fd2ac61e9129e9e32b # v1
