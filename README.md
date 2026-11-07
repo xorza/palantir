@@ -61,12 +61,10 @@ widget:
 
 https://github.com/user-attachments/assets/6ae8305c-dba6-4998-8fb1-9522f9331e02
 
-
 Built with Palantir: [Darkroom](https://github.com/xorza/Darkroom), a
 node-graph editor for image and data pipelines.
 
 <img width="2285" height="1976" alt="Darkroom" src="https://github.com/user-attachments/assets/8ae87047-429d-4aef-8cbc-0d2dfe8a8e8c" />
-
 
 ## Getting started
 
@@ -169,10 +167,6 @@ drained before the next iteration.
 The bench screen, the showcase's first page:
 
 ![Frame bench screen](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/frame_bench.png)
-
-The worst-case frame in a Tracy capture of a window resize on an Apple M5:
-
-![Tracy capture of one frame](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/tracy-frame.png)
 
 ### Zero per-frame allocation
 
