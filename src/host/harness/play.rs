@@ -34,7 +34,7 @@ impl Harness {
     /// real time; whether a wake waits for the next frame. For a caller that waits on work it
     /// knows of, past what [a session's settle](crate::AgentWindow::settle) waits for.
     pub fn wait_for_wake(&self, timeout: Duration) -> bool {
-        self.window.wait_for_wake(Instant::now() + timeout)
+        self.window.wait_for_wake(timeout)
     }
 
     /// Whether a [`Waker`](crate::Waker) of this window woke it since the last frame, which the
@@ -62,10 +62,7 @@ impl Harness {
         // after any image an earlier ask is owed, one a frame.
         self.next_frame(app);
         for _ in 0..self.settle_frames {
-            // A wait that timed out leaves the copy to a later frame.
-            if self.wait_for_gpu() == GpuWait::DeviceLost {
-                return Err(PlayError::DeviceLost);
-            }
+            device_answered(self.wait_for_gpu())?;
             self.next_frame(app);
             if let Some(shot) = self.window.frames.ui().screenshot_taken(asked) {
                 return Ok(shot.clone());
@@ -102,11 +99,7 @@ impl Harness {
             .paint
             .target_mut()
             .expect("a harness that paints holds a target");
-        match target.copy_texels(pixels) {
-            GpuWait::Done => Ok(()),
-            GpuWait::DeviceLost => Err(PlayError::DeviceLost),
-            GpuWait::TimedOut => Err(PlayError::GpuTimedOut),
-        }
+        device_answered(target.copy_texels(pixels))
     }
 
     /// Frames of `app` until it settles, as [a session's settle](crate::AgentWindow::settle) runs them. Only a frame that asks for another counts against
@@ -115,7 +108,7 @@ impl Harness {
     pub(super) fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
         let start = self.frames;
         let began = Instant::now();
-        let busy_limit = self.background_wait * BUSY_SETTLE_WAITS;
+        let busy_limit = self.background_wait.saturating_mul(BUSY_SETTLE_WAITS);
         let mut asking = 0;
         loop {
             let report = self.next_frame(app);
@@ -133,9 +126,8 @@ impl Harness {
                         frames: self.settle_frames,
                     });
                 }
-                // A wait that timed out leaves the copy to a later frame.
-                if screenshots && self.wait_for_gpu() == GpuWait::DeviceLost {
-                    return Err(PlayError::DeviceLost);
+                if screenshots {
+                    device_answered(self.wait_for_gpu())?;
                 }
                 continue;
             }
@@ -151,10 +143,7 @@ impl Harness {
             if !busy {
                 return Ok(self.frames - start);
             }
-            if !self
-                .window
-                .wait_for_wake(Instant::now() + self.background_wait)
-            {
+            if !self.window.wait_for_wake(self.background_wait) {
                 return Err(PlayError::Busy {
                     waited: self.background_wait,
                 });
@@ -166,6 +155,17 @@ impl Harness {
     fn next_frame(&mut self, app: &mut impl App) -> FrameReport {
         self.advance(self.frame_dt);
         self.frame_app(app)
+    }
+}
+
+/// What a wait for the device means to a player. A wait that timed out ends the step: the device
+/// hangs, and another wait would hold the caller for the whole bound again, as many as
+/// [`settle_frames`](crate::HarnessBuilder::settle_frames) times.
+const fn device_answered(wait: GpuWait) -> Result<(), PlayError> {
+    match wait {
+        GpuWait::Done => Ok(()),
+        GpuWait::DeviceLost => Err(PlayError::DeviceLost),
+        GpuWait::TimedOut => Err(PlayError::GpuTimedOut),
     }
 }
 
@@ -219,5 +219,26 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
 
     fn note_press(&mut self) {
         self.h.last_press = Some(self.h.time);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::driver::error::PlayError;
+    use crate::gpu::device::gpu_wait::GpuWait;
+    use crate::host::harness::play::device_answered;
+
+    /// Only a wait that finished lets a step go on, and each other names its own cause.
+    #[test]
+    fn a_device_wait_reads_as_its_own_case() {
+        assert_eq!(device_answered(GpuWait::Done), Ok(()));
+        assert_eq!(
+            device_answered(GpuWait::DeviceLost),
+            Err(PlayError::DeviceLost)
+        );
+        assert_eq!(
+            device_answered(GpuWait::TimedOut),
+            Err(PlayError::GpuTimedOut)
+        );
     }
 }

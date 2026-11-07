@@ -2,7 +2,7 @@
 
 use crate::common::sync::{CondvarExt, MutexExt};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Instant;
+use std::time::Duration;
 
 use crate::window::waker::Waker;
 
@@ -36,9 +36,8 @@ impl WakeSignal {
         std::mem::take(&mut *self.woken())
     }
 
-    /// Block until a wake waits or `deadline` passes; whether one waits.
-    pub(crate) fn wait(&self, deadline: Instant) -> bool {
-        let timeout = deadline.saturating_duration_since(Instant::now());
+    /// Block until a wake waits, for `timeout` at most; whether one waits.
+    pub(crate) fn wait(&self, timeout: Duration) -> bool {
         let woken = self
             .wakes
             .wait_timeout_while_unpoisoned(self.woken(), timeout, |woken| !*woken);
@@ -54,19 +53,19 @@ impl WakeSignal {
 mod tests {
     use std::sync::Arc;
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use crate::host::wake_signal::WakeSignal;
 
     /// A wake from another thread ends a wait at once and waits to be taken; with none, the wait
-    /// ends at its deadline.
+    /// ends at its timeout.
     #[test]
     fn a_wake_ends_a_wait_and_waits_to_be_taken() {
         let signal = Arc::new(WakeSignal::default());
-        assert!(!signal.wait(Instant::now() + Duration::from_millis(5)));
+        assert!(!signal.wait(Duration::from_millis(5)));
         let waker = signal.waker();
         let woke = thread::spawn(move || waker.wake());
-        assert!(signal.wait(Instant::now() + Duration::from_secs(10)));
+        assert!(signal.wait(Duration::from_secs(10)));
         woke.join().unwrap();
         assert!(signal.is_pending());
         assert!(signal.take());

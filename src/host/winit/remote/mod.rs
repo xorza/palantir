@@ -86,13 +86,14 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// # Errors
     ///
     /// [`PlayError::Unsettled`] when the window still asks for frames after the
-    /// [wait](Self::with_wait),
-    /// [`PlayError::Busy`] when a busy app runs no frame for as long, [`PlayError::NoFrame`] when
-    /// the window runs none, and [`PlayError::Disconnected`] when it closed.
+    /// [wait](Self::with_wait), [`PlayError::Busy`] when a busy app runs no frame for as long,
+    /// [`PlayError::NoFrame`] when the window runs none, [`PlayError::Blocked`] and
+    /// [`PlayError::Hidden`] at once when it cannot, and [`PlayError::Disconnected`] when it
+    /// closed.
     fn settle(&mut self) -> Result<u32, PlayError> {
         let first = self.record_frame_id();
-        self.wait_frame(true)?;
-        Ok(u32::try_from(self.record_frame_id().saturating_sub(first)).unwrap_or(u32::MAX))
+        self.wait_frame(Until::Settled)?;
+        Ok(self.frames_since(first))
     }
 
     /// Play `actions` in order as a person at the window would, in real time, settling after
@@ -111,8 +112,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
         for (ran, action) in actions.iter().enumerate() {
             play::play(&mut stage, action).map_err(|error| ActError { ran, error })?;
         }
-        let frames = stage.remote.record_frame_id().saturating_sub(first);
-        Ok(u32::try_from(frames).unwrap_or(u32::MAX))
+        Ok(self.frames_since(first))
     }
 
     /// A picture of `region`, the whole window for none, as a later frame paints it.
@@ -120,7 +120,8 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// # Errors
     ///
     /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::Disconnected`]
-    /// when the window closed, and [`PlayError::NoFrame`] when no picture landed within the
+    /// when the window closed, [`PlayError::Blocked`] and [`PlayError::Hidden`] at once when no
+    /// frame can run, and [`PlayError::NoFrame`] when no picture landed within the
     /// [wait](Self::with_wait).
     fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
         self.check_waiting(Instant::now(), Answer::InFrame)?;
@@ -173,9 +174,9 @@ impl<T: 'static> Remote<T> {
         }
     }
 
-    /// Give up every wait at once while `blocked` says something outside the host holds the
-    /// window's thread, as a native file dialog does until the person answers it: no event and
-    /// no frame runs then. Each wait asks it as it polls.
+    /// Give up every wait at once with [`PlayError::Blocked`] while `blocked` says something
+    /// outside the host holds the window's thread, as a native file dialog does until the person
+    /// answers it: no event and no frame runs then. Each wait asks it as it polls.
     #[must_use]
     pub fn with_blocked(mut self, blocked: impl Fn() -> bool + Send + 'static) -> Self {
         self.blocked = Some(Box::new(blocked));
@@ -193,15 +194,16 @@ impl<T: 'static> Remote<T> {
     /// Run `f` between two frames of the window with `&mut` the app and the window's `Ui`, which
     /// holds the last frame; a frame that records follows, which the next [settle](Self::settle)
     /// waits for, so a read after it sees what `f` changed; a hidden window runs that frame when
-    /// it shows, so a settle meanwhile ends with [`PlayError::NoFrame`]. Returns what `f`
+    /// it shows, so a settle meanwhile ends with [`PlayError::Hidden`]. Returns what `f`
     /// returns. A query given up on never runs later, unless it had begun. A panic in `f` is the
     /// window's: it ends the process under `panic = "abort"`, as any panic on the window's thread
     /// does.
     ///
     /// # Errors
     ///
-    /// [`PlayError::Disconnected`] when the window closed or the loop ended, and
-    /// [`PlayError::NoFrame`] when no answer came within the [wait](Self::with_wait).
+    /// [`PlayError::Disconnected`] when the window closed or the loop ended,
+    /// [`PlayError::Blocked`] at once while its thread is held, and [`PlayError::NoFrame`] when no
+    /// answer came within the [wait](Self::with_wait).
     pub fn query<R: Send + 'static>(
         &mut self,
         f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static,
@@ -240,14 +242,17 @@ impl<T: 'static> Remote<T> {
         }
     }
 
-    /// Whether a wait that began at `start` may go on: not past the remote's wait, its thread not
-    /// held,
-    /// and the window shown, for an answer a frame gives.
+    /// Whether a wait that began at `start` may go on: its thread not held, the window shown, for
+    /// an answer a frame gives, and not past the remote's wait.
     fn check_waiting(&self, start: Instant, comes: Answer) -> Result<(), PlayError> {
+        if self.blocked.as_ref().is_some_and(|blocked| blocked()) {
+            return Err(PlayError::Blocked);
+        }
+        if comes == Answer::InFrame && self.handle.is_hidden(self.window) {
+            return Err(PlayError::Hidden);
+        }
         let waited = start.elapsed();
-        let blocked = self.blocked.as_ref().is_some_and(|blocked| blocked());
-        let hidden = comes == Answer::InFrame && self.handle.is_hidden(self.window);
-        if waited > self.wait || blocked || hidden {
+        if waited > self.wait {
             return Err(PlayError::NoFrame { waited });
         }
         Ok(())
@@ -265,10 +270,15 @@ impl<T: 'static> Remote<T> {
             .map_or(0, |summary| summary.record_frame_id)
     }
 
-    /// Wait for a frame that saw every event sent and, when `settled`, asks no repaint and finds
-    /// the app not busy. A busy app's wait for its next frame starts again at each, as its work
-    /// goes on.
-    fn wait_frame(&self, settled: bool) -> Result<(), PlayError> {
+    /// The frames recorded since `first`.
+    fn frames_since(&self, first: u64) -> u32 {
+        u32::try_from(self.record_frame_id().saturating_sub(first)).unwrap_or(u32::MAX)
+    }
+
+    /// Wait for a frame `until` names. A busy app's wait for its next frame starts again at each,
+    /// as its work goes on.
+    fn wait_frame(&self, until: Until) -> Result<(), PlayError> {
+        let settled = until == Until::Settled;
         let start = Instant::now();
         let first = self.record_frame_id();
         let mut seen = first;
@@ -285,27 +295,33 @@ impl<T: 'static> Remote<T> {
                 progressed = Instant::now();
             }
             let since = if working { progressed } else { start };
-            if working && start.elapsed() > self.wait * BUSY_SETTLE_WAITS {
+            if working && start.elapsed() > self.wait.saturating_mul(BUSY_SETTLE_WAITS) {
                 return Err(PlayError::StillBusy {
                     waited: start.elapsed(),
                 });
             }
             if let Err(error) = self.check_waiting(since, Answer::InFrame) {
-                let frames = last.record_frame_id.saturating_sub(first);
-                let waited = since.elapsed();
-                return Err(if working && waited > self.wait {
-                    PlayError::Busy { waited }
-                } else if settled && frames > 0 && waited > self.wait {
-                    PlayError::Unsettled {
-                        frames: u32::try_from(frames).unwrap_or(u32::MAX),
+                let frames = self.frames_since(first);
+                return Err(match error {
+                    PlayError::NoFrame { waited } if working => PlayError::Busy { waited },
+                    PlayError::NoFrame { .. } if settled && frames > 0 => {
+                        PlayError::Unsettled { frames }
                     }
-                } else {
-                    error
+                    error => error,
                 });
             }
             self.handle.frame_log.wait(self.tick);
         }
     }
+}
+
+/// Which frame a remote waits for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Until {
+    /// One that saw every event sent.
+    SawEvents,
+    /// One that saw every event sent, asks no repaint and finds the app not busy.
+    Settled,
 }
 
 /// Where an answer a remote waits for comes from, which decides whether a hidden window gives it.
@@ -338,11 +354,11 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {
-        self.remote.wait_frame(false)
+        self.remote.wait_frame(Until::SawEvents)
     }
 
     fn settle(&mut self) -> Result<(), PlayError> {
-        self.remote.wait_frame(true)
+        self.remote.wait_frame(Until::Settled)
     }
 
     fn wait(&mut self, dt: Duration) -> Result<(), PlayError> {

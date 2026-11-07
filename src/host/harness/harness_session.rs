@@ -48,8 +48,10 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     /// [`PlayError::Unsettled`] when the window still asks after the builder's
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames) frames that ask,
     /// [`PlayError::Busy`] when a busy app sends no wake in its
-    /// [`background_wait`](crate::HarnessBuilder::background_wait), and
-    /// [`PlayError::DeviceLost`] when the window asks for frames or screenshots of a lost device.
+    /// [`background_wait`](crate::HarnessBuilder::background_wait), [`PlayError::StillBusy`] when
+    /// it keeps waking the window past twenty of those waits, [`PlayError::DeviceLost`] when the
+    /// window asks for frames or screenshots of a lost device, and [`PlayError::GpuTimedOut`] when
+    /// the device does not finish the copy of a screenshot it asks for.
     fn settle(&mut self) -> Result<u32, PlayError> {
         self.harness.settle_frames_of(self.app)
     }
@@ -61,8 +63,8 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
     /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::DeviceLost`] when
-    /// the device is lost, and [`PlayError::Unsettled`] when the picture has not landed after the
-    /// builder's
+    /// the device is lost, [`PlayError::GpuTimedOut`] when it does not finish the frame in time,
+    /// and [`PlayError::Unsettled`] when the picture has not landed after the builder's
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames).
     fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
         self.harness.shot(self.app, region)

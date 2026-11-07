@@ -384,7 +384,7 @@ impl App for Stepping {
 fn a_settle_waits_for_a_busy_apps_wake() {
     let mut h = Harness::builder(UVec2::new(64, 32))
         .mono()
-        .background_wait(Duration::from_secs(30))
+        .background_wait(Duration::MAX)
         .build();
     let busy = Arc::new(AtomicBool::new(true));
     let mut app = Worker {

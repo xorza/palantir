@@ -43,11 +43,13 @@ const SIZE: UVec2 = UVec2::new(320, 200);
 const TICK: Duration = Duration::from_millis(5);
 
 /// One button that counts its clicks, a pad that sums the gestures it takes, a chord it
-/// counts, a flag a test sets for the work it reports busy, and one for a second button.
+/// counts, a flag a test sets for the work it reports busy, one for an animation that never ends,
+/// and one for a second button.
 #[derive(Debug, Default)]
 struct Counter {
     clicks: u32,
     busy: bool,
+    animating: bool,
     gestures: Gestures,
     extra: bool,
 }
@@ -71,6 +73,9 @@ fn pad_id() -> WidgetId {
 
 impl App for Counter {
     fn record(&mut self, _window: WindowToken, ui: &mut Ui) {
+        if self.animating {
+            ui.request_repaint();
+        }
         Panel::vstack().auto_id().show(ui, |ui| {
             if Button::new()
                 .id(WidgetId::from_hash("press"))
@@ -272,16 +277,21 @@ fn a_remote_plays_and_reads_a_live_window() {
         short.query(move |_, _| held_until.recv().ok()),
         Err(PlayError::NoFrame { waited }) if waited >= Duration::from_millis(50)
     ));
+    // The thread is still held, so a settle sees no frame at all and says only that.
+    assert!(matches!(
+        short.settle(),
+        Err(PlayError::NoFrame { waited }) if waited >= Duration::from_millis(50)
+    ));
     release.send(()).ok();
 
     // A query gives up at once while the window's thread is held, and never runs.
     let mut held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);
     let ran = Arc::new(AtomicBool::new(false));
     let marked = Arc::clone(&ran);
-    assert!(matches!(
+    assert_eq!(
         held.query(move |_, _| marked.store(true, Ordering::Release)),
-        Err(PlayError::NoFrame { .. })
-    ));
+        Err(PlayError::Blocked)
+    );
     remote.query(|_, _| ()).unwrap();
     assert!(
         !ran.load(Ordering::Acquire),
@@ -315,10 +325,7 @@ fn a_step_failed_by_a_held_thread_leaves_nothing_held() {
         held.store(true, Ordering::Release);
         let failed = remote.play(std::slice::from_ref(&action)).unwrap_err();
         assert_eq!(failed.ran, 0, "{action:?}");
-        assert!(
-            matches!(failed.error, PlayError::NoFrame { .. }),
-            "{action:?}: {failed:?}",
-        );
+        assert_eq!(failed.error, PlayError::Blocked, "{action:?}");
         held.store(false, Ordering::Release);
         remote.settle().unwrap();
         assert_eq!(
@@ -361,6 +368,11 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
         app.clicks
     });
     assert_eq!(slow, Ok(0));
+    // A frame's answer does not come from a hidden window, and that says so at once. A held thread
+    // is the cause first, as no frame runs when the window shows either.
+    assert_eq!(remote.shot(None).err(), Some(PlayError::Hidden));
+    let mut held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);
+    assert_eq!(held.shot(None).err(), Some(PlayError::Blocked));
     handle.frame_log.set_hidden(WINDOW, false);
 
     remote.settle().unwrap();
@@ -369,10 +381,15 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     // The settle asks whether the window is held at each check it makes while the app is busy,
     // so the first ask starts the work's end after the settle began.
     let (began, settle_began) = mpsc::channel();
-    let mut settling = handle.remote(WINDOW).with_tick(TICK).with_blocked(move || {
-        began.send(()).ok();
-        false
-    });
+    // No wait is too long to bound a busy settle by: the bound saturates, past twenty of these.
+    let mut settling = handle
+        .remote(WINDOW)
+        .with_tick(TICK)
+        .with_wait(Duration::MAX)
+        .with_blocked(move || {
+            began.send(()).ok();
+            false
+        });
     let worker = handle.clone();
     let work = thread::spawn(move || {
         settle_began.recv().unwrap();
@@ -384,6 +401,36 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
         "the settle waited the work out"
     );
     work.join().unwrap();
+    handle.quit();
+    thread.join().unwrap();
+}
+
+/// A settle that outlasts its wait says which: a busy app that ran no frame reads as busy, and a
+/// window that keeps running frames as unsettled, with the frames it ran.
+#[test]
+fn a_settle_that_outlasts_its_wait_says_why() {
+    let (handle, thread) = serve();
+    let wait = Duration::from_millis(50);
+    let mut remote = handle.remote(WINDOW).with_tick(TICK).with_wait(wait);
+
+    remote.query(|app, _| app.busy = true).unwrap();
+    assert!(matches!(
+        remote.settle(),
+        Err(PlayError::Busy { waited }) if waited >= wait
+    ));
+
+    remote
+        .query(|app, _| {
+            app.busy = false;
+            app.animating = true;
+        })
+        .unwrap();
+    let settled = remote.settle();
+    assert!(
+        matches!(settled, Err(PlayError::Unsettled { frames }) if frames > 0),
+        "{settled:?}"
+    );
+
     handle.quit();
     thread.join().unwrap();
 }

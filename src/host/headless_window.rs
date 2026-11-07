@@ -19,7 +19,7 @@ use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::{CpuFrame, FrameSpec, TargetKey};
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::vec::Drain;
 
 /// A headless host's one window: the CPU half, the window's frames, the wakes its waker sends, the
@@ -162,10 +162,10 @@ impl HeadlessWindow {
         self.wake.is_pending()
     }
 
-    /// Block until a [`Waker`](crate::Waker) of the window wakes it, or `deadline` passes, in real
+    /// Block until a [`Waker`](crate::Waker) of the window wakes it, for `timeout` at most, in real
     /// time; whether a wake came.
-    pub(super) fn wait_for_wake(&self, deadline: Instant) -> bool {
-        self.wake.wait(deadline)
+    pub(super) fn wait_for_wake(&self, timeout: Duration) -> bool {
+        self.wake.wait(timeout)
     }
 
     /// The windows the last frame opened or closed, in the order called, which a headless host

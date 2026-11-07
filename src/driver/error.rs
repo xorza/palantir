@@ -127,13 +127,19 @@ pub enum PlayError {
     NoPixels,
     /// The device was lost before the window's pixels came back.
     DeviceLost,
-    /// The device did not finish the frame whose pixels a capture waits for within its bound,
-    /// and is not lost: a hang no system has reset yet.
+    /// The device did not finish the frame whose pixels a player waits for within its bound, and
+    /// is not lost: a hang no system has reset yet.
     GpuTimedOut,
     /// The window closed, or its host stopped.
     Disconnected,
-    /// The window ran no frame in `waited` of real time: it is hidden or minimized, and its host
-    /// runs no frames for it until it shows.
+    /// Something outside the host holds the window's thread, as a native dialog does until the
+    /// person answers it, so no event and no frame runs: what
+    /// [`Remote::with_blocked`](crate::Remote::with_blocked)'s probe says.
+    Blocked,
+    /// The window is hidden or minimized, and its host runs no frames for it until it shows.
+    Hidden,
+    /// The window gave no answer and ran no frame in `waited` of real time, though it is shown and
+    /// its thread reads as free: its thread is busy, or hangs.
     NoFrame {
         /// The time waited.
         waited: Duration,
@@ -174,10 +180,16 @@ impl Display for PlayError {
                 f.write_str("the device did not finish the frame in time, and hangs unreset")
             }
             Self::Disconnected => f.write_str("the window closed"),
+            Self::Blocked => f.write_str(
+                "something outside the window holds its thread, as a native dialog does; answer \
+                 it, then try again",
+            ),
+            Self::Hidden => {
+                f.write_str("the window is hidden or minimized and runs no frame; show it")
+            }
             Self::NoFrame { waited } => write!(
                 f,
-                "the window ran no frame in {} s; show it, as a hidden or minimized window runs \
-                 none",
+                "the window ran no frame in {} s; its thread is busy, or hangs",
                 waited.as_secs_f32()
             ),
             Self::Busy { waited } => write!(
@@ -237,6 +249,7 @@ impl error::Error for ActError {
 mod tests {
     use crate::driver::error::{ActError, LocateError, PlayError};
     use std::error::Error;
+    use std::time::Duration;
 
     /// A cause shows once in a chain: a failed action names its step and hands on why, and a
     /// locate failure, which a play error shows in its own words, is not handed on again.
@@ -258,5 +271,29 @@ mod tests {
             act.source().map(ToString::to_string),
             Some(play.to_string())
         );
+    }
+
+    /// Why a window runs no frame says what corrects it, one fix per cause.
+    #[test]
+    fn each_cause_of_no_frame_says_its_own_fix() {
+        for (error, text) in [
+            (
+                PlayError::Blocked,
+                "something outside the window holds its thread, as a native dialog does; answer \
+                 it, then try again",
+            ),
+            (
+                PlayError::Hidden,
+                "the window is hidden or minimized and runs no frame; show it",
+            ),
+            (
+                PlayError::NoFrame {
+                    waited: Duration::from_millis(1500),
+                },
+                "the window ran no frame in 1.5 s; its thread is busy, or hangs",
+            ),
+        ] {
+            assert_eq!(error.to_string(), text);
+        }
     }
 }

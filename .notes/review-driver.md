@@ -15,23 +15,20 @@ server do. One set of rules plays over a `Stage`, so both players agree, and a t
 
 ## Root causes
 
-1. **`PlayError::NoFrame` holds three causes.** A held thread, a hidden window and a plain timeout read
-   the same, and its text says "show it" for all of them. So Darkroom asks the probes again after the
-   error, which can give another answer by then.
-2. **A remote has one door to the window, and that door records.** `query` takes `&mut` the app, asks a
+1. **A remote has one door to the window, and that door records.** `query` takes `&mut` the app, asks a
    frame and counts a sent event. `find`, `widgets`, `point` and the double-click read all go through it,
    so each read runs a whole frame, and a `find` on a hidden window makes the next settle fail. The
    harness runs no frame for the same reads. `AgentWindow` has no such verb at all, so a driver goes
    around the trait, and Darkroom writes `with_app` and `shot` twice.
-3. **`FrameLog` does not model an open window.** "No summary" means both "no frame yet" and "closed", so
+2. **`FrameLog` does not model an open window.** "No summary" means both "no frame yet" and "closed", so
    a settle before the first frame reports that the window closed, and `is_open` reads false for an open
    window.
-4. **Harness state and code sit where they do by history.** `impl Harness` is split across `play.rs`, a
+3. **Harness state and code sit where they do by history.** `impl Harness` is split across `play.rs`, a
    frame counter counts other frames than the remote's, and three settings are stored in three structs.
 
 ## Target design
 
-- **Data.** `PlayError` has one case per cause. `FrameLog` holds an entry from a window's open to its
+- **Data.** `FrameLog` holds an entry from a window's open to its
   close, so `Disconnected` means closed. `FrameSummary` loses `repaint_at`, which nothing reads.
   `Harness::frames` goes: both players count `record_frame_id`.
 - **Interfaces.** `AgentWindow` gains `read` and `query`, so a driver writes a step once for both hosts,
@@ -69,28 +66,6 @@ Every shared-ownership case in the scope:
 - **`Harness::state`, `rect` and `clipboard_text` stay.** They are sugar over `Ui`, and tests read better.
 
 # Part 2: plan
-
-## Batch 2: one error case per cause
-
-Files: `src/driver/error.rs`, `src/host/winit/remote/mod.rs`, `src/host/harness/play.rs`; **Darkroom**
-`darkroom/src/driver/error.rs`, `window_backend.rs`, `window_link.rs`.
-
-- [ ] **API** `PlayError::NoFrame`: split into `Blocked` (the probe said so, no time waited), `Hidden` and
-  `NoFrame { waited }`, the timeout. `check_waiting` knows which. Each `Display` says its own fix.
-- [ ] **Darkroom** `WindowBackend::error` asks `link.blocked()` again after the error, which can read
-  differently by then. Target: map `Blocked` to `NativeDialog` and `Hidden` to `WindowHidden` in
-  `DriverError::played`. `WindowLink::blocked` goes if nothing else calls it.
-- [ ] `remote/mod.rs` `wait_frame(settled: bool)`: a bool that selects behavior. Target: an enum beside
-  `Answer`, or two methods over one loop.
-- [ ] `remote/mod.rs`: `u32::try_from(frames).unwrap_or(u32::MAX)` appears three times. Target: one
-  `frames_since(first)`.
-- [ ] Bug, `remote/mod.rs` `self.wait * BUSY_SETTLE_WAITS` and `play.rs` `self.background_wait *
-  BUSY_SETTLE_WAITS`: `Duration * u32` panics on overflow, so `with_wait(Duration::MAX)` panics inside a
-  wait. Target: `saturating_mul`, and a test with `Duration::MAX`.
-- [ ] Bug, `play.rs` `Harness::shot`: every wait for the device timing out ends with `Unsettled`, whose
-  text blames an animation. Target: return `GpuTimedOut` when the last wait timed out.
-- [ ] Test gap: `Blocked`, `Hidden` and the timeout each get the exact case, in
-  `a_remote_answers_a_hidden_window_and_settles_a_busy_app`'s fixture.
 
 ## Batch 3: `FrameLog` models an open window
 
