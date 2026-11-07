@@ -12,7 +12,7 @@
 
 use palantir::bench::scene::BENCH_DPR;
 use palantir::glam::UVec2;
-use palantir::internals::{HeadlessTestGpuLease, TEXT_SCALE_STEP, isolated_headless_test_gpu};
+use palantir::internals::{TEXT_SCALE_STEP, TestGpu, isolated_headless_test_gpu};
 use palantir::widget::Shape;
 use palantir::{App, Configure, Grid, Panel, Sizing, Track, TranslateScale, Ui};
 use palantir_showcase::{MAIN_WINDOW, Shell};
@@ -30,7 +30,7 @@ const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 
 /// Offscreen frames of `scene` on `target`, warmed and measured with no ceiling.
 fn device_frames(
-    gpu: &HeadlessTestGpuLease,
+    gpu: &TestGpu,
     target: &mut OffscreenTarget,
     mut scene: impl FnMut(&mut Ui),
 ) -> Report {
@@ -56,7 +56,7 @@ fn device_frames(
 /// backbuffer and target among live textures (an Apple laptop read 25 or 28 by how
 /// many unrelated textures were alive). Compare only against frames drawn
 /// through the same target.
-fn empty_floor(gpu: &HeadlessTestGpuLease, target: &mut OffscreenTarget) -> u64 {
+fn empty_floor(gpu: &TestGpu, target: &mut OffscreenTarget) -> u64 {
     let floor = device_frames(gpu, target, |_| {}).mode;
     // A floor of zero means the gate has stopped measuring.
     assert!(

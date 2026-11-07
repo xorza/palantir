@@ -1,6 +1,6 @@
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
-use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu};
+use crate::gpu::test_gpu::{TestGpu, headless_test_gpu, isolated_headless_test_gpu};
 use crate::internals::panic_probe;
 use glam::UVec2;
 use image::Rgba;
@@ -97,7 +97,7 @@ fn a_bad_extent_panics_with_its_rule() {
     assert_eq!(small.texture().usage(), OwnedTarget::USAGES);
 }
 
-fn clear(gpu: &HeadlessTestGpuLease, texture: &wgpu::Texture) {
+fn clear(gpu: &TestGpu, texture: &wgpu::Texture) {
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let mut encoder = gpu
         .device

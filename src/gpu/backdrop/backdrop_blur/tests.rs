@@ -3,7 +3,7 @@ use crate::gpu::backdrop::backdrop_blur::{
 };
 use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -124,7 +124,7 @@ fn reference(plan: BlurPlan, pixels: &[[u8; 4]]) -> [Plane; 4] {
 /// Run `jobs` over the capture `pixels`, into a `dest_size` destination read back whole. The
 /// capture takes the jobs' format: `Rgba32Float` holds each byte's linear value.
 fn blur(
-    gpu: &HeadlessTestGpuLease,
+    gpu: &TestGpu,
     pixels: &[[u8; 4]],
     jobs: &mut [BlurJob],
     dest_size: UVec2,
@@ -135,7 +135,7 @@ fn blur(
 
 /// [`blur`] with the residual's loop shaped `residual`, whatever the device takes.
 fn blur_with(
-    gpu: &HeadlessTestGpuLease,
+    gpu: &TestGpu,
     residual: ResidualLoop,
     pixels: &[[u8; 4]],
     jobs: &mut [BlurJob],
@@ -147,7 +147,7 @@ fn blur_with(
 
 /// [`blur`] on `engine`.
 fn blur_on(
-    gpu: &HeadlessTestGpuLease,
+    gpu: &TestGpu,
     engine: &mut BackdropBlur,
     pixels: &[[u8; 4]],
     jobs: &mut [BlurJob],
@@ -207,7 +207,7 @@ fn blur_on(
     read_f16(gpu, &dest)
 }
 
-fn read_f16(gpu: &HeadlessTestGpuLease, texture: &wgpu::Texture) -> Vec<[f32; 4]> {
+fn read_f16(gpu: &TestGpu, texture: &wgpu::Texture) -> Vec<[f32; 4]> {
     let bytes = gpu.read_texture(texture);
     let halves: &[f16] = bytemuck::cast_slice(&bytes);
     halves
@@ -246,7 +246,7 @@ fn whole_of(plan: BlurPlan, surface: UVec2) -> BlurJob {
 }
 
 /// Lay `jobs` out on `engine` as one batch, as a frame of them does, with nothing encoded.
-fn prepare_on(gpu: &HeadlessTestGpuLease, engine: &mut BackdropBlur, jobs: &mut [BlurJob]) {
+fn prepare_on(gpu: &TestGpu, engine: &mut BackdropBlur, jobs: &mut [BlurJob]) {
     gpu.frame(|ctx| {
         let all = 0..jobs.len();
         engine.prepare(
@@ -458,7 +458,7 @@ fn a_texture_grows_by_whole_granules_up_to_the_ceiling() {
 /// Blur `jobs` over `color` in `batches`, each batch's captures copied before its passes, as the
 /// main pass breaks; every texel of the destination, rows of `width` texels.
 fn blur_batches(
-    gpu: &HeadlessTestGpuLease,
+    gpu: &TestGpu,
     color: &wgpu::Texture,
     jobs: &mut [BlurJob],
     batches: &[Range<usize>],

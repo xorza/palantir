@@ -111,7 +111,7 @@ impl GpuGradientAtlas {
 mod tests {
     use crate::gpu::resource::gpu_gradient_atlas::{GpuGradientAtlas, ROW_PITCH};
     use crate::gpu::resource::texture_binding::TextureBinding;
-    use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::gradient_atlas::bake::{self, LUT_ROW_TEXELS};
     use crate::renderer::gradient_atlas::tests::support::distinct_grad;
@@ -119,11 +119,7 @@ mod tests {
 
     /// Upload what `cpu` baked since its last flush into `atlas` on a frame's encoder of its own,
     /// and wait for it.
-    fn upload(
-        gpu: &HeadlessTestGpuLease,
-        cpu: &mut CpuGradientAtlas,
-        atlas: &mut GpuGradientAtlas,
-    ) {
+    fn upload(gpu: &TestGpu, cpu: &mut CpuGradientAtlas, atlas: &mut GpuGradientAtlas) {
         let rows = cpu.flush().expect("rows were baked");
         gpu.frame(|ctx| atlas.upload(ctx, rows));
     }

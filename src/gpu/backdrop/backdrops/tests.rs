@@ -7,7 +7,7 @@ use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -42,12 +42,7 @@ fn captured(i: u32) -> BackdropRow {
 }
 
 /// Prepare one frame of `owner` holding `rows`.
-fn prepare(
-    backdrops: &mut Backdrops,
-    gpu: &HeadlessTestGpuLease,
-    owner: RenderOwnerId,
-    rows: &[BackdropRow],
-) {
+fn prepare(backdrops: &mut Backdrops, gpu: &TestGpu, owner: RenderOwnerId, rows: &[BackdropRow]) {
     let mut buffer = RenderBuffer::new();
     buffer.display = Display::from_physical(SURFACE, 1.0);
     buffer.backdrops.extend_from_slice(rows);

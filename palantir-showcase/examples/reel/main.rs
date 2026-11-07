@@ -484,7 +484,8 @@ impl Encoder {
 #[cfg(test)]
 mod tests {
     use palantir::glam::{UVec2, Vec2};
-    use palantir::{Depth, Harness, RequestedGpu, SystemScale};
+    use palantir::internals::headless_test_gpu;
+    use palantir::{Depth, Harness, SystemScale};
 
     use crate::Beat;
     use crate::deck::{self, Deck};
@@ -517,9 +518,7 @@ mod tests {
     /// timing. Slide 3 drives a switch, a slider, a combo box and typed text.
     #[test]
     fn a_slide_rendered_twice_gives_the_same_bytes() {
-        let gpu = RequestedGpu::headless(Default::default(), Default::default())
-            .expect("a GPU adapter")
-            .gpu;
+        let gpu = headless_test_gpu();
         let render = |gpu| {
             let mut h = Harness::builder(UVec2::new(320, 180))
                 .system_scale(SystemScale::new(0.25).unwrap())
@@ -548,6 +547,6 @@ mod tests {
             }
             frames
         };
-        assert!(render(gpu.clone()) == render(gpu));
+        assert!(render(gpu.handles()) == render(gpu.handles()));
     }
 }

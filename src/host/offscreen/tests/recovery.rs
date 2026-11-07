@@ -12,8 +12,7 @@ use crate::gpu::gpu_paint::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::gpu_paint::gpu_init_ctx::GpuInitCtx;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::test_gpu::{
-    HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
-    isolated_headless_test_gpu_capped,
+    TestGpu, headless_test_gpu, isolated_headless_test_gpu, isolated_headless_test_gpu_capped,
 };
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::icons::icon_set::IconSet;
@@ -230,7 +229,7 @@ impl App for Scene {
 }
 
 /// A host on `gpu` as the recovered one is built: real text, GPU timing, manual time.
-fn host_on(gpu: &HeadlessTestGpuLease, shaper: &TextShaper) -> OffscreenHost {
+fn host_on(gpu: &TestGpu, shaper: &TextShaper) -> OffscreenHost {
     OffscreenHost::builder(gpu.handles())
         .shaper(shaper.clone())
         .collect_gpu_stats(true)
@@ -264,7 +263,7 @@ fn paint_twice(
 fn assert_paints_as_fresh(
     host: &mut OffscreenHost,
     scene: &mut Scene,
-    device: &HeadlessTestGpuLease,
+    device: &TestGpu,
     shaper: &TextShaper,
 ) {
     let refills = scene.refills;

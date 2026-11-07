@@ -132,8 +132,8 @@ mod tests {
     /// so a second collect after the wait publishes that frame and no other.
     #[test]
     fn a_closed_frame_publishes_its_wall_time_once() {
-        let lease = headless_test_gpu();
-        let gpu = lease.handles();
+        let test_gpu = headless_test_gpu();
+        let gpu = test_gpu.handles();
         let mut tracer = WallClockTracer::new();
         let mut sink = GpuPassStats::default();
         sink.record_kind(BatchKind::Quads, Duration::from_nanos(5));

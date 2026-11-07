@@ -144,15 +144,15 @@ fn readback_waits_for_every_mapping() {
 /// on an adapter without timestamps.
 #[test]
 fn a_frame_publishes_after_the_next_frame_resolved_it() {
-    let lease = test_gpu::headless_test_gpu();
-    let features = (lease.device.features() & DeviceRequirements::GPU_TIMING_FEATURES)
+    let test_gpu = test_gpu::headless_test_gpu();
+    let features = (test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES)
         .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
         return;
     }
-    let gpu = &*lease;
+    let gpu = &*test_gpu;
     let mut tracer = QueryTracer::new(gpu, gpu.queue.get_timestamp_period(), features);
-    let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
+    let target = test_gpu.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let mut sink = GpuPassStats::default();
     let frame = |tracer: &mut QueryTracer, sink: &mut GpuPassStats| {
         let mut encoder = gpu
@@ -201,14 +201,14 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
 /// timestamps.
 #[test]
 fn a_break_between_passes_counts_in_no_kind() {
-    let lease = test_gpu::headless_test_gpu();
-    let features = lease.device.features() & DeviceRequirements::GPU_TIMING_FEATURES;
+    let test_gpu = test_gpu::headless_test_gpu();
+    let features = test_gpu.device.features() & DeviceRequirements::GPU_TIMING_FEATURES;
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES) {
         return;
     }
-    let gpu = &*lease;
+    let gpu = &*test_gpu;
     let mut tracer = QueryTracer::new(gpu, gpu.queue.get_timestamp_period(), features);
-    let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
+    let target = test_gpu.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let view = target.view();
     let mut encoder = gpu
         .device

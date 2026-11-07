@@ -6,14 +6,13 @@ use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
 use std::env;
 use std::error::Error;
+use std::ffi::c_int;
 use std::fmt::{self, Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::mem::ManuallyDrop;
+use std::mem;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::sync::Mutex;
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
@@ -29,29 +28,6 @@ use crate::gpu::surface::texel_readback::TexelReadback;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;
-
-const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
-const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);
-
-/// No headless test device: why the last request failed, and how long the lease tried.
-#[derive(Debug)]
-struct LeaseFailed {
-    /// How long the lease retried.
-    waited: Duration,
-    /// The last request's failure.
-    source: GpuRequestError,
-}
-
-impl Display for LeaseFailed {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "lease headless test gpu after {:?}: {}",
-            self.waited,
-            Chain(&self.source)
-        )
-    }
-}
 
 /// An error and each cause [`Error::source`] reaches under it, joined by `": "`, as anyhow's
 /// `{:#}` prints a chain: palantir's errors name their cause in `source` alone, so a panic that
@@ -70,41 +46,38 @@ impl Display for Chain<'_> {
     }
 }
 
-/// A headless device and its queue, waited idle when the lease drops. It lends its [`Gpu`], as a
-/// guard does.
-///
-/// The leases own the device: the last one to drop destroys it, and the adapter with the last
-/// device on it. No static holds either, as a static is never dropped (RFC 1440): the shared
-/// device once lived in one, so it was still alive in `exit()`, where the driver's teardown raced
-/// its own shader-compiler thread and corrupted the heap.
+/// A headless device and its queue. It lends its [`Gpu`], as a guard does, and dropping it closes
+/// nothing the process shares (`PROCESS`).
 #[derive(Debug)]
-pub struct HeadlessTestGpuLease {
-    device: Lent<OpenDevice>,
+pub struct TestGpu {
+    gpu: Gpu,
     /// The display frame [`Self::frame`] runs next, one a call, so what decays by frames ages
     /// across a test's frames.
     #[cfg(test)]
     frames: std::sync::atomic::AtomicU64,
 }
 
-impl Deref for HeadlessTestGpuLease {
+impl Deref for TestGpu {
     type Target = Gpu;
 
     fn deref(&self) -> &Gpu {
-        &self.device.gpu
+        &self.gpu
     }
 }
 
-impl HeadlessTestGpuLease {
-    /// The adapter the device opened on, `name (backend, driver)`; golden suites record it.
-    pub fn adapter(&self) -> &str {
-        &self.device.identity
+impl TestGpu {
+    const fn new(gpu: Gpu) -> Self {
+        Self {
+            gpu,
+            #[cfg(test)]
+            frames: std::sync::atomic::AtomicU64::new(0),
+        }
     }
 
-    /// An owned clone of the handles, for an API that takes a [`Gpu`] by value. Keep the lease for
-    /// as long as the clone: a clone that outlives every lease keeps a device, and its instance,
-    /// that the next lease does not reuse.
+    /// An owned clone of the handles, for an API that takes a [`Gpu`] by value. It may outlive
+    /// this value.
     pub fn handles(&self) -> Gpu {
-        self.device.gpu.clone()
+        self.gpu.clone()
     }
 
     /// A 2D `Rgba8UnormSrgb` window target of `size`; `label` names the test in RenderDoc and
@@ -129,16 +102,15 @@ impl HeadlessTestGpuLease {
 
     /// Block until every submission on the device has finished.
     pub fn wait(&self) {
-        self.device.gpu.wait();
+        self.gpu.wait();
     }
 
     /// Run `encode` on an encoder and a staging belt of its own, then finish, submit and wait for
     /// them: one frame of GPU work a test sets up alone. Returns what `encode` returns.
     #[cfg(test)]
     pub(crate) fn frame<R>(&self, encode: impl FnOnce(&mut GpuCtx<'_>) -> R) -> R {
-        let mut belt = UploadStaging::new(&self.device.gpu.device, 1 << 16);
+        let mut belt = UploadStaging::new(&self.gpu.device, 1 << 16);
         let mut encoder = self
-            .device
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -147,7 +119,7 @@ impl HeadlessTestGpuLease {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let encoded = encode(&mut GpuCtx::new(self, &mut belt, &mut encoder, frame));
         belt.finish_and_recall_on_submit(&encoder);
-        self.device.gpu.queue.submit([encoder.finish()]);
+        self.gpu.queue.submit([encoder.finish()]);
         self.wait();
         encoded
     }
@@ -166,175 +138,124 @@ impl HeadlessTestGpuLease {
     }
 }
 
-/// Waits idle; the device then goes as its `Lent` lets it go.
-impl Drop for HeadlessTestGpuLease {
-    fn drop(&mut self) {
-        self.wait();
-    }
+/// The process's test GPU, opened by the first test that asks. One instance for the whole process:
+/// a second one opened while another thread named objects on the first crashed the Vulkan loader
+/// under lavapipe, and a test can then hold a handle or a resource in any order. A static, as
+/// libtest offers no hook after its last test. A static is never dropped (RFC 1440), and a device
+/// still alive in `exit()` raced the driver's shader-compiler thread and corrupted the heap, so
+/// [`close_at_exit`] closes it. Refused: a lease count that closes the instance with the last
+/// holder, whose handles outlived it in a dozen places; a process per test as wgpu's nextest runs
+/// them, 8 s against 2 s for this suite on an Apple laptop, with a tool every machine must install.
+static PROCESS: Mutex<ProcessGpu> = Mutex::new(ProcessGpu::Unopened);
+
+unsafe extern "C" {
+    /// The C standard's: handlers run at `exit()`, the one registered last first.
+    safe fn atexit(handler: extern "C" fn()) -> c_int;
 }
 
-/// An open device, and the adapter it opened on, which keeps the instance alive for as long as
-/// any device on it.
-#[derive(Debug)]
-struct OpenDevice {
-    gpu: Gpu,
-    /// `name (backend, driver)`, as [`adapter_identity`] writes it.
-    identity: String,
-    /// After `gpu`, as fields drop in order: a device goes before its adapter.
-    _adapter: Arc<wgpu::Adapter>,
-}
-
-/// An `Arc` [`REGISTRY`] lent out, dropped under its lock: the last holder lets go of a device and
-/// its adapter before another lease opens new ones, so one instance is open at a time.
-#[derive(Debug)]
-struct Lent<T>(ManuallyDrop<Arc<T>>);
-
-impl<T> Lent<T> {
-    const fn new(lent: Arc<T>) -> Self {
-        Self(ManuallyDrop::new(lent))
-    }
-}
-
-impl<T> Deref for Lent<T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> Drop for Lent<T> {
-    fn drop(&mut self) {
-        let registry = registry();
-        // SAFETY: the `Arc` is not read again, and this is its one drop.
-        unsafe { ManuallyDrop::drop(&mut self.0) };
-        drop(registry);
-    }
-}
-
-/// What the process knows between leases: no handle that keeps a device or an adapter alive.
-#[derive(Debug)]
-struct Registry {
-    adapter: Weak<wgpu::Adapter>,
-    /// The device [`headless_test_gpu`] shares, while a lease holds it.
-    shared: Weak<OpenDevice>,
-    /// Why the adapter did not open, so every lease after the first panics at once instead of
-    /// retrying for [`ADAPTER_RETRY_TIMEOUT`].
-    failed: Option<LeaseFailed>,
-}
-
-/// Every open and every drop of a lease runs under this lock ([`Lent`]): a second instance
-/// opened while another thread named objects on the first crashed the Vulkan loader under
-/// lavapipe.
-static REGISTRY: Mutex<Registry> = Mutex::new(Registry {
-    adapter: Weak::new(),
-    shared: Weak::new(),
-    failed: None,
-});
-
-fn registry() -> MutexGuard<'static, Registry> {
-    REGISTRY.lock_unpoisoned()
-}
-
-impl Registry {
-    /// A lease of the shared device, opened when no lease holds it.
-    fn lend_shared(&mut self) -> HeadlessTestGpuLease {
-        let device = self.shared.upgrade().unwrap_or_else(|| {
-            let device = self.open_device(u32::MAX);
-            self.shared = Arc::downgrade(&device);
-            device
-        });
-        HeadlessTestGpuLease {
-            device: Lent::new(device),
-            #[cfg(test)]
-            frames: std::sync::atomic::AtomicU64::new(0),
+/// Close the process's test GPU before the driver's own exit handlers run. A lock another thread
+/// holds, or one a panic poisoned, leaves it open: no panic may cross this callback.
+extern "C" fn close_at_exit() {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a held or poisoned lock skips the close, as a panic may not cross into C"
+    )]
+    if let Ok(mut process) = PROCESS.try_lock() {
+        let closing = mem::replace(&mut *process, ProcessGpu::Closed);
+        drop(process);
+        if let ProcessGpu::Open(open) = closing {
+            open.shared.wait();
+            drop(open);
         }
     }
+}
 
-    /// A lease of a new device no other lease holds; see [`Self::open_device`].
-    fn lend_isolated(&mut self, max_texture_dim: u32) -> HeadlessTestGpuLease {
-        HeadlessTestGpuLease {
-            device: Lent::new(self.open_device(max_texture_dim)),
-            #[cfg(test)]
-            frames: std::sync::atomic::AtomicU64::new(0),
+/// How far the process's test GPU has come.
+#[derive(Debug)]
+enum ProcessGpu {
+    Unopened,
+    Open(OpenGpu),
+    /// Why it did not open, which every ask after the first panics with at once.
+    NoAdapter(String),
+    /// The process is exiting.
+    Closed,
+}
+
+impl ProcessGpu {
+    /// The open GPU, opened now if none asked yet, or what stops it opening.
+    fn open(&mut self) -> Result<&OpenGpu, String> {
+        if matches!(self, Self::Unopened) {
+            *self = match OpenGpu::open() {
+                Ok(open) => {
+                    // After the first device: the driver registers its exit handlers while it
+                    // opens one, and the last registered runs first.
+                    assert_eq!(atexit(close_at_exit), 0, "the C library takes the handler");
+                    Self::Open(open)
+                }
+                Err(why) => Self::NoAdapter(format!("open headless test gpu: {}", Chain(&why))),
+            };
+        }
+        match self {
+            Self::Open(open) => Ok(open),
+            Self::NoAdapter(why) => Err(why.clone()),
+            Self::Closed => Err("the test GPU closed as the process exits".to_owned()),
+            Self::Unopened => unreachable!("opened above"),
         }
     }
+}
 
-    /// A new device on the adapter every open device shares, whose `max_texture_dimension_2d` is the
-    /// adapter's, or `max_texture_dim` where that is below it.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the process has no adapter or the device does not open.
-    fn open_device(&mut self, max_texture_dim: u32) -> Arc<OpenDevice> {
-        let adapter = self.adapter();
-        let request = test_request();
-        let mut requirements = DeviceRequirements::negotiate(&adapter, request.optional)
-            .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", Chain(&why)));
-        let limit = &mut requirements.limits.max_texture_dimension_2d;
-        *limit = (*limit).min(max_texture_dim);
-        let gpu = request
-            .open_with(wgpu::Adapter::clone(&adapter), requirements)
-            .unwrap_or_else(|why| panic!("open headless test gpu: {}", Chain(&why)));
-        Arc::new(OpenDevice {
-            gpu: gpu.gpu,
-            identity: adapter_identity(&adapter.get_info()),
-            _adapter: adapter,
+/// `f` on the open GPU. A failure panics past the lock, so the next ask reads its reason.
+fn on_open<R>(f: impl FnOnce(&OpenGpu) -> R) -> R {
+    let mut process = PROCESS.lock_unpoisoned();
+    let outcome = process.open().map(f);
+    drop(process);
+    outcome.unwrap_or_else(|why| panic!("{why}"))
+}
+
+/// The instance's one adapter and the device tests share. Fields drop in order: a device goes
+/// before its adapter, and the lock last.
+#[derive(Debug)]
+struct OpenGpu {
+    shared: Gpu,
+    /// Keeps the instance alive.
+    adapter: wgpu::Adapter,
+    /// Held so no other Palantir test binary uses the GPU at once.
+    _process_lock: File,
+}
+
+impl OpenGpu {
+    fn open() -> Result<Self, GpuRequestError> {
+        let process_lock = lock_gpu_process();
+        // The adapter a device opened on, as a driver can report what its device then refuses; the
+        // probe device closes before the shared one opens.
+        let adapter = test_request().open(&GpuRequest::instance()?)?.adapter;
+        Ok(Self {
+            shared: device_on(&adapter, u32::MAX),
+            adapter,
+            _process_lock: process_lock,
         })
     }
-
-    /// The adapter every open device shares, opened when no device holds it.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the process has no adapter.
-    fn adapter(&mut self) -> Arc<wgpu::Adapter> {
-        if let Some(why) = &self.failed {
-            panic!("{why}");
-        }
-        if let Some(adapter) = self.adapter.upgrade() {
-            return adapter;
-        }
-        match open_adapter() {
-            Ok(adapter) => {
-                let adapter = Arc::new(adapter);
-                self.adapter = Arc::downgrade(&adapter);
-                adapter
-            }
-            Err(why) => panic!("{}", self.failed.insert(why)),
-        }
-    }
 }
 
-/// The adapter every lease opens on, under this process's GPU lock. A retry's failed instance
-/// drops before any device opens, so one instance is open at a time ([`REGISTRY`]).
-fn open_adapter() -> Result<wgpu::Adapter, LeaseFailed> {
-    static PROCESS_LOCK: OnceLock<File> = OnceLock::new();
-    PROCESS_LOCK.get_or_init(lock_gpu_process);
-    let started = Instant::now();
+/// A new device on `adapter`, whose `max_texture_dimension_2d` is the adapter's, or
+/// `max_texture_dim` where that is below it.
+///
+/// # Panics
+///
+/// Panics if the device does not open.
+fn device_on(adapter: &wgpu::Adapter, max_texture_dim: u32) -> Gpu {
     let request = test_request();
-    loop {
-        // The adapter a device opened on, as a driver can report what its device then refuses;
-        // the probe device closes before any lease opens its own.
-        match GpuRequest::instance().and_then(|instance| request.open(&instance)) {
-            Ok(probe) => return Ok(probe.adapter),
-            // Only a missing adapter is worth retrying: another test binary may still be tearing its own down.
-            Err(GpuRequestError::RequestAdapter { .. })
-                if started.elapsed() < ADAPTER_RETRY_TIMEOUT =>
-            {
-                thread::sleep(ADAPTER_RETRY_INTERVAL);
-            }
-            Err(source) => {
-                return Err(LeaseFailed {
-                    waited: started.elapsed(),
-                    source,
-                });
-            }
-        }
-    }
+    let mut requirements = DeviceRequirements::negotiate(adapter, request.optional)
+        .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {}", Chain(&why)));
+    let limit = &mut requirements.limits.max_texture_dimension_2d;
+    *limit = (*limit).min(max_texture_dim);
+    request
+        .open_with(adapter.clone(), requirements)
+        .unwrap_or_else(|why| panic!("open headless test gpu: {}", Chain(&why)))
+        .gpu
 }
 
-/// What every lease asks for. The timing features let the tracer's tests share the device; the
+/// What every test device asks for. The timing features let the tracer's tests share the device; the
 /// backend reads them only under `collect_gpu_stats`.
 const fn test_request() -> GpuRequest<'static> {
     GpuRequest {
@@ -345,19 +266,19 @@ const fn test_request() -> GpuRequest<'static> {
     }
 }
 
-/// Lease the device the process's tests share. It opens with the first lease and is destroyed
-/// with the last, so tests that run at once share one, and none is alive when the process exits.
+/// The device the process's tests share, so tests that run at once share one. It opens with the
+/// first ask and closes as the process exits (`PROCESS`).
 ///
-/// The first adapter takes an interprocess OS lock held until the process exits, so no other Palantir test binary uses the GPU concurrently.
-///
-/// Without an adapter every lease panics, at once after the first.
-pub fn headless_test_gpu() -> HeadlessTestGpuLease {
-    registry().lend_shared()
+/// Without an adapter every ask panics, at once after the first.
+pub fn headless_test_gpu() -> TestGpu {
+    on_open(|open| TestGpu::new(open.shared.clone()))
 }
 
-/// Lease a device no other test has touched, for tests whose numbers depend on device history (wgpu sizes per-submission allocation by every resource seen). Same lock and adapter as [`headless_test_gpu`].
-pub fn isolated_headless_test_gpu() -> HeadlessTestGpuLease {
-    registry().lend_isolated(u32::MAX)
+/// A new device no other test has touched, for a test that loses it, or whose numbers depend on
+/// device history (wgpu sizes per-submission allocation by every resource seen). A test may ask for
+/// several, each on the process's one adapter; each closes with its last handle.
+pub fn isolated_headless_test_gpu() -> TestGpu {
+    on_open(|open| TestGpu::new(device_on(&open.adapter, u32::MAX)))
 }
 
 /// [`isolated_headless_test_gpu`] with its `max_texture_dimension_2d` capped at
@@ -367,8 +288,13 @@ pub fn isolated_headless_test_gpu() -> HeadlessTestGpuLease {
 ///
 /// Panics if the process has no adapter or the device does not open.
 #[cfg(test)]
-pub(crate) fn isolated_headless_test_gpu_capped(max_texture_dim: u32) -> HeadlessTestGpuLease {
-    registry().lend_isolated(max_texture_dim)
+pub(crate) fn isolated_headless_test_gpu_capped(max_texture_dim: u32) -> TestGpu {
+    on_open(|open| TestGpu::new(device_on(&open.adapter, max_texture_dim)))
+}
+
+/// The adapter every test device opens on, `name (backend, driver)`; golden suites record it.
+pub fn headless_test_adapter() -> String {
+    on_open(|open| adapter_identity(&open.adapter.get_info()))
 }
 
 /// `name (backend, driver driver_info)`, omitting driver fields the backend does not report.
@@ -399,4 +325,26 @@ fn lock_gpu_process() -> File {
         .unwrap_or_else(|error| panic!("open Palantir GPU test lock {}: {error}", path.display()));
     file.lock().expect("lock Palantir GPU test process");
     file
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
+
+    /// A handle outlives the value it came from, a later ask gets the same device, and each
+    /// isolated ask gets another of its own.
+    #[test]
+    fn asks_share_one_device_and_each_isolated_ask_opens_its_own() {
+        let first = headless_test_gpu();
+        let handle = first.handles();
+        drop(first);
+
+        let shared = headless_test_gpu();
+        assert_eq!(handle.device, shared.device);
+
+        let [one, two] = [(); 2].map(|()| isolated_headless_test_gpu());
+        assert_ne!(one.device, shared.device);
+        assert_ne!(two.device, shared.device);
+        assert_ne!(one.device, two.device);
+    }
 }

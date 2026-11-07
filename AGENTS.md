@@ -411,6 +411,8 @@ Homes beside a file's own `mod tests`:
 - **`bench.rs`** beside the code it measures, reached through the `bench` facade.
 - **`crate::golden`** — golden-image comparison under `feature = "golden"`, public for suites
   outside the crate.
+- **One test GPU instance a process**, closed in an `atexit` handler, so a test holds a handle or
+  a resource in any order. `gpu::test_gpu`'s `PROCESS` doc gives the reasons and what was refused.
 
 Items code outside the crate calls are `pub`; the rest are `pub(crate)`.
 

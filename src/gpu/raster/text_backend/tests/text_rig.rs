@@ -2,7 +2,7 @@
 
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
-use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -22,10 +22,10 @@ pub(super) const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
 const FONT_PX: f32 = 14.0;
 
-/// One backend over its own program, plus the shaper, record store and device lease its rows need.
+/// One backend over its own program, plus the shaper, record store and device its rows need.
 #[derive(Debug)]
 pub(super) struct TextRig {
-    lease: HeadlessTestGpuLease,
+    test_gpu: TestGpu,
     pub(super) shaper: TextShaper,
     pub(super) store: RecordStore,
     pub(super) backend: TextBackend,
@@ -33,11 +33,11 @@ pub(super) struct TextRig {
 
 impl TextRig {
     pub(super) fn new() -> Self {
-        let lease = headless_test_gpu();
+        let test_gpu = headless_test_gpu();
         let shaper = TextShaper::new();
-        let backend = TextBackend::new(&lease, &RasterProgram::new(&lease), shaper.clone());
+        let backend = TextBackend::new(&test_gpu, &RasterProgram::new(&test_gpu), shaper.clone());
         Self {
-            lease,
+            test_gpu,
             shaper,
             store: RecordStore::default(),
             backend,
@@ -79,7 +79,7 @@ impl TextRig {
     pub(super) fn frame(&mut self, scale: f32, batches: &[&[TextDrawRow]]) {
         let interned_text = self.store.text.interned();
         let backend = &mut self.backend;
-        self.lease.frame(|ctx| {
+        self.test_gpu.frame(|ctx| {
             for (idx, runs) in batches.iter().enumerate() {
                 backend.prepare_batch(TextBatchInput {
                     idx,

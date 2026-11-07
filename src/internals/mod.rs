@@ -34,7 +34,7 @@ pub use crate::gpu::bench_gpu::{BenchGpu, Timing};
 pub use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 /// The GPU test device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for the suites.
 pub use crate::gpu::test_gpu::{
-    HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
+    TestGpu, headless_test_adapter, headless_test_gpu, isolated_headless_test_gpu,
 };
 
 pub use crate::text::internals::SHAPED_BUFFER_RING_FRAMES;

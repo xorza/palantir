@@ -1,7 +1,7 @@
 //! The offscreen host every device-needing audit draws through, so all callers share the target's format, usage and clear color.
 
 use palantir::glam::UVec2;
-use palantir::internals::{HeadlessTestGpuLease, OwnedTarget};
+use palantir::internals::{OwnedTarget, TestGpu};
 use palantir::{FrameReport, OffscreenHost, OffscreenTime, RgbaF32, SystemScale, Ui};
 
 /// One offscreen host and the texture it draws into.
@@ -13,7 +13,7 @@ pub(crate) struct OffscreenTarget {
 
 impl OffscreenTarget {
     /// Not a `Harness`: the default offscreen path copies its backbuffer onto the target every frame, which keeps a submission in each still frame for the GPU gates to measure. The clock stands still.
-    pub(crate) fn new(gpu: &HeadlessTestGpuLease, label: &str, surface: UVec2) -> Self {
+    pub(crate) fn new(gpu: &TestGpu, label: &str, surface: UVec2) -> Self {
         let mut host = OffscreenHost::builder(gpu.handles())
             .time(OffscreenTime::Manual)
             .build();

@@ -7,7 +7,7 @@
 
 use image::RgbaImage;
 use palantir::glam::UVec2;
-use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
+use palantir::internals::{OwnedTarget, TargetSpec, TestGpu, headless_test_gpu};
 use palantir::wgpu;
 use palantir::{
     ColorScheme, DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, Preference,
@@ -48,7 +48,7 @@ pub(crate) struct Capture {
 #[derive(Debug)]
 pub(crate) struct VisualRig {
     pub(crate) host: OffscreenHost,
-    gpu: HeadlessTestGpuLease,
+    gpu: TestGpu,
     target_usages: wgpu::TextureUsages,
     /// Unset until [`Self::size`]: no surface is right for every fixture.
     physical: Option<UVec2>,

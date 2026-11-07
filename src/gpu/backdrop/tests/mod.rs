@@ -1,7 +1,7 @@
 //! Backdrop panes painted end to end on a headless window, against reference arithmetic and
 //! against whole repaints.
 
-use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::primitives::geometry::corners::Corners;
@@ -328,7 +328,7 @@ struct Reference(Harness);
 
 impl Reference {
     /// A reference window on `gpu` of `size` that clears to `clear`.
-    fn new(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> Self {
+    fn new(gpu: &TestGpu, size: UVec2, clear: RgbaF32) -> Self {
         Self(window(gpu, size, clear))
     }
 
@@ -345,7 +345,7 @@ impl Reference {
 }
 
 /// A fresh window on `gpu` of `size` at scale 1 that clears to `clear`.
-fn window(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> Harness {
+fn window(gpu: &TestGpu, size: UVec2, clear: RgbaF32) -> Harness {
     let mut window = Harness::builder(size)
         .mono()
         .depth(Depth::gpu(gpu.handles()))
