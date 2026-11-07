@@ -738,8 +738,11 @@ impl Harness {
     ///
     /// # Panics
     ///
-    /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints with no device, and if `gpu` cannot
-    /// run Palantir's pipelines, as [`HarnessBuilder::build`] says.
+    /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints with no device; when either side of
+    /// the window's physical size, [`Display::physical`](crate::Display::physical) of
+    /// [`Self::ui`]'s display, is past `gpu`'s largest 2D texture, which a smaller GPU can hold,
+    /// as [`HarnessBuilder::build`] and [`Self::resize`] panic past it; and if `gpu` cannot run
+    /// Palantir's pipelines, as [`HarnessBuilder::build`] says.
     pub fn recover(&mut self, gpu: Gpu) {
         let HarnessPaint::Gpu { target, device } = &mut self.paint else {
             panic!("a harness below Depth::Gpu paints with no device to recover");

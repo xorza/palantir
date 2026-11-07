@@ -4,9 +4,12 @@ use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{LocateError, PlayError, StepError};
 use crate::driver::locator::{Found, Locator};
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
+use crate::gpu::test_gpu::{
+    headless_test_gpu, isolated_headless_test_gpu, isolated_headless_test_gpu_capped,
+};
 use crate::host::harness::harness_builder::Depth;
 use crate::host::harness::{Harness, device_answered};
+use crate::internals::panic_probe::assert_panics_with;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
@@ -488,6 +491,20 @@ fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
         .shot(None)
         .expect("the recovered harness paints");
     assert_eq!(shot.image().size(), UVec2::new(64, 32));
+}
+
+/// A recovery keeps the window's size, so a window wider than the new device's largest texture
+/// panics: 2049 px on a device capped at 2048, the floor Palantir runs on.
+#[test]
+fn a_recovery_onto_a_device_too_small_for_the_window_panics() {
+    let mut h = Harness::builder(UVec2::new(2049, 1))
+        .depth(Depth::gpu(headless_test_gpu().handles()))
+        .build();
+    let small = isolated_headless_test_gpu_capped(2048);
+    assert_panics_with(
+        "a target's size is 1..=2048 physical pixels per side, got [2049, 1]",
+        || h.recover(small.handles()),
+    );
 }
 
 /// A shot at scale 1.5 of a 400 × 200 logical window is 600 × 300 texels; a shot of the logical
