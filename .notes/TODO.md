@@ -3,7 +3,6 @@
 - wgpu features and limits request public api
 - mesh once registrations
 - flexbox
-- mcp
 - image handle with closure for reupload?
 - build-in colors
 - rich text edit

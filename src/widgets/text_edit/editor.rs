@@ -218,6 +218,11 @@ impl<'a> Editor<'a> {
         }
     }
 
+    /// Stop the press from selecting, though the button stays held.
+    pub(super) const fn end_drag(&mut self) {
+        self.state.drag_anchor = None;
+    }
+
     /// End the press: disarm the drag, and select everything if the press focused a
     /// select-all-on-focus field and left no selection of its own.
     pub(super) fn release(&mut self) {
@@ -232,7 +237,7 @@ impl<'a> Editor<'a> {
         self.select_range(at, at);
     }
 
-    const fn selection_state(&self) -> SelectionState {
+    pub(super) const fn selection_state(&self) -> SelectionState {
         SelectionState {
             caret: self.state.caret,
             selection: self.state.selection,

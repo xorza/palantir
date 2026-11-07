@@ -2,6 +2,7 @@ use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::key_text::KeyText;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::policy::FocusPolicy;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -240,9 +241,44 @@ fn click_lands_caret_at_pressed_position() {
     h.frame(Field::PADDED.scene(&mut buf));
     h.key(Key::Char('X'));
     h.frame(Field::PADDED.scene(&mut buf));
-    h.release(PointerButton::Left);
-
     assert_eq!(buf, "helXlo world");
+
+    // A key ends the press's drag, so the held button neither selects the X, which the next key
+    // would replace, nor selects as the pointer moves on.
+    h.ui_mut().request_repaint();
+    h.frame(Field::PADDED.scene(&mut buf));
+    h.key(Key::Char('Y'));
+    h.frame(Field::PADDED.scene(&mut buf));
+    assert_eq!(buf, "helXYlo world");
+    h.drag_to(h.point_in(WidgetId::from_hash("ed"), Vec2::new(64.0, 20.0)));
+    h.frame(Field::PADDED.scene(&mut buf));
+    h.key(Key::Char('Z'));
+    h.frame(Field::PADDED.scene(&mut buf));
+    assert_eq!(buf, "helXYZlo world");
+    h.release(PointerButton::Left);
+}
+
+/// A key that leaves the caret, the selection and the text as they are leaves the drag going. A
+/// copy mid-drag: byte 3 to byte 7, then on to byte 9, as 8 px per char past 8 px of padding
+/// puts 32, 64 and 80 there, so a key replaces `lo wor`.
+#[test]
+fn a_copy_mid_drag_leaves_the_drag_going() {
+    let mut h = Harness::mono(NARROW);
+    let mut buf = String::from("hello world");
+    let ed = WidgetId::from_hash("ed");
+    h.frame(Field::PADDED.scene(&mut buf));
+    h.press(h.point_in(ed, Vec2::new(32.0, 20.0)), PointerButton::Left);
+    h.frame(Field::PADDED.scene(&mut buf));
+    h.drag_to(h.point_in(ed, Vec2::new(64.0, 20.0)));
+    h.frame(Field::PADDED.scene(&mut buf));
+    h.key(Shortcut::ctrl('C'));
+    h.frame(Field::PADDED.scene(&mut buf));
+    h.drag_to(h.point_in(ed, Vec2::new(80.0, 20.0)));
+    h.frame(Field::PADDED.scene(&mut buf));
+    h.key(Key::Char('Q'));
+    h.frame(Field::PADDED.scene(&mut buf));
+    assert_eq!(buf, "helQld");
+    h.release(PointerButton::Left);
 }
 
 #[test]

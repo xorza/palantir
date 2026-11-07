@@ -157,8 +157,10 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **One window; its commands are recorded.** Refused: a panic, which ends an agent's session.
 - **`Remote` queries between two frames inside the app**, as Flutter's driver extension and
   Slint's MCP server do.
-- **No MCP server in palantir.** Refused for now: Slint's `slint/mcp` feature, which brings rmcp
-  and an async runtime; a second app with a server would argue for a `palantir-mcp` crate.
+- **No MCP server in palantir.** Refused for now: a feature over rmcp, which brings an async runtime
+  and a fast-moving public dependency; a feature written by hand, as Slint's internal `mcp` is
+  ([Slint](https://cdn.jsdelivr.net/gh/slint-ui/slint@1.16.0/docs/development/mcp-server.md)), a
+  protocol to keep up to date. A second app with a server would argue for a `palantir-mcp` crate.
 - **A shot scales down in palantir**, so the shipped build needs no image crate. The showcase's
   long side is 2,576 px, which Claude reads with no downscale
   ([Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision)).

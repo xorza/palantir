@@ -3,16 +3,18 @@
 use std::hash;
 /// Slot tag for stacking animations on one widget; widgets declare their own consts (`AnimationSlot::new("hover")`). Identity is per widget: the row key is `(WidgetId, AnimationSlot)`.
 ///
-/// Named by `&'static str` but stored as its FNV-1a hash, computed in the `const` constructor, so map ops hash one `u64` and the slot is 8 bytes. Equal names compare equal from any call site. FNV-64 is deterministic, so colliding names would alias every run; debug builds keep the name and assert at the aliasing map probe.
+/// Hashed in the `const` constructor by FNV-1a of its name, so a map op hashes one `u64`. Equality
+/// compares the names, so two names that share a hash stay two slots in every build. Refused: the
+/// hash alone, 8 bytes, as FNV-64 is deterministic and colliding names would alias on every run; an
+/// assert on a collision, which panics on a name an app chose.
 #[derive(Clone, Copy, Debug)]
 pub struct AnimationSlot {
     hash: u64,
-    #[cfg(debug_assertions)]
     name: &'static str,
 }
 
 impl AnimationSlot {
-    /// A slot named `name`, hashed at compile time. Two slots on one widget must not share a name; debug builds assert.
+    /// A slot named `name`, hashed at compile time. One name on one widget is one slot.
     pub const fn new(name: &'static str) -> Self {
         let bytes = name.as_bytes();
         let mut hash = 0xcbf2_9ce4_8422_2325u64;
@@ -22,26 +24,14 @@ impl AnimationSlot {
             hash = hash.wrapping_mul(0x100_0000_01b3);
             i += 1;
         }
-        Self {
-            hash,
-            #[cfg(debug_assertions)]
-            name,
-        }
+        Self { hash, name }
     }
 }
 
 impl PartialEq for AnimationSlot {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        let eq = self.hash == other.hash;
-        #[cfg(debug_assertions)]
-        if eq {
-            assert_eq!(
-                self.name, other.name,
-                "AnimationSlot FNV-64 hash collision — rename one of the slots"
-            );
-        }
-        eq
+        self.hash == other.hash && self.name == other.name
     }
 }
 
@@ -76,5 +66,11 @@ mod tests {
         assert_eq!(from, A, "From<&str> and const ctor must agree");
         assert_eq!(from.hash, A.hash);
         assert_ne!(AnimationSlot::new("a"), AnimationSlot::new("b"));
+
+        let same_hash = AnimationSlot {
+            hash: A.hash,
+            name: "b",
+        };
+        assert_ne!(same_hash, A, "a shared hash leaves two names two slots");
     }
 }

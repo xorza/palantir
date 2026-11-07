@@ -133,6 +133,7 @@ impl InputPass<'_> {
             };
         }
 
+        let before = ed.selection_state();
         // Drain presses in arrival order, by index so probes can borrow `ui`:
         // shared edit actions first, then `apply_key`.
         for i in 0..ui.keyboard_events(KeyboardWake::NONE).len() {
@@ -140,8 +141,8 @@ impl InputPass<'_> {
             if !filter.takes(kp.class()) {
                 continue;
             }
-            // A key taken mid-press acts on the caret the press placed; selecting all
-            // on the release would discard it.
+            // A key taken mid-press acts on the caret the press placed; selecting all on the
+            // release would discard it.
             ed.disarm_select_all_on_release();
             // Single-line Enter submits without editing the buffer.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
@@ -166,6 +167,11 @@ impl InputPass<'_> {
             }
         }
 
+        // The next frame's drag reads the pointer against what these keys changed, and would
+        // select what they typed and undo where they moved the caret.
+        if ed.edited() || ed.selection_state() != before {
+            ed.end_drag();
+        }
         ed.normalize();
         InputResult {
             ended,
