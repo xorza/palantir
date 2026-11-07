@@ -1,5 +1,6 @@
 //! The numeric target a value widget writes through.
 
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use std::ops::RangeInclusive;
@@ -363,7 +364,7 @@ fn decimal_shift(decimals: usize) -> f64 {
         decimals <= MAX_DECIMALS,
         "decimals is coerced at the setter"
     );
-    10f64.powi(decimals as i32)
+    10f64.libm_powi(decimals as i32)
 }
 
 #[cfg(test)]

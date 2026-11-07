@@ -1,6 +1,7 @@
 //! The spectrum a dispersive lens spreads, as the composite sums it back to color: the tables
 //! only the GPU reads, over the ends [`LensOptics`](crate::shape::paint::lens_optics) names.
 
+use crate::primitives::math::libm_ext::Libm;
 use crate::shape::paint::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
 
 /// The cells the spectrum's weight is held flat across: even in `1 / λ²`, as the reads step,
@@ -15,7 +16,7 @@ pub(crate) const SPECTRUM_SAMPLES: usize = 48;
 fn cie_xyz(nm: f64) -> [f64; 3] {
     let lobe = |mu: f64, below: f64, above: f64| {
         let t = (nm - mu) / if nm < mu { below } else { above };
-        (-0.5 * t * t).exp()
+        (-0.5 * t * t).libm_exp()
     };
     [
         1.056 * lobe(599.8, 37.9, 31.0) + 0.362 * lobe(442.0, 16.0, 26.7)
@@ -46,12 +47,12 @@ impl SpectrumTables {
     /// The tables, summed in `f64` and rounded once to `f32`.
     pub(crate) fn new() -> Self {
         let n = SPECTRUM_SAMPLES as f64;
-        let u = |wavelength: f32| 1.0 / f64::from(wavelength).powi(2);
+        let u = |wavelength: f32| 1.0 / f64::from(wavelength).libm_powi(2);
         let (red, violet) = (u(SPECTRUM_RED), u(SPECTRUM_VIOLET));
         let raw: [[f64; 3]; SPECTRUM_SAMPLES] = std::array::from_fn(|j| {
             let middle = (j as f64 + 0.5) / n;
-            let wavelength = (red + middle * (violet - red)).powf(-0.5);
-            cie_xyz(1000.0 * wavelength).map(|w| w * wavelength.powi(3))
+            let wavelength = (red + middle * (violet - red)).libm_powf(-0.5);
+            cie_xyz(1000.0 * wavelength).map(|w| w * wavelength.libm_powi(3))
         });
         let sums = raw.iter().fold([0.0; 3], |sum, w| {
             [sum[0] + w[0], sum[1] + w[1], sum[2] + w[2]]

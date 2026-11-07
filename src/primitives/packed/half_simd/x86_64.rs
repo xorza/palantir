@@ -107,6 +107,7 @@ unsafe fn from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
 /// The pre-F16C scalar fallbacks, called directly: on an F16C machine the runtime detect in [`from_f32x4`] takes the intrinsic branch, so the conversion sweeps never reach them. Checked against the intrinsic: both must encode identically.
 #[cfg(all(test, not(target_feature = "f16c")))]
 mod tests {
+    use crate::primitives::math::libm_ext::Libm;
     use crate::primitives::packed::half_simd::x86_64::{
         from_f32x4, from_f32x4_scalar, to_f32x4, to_f32x4_scalar,
     };
@@ -115,7 +116,7 @@ mod tests {
     fn scalar_fallbacks_match_the_intrinsic() {
         for sign in [1.0f32, -1.0] {
             for exp in -20i32..20 {
-                let m = sign * 1.37 * 2.0f32.powi(exp);
+                let m = sign * 1.37 * 2.0f32.libm_powi(exp);
                 let lanes = [m, m * 0.5, m * 255.0, 0.0];
                 assert_eq!(
                     from_f32x4_scalar(lanes),

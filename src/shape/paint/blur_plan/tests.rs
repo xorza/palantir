@@ -1,4 +1,5 @@
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::math::libm_ext::Libm;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 
@@ -31,7 +32,7 @@ fn stage_variances_sum_to_sigma_squared() {
         let plan = BlurPlan::new(sigma);
         let texel = f64::from(plan.lattice());
         let total = BlurPlan::fixed_variance(plan.levels()) + taps_variance(plan) * texel * texel;
-        let want = f64::from(sigma).powi(2);
+        let want = f64::from(sigma).libm_powi(2);
         assert!(
             (total - want).abs() <= 1e-6 * want.max(1e-6),
             "σ {sigma}: stages sum to {total}, want {want}"
@@ -108,7 +109,7 @@ fn moments(response: &[f64], at: usize) -> Moments {
     let second = response
         .iter()
         .enumerate()
-        .map(|(n, w)| w * offset(n).powi(2))
+        .map(|(n, w)| w * offset(n).libm_powi(2))
         .sum::<f64>()
         / total;
     Moments {
@@ -131,7 +132,7 @@ fn the_blur_has_variance_sigma_squared_at_every_phase() {
         for phase in 0..lattice {
             let at = len / 2 / lattice * lattice + phase;
             let m = moments(&response(plan, len, at), at);
-            let want = f64::from(sigma).powi(2);
+            let want = f64::from(sigma).libm_powi(2);
             assert!(
                 (m.total - 1.0).abs() < 1e-6,
                 "σ {sigma} phase {phase}: energy {}",
@@ -188,7 +189,7 @@ fn the_reach_is_the_blurs_support() {
 #[test]
 fn the_blur_is_near_a_gaussian_and_continuous_across_levels() {
     let gaussian = |sigma: f64, d: f64| {
-        (-0.5 * (d / sigma).powi(2)).exp() / (sigma * (2.0 * std::f64::consts::PI).sqrt())
+        (-0.5 * (d / sigma).libm_powi(2)).libm_exp() / (sigma * (2.0 * std::f64::consts::PI).sqrt())
     };
     let deviation = |a: &[f64], b: &[f64]| {
         let peak = b.iter().copied().fold(0.0, f64::max);

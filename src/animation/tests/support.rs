@@ -8,6 +8,7 @@ use crate::animation::spring::Spring;
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::libm_ext::Libm;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use glam::UVec2;
@@ -98,14 +99,14 @@ impl Release {
                 t += f64::from(dt_of(n));
                 let (c, s) = if psi_sq < 0.0 {
                     let omega = (-psi_sq).sqrt();
-                    ((omega * t).cos(), (omega * t).sin() / omega)
+                    ((omega * t).libm_cos(), (omega * t).libm_sin() / omega)
                 } else if psi_sq == 0.0 {
                     (1.0, t)
                 } else {
                     let psi = psi_sq.sqrt();
-                    ((psi * t).cosh(), (psi * t).sinh() / psi)
+                    ((psi * t).libm_cosh(), (psi * t).libm_sinh() / psi)
                 };
-                let decay = (-h * t).exp();
+                let decay = (-h * t).libm_exp();
                 let x = distance * decay * (c + h * s);
                 let v = distance * stiffness * decay * s;
                 x * x + v * v / stiffness < eps * eps

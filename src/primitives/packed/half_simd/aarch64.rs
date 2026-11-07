@@ -62,6 +62,7 @@ fn narrow(wide: float32x4_t) -> uint16x4_t {
 /// through the slice path: both must encode and decode identically.
 #[cfg(test)]
 mod tests {
+    use crate::primitives::math::libm_ext::Libm;
     use crate::primitives::packed::half_simd::aarch64::{from_f32x4, scaled, to_f32x4};
 
     #[test]
@@ -69,7 +70,7 @@ mod tests {
         let encode = |src: [f32; 4]| src.map(|v| half::f16::from_f32_const(v).to_bits());
         for sign in [1.0f32, -1.0] {
             for exp in -30i32..20 {
-                let m = sign * 1.37 * 2.0f32.powi(exp);
+                let m = sign * 1.37 * 2.0f32.libm_powi(exp);
                 let lanes = [m, m * 0.5, m * 255.0, 0.0];
                 assert_eq!(from_f32x4(lanes), encode(lanes), "encode {lanes:?}");
             }

@@ -1,6 +1,7 @@
 //! [`ZoomFactor`]: a multiplicative zoom that stays invertible.
 
 use crate::primitives::input::zoom_factor::error::ZoomFactorError;
+use crate::primitives::math::libm_ext::Libm;
 
 pub(crate) mod error;
 
@@ -63,7 +64,7 @@ impl ZoomFactor {
     pub fn from_wheel(step: f32, notches: f32) -> Self {
         assert!(is_valid(step), "a zoom step must be finite and positive");
         assert!(!notches.is_nan(), "wheel notches must be a number");
-        Self(clamp(f64::from(step.powf(-notches))))
+        Self(clamp(f64::from(step.libm_powf(-notches))))
     }
 
     /// Composes with `rhs`, in `f64` so the clamp sees an overshoot; total.

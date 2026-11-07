@@ -4,6 +4,7 @@
 use crate::display::Display;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::antialias;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
@@ -62,7 +63,7 @@ impl Lowering<'_> {
     pub(super) fn turned_rect(&self, physical: Rect, spin: Spin) -> ScaledRect {
         let pivot = self.physical_spin(spin).pivot;
         let center = physical.center();
-        let turned_center = Vec2::from_angle(spin.angle).rotate(center - pivot) + pivot;
+        let turned_center = Vec2::libm_from_angle(spin.angle).rotate(center - pivot) + pivot;
         let moved = Rect {
             min: physical.min + turned_center - center,
             size: physical.size,

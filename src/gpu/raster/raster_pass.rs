@@ -14,6 +14,7 @@ use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas, RasterAtlasConfig};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
 use crate::renderer::render_buffer::row_spin::RowSpin;
@@ -200,7 +201,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     /// Move the quads emitted from `start` on into the turned buffer, each turned by `spin`. They
     /// keep their place in the batch's paint order.
     pub(super) fn turn_since(&mut self, start: usize, spin: RowSpin) {
-        let rotor = Vec2::from_angle(spin.angle);
+        let rotor = Vec2::libm_from_angle(spin.angle);
         let first = self.spun.len() as u32;
         self.spun
             .extend(self.instances.drain(start..).map(|quad| SpunRasterQuad {

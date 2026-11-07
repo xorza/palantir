@@ -1,5 +1,9 @@
 //! A slide's choreography: the steps a person and the camera take, run one after another on the
 //! frame clock.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a demo of the crate, whose frames owe no two systems the same bits"
+)]
 
 use std::time::Duration;
 

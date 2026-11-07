@@ -1,4 +1,8 @@
 //! Pixel-level shadow fixtures.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a demo of the crate, whose frames owe no two systems the same bits"
+)]
 
 use image::{Rgba, RgbaImage};
 use palantir::glam::{IVec2, UVec2, Vec2};

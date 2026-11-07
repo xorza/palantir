@@ -1,3 +1,4 @@
+use crate::primitives::math::libm_ext::Libm;
 use crate::shape::paint::lens_optics::SPECTRUM_VIOLET;
 use crate::shape::paint::lens_optics::{LINE_C, LINE_D, LINE_F, LensOptics, cauchy_offset};
 
@@ -16,9 +17,9 @@ fn the_closed_form_matches_snells_law_by_angles() {
     for index in [1.2f32, 1.5, 1.9] {
         for i in 0..=48 {
             let inward = i as f32 * 0.5;
-            let theta_in = f64::from(LENS.slope(inward)).atan();
-            let theta_out = (theta_in.sin() / f64::from(index)).asin();
-            let traced = f64::from(LENS.height(inward)) * (theta_in - theta_out).tan();
+            let theta_in = f64::from(LENS.slope(inward)).libm_atan();
+            let theta_out = (theta_in.libm_sin() / f64::from(index)).libm_asin();
+            let traced = f64::from(LENS.height(inward)) * (theta_in - theta_out).libm_tan();
             let got = f64::from(LENS.displacement(inward, index));
             assert!(
                 (got - traced).abs() <= 1e-4 * traced.abs().max(1.0),

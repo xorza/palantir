@@ -20,6 +20,7 @@ use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
@@ -232,7 +233,11 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             move |ui: &mut Ui| {
                 build_grid(ui, None, |i| {
                     let phase = (i as u32 + frame_n) as f32 * 0.013;
-                    RgbaF32::srgb(0.4 + phase.sin() * 0.4, 0.4 + phase.cos() * 0.4, 0.6)
+                    RgbaF32::srgb(
+                        0.4 + phase.libm_sin() * 0.4,
+                        0.4 + phase.libm_cos() * 0.4,
+                        0.6,
+                    )
                 });
             }
         };

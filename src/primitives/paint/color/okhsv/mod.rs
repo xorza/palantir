@@ -1,6 +1,7 @@
 //! Okhsv: the picker's default axes and the sRGB gamut solve behind them.
 
 use crate::primitives::math::domain;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -28,7 +29,7 @@ const HALLEY_STEPS: usize = 3;
 
 /// The slice of hue `hue`, which wraps, with its gamut solved.
 pub(crate) fn slice(hue: f32) -> OkhsvSlice {
-    let (sin, cos) = (TAU * domain::turn(hue)).sin_cos();
+    let (sin, cos) = (TAU * domain::turn(hue)).libm_sin_cos();
     OkhsvSlice::from_direction(cos, sin)
 }
 
@@ -36,7 +37,7 @@ pub(crate) fn slice(hue: f32) -> OkhsvSlice {
 pub(crate) fn from_color(color: RgbaF32, fallback_hue: f32) -> ColorCoords {
     let lab = Oklab::from_color(color);
     let lightness = lab.l;
-    let chroma = lab.a.hypot(lab.b);
+    let chroma = lab.a.libm_hypot(lab.b);
     if chroma < GRAY_CHROMA || lightness <= 0.0 {
         return ColorCoords::new(ColorModel::Okhsv, fallback_hue, 0.0, toe(lightness));
     }
@@ -50,7 +51,7 @@ pub(crate) fn from_color(color: RgbaF32, fallback_hue: f32) -> ColorCoords {
 
     ColorCoords::new(
         ColorModel::Okhsv,
-        (lab.b.atan2(lab.a) / TAU).rem_euclid(1.0),
+        (lab.b.libm_atan2(lab.a) / TAU).rem_euclid(1.0),
         (ANCHOR_S + t) * c_v / (t * ANCHOR_S + t * slice.k * c_v),
         toed / l_v,
     )

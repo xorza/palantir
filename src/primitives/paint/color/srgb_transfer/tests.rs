@@ -6,7 +6,7 @@ fn reference(c: f64) -> f32 {
     if c <= 0.040_45 {
         (c / 12.92) as f32
     } else {
-        ((c + 0.055) / 1.055).powf(2.4) as f32
+        ((c + 0.055) / 1.055).libm_powf(2.4) as f32
     }
 }
 
@@ -62,7 +62,7 @@ fn a_byte_rises_exactly_at_its_threshold() {
         let reached = if threshold <= 0.003_130_8 {
             threshold * 12.92
         } else {
-            1.055 * threshold.powf(1.0 / 2.4) - 0.055
+            1.055 * threshold.libm_powf(1.0 / 2.4) - 0.055
         } * 255.0;
         let midpoint = i as f64 + 0.5;
         assert_close(

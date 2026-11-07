@@ -7,6 +7,7 @@ use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::libm_ext::Libm;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
@@ -322,7 +323,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     h.frame(build_zoom);
 
     let after_zoom = h.state::<ScrollState>(scroll_id).unwrap().zoom();
-    let expected = before_zoom * 1.03_f32.powf(-2.0);
+    let expected = before_zoom * 1.03_f32.libm_powf(-2.0);
     assert_eq!(
         after_zoom, expected,
         "ctrl+touchpad zoom: expected {expected}, got {after_zoom}"
@@ -332,7 +333,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
 #[test]
 fn wheel_zoom_step_is_font_independent() {
     // One wheel line is one zoom notch regardless of font size.
-    let expected = 1.03_f32.powf(-1.0);
+    let expected = 1.03_f32.libm_powf(-1.0);
     for font_size in [12.0_f32, 16.0, 24.0] {
         use crate::primitives::input::keyboard::modifiers::Modifiers;
 
@@ -573,7 +574,7 @@ fn zoom_modifier_picks_which_wheel_zooms() {
     use crate::widgets::scroll::zoom_config::ZoomModifier;
 
     let id = WidgetId::from_hash("modded");
-    let step = 1.03_f32.powf(-1.0);
+    let step = 1.03_f32.libm_powf(-1.0);
     for (modifier, bare, ctrl) in [
         (ZoomModifier::Ctrl, 1.0, step),
         (ZoomModifier::Always, step, step),

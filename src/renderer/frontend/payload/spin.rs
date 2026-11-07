@@ -1,6 +1,7 @@
 //! A paint animation's turn as a payload carries it: a pivot and an angle.
 
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::math::libm_ext::LibmVec2;
 use glam::Vec2;
 
 /// Logical px, as the encoder places a payload: the composer maps it to a draw row's
@@ -29,7 +30,7 @@ impl Spin {
     #[inline]
     pub(crate) fn rotor(self) -> SpinRotor {
         SpinRotor {
-            rotor: Vec2::from_angle(self.angle),
+            rotor: Vec2::libm_from_angle(self.angle),
             pivot: self.pivot,
         }
     }

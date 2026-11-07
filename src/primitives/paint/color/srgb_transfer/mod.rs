@@ -5,6 +5,8 @@
 //! read `#0a0a0a` back as `#050505`. Fast because decode sits on the per-shape
 //! `RgbaF32::srgb` path inside the record closure.
 
+use crate::primitives::math::libm_ext::Libm;
+
 /// sRGB to linear, rounded to `f32` once from the `f64` evaluation. `const`
 /// because [`RgbaF32::srgb`](crate::RgbaF32::srgb) builds constants and `powf`
 /// is not `const`.
@@ -31,7 +33,7 @@ pub(super) fn encode(y: f32) -> f32 {
     let c = if y <= 0.003_130_8 {
         y * 12.92
     } else {
-        1.055 * y.powf(1.0 / 2.4) - 0.055
+        1.055 * y.libm_powf(1.0 / 2.4) - 0.055
     };
     c as f32
 }

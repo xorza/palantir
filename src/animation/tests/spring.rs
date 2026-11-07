@@ -10,6 +10,7 @@ use crate::animation::spring::Spring;
 use crate::animation::tests::support::{self, Release, SLOT};
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::color::RgbaF32;
 
 /// Accepted springs stay finite and settle on the step the closed form names. Step
@@ -225,7 +226,7 @@ fn spring_step_at_max_dt_stays_bounded() {
     // Released 320 px out, `(170, 26)` has h = 13, ω = 1: `80 + 320·e^(-1.3)(cos
     // 0.1 + 13 sin 0.1)` ≈ 279.96.
     let t = f64::from(0.1f32);
-    let expected = 80.0 + 320.0 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
+    let expected = 80.0 + 320.0 * (-13.0 * t).libm_exp() * (t.libm_cos() + 13.0 * t.libm_sin());
     domain::internals::assert_close(r.value, expected, 1e-4, "a few f32 ulps at 280");
 }
 

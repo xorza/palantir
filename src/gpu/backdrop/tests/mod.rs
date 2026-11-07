@@ -9,6 +9,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -71,7 +72,7 @@ fn decode(byte: u8) -> f64 {
     if c <= 0.04045 {
         c / 12.92
     } else {
-        ((c + 0.055) / 1.055).powf(2.4)
+        ((c + 0.055) / 1.055).libm_powf(2.4)
     }
 }
 
@@ -81,7 +82,7 @@ fn encode(linear: f64) -> f64 {
         * if c <= 0.003_130_8 {
             c * 12.92
         } else {
-            1.055 * c.powf(1.0 / 2.4) - 0.055
+            1.055 * c.libm_powf(1.0 / 2.4) - 0.055
         }
 }
 

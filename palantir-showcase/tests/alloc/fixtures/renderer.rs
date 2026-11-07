@@ -9,6 +9,10 @@
 //!
 //! No device, so the budget is strict zero; real-adapter cost is
 //! `gates::on_gpu`'s.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a demo of the crate, whose frames owe no two systems the same bits"
+)]
 
 use crate::fixtures::parked_icons::ParkedIcons;
 use crate::harness;

@@ -7,6 +7,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::domain::{EPS, is_invisible};
+use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::math::num::Vec2Ext;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
@@ -237,7 +238,7 @@ impl PaintSink for ComposeSession<'_> {
                 to_physical.point(Vec2::ZERO),
             ),
             Some(spin) => {
-                let rotor = Vec2::from_angle(spin.angle);
+                let rotor = Vec2::libm_from_angle(spin.angle);
                 (
                     rotor * scale_physical,
                     to_physical.point(spin.pivot - rotor.rotate(spin.pivot)),

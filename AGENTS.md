@@ -77,6 +77,13 @@ Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
   ([gfx-rs/wgpu#10547](https://github.com/gfx-rs/wgpu/issues/10547)), which took a lock around every
   pipeline build on every backend, and HLSL's constant-buffer rules broke the immediates.
 
+## Floats
+
+- **A transcendental float function goes through `primitives::math::libm_ext`**, the `libm` crate, as
+  `clippy.toml` refuses std's: they call each system's libm, so a motion, a gradient or a blur would
+  differ by a last bit per system. As `bevy_math::ops` routes them. Cost: `powf` 3 to 6 times
+  slower against Apple's libm, most others 1.1 to 1.4.
+
 ## Device loss
 
 Facts and sources: `.notes/research/2026-10-30-device-loss.md`.

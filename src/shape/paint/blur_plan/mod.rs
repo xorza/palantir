@@ -29,6 +29,7 @@
 //!   Mirror applies only at the surface's edge, where nothing is painted.
 
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::math::libm_ext::Libm;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::UVec2;
 
@@ -84,8 +85,9 @@ impl BlurPlan {
             Self::MAX_LEVELS
         );
         let texel = f64::from(1u32 << levels);
-        let residual =
-            ((f64::from(sigma).powi(2) - Self::fixed_variance(levels)) / (texel * texel)).max(0.0);
+        let residual = ((f64::from(sigma).libm_powi(2) - Self::fixed_variance(levels))
+            / (texel * texel))
+            .max(0.0);
         let radius = residual_radius(residual);
         Self {
             levels,
@@ -112,9 +114,9 @@ impl BlurPlan {
             return 0.0;
         }
         let tents: f64 = (0..levels)
-            .map(|k| Self::TENT_VARIANCE * 4f64.powi(i32::from(k)))
+            .map(|k| Self::TENT_VARIANCE * 4f64.libm_powi(i32::from(k)))
             .sum();
-        tents + Self::BSPLINE_VARIANCE * 4f64.powi(i32::from(levels))
+        tents + Self::BSPLINE_VARIANCE * 4f64.libm_powi(i32::from(levels))
     }
 
     /// How far, in physical px, a pixel's result reads past it: the B-spline's two texels, the
@@ -246,7 +248,7 @@ fn gaussian(radius: usize, sigma: f64) -> [f64; BlurPlan::MAX_TAPS] {
     let mut weights = [0.0; BlurPlan::MAX_TAPS];
     for (k, w) in weights[..=radius].iter_mut().enumerate() {
         let d = k as f64 / sigma;
-        *w = (-0.5 * d * d).exp();
+        *w = (-0.5 * d * d).libm_exp();
     }
     weights
 }
@@ -264,7 +266,7 @@ fn kernel_variance(radius: usize, sigma: f64) -> KernelVariance {
     let weights = gaussian(radius, sigma);
     let (mut total, mut moment) = (weights[0], 0.0);
     let (mut d_total, mut d_moment) = (0.0, 0.0);
-    let cube = sigma.powi(3);
+    let cube = sigma.libm_powi(3);
     for (k, w) in weights[1..=radius].iter().enumerate() {
         let k2 = ((k + 1) * (k + 1)) as f64;
         let dw = w * k2 / cube;
@@ -281,6 +283,7 @@ fn kernel_variance(radius: usize, sigma: f64) -> KernelVariance {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::primitives::math::libm_ext::Libm;
     use crate::shape::paint::blur_plan::BlurPlan;
 
     /// The blur's arithmetic in `f64` on one axis, stage by stage as the GPU runs it, with the
@@ -355,7 +358,7 @@ pub(crate) mod internals {
         if t < 1.0 {
             (4.0 - 6.0 * t * t + 3.0 * t * t * t) / 6.0
         } else if t < 2.0 {
-            (2.0 - t).powi(3) / 6.0
+            (2.0 - t).libm_powi(3) / 6.0
         } else {
             0.0
         }

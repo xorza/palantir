@@ -1,4 +1,8 @@
 //! [`Deck`]: the reel's one window, every slide a live subtree on one pan-zoom canvas.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a demo of the crate, whose frames owe no two systems the same bits"
+)]
 
 use std::rc::Rc;
 use std::time::Duration;

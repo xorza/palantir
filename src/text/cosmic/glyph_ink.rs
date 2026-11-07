@@ -1,6 +1,7 @@
 //! How far a shaped run's glyphs reach past the block it measured to.
 
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::math::libm_ext::Libm;
 use crate::text::cosmic::geometry::ShapedGeometry;
 use crate::text::cosmic::stem_darkening::StemDarkening;
 use crate::text::cosmic::{FAKE_ITALIC_SKEW_DEGREES, Hinting, ScalerSpec};
@@ -162,7 +163,7 @@ impl GlyphInk {
             return EmBox::default();
         }
         let skew = if key.fake_italic {
-            FAKE_ITALIC_SKEW_DEGREES.to_radians().tan()
+            FAKE_ITALIC_SKEW_DEGREES.to_radians().libm_tan()
         } else {
             0.0
         };

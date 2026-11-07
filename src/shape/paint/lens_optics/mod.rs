@@ -81,6 +81,7 @@ impl LensOptics {
 /// check against Snell's law by angles and against the reach.
 #[cfg(test)]
 mod internals {
+    use crate::primitives::math::libm_ext::Libm;
     use crate::shape::paint::lens_optics::LensOptics;
 
     impl LensOptics {
@@ -88,7 +89,7 @@ mod internals {
         /// the bezel.
         pub(crate) fn height(self, inward: f32) -> f32 {
             let x = (inward / self.bezel).clamp(0.0, 1.0);
-            self.thickness * (1.0 - (1.0 - x).powi(4)).powf(0.25)
+            self.thickness * (1.0 - (1.0 - x).libm_powi(4)).libm_powf(0.25)
         }
 
         /// The height's slope against the inward distance: `thickness / bezel` times the squircle's
@@ -99,8 +100,8 @@ mod internals {
                 return 0.0;
             }
             let g = 1.0 - x;
-            let rise = (1.0 - g.powi(4)).max(f32::MIN_POSITIVE);
-            self.thickness / self.bezel * g.powi(3) * rise.powf(-0.75)
+            let rise = (1.0 - g.libm_powi(4)).max(f32::MIN_POSITIVE);
+            self.thickness / self.bezel * g.libm_powi(3) * rise.libm_powf(-0.75)
         }
 
         /// How far, in px, the backdrop the glass shows `inward` px in from the edge lies further in,
@@ -109,7 +110,7 @@ mod internals {
         pub(crate) fn displacement(self, inward: f32, index: f32) -> f32 {
             let slope = self.slope(inward);
             // The outward-tilted normal, (slope, 1) normalized, against light falling along −z.
-            let norm = slope.hypot(1.0);
+            let norm = slope.libm_hypot(1.0);
             let (nx, nz) = (slope / norm, 1.0 / norm);
             let eta = 1.0 / index;
             let cos_in = nz;

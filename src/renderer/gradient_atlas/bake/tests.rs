@@ -8,6 +8,7 @@
 
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::internals::assert_close;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -69,7 +70,7 @@ fn the_ramp_is_baked_premultiplied() {
         assert_close(
             residue,
             0.0,
-            2f64.powi(-24),
+            2f64.libm_powi(-24),
             "the Oklab round trip leaves at most the smallest f16 \
              subnormal in a channel that should be empty",
         );

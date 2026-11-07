@@ -8,6 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
@@ -281,7 +282,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
     let vertices = [lo, hi, corner].map(|pos| mesh.vertex(pos, RED));
     mesh.triangle(vertices[0], vertices[1], vertices[2]);
     let owner_id = WidgetId::from_hash("spin_owner");
-    let r = 30.0_f32.hypot(10.0);
+    let r = 30.0_f32.libm_hypot(10.0);
     for (kind, pad) in [
         (Kind::Line, 1.0),
         (Kind::Triangle, 0.5),

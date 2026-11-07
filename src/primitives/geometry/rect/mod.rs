@@ -8,6 +8,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::float_hash::canon_bits;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::math::nan::{self, NanCheck};
 use crate::primitives::math::num::F32Px;
 use core::f32::consts::FRAC_1_SQRT_2;
@@ -221,7 +222,7 @@ impl Rect {
     /// The axis-aligned bound of this rect turned `angle` radians about `pivot`.
     #[inline]
     pub(crate) fn turned_cover(self, pivot: Vec2, angle: f32) -> Self {
-        let (sin, cos) = angle.sin_cos();
+        let (sin, cos) = angle.libm_sin_cos();
         let half = Vec2::new(self.size.w * 0.5, self.size.h * 0.5);
         let reach = Vec2::new(
             cos.abs() * half.x + sin.abs() * half.y,

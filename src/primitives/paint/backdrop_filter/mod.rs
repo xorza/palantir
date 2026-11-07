@@ -53,6 +53,7 @@
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -656,12 +657,12 @@ impl Lens {
 /// `decode(encode(c) − step)`, meets its convex envelope by the same tangency at `m^2.4 ≈
 /// 0.01364`, under the 0.175 any floor's ground is at least, so a floor needs no such check.
 fn ceiling_bend() -> f32 {
-    (bend_root() - STORED_STEP / 1.055).powf(2.4)
+    (bend_root() - STORED_STEP / 1.055).libm_powf(2.4)
 }
 
 /// `m = (1.055 / 12.92)^(1/1.4)`, the step cancelling out of [`ceiling_bend`]'s tangency.
 fn bend_root() -> f32 {
-    (1.055_f32 / 12.92).powf(1.0 / 1.4)
+    (1.055_f32 / 12.92).libm_powf(1.0 / 1.4)
 }
 
 /// How far an 8-bit target stores a channel from its level, in encoded sRGB: half a step of the

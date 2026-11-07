@@ -7,6 +7,7 @@ use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::domain::vec2;
+use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::stroke::Stroke;
@@ -53,7 +54,7 @@ impl CurveGeometry {
                 if is_invisible(radius) {
                     Some(center)
                 } else if is_invisible(sweep.abs()) {
-                    Some(center + radius * Vec2::from_angle(start_angle))
+                    Some(center + radius * Vec2::libm_from_angle(start_angle))
                 } else {
                     None
                 }

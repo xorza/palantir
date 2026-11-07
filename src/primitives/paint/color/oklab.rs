@@ -107,6 +107,7 @@ pub(crate) fn cbrt(x: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::math::libm_ext::Libm;
     use crate::primitives::paint::color::oklab;
 
     /// Exact cubes come back exactly, the sign is kept, zero, infinities and NaN pass through,
@@ -124,7 +125,7 @@ mod tests {
         let mut x = f32::from_bits(1);
         while x < 1e30 {
             for x in [x, -x] {
-                assert_eq!(oklab::cbrt(x), f64::from(x).cbrt() as f32, "{x:e}");
+                assert_eq!(oklab::cbrt(x), f64::from(x).libm_cbrt() as f32, "{x:e}");
             }
             x *= 1.0007;
             x = x.max(f32::from_bits(x.to_bits() + 1));

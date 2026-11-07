@@ -1,6 +1,10 @@
 //! Filled shape primitives: triangles, meshes and
 //! `Shape::windowed_rect`, the inverted-fill corner mask standing in for rounded clipping without a
 //! stencil pass.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a demo of the crate, whose frames owe no two systems the same bits"
+)]
 
 use crate::scaffold::api;
 use crate::support;

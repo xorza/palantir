@@ -8,6 +8,7 @@ use crate::gpu::raster::raster_pass::RasterDraw;
 use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::raster::text_backend::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
@@ -240,7 +241,7 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
         rig.backend.pass.instances().is_empty(),
         "nothing stays flat"
     );
-    let rotor = Vec2::from_angle(0.5);
+    let rotor = Vec2::libm_from_angle(0.5);
     assert_eq!(rig.backend.pass.spun.len(), unturned.len());
     for (spun, quad) in rig.backend.pass.spun.iter().zip(&unturned) {
         assert_eq!(spun.quad.pos, quad.pos);

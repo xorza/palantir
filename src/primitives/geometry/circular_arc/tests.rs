@@ -1,6 +1,7 @@
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::internals::assert_close;
+use crate::primitives::math::libm_ext::Libm;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
@@ -113,7 +114,7 @@ fn a_huge_start_angle_counts_its_quarters_in_one_turn() {
     }
     for start in [1e30, -1e30] {
         assert_eq!(start + TAU, start, "premise: the sweep is absorbed");
-        let (sin, cos) = start.sin_cos();
+        let (sin, cos) = start.libm_sin_cos();
         let end = C + R * Vec2::new(cos, sin);
         assert_bounds(start, TAU, end, end);
     }

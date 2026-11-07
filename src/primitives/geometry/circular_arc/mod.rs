@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::{self, vec2};
+use crate::primitives::math::libm_ext::Libm;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, TAU};
 
@@ -56,7 +57,7 @@ impl CircularArc {
             ..
         } = self;
         let p_at = |a: f32| {
-            let (s, c) = a.sin_cos();
+            let (s, c) = a.libm_sin_cos();
             center + radius * Vec2::new(c, s)
         };
         let e0 = p_at(a0);

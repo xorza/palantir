@@ -16,6 +16,7 @@ use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::libm_ext::Libm;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -117,8 +118,8 @@ fn warmed_ui() -> Harness {
 /// Pointer position on a Lissajous path over the 640×400 surface, so hover transitions fire.
 fn pointer_at(i: u32) -> Vec2 {
     let t = i as f32 * 0.037;
-    let x = 320.0 + (t.cos() * 280.0);
-    let y = 200.0 + ((t * 1.31).sin() * 160.0);
+    let x = 320.0 + (t.libm_cos() * 280.0);
+    let y = 200.0 + ((t * 1.31).libm_sin() * 160.0);
     Vec2::new(x, y)
 }
 
@@ -156,8 +157,8 @@ pub(crate) fn atomic(c: &mut Criterion) {
         b.iter(|| {
             let t = i as f32 * 0.05;
             let d = ui.on_input(InputEvent::ScrollPixels(Vec2::new(
-                t.cos() * 5.0,
-                (t * 0.7).cos() * 5.0,
+                t.libm_cos() * 5.0,
+                (t * 0.7).libm_cos() * 5.0,
             )));
             i = i.wrapping_add(1);
             black_box(d);

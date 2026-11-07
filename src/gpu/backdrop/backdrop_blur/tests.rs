@@ -6,6 +6,7 @@ use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::math::libm_ext::Libm;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::blur_plan::internals::{mirror, reference_tent};
 use glam::UVec2;
@@ -64,7 +65,7 @@ fn srgb_decode(byte: u8) -> f64 {
     if c <= 0.04045 {
         c / 12.92
     } else {
-        ((c + 0.055) / 1.055).powf(2.4)
+        ((c + 0.055) / 1.055).libm_powf(2.4)
     }
 }
 
@@ -318,7 +319,7 @@ fn the_passes_match_the_reference_arithmetic() {
         let dest = job.dest_rect();
         let got = blur(&gpu, &pixels, &mut [job], dest.max());
         let want = reference(plan, &pixels);
-        let tolerance = f64::from(plan.levels() + 2) * 2f64.powi(-11);
+        let tolerance = f64::from(plan.levels() + 2) * 2f64.libm_powi(-11);
         let apron = i64::from(plan.apron());
         let level = want[0].size;
         for y in 0..dest.size.y {

@@ -8,6 +8,7 @@ use crate::host::harness::harness_builder::Depth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
@@ -192,11 +193,11 @@ fn the_glint_fades_to_nothing_where_the_bezel_meets_the_flat_top() {
     let (bezel, thickness, f0) = (16.0_f64, 12.0_f64, 0.04_f64);
     let glint = |inward: f64, facing: f64| {
         let g = 1.0 - (inward / bezel).clamp(0.0, 1.0);
-        let rise = (1.0 - g.powi(4)).max(1e-30);
-        let slope = thickness / bezel * g.powi(3) * rise.powf(-0.75);
-        let cos = 1.0 / slope.hypot(1.0);
-        let sin = slope / slope.hypot(1.0);
-        (f0 + (1.0 - f0) * (1.0 - cos).powi(5)) * sin * facing.max(0.0)
+        let rise = (1.0 - g.libm_powi(4)).max(1e-30);
+        let slope = thickness / bezel * g.libm_powi(3) * rise.libm_powf(-0.75);
+        let cos = 1.0 / slope.libm_hypot(1.0);
+        let sin = slope / slope.libm_hypot(1.0);
+        (f0 + (1.0 - f0) * (1.0 - cos).libm_powi(5)) * sin * facing.max(0.0)
     };
     let diagonal = std::f32::consts::FRAC_1_SQRT_2;
     let (left, top_left, right) = ([-1.0, 0.0], [-diagonal, -diagonal], [1.0, 0.0]);

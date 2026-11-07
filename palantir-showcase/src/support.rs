@@ -7,6 +7,10 @@
 //!
 //! Pages never paint their own root or header; they emit `Section`s, with fixed `TILE`-square
 //! `DemoCell`s for paint demos.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a demo of the crate, whose frames owe no two systems the same bits"
+)]
 
 use std::ops::RangeInclusive;
 use std::panic::Location;

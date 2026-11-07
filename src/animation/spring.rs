@@ -3,6 +3,7 @@
 //! whatever `dt` is.
 
 use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::libm_ext::Libm;
 use std::f64::consts::PI;
 
 pub(super) const SPRING_ERROR: &str = "spring parameters must be positive, finite, converge at 1/s or faster, and swing slower than 30 Hz";
@@ -162,7 +163,7 @@ impl SpringTransition {
         let discriminant = discriminant(stiffness, half_damping);
         // `ec` and `es` are `e^(-h·t)·C(t)` and `e^(-h·t)·S(t)`.
         let (ec, es) = if discriminant < 0.0 {
-            let decay = (-half_damping * dt).exp();
+            let decay = (-half_damping * dt).libm_exp();
             let psi = (-discriminant).sqrt();
             let theta = psi * dt;
             // `sin(θ)/θ`, not a series: `sin` is accurate near zero, so only
@@ -170,16 +171,16 @@ impl SpringTransition {
             let sinc = if theta == 0.0 {
                 1.0
             } else {
-                theta.sin() / theta
+                theta.libm_sin() / theta
             };
-            (decay * theta.cos(), decay * dt * sinc)
+            (decay * theta.libm_cos(), decay * dt * sinc)
         } else {
             let psi = discriminant.sqrt();
             let theta = psi * dt;
             // The slow root's decay `e^(-(h-ψ)t)` scales the product; `ψ < h`
             // for positive stiffness, so it never exceeds 1.
-            let slow = ((psi - half_damping) * dt).exp();
-            let shrink = (-2.0 * theta).exp_m1();
+            let slow = ((psi - half_damping) * dt).libm_exp();
+            let shrink = (-2.0 * theta).libm_exp_m1();
             let sinhc = if theta == 0.0 {
                 1.0
             } else {

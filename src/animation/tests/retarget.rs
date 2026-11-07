@@ -8,6 +8,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::animation::tests::support::{self, SLOT};
 use crate::primitives::math::domain;
+use crate::primitives::math::libm_ext::Libm;
 use std::time::Duration;
 
 #[test]
@@ -126,7 +127,7 @@ fn each_target_starts_the_model_it_comes_with() {
         0.016,
     );
     let t = f64::from(0.016_f32);
-    let from_rest = 2.0 - 1.625 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
+    let from_rest = 2.0 - 1.625 * (-13.0 * t).libm_exp() * (t.libm_cos() + 13.0 * t.libm_sin());
     domain::internals::assert_close(
         spring_result.value,
         from_rest,
@@ -289,7 +290,7 @@ fn a_change_too_small_to_animate_does_not_shorten_the_next() {
             dt,
         )
     };
-    let tiny = 2.0_f32.powi(-20);
+    let tiny = 2.0_f32.libm_powi(-20);
     let _ = step(0.0, 0, 0.0);
     let small = step(tiny, 1, 0.25);
     assert_eq!((small.value, small.settled), (tiny, true));

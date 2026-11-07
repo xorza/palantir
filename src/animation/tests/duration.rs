@@ -10,6 +10,7 @@ use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -142,7 +143,7 @@ fn one_floor_animates_a_small_change_under_either_motion() {
     let delta = 5.0e-4_f32;
     let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
     let t = f64::from(0.016f32);
-    let spring_travel = 1.0 - (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
+    let spring_travel = 1.0 - (-13.0 * t).libm_exp() * (t.libm_cos() + 13.0 * t.libm_sin());
     for (label, spec) in [("spring", AnimationSpec::SPRING), ("duration", duration)] {
         let mut map = AnimationMapTyped::<f32>::default();
         let id = support::widget_id(label);
@@ -189,8 +190,9 @@ fn one_floor_animates_a_small_change_under_either_motion() {
     assert!(!moving.settled, "the hover fades over several frames");
     // A neutral's Oklab lightness is the cube root of its linear value, so the spring travels its
     // share in lightness and the channel is that lightness cubed.
-    let lightness = |c: RgbaF32| f64::from(c.r).cbrt();
-    let expected = (lightness(rest) + (lightness(hover) - lightness(rest)) * spring_travel).powi(3);
+    let lightness = |c: RgbaF32| f64::from(c.r).libm_cbrt();
+    let expected =
+        (lightness(rest) + (lightness(hover) - lightness(rest)) * spring_travel).libm_powi(3);
     domain::internals::assert_close(
         moving.value.r,
         expected,

@@ -1,4 +1,5 @@
 use crate::primitives::math::lerp::Lerp;
+use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens, bend_root, ceiling_bend};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -403,7 +404,7 @@ fn srgb_encode(c: f64) -> f64 {
     if c <= 0.003_130_8 {
         12.92 * c
     } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
+        1.055 * c.libm_powf(1.0 / 2.4) - 0.055
     }
 }
 
@@ -412,7 +413,7 @@ fn srgb_decode(e: f64) -> f64 {
     if e <= 0.040_45 {
         e / 12.92
     } else {
-        ((e + 0.055) / 1.055).powf(2.4)
+        ((e + 0.055) / 1.055).libm_powf(2.4)
     }
 }
 
@@ -440,7 +441,7 @@ fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
         "{}",
         ceiling_bend()
     );
-    let floor_bend = bend_root().powf(2.4);
+    let floor_bend = bend_root().libm_powf(2.4);
     assert!((floor_bend - 0.013_640_8).abs() < 1e-7, "{floor_bend}");
     assert!(floor_bend < 4.5 * 0.05 - 0.05);
     let channels = |c: RgbaF32| [f64::from(c.r), f64::from(c.g), f64::from(c.b)];
