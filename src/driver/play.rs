@@ -2,7 +2,7 @@
 //! stepped clock and a live window on real time play the same steps.
 
 use crate::driver::action::Action;
-use crate::driver::error::{ActError, PlayError};
+use crate::driver::error::{PlayError, StepError};
 use crate::driver::locator::{Locator, Reach};
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::primitives::input::input_event::InputEvent;
@@ -50,9 +50,9 @@ pub(crate) trait Stage<X> {
 pub(crate) fn play_all<X: Debug>(
     stage: &mut impl Stage<X>,
     actions: &[Action<X>],
-) -> Result<(), ActError> {
-    for (ran, action) in actions.iter().enumerate() {
-        play(stage, action).map_err(|error| ActError { ran, error })?;
+) -> Result<(), StepError> {
+    for (step, action) in actions.iter().enumerate() {
+        play(stage, action).map_err(|error| StepError { step, error })?;
     }
     Ok(())
 }
@@ -67,13 +67,14 @@ pub(crate) fn frames_recorded(first: u64, last: u64) -> u32 {
 /// frame that fails while a step holds a press, a key or a modifier still lets the step release
 /// them, as a remote's frame fails while a native dialog that step opened holds the window's
 /// thread, so an error leaves nothing held for the next step. A [`Action::KeyDown`] step that
-/// succeeds leaves its key held by intent.
+/// succeeds leaves its key held by intent. A step with no modifiers sends no change of them, so a
+/// key a person holds at a live window stays held.
 pub(crate) fn play<X: Debug>(
     stage: &mut impl Stage<X>,
     action: &Action<X>,
 ) -> Result<(), PlayError> {
     match action {
-        Action::Move(at) => {
+        Action::Hover(at) => {
             let point = stage.point(at, Reach::Hover)?;
             stage.input(InputEvent::PointerMoved(point));
         }
@@ -110,12 +111,13 @@ pub(crate) fn play<X: Debug>(
             }
             hover(stage, start)?;
             stage.space_press()?;
-            stage.input(InputEvent::ModifiersChanged(mods.held()));
-            stage.input(InputEvent::PointerPressed(*button));
-            let moved = drag_moves(stage, start, end, *steps);
-            stage.input(InputEvent::PointerReleased(*button));
-            let released = moved.and_then(|()| stage.frame());
-            stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
+            let released = under_mods(stage, *mods, |stage| {
+                stage.input(InputEvent::PointerPressed(*button));
+                let moved = drag_moves(stage, start, end, *steps);
+                stage.input(InputEvent::PointerReleased(*button));
+                moved?;
+                stage.frame()
+            });
             stage.note_press();
             released?;
         }
@@ -135,24 +137,26 @@ pub(crate) fn play<X: Debug>(
             stage.input(InputEvent::Pinch(*factor));
         }
         Action::Key(shortcut) => {
-            let pressed = key_down(stage, *shortcut);
-            // A hand lets go, so no key reads as held after the step.
-            stage.input(InputEvent::KeyUp { key: shortcut.key });
-            stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
-            pressed?;
+            under_mods(stage, shortcut.mods, |stage| {
+                let pressed = key_down(stage, *shortcut);
+                // A hand lets go, so no key reads as held after the step.
+                stage.input(InputEvent::KeyUp { key: shortcut.key });
+                pressed
+            })?;
         }
         Action::KeyDown(shortcut) => {
-            let pressed = key_down(stage, *shortcut);
-            if pressed.is_err() {
-                stage.input(InputEvent::KeyUp { key: shortcut.key });
-            }
-            stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
-            pressed?;
+            under_mods(stage, shortcut.mods, |stage| {
+                let pressed = key_down(stage, *shortcut);
+                if pressed.is_err() {
+                    stage.input(InputEvent::KeyUp { key: shortcut.key });
+                }
+                pressed
+            })?;
         }
         Action::KeyUp(shortcut) => {
-            stage.input(InputEvent::ModifiersChanged(shortcut.mods.held()));
-            stage.input(InputEvent::KeyUp { key: shortcut.key });
-            stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
+            under_mods(stage, shortcut.mods, |stage| {
+                stage.input(InputEvent::KeyUp { key: shortcut.key });
+            });
         }
         Action::Type(text) => {
             for c in text.chars() {
@@ -167,11 +171,26 @@ pub(crate) fn play<X: Debug>(
     stage.settle()
 }
 
-/// Press `shortcut` with its modifiers held, and run the frame that reads it held.
+/// Press `shortcut`'s key and run the frame that reads it held.
 fn key_down<X>(stage: &mut impl Stage<X>, shortcut: Shortcut) -> Result<(), PlayError> {
-    stage.input(InputEvent::ModifiersChanged(shortcut.mods.held()));
     stage.input(shortcut.key_down());
     stage.frame()
+}
+
+/// Run `step` with `mods` held and let them go after it, whatever it returns. With no modifiers it
+/// runs under what is held, and no change goes out.
+fn under_mods<X, S: Stage<X>, R>(
+    stage: &mut S,
+    mods: ShortcutMods,
+    step: impl FnOnce(&mut S) -> R,
+) -> R {
+    if mods == ShortcutMods::NONE {
+        return step(stage);
+    }
+    stage.input(InputEvent::ModifiersChanged(mods.held()));
+    let result = step(stage);
+    stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
+    result
 }
 
 /// A held drag's way from `start` to `end`: a frame after the press, then `steps` even moves, a
@@ -205,11 +224,11 @@ fn press_and_release<X>(
     button: PointerButton,
     mods: ShortcutMods,
 ) -> Result<(), PlayError> {
-    stage.input(InputEvent::ModifiersChanged(mods.held()));
-    stage.input(InputEvent::PointerPressed(button));
-    let pressed = stage.frame();
-    stage.input(InputEvent::PointerReleased(button));
-    let released = pressed.and_then(|()| stage.frame());
-    stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
-    released
+    under_mods(stage, mods, |stage| {
+        stage.input(InputEvent::PointerPressed(button));
+        let pressed = stage.frame();
+        stage.input(InputEvent::PointerReleased(button));
+        pressed?;
+        stage.frame()
+    })
 }

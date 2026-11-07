@@ -109,7 +109,7 @@ pub enum PlayError {
     Locate(LocateError),
     /// The window still asked for frames after `frames` of them: an animation that never ends,
     /// or an app that asks a repaint every frame. The step that failed is the caller's to name, as
-    /// an [`ActError`] does by its index.
+    /// a [`StepError`] does by its index.
     Unsettled {
         /// What the wait ran to: on a harness its bound in frames,
         /// [`settle_frames`](crate::HarnessBuilder::settle_frames), and on a remote, whose bound
@@ -225,23 +225,22 @@ impl From<LocateError> for PlayError {
     }
 }
 
-/// Why a list of [`Action`](crate::Action)s stopped: the step it stopped at, after `ran` steps
-/// played.
+/// Why a list of [`Action`](crate::Action)s stopped: the step that failed, and why.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ActError {
-    /// The steps played before the one that failed.
-    pub ran: usize,
-    /// Why that one failed.
+pub struct StepError {
+    /// The index of the step that failed, which is also the count of steps played before it.
+    pub step: usize,
+    /// Why it failed.
     pub error: PlayError,
 }
 
-impl Display for ActError {
+impl Display for StepError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "action {} failed", self.ran)
+        write!(f, "step {} failed", self.step)
     }
 }
 
-impl error::Error for ActError {
+impl error::Error for StepError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         Some(&self.error)
     }
@@ -249,11 +248,11 @@ impl error::Error for ActError {
 
 #[cfg(test)]
 mod tests {
-    use crate::driver::error::{ActError, LocateError, PlayError};
+    use crate::driver::error::{LocateError, PlayError, StepError};
     use std::error::Error;
     use std::time::Duration;
 
-    /// A cause shows once in a chain: a failed action names its step and hands on why, and a
+    /// A cause shows once in a chain: a failed list names its step and hands on why, and a
     /// locate failure, which a play error shows in its own words, is not handed on again.
     #[test]
     fn each_cause_shows_once_in_the_chain() {
@@ -264,13 +263,13 @@ mod tests {
         assert_eq!(play.to_string(), locate.to_string());
         assert!(play.source().is_none());
 
-        let act = ActError {
-            ran: 3,
+        let failed = StepError {
+            step: 3,
             error: play.clone(),
         };
-        assert_eq!(act.to_string(), "action 3 failed");
+        assert_eq!(failed.to_string(), "step 3 failed");
         assert_eq!(
-            act.source().map(ToString::to_string),
+            failed.source().map(ToString::to_string),
             Some(play.to_string())
         );
     }

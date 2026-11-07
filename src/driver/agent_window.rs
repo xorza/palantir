@@ -1,7 +1,7 @@
 //! [`AgentWindow`]: the verbs an agent drives a window with, on either host.
 
 use crate::driver::action::Action;
-use crate::driver::error::{ActError, PlayError};
+use crate::driver::error::{PlayError, StepError};
 use crate::driver::locator::{Found, Locate, Locator};
 use crate::primitives::geometry::rect::Rect;
 use crate::ui::Ui;
@@ -20,8 +20,8 @@ pub trait AgentWindow<A> {
     ///
     /// # Errors
     ///
-    /// [`ActError`], naming the step it stopped at.
-    fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>;
+    /// [`StepError`], naming the step it stopped at.
+    fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError>;
 
     /// Run the window until a frame asks no repaint and the app is not [busy](crate::App::is_busy);
     /// returns the frames recorded, as [`Self::play`] counts them.

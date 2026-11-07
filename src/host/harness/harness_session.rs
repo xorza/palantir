@@ -2,7 +2,7 @@
 
 use crate::driver::action::Action;
 use crate::driver::agent_window::AgentWindow;
-use crate::driver::error::{ActError, PlayError};
+use crate::driver::error::{PlayError, StepError};
 use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, Stage};
 use crate::host::harness::{Harness, device_answered};
@@ -33,8 +33,8 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     ///
     /// # Errors
     ///
-    /// [`ActError`], naming the step it stopped at.
-    fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError> {
+    /// [`StepError`], naming the step it stopped at.
+    fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError> {
         let first = self.harness.ui().record_frame_id();
         let mut stage = HarnessStage {
             h: self.harness,
@@ -137,12 +137,8 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
         Ok(at.point_for(self.app, self.h.ui(), reach)?)
     }
 
-    /// A modifier change that holds what is held already sends nothing, which would wait a frame.
     fn input(&mut self, event: InputEvent<'_>) {
-        match event {
-            InputEvent::ModifiersChanged(mods) => self.h.hold_modifiers(mods),
-            event => self.h.on_input(event),
-        };
+        self.h.on_input(event);
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {

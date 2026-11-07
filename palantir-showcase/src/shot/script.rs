@@ -203,7 +203,7 @@ fn step(head: &str, words: &mut Words) -> Result<StepKind, ParseErrorKind> {
             act(Action::Click { at, button, mods })
         }
         "double-click" => act(Action::DoubleClick(words.locator()?)),
-        "hover" => act(Action::Move(words.locator()?)),
+        "hover" => act(Action::Hover(words.locator()?)),
         "drag" => {
             let from = words.locator()?;
             words.keyword("to")?;

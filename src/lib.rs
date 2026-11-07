@@ -244,7 +244,7 @@ pub use display::system_scale::SystemScale;
 pub use display::user_scale::UserScale;
 pub use driver::action::Action;
 pub use driver::agent_window::AgentWindow;
-pub use driver::error::{ActError, LocateError, PlayError};
+pub use driver::error::{LocateError, PlayError, StepError};
 pub use driver::locator::{Found, Locate, Locator};
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;

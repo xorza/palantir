@@ -110,83 +110,28 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 `Harness` runs one window with no desktop for unit tests, UI tests and agents; `Remote` plays the
 same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s module doc.
 
-- **A host owns its windows; the frame step is the core's.** A host that paints holds a
-  `HostCore`, its `HostCpu` and its `HostDevice`, each its own type, and runs every frame through
-  `HostDevice::frame` and `HostDevice::submit` on its `WindowFrames`; a harness below
-  `Depth::Gpu` holds the `HostCpu` alone. The two headless hosts share one private
-  `HeadlessWindow`, which runs their frame, and each keeps only its clock and its target.
-  Refused: one core with an optional device half, which every host that always paints
-  unwrapped; the two headless hosts merged into one public type, which splits the window by how
-  many a host has; their fields and methods copied into both, which drifted.
-- **The harness is a host**, on the core and window frames the desktop runs. Refused: a `Ui`
-  field, a frame loop every app pays for; a separate crate, which cannot reach the core; a
-  frame path of its own, which drifts
-  ([egui_kittest](https://docs.rs/egui_kittest/latest/egui_kittest/struct.Harness.html),
+- **The harness is a host**, on the core and window frames the desktop runs, public with no
+  feature. Refused: a frame path of its own, which drifts; a separate crate, which cannot reach the
+  core ([egui_kittest](https://docs.rs/egui_kittest/latest/egui_kittest/struct.Harness.html),
   [masonry](https://docs.rs/masonry/latest/src/masonry/testing/harness.rs.html),
-  [Slint](https://docs.rs/i-slint-backend-testing/latest/i_slint_backend_testing/),
-  [Flutter](https://api.flutter.dev/flutter/flutter_test/WidgetTester-class.html),
-  [iced_test](https://docs.rs/iced_test)).
-- **Public, with no feature**, as it adds no dependency. Refused: masonry's `testing` feature.
-- **Three depths, record by default.** Refused: a GPU for every test; a CPU rasterizer, a second
-  renderer to keep equal to the GPU one.
-- **A stepped clock and a warm start**, so a run repeats and pass counts hold.
-- **A closure is an app**, and frames take `impl FnMut(&mut Ui)`, as rustc infers a closure's
-  argument types only from an `Fn` bound. Refused: egui_kittest's owned state.
-- **A locator hits what the input reaches**: the topmost widget that senses it. Refused: `dyn`
-  locators; any sensing widget, which reaches a button a label covers.
-- **Methods are input; `play` is a person.** A method queues events and panics on a missed
-  locator; `play` settles, spaces presses and returns an error an agent reads.
-- **One set of agent verbs**: `AgentWindow` (`play`, `settle`, `shot`, `read`, `query`, `find`,
-  `widgets`), on a `Remote` and on `Harness::session(&mut app)`, so a driver writes a step once for
-  both hosts.
-  Refused: matching inherent methods on each host, which darkroom still joined in an enum; a
-  harness that owns its app, which the closure-as-app rule refuses.
-- **`play` refuses a step that would pass with no sign**: a press on a disabled widget, a drag
-  under the drag threshold, as Playwright's actionability
-  check refuses a target that is not enabled. A hover still reaches a disabled widget.
-- **A busy app holds a settle while it wakes the window**: the wait for a wake starts again at
-  each, and only frames that ask for another count against `settle_frames`, for twenty waits
-  at most (`BUSY_SETTLE_WAITS`), ten minutes at a remote's default. Refused: no bound, a step
-  that hangs while the app reports progress forever.
-- **A settle waits for no timer.** A timed wake, a tooltip's delay or a caret's blink, is not a
-  frame the window owes now, as Flutter's `pumpAndSettle` pumps the frames scheduled and fires
-  no `Timer`; a step that needs one waits for it with `Action::Wait`. Refused: waiting out the
-  timed wakes that record, which an app's periodic timer would hold for ever.
-- **`key` restores the modifiers held before.** Refused: a key that leaves them held.
-- **Scroll names its kind** (`scroll_pixels`, `scroll_lines`). Refused: `ScrollDelta`, negated
-  at ingest.
-- **One window; its commands are recorded.** Refused: a panic, which ends an agent's session.
-- **`Remote` reads and queries between two frames inside the app**, as Flutter's driver extension
-  and Slint's MCP server do.
-- **A read asks no frame; a query does.** `read` takes `&` the app and counts no event, so a look
-  at a hidden window leaves the next settle alone, and locators and widget lists go through it.
-  `query` takes `&mut` the app, and the frame it asks makes what it changed show. Refused: one
-  door that records, where each look ran a frame and a look at a hidden window failed the settle.
-- **No MCP server in palantir.** Refused for now: a feature over rmcp, which brings an async runtime
-  and a fast-moving public dependency; a feature written by hand, as Slint's internal `mcp` is
-  ([Slint](https://cdn.jsdelivr.net/gh/slint-ui/slint@1.16.0/docs/development/mcp-server.md)), a
-  protocol to keep up to date. A second app with a server would argue for a `palantir-mcp` crate.
-- **A shot scales down in palantir**, so the shipped build needs no image crate. The showcase's
-  long side is 2,576 px, which Claude reads with no downscale
-  ([Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision)).
-- **The showcase's shot mode is a script**, as iced's `.ice` tests, rebuilt per call so a shot
-  never shows a stale binary.
-- **The visual suite stays on `OffscreenHost`**, as it tests presentation paths.
-- **The visual suite wears a theme of its own**: `palantir-showcase/tests/visual/theme/`, each
-  `Theme` written out whole, with the scheme pinned to dark. No recipe, `Palette`, `Metrics` or fallback scheme moves
-  a golden, and a new `Theme` field fails to compile until both themes hold it. Refused: the
-  stock recipes over a pinned palette and metrics, which a recipe change still reached; a theme
-  file, a second format to keep in step with the type.
-- **A settle waits out a busy app** through `App::is_busy` and `Ui::waker`. Refused: a
-  `HostHandle` on the harness, which brings winit; a flag the record sets, stale when no frame
-  records ([Playwright auto-wait](https://playwright.dev/docs/actionability)).
-- **`capture` renders one frame at the parked clock**, in the target's format, and runs no
-  other, so a recording sets each frame's time. Refused: `shot`, which runs frames until the
-  picture lands and moves the clock; `read_back`, under `internals`, which an example cannot
-  rely on.
-- **A capture waits for its copy.** The target keeps one staging buffer, so a recording makes no
-  buffer a frame. Refused until measured: a ring of staging buffers that keeps frames in flight,
-  the usual recording pipeline.
+  [Flutter](https://api.flutter.dev/flutter/flutter_test/WidgetTester-class.html)).
+- **Three depths, record by default, on a stepped clock**, so a run repeats and a test pays only
+  for what it reads. Refused: a GPU for every test; a CPU rasterizer, a second renderer to keep
+  equal to the GPU one.
+- **One set of agent verbs on both hosts**, `AgentWindow`, so a driver writes a step once.
+  Refused: matching inherent methods on each host; a harness that owns its app.
+- **A step acts as a person does.** A locator hits what the input reaches, and `play` settles,
+  spaces presses, refuses a step that would pass with no sign, and returns an error an agent reads
+  ([Playwright actionability](https://playwright.dev/docs/actionability)).
+- **A played step changes the modifiers only when it names some**, so a key a person holds at a
+  live window stays held. Refused: clearing them around each step.
+- **A settle waits for what the window owes now, within a bound**, as Flutter's `pumpAndSettle`
+  pumps frames and fires no `Timer`. Refused: waiting out timers, or a busy app with no limit.
+- **No MCP server in palantir.** Refused for now: a feature over rmcp, which brings an async
+  runtime and a fast-moving public dependency; a feature written by hand, a protocol to keep up to
+  date. A second app with a server would argue for a `palantir-mcp` crate.
+- **The visual suite stays on `OffscreenHost` and wears a theme of its own**, as it tests
+  presentation paths and no recipe or palette may move a golden.
 
 ## Rounded-clip stencil
 

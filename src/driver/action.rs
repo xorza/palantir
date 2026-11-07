@@ -10,11 +10,13 @@ use std::convert::Infallible;
 use std::time::Duration;
 
 /// One step of input, as a person at the window takes it. A player runs frames until the window
-/// settles after each, so the next step reads what this one changed.
+/// settles after each, so the next step reads what this one changed. A step changes the modifiers
+/// only when it names some, and lets them all go at its end; one that names none leaves held what
+/// is held.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action<X = Infallible> {
-    /// Move the pointer there, as a hover.
-    Move(Locator<X>),
+    /// Move the pointer there.
+    Hover(Locator<X>),
     /// Press and release `button` there, holding `mods`.
     Click {
         /// Where the press lands.

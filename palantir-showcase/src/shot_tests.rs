@@ -69,7 +69,7 @@ fn locators_read_each_form() {
     ] {
         assert_eq!(
             steps(&format!("hover {word}")),
-            [StepKind::Act(Action::Move(want))],
+            [StepKind::Act(Action::Hover(want))],
             "{word}"
         );
     }
@@ -82,7 +82,7 @@ fn locators_read_each_form() {
     ] {
         assert_eq!(
             steps(&format!("hover {label:?}")),
-            [StepKind::Act(Action::Move(text(label)))],
+            [StepKind::Act(Action::Hover(text(label)))],
             "{label:?}"
         );
     }

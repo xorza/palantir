@@ -6,14 +6,9 @@ no features and one build per public feature; a tag names the builds an item or 
 line needs or loses. `internals` is the crate's own test surface and is left out.
 
 ```text
-ActError
-    struct ActError: Clone, Debug, Display, Error, PartialEq
-        pub ran: usize
-        pub error: PlayError
-
 Action
     enum Action<X = Infallible>
-        Move(Locator<X>)
+        Hover(Locator<X>)
         Click { at: Locator<X>, button: PointerButton, mods: ShortcutMods }
         DoubleClick(Locator<X>)
         Drag { from: Locator<X>, to: Locator<X>, button: PointerButton, mods: ShortcutMods, steps: u32 }
@@ -35,7 +30,7 @@ Action
 
 AgentWindow
     trait AgentWindow<A>
-        fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>
+        fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError>
         fn settle(&mut self) -> Result<u32, PlayError>
         fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError>
         fn read<R: Send + 'static>(&mut self, f: impl FnOnce(&A, &Ui) -> R + Send + 'static) -> Result<R, PlayError>
@@ -2248,6 +2243,11 @@ StatefulLook
         pub disabled: WidgetLook
         pub const fn pick(&self, state: &ResponseState, engagement: Engagement) -> &WidgetLook
         pub const fn each_mut(&mut self) -> [&mut WidgetLook; 4]
+
+StepError
+    struct StepError: Clone, Debug, Display, Error, PartialEq
+        pub step: usize
+        pub error: PlayError
 
 Stop
     struct Stop: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize

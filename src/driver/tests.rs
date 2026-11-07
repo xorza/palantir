@@ -10,7 +10,7 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
-use crate::primitives::input::shortcut::Shortcut;
+use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -390,7 +390,8 @@ impl Stage<Infallible> for ScriptedStage {
 /// A frame that fails mid-step leaves nothing held: each press and key still comes back up and the
 /// modifiers clear, a drag takes no move past the failure, no later frame runs, the first failure
 /// is the step's error, and a press still counts for the next one's spacing. Only a `KeyDown` that
-/// succeeds keeps its key down.
+/// succeeds keeps its key down. A step with no modifiers sends no change of them, so a key a
+/// person holds stays held.
 #[test]
 fn a_failed_frame_releases_what_the_step_holds() {
     use Seen::{Frame, MoveTo, Noted, Press, Release, Settle, Space};
@@ -399,6 +400,7 @@ fn a_failed_frame_releases_what_the_step_holds() {
     let (down, up) = (Seen::KeyDown(chord.key), Seen::KeyUp(chord.key));
     let (ctrl, none) = (Seen::Mods(Modifiers::CTRL), Seen::Mods(Modifiers::NONE));
     let mods = chord.mods;
+    let plain = Shortcut::key(chord.key);
     let at = Locator::Point(Vec2::new(10.0, 0.0));
     let drag = Action::Drag {
         from: at.clone(),
@@ -407,15 +409,72 @@ fn a_failed_frame_releases_what_the_step_holds() {
         mods,
         steps: 2,
     };
+    let plain_drag = Action::Drag {
+        from: at.clone(),
+        to: Locator::Point(Vec2::new(30.0, 0.0)),
+        button: PointerButton::Left,
+        mods: ShortcutMods::NONE,
+        steps: 1,
+    };
     let click = Action::Click {
         at: at.clone(),
         button: PointerButton::Left,
         mods,
     };
+    let plain_click = Action::click(at.clone());
     let double = Action::DoubleClick(at);
     let hover = [MoveTo(10.0), Settle, Space];
-    let one_click = [none, Press, Frame, Release, Frame, none];
-    let cases: [(&str, Action, Option<u64>, Vec<Seen>); 13] = [
+    let one_click = [Press, Frame, Release, Frame];
+    let cases: [(&str, Action, Option<u64>, Vec<Seen>); 19] = [
+        (
+            "a key up",
+            Action::KeyUp(chord),
+            None,
+            vec![ctrl, up, none, Settle],
+        ),
+        (
+            "a key with no modifiers",
+            Action::Key(plain),
+            None,
+            vec![down, Frame, up, Settle],
+        ),
+        (
+            "a key down with no modifiers",
+            Action::KeyDown(plain),
+            None,
+            vec![down, Frame, Settle],
+        ),
+        (
+            "a key up with no modifiers",
+            Action::KeyUp(plain),
+            None,
+            vec![up, Settle],
+        ),
+        (
+            "a click with no modifiers",
+            plain_click,
+            None,
+            [&hover[..], &one_click[..], &[Noted, Settle]].concat(),
+        ),
+        (
+            "a drag with no modifiers",
+            plain_drag,
+            None,
+            [
+                &hover[..],
+                &[
+                    Press,
+                    Frame,
+                    MoveTo(30.0),
+                    Frame,
+                    Release,
+                    Frame,
+                    Noted,
+                    Settle,
+                ],
+            ]
+            .concat(),
+        ),
         (
             "a key",
             Action::Key(chord),
@@ -540,18 +599,13 @@ fn a_failed_frame_releases_what_the_step_holds() {
             "a double click's first click fails",
             double.clone(),
             Some(0),
-            [&hover[..], &[none, Press, Frame, Release, none, Noted]].concat(),
+            [&hover[..], &[Press, Frame, Release, Noted]].concat(),
         ),
         (
             "a double click's second click fails",
             double,
             Some(2),
-            [
-                &hover[..],
-                &one_click[..],
-                &[none, Press, Frame, Release, none, Noted],
-            ]
-            .concat(),
+            [&hover[..], &one_click[..], &[Press, Frame, Release, Noted]].concat(),
         ),
     ];
     for (label, action, fail_from, want) in cases {

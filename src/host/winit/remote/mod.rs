@@ -15,7 +15,7 @@ use glam::Vec2;
 
 use crate::driver::action::Action;
 use crate::driver::agent_window::AgentWindow;
-use crate::driver::error::{ActError, PlayError};
+use crate::driver::error::{PlayError, StepError};
 use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
 use crate::host::winit::frame_summary::FrameSummary;
@@ -60,6 +60,7 @@ pub struct Remote<T: 'static> {
     handle: HostHandle<T>,
     window: WindowToken,
     /// Whether something outside the host holds the window's thread, as a native dialog does.
+    /// Boxed, as a type parameter for the caller's probe would reach every signature of a remote.
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
     /// The events sent, inputs and queries, which a frame that saw them all counts.
     sent: u64,
@@ -105,8 +106,8 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     ///
     /// # Errors
     ///
-    /// [`ActError`], naming the step it stopped at.
-    fn play<X: Locate<T>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError> {
+    /// [`StepError`], naming the step it stopped at.
+    fn play<X: Locate<T>>(&mut self, actions: &[Action<X>]) -> Result<u32, StepError> {
         let first = self.record_frame_id();
         play::play_all(&mut RemoteStage { remote: self }, actions)?;
         Ok(self.frames_since(first))
@@ -321,6 +322,8 @@ impl<T: 'static> Remote<T> {
 #[derive(Debug)]
 struct Asked<R> {
     reply: SyncSender<R>,
+    /// Read before `f` runs: a channel tells its sender the receiver left only through a send,
+    /// which comes after `f`.
     given_up: Arc<AtomicBool>,
 }
 

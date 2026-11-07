@@ -1,7 +1,7 @@
 use crate::display::system_scale::SystemScale;
 use crate::driver::action::Action;
 use crate::driver::agent_window::AgentWindow;
-use crate::driver::error::{ActError, LocateError, PlayError};
+use crate::driver::error::{LocateError, PlayError, StepError};
 use crate::driver::locator::{Found, Locator};
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
@@ -200,8 +200,8 @@ fn play_acts_as_a_person() {
     assert_eq!((app.one, app.double), (1, 0));
 
     let twin = Locator::from("Twin");
-    let Err(ActError {
-        ran: 0,
+    let Err(StepError {
+        step: 0,
         error: PlayError::Locate(LocateError::Ambiguous { matches, .. }),
     }) = h.session(&mut app).play(&[Action::click(twin.clone())])
     else {
@@ -215,18 +215,18 @@ fn play_acts_as_a_person() {
 
     assert!(matches!(
         h.session(&mut app)
-            .play(&[Action::Move("One".into()), Action::click("Hidden")]),
-        Err(ActError {
-            ran: 1,
+            .play(&[Action::Hover("One".into()), Action::click("Hidden")]),
+        Err(StepError {
+            step: 1,
             error: PlayError::Locate(LocateError::OffScreen { .. }),
         })
     ));
 
     assert!(matches!(
         h.session(&mut app)
-            .play(&[Action::Move("Off".into()), Action::click("Off")]),
-        Err(ActError {
-            ran: 1,
+            .play(&[Action::Hover("Off".into()), Action::click("Off")]),
+        Err(StepError {
+            step: 1,
             error: PlayError::Locate(LocateError::Disabled { .. }),
         })
     ));
@@ -239,8 +239,8 @@ fn play_acts_as_a_person() {
     };
     assert_eq!(
         h.session(&mut app).play(&[short]),
-        Err(ActError {
-            ran: 0,
+        Err(StepError {
+            step: 0,
             error: PlayError::ShortDrag { travel: 2.0 },
         })
     );
@@ -288,8 +288,9 @@ fn a_key_down_step_holds_its_key_until_a_key_up_step() {
     assert!(!held.get());
 }
 
-/// Each step settles: a `Wait` runs frames of one frame's time until it passed, and a click with
-/// modifiers releases them, so no modifier reads as held after it.
+/// Each step settles: a `Wait` runs frames of one frame's time until it passed. A step with no
+/// modifiers leaves held what is held, and a click with modifiers releases them, so no modifier
+/// reads as held after it.
 #[test]
 fn a_step_settles_and_lets_go() {
     let mut h = Harness::mono(UVec2::new(400, 200));
@@ -300,6 +301,14 @@ fn a_step_settles_and_lets_go() {
         .play(&[Action::<Infallible>::Wait(Duration::from_millis(100))])
         .unwrap();
     assert!(h.time >= before + Duration::from_millis(100));
+    h.hold_modifiers(Modifiers::ALT);
+    h.session(&mut app)
+        .play(&[
+            Action::<Infallible>::Key(Shortcut::key(Key::Escape)),
+            Action::<Infallible>::Hover("One".into()),
+        ])
+        .unwrap();
+    assert_eq!(h.ui().input().modifiers_after_held_input(), Modifiers::ALT);
     h.session(&mut app)
         .play(&[Action::<Infallible>::Click {
             at: "One".into(),

@@ -345,7 +345,7 @@ fn a_step_failed_by_a_held_thread_leaves_nothing_held() {
     for action in steps {
         held.store(true, Ordering::Release);
         let failed = remote.play(std::slice::from_ref(&action)).unwrap_err();
-        assert_eq!(failed.ran, 0, "{action:?}");
+        assert_eq!(failed.step, 0, "{action:?}");
         assert_eq!(failed.error, PlayError::Blocked, "{action:?}");
         held.store(false, Ordering::Release);
         remote.settle().unwrap();
