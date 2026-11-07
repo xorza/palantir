@@ -41,19 +41,26 @@ fn tier(module: &str) -> Option<usize> {
     ORDER.iter().position(|tier| tier.contains(&module))
 }
 
-/// The code of a file that ships: the text before its gated tail, an inline `mod internals` or
+/// The lines of a file that ship: those before its gated tail, an inline `mod internals` or
 /// `mod tests`, which may reach past the order as a bench and a test do. Only the inline forms
-/// close a file: a gated `mod tests;` may sit above code that ships.
-fn shipped(text: &str) -> &str {
-    let tail = [
-        "#[cfg(test)]\nmod tests {",
-        "#[cfg(test)]\npub(crate) mod internals {",
-        "#[cfg(feature = \"internals\")]\npub(crate) mod internals {",
-    ]
-    .iter()
-    .filter_map(|gate| text.find(gate))
-    .min();
-    &text[..tail.unwrap_or(text.len())]
+/// close a file: a gated `mod tests;` may sit above code that ships. By lines, so a checkout with
+/// CRLF line endings, as a Windows runner's is, reads as any other.
+fn shipped(text: &str) -> Vec<&str> {
+    const TAILS: [[&str; 2]; 3] = [
+        ["#[cfg(test)]", "mod tests {"],
+        ["#[cfg(test)]", "pub(crate) mod internals {"],
+        [
+            "#[cfg(feature = \"internals\")]",
+            "pub(crate) mod internals {",
+        ],
+    ];
+    let lines: Vec<&str> = text.lines().collect();
+    let tail = lines.windows(2).position(|pair| {
+        TAILS
+            .iter()
+            .any(|[gate, item]| pair[0] == *gate && pair[1].starts_with(item))
+    });
+    lines[..tail.unwrap_or(lines.len())].to_vec()
 }
 
 /// Each module of the order that `module`'s code `text` names and may not, and `{` for a grouped
@@ -61,7 +68,7 @@ fn shipped(text: &str) -> &str {
 fn edges_against_order<'a>(module: &str, text: &'a str) -> Vec<&'a str> {
     let from = tier(module).expect("a module of the order");
     shipped(text)
-        .lines()
+        .into_iter()
         .filter(|line| !line.trim_start().starts_with("//"))
         .flat_map(|line| {
             line.match_indices("crate::")
@@ -132,6 +139,24 @@ fn the_scan_finds_an_edge_against_the_order() {
         edges_against_order("ui", "#[cfg(test)]\nmod tests;\nuse crate::host::i::I;\n"),
         ["host"],
         "a gated declaration closes nothing"
+    );
+    assert_eq!(
+        edges_against_order(
+            "ui",
+            "use crate::widget_core::j::J;\r\n\
+             #[cfg(test)]\r\nmod tests { use crate::host::k::K; }\r\n"
+        ),
+        ["widget_core"],
+        "CRLF line endings close a file too"
+    );
+    assert_eq!(
+        edges_against_order(
+            "ui",
+            "#[cfg(feature = \"internals\")]\r\npub(crate) mod internals {\r\n\
+             use crate::host::l::L;\r\n}\r\n"
+        ),
+        Vec::<&str>::new(),
+        "and so does each other tail"
     );
 }
 

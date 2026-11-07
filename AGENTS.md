@@ -427,6 +427,8 @@ to see an edit work: it builds the gate's own test shape, so the gate finds that
 Run the aliases rather than cargo with flags of your own: another flag set builds another copy
 of the crates.
 
+- **A change to the public API also runs `cargo drive surface`** and commits the
+  `.notes/API_SURFACE.md` it writes. The gate chain does not run it, and CI fails on any difference.
 - **Every test run needs a GPU adapter**; a headless machine needs a software Vulkan driver
   (Mesa lavapipe).
 - **A slow first GPU test can be the build folder, not the GPU.** The first Metal call lists the
