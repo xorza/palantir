@@ -26,8 +26,8 @@ pub(super) const fn with_app_id(
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
 
 /// One line per notch: AppKit applies the person's scroll speed before the event arrives.
-pub(super) const fn wheel_steps() -> WheelSteps {
-    WheelSteps::ONE_LINE
+pub(super) fn wheel_steps() -> WheelSteps {
+    WheelSteps::default()
 }
 
 #[cfg(test)]

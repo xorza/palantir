@@ -117,10 +117,9 @@ impl SurfaceManager {
     /// and a platform may refuse a second surface on one window; configured on the new device, it
     /// would release its old swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
     ///
-    /// A new instance, as DX12's enumerates adapters from the DXGI factory it made when it opened
-    /// (wgpu-hal `dx12::Instance::enumerate_adapters`), which a driver update or a removed GPU
-    /// leaves stale (wgpu-hal rebuilds its own HDR factory once `IsCurrent` is false). Every other
-    /// window's surface is made again on it ([`Self::renew`]).
+    /// A new instance, so nothing the lost device's instance read of its adapters outlives a
+    /// driver update or a removed GPU. Every other window's surface is made again on it
+    /// ([`Self::renew`]).
     pub(crate) fn reopen<W>(
         &mut self,
         window: &Arc<W>,

@@ -50,40 +50,42 @@ impl<'a> PipelineRecipe<'a> {
     /// Build the pipeline, with the layout it is built over. Sole source of the descriptor fields
     /// pipelines don't vary (sample count, multiview mask).
     pub(crate) fn build(self, gpu: &Gpu) -> Pipeline {
-        let pipeline = gpu.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(self.label),
-            layout: Some(self.layout),
-            vertex: wgpu::VertexState {
-                module: self.shader,
-                entry_point: Some(self.vertex_entry),
-                compilation_options: wgpu::PipelineCompilationOptions {
-                    constants: self.constants,
+        let pipeline = gpu
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(self.label),
+                layout: Some(self.layout),
+                vertex: wgpu::VertexState {
+                    module: self.shader,
+                    entry_point: Some(self.vertex_entry),
+                    compilation_options: wgpu::PipelineCompilationOptions {
+                        constants: self.constants,
+                        ..Default::default()
+                    },
+                    buffers: self.vertex_buffers,
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: self.shader,
+                    entry_point: Some(self.fragment_entry),
+                    compilation_options: wgpu::PipelineCompilationOptions {
+                        constants: self.constants,
+                        ..Default::default()
+                    },
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: self.color_format,
+                        blend: self.blend,
+                        write_mask: self.color_writes,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: self.topology,
                     ..Default::default()
                 },
-                buffers: self.vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: self.shader,
-                entry_point: Some(self.fragment_entry),
-                compilation_options: wgpu::PipelineCompilationOptions {
-                    constants: self.constants,
-                    ..Default::default()
-                },
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: self.color_format,
-                    blend: self.blend,
-                    write_mask: self.color_writes,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: self.topology,
-                ..Default::default()
-            },
-            depth_stencil: self.depth_stencil,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+                depth_stencil: self.depth_stencil,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
         Pipeline {
             pipeline,
             layout: self.layout.clone(),

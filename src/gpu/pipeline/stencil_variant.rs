@@ -11,9 +11,8 @@ use crate::gpu::pipeline::pipeline_recipe::{Pipeline, PipelineRecipe};
 ///
 /// Each half is built on the first frame that draws through it ([`Self::ensure`]), as the frame's
 /// census asks before its passes record, so an app that never clips to a rounded rect builds no
-/// twin. Refused: both built up front, which made every format compile its twins one after
-/// another under the device's build lock (AGENTS.md "Pipeline builds"), on DX12 an FXC compile
-/// each, at startup and again at each device recovery.
+/// twin. Refused: both built up front, which made every format compile its twins, at startup and
+/// again at each device recovery.
 #[derive(Debug)]
 pub(crate) struct StencilVariant {
     base: Option<Pipeline>,

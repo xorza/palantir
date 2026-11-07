@@ -139,6 +139,7 @@ impl CubeRenderer {
         });
         let pipeline = ctx
             .gpu
+            .device()
             .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("showcase.cube.pipeline"),
                 layout: Some(&layout),

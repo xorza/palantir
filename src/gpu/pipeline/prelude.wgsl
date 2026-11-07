@@ -6,11 +6,6 @@
 // The whole immediate region: the viewport size and the fragment origin,
 // which the backend pushes after every pipeline bind. Every pipeline
 // layout declares its size, `IMMEDIATES_BYTES`.
-//
-// **Flat members, no nested structs**, should it ever grow: HLSL
-// constant-buffer rules start a *struct* member on the next 16-byte
-// register, past the root constants the layout declares, where Dx12
-// reads it back as zero. Vectors pack tightly inside one register.
 struct Immediates {
     viewport_size: vec2<f32>,
     // The surface pixel the target's pixel 0 is: zero, but on a damage

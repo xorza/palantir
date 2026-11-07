@@ -128,14 +128,16 @@ pub(crate) mod internals {
                     label: Some(self.label),
                     source: wgpu::ShaderSource::Wgsl((self.specialize() + probe).into()),
                 });
-            let pipeline = gpu.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("test.probe"),
-                layout: None,
-                module: &module,
-                entry_point: Some("probe"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                cache: None,
-            });
+            let pipeline = gpu
+                .device
+                .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("test.probe"),
+                    layout: None,
+                    module: &module,
+                    entry_point: Some("probe"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    cache: None,
+                });
             let input = gpu
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {

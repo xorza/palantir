@@ -19,13 +19,17 @@ pub(crate) struct WheelTravel {
     pub(crate) pages: Vec2,
 }
 
-impl WheelSteps {
-    /// A system that states no setting.
-    pub(crate) const ONE_LINE: Self = Self {
-        vertical_lines: Some(1.0),
-        horizontal_lines: 1.0,
-    };
+/// One line per notch, on a system that states no setting.
+impl Default for WheelSteps {
+    fn default() -> Self {
+        Self {
+            vertical_lines: Some(1.0),
+            horizontal_lines: 1.0,
+        }
+    }
+}
 
+impl WheelSteps {
     /// What a turn of `notches` scrolls under these settings.
     pub(crate) const fn travel(self, notches: Vec2) -> WheelTravel {
         let lines_x = notches.x * self.horizontal_lines;
@@ -53,7 +57,7 @@ mod tests {
     fn a_turn_travels_by_each_setting() {
         let turn = Vec2::new(2.0, -0.5);
         let rows = [
-            (WheelSteps::ONE_LINE, [2.0, -0.5], [0.0, 0.0]),
+            (WheelSteps::default(), [2.0, -0.5], [0.0, 0.0]),
             (
                 WheelSteps {
                     vertical_lines: Some(3.0),

@@ -127,7 +127,6 @@ wgpu = { version = "30.0", default-features = false, features = [
     "wgsl",
     "vulkan",
     "metal",
-    "dx12",
     "gles",
 ] }
 windows = { version = "0.62", default-features = false, features = [

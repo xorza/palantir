@@ -7,8 +7,7 @@ use crate::text::shaper::TextShaper;
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct GpuInitCtx<'a> {
-    /// The device to create resources against, through [`Gpu::device`], and pipelines, through
-    /// [`Gpu::create_render_pipeline`] and [`Gpu::create_compute_pipeline`].
+    /// The device to create resources and pipelines against, through [`Gpu::device`].
     pub gpu: &'a Gpu,
     /// The off-screen color target's format (`Rgba8UnormSrgb`); match it in your pipeline.
     pub target_format: wgpu::TextureFormat,

@@ -28,8 +28,8 @@ pub(super) fn with_app_id(attrs: WindowAttributes, app_id: Option<&str>) -> Wind
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = Some(Duration::from_millis(400));
 
 /// One line per notch: neither the X11 nor the Wayland protocol states a scroll setting.
-pub(super) const fn wheel_steps() -> WheelSteps {
-    WheelSteps::ONE_LINE
+pub(super) fn wheel_steps() -> WheelSteps {
+    WheelSteps::default()
 }
 
 #[cfg(test)]

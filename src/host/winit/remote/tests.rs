@@ -497,7 +497,7 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
 #[test]
 fn a_settle_that_outlasts_its_wait_says_why() {
     let (handle, thread) = serve();
-    // Long enough for a frame on a loaded software adapter: 50 ms read a Windows runner's WARP
+    // Long enough for a frame on a loaded software adapter: 50 ms read a Windows runner's
     // frame as no frame, at 63 ms.
     let wait = Duration::from_millis(250);
     let mut remote = handle.remote(WINDOW).with_tick(TICK).with_wait(wait);

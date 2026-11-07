@@ -56,7 +56,7 @@ Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
 
 - **No frame reads the last frame from the swapchain.** wgpu hands out each image
   uninitialized, so a frame that keeps pixels paints through the backbuffer.
-- **Never sample a swapchain image.** Metal, DX12 and GL offer no `TEXTURE_BINDING`; a pass that
+- **Never sample a swapchain image.** Metal and GL offer no `TEXTURE_BINDING`; a pass that
   samples the frame samples the backbuffer. Refused: a Vulkan-only sampled path an Apple GPU cannot
   run.
 - **Ask only for usages the surface offers.** `COPY_DST` and `COPY_SRC` are optional, and each
@@ -65,17 +65,17 @@ Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
   reconfigure.
 - **`configure` runs only on a change**, as it waits for the device to idle.
 
-## Pipeline builds
+## Backends
 
-- **Builds on one device take turns**, under a lock every clone of a `Gpu` shares; `clippy.toml`
-  sends each build through it. wgpu-hal's DX12 shader cache hands FXC blobs to concurrent builds,
-  and FXC counts their references without atomics, which frees a cached blob
-  ([gfx-rs/wgpu#10547](https://github.com/gfx-rs/wgpu/issues/10547)). Refused: a process-wide
-  lock, state with no owner; a shader per thread through distinct entry points
-  ([photocraft#9182](https://github.com/storytold/photocraft/pull/9182)), a rule every new
-  shader must keep; DXC, a DLL each app must ship. Cost: builds on a shared device run one at a
-  time on every backend. The turn guards no data, so it alone passes on poison; every other lock
-  panics on it through `crate::common::sync`.
+- **Vulkan, Metal and GL; no Direct3D 12.** A Windows machine runs Vulkan, or GL where its driver
+  offers compute, and one with neither gets a refusal that names why. CI runs Mesa's lavapipe on
+  Windows, as [wgpu's own CI](https://github.com/gfx-rs/wgpu/blob/trunk/.github/actions/install-mesa/action.yml)
+  installs it. Cost: GL on Windows has no CI run, and a machine with no Vulkan driver loses
+  Direct3D's fallback: Intel's integrated GPUs before Skylake on Windows, and a VM with no GPU driver,
+  which WARP served. Refused: Direct3D 12 as a fallback or first, as Chrome and Firefox use it on
+  Windows: FXC, its compiler that needs no DLL shipped, frees cached blobs across threads
+  ([gfx-rs/wgpu#10547](https://github.com/gfx-rs/wgpu/issues/10547)), which took a lock around every
+  pipeline build on every backend, and HLSL's constant-buffer rules broke the immediates.
 
 ## Device loss
 

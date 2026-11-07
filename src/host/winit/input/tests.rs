@@ -260,7 +260,7 @@ fn a_wheel_event_carries_each_lane() {
     let down = Vec2::new(0.0, 2.0);
     let rows = [
         (
-            WheelSteps::ONE_LINE,
+            WheelSteps::default(),
             empty,
             Platform::Linux,
             [0.0, 2.0],

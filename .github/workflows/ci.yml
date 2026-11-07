@@ -29,19 +29,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows is here for Dx12, which runs nowhere else. Compiling it is
-        # not enough: a backend can disagree about layout and fail only at
-        # runtime. This crate has met that once already — HLSL constant-buffer
-        # rules put a nested immediate member on the next register, and text
-        # vanished on Dx12 while every other pipeline was fine (see
-        # `prelude.wgsl`). Nothing but a test on Windows catches the next one.
+        # Each runs the GPU tests on its OS's backend: compiling one is not enough, as a backend can
+        # fail only at run time.
         os: [ubuntu-26.04, macos-26, windows-2025]
     steps:
       - uses: actions/checkout@v7
-      # Hosted Linux runners have no GPU, and vulkan is the only backend this
-      # crate builds there. macOS needs nothing: its runner exposes Metal, and
-      # Windows nothing either: WARP, Microsoft's software Dx12 adapter, ships
-      # in the box.
+      # Hosted runners have no GPU. macOS needs nothing: its runner exposes Metal.
       - name: Install a software Vulkan adapter
         if: runner.os == 'Linux'
         run: |
@@ -49,6 +42,22 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             mesa-vulkan-drivers vulkan-tools libvulkan1 libxkbcommon-dev
           vulkaninfo --summary
+      # A Windows runner holds no Vulkan loader and no driver: the SDK brings the loader, and Mesa
+      # lavapipe, a software adapter, as wgpu's own CI installs them.
+      - name: Install a software Vulkan adapter on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          MESA_VERSION: 26.2.6
+          VULKAN_SDK_VERSION: 1.4.357.0
+        run: |
+          set -e
+          curl.exe -L --retry 5 "https://sdk.lunarg.com/sdk/download/$VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$VULKAN_SDK_VERSION.exe" -o vulkan-sdk-installer.exe
+          ./vulkan-sdk-installer.exe --accept-licenses --default-answer --confirm-command install
+          echo "C:/VulkanSDK/$VULKAN_SDK_VERSION/Bin" >> "$GITHUB_PATH"
+          curl.exe -L --retry 5 "https://github.com/pal1000/mesa-dist-win/releases/download/$MESA_VERSION/mesa3d-$MESA_VERSION-release-msvc.7z" -o mesa.7z
+          7z.exe e mesa.7z -omesa x64/vulkan_lvp.dll x64/lvp_icd.x86_64.json
+          echo "VK_DRIVER_FILES=$(cygpath --windows "$PWD/mesa/lvp_icd.x86_64.json")" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt

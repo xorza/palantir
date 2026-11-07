@@ -4,9 +4,6 @@
 const ARM: u32 = 0x13B5;
 const IMAGINATION: u32 = 0x1010;
 const QUALCOMM: u32 = 0x5143;
-/// Qualcomm as DXGI reports it, "QCOM", which wgpu-hal's DX12 backend passes through
-/// (ANGLE's `kVendorID_Qualcomm_DXGI`).
-const QUALCOMM_DXGI: u32 = 0x4D4F_4351;
 const BROADCOM: u32 = 0x14E4;
 /// Mesa's own id, which wgpu-hal's GLES backend reports for a Mesa driver of any vendor.
 const MESA: u32 = 0x10005;
@@ -28,12 +25,12 @@ impl TilerFamily {
     /// The family of the adapter `info` describes, `None` for any other device. The vendor id
     /// decides; where a backend reports none or Mesa's, as wgpu-hal's GLES backend does by
     /// matching the GL vendor string, the adapter's name decides. Refused: the vendor id alone,
-    /// which read Snapdragon under DX12, and Mali, Adreno and PowerVR under GL, as immediate GPUs.
+    /// which read Mali, Adreno and PowerVR under GL as immediate GPUs.
     pub(crate) fn of(info: &wgpu::AdapterInfo) -> Option<Self> {
         match info.vendor {
             ARM => Some(Self::Mali),
             IMAGINATION => Some(Self::PowerVr),
-            QUALCOMM | QUALCOMM_DXGI => Some(Self::Adreno),
+            QUALCOMM => Some(Self::Adreno),
             BROADCOM => Some(Self::VideoCore),
             0 | MESA => Self::named(&info.name),
             _ => None,
@@ -75,11 +72,6 @@ mod tests {
             (0x13B5, "", Some(TilerFamily::Mali)),
             (0x1010, "", Some(TilerFamily::PowerVr)),
             (0x5143, "", Some(TilerFamily::Adreno)),
-            (
-                0x4D4F_4351,
-                "Snapdragon X Elite - X1E80100 - Qualcomm Adreno GPU",
-                Some(TilerFamily::Adreno),
-            ),
             (0x14E4, "", Some(TilerFamily::VideoCore)),
             (0, "Mali-G610", Some(TilerFamily::Mali)),
             (0x10005, "Adreno (TM) 650", Some(TilerFamily::Adreno)),

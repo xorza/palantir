@@ -50,7 +50,6 @@ mod tests {
             (wgpu::Backend::Metal, None, BackbufferOut::Copy),
             (wgpu::Backend::Vulkan, Some(true), BackbufferOut::Copy),
             (wgpu::Backend::Vulkan, None, BackbufferOut::Copy),
-            (wgpu::Backend::Dx12, None, BackbufferOut::Copy),
             (wgpu::Backend::Gl, Some(true), BackbufferOut::Copy),
         ] {
             assert_eq!(
