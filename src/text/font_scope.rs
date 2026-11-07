@@ -21,7 +21,7 @@ const BUNDLED_LOCALE: &str = "en-US";
 pub enum FontScope {
     /// The four bundled faces only: deterministic metrics, ~6 µs to build. What [`TextShaper::new`](crate::TextShaper::new) uses.
     Bundled,
-    /// Bundled faces plus every installed font as glyph fallback; metrics differ across machines. What [`WinitHostBuilder`](crate::WinitHostBuilder) defaults to.
+    /// Bundled faces plus every other installed font as glyph fallback, so the metrics of a glyph the bundled faces lack differ across machines. What [`WinitHostBuilder`](crate::WinitHostBuilder) defaults to.
     System,
 }
 
@@ -32,7 +32,11 @@ impl FontScope {
             .into_iter()
             .map(|bytes| fontdb::Source::Binary(Arc::new(bytes)));
         let mut font_system = match self {
-            Self::System => FontSystem::new_with_fonts(sources),
+            Self::System => {
+                let mut font_system = FontSystem::new_with_fonts(sources);
+                hide_installed_bundled(font_system.db_mut());
+                font_system
+            }
             Self::Bundled => {
                 let mut db = fontdb::Database::new();
                 for source in sources {
@@ -48,6 +52,23 @@ impl FontScope {
         // The bundled pair: what a stock theme names and every faceless family resolves to.
         cosmic::warm_matches(&mut font_system, &[FontFamily::SANS, FontFamily::MONO]);
         font_system
+    }
+}
+
+/// Remove each installed face that answers to a bundled family, so a bundled family reaches the bundled files on every machine, as an `@font-face` family hides the installed font of its name ([CSS Fonts](https://www.w3.org/TR/css-fonts-3/)). `fontdb` keeps the faces in load order, the system's first, and answers with the first best match, so an installed Inter of another version would win. Refused: loading the bundled faces first, as an installed static Bold is still the better match at weight 700. Cost: an install cannot replace the UI font.
+fn hide_installed_bundled(db: &mut fontdb::Database) {
+    let installed: Vec<fontdb::ID> = db
+        .faces()
+        .filter(|face| {
+            !matches!(face.source, fontdb::Source::Binary(_))
+                && face.families.iter().any(|(name, _)| {
+                    name == FontFamily::SANS.name() || name == FontFamily::MONO.name()
+                })
+        })
+        .map(|face| face.id)
+        .collect();
+    for id in installed {
+        db.remove_face(id);
     }
 }
 
@@ -68,4 +89,40 @@ pub(crate) mod internals {
     /// Noto Sans Arabic, beside [`HEBREW`] for the same reason.
     pub(crate) const ARABIC: &[u8] =
         include_bytes!("../../assets/fonts/test/NotoSansArabic-Regular.ttf");
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::text::font_family::FontFamily;
+    use crate::text::font_scope::hide_installed_bundled;
+    use crate::text::font_scope::internals::INTER;
+    use cosmic_text::fontdb::{self, Family, Query, Source};
+    use std::path::Path;
+    use std::sync::Arc;
+
+    /// Files from disk, as a system scan loads them, ahead of the bundled bytes: the installed
+    /// Inter wins until it is hidden, and the installed font of another family stays.
+    #[test]
+    fn an_installed_face_of_a_bundled_family_is_hidden() {
+        let fonts = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/fonts");
+        let mut db = fontdb::Database::new();
+        let installed =
+            db.load_font_source(Source::File(fonts.join("Inter-VariableFont_opsz,wght.ttf")));
+        let other =
+            db.load_font_source(Source::File(fonts.join("test/NotoSansHebrew-Regular.ttf")));
+        let bundled = db.load_font_source(Source::Binary(Arc::new(INTER)));
+        let families = [Family::Name(FontFamily::SANS.name())];
+        let query = Query {
+            families: &families,
+            ..Query::default()
+        };
+        assert_eq!(db.query(&query), Some(installed[0]));
+
+        hide_installed_bundled(&mut db);
+
+        assert_eq!(db.query(&query), Some(bundled[0]));
+        assert!(db.face(installed[0]).is_none());
+        assert!(db.face(other[0]).is_some());
+        assert_eq!(db.len(), 2);
+    }
 }
