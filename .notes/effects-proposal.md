@@ -11,19 +11,9 @@ API, so each batch also runs `cargo drive surface`.
 
 ## Power-saver preference
 
-- **The OS power-saver mode is the signal.** macOS Low Power Mode, Windows Energy saver (battery
-  saver before 24H2) and the Linux power-saver profile through the PowerProfileMonitor portal. A
-  person turns each on, or sets the battery level that turns it on, so "the system decides it"
-  allows a difference. Refused: "on battery" alone, which overrides a person who chose no saver
-  mode (Chrome's trigger); a palantir battery threshold, a rule the person never set.
-- **One more `Preference<Reduction>`.** `UiPreferences::power`, read through
-  `Ui::is_power_reduced` and `Ui::system_power_reduced`, as motion and transparency are.
-  Windows' standard and high-savings levels both read `Reduced`. Refused: a three-level enum
-  whose middle level only Windows reports; a system fact with no preference over it.
-- **The refusal of a "performance" flag goes.** `AGENTS.md` refuses a third flag "which reduced
-  transparency already is", and `Ui::is_transparency_reduced` calls itself "the switch a
-  low-power app turns". That holds on Windows alone: Energy saver turns transparency off, but
-  macOS Low Power Mode and the Linux profile do not. Both texts change with batch 1.
+The preference itself landed with batch 1: its decisions are in `AGENTS.md` ("Reduced power
+follows the OS power-saver mode") and in the doc of `Ui::is_power_reduced`.
+
 - **Every frame runs at most at 30 Hz while power is reduced**, input frames included, as
   WebKit limits its rendering update in Low Power Mode (WebKit bug 215745). The interval is the
   smallest whole number of refresh periods at or above 1/30 s, so each frame lands on a vsync:
@@ -34,6 +24,7 @@ API, so each batch also runs `cargo drive surface`.
   power state. Linux reads the portal over `zbus` and reads the first value itself (GLib #2481
   missed it); macOS reads `NSProcessInfo` through `objc2-foundation`; Windows reads
   `GUID_ENERGY_SAVER_STATUS`, and `SYSTEM_POWER_STATUS::SystemStatusFlag` before 24H2.
+  Windows' standard and high-savings levels both read `Reduced`.
   `zbus` 5 and `objc2-foundation` 0.3 become direct dependencies, both in `Cargo.lock` already.
   Refused: waiting for `mundy` upstream; `ashpd`, a new package for one boolean.
 
@@ -132,16 +123,9 @@ API, so each batch also runs `cargo drive surface`.
 
 Each batch ends green on the gate, `cargo visual` where it paints, and `cargo drive surface`.
 
-### 1. The power-saver preference
+### 1. The power-saver preference — done
 
-- `Reduction` field `power` on `UiPreferences`, `SystemPreferences` and `AppSettings`;
-  `Ui::is_power_reduced` and `Ui::system_power_reduced`.
-- `system_power_reduced` on `HarnessBuilder` and the offscreen builder;
-  `set_system_power_reduced` on `Harness` and `OffscreenHost`; the agent verbs where motion has
-  them.
-- Amend the "performance" refusal in `AGENTS.md` and the doc of `Ui::is_transparency_reduced`.
-- Tests: the preference resolves against the system as motion does, a `Fixed` pick wins, and
-  `SystemPreferences::apply` reports the change.
+`UiPreferences::power`, resolved once at each frame's start. A move records every window again.
 
 ### 2. The 30 Hz limit
 

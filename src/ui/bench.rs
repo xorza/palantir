@@ -82,11 +82,12 @@ fn bench_theme() -> Theme {
     }
 }
 
-/// Motion and transparency on, whatever the host's settings say.
+/// Motion, transparency and power whole, whatever the host's settings say.
 fn force_full_effects(ui: &mut Ui) {
     ui.set_preferences(UiPreferences {
         motion: Preference::Fixed(Reduction::Full),
         transparency: Preference::Fixed(Reduction::Full),
+        power: Preference::Fixed(Reduction::Full),
         ..ui.preferences()
     });
 }

@@ -319,8 +319,9 @@ impl Ui {
     /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then
     /// every [`BackdropFilter`](crate::BackdropFilter) paints as a solid fill, as CSS
     /// `prefers-reduced-transparency` asks and as WinUI's acrylic falls back to its
-    /// `FallbackColor`: no capture and no blur run, which is also the switch a low-power app
-    /// turns. App-global.
+    /// `FallbackColor`: no capture and no blur run. App-global. The power-saver mode is
+    /// [`Self::is_power_reduced`]: Windows' Energy saver turns transparency off too, but macOS Low
+    /// Power Mode and Linux's power-saver profile do not.
     #[inline]
     pub const fn is_transparency_reduced(&self) -> bool {
         self.frame_runtime.transparency.is_reduced()
@@ -332,6 +333,25 @@ impl Ui {
     #[inline]
     pub fn system_transparency_reduced(&self) -> bool {
         self.resources.settings().system_transparency().is_reduced()
+    }
+
+    /// Whether this frame runs with power use reduced: [`UiPreferences::power`] resolved against
+    /// [`Self::system_power_reduced`] at the frame's start, so no frame mixes two, and a move
+    /// records every window again. An app reads it to swap to cheaper paint, as Apple asks an app
+    /// to reduce its activity in Low Power Mode
+    /// (<https://developer.apple.com/documentation/foundation/processinfo/islowpowermodeenabled>).
+    /// App-global.
+    #[inline]
+    pub const fn is_power_reduced(&self) -> bool {
+        self.frame_runtime.power.is_reduced()
+    }
+
+    /// Whether the system's power-saver mode is on, whatever the preference: macOS Low Power Mode,
+    /// Windows' Energy saver or battery saver, Linux's power-saver profile. `false` where nothing
+    /// reports it, as in a [`Harness`](crate::Harness) until its test sets it.
+    #[inline]
+    pub fn system_power_reduced(&self) -> bool {
+        self.resources.settings().system_power().is_reduced()
     }
 
     /// At a frame's start, after its clock: move a theme transition one `dt` on, then adopt the

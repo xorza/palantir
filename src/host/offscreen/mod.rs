@@ -170,6 +170,14 @@ impl OffscreenHostBuilder {
         self
     }
 
+    /// Whether the system's power-saver mode is on, as the winit host reports the desktop's;
+    /// `false` by default. The host's
+    /// [`set_system_power_reduced`](OffscreenHost::set_system_power_reduced) changes it later.
+    pub const fn system_power_reduced(mut self, reduced: bool) -> Self {
+        self.settings.preferences.power = Reduction::of(reduced);
+        self
+    }
+
     /// Whether axis-aligned paint edges snap to physical pixels.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.settings.options.pixel_snap = pixel_snap;
@@ -282,6 +290,14 @@ impl OffscreenHost {
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
             .set_preferences(|preferences| preferences.transparency = Reduction::of(reduced));
+        self
+    }
+
+    /// Report the system's power-saver mode as on, or not, as the winit host reports the
+    /// desktop's; `false` at the start. See [`Ui::is_power_reduced`].
+    pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self {
+        self.window
+            .set_preferences(|preferences| preferences.power = Reduction::of(reduced));
         self
     }
 

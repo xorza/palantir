@@ -7,32 +7,34 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::ui::resources::UiResources;
 use std::time::Duration;
 
-/// The system's color scheme and double-click time, each `None` where the system gives none, and
-/// whether it asks for less motion and less transparency. The one input of the system's settings
-/// every host writes through [`Self::apply`]. Refused: a headless host writing each setting
-/// through its own `Ui` door beside the winit host's value, two routes that drifted, the
-/// double-click time reaching only one.
+/// The system's color scheme and double-click time, each `None` where the system gives none,
+/// whether it asks for less motion and less transparency, and whether its power-saver mode is on.
+/// The one input of the system's settings every host writes through [`Self::apply`]. Refused: a
+/// headless host writing each setting through its own `Ui` door beside the winit host's value, two
+/// routes that drifted, the double-click time reaching only one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SystemPreferences {
     pub(crate) color_scheme: Option<ColorScheme>,
     pub(crate) double_click: Option<Duration>,
     pub(crate) motion: Reduction,
     pub(crate) transparency: Reduction,
+    pub(crate) power: Reduction,
 }
 
 impl SystemPreferences {
     /// What a system that reports nothing says: no scheme, so the fallback shows, the default
-    /// double-click time, full motion and transparency.
+    /// double-click time, full motion, transparency and power.
     pub(crate) const NONE: Self = Self {
         color_scheme: None,
         double_click: None,
         motion: Reduction::Full,
         transparency: Reduction::Full,
+        power: Reduction::Full,
     };
 
-    /// Write the settings into the host's shared cells: the scheme, the motion and the
-    /// transparency always, as an absent scheme is an answer; the double-click time only when the
-    /// system gave one. Returns whether any moved; the host's signal
+    /// Write the settings into the host's shared cells: the scheme, the motion, the transparency
+    /// and the power always, as an absent scheme is an answer; the double-click time only when
+    /// the system gave one. Returns whether any moved; the host's signal
     /// ([`AppSettings::take_change`](crate::ui::resources::app_settings::AppSettings::take_change))
     /// tells every window too.
     pub(crate) fn apply(self, resources: &UiResources) -> bool {
@@ -40,10 +42,11 @@ impl SystemPreferences {
         let scheme = settings.set_system_color_scheme(self.color_scheme);
         let motion = settings.set_system_motion(self.motion);
         let transparency = settings.set_system_transparency(self.transparency);
+        let power = settings.set_system_power(self.power);
         let double_click = self
             .double_click
             .is_some_and(|interval| settings.set_double_click_interval(interval));
-        scheme || motion || transparency || double_click
+        scheme || motion || transparency || power || double_click
     }
 }
 
@@ -56,10 +59,10 @@ mod tests {
     use crate::ui::resources::UiResources;
     use std::time::Duration;
 
-    /// Applying writes the scheme, the motion and the transparency always, an absent scheme
-    /// included, and a double-click time only when one came: a report with none keeps the time an
-    /// earlier one set. Each apply answers whether it moved a setting, and the same report again
-    /// moves none.
+    /// Applying writes the scheme, the motion, the transparency and the power always, an absent
+    /// scheme included, and a double-click time only when one came: a report with none keeps the
+    /// time an earlier one set. Each apply answers whether it moved a setting, and the same report
+    /// again moves none; a report that moves the power alone answers that it moved.
     #[test]
     fn applying_writes_the_scheme_and_keeps_an_unreported_double_click_time() {
         let resources = UiResources::isolated_mono();
@@ -73,6 +76,7 @@ mod tests {
             double_click: Some(ms(250)),
             motion: Reduction::Reduced,
             transparency: Reduction::Reduced,
+            power: Reduction::Reduced,
         };
         assert!(reported.apply(&resources));
         assert!(!reported.apply(&resources), "the same report again");
@@ -86,11 +90,22 @@ mod tests {
             resources.settings().system_transparency(),
             Reduction::Reduced
         );
+        assert_eq!(resources.settings().system_power(), Reduction::Reduced);
 
         assert!(SystemPreferences::NONE.apply(&resources));
         assert_eq!(resources.settings().system_color_scheme(), None);
         assert_eq!(resources.settings().double_click_interval(), ms(250));
         assert_eq!(resources.settings().system_motion(), Reduction::Full);
         assert_eq!(resources.settings().system_transparency(), Reduction::Full);
+        assert_eq!(resources.settings().system_power(), Reduction::Full);
+
+        let saver = SystemPreferences {
+            power: Reduction::Reduced,
+            ..SystemPreferences::NONE
+        };
+        assert!(saver.apply(&resources), "the power alone moved");
+        assert!(!saver.apply(&resources), "the same report again");
+        assert_eq!(resources.settings().system_power(), Reduction::Reduced);
+        assert_eq!(resources.settings().system_motion(), Reduction::Full);
     }
 }

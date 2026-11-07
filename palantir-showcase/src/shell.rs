@@ -932,6 +932,7 @@ mod tests {
                 scheme: Preference::Fixed(ColorScheme::Dark),
                 motion: Preference::System,
                 transparency: Preference::Fixed(Reduction::Reduced),
+                power: Preference::System,
             }
         );
 
@@ -950,6 +951,7 @@ mod tests {
                 scheme: Preference::Fixed(ColorScheme::Dark),
                 motion: Preference::Fixed(Reduction::Reduced),
                 transparency: Preference::Fixed(Reduction::Reduced),
+                power: Preference::System,
             }
         );
     }

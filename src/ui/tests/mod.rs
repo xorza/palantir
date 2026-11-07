@@ -7,6 +7,7 @@ mod oracle;
 mod overlay_placement;
 mod paint_animation;
 mod pointer_layer;
+mod power;
 mod repainting;
 mod starting;
 mod state;

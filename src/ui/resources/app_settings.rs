@@ -35,6 +35,9 @@ pub(crate) struct AppSettings {
     /// Whether the system asks for less transparency, which the winit host writes; full where
     /// nothing reports it.
     system_transparency: Cell<Reduction>,
+    /// Whether the system's power-saver mode is on, which the winit host writes; full where
+    /// nothing reports it.
+    system_power: Cell<Reduction>,
     /// How soon a second press on the same target makes a double click: the platform's, where
     /// the winit host reads one, else [`DOUBLE_CLICK_INTERVAL`]. Its change shows nothing, and
     /// repaints the windows only as every setting's does.
@@ -54,6 +57,7 @@ impl Default for AppSettings {
             system_color_scheme: Cell::default(),
             system_motion: Cell::default(),
             system_transparency: Cell::default(),
+            system_power: Cell::default(),
             double_click_interval: Cell::new(DOUBLE_CLICK_INTERVAL),
             pixel_snap: Cell::new(true),
             changed: Cell::default(),
@@ -130,6 +134,19 @@ impl AppSettings {
             .resolve(self.system_transparency())
     }
 
+    pub(crate) const fn system_power(&self) -> Reduction {
+        self.system_power.get()
+    }
+
+    pub(crate) fn set_system_power(&self, power: Reduction) -> bool {
+        self.write(&self.system_power, power)
+    }
+
+    /// The power use every window runs at now: the preference resolved against the system's.
+    pub(crate) const fn power(&self) -> Reduction {
+        self.preferences().power.resolve(self.system_power())
+    }
+
     pub(crate) const fn double_click_interval(&self) -> Duration {
         self.double_click_interval.get()
     }
@@ -186,7 +203,7 @@ mod tests {
             ColorScheme::FALLBACK,
             "nothing reports a scheme"
         );
-        let writes: [&dyn Fn(&AppSettings) -> bool; 6] = [
+        let writes: [&dyn Fn(&AppSettings) -> bool; 8] = [
             &|s| {
                 s.set_debug_overlay(DebugOverlayConfig {
                     frame_stats: true,
@@ -197,11 +214,19 @@ mod tests {
             &|s| s.set_system_color_scheme(Some(ColorScheme::Dark)),
             &|s| s.set_system_motion(Reduction::Reduced),
             &|s| s.set_system_transparency(Reduction::Reduced),
+            &|s| s.set_system_power(Reduction::Reduced),
             &|s| {
                 s.set_preferences(UiPreferences {
                     scheme: Preference::Fixed(ColorScheme::Light),
                     motion: Preference::Fixed(Reduction::Full),
                     transparency: Preference::System,
+                    power: Preference::System,
+                })
+            },
+            &|s| {
+                s.set_preferences(UiPreferences {
+                    power: Preference::Fixed(Reduction::Full),
+                    ..s.preferences()
                 })
             },
         ];
@@ -227,6 +252,31 @@ mod tests {
             settings.transparency(),
             Reduction::Reduced,
             "System follows the system"
+        );
+        assert_eq!(
+            settings.power(),
+            Reduction::Full,
+            "the last pick of full wins over the system's saver mode"
+        );
+        assert!(settings.set_preferences(UiPreferences {
+            power: Preference::System,
+            ..settings.preferences()
+        }));
+        assert_eq!(
+            settings.power(),
+            Reduction::Reduced,
+            "System follows the saver mode"
+        );
+        assert!(settings.set_system_power(Reduction::Full));
+        assert_eq!(settings.power(), Reduction::Full, "the mode turned off");
+        assert!(settings.set_preferences(UiPreferences {
+            power: Preference::Fixed(Reduction::Reduced),
+            ..settings.preferences()
+        }));
+        assert_eq!(
+            settings.power(),
+            Reduction::Reduced,
+            "a pick of reduced over a system with no saver mode"
         );
     }
 }

@@ -997,6 +997,7 @@ Harness
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self
+        pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn hover(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn press(&mut self, at: impl Into<Locator>, button: PointerButton) -> InputDelta
@@ -1040,6 +1041,7 @@ HarnessBuilder
         pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
         pub const fn system_motion_reduced(self, reduced: bool) -> Self
         pub const fn system_transparency_reduced(self, reduced: bool) -> Self
+        pub const fn system_power_reduced(self, reduced: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
@@ -1534,6 +1536,7 @@ OffscreenHost
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self
+        pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn wait_for_gpu(&self) -> GpuWait
         pub fn window_commands(&self) -> &[WindowCommand]
         pub fn is_device_lost(&self) -> bool
@@ -1554,6 +1557,7 @@ OffscreenHostBuilder
         pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
         pub const fn system_motion_reduced(self, reduced: bool) -> Self
         pub const fn system_transparency_reduced(self, reduced: bool) -> Self
+        pub const fn system_power_reduced(self, reduced: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn system_clipboard(self, system_clipboard: bool) -> Self  [features: system-clipboard or winit]
         pub fn build(self) -> OffscreenHost
@@ -2712,6 +2716,8 @@ Ui
         pub fn system_motion_reduced(&self) -> bool
         pub const fn is_transparency_reduced(&self) -> bool
         pub fn system_transparency_reduced(&self) -> bool
+        pub const fn is_power_reduced(&self) -> bool
+        pub fn system_power_reduced(&self) -> bool
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
         pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
         pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
@@ -2795,6 +2801,7 @@ UiPreferences
         pub scheme: Preference<ColorScheme>
         pub motion: Preference<Reduction>
         pub transparency: Preference<Reduction>
+        pub power: Preference<Reduction>
 
 UnmetRequirements
     enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq

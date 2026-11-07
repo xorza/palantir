@@ -262,18 +262,25 @@ driver serves that command alone; the drive table's `version` names it
 - **`Metrics` carries the type ramp**, Fluent 2 by default. Refused: a size a recipe sets by
   hand, which an app's ramp cannot reach
   ([Fluent 2 typography](https://fluent2.microsoft.design/typography)).
-- **Reduced motion and reduced transparency are preferences on the `Ui`**, each a
+- **Reduced motion, transparency and power are preferences on the `Ui`**, each a
   `Preference<Reduction>` (`System` or `Fixed`) resolved against the system's setting, as the
   scheme's `Preference<ColorScheme>` is: the host reports the system's answer, and the app's pick
-  overrides it. The three are one `UiPreferences`, which `Ui::preferences` and
+  overrides it. The four are one `UiPreferences`, which `Ui::preferences` and
   `Ui::set_preferences` read and write whole, as egui's `Context::options_mut` holds its options.
   One theme holds every transition and every frost; reduced motion snaps them and stops
   decorative paint motion, and reduced transparency paints every backdrop filter as its
   `fallback` or its fill made opaque, with no capture or blur, as WinUI's acrylic falls back to
   its `FallbackColor` ([acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)).
   Refused: two switches in the `Theme`, a person's or a system's choice in a theme file that a
-  transition would blend; a third "performance" flag, which reduced transparency already is, as
-  Windows's transparency effects are.
+  transition would blend.
+- **Reduced power follows the OS power-saver mode**: macOS Low Power Mode, Windows' Energy saver
+  (battery saver before 24H2) and Linux's power-saver profile, each a mode the person turns on or
+  sets the battery level of, so the system decides it. Facts and sources: "Power saving" in
+  `.notes/research/2026-10-31-system-preferences.md`. Refused: reduced transparency as the power
+  switch, which Windows' Energy saver turns on but macOS Low Power Mode and Linux's profile do not;
+  "on battery" alone, which overrides a person who chose no saver mode (Chrome's trigger); a
+  palantir battery threshold, a rule the person never set; a three-level enum whose middle level
+  only Windows reports.
 - **The stock themes frost their floats** in `Metrics::float_material`: any `BackdropFilter`
   look under the float's tint, its luminance bound derived from each float's ink. Refused:
   opaque defaults, which made an app build its themes again to frost them and again to stop; a

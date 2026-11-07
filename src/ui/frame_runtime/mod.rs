@@ -51,6 +51,8 @@ pub(super) struct RecordBaseline {
     pub(super) device_epoch: u32,
     /// Whether backdrop filters lower as solid fills, which every chrome and rect records under.
     pub(super) transparency: Reduction,
+    /// Whether power use is reduced, which an app's record reads to pick its paint.
+    pub(super) power: Reduction,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -119,6 +121,8 @@ pub(crate) struct FrameRuntime {
     /// The transparency this frame paints with, resolved once at its start so a frame never
     /// mixes two.
     pub(super) transparency: Reduction,
+    /// The power use this frame runs at, resolved once at its start so a frame never mixes two.
+    pub(super) power: Reduction,
 }
 
 impl FrameRuntime {

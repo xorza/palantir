@@ -254,6 +254,7 @@ impl WindowFrames {
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui.advance_theme();
         self.ui.frame_runtime.transparency = self.ui.resources.settings().transparency();
+        self.ui.frame_runtime.power = self.ui.resources.settings().power();
         self.ui
             .frame_runtime
             .tick_text_clock(self.ui.resources.text());
@@ -262,6 +263,7 @@ impl WindowFrames {
             font_epoch: self.ui.resources.text().font_epoch(),
             device_epoch,
             transparency: self.ui.frame_runtime.transparency,
+            power: self.ui.frame_runtime.power,
         };
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,

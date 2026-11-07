@@ -140,6 +140,14 @@ impl HarnessBuilder {
         self
     }
 
+    /// Whether the system's power-saver mode is on, as the winit host reports the desktop's;
+    /// `false` by default. The harness's
+    /// [`set_system_power_reduced`](Harness::set_system_power_reduced) changes it later.
+    pub const fn system_power_reduced(mut self, reduced: bool) -> Self {
+        self.settings.preferences.power = Reduction::of(reduced);
+        self
+    }
+
     /// Whether axis-aligned paint edges snap to physical pixels; on by default.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.settings.options.pixel_snap = pixel_snap;

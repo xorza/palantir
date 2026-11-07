@@ -598,7 +598,7 @@ fn request_relayout_is_legal_from_a_layer_scope_with_nothing_recorded_yet() {
 #[test]
 fn an_app_global_setting_asks_for_a_frame_only_when_it_moves() {
     type Set = (&'static str, fn(&mut Ui));
-    let sets: [Set; 5] = [
+    let sets: [Set; 6] = [
         ("user scale", |ui| {
             ui.set_user_scale(UserScale::new(1.5).unwrap());
         }),
@@ -623,6 +623,12 @@ fn an_app_global_setting_asks_for_a_frame_only_when_it_moves() {
         ("transparency", |ui| {
             ui.set_preferences(UiPreferences {
                 transparency: Preference::Fixed(Reduction::Reduced),
+                ..ui.preferences()
+            });
+        }),
+        ("power", |ui| {
+            ui.set_preferences(UiPreferences {
+                power: Preference::Fixed(Reduction::Reduced),
                 ..ui.preferences()
             });
         }),

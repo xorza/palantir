@@ -1,8 +1,8 @@
 //! [`Reduction`]: whether an effect the system can ask to reduce runs whole.
 
-/// Whether an effect runs whole or reduced, as the system asks or a [`Preference`] holds: motion
-/// or transparency, as CSS names `prefers-reduced-motion` and `prefers-reduced-transparency`
-/// alike.
+/// Whether an effect runs whole or reduced, as the system asks or a [`Preference`] holds: motion,
+/// transparency or power use, as CSS names `prefers-reduced-motion` and
+/// `prefers-reduced-transparency` alike.
 ///
 /// [`Preference`]: crate::Preference
 #[derive(

@@ -25,4 +25,7 @@ pub struct UiPreferences {
     /// Whether transparency is reduced, from every window's next frame
     /// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)).
     pub transparency: Preference<Reduction>,
+    /// Whether power use is reduced, from every window's next frame
+    /// ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)).
+    pub power: Preference<Reduction>,
 }

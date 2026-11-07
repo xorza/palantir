@@ -36,6 +36,7 @@ const BASELINE: RecordBaseline = RecordBaseline {
     font_epoch: 7,
     device_epoch: 1,
     transparency: Reduction::Full,
+    power: Reduction::Full,
 };
 
 /// A warm frame with only an animation wake pending paints without recording.
@@ -146,6 +147,17 @@ fn frame_classification_covers_external_entry_facts() {
             label: "transparency reduced since the record",
             recorded: Some(RecordBaseline {
                 transparency: Reduction::Reduced,
+                ..BASELINE
+            }),
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Prev,
+            },
+            ..QUIET
+        },
+        Case {
+            label: "power reduced since the record",
+            recorded: Some(RecordBaseline {
+                power: Reduction::Reduced,
                 ..BASELINE
             }),
             expected: FramePlan::FullRecord {
