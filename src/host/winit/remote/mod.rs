@@ -286,11 +286,13 @@ impl<T: 'static> Remote<T> {
         let mut progressed = start;
         loop {
             let last = self.last_frame()?;
+            let saw_events = last.sent_events >= self.sent;
             let unsettled = settled && (last.repaint_requested || last.busy);
-            if last.sent_events >= self.sent && !unsettled {
+            if saw_events && !unsettled {
                 return Ok(());
             }
-            let working = settled && last.busy && !last.repaint_requested;
+            // A frame from before an event says nothing of the app after it.
+            let working = settled && saw_events && last.busy && !last.repaint_requested;
             if last.record_frame_id != seen {
                 seen = last.record_frame_id;
                 progressed = Instant::now();

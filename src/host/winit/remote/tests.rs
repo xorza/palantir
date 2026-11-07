@@ -1,5 +1,5 @@
-//! A remote against a loop of the test's own, which serves a handle's events on a GPU harness of
-//! its thread as the event loop serves a window's: a query between two frames with a frame after,
+//! A remote against a loop of the test's own, which serves a handle's events on a harness of its
+//! thread as the event loop serves a window's: a query between two frames with a frame after,
 //! a read between two frames with none, sent input before a frame, a shot handed back in the frame
 //! it lands in, a frame summary after each frame.
 
@@ -22,8 +22,8 @@ use crate::host::harness::harness_builder::Depth;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{EventSender, HostHandle, UserEvent};
-use crate::host::winit::remote::Remote;
 use crate::host::winit::remote::remote_end::RemoteEnd;
+use crate::host::winit::remote::{Remote, Until, WAIT};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
@@ -191,8 +191,13 @@ impl Loop {
     }
 }
 
-/// A handle to a loop of the test's own on a thread of its own.
+/// A handle to a loop of the test's own on a thread of its own, with no device: a device is shared
+/// by the tests, so a wait for it would hold this window's frames for work of others.
 fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
+    serve_at(Depth::Record)
+}
+
+fn serve_at(depth: Depth) -> (HostHandle<Counter>, JoinHandle<()>) {
     let (sender, events) = mpsc::channel();
     let frame_log = Arc::new(FrameLog::default());
     frame_log.open(WINDOW);
@@ -201,11 +206,8 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
         frame_log: Arc::clone(&frame_log),
     };
     let thread = thread::spawn(move || {
-        let gpu = headless_test_gpu();
         let window = Loop {
-            h: Harness::builder(SIZE)
-                .depth(Depth::gpu(gpu.handles()))
-                .build(),
+            h: Harness::builder(SIZE).depth(depth).build(),
             app: Counter::default(),
             remote: RemoteEnd::default(),
             frame_log,
@@ -225,7 +227,7 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
 /// not open, or after the loop ended, is disconnected.
 #[test]
 fn a_remote_plays_and_reads_a_live_window() {
-    let (handle, thread) = serve();
+    let (handle, thread) = serve_at(Depth::gpu(headless_test_gpu().handles()));
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
 
     let (clicks, frame) = remote
@@ -492,28 +494,55 @@ fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     thread.join().unwrap();
 }
 
-/// A settle that outlasts its wait says which: a busy app that ran no frame reads as busy, and a
-/// window that keeps running frames as unsettled, with the frames it ran.
+/// A settle that outlasts its wait says which: a busy app that ran no frame reads as busy, a window
+/// that holds an event it has not run reads as no frame, whatever its last frame said, and a window
+/// that keeps running frames reads as unsettled, with the frames it ran.
 #[test]
 fn a_settle_that_outlasts_its_wait_says_why() {
     let (handle, thread) = serve();
-    // Long enough for a frame on a loaded software adapter: 50 ms read a Windows runner's
-    // frame as no frame, at 63 ms.
-    let wait = Duration::from_millis(250);
-    let mut remote = handle.remote(WINDOW).with_tick(TICK).with_wait(wait);
+    let mut remote = handle.remote(WINDOW).with_tick(TICK);
+    // Busy and no frame come from nothing happening, so a few ticks prove them.
+    let nothing_comes = TICK * 4;
 
     remote.query(|app, _| app.busy = true).unwrap();
+    remote.wait_frame(Until::SawEvents).unwrap();
+    remote = remote.with_wait(nothing_comes);
     assert!(matches!(
         remote.settle(),
-        Err(PlayError::Busy { waited }) if waited >= wait
+        Err(PlayError::Busy { waited }) if waited >= nothing_comes
     ));
 
+    // The window's thread holds, known held before the event goes, so the event stays unrun.
+    let (holding, held) = mpsc::channel();
+    let (release, held_until) = mpsc::channel::<()>();
+    handle
+        .run_on_main(move |_| {
+            holding.send(()).unwrap();
+            held_until.recv().ok();
+        })
+        .unwrap();
+    held.recv().unwrap();
+    assert!(matches!(
+        remote.query(|_, _| ()),
+        Err(PlayError::NoFrame { waited }) if waited >= nothing_comes
+    ));
+    let settled = remote.settle();
+    assert!(
+        matches!(settled, Err(PlayError::NoFrame { waited }) if waited >= nothing_comes),
+        "{settled:?}"
+    );
+    release.send(()).unwrap();
+
+    // Long enough for a frame on a loaded machine, as an unsettled window must run one.
+    remote = remote.with_wait(WAIT);
     remote
         .query(|app, _| {
             app.busy = false;
             app.animating = true;
         })
         .unwrap();
+    remote.wait_frame(Until::SawEvents).unwrap();
+    remote = remote.with_wait(Duration::from_millis(250));
     let settled = remote.settle();
     assert!(
         matches!(settled, Err(PlayError::Unsettled { frames }) if frames > 0),
