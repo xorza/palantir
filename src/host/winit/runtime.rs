@@ -23,6 +23,7 @@ use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::app::App;
+use crate::ui::window_frames::WindowFrames;
 use crate::ui::window_frames::present::PresentStrategy;
 use crate::window::waker::Waker;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
@@ -100,8 +101,8 @@ impl<T: App + 'static> WinitRuntime<T> {
         let mut core = HostCore::new(gpu, options, shaper);
         // Before the first `Ui`, so it starts in the system's scheme.
         let _ = system.apply(&core.cpu.resources);
-        let mut frames = core.open(token, PresentStrategy::DirectAdaptive);
-        frames.set_waker(Self::waker(&handle, token));
+        // Ahead of the app's factory, which can hand a handle to a thread that reads the window.
+        let mut frames = Self::open_frames(&mut core, &handle, token);
         let create_app = bootstrap
             .create_app
             .take()
@@ -140,6 +141,19 @@ impl<T: App + 'static> WinitRuntime<T> {
             _system_preferences: system_preferences,
         };
         Ok(runtime)
+    }
+
+    /// The frames of the window `token`, which opens now: its waker set, and the handles told, so
+    /// each path that opens a window opens it for them too. [`Self::retire`] is the other end.
+    fn open_frames(
+        core: &mut HostCore,
+        handle: &HostHandle<T>,
+        token: WindowToken,
+    ) -> WindowFrames {
+        let mut frames = core.open(token, PresentStrategy::DirectAdaptive);
+        frames.set_waker(Self::waker(handle, token));
+        handle.frame_log.open(token);
+        frames
     }
 
     /// The waker of the window `token`: a frame of it, through `handle`, one event in flight.
@@ -362,8 +376,7 @@ impl<T: App + 'static> WinitRuntime<T> {
                 ),
             )
             .map_err(|source| WinitHostError::Surface { token, source })?;
-        let mut frames = self.core.open(token, PresentStrategy::DirectAdaptive);
-        frames.set_waker(Self::waker(&self.handle, token));
+        let frames = Self::open_frames(&mut self.core, &self.handle, token);
         self.windows.push(Window::new(OpenedWindow {
             window,
             surface,

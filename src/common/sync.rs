@@ -46,23 +46,8 @@ impl<T: ?Sized> MutexExt<T> for Mutex<T> {
     }
 }
 
-/// [`Condvar`]'s waits, each panicking on the poisoned lock it takes back.
+/// [`Condvar`]'s wait, panicking on the poisoned lock it takes back.
 pub(crate) trait CondvarExt {
-    /// [`Condvar::wait_timeout`], which the guard's value tells woken or timed out.
-    ///
-    /// # Panics
-    ///
-    /// When a panic poisoned the lock.
-    #[cfg_attr(
-        all(not(feature = "winit"), not(test)),
-        expect(dead_code, reason = "the winit host's frame log is the one caller")
-    )]
-    fn wait_timeout_unpoisoned<'a, T>(
-        &self,
-        guard: MutexGuard<'a, T>,
-        timeout: Duration,
-    ) -> MutexGuard<'a, T>;
-
     /// [`Condvar::wait_timeout_while`], which the guard's value tells met or timed out.
     ///
     /// # Panics
@@ -77,17 +62,6 @@ pub(crate) trait CondvarExt {
 }
 
 impl CondvarExt for Condvar {
-    fn wait_timeout_unpoisoned<'a, T>(
-        &self,
-        guard: MutexGuard<'a, T>,
-        timeout: Duration,
-    ) -> MutexGuard<'a, T> {
-        let (guard, _) = self
-            .wait_timeout(guard, timeout)
-            .unwrap_or_else(|_| panic!("{POISONED}"));
-        guard
-    }
-
     fn wait_timeout_while_unpoisoned<'a, T>(
         &self,
         guard: MutexGuard<'a, T>,
@@ -129,9 +103,6 @@ mod tests {
             let _held = m.lock_unpoisoned();
             assert!(m.try_lock_unpoisoned().is_none());
         }
-        let guard = wake.wait_timeout_unpoisoned(m.lock_unpoisoned(), Duration::ZERO);
-        assert_eq!(*guard, 3);
-        drop(guard);
         let guard =
             wake.wait_timeout_while_unpoisoned(m.lock_unpoisoned(), Duration::ZERO, |_| true);
         assert_eq!(*guard, 3);

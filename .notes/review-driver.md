@@ -20,17 +20,12 @@ server do. One set of rules plays over a `Stage`, so both players agree, and a t
    so each read runs a whole frame, and a `find` on a hidden window makes the next settle fail. The
    harness runs no frame for the same reads. `AgentWindow` has no such verb at all, so a driver goes
    around the trait, and Darkroom writes `with_app` and `shot` twice.
-2. **`FrameLog` does not model an open window.** "No summary" means both "no frame yet" and "closed", so
-   a settle before the first frame reports that the window closed, and `is_open` reads false for an open
-   window.
-3. **Harness state and code sit where they do by history.** `impl Harness` is split across `play.rs`, a
+2. **Harness state and code sit where they do by history.** `impl Harness` is split across `play.rs`, a
    frame counter counts other frames than the remote's, and three settings are stored in three structs.
 
 ## Target design
 
-- **Data.** `FrameLog` holds an entry from a window's open to its
-  close, so `Disconnected` means closed. `FrameSummary` loses `repaint_at`, which nothing reads.
-  `Harness::frames` goes: both players count `record_frame_id`.
+- **Data.** `Harness::frames` goes: both players count `record_frame_id`.
 - **Interfaces.** `AgentWindow` gains `read` and `query`, so a driver writes a step once for both hosts,
   as the trait's doc already claims. `Locate` carries its own `Clone + Debug + Send + 'static` bound.
 - **Module layout.** `harness/play.rs` goes. The verbs and `HarnessStage` move to `harness_session.rs`,
@@ -66,23 +61,6 @@ Every shared-ownership case in the scope:
 - **`Harness::state`, `rect` and `clipboard_text` stay.** They are sugar over `Ui`, and tests read better.
 
 # Part 2: plan
-
-## Batch 3: `FrameLog` models an open window
-
-Files: `src/host/winit/frame_log.rs`, `frame_summary.rs`, `runtime.rs`, `handle.rs`, `remote/mod.rs`,
-`remote/remote_end.rs`, `remote/tests.rs`.
-
-- [ ] Bug, `Remote::last_frame`: `None` before the first frame reads as `Disconnected`, so a settle made
-  early says the window closed, and Darkroom's `running` ends the session on it. Target: `FrameLog::open`
-  makes the entry as the window opens. `last_frame` answers "open, no frame yet" apart from "not open",
-  and a wait goes on through the first.
-- [ ] **API** `HostHandle::is_open` reads false before the first frame. Target: true from the open to the
-  close, and its doc follows.
-- [ ] Dead data: nothing reads `FrameSummary::repaint_at` but a test of the log. Target: delete it, and
-  tell the test's two summaries apart by `record_frame_id`.
-- [ ] `wait_frame` reads the summary and then locks to wait, so a write between the two waits a whole tick,
-  50 ms, while the doc says a waiter wakes on each change. Target: a `FrameLog::wait_past(seen, timeout)`
-  that checks a write counter under the wait's own lock.
 
 ## Batch 4: a read door, on the trait
 

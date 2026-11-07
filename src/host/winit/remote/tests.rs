@@ -19,6 +19,7 @@ use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::host::winit::frame_log::FrameLog;
+use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{EventSender, HostHandle, UserEvent};
 use crate::host::winit::remote::Remote;
 use crate::host::winit::remote::remote_end::RemoteEnd;
@@ -189,6 +190,7 @@ impl Loop {
 fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
     let (sender, events) = mpsc::channel();
     let frame_log = Arc::new(FrameLog::default());
+    frame_log.open(WINDOW);
     let handle = HostHandle {
         sender: EventSender::Channel(sender),
         frame_log: Arc::clone(&frame_log),
@@ -208,14 +210,7 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
         window.serve(&events);
     });
     // The window's first frame, before a remote reads it.
-    let start = Instant::now();
-    while !handle.is_open(WINDOW) {
-        assert!(
-            start.elapsed() < Duration::from_secs(30),
-            "the loop ran no frame"
-        );
-        thread::sleep(Duration::from_millis(1));
-    }
+    handle.remote(WINDOW).settle().unwrap();
     (handle, thread)
 }
 
@@ -336,6 +331,53 @@ fn a_step_failed_by_a_held_thread_leaves_nothing_held() {
     }
     handle.quit();
     thread.join().unwrap();
+}
+
+/// A window reads as open from its open to its close. A settle ahead of the first frame waits for
+/// that frame, and gives up as any wait does, where a window that is not open says so at once.
+#[test]
+fn a_settle_waits_through_a_windows_first_frame() {
+    let (sender, _events) = mpsc::channel();
+    let handle: HostHandle<Counter> = HostHandle {
+        sender: EventSender::Channel(sender),
+        frame_log: Arc::default(),
+    };
+    let wait = Duration::from_millis(20);
+    let mut short = handle.remote(WINDOW).with_tick(TICK).with_wait(wait);
+    assert!(!handle.is_open(WINDOW));
+    assert_eq!(short.settle(), Err(PlayError::Disconnected));
+
+    handle.frame_log.open(WINDOW);
+    assert!(handle.is_open(WINDOW), "before its first frame");
+    assert!(matches!(
+        short.settle(),
+        Err(PlayError::NoFrame { waited }) if waited >= wait
+    ));
+
+    // The settle's first check starts the frame, so the frame lands after the settle began.
+    let (began, settle_began) = mpsc::channel();
+    let mut settling = handle.remote(WINDOW).with_tick(TICK).with_blocked(move || {
+        began.send(()).ok();
+        false
+    });
+    let log = Arc::clone(&handle.frame_log);
+    let first_frame = thread::spawn(move || {
+        settle_began.recv().unwrap();
+        log.record(
+            WINDOW,
+            FrameSummary {
+                record_frame_id: 1,
+                repaint_requested: false,
+                ..FrameSummary::AT_OPEN
+            },
+        );
+    });
+    assert_eq!(settling.settle(), Ok(1));
+    first_frame.join().unwrap();
+
+    handle.frame_log.remove(WINDOW);
+    assert!(!handle.is_open(WINDOW));
+    assert_eq!(settling.settle(), Err(PlayError::Disconnected));
 }
 
 /// A query that changes the app shows to the next settle: the frame after it records, and counts

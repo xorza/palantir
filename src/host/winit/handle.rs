@@ -129,14 +129,15 @@ impl<T: 'static> HostHandle<T> {
         self.send(UserEvent::Input(window, event)).ok();
     }
 
-    /// The last frame `window` ran, or `None` before its first frame, after it closes, and
-    /// once the loop ends. A window skips its frames while hidden, so its summary holds still.
+    /// The last frame `window` ran, [`FrameSummary::AT_OPEN`] until it runs one, or `None` when it
+    /// is not open: before it opens, after it closes, and once the loop ends. A window skips its
+    /// frames while hidden, so its summary holds still.
     pub(crate) fn last_frame(&self, window: WindowToken) -> Option<FrameSummary> {
         self.frame_log.get(window)
     }
 
-    /// Whether `window` ran a frame and has not closed; `false` before its first frame and once
-    /// the loop ends.
+    /// Whether `window` opened and has not closed, its first frame still to come included; `false`
+    /// once the loop ends.
     pub fn is_open(&self, window: WindowToken) -> bool {
         self.last_frame(window).is_some()
     }

@@ -1,8 +1,7 @@
 //! [`FrameSummary`]: what a window's last frame reported, readable from any thread.
 
-use std::time::Duration;
-
-/// A window's last frame, as `HostHandle::last_frame` reads it: the plain-data part of its
+/// A window's last frame, or [`Self::AT_OPEN`] until it runs one, as `HostHandle::last_frame` reads
+/// it: the plain-data part of its
 /// [`FrameReport`](crate::FrameReport), for a [`Remote`](crate::Remote)'s settle. Crate-private, as
 /// its counts are the remote protocol's; an app asks [`HostHandle::is_open`](crate::HostHandle::is_open)
 /// and [`HostHandle::is_hidden`](crate::HostHandle::is_hidden).
@@ -19,8 +18,16 @@ pub(crate) struct FrameSummary {
     pub(crate) sent_events: u64,
     /// See [`FrameReport::repaint_requested`](crate::FrameReport::repaint_requested).
     pub(crate) repaint_requested: bool,
-    /// See [`FrameReport::repaint_at`](crate::FrameReport::repaint_at).
-    pub(crate) repaint_at: Option<Duration>,
     /// What [`App::is_busy`](crate::App::is_busy) said after the frame.
     pub(crate) busy: bool,
+}
+
+impl FrameSummary {
+    /// A window that opened and ran no frame: it owes its first, so nothing settles on it yet.
+    pub(crate) const AT_OPEN: Self = Self {
+        record_frame_id: 0,
+        sent_events: 0,
+        repaint_requested: true,
+        busy: false,
+    };
 }

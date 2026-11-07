@@ -88,8 +88,8 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// [`PlayError::Unsettled`] when the window still asks for frames after the
     /// [wait](Self::with_wait), [`PlayError::Busy`] when a busy app runs no frame for as long,
     /// [`PlayError::NoFrame`] when the window runs none, [`PlayError::Blocked`] and
-    /// [`PlayError::Hidden`] at once when it cannot, and [`PlayError::Disconnected`] when it
-    /// closed.
+    /// [`PlayError::Hidden`] at once when it cannot, and [`PlayError::Disconnected`] when it is
+    /// not open. A window that opened and has run no frame yet owes one, which a settle waits for.
     fn settle(&mut self) -> Result<u32, PlayError> {
         let first = self.record_frame_id();
         self.wait_frame(Until::Settled)?;
@@ -120,7 +120,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// # Errors
     ///
     /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::Disconnected`]
-    /// when the window closed, [`PlayError::Blocked`] and [`PlayError::Hidden`] at once when no
+    /// when the window is not open, [`PlayError::Blocked`] and [`PlayError::Hidden`] at once when no
     /// frame can run, and [`PlayError::NoFrame`] when no picture landed within the
     /// [wait](Self::with_wait).
     fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
@@ -201,7 +201,7 @@ impl<T: 'static> Remote<T> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::Disconnected`] when the window closed or the loop ended,
+    /// [`PlayError::Disconnected`] when the window is not open or the loop ended,
     /// [`PlayError::Blocked`] at once while its thread is held, and [`PlayError::NoFrame`] when no
     /// answer came within the [wait](Self::with_wait).
     pub fn query<R: Send + 'static>(
@@ -310,7 +310,9 @@ impl<T: 'static> Remote<T> {
                     error => error,
                 });
             }
-            self.handle.frame_log.wait(self.tick);
+            self.handle
+                .frame_log
+                .wait_changed(self.window, last, self.tick);
         }
     }
 }

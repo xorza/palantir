@@ -130,7 +130,7 @@ pub enum PlayError {
     /// The device did not finish the frame whose pixels a player waits for within its bound, and
     /// is not lost: a hang no system has reset yet.
     GpuTimedOut,
-    /// The window closed, or its host stopped.
+    /// The window is not open: it closed, it did not open yet, or its host stopped.
     Disconnected,
     /// Something outside the host holds the window's thread, as a native dialog does until the
     /// person answers it, so no event and no frame runs: what
@@ -179,7 +179,7 @@ impl Display for PlayError {
             Self::GpuTimedOut => {
                 f.write_str("the device did not finish the frame in time, and hangs unreset")
             }
-            Self::Disconnected => f.write_str("the window closed"),
+            Self::Disconnected => f.write_str("the window is not open"),
             Self::Blocked => f.write_str(
                 "something outside the window holds its thread, as a native dialog does; answer \
                  it, then try again",

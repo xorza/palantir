@@ -77,7 +77,6 @@ impl RemoteEnd {
             record_frame_id: ui.record_frame_id(),
             sent_events: self.sent_events,
             repaint_requested: report.repaint_requested,
-            repaint_at: report.repaint_at,
             busy,
         }
     }
