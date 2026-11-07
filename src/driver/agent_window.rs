@@ -61,6 +61,19 @@ pub trait AgentWindow<A> {
         f: impl FnOnce(&mut A, &mut Ui) -> R + Send + 'static,
     ) -> Result<R, PlayError>;
 
+    /// Lose the graphics device the window paints with, as a GPU hang does, through
+    /// [`Gpu::lose`](crate::Gpu::lose): every window on the device loses it. A
+    /// [`WinitHost`](crate::WinitHost) opens a new one before the window's next frame, which the
+    /// next [settle](Self::settle) waits for; a [`Harness`](crate::Harness) paints nothing until
+    /// its owner hands it one through [`Harness::recover`](crate::Harness::recover), as it opens no
+    /// device of its own.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::NoPixels`] for a window that paints with no device, and what
+    /// [`Self::query`] fails with.
+    fn lose_device(&mut self) -> Result<(), PlayError>;
+
     /// The one place `at` names in the last frame, through [`Self::read`].
     ///
     /// # Errors

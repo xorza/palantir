@@ -720,9 +720,14 @@ impl Harness {
     /// below [`Depth::Gpu`](crate::Depth::Gpu). A frame then runs the app and paints nothing
     /// until [`Self::recover`] hands the harness a new device.
     pub fn is_device_lost(&self) -> bool {
+        self.gpu().is_some_and(Gpu::is_lost)
+    }
+
+    /// The device this harness paints with; none below [`Depth::Gpu`](crate::Depth::Gpu).
+    pub(crate) const fn gpu(&self) -> Option<&Gpu> {
         match &self.paint {
-            HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => false,
-            HarnessPaint::Gpu { device, .. } => device.gpu().is_lost(),
+            HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => None,
+            HarnessPaint::Gpu { device, .. } => Some(device.gpu()),
         }
     }
 

@@ -388,6 +388,11 @@ where
                     win.ask_shot(ask);
                 }
             }
+            UserEvent::LoseDevice(token, task) => {
+                if let Some(runtime) = self.running() {
+                    runtime.lose_device(token, task);
+                }
+            }
             UserEvent::RunOnMain(task) => match &mut self.phase {
                 HostPhase::Bootstrap(bootstrap) => bootstrap.pending_tasks.push(task),
                 HostPhase::Running(runtime) => {

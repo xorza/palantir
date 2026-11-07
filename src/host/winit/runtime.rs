@@ -14,7 +14,7 @@ use crate::host::system_preferences::SystemPreferences;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
-use crate::host::winit::remote::{QueryTask, ReadTask};
+use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask};
 use crate::host::winit::system_preferences;
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::host::winit::window::{OpenedWindow, Window};
@@ -189,6 +189,15 @@ impl<T: App + 'static> WinitRuntime<T> {
     pub(super) fn query(&mut self, token: WindowToken, task: QueryTask<T>) {
         if let Some(win) = self.windows.by_token(token) {
             win.on_query(&mut self.app, task);
+        }
+    }
+
+    /// Run `task` with the host's device between two frames of `token`'s window, which loses it,
+    /// and ask that window for a frame, whose draw opens a new device ([`Self::draw`]); the frame
+    /// counts the loss as a sent event. A window that is gone drops the task unrun.
+    pub(super) fn lose_device(&mut self, token: WindowToken, task: LoseTask) {
+        if let Some(win) = self.windows.by_token(token) {
+            win.on_lose_device(self.core.device.gpu(), task);
         }
     }
 

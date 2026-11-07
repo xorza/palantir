@@ -12,7 +12,7 @@ use crate::host::winit::error::HostDisconnected;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::owned_input_event::OwnedInputEvent;
-use crate::host::winit::remote::{QueryTask, ReadTask, Remote, ShotAsk};
+use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask, Remote, ShotAsk};
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::window::window_token::WindowToken;
 
@@ -40,6 +40,9 @@ pub(crate) enum UserEvent<T> {
     Read(WindowToken, ReadTask<T>),
     /// Asks the named window for a screenshot, which its frame hands back when it lands.
     Shot(WindowToken, ShotAsk),
+    /// Runs a closure with the host's device between two of the named window's frames, which
+    /// loses it, then runs a frame, which opens a new one; dropped unrun when the window is gone.
+    LoseDevice(WindowToken, LoseTask),
     /// The system's settings moved, as `mundy`'s subscription reports them from its thread.
     SystemPreferences(SystemPreferences),
     /// Asks the event loop to exit.
@@ -58,6 +61,10 @@ impl<T> fmt::Debug for UserEvent<T> {
             Self::Query(token, _) => f.debug_tuple("Query").field(token).finish_non_exhaustive(),
             Self::Read(token, _) => f.debug_tuple("Read").field(token).finish_non_exhaustive(),
             Self::Shot(token, ask) => f.debug_tuple("Shot").field(token).field(ask).finish(),
+            Self::LoseDevice(token, _) => f
+                .debug_tuple("LoseDevice")
+                .field(token)
+                .finish_non_exhaustive(),
             Self::SystemPreferences(preferences) => f
                 .debug_tuple("SystemPreferences")
                 .field(preferences)

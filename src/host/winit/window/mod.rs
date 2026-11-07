@@ -15,6 +15,7 @@ use winit::window::Window as WinitWindow;
 use crate::common::platform::PLATFORM;
 use crate::common::tracy::{self, FrameSet};
 use crate::display::system_scale::SystemScale;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::window_surface::{Acquired, Prepared, SurfaceFrame, WindowSurface};
 use crate::host::clock::RealtimeClock;
 use crate::host::host_core::HostCore;
@@ -23,7 +24,7 @@ use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
 use crate::host::winit::remote::remote_end::RemoteEnd;
-use crate::host::winit::remote::{QueryTask, ShotAsk};
+use crate::host::winit::remote::{LoseTask, QueryTask, ShotAsk};
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
 use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
 use crate::host::winit::window::visibility::Visibility;
@@ -215,6 +216,13 @@ impl Window {
     /// [`Self::on_sent_input`] does for an input.
     pub(super) fn on_query<T>(&mut self, app: &mut T, task: QueryTask<T>) {
         self.remote.run_query(app, self.frames.ui_mut(), task);
+        self.next = FramePresent::Immediate;
+    }
+
+    /// Run `task` with `gpu`, the host's device, which loses it, then ask for a frame, as
+    /// [`Self::on_query`] does.
+    pub(super) fn on_lose_device(&mut self, gpu: &Gpu, task: LoseTask) {
+        self.remote.run_lose_device(gpu, task);
         self.next = FramePresent::Immediate;
     }
 

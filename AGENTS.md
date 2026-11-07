@@ -110,8 +110,12 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 - **The texture limit is shared state**, as the new adapter's can be smaller. Refused: asking for
   the old limits, which fails a recovery onto a smaller GPU.
 - **Tests lose a real device**, an isolated one, through `Gpu::lose`, as wgpu's tests do. It is
-  public, as the harness is, so an app's tests and agents see the app recover too. By hand,
+  public, as the harness is, and `AgentWindow::lose_device` loses a window's device on either
+  host, so an app's tests and agents see the app recover too. By hand,
   `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root resets the GPU for every app.
+- **A harness's owner replaces its device**, as the owner handed it the first; a winit host opens
+  its own, so it recovers by itself. Refused: a device request in the harness, which would pick
+  an adapter and features its owner did not.
 
 ## Harness
 

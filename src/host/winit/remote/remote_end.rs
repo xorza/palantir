@@ -2,8 +2,9 @@
 //! test's loop both drive.
 
 use crate::driver::error::PlayError;
+use crate::gpu::device::gpu::Gpu;
 use crate::host::winit::frame_summary::FrameSummary;
-use crate::host::winit::remote::{QueryTask, ShotAsk};
+use crate::host::winit::remote::{LoseTask, QueryTask, ShotAsk};
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::window::screenshot::{Screenshot, ScreenshotId};
@@ -52,7 +53,13 @@ impl RemoteEnd {
         self.note_sent();
     }
 
-    /// Note that a sent event, an input or a query, reached the window's `Ui`.
+    /// Run `task` with `gpu`, the device the window paints with, which loses it.
+    pub(crate) fn run_lose_device(&mut self, gpu: &Gpu, task: LoseTask) {
+        task(gpu);
+        self.note_sent();
+    }
+
+    /// Note that a sent event, an input, a query or a device loss, reached the window's `Ui`.
     pub(crate) const fn note_sent(&mut self) {
         self.sent_events += 1;
     }

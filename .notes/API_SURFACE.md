@@ -35,6 +35,7 @@ AgentWindow
         fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError>
         fn read<R: Send + 'static>(&mut self, f: impl FnOnce(&A, &Ui) -> R + Send + 'static) -> Result<R, PlayError>
         fn query<R: Send + 'static>(&mut self, f: impl FnOnce(&mut A, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
+        fn lose_device(&mut self) -> Result<(), PlayError>
         fn find<X: Locate<A>>(&mut self, at: &Locator<X>) -> Result<Found, PlayError> { .. }
         fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> { .. }
 

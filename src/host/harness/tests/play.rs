@@ -452,18 +452,27 @@ fn a_settle_waits_for_a_busy_apps_wake() {
     }
 }
 
-/// On a lost device a shot, and a settle that waits on a screenshot, report the loss: no copy
-/// comes back, where both ran out their frames and read as an animation that runs on. A new
-/// device recovers the harness, whose next shot is the window at its size again.
+/// A session loses the harness's device, which a harness below `Depth::Gpu` has none of. On a lost
+/// device a shot, and a settle that waits on a screenshot, report the loss: no copy comes back,
+/// where both ran out their frames and read as an animation that runs on. A new device recovers
+/// the harness, whose next shot is the window at its size again.
 #[test]
 fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
+    let mut app = tile;
+    let mut unpainted = Harness::builder(UVec2::new(64, 32)).build();
+    assert_eq!(
+        unpainted.session(&mut app).lose_device(),
+        Err(PlayError::NoPixels)
+    );
+
     let gpu = isolated_headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(64, 32))
         .depth(Depth::gpu(gpu.handles()))
         .build();
-    let mut app = tile;
     h.session(&mut app).settle().unwrap();
-    gpu.lose();
+    assert!(!gpu.is_lost());
+    h.session(&mut app).lose_device().unwrap();
+    assert!(gpu.is_lost());
     assert_eq!(h.session(&mut app).shot(None), Err(PlayError::DeviceLost));
     assert_eq!(h.wait_for_gpu(), GpuWait::DeviceLost);
     h.ui_mut().request_screenshot(None).unwrap();

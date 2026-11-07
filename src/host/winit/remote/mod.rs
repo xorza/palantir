@@ -18,6 +18,7 @@ use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{PlayError, StepError};
 use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
+use crate::gpu::device::gpu::Gpu;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::owned_input_event::OwnedInputEvent;
@@ -42,6 +43,10 @@ pub(crate) type QueryTask<T> = Box<dyn FnOnce(&mut T, &mut Ui) + Send>;
 /// A closure the event loop runs between two frames of one window, with the app and the window's
 /// `Ui`, which asks no frame.
 pub(crate) type ReadTask<T> = Box<dyn FnOnce(&T, &Ui) + Send>;
+
+/// A closure the event loop runs between two frames of one window, with the device the host paints
+/// with.
+pub(crate) type LoseTask = Box<dyn FnOnce(&Gpu) + Send>;
 
 /// A screenshot a remote asked of a window, and where its image goes.
 #[derive(Debug)]
@@ -172,6 +177,21 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
             UserEvent::Query(window, task)
         })
     }
+
+    /// Lose the host's device between two frames of the window; the host opens a new one before
+    /// the window's next frame, which counts the loss as a sent event, so a settle after it waits
+    /// for that frame. Every window of the host loses the device and paints whole on the new one.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::query`].
+    fn lose_device(&mut self) -> Result<(), PlayError> {
+        let window = self.window;
+        self.ask(move |asked| {
+            let task: LoseTask = Box::new(move |gpu| asked.answer(|| gpu.lose()));
+            UserEvent::LoseDevice(window, task)
+        })
+    }
 }
 
 impl<T: 'static> Remote<T> {
@@ -207,8 +227,8 @@ impl<T: 'static> Remote<T> {
         self
     }
 
-    /// Send the event `event` builds and wait for its answer. A query counts as a sent event, as
-    /// the window counts it when it runs.
+    /// Send the event `event` builds and wait for its answer. A query and a device loss count as a
+    /// sent event, as the window counts each when it runs.
     fn ask<R>(&mut self, event: impl FnOnce(Asked<R>) -> UserEvent<T>) -> Result<R, PlayError> {
         // Before sending, so a held thread gives up at once and the task never runs.
         self.check_waiting(Instant::now(), Answer::BetweenFrames)?;
@@ -218,7 +238,10 @@ impl<T: 'static> Remote<T> {
             reply,
             given_up: Arc::clone(&given_up),
         });
-        let counted = u64::from(matches!(event, UserEvent::Query(..)));
+        let counted = u64::from(matches!(
+            event,
+            UserEvent::Query(..) | UserEvent::LoseDevice(..)
+        ));
         self.handle
             .send(event)
             .map_err(|_| PlayError::Disconnected)?;

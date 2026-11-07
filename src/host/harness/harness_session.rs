@@ -124,6 +124,17 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         ui.request_repaint();
         Ok(answer)
     }
+
+    /// Lose the harness's device at once. The frames after it run the app and paint nothing until
+    /// [`Harness::recover`].
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu).
+    fn lose_device(&mut self) -> Result<(), PlayError> {
+        self.harness.gpu().ok_or(PlayError::NoPixels)?.lose();
+        Ok(())
+    }
 }
 
 /// A harness and the app it plays, as a [`Stage`] on the harness's stepped clock.

@@ -16,7 +16,7 @@ use glam::{UVec2, Vec2};
 use crate::driver::action::Action;
 use crate::driver::error::{LocateError, PlayError};
 use crate::driver::locator::{Found, Locator};
-use crate::gpu::test_gpu::headless_test_gpu;
+use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::host::winit::frame_log::FrameLog;
@@ -177,6 +177,10 @@ impl Loop {
                     self.remote.note_sent();
                 }
                 UserEvent::Shot(WINDOW, ask) => self.remote.ask_shot(self.h.ui_mut(), ask),
+                UserEvent::LoseDevice(WINDOW, task) => {
+                    let gpu = self.h.gpu().expect("a loop that loses its device paints");
+                    self.remote.run_lose_device(gpu, task);
+                }
                 UserEvent::RunOnMain(task) => {
                     task(&mut self.app);
                 }
@@ -419,6 +423,26 @@ fn a_settle_after_a_query_sees_what_it_changed() {
     remote.query(|app, _| app.extra = true).unwrap();
     remote.settle().unwrap();
     assert_eq!(remote.widgets(Some("Extra")).unwrap().len(), 1);
+    handle.quit();
+    thread.join().unwrap();
+}
+
+/// A remote loses the device between two frames, and the loss counts as a sent event: the frame
+/// after it saw it, so a settle waits for that frame. The loop here, a harness, opens no device in
+/// its place, where a winit host opens one.
+#[test]
+fn a_remote_loses_the_device_and_a_settle_waits_for_the_frame_after() {
+    let gpu = isolated_headless_test_gpu();
+    let (handle, thread) = serve_at(Depth::gpu(gpu.handles()));
+    let mut remote = handle.remote(WINDOW).with_tick(TICK);
+    remote.settle().unwrap();
+    let before = handle.last_frame(WINDOW).unwrap().sent_events;
+    assert!(!gpu.is_lost());
+    remote.lose_device().unwrap();
+    assert!(gpu.is_lost());
+    remote.settle().unwrap();
+    // 1 = the loss, the one event sent since `before`.
+    assert_eq!(handle.last_frame(WINDOW).unwrap().sent_events, before + 1);
     handle.quit();
     thread.join().unwrap();
 }
