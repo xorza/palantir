@@ -6,6 +6,7 @@
 - image handle with closure for reupload?
 - build-in colors
 - rich text edit
+- custom shaders for backgrounds
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
