@@ -6,4 +6,3 @@
 - `RequestedGpu` keeps wgpu's backend order among adapters of one rank (`src/gpu/device/requested_gpu.rs`), so a Windows machine with a Vulkan driver runs Vulkan, while the CI Windows lane runs Dx12 on WARP alone. Neither Windows with Vulkan nor Dx12 on a real GPU runs in CI.
 - `.github/workflows/ci.yml` says Vulkan is the only backend this crate builds on Linux, but `Cargo.toml` enables `gles`.
 - `oklab::cbrt` refuses the system's libm because its last bit differs by platform, but `animation/spring.rs`, `shape/paint/blur_plan`, `shape/paint/lens_optics`, the gradient geometry and `color/okhsv` still call it.
-- `winit` 0.30 reports a Windows wheel in notches and does not read the system's lines-per-notch setting, and nothing in `src` reads it, so that setting has no effect on `ScrollLines`.

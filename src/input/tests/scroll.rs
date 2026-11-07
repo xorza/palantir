@@ -12,10 +12,16 @@ fn scroll_delta_for_preserves_raw_pixels_and_lines() {
     let id = WidgetId::from_hash("scroll");
     state.pointer.scroll_targets = ScrollTargets::both(id);
     state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
-    state.feed(InputEvent::ScrollLines(Vec2::new(0.0, 2.0)));
+    state.feed(InputEvent::ScrollLines {
+        notches: Vec2::new(0.0, 2.0),
+        lines: Vec2::new(0.0, 6.0),
+        pages: Vec2::new(0.0, 1.0),
+    });
     let delta = state.scroll_delta_for(id);
     assert_eq!(delta.pixels, Vec2::new(0.0, 5.0));
-    assert_eq!(delta.lines, Vec2::new(0.0, 2.0));
+    assert_eq!(delta.lines, Vec2::new(0.0, 6.0));
+    assert_eq!(delta.notches, Vec2::new(0.0, 2.0));
+    assert_eq!(delta.pages, Vec2::new(0.0, 1.0));
     assert_eq!(delta.zoom, ZoomFactor::ONE);
 }
 
@@ -45,7 +51,7 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
 
     for idx in 0..8 {
         state.pointer.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("next", idx)));
-        state.feed(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        state.feed(InputEvent::scroll_lines(Vec2::new(0.0, 1.0)));
     }
     assert_eq!(state.pointer.target_deltas.len(), 8);
     assert_eq!(state.pointer.target_deltas.capacity(), capacity);
@@ -60,7 +66,7 @@ fn an_invalid_payload_is_refused_and_mutates_nothing() {
     state.pointer.scroll_targets = ScrollTargets::both(id);
     state.pointer.pinch_target = Some(id);
     state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
-    state.feed(InputEvent::ScrollLines(Vec2::new(1.0, 0.0)));
+    state.feed(InputEvent::scroll_lines(Vec2::new(1.0, 0.0)));
     state.feed(InputEvent::Pinch(ZoomFactor::new(1.5).unwrap()));
     state.signal_since_last_frame = InputSignal::None;
 
@@ -69,7 +75,7 @@ fn an_invalid_payload_is_refused_and_mutates_nothing() {
         for axis in [Vec2::new(bad, 0.0), Vec2::new(0.0, bad)] {
             refused.extend([
                 InputEvent::ScrollPixels(axis),
-                InputEvent::ScrollLines(axis),
+                InputEvent::scroll_lines(axis),
                 InputEvent::PointerMoved(axis),
             ]);
         }

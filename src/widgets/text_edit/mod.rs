@@ -22,6 +22,7 @@ mod unicode;
 mod view_state;
 
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::key_class::KeyFilter;
@@ -511,7 +512,12 @@ impl EditField<'_> {
         let wheel = if response.disabled {
             Vec2::ZERO
         } else {
-            response.scroll.pan(ctx.font.line_height)
+            response.scroll.pan(
+                ctx.font.line_height,
+                response
+                    .layout_rect
+                    .map_or(Size::ZERO, |rect| rect.deflated_by(ctx.padding).size),
+            )
         };
 
         let placeholder: &str = match &self.placeholder {

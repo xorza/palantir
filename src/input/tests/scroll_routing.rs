@@ -32,7 +32,7 @@ fn route_across_two_targets(second_delta: bool) -> [ScrollDelta; 2] {
     h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(2.0, 3.0));
     h.hover(Vec2::new(150.0, 50.0));
     if second_delta {
-        h.on_input(InputEvent::ScrollLines(Vec2::new(4.0, 5.0)));
+        h.on_input(InputEvent::scroll_lines(Vec2::new(4.0, 5.0)));
     }
 
     h.frame_value(|ui| {
@@ -69,6 +69,7 @@ fn scroll_deltas_stay_with_their_event_time_targets() {
             },
             ScrollDelta {
                 lines: Vec2::new(4.0, 5.0),
+                notches: Vec2::new(4.0, 5.0),
                 ..ScrollDelta::default()
             },
         ],

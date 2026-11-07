@@ -2156,6 +2156,7 @@ dependencies = [
  "unicode-linebreak",
  "unicode-segmentation",
  "wgpu",
+ "windows",
  "winit",
 ]
 

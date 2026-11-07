@@ -44,7 +44,7 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
     Translator::new(PLATFORM).translate(&lines, 1.0, |event| got.push(event));
     assert!(matches!(
         got.as_slice(),
-        [InputEvent::ScrollLines(delta)] if *delta == Vec2::new(-2.0, -1.0)
+        [InputEvent::ScrollLines { notches, .. }] if *notches == Vec2::new(-2.0, -1.0)
     ));
     got.clear();
 
@@ -71,7 +71,7 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
         got.clear();
         translator.translate(&down, 1.0, |event| got.push(event));
         assert!(
-            matches!(got.as_slice(), [InputEvent::ScrollLines(delta)] if *delta == want),
+            matches!(got.as_slice(), [InputEvent::ScrollLines { notches, .. }] if *notches == want),
             "{modifiers:?}: {got:?}",
         );
     }

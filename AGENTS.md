@@ -274,6 +274,15 @@ driver serves that command alone; the drive table's `version` names it
   chord for one action; macOS's Cmd+Left line chords and each platform's own table, as
   [Flutter](https://codebrowser.dev/flutter/flutter/packages/flutter/lib/src/widgets/default_text_editing_shortcuts.dart.html)
   binds, which a person who moves between machines learns twice.
+- **A person's scroll setting moves a scroll, not a zoom.** `InputEvent::ScrollLines` carries the
+  notches a wheel turned apart from the lines and pages they scroll, and a wheel zoom reads the
+  notches. The Windows host reads `SPI_GETWHEELSCROLLLINES` and `SPI_GETWHEELSCROLLCHARS` at each
+  wheel event, as [Microsoft's sample](https://devblogs.microsoft.com/oldnewthing/20030807-00/?p=42963)
+  does, since winit reports no change of them. AppKit applies its own speed before the event, and
+  the X11 and Wayland protocols state none. Refused:
+  one lane, multiplied, which makes a wheel zoom jump
+  ([GTK #1408](https://gitlab.gnome.org/GNOME/gtk/issues/1408)); ignoring the setting, which a
+  person's settings decide.
 - **Activation.** Space and Enter fold into one left click; a toggle takes Space alone, as
   WAI-ARIA leaves Enter to the form. Each is a `KeyClass` of its own, so a focused widget's scope
   takes those keys and no letter, as a Qt or GTK button accepts only the keys it acts on.

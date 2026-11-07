@@ -9,8 +9,9 @@ use winit::keyboard::{ModifiersState, PhysicalKey};
 use crate::common::platform::Platform;
 use crate::display;
 use crate::host::winit::input::{
-    KeyDownFacts, Press, ime_event, key_down, normalize_modifiers, shift_wheel,
+    KeyDownFacts, Press, ime_event, key_down, normalize_modifiers, shift_wheel, wheel_lines,
 };
+use crate::host::winit::platform;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::pointer::PointerButton;
@@ -148,17 +149,18 @@ impl Translator {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let (event, delta) = match *delta {
-                    MouseScrollDelta::LineDelta(x, y) => (WheelUnit::Lines, Vec2::new(-x, -y)),
-                    MouseScrollDelta::PixelDelta(pos) => (
-                        WheelUnit::Pixels,
-                        Vec2::new(-pos.x as f32, -pos.y as f32) / scale_factor,
+                emit(match *delta {
+                    MouseScrollDelta::LineDelta(x, y) => wheel_lines(
+                        Vec2::new(-x, -y),
+                        platform::wheel_steps(),
+                        self.modifiers,
+                        self.platform,
                     ),
-                };
-                let delta = shift_wheel(delta, self.modifiers, self.platform);
-                emit(match event {
-                    WheelUnit::Lines => InputEvent::ScrollLines(delta),
-                    WheelUnit::Pixels => InputEvent::ScrollPixels(delta),
+                    MouseScrollDelta::PixelDelta(pos) => InputEvent::ScrollPixels(shift_wheel(
+                        Vec2::new(-pos.x as f32, -pos.y as f32) / scale_factor,
+                        self.modifiers,
+                        self.platform,
+                    )),
                 });
             }
             WindowEvent::KeyboardInput {
@@ -276,13 +278,6 @@ impl Translator {
             _ => PointerTrace::Unchanged,
         }
     }
-}
-
-/// The two units a wheel reports in.
-#[derive(Clone, Copy, Debug)]
-enum WheelUnit {
-    Lines,
-    Pixels,
 }
 
 #[cfg(test)]

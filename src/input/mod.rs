@@ -475,26 +475,30 @@ impl Input {
         true
     }
 
-    /// Accumulate one scroll delta on the current targets and wake watchers. Pixels and lines
-    /// travel in separate lanes (see [`ScrollDelta`]).
-    fn on_scroll(&mut self, pixels: Vec2, lines: Vec2) -> EventOutcome {
+    /// Accumulate one scroll delta on the current targets and wake watchers. Each unit
+    /// travels in its own lane (see [`ScrollDelta`]).
+    fn on_scroll(&mut self, lanes: ScrollDelta) -> EventOutcome {
         let mut delivered = false;
         for share in self
             .pointer
             .scroll_targets
-            .route(pixels, lines)
+            .route(lanes)
             .into_iter()
             .flatten()
         {
             let delta = self.pointer.delta_mut(share.target);
-            delta.pixels += share.pixels;
-            delta.lines += share.lines;
+            delta.pixels += share.delta.pixels;
+            delta.lines += share.delta.lines;
+            delta.notches += share.delta.notches;
+            delta.pages += share.delta.pages;
             delivered = true;
         }
         let subbed = self.push_positioned(PointerWake::SCROLL, |pos| PointerEvent::Scroll {
             pos,
-            pixels,
-            lines,
+            pixels: lanes.pixels,
+            lines: lanes.lines,
+            notches: lanes.notches,
+            pages: lanes.pages,
         });
         if delivered || subbed {
             self.queue.note_delta();
@@ -624,8 +628,20 @@ impl Input {
             InputEvent::PointerLeft => self.on_pointer_left(),
             InputEvent::PointerPressed(btn) => self.on_pointer_pressed(btn, double_click, now),
             InputEvent::PointerReleased(btn) => self.on_pointer_released(btn),
-            InputEvent::ScrollPixels(d) => self.on_scroll(d, Vec2::ZERO),
-            InputEvent::ScrollLines(d) => self.on_scroll(Vec2::ZERO, d),
+            InputEvent::ScrollPixels(pixels) => self.on_scroll(ScrollDelta {
+                pixels,
+                ..ScrollDelta::NONE
+            }),
+            InputEvent::ScrollLines {
+                notches,
+                lines,
+                pages,
+            } => self.on_scroll(ScrollDelta {
+                lines,
+                notches,
+                pages,
+                ..ScrollDelta::NONE
+            }),
             InputEvent::Pinch(factor) => self.on_pinch(factor),
             InputEvent::KeyDown {
                 key,

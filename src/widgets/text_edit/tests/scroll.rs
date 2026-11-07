@@ -177,6 +177,7 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
             TextEdit::new(buf)
                 .id(WidgetId::from_hash("wheel-ed"))
                 .multiline(true)
+                .padding(10.0)
                 .size((Sizing::fixed(280.0), Sizing::fixed(100.0)))
                 .show(ui);
         });
@@ -221,6 +222,25 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
         scrolled > 0.0,
         "wheel over a multi-line editor must pan it; scroll.y = {scrolled}",
     );
+
+    // A page per notch pans a page of the text's view, inside the padding, and not of the
+    // 100 px box. The chrome's 1 px stroke folds into the 10 px padding, so the view is
+    // 100 − 2 × 11 = 78: 0.875 × 78 = 68.25 against 78 − 40 = 38.
+    h.on_input(InputEvent::ScrollLines {
+        notches: Vec2::new(0.0, 1.0),
+        lines: Vec2::ZERO,
+        pages: Vec2::new(0.0, 1.0),
+    });
+    h.frame(|ui| body(ui, &mut buf));
+    let paged = h
+        .state::<TextEditState>(ed_id)
+        .unwrap()
+        .view
+        .scroll
+        .offset()
+        .y;
+    assert_eq!(paged - scrolled, 68.25);
+    let scrolled = paged;
 
     // A frame with no input and no caret movement leaves the view where the wheel
     // put it, which a caret-follow-every-frame would break.

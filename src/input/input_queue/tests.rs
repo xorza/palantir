@@ -41,7 +41,7 @@ fn admit(queue: &mut InputQueue, event: &InputEvent<'_>) -> bool {
         InputEvent::PointerPressed(button) | InputEvent::PointerReleased(button) => {
             queue.note_capture(button);
         }
-        InputEvent::ScrollPixels(_) | InputEvent::ScrollLines(_) | InputEvent::Pinch(_) => {
+        InputEvent::ScrollPixels(_) | InputEvent::ScrollLines { .. } | InputEvent::Pinch(_) => {
             queue.note_delta();
         }
         InputEvent::KeyDown { key, text, .. } => queue.note_key(key, text),
@@ -159,7 +159,7 @@ fn a_frame_admits_only_events_that_keep_its_levels() {
         ),
         (
             "a modifier change after a scroll or pinch delta waits",
-            &[InputEvent::ScrollLines(Vec2::Y), shift_up],
+            &[InputEvent::scroll_lines(Vec2::Y), shift_up],
             &[true, false],
         ),
         (
@@ -292,7 +292,22 @@ fn held_moves_and_scroll_deltas_merge_into_their_neighbor() {
     }
     queue.defer(InputEvent::ScrollPixels(Vec2::new(0.0, 3.0)), ms(5));
     queue.defer(InputEvent::ScrollPixels(Vec2::new(1.0, 4.0)), ms(6));
-    queue.defer(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)), ms(7));
+    queue.defer(
+        InputEvent::ScrollLines {
+            notches: Vec2::new(0.0, 1.0),
+            lines: Vec2::new(0.0, 3.0),
+            pages: Vec2::ZERO,
+        },
+        ms(7),
+    );
+    queue.defer(
+        InputEvent::ScrollLines {
+            notches: Vec2::new(0.0, 2.0),
+            lines: Vec2::new(0.0, 6.0),
+            pages: Vec2::new(0.0, 1.0),
+        },
+        ms(7),
+    );
     queue.defer(InputEvent::PointerMoved(Vec2::new(40.0, 5.0)), ms(8));
 
     // `InputEvent` derives no `PartialEq`; its `Debug` prints every field.
@@ -306,7 +321,15 @@ fn held_moves_and_scroll_deltas_merge_into_their_neighbor() {
                 (InputEvent::PointerMoved(Vec2::new(30.0, 5.0)), ms(4)),
                 // 0 + 1 = 1 and 3 + 4 = 7.
                 (InputEvent::ScrollPixels(Vec2::new(1.0, 7.0)), ms(6)),
-                (InputEvent::ScrollLines(Vec2::new(0.0, 1.0)), ms(7)),
+                // Each lane adds on its own: 1 + 2, 3 + 6 and 0 + 1.
+                (
+                    InputEvent::ScrollLines {
+                        notches: Vec2::new(0.0, 3.0),
+                        lines: Vec2::new(0.0, 9.0),
+                        pages: Vec2::new(0.0, 1.0),
+                    },
+                    ms(7)
+                ),
                 (InputEvent::PointerMoved(Vec2::new(40.0, 5.0)), ms(8)),
             ]
         )

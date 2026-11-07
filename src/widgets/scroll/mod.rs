@@ -15,6 +15,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::input::interaction::scroll_delta::page_step;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::zoom_factor::ZoomFactor;
@@ -355,10 +356,7 @@ impl<'a> Scroll<'a> {
             let along = match travel.end {
                 Some(AxisEnd::Start) => -reach,
                 Some(AxisEnd::End) => reach,
-                None => {
-                    let page = (view * 0.875).max(view - 40.0).max(1.0);
-                    travel.steps as f32 * line_px + travel.pages as f32 * page
-                }
+                None => travel.steps as f32 * line_px + travel.pages as f32 * page_step(view),
             };
             pan += axis.compose_point(along, 0.0);
         }
@@ -370,14 +368,14 @@ impl<'a> Scroll<'a> {
     /// into a zoom factor (positive `notches.y` zooms out) and suppresses the pan.
     /// `pivot` resolves only when a step lands, falling back to the viewport center
     /// when the pointer is off the widget or there is no rect yet.
-    fn read_input(&self, ui: &Ui, response: &ResponseState) -> ScrollInput {
+    fn read_input(&self, ui: &Ui, response: &ResponseState, viewport: Size) -> ScrollInput {
         // Line step for wheel to pixel conversion, from the theme's default text size.
         let line_px = ui.theme().text.font().line_height;
         let scroll = response.scroll;
-        let pan_raw = scroll.pan(line_px);
+        let pan_raw = scroll.pan(line_px, viewport);
         // A theme with no line metric contributes no notches.
         let notches_per_px = domain::share_of(1.0, line_px);
-        let notches = scroll.lines + scroll.pixels * notches_per_px;
+        let notches = scroll.notches + scroll.pixels * notches_per_px;
         // `CTRL` is the primary command modifier: Cmd on macOS, Ctrl elsewhere.
         let mods = ui.peek_modifiers();
         let wheel_zooms = self.zoom.is_some_and(|cfg| match cfg.modifier() {
@@ -553,7 +551,7 @@ impl<'a> Scroll<'a> {
             };
             self.pan_request += Vec2::new(along(Axis::X), along(Axis::Y));
         }
-        let input = self.read_input(ui, &response);
+        let input = self.read_input(ui, &response, geometry.bounds().viewport);
         let bars = (self.bar_mode != BarMode::Hidden)
             .then(|| Bars::read(ui, &snapshot, self.bars_theme(ui)));
 

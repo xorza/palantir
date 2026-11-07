@@ -1171,7 +1171,7 @@ InputEvent
         PointerPressed(PointerButton)
         PointerReleased(PointerButton)
         ScrollPixels(Vec2)
-        ScrollLines(Vec2)
+        ScrollLines { notches: Vec2, lines: Vec2, pages: Vec2 }
         Pinch(ZoomFactor)
         KeyDown { key: Key, repeat: bool, physical: Key, text: KeyText }
         KeyUp { key: Key }
@@ -1179,6 +1179,7 @@ InputEvent
         ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
         SurfaceFocusLost
+        pub const fn scroll_lines(notches: Vec2) -> Self
 
 InputPolicy
     enum InputPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1684,7 +1685,7 @@ PointerEvent
         Moved(Vec2)
         Pressed { pos: Vec2, button: PointerButton }
         Released { pos: Vec2, button: PointerButton }
-        Scroll { pos: Vec2, pixels: Vec2, lines: Vec2 }
+        Scroll { pos: Vec2, pixels: Vec2, lines: Vec2, notches: Vec2, pages: Vec2 }
         Pinch { pos: Vec2, factor: ZoomFactor }
         Left
 
@@ -1951,8 +1952,10 @@ ScrollDelta
     struct ScrollDelta: Clone, Copy, Debug, Default, PartialEq
         pub pixels: Vec2
         pub lines: Vec2
+        pub notches: Vec2
+        pub pages: Vec2
         pub zoom: ZoomFactor
-        pub fn pan(self, line_height: f32) -> Vec2
+        pub const fn pan(self, line_height: f32, viewport: Size) -> Vec2
 
 ScrollbarTheme
     struct ScrollbarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize

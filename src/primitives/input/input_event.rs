@@ -26,10 +26,18 @@ pub enum InputEvent<'a> {
     /// Pixel-precise scroll delta (touchpad, `MouseScrollDelta::PixelDelta`);
     /// positive `y` scrolls content *down*.
     ScrollPixels(Vec2),
-    /// Notched scroll delta (`MouseScrollDelta::LineDelta`): the raw line count,
-    /// sign-flipped to match `ScrollPixels`; the consuming widget applies its line
-    /// step.
-    ScrollLines(Vec2),
+    /// Notched scroll delta (`MouseScrollDelta::LineDelta`), each lane sign-flipped to match
+    /// `ScrollPixels`; the consuming widget applies its line and page steps.
+    /// [`Self::scroll_lines`] builds the plain case, one line per notch.
+    ScrollLines {
+        /// How far the wheel turned, which a wheel zoom reads, so a person's scroll setting
+        /// leaves its step alone.
+        notches: Vec2,
+        /// The lines this turn scrolls under the system's setting.
+        lines: Vec2,
+        /// The pages this turn scrolls, where the system's setting is a page per notch.
+        pages: Vec2,
+    },
     /// A pinch gesture's multiplicative step: [`ZoomFactor::ONE`] is none, `1.05` zooms in 5%.
     /// Wheel zoom is not translated into `Pinch`.
     Pinch(ZoomFactor),
@@ -70,6 +78,16 @@ pub enum InputEvent<'a> {
 }
 
 impl<'a> InputEvent<'a> {
+    /// A wheel turn of `notches` at one line per notch: [`Self::ScrollLines`] where no system's
+    /// setting applies.
+    pub const fn scroll_lines(notches: Vec2) -> Self {
+        Self::ScrollLines {
+            notches,
+            lines: notches,
+            pages: Vec2::ZERO,
+        }
+    }
+
     pub(crate) const fn text(&self) -> Option<&'a str> {
         match *self {
             Self::ImePreedit(ImePreedit { text, .. }) | Self::ImeCommit(text) => Some(text),
@@ -88,7 +106,15 @@ impl<'a> InputEvent<'a> {
             Self::PointerPressed(button) => InputEvent::PointerPressed(button),
             Self::PointerReleased(button) => InputEvent::PointerReleased(button),
             Self::ScrollPixels(delta) => InputEvent::ScrollPixels(delta),
-            Self::ScrollLines(delta) => InputEvent::ScrollLines(delta),
+            Self::ScrollLines {
+                notches,
+                lines,
+                pages,
+            } => InputEvent::ScrollLines {
+                notches,
+                lines,
+                pages,
+            },
             Self::Pinch(factor) => InputEvent::Pinch(factor),
             Self::KeyDown {
                 key,
@@ -115,7 +141,12 @@ impl<'a> InputEvent<'a> {
     /// finite check later). A pinch's [`ZoomFactor`] is valid by construction.
     pub(crate) fn is_valid(&self) -> bool {
         match self {
-            Self::PointerMoved(p) | Self::ScrollPixels(p) | Self::ScrollLines(p) => p.is_finite(),
+            Self::PointerMoved(p) | Self::ScrollPixels(p) => p.is_finite(),
+            Self::ScrollLines {
+                notches,
+                lines,
+                pages,
+            } => notches.is_finite() && lines.is_finite() && pages.is_finite(),
             Self::Pinch(_)
             | Self::PointerLeft
             | Self::PointerPressed(_)
@@ -175,7 +206,17 @@ mod tests {
                 for event in [
                     InputEvent::PointerMoved(axis),
                     InputEvent::ScrollPixels(axis),
-                    InputEvent::ScrollLines(axis),
+                    InputEvent::scroll_lines(axis),
+                    InputEvent::ScrollLines {
+                        notches: Vec2::ZERO,
+                        lines: axis,
+                        pages: Vec2::ZERO,
+                    },
+                    InputEvent::ScrollLines {
+                        notches: Vec2::ZERO,
+                        lines: Vec2::ZERO,
+                        pages: axis,
+                    },
                 ] {
                     assert!(!event.is_valid(), "{event:?}");
                 }
@@ -185,7 +226,7 @@ mod tests {
         let ok: &[InputEvent<'_>] = &[
             InputEvent::PointerMoved(Vec2::new(-3.5, 12.0)),
             InputEvent::ScrollPixels(Vec2::new(0.0, -40.0)),
-            InputEvent::ScrollLines(Vec2::ZERO),
+            InputEvent::scroll_lines(Vec2::ZERO),
             InputEvent::Pinch(ZoomFactor::new(f32::MIN_POSITIVE).unwrap()),
             InputEvent::Pinch(ZoomFactor::new(1.05).unwrap()),
             InputEvent::PointerLeft,
@@ -226,7 +267,7 @@ mod tests {
                 InputEvent::PointerPressed(_) => 2,
                 InputEvent::PointerReleased(_) => 3,
                 InputEvent::ScrollPixels(_) => 4,
-                InputEvent::ScrollLines(_) => 5,
+                InputEvent::ScrollLines { .. } => 5,
                 InputEvent::Pinch(_) => 6,
                 InputEvent::KeyDown { .. } => 7,
                 InputEvent::ModifiersChanged(_) => 8,

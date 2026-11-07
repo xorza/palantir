@@ -130,6 +130,9 @@ wgpu = { version = "30.0", default-features = false, features = [
     "dx12",
     "gles",
 ] }
+windows = { version = "0.62", default-features = false, features = [
+    "Win32_UI_WindowsAndMessaging",
+] }
 winit = { version = "0.30", default-features = false, features = [
     "rwh_06",
     "x11",
@@ -178,13 +181,16 @@ static_assertions = { workspace = true }
 ron = { workspace = true }
 naga = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, optional = true }
+
 [features]
 default = ["winit"]
 internals = ["dep:criterion", "dep:image", "dep:strum"]
 golden = ["dep:image"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
-winit = ["dep:winit", "system-clipboard", "dep:mundy"]
+winit = ["dep:winit", "system-clipboard", "dep:mundy", "dep:windows"]
 profile-with-tracy = ["dep:tracy-client"]
 
 

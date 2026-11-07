@@ -67,8 +67,12 @@ pub enum PointerEvent {
         pos: Vec2,
         /// Pixel-precise delta, as touchpads report it.
         pixels: Vec2,
-        /// Notched wheel ticks.
+        /// Notched delta in lines, under the system's scroll setting.
         lines: Vec2,
+        /// How far a notched wheel turned, whatever that setting makes of it.
+        notches: Vec2,
+        /// Notched delta in pages, where that setting is a page per notch.
+        pages: Vec2,
     },
     /// Pinch-zoom; gated on [`PointerWake::PINCH`](crate::primitives::input::watch::PointerWake::PINCH).
     Pinch {

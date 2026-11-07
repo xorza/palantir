@@ -6,6 +6,8 @@ use winit::event_loop::EventLoopBuilder;
 use winit::platform::wayland::WindowAttributesExtWayland as _;
 use winit::window::WindowAttributes;
 
+use crate::host::winit::input::wheel_steps::WheelSteps;
+
 /// Nothing to configure.
 pub(super) const fn configure_event_loop<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
 
@@ -24,6 +26,11 @@ pub(super) fn with_app_id(attrs: WindowAttributes, app_id: Option<&str>) -> Wind
 /// its own in `kdeglobals`, which no portal key holds, so a KDE desktop answers the GSettings value
 /// (`.notes/research/2026-10-31-system-preferences.md`).
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = Some(Duration::from_millis(400));
+
+/// One line per notch: neither the X11 nor the Wayland protocol states a scroll setting.
+pub(super) const fn wheel_steps() -> WheelSteps {
+    WheelSteps::ONE_LINE
+}
 
 #[cfg(test)]
 pub(super) mod internals {

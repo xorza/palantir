@@ -1,7 +1,14 @@
 //! Wheel, touchpad and pinch deltas as they reach one widget.
 
+use crate::primitives::geometry::size::Size;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
+
+/// One page's travel along a viewport `view` long: all of it but a little, so a line of context
+/// stays, and at least a pixel.
+pub(crate) const fn page_step(view: f32) -> f32 {
+    (view * 0.875).max(view - 40.0).max(1.0)
+}
 
 /// Wheel / touchpad / pinch deltas routed to the widget this frame; non-identity only when the widget has
 /// [`Sense::SCROLL`](crate::primitives::input::sense::Sense::SCROLL) / [`Sense::PINCH`](crate::primitives::input::sense::Sense::PINCH) and
@@ -9,10 +16,16 @@ use glam::Vec2;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollDelta {
     /// Pixel-precise delta in logical pixels (touchpads, precision wheels), negated at ingest so `+y` advances the
-    /// scroll offset. [`Self::pan`] folds it with [`Self::lines`].
+    /// scroll offset. [`Self::pan`] folds it with [`Self::lines`] and [`Self::pages`].
     pub pixels: Vec2,
-    /// Notched delta in raw line units (not pixels) from classic wheels; sign matches [`Self::pixels`].
+    /// Notched delta in lines (not pixels) under the system's scroll setting; sign matches [`Self::pixels`].
     pub lines: Vec2,
+    /// How far a notched wheel turned, whatever the system's scroll setting makes of it, for a step per notch
+    /// such as a wheel zoom ([`ZoomFactor::from_wheel`](crate::ZoomFactor::from_wheel)). A setting that multiplies
+    /// a scroll must not multiply a zoom ([GTK #1408](https://gitlab.gnome.org/GNOME/gtk/issues/1408)).
+    pub notches: Vec2,
+    /// Notched delta in pages, where the system's setting is a page per notch; sign matches [`Self::pixels`].
+    pub pages: Vec2,
     /// Multiplicative pinch zoom ([`ZoomFactor::ONE`] = no pinch), reported without modifier gating, unlike wheel zoom.
     /// Fold it into a held zoom with [`ZoomFactor::combine`](crate::ZoomFactor::combine) to keep it in range.
     pub zoom: ZoomFactor,
@@ -23,14 +36,19 @@ impl ScrollDelta {
     pub(crate) const NONE: Self = Self {
         pixels: Vec2::ZERO,
         lines: Vec2::ZERO,
+        notches: Vec2::ZERO,
+        pages: Vec2::ZERO,
         zoom: ZoomFactor::ONE,
     };
 
-    /// This frame's pan in logical pixels: the precision source plus the notched one at `line_height`; each widget
-    /// picks its own line height (`Scroll` the theme's, `TextEdit` its font's).
+    /// This frame's pan in logical pixels: the precision source plus the notched one at `line_height` and a page of
+    /// `viewport`; each widget picks its own line height (`Scroll` the theme's, `TextEdit` its font's).
     #[inline]
-    pub fn pan(self, line_height: f32) -> Vec2 {
-        self.pixels + self.lines * line_height
+    pub const fn pan(self, line_height: f32, viewport: Size) -> Vec2 {
+        Vec2::new(
+            self.pixels.x + self.lines.x * line_height + self.pages.x * page_step(viewport.w),
+            self.pixels.y + self.lines.y * line_height + self.pages.y * page_step(viewport.h),
+        )
     }
 }
 
@@ -38,5 +56,39 @@ impl ScrollDelta {
 impl Default for ScrollDelta {
     fn default() -> Self {
         Self::NONE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::geometry::size::Size;
+    use crate::primitives::input::interaction::scroll_delta::{ScrollDelta, page_step};
+    use glam::Vec2;
+
+    /// A page keeps 40 px or an eighth of the view, whichever keeps less, and never reaches 0.
+    #[test]
+    fn a_page_is_most_of_the_view() {
+        // 0.875 × 800 = 700 against 800 − 40 = 760.
+        assert_eq!(page_step(800.0), 760.0);
+        // 0.875 × 100 = 87.5 against 100 − 40 = 60.
+        assert_eq!(page_step(100.0), 87.5);
+        assert_eq!(page_step(0.0), 1.0);
+    }
+
+    /// Each lane adds its own step, and `notches` moves nothing.
+    #[test]
+    fn a_pan_folds_pixels_lines_and_pages() {
+        let delta = ScrollDelta {
+            pixels: Vec2::new(1.0, 2.0),
+            lines: Vec2::new(3.0, 4.0),
+            notches: Vec2::new(100.0, 100.0),
+            pages: Vec2::new(0.0, 2.0),
+            ..ScrollDelta::NONE
+        };
+        // x: 1 + 3 × 20 + 0 = 61. y: 2 + 4 × 20 + 2 × 760 = 1602.
+        assert_eq!(
+            delta.pan(20.0, Size::new(100.0, 800.0)),
+            Vec2::new(61.0, 1602.0)
+        );
     }
 }

@@ -49,7 +49,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
 
         let outside = Vec2::new(300.0, 300.0);
         h.scroll_pixels(outside, Vec2::new(0.0, 25.0));
-        h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
+        h.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
         h.on_input(InputEvent::Pinch(ZoomFactor::new(1.4).unwrap()));
         h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
         h.hover(outside + Vec2::new(40.0, 0.0));

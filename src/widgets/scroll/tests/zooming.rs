@@ -4,6 +4,7 @@ use crate::host::harness::Harness;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::theme::color_scheme::ColorScheme;
@@ -354,7 +355,7 @@ fn wheel_zoom_step_is_font_independent() {
 
         h.hover(WidgetId::from_hash("fz"));
         h.hold_modifiers(Modifiers::CTRL);
-        h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        h.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 1.0)));
         h.frame(build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz");
@@ -364,6 +365,55 @@ fn wheel_zoom_step_is_font_independent() {
             "one wheel line is one zoom step at font_size {font_size}: expected {expected}, got {zoom}"
         );
     }
+}
+
+/// A person's setting of three lines per notch moves a wheel's pan to three lines and leaves its
+/// zoom at one step, and a page per notch pans a page of the viewport.
+#[test]
+fn a_scroll_setting_moves_the_pan_and_not_the_zoom() {
+    let turn = |lines: f32, pages: f32| InputEvent::ScrollLines {
+        notches: Vec2::new(0.0, 1.0),
+        lines: Vec2::new(0.0, lines),
+        pages: Vec2::new(0.0, pages),
+    };
+    let id = WidgetId::from_hash("fz");
+    let build_zoom = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::both()
+                    .id(id)
+                    .zoomable()
+                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
+                    .show(ui, |ui| {
+                        fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0);
+                    });
+            });
+    };
+    let run = |mods: Modifiers, event: InputEvent<'static>| {
+        let mut h = Harness::mono(SURFACE);
+        h.frame(build_zoom);
+        h.hover(id);
+        h.hold_modifiers(mods);
+        h.on_input(event);
+        h.frame(build_zoom);
+        *h.state::<ScrollState>(id).unwrap()
+    };
+
+    let one_line = run(Modifiers::NONE, turn(1.0, 0.0)).offset().y;
+    let three_lines = run(Modifiers::NONE, turn(3.0, 0.0)).offset().y;
+    assert_eq!(three_lines, one_line * 3.0, "the pan reads the lines");
+    // The bars' 12 px gutter leaves a viewport of 188 px: 0.875 × 188 = 164.5 against
+    // 188 − 40 = 148.
+    assert_eq!(run(Modifiers::NONE, turn(0.0, 1.0)).offset().y, 164.5);
+
+    let one_step = run(Modifiers::CTRL, turn(1.0, 0.0)).zoom();
+    assert_ne!(one_step, 1.0, "a notch zooms");
+    assert_eq!(
+        run(Modifiers::CTRL, turn(3.0, 0.0)).zoom(),
+        one_step,
+        "the zoom reads the notches"
+    );
 }
 
 #[test]
@@ -545,7 +595,7 @@ fn zoom_modifier_picks_which_wheel_zooms() {
             h.frame(build);
             h.hover(id);
             h.hold_modifiers(held);
-            h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+            h.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 1.0)));
             h.frame(build);
             assert_eq!(
                 h.state::<ScrollState>(id).unwrap().zoom(),

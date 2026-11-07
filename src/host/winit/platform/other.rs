@@ -5,6 +5,8 @@ use std::time::Duration;
 use winit::event_loop::EventLoopBuilder;
 use winit::window::WindowAttributes;
 
+use crate::host::winit::input::wheel_steps::WheelSteps;
+
 /// Nothing to configure.
 pub(super) const fn configure_event_loop<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
 
@@ -18,6 +20,11 @@ pub(super) const fn with_app_id(
 
 /// No double-click time is assumed: palantir's default holds.
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
+
+/// One line per notch: no scroll setting is assumed.
+pub(super) const fn wheel_steps() -> WheelSteps {
+    WheelSteps::ONE_LINE
+}
 
 #[cfg(test)]
 pub(super) mod internals {

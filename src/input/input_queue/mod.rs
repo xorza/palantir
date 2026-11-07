@@ -98,7 +98,7 @@ impl InputQueue {
             | InputEvent::PointerMoved(_)
             | InputEvent::PointerLeft
             | InputEvent::ScrollPixels(_)
-            | InputEvent::ScrollLines(_)
+            | InputEvent::ScrollLines { .. }
             | InputEvent::Pinch(_)
             | InputEvent::ImePreedit(_) => true,
         }
@@ -151,9 +151,22 @@ impl InputQueue {
                 (InputEvent::ScrollPixels(held), &InputEvent::ScrollPixels(delta)) => {
                     Some(InputEvent::ScrollPixels(held + delta))
                 }
-                (InputEvent::ScrollLines(held), &InputEvent::ScrollLines(delta)) => {
-                    Some(InputEvent::ScrollLines(held + delta))
-                }
+                (
+                    InputEvent::ScrollLines {
+                        notches,
+                        lines,
+                        pages,
+                    },
+                    &InputEvent::ScrollLines {
+                        notches: more_notches,
+                        lines: more_lines,
+                        pages: more_pages,
+                    },
+                ) => Some(InputEvent::ScrollLines {
+                    notches: notches + more_notches,
+                    lines: lines + more_lines,
+                    pages: pages + more_pages,
+                }),
                 _ => None,
             };
             if let Some(merged) = merged {

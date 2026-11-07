@@ -4,8 +4,10 @@ use winit::keyboard::{
 };
 
 use crate::common::platform::Platform;
+use crate::host::winit::input::wheel_steps::WheelSteps;
 use crate::host::winit::input::{
     KeyDownFacts, Press, key_down, logical_key, normalize_modifiers, physical_key, shift_wheel,
+    wheel_lines,
 };
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::key::Key;
@@ -235,6 +237,100 @@ fn text_past_a_key_overflows_into_committed_text() {
     assert_eq!(overflow(facts(fourteen), none), None);
     assert!(typed(facts(family), ModifiersState::SUPER).is_empty());
     assert_eq!(overflow(facts(family), ModifiersState::SUPER), None);
+}
+
+/// Each lane of a wheel event: `notches` as the wheel turned, the others by the setting, and Shift
+/// turning all of them alike. A setting of no lines still turns `notches`, as `lines` tests nothing.
+#[test]
+fn a_wheel_event_carries_each_lane() {
+    let three = WheelSteps {
+        vertical_lines: Some(3.0),
+        horizontal_lines: 3.0,
+    };
+    let none = WheelSteps {
+        vertical_lines: Some(0.0),
+        horizontal_lines: 0.0,
+    };
+    let page = WheelSteps {
+        vertical_lines: None,
+        horizontal_lines: 3.0,
+    };
+    let empty = ModifiersState::empty();
+    let shift = ModifiersState::SHIFT;
+    let down = Vec2::new(0.0, 2.0);
+    let rows = [
+        (
+            WheelSteps::ONE_LINE,
+            empty,
+            Platform::Linux,
+            [0.0, 2.0],
+            [0.0, 2.0],
+            [0.0, 0.0],
+        ),
+        // 2 notches × 3 lines.
+        (
+            three,
+            empty,
+            Platform::Windows,
+            [0.0, 2.0],
+            [0.0, 6.0],
+            [0.0, 0.0],
+        ),
+        (
+            three,
+            shift,
+            Platform::Windows,
+            [2.0, 0.0],
+            [6.0, 0.0],
+            [0.0, 0.0],
+        ),
+        (
+            none,
+            shift,
+            Platform::Windows,
+            [2.0, 0.0],
+            [0.0, 0.0],
+            [0.0, 0.0],
+        ),
+        (
+            page,
+            empty,
+            Platform::Windows,
+            [0.0, 2.0],
+            [0.0, 0.0],
+            [0.0, 2.0],
+        ),
+        (
+            page,
+            shift,
+            Platform::Windows,
+            [2.0, 0.0],
+            [0.0, 0.0],
+            [2.0, 0.0],
+        ),
+        (
+            three,
+            shift,
+            Platform::Mac,
+            [0.0, 2.0],
+            [0.0, 6.0],
+            [0.0, 0.0],
+        ),
+    ];
+    for (steps, modifiers, platform, want_notches, want_lines, want_pages) in rows {
+        let InputEvent::ScrollLines {
+            notches,
+            lines,
+            pages,
+        } = wheel_lines(down, steps, modifiers, platform)
+        else {
+            panic!("a wheel turn is a line event");
+        };
+        let case = format!("{steps:?} {modifiers:?} on {platform:?}");
+        assert_eq!(notches, Vec2::from(want_notches), "{case}");
+        assert_eq!(lines, Vec2::from(want_lines), "{case}");
+        assert_eq!(pages, Vec2::from(want_pages), "{case}");
+    }
 }
 
 /// Shift+wheel scrolls sideways on Windows and Linux (only a purely vertical delta moves); macOS sends it itself.

@@ -170,7 +170,7 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
 
     // `scroll_lines_at` is `move_to` + `scroll_lines`, so the bare form aims at wherever the pointer was
     // left, still OUTSIDE; only a separate `move_to` re-aims it.
-    harness.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
+    harness.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
     assert_eq!(
         harness.response_in(scroller, build).scroll.lines.y,
         0.0,
@@ -178,7 +178,7 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
     );
 
     harness.hover(INSIDE);
-    harness.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
+    harness.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
     assert_eq!(
         harness.response_in(scroller, build).scroll.lines.y,
         3.0,

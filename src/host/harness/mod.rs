@@ -511,7 +511,7 @@ impl Harness {
     #[track_caller]
     pub fn scroll_lines(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta {
         self.hover(at);
-        self.on_input(InputEvent::ScrollLines(delta))
+        self.on_input(InputEvent::scroll_lines(delta))
     }
 
     /// Move the pointer to `at` and pinch by `factor`: above 1 zooms in.

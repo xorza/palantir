@@ -6,6 +6,8 @@ use winit::event_loop::EventLoopBuilder;
 use winit::platform::macos::EventLoopBuilderExtMacOS;
 use winit::window::WindowAttributes;
 
+use crate::host::winit::input::wheel_steps::WheelSteps;
+
 /// Drops winit's default menu, which binds ⌘Q to `terminate:` and kills the process before the app
 /// can veto `CloseRequested`; ⌘Q then arrives as an ordinary key event.
 pub(super) fn configure_event_loop<T: 'static>(builder: &mut EventLoopBuilder<T>) {
@@ -22,6 +24,11 @@ pub(super) const fn with_app_id(
 
 /// macOS always holds a double-click time, so none is kept here.
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
+
+/// One line per notch: AppKit applies the person's scroll speed before the event arrives.
+pub(super) const fn wheel_steps() -> WheelSteps {
+    WheelSteps::ONE_LINE
+}
 
 #[cfg(test)]
 pub(super) mod internals {

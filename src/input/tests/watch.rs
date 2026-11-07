@@ -143,9 +143,33 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
             pos,
             pixels,
             lines,
+            notches,
+            pages,
         }] if *pos == Vec2::new(50.0, 50.0)
             && *pixels == Vec2::new(0.0, 7.0)
             && *lines == Vec2::ZERO
+            && *notches == Vec2::ZERO
+            && *pages == Vec2::ZERO
+    ));
+
+    h.frame(empty_watch_scroll);
+    h.on_input(InputEvent::ScrollLines {
+        notches: Vec2::new(0.0, 1.0),
+        lines: Vec2::new(0.0, 3.0),
+        pages: Vec2::new(2.0, 0.0),
+    });
+    assert!(matches!(
+        h.ui().captured_pointer_events(),
+        [PointerEvent::Scroll {
+            pixels,
+            lines,
+            notches,
+            pages,
+            ..
+        }] if *pixels == Vec2::ZERO
+            && *lines == Vec2::new(0.0, 3.0)
+            && *notches == Vec2::new(0.0, 1.0)
+            && *pages == Vec2::new(2.0, 0.0)
     ));
 }
 

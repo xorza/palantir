@@ -6,6 +6,7 @@ use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, Physic
 
 use crate::common::platform::Platform;
 use crate::common::span::Span;
+use crate::host::winit::input::wheel_steps::WheelSteps;
 use crate::primitives::input::ime_preedit::ImePreedit;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::keyboard::key::Key;
@@ -13,6 +14,7 @@ use crate::primitives::input::keyboard::key_text::KeyText;
 use crate::primitives::input::keyboard::modifiers::Modifiers;
 
 pub(super) mod translator;
+pub(super) mod wheel_steps;
 
 /// Keys winit spells the same in `NamedKey` (logical) and `KeyCode`
 /// (physical), and the [`Key`] each denotes. A macro because the enums share
@@ -119,14 +121,42 @@ fn physical_key(physical: PhysicalKey) -> Key {
         .unwrap_or(Key::Other)
 }
 
-/// A vertical wheel with Shift held scrolls horizontally on Windows and
-/// Linux; macOS sends the horizontal delta itself.
+/// Whether a turn of `delta` goes sideways: a vertical wheel with Shift held scrolls
+/// horizontally on Windows and Linux; macOS sends the horizontal delta itself.
+fn shift_turns(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> bool {
+    !platform.turns_shift_wheel() && modifiers.shift_key() && delta.x == 0.0
+}
+
+/// `delta` as the wheel scrolls it; see [`shift_turns`].
 fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> Vec2 {
-    let swaps = !platform.turns_shift_wheel() && modifiers.shift_key() && delta.x == 0.0;
-    if swaps {
+    if shift_turns(delta, modifiers, platform) {
         Vec2::new(delta.y, 0.0)
     } else {
         delta
+    }
+}
+
+/// The event of a wheel turn of `notches` under `steps`. Shift turns every lane alike, as one
+/// test of `notches` decides it, whatever the setting makes of a lane.
+fn wheel_lines(
+    notches: Vec2,
+    steps: WheelSteps,
+    modifiers: ModifiersState,
+    platform: Platform,
+) -> InputEvent<'static> {
+    let travel = steps.travel(notches);
+    let sideways = shift_turns(notches, modifiers, platform);
+    let turn = |lane: Vec2| {
+        if sideways {
+            Vec2::new(lane.y, 0.0)
+        } else {
+            lane
+        }
+    };
+    InputEvent::ScrollLines {
+        notches: turn(notches),
+        lines: turn(travel.lines),
+        pages: turn(travel.pages),
     }
 }
 
