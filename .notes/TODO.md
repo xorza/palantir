@@ -8,6 +8,7 @@
 - rich text edit
 - md viewer
 - custom shaders for backgrounds
+- harness simulate device loss
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
