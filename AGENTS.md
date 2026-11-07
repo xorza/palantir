@@ -281,6 +281,11 @@ driver serves that command alone; the drive table's `version` names it
   chord for one action; macOS's Cmd+Left line chords and each platform's own table, as
   [Flutter](https://codebrowser.dev/flutter/flutter/packages/flutter/lib/src/widgets/default_text_editing_shortcuts.dart.html)
   binds, which a person who moves between machines learns twice.
+- **A shortcut label reads `⌥⇧⌘S` on macOS and `Ctrl+Shift+Alt+S` elsewhere**, the one label a
+  platform's convention decides: the chord stays the same on every OS, and macOS's canonical form
+  is symbols, as [Qt's `NativeText`](https://doc.qt.io/qt-6.5/qkeysequence.html) shows them, in
+  [Apple's order](https://daringfireball.net/2026/03/modifier_key_order_for_keyboard_shortcuts):
+  Control, Option, Shift, Command. Refused: names on every OS, such as `Cmd+Shift+Alt+S`.
 - **A person's scroll setting moves a scroll, not a zoom.** `InputEvent::ScrollLines` carries the
   notches a wheel turned apart from the lines and pages they scroll, and a wheel zoom reads the
   notches. The Windows host reads `SPI_GETWHEELSCROLLLINES` and `SPI_GETWHEELSCROLLCHARS` at each
