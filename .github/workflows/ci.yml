@@ -58,9 +58,9 @@ jobs:
           7z.exe e vulkan-runtime.zip -ovulkan "$runtime/x64/vulkan-1.dll" "$runtime/x64/vulkaninfo.exe"
           curl.exe -L --retry 5 "https://github.com/pal1000/mesa-dist-win/releases/download/$MESA_VERSION/mesa3d-$MESA_VERSION-release-msvc.7z" -o mesa.7z
           7z.exe e mesa.7z -ovulkan x64/vulkan_lvp.dll x64/lvp_icd.x86_64.json
-          export VK_DRIVER_FILES="$(cygpath --windows "$PWD/vulkan/lvp_icd.x86_64.json")"
+          # The registry, as a runner is elevated and the loader ignores `VK_DRIVER_FILES` under that.
+          MSYS_NO_PATHCONV=1 reg.exe add 'HKLM\SOFTWARE\Khronos\Vulkan\Drivers' /v "$(cygpath --windows "$PWD/vulkan/lvp_icd.x86_64.json")" /t REG_DWORD /d 0 /f
           ./vulkan/vulkaninfo.exe --summary
-          echo "VK_DRIVER_FILES=$VK_DRIVER_FILES" >> "$GITHUB_ENV"
           cygpath --windows "$PWD/vulkan" >> "$GITHUB_PATH"
       - uses: dtolnay/rust-toolchain@stable
         with:
