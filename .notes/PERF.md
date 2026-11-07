@@ -1,9 +1,10 @@
 # Perf journal
 
-What nine optimization runs learned (2026-10-28 to 2026-11-05): how to measure on the hosts,
+What the optimization runs learned (2026-10-28 to 2026-11-07): how to measure on the hosts,
 where the time goes, what was refused and why, and what is still open. What was kept is in the
-commits, each with its numbers per host. The runs measured the frame fixture, 1,245 nodes, which
-the showcase's first page, 246 nodes, has since replaced, so no number here compares with a new run.
+commits, each with its numbers per host. Runs 1 to 10 measured the frame fixture, 1,245 nodes, which
+the showcase's first page, 246 nodes, has since replaced, so only run 11's numbers compare with a
+new run.
 
 ## Measuring
 
@@ -24,6 +25,10 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
     toolchain's binaries by full path with `rustc-wrapper = ""`. A push to its bare repo needs
     `--receive-pack="powershell git receive-pack"`; criterion writes CRLF, and cargo prints
     `benches\palantir.rs` with a backslash.
+  - intel: a laptop's Intel integrated GPU, Vulkan through Mesa's anv; one pinned performance core,
+    governor `performance`. A bench build takes 6.0 GiB of system memory cold and 5.8 GiB after,
+    read off `MemAvailable`, as `rustc` runs under the `sccache` daemon outside cargo's process
+    tree.
   - Earlier: board, a VideoCore single-board computer; one core, governor `ondemand`; it builds
     nothing, its binaries are cross-built against a sysroot copied from it (glibc 2.41) with
     `clang` and `lld`, or on the mac with `zig cc -target aarch64-linux-gnu.2.41` behind a wrapper
@@ -41,6 +46,7 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   | handheld | under 0.7 %; `frame/cpu/alternating` and `backdrop_frame/cpu/blur/cached` bimodal, 12 to 15 % | median 0.7 %, up to 11 % on `*/cached` |
   | windows | under 0.7 % | median 1 %, up to 8 %, 23 % on `pair_near/scrolling` |
   | board | under 0.3 % | under 0.3 %, `glass/hover` 0.7 %, `record_pass` 5 % |
+  | intel | under 1 %, `frame/cpu/partial` 1.9 %, `typing` 1.7 % | under 1.5 %, `frame/gpu/alternating` 6.3 % |
 
 - **CPU A/B across binaries moves by code placement.** A change a case never runs moved it 4 %
   (`backdrop_frame/cpu/*/cached`), a commit that only added a GPU bench moved `layout/cached`
@@ -66,6 +72,12 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
     once, or blending off, splits raster from ALU. V3D: `V3D_DEBUG=shaderdb` with
     `MESA_SHADER_CACHE_DISABLE=true` prints instructions, threads and spills, `nir` names each
     entry point.
+  - intel: `INTEL_DEBUG=wm` with `MESA_SHADER_CACHE_DISABLE=true` prints each fragment shader's
+    SIMD widths, instructions and spills; `/sys/class/drm/card*/gt_act_freq_mhz` reads the GPU's
+    clock during a run. `perf report --children` over an LBR capture does not finish; a script that
+    sums `perf script`'s call chains does. A frame case runs 1 s of warm-up and 3 s of samples
+    whatever `--measurement-time` says, as its `Scale` sets both, so a capture of its frames alone
+    starts after the setup and ends before the analysis (`perf record -D`).
   - Missing: no Xcode on the fanless, so no Metal trace; RGP opens captures only in its GUI; the
     distribution's RenderDoc ships no Python module.
 
@@ -129,6 +141,31 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   1.04 ms on windows, of it the quads 426 and 553 µs and the shadows 356 and 297 µs on the handheld and
   windows; windows's `frame/gpu/scrolling` spends 1.6 ms of its 2.9 outside the passes and the CPU
   half, in its submit and fence wait.
+
+- **The GPU frames on the intel** (run 11): the frame waits on the device for 1.3 to 1.9 ms of its
+  1.6 to 2.3 ms, and the GPU runs at 300 of its 1400 MHz all run long, as the kernel's frequency
+  control picks for a device busy part of each frame. A pass writes about 8 pixels a GPU clock, so
+  pixels decide: the copy of a 2560 × 1440 backbuffer onto the target takes 1.1 ms, 75 % of
+  `frame/gpu/partial` (1,640 µs with it, 412 µs without, diagnostic); the whole repaint of
+  `scrolling` spends 0.73 ms on 2.3 MP of quads, 0.21 ms on text and 0.28 ms on the clear, the
+  submit and the wake. Blending off takes 8.6 % off that wait, and a mask-only text shader 3.6 %
+  off the text batch. The same copy takes 1,085 µs under a sleeping wait and 536 µs under a
+  spinning one: with its core asleep the package lowers the clocks the GPU's memory traffic rides
+  on, as a desktop frame that waits for vsync does too. The CPU half is 210 to 380 µs against 31 to
+  150 µs in the CPU harness: wgpu-core and anv record the commands in `CommandEncoder::finish`
+  (56 to 84 µs), `Queue::submit` takes 27 to 44 µs, and palantir's own upload and draw loop 3 %.
+- **Current numbers** (run 11, ABBA medians at `880111750`, the intel):
+
+  | arm | `frame/cpu` | `frame/gpu` |
+  | --- | --- | --- |
+  | `cached` | 31.3 µs | 32.1 µs |
+  | `hovering` | 38.4 µs | 1,572 µs |
+  | `partial` | 49.2 µs | 1,653 µs |
+  | `alternating` | 57.6 µs | 2,272 µs |
+  | `scrolling` | 60.4 µs | 1,845 µs |
+  | `resizing` | 76.3 µs | 1,989 µs |
+  | `typing` | 91.3 µs | 1,681 µs |
+  | `theming` | 148.0 µs | 2,216 µs |
 
 ## Rejected
 
@@ -199,11 +236,16 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   probed after its children: within ±1 %.
 
 - **The backbuffer drawn out on every device** (run 10): against the copy, Windows' AMD iGPU +8 to
-  +10 % on the partial frames, the NVIDIA GPU +4 to +5 %, the handheld within its floor. Kept on Apple
+  +10 % on the partial frames, the NVIDIA GPU +4 to +5 %, the handheld within its floor, and in
+  run 11 the intel host's iGPU +37 % on the wait of `frame/gpu/partial` (1,366 to 1,865 µs). Kept on Apple
   GPUs alone (Decisions).
 - **Opaque fast quads without blending** (run 10): a solid, sharp, pixel-aligned quad of full
   alpha through a pipeline with no blend, the same pixels. Every case within each host's floor:
   such quads are rare, and the blended quads hold the fanless's ceiling (Open).
+
+- **A mask-only text shader** (run 11), the color and resampled paths pruned as `QUAD_FORM` prunes
+  the quad's: `main_pass_batch/gpu/text` −3.6 % on the intel, every frame within its floor. Its
+  SIMD8 and SIMD16 forms spill nothing, and one texel load serves a mask glyph either way.
 
 ## Decisions
 
@@ -299,8 +341,11 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   first with a depth value, so the later draws, the quad's own blended edge among them, skip the
   pixels it covers (Skia Graphite's opaque pass): a depth attachment beside the rounded-clip
   stencil, a depth state in every pipeline and a value per instance. A core-and-ring split with
-  no depth puts a pipeline switch after each such quad. Not spiked.
-- **The partial frame's copy-out**: 16 to 33 % of a partial frame on every host. wgpu hands out
+  no depth puts a pipeline switch after each such quad. Not spiked. On the intel, blending off takes
+  8.6 % off `frame/gpu/scrolling`'s device wait, of which the opaque interiors are most, as the
+  showcase's sidebar and its two large cards hold 1.8 of the frame's 2.3 MP of quads.
+- **The partial frame's copy-out**: 16 to 33 % of a partial frame on every host, and 75 % on the
+  intel, whose GPU writes about 8 pixels a clock at 300 MHz. wgpu hands out
   each swapchain image uninitialized, so a partial frame writes all of it; only buffer age or a
   present with damage regions, neither of which wgpu exposes, would let it write less.
 
@@ -308,7 +353,8 @@ the showcase's first page, 246 nodes, has since replaced, so no number here comp
   so a scroll changes one offset and not every row under it, as Chromium's property trees hold
   a scroll as one transform node and paint chunks in its local space. Damage diffs screen rects
   row by row and the encoder culls on them, so both would read through the offset. A ceiling of
-  about a quarter of `frame/cpu/scrolling`; not spiked.
+  about a quarter of `frame/cpu/scrolling`; not spiked. On the intel, `CascadeEngine::refresh` and
+  `compute_paint_rect` are 27 % of `frame/cpu/scrolling`, 16 µs, and 0.9 % of `frame/gpu/scrolling`.
 - **The response probe**: 5 to 8 % of a CPU frame at 7.5 ns a probe. What is left is the
   geometry half's two table reads and the 152-byte copies.
 - **`FamilyKeys::key` and `TextSystem::refresh`** compare a 64-byte family name and each reused
