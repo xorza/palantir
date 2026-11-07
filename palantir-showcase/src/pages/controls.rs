@@ -7,10 +7,10 @@ use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
-    Animated, AnimationSpec, Axis, Button, ButtonTheme, Checkbox, Chrome, ColorScheme, ComboBox,
-    Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup,
-    RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text,
-    TextEdit, TextStyleOverrides, Theme, Tooltip, Ui, WidgetId, WidgetLook, fmt,
+    Animated, AnimationSpec, Axis, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure,
+    Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup, RgbaF32,
+    Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit,
+    TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
 };
 
 static REGIONS: [&str; 5] = [
@@ -115,14 +115,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
 
 /// The three things an [`Expander`] decides: whether it starts open, whether its reveal animates, and whether its body keeps recording while closed. In the second column, type into both fields, collapse and reopen: the upper resets because Palantir sweeps the state of unrecorded widgets, the lower doesn't because `keep_body` records it collapsed.
 fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
-    let base = Theme::stock(ColorScheme::Dark).expander;
-    let animated = ExpanderTheme {
-        defaults: SlotDefaults {
-            transition: AnimationSpec::MEDIUM,
-            ..base.defaults
-        },
-        ..base
-    };
+    let animated = animated_expander(&ui.theme().expander);
     support::cols(ui, |ui, col| match col {
         Col::Left => {
             Expander::new("Open by default")
@@ -171,6 +164,17 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
             );
         }
     });
+}
+
+/// `base` with an animation on its reveal, and nothing else changed.
+fn animated_expander(base: &ExpanderTheme) -> ExpanderTheme {
+    ExpanderTheme {
+        defaults: SlotDefaults {
+            transition: AnimationSpec::MEDIUM,
+            ..base.defaults
+        },
+        ..base.clone()
+    }
 }
 
 /// The button themes the page shows beside the default: palantir's accent, and two of its own.
@@ -456,5 +460,36 @@ pub(crate) mod internals {
     /// The bytes the form's field holds.
     pub(crate) fn device_name_len(ui: &mut Ui) -> usize {
         ui.with_state::<State, _>(state_id(), |_, s| s.device_name.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use palantir::{AnimationSpec, ColorScheme, ExpanderTheme, SlotDefaults, Theme};
+
+    use crate::pages::controls::animated_expander;
+
+    /// The theme the page shows sets every lane but the reveal's transition, so the expander
+    /// follows a scheme change as its neighbors do.
+    #[test]
+    fn the_animated_expander_changes_its_transition_alone() {
+        let dark = Theme::stock(ColorScheme::Dark).expander;
+        let animated = animated_expander(&dark);
+        assert_eq!(animated.defaults.transition, AnimationSpec::MEDIUM);
+        assert_ne!(dark.defaults.transition, AnimationSpec::MEDIUM);
+        let without = ExpanderTheme {
+            defaults: SlotDefaults {
+                transition: dark.defaults.transition,
+                ..animated.defaults
+            },
+            ..animated
+        };
+        assert_eq!(without, dark);
+
+        let light = Theme::stock(ColorScheme::Light).expander;
+        assert_ne!(
+            animated_expander(&light).looks,
+            animated_expander(&dark).looks
+        );
     }
 }
