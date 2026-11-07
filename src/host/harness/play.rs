@@ -217,8 +217,7 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
         Ok(())
     }
 
-    fn note_press(&mut self) -> Result<(), PlayError> {
+    fn note_press(&mut self) {
         self.h.last_press = Some(self.h.time);
-        Ok(())
     }
 }

@@ -1,9 +1,16 @@
-use crate::driver::error::LocateError;
+use crate::driver::action::Action;
+use crate::driver::error::{LocateError, PlayError};
 use crate::driver::locator::{Found, Locate, Locator, Reach};
+use crate::driver::play::{self, Stage};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::input_event::InputEvent;
+use crate::primitives::input::keyboard::key::Key;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
+use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
+use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -11,6 +18,8 @@ use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
+use std::convert::Infallible;
+use std::time::Duration;
 
 /// Buttons 60 × 20 on a canvas: "One" at (10, 10), "Two" at (10, 40), two "Twin" at (10, 70) and
 /// (10, 100), "Over" recorded on top of "Under" at (100, 10), a "Label" that only hovers on top of
@@ -278,4 +287,260 @@ fn locate_errors_read_as_corrections() {
         }),
         "L is disabled; a press there does nothing"
     );
+}
+
+/// What a [`ScriptedStage`] saw, in order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Seen {
+    Mods(Modifiers),
+    Press,
+    Release,
+    MoveTo(f32),
+    KeyDown(Key),
+    KeyUp(Key),
+    Frame,
+    Settle,
+    Space,
+    Noted,
+}
+
+/// A window whose frames fail from `fail_from` on, as a remote's do once a native dialog holds the
+/// window's thread, each failure naming its frame in `waited`.
+#[derive(Debug, Default)]
+struct ScriptedStage {
+    fail_from: Option<u64>,
+    frames: u64,
+    seen: Vec<Seen>,
+}
+
+impl Stage<Infallible> for ScriptedStage {
+    fn point(&mut self, at: &Locator, _reach: Reach) -> Result<Vec2, PlayError> {
+        let Locator::Point(point) = at else {
+            panic!("the table names points: {at:?}");
+        };
+        Ok(*point)
+    }
+
+    fn input(&mut self, event: InputEvent<'_>) {
+        self.seen.push(match event {
+            InputEvent::ModifiersChanged(mods) => Seen::Mods(mods),
+            InputEvent::PointerPressed(PointerButton::Left) => Seen::Press,
+            InputEvent::PointerReleased(PointerButton::Left) => Seen::Release,
+            InputEvent::PointerMoved(point) => Seen::MoveTo(point.x),
+            InputEvent::KeyDown { key, .. } => Seen::KeyDown(key),
+            InputEvent::KeyUp { key } => Seen::KeyUp(key),
+            event => panic!("the table sends no {event:?}"),
+        });
+    }
+
+    fn frame(&mut self) -> Result<(), PlayError> {
+        self.seen.push(Seen::Frame);
+        let frame = self.frames;
+        self.frames += 1;
+        if self.fail_from.is_some_and(|from| frame >= from) {
+            return Err(PlayError::NoFrame {
+                waited: Duration::from_millis(frame),
+            });
+        }
+        Ok(())
+    }
+
+    fn settle(&mut self) -> Result<(), PlayError> {
+        self.seen.push(Seen::Settle);
+        Ok(())
+    }
+
+    fn wait(&mut self, _dt: Duration) -> Result<(), PlayError> {
+        panic!("the table waits for nothing");
+    }
+
+    fn space_press(&mut self) -> Result<(), PlayError> {
+        self.seen.push(Seen::Space);
+        Ok(())
+    }
+
+    fn note_press(&mut self) {
+        self.seen.push(Seen::Noted);
+    }
+}
+
+/// A frame that fails mid-step leaves nothing held: each press and key still comes back up and the
+/// modifiers clear, a drag takes no move past the failure, no later frame runs, the first failure
+/// is the step's error, and a press still counts for the next one's spacing. Only a `KeyDown` that
+/// succeeds keeps its key down.
+#[test]
+fn a_failed_frame_releases_what_the_step_holds() {
+    use Seen::{Frame, MoveTo, Noted, Press, Release, Settle, Space};
+
+    let chord = Shortcut::ctrl('O');
+    let (down, up) = (Seen::KeyDown(chord.key), Seen::KeyUp(chord.key));
+    let (ctrl, none) = (Seen::Mods(Modifiers::CTRL), Seen::Mods(Modifiers::NONE));
+    let mods = chord.mods;
+    let at = Locator::Point(Vec2::new(10.0, 0.0));
+    let drag = Action::Drag {
+        from: at.clone(),
+        to: Locator::Point(Vec2::new(30.0, 0.0)),
+        button: PointerButton::Left,
+        mods,
+        steps: 2,
+    };
+    let click = Action::Click {
+        at: at.clone(),
+        button: PointerButton::Left,
+        mods,
+    };
+    let double = Action::DoubleClick(at);
+    let hover = [MoveTo(10.0), Settle, Space];
+    let one_click = [none, Press, Frame, Release, Frame, none];
+    let cases: [(&str, Action, Option<u64>, Vec<Seen>); 13] = [
+        (
+            "a key",
+            Action::Key(chord),
+            None,
+            vec![ctrl, down, Frame, up, none, Settle],
+        ),
+        (
+            "a key's frame fails",
+            Action::Key(chord),
+            Some(0),
+            vec![ctrl, down, Frame, up, none],
+        ),
+        (
+            "a key down",
+            Action::KeyDown(chord),
+            None,
+            vec![ctrl, down, Frame, none, Settle],
+        ),
+        (
+            "a key down's frame fails",
+            Action::KeyDown(chord),
+            Some(0),
+            vec![ctrl, down, Frame, up, none],
+        ),
+        (
+            "a drag",
+            drag.clone(),
+            None,
+            [
+                &hover[..],
+                &[
+                    ctrl,
+                    Press,
+                    Frame,
+                    MoveTo(20.0),
+                    Frame,
+                    MoveTo(30.0),
+                    Frame,
+                    Release,
+                    Frame,
+                    none,
+                    Noted,
+                    Settle,
+                ],
+            ]
+            .concat(),
+        ),
+        (
+            "a drag's press frame fails",
+            drag.clone(),
+            Some(0),
+            [&hover[..], &[ctrl, Press, Frame, Release, none, Noted]].concat(),
+        ),
+        (
+            "a drag's first move fails",
+            drag.clone(),
+            Some(1),
+            [
+                &hover[..],
+                &[
+                    ctrl,
+                    Press,
+                    Frame,
+                    MoveTo(20.0),
+                    Frame,
+                    Release,
+                    none,
+                    Noted,
+                ],
+            ]
+            .concat(),
+        ),
+        (
+            "a drag's release frame fails",
+            drag,
+            Some(3),
+            [
+                &hover[..],
+                &[
+                    ctrl,
+                    Press,
+                    Frame,
+                    MoveTo(20.0),
+                    Frame,
+                    MoveTo(30.0),
+                    Frame,
+                    Release,
+                    Frame,
+                    none,
+                    Noted,
+                ],
+            ]
+            .concat(),
+        ),
+        (
+            "a click",
+            click.clone(),
+            None,
+            [
+                &hover[..],
+                &[ctrl, Press, Frame, Release, Frame, none, Noted, Settle],
+            ]
+            .concat(),
+        ),
+        (
+            "a click's press frame fails",
+            click.clone(),
+            Some(0),
+            [&hover[..], &[ctrl, Press, Frame, Release, none, Noted]].concat(),
+        ),
+        (
+            "a click's release frame fails",
+            click,
+            Some(1),
+            [
+                &hover[..],
+                &[ctrl, Press, Frame, Release, Frame, none, Noted],
+            ]
+            .concat(),
+        ),
+        (
+            "a double click's first click fails",
+            double.clone(),
+            Some(0),
+            [&hover[..], &[none, Press, Frame, Release, none, Noted]].concat(),
+        ),
+        (
+            "a double click's second click fails",
+            double,
+            Some(2),
+            [
+                &hover[..],
+                &one_click[..],
+                &[none, Press, Frame, Release, none, Noted],
+            ]
+            .concat(),
+        ),
+    ];
+    for (label, action, fail_from, want) in cases {
+        let mut stage = ScriptedStage {
+            fail_from,
+            ..ScriptedStage::default()
+        };
+        let played = play::play(&mut stage, &action);
+        let error = fail_from.map(|frame| PlayError::NoFrame {
+            waited: Duration::from_millis(frame),
+        });
+        assert_eq!(played.err(), error, "{label}");
+        assert_eq!(stage.seen, want, "{label}");
+    }
 }

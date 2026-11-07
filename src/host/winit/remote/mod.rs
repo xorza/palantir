@@ -362,9 +362,8 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
         Ok(())
     }
 
-    fn note_press(&mut self) -> Result<(), PlayError> {
+    fn note_press(&mut self) {
         self.remote.last_press = Some(Instant::now());
-        Ok(())
     }
 }
 

@@ -20,9 +20,11 @@ use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::{EventSender, HostHandle, UserEvent};
+use crate::host::winit::remote::Remote;
 use crate::host::winit::remote::remote_end::RemoteEnd;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
@@ -288,6 +290,45 @@ fn a_remote_plays_and_reads_a_live_window() {
     handle.quit();
     thread.join().unwrap();
     assert_eq!(remote.query(|_, _| ()), Err(PlayError::Disconnected));
+}
+
+/// A step whose frame fails while the window's thread is held still lets go: once the hold ends, the
+/// window reads no key down and no modifier held. The serving loop runs on under the probe, as a
+/// dialog's end lets the queued events through.
+#[test]
+fn a_step_failed_by_a_held_thread_leaves_nothing_held() {
+    let (handle, thread) = serve();
+    let held = Arc::new(AtomicBool::new(true));
+    let probe = Arc::clone(&held);
+    let mut remote = handle
+        .remote(WINDOW)
+        .with_tick(TICK)
+        .with_blocked(move || probe.load(Ordering::Acquire));
+    let chord = Shortcut::ctrl('O');
+    let held_keys = move |remote: &mut Remote<Counter>| {
+        remote
+            .query(move |_, ui| (ui.key_held(chord.key), ui.peek_modifiers()))
+            .unwrap()
+    };
+    let steps: [Action; 2] = [Action::Key(chord), Action::KeyDown(chord)];
+    for action in steps {
+        held.store(true, Ordering::Release);
+        let failed = remote.play(std::slice::from_ref(&action)).unwrap_err();
+        assert_eq!(failed.ran, 0, "{action:?}");
+        assert!(
+            matches!(failed.error, PlayError::NoFrame { .. }),
+            "{action:?}: {failed:?}",
+        );
+        held.store(false, Ordering::Release);
+        remote.settle().unwrap();
+        assert_eq!(
+            held_keys(&mut remote),
+            (false, Modifiers::NONE),
+            "{action:?}"
+        );
+    }
+    handle.quit();
+    thread.join().unwrap();
 }
 
 /// A query that changes the app shows to the next settle: the frame after it records, and counts

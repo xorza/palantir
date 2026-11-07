@@ -43,13 +43,14 @@ pub(crate) trait Stage<X> {
     fn space_press(&mut self) -> Result<(), PlayError>;
 
     /// Take now, a frame after a press, as that press's time.
-    fn note_press(&mut self) -> Result<(), PlayError>;
+    fn note_press(&mut self);
 }
 
-/// Play `action` on `stage` and settle. Every locator resolves before any input goes in, and
-/// nothing between a press or a modifier and its release can fail but a closed window, which
-/// releases them anyway, so an error leaves nothing held for the next step. A
-/// [`Action::KeyDown`] step leaves its key held by intent.
+/// Play `action` on `stage` and settle. Every locator resolves before any input goes in, and a
+/// frame that fails while a step holds a press, a key or a modifier still lets the step release
+/// them, as a remote's frame fails while a native dialog that step opened holds the window's
+/// thread, so an error leaves nothing held for the next step. A [`Action::KeyDown`] step that
+/// succeeds leaves its key held by intent.
 pub(crate) fn play<X: Debug>(
     stage: &mut impl Stage<X>,
     action: &Action<X>,
@@ -63,17 +64,18 @@ pub(crate) fn play<X: Debug>(
             let point = stage.point(at, Reach::Press)?;
             hover(stage, point)?;
             stage.space_press()?;
-            press_and_release(stage, *button, *mods)?;
-            stage.note_press()?;
+            let clicked = press_and_release(stage, *button, *mods);
+            stage.note_press();
+            clicked?;
         }
         Action::DoubleClick(at) => {
             let point = stage.point(at, Reach::Press)?;
             hover(stage, point)?;
             stage.space_press()?;
-            for _ in 0..2 {
-                press_and_release(stage, PointerButton::Left, ShortcutMods::NONE)?;
-            }
-            stage.note_press()?;
+            let clicked = press_and_release(stage, PointerButton::Left, ShortcutMods::NONE)
+                .and_then(|()| press_and_release(stage, PointerButton::Left, ShortcutMods::NONE));
+            stage.note_press();
+            clicked?;
         }
         Action::Drag {
             from,
@@ -93,18 +95,12 @@ pub(crate) fn play<X: Debug>(
             stage.space_press()?;
             stage.input(InputEvent::ModifiersChanged(mods.held()));
             stage.input(InputEvent::PointerPressed(*button));
-            // A frame between the moves, as a hand moves.
-            stage.frame()?;
-            let steps = (*steps).max(1);
-            for step in 1..=steps {
-                let point = start.lerp(end, step as f32 / steps as f32);
-                stage.input(InputEvent::PointerMoved(point));
-                stage.frame()?;
-            }
+            let moved = drag_moves(stage, start, end, *steps);
             stage.input(InputEvent::PointerReleased(*button));
-            stage.frame()?;
+            let released = moved.and_then(|()| stage.frame());
             stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
-            stage.note_press()?;
+            stage.note_press();
+            released?;
         }
         Action::ScrollPixels { at, delta } => {
             let point = stage.point(at, Reach::Hover)?;
@@ -122,14 +118,19 @@ pub(crate) fn play<X: Debug>(
             stage.input(InputEvent::Pinch(*factor));
         }
         Action::Key(shortcut) => {
-            key_down(stage, *shortcut)?;
+            let pressed = key_down(stage, *shortcut);
             // A hand lets go, so no key reads as held after the step.
             stage.input(InputEvent::KeyUp { key: shortcut.key });
             stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
+            pressed?;
         }
         Action::KeyDown(shortcut) => {
-            key_down(stage, *shortcut)?;
+            let pressed = key_down(stage, *shortcut);
+            if pressed.is_err() {
+                stage.input(InputEvent::KeyUp { key: shortcut.key });
+            }
             stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
+            pressed?;
         }
         Action::KeyUp(shortcut) => {
             stage.input(InputEvent::ModifiersChanged(shortcut.mods.held()));
@@ -156,13 +157,32 @@ fn key_down<X>(stage: &mut impl Stage<X>, shortcut: Shortcut) -> Result<(), Play
     stage.frame()
 }
 
+/// A held drag's way from `start` to `end`: a frame after the press, then `steps` even moves, a
+/// frame each, as a hand moves. The first frame that fails ends it, and no later frame runs.
+fn drag_moves<X>(
+    stage: &mut impl Stage<X>,
+    start: Vec2,
+    end: Vec2,
+    steps: u32,
+) -> Result<(), PlayError> {
+    stage.frame()?;
+    let steps = steps.max(1);
+    for step in 1..=steps {
+        let point = start.lerp(end, step as f32 / steps as f32);
+        stage.input(InputEvent::PointerMoved(point));
+        stage.frame()?;
+    }
+    Ok(())
+}
+
 /// Move the pointer to `point` and settle, so the next press hits what it hovers.
 fn hover<X>(stage: &mut impl Stage<X>, point: Vec2) -> Result<(), PlayError> {
     stage.input(InputEvent::PointerMoved(point));
     stage.settle()
 }
 
-/// Press and release `button` where the pointer is, with `mods` held, a frame each.
+/// Press and release `button` where the pointer is, with `mods` held, a frame each. A press frame
+/// that fails runs no release frame, which on a hung window would wait the whole bound again.
 fn press_and_release<X>(
     stage: &mut impl Stage<X>,
     button: PointerButton,
@@ -172,7 +192,7 @@ fn press_and_release<X>(
     stage.input(InputEvent::PointerPressed(button));
     let pressed = stage.frame();
     stage.input(InputEvent::PointerReleased(button));
-    let released = stage.frame();
+    let released = pressed.and_then(|()| stage.frame());
     stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
-    pressed.and(released)
+    released
 }
