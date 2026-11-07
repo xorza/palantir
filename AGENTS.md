@@ -388,7 +388,7 @@ The gate is one chain of plain cargo commands, run from the root. Each is an ali
 `.cargo/config.toml`, and the chain stops at the first that fails:
 
 ```
-cargo fmt --all && cargo gate-lint && cargo gate-lint-nowinit && cargo gate-ship && cargo gate-ship-nowinit && cargo gate-test && cargo gate-test-nowinit && RUSTDOCFLAGS="-D warnings" cargo gate-doc && cargo gate-doctest
+cargo fmt --all && cargo gate-lint && cargo gate-lint-nowinit && cargo gate-ship && cargo gate-ship-nowinit && cargo gate-test && cargo gate-test-nowinit && cargo gate-doc && cargo gate-doctest
 ```
 
 Each command reports every error it finds, through `--keep-going` and `--no-fail-fast`. **Run the

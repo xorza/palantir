@@ -14,18 +14,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The driver's commit that the drive table's `version` takes.
 env:
-  CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: 0
-  RUST_BACKTRACE: 1
-  RUSTFLAGS: -D warnings
+  DRIVE_REV: 2c6fd5a1285ca493e404e0d28e0cce5a15fab2a2
+
+# `xorza/rust-ci` holds the steps each repository and OS shares. Its actions read bash, and a `run`
+# gets `pipefail` only from a named shell.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   gate:
     name: gate (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Clippy's 75 minutes and the tests' 75, in one job.
-    timeout-minutes: 150
+    # A hang in the tests ends at its step's limit.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -33,63 +37,16 @@ jobs:
         # fail only at run time.
         os: [ubuntu-26.04, macos-26, windows-2025]
     steps:
-      - uses: actions/checkout@v7
-      # Hosted runners have no GPU. macOS needs nothing: its runner exposes Metal.
-      - name: Install a software Vulkan adapter
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            mesa-vulkan-drivers vulkan-tools libvulkan1 libxkbcommon-dev
-          vulkaninfo --summary
-      # A Windows runner holds no Vulkan loader and no driver: LunarG's runtime brings the loader,
-      # and Mesa lavapipe, a software adapter, as wgpu's own CI installs it. `vulkaninfo` fails this
-      # step if the two do not meet, where the tests would each fail on no adapter.
-      - name: Install a software Vulkan adapter on Windows
-        if: runner.os == 'Windows'
-        shell: bash
-        env:
-          MESA_VERSION: 26.2.6
-          VULKAN_RUNTIME_VERSION: 1.4.357.0
-        run: |
-          set -e
-          runtime="VulkanRT-X64-$VULKAN_RUNTIME_VERSION-Components"
-          curl.exe -L --retry 5 "https://sdk.lunarg.com/sdk/download/$VULKAN_RUNTIME_VERSION/windows/$runtime.zip" -o vulkan-runtime.zip
-          7z.exe e vulkan-runtime.zip -ovulkan "$runtime/x64/vulkan-1.dll" "$runtime/x64/vulkaninfo.exe"
-          curl.exe -L --retry 5 "https://github.com/pal1000/mesa-dist-win/releases/download/$MESA_VERSION/mesa3d-$MESA_VERSION-release-msvc.7z" -o mesa.7z
-          7z.exe e mesa.7z -ovulkan x64/vulkan_lvp.dll x64/lvp_icd.x86_64.json
-          # The registry, as a runner is elevated and the loader ignores `VK_DRIVER_FILES` under that.
-          MSYS_NO_PATHCONV=1 reg.exe add 'HKLM\SOFTWARE\Khronos\Vulkan\Drivers' /v "$(cygpath --windows "$PWD/vulkan/lvp_icd.x86_64.json")" /t REG_DWORD /d 0 /f
-          ./vulkan/vulkaninfo.exe --summary
-          cygpath --windows "$PWD/vulkan" >> "$GITHUB_PATH"
-      # A crash leaves a core, whose stack names what no test's output can. On Ubuntu alone, the one
-      # lane where the crash of the issue log shows. Ubuntu's apport takes a core by default, and a
-      # step starts at core limit 0, so `BASH_ENV` raises it in each later step, as HAProxy's CI
-      # keeps its cores:
-      # https://git01.mediatek.com/plugins/gitiles/haproxy/+/6435801d09cac089e705baed57f839495f61a972%5E%21
-      # The limit, 4 GiB in KiB, keeps a core from filling the disk the later steps build on. The
-      # one crash here, of a plain binary as bash handles SIGSEGV itself, proves the route, so that
-      # a later "no core" means no crash.
-      - name: Keep the core of a crashed process
-        if: runner.os == 'Linux'
-        run: |
-          sudo sysctl -w 'kernel.core_pattern=/tmp/core.%p.%E'
-          echo 'ulimit -c 4194304' > "$RUNNER_TEMP/core-limit.sh"
-          echo "BASH_ENV=$RUNNER_TEMP/core-limit.sh" >> "$GITHUB_ENV"
-          (ulimit -c 4194304; sleep 60 & kill -SEGV $!; wait $!) || true
-          compgen -G '/tmp/core.*' || echo '::warning::a crash left no core file'
-          rm -f /tmp/core.*
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - uses: xorza/rust-ci/setup@9629682b748c30f471b2904c9c85a520765cb542 # master
         with:
-          # Only master writes, so a pull request cannot evict what others read.
-          # No `key`: the action already keys on job, OS and architecture, and
-          # nothing else tells the matrix entries apart.
-          save-if: ${{ github.ref == 'refs/heads/master' }}
+          apt-packages: libxkbcommon-dev
+      - uses: xorza/rust-ci/lavapipe@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - uses: xorza/rust-ci/crash-capture@9629682b748c30f471b2904c9c85a520765cb542 # master
       # The gate of AGENTS.md, one step per command, each run past an earlier failure, so one run
-      # reports every lane.
+      # reports every lane. The build apart from the run, so each shows its own time.
       - run: cargo fmt --all --check
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-lint
@@ -100,42 +57,50 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-ship-nowinit
       - if: ${{ !cancelled() }}
-        run: cargo --locked gate-test
+        run: cargo --locked gate-test --no-run
+      - uses: xorza/rust-ci/test@9629682b748c30f471b2904c9c85a520765cb542 # master
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        with:
+          command: cargo --locked gate-test
       - if: ${{ !cancelled() }}
-        run: cargo --locked gate-test-nowinit
+        run: cargo --locked gate-test-nowinit --no-run
+      - uses: xorza/rust-ci/test@9629682b748c30f471b2904c9c85a520765cb542 # master
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        with:
+          command: cargo --locked gate-test-nowinit
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-doc
-        env:
-          RUSTDOCFLAGS: -D warnings
-      - if: ${{ !cancelled() }}
-        run: cargo --locked gate-doctest
-      # After every gate step, so a crash in any of them reports. `%E` holds the binary's path, with
-      # `!` for each `/`.
-      - name: Print the stack of each crashed process
-        if: ${{ failure() && runner.os == 'Linux' }}
-        run: |
-          shopt -s nullglob
-          cores=(/tmp/core.*)
-          echo "${#cores[@]} core(s) at core limit $(ulimit -c)"
-          [ "${#cores[@]}" -gt 0 ] || exit 0
-          sudo apt-get install -y --no-install-recommends gdb
-          for core in "${cores[@]}"; do
-            exe=$(basename "$core" | sed 's/^core\.[0-9]*\.//' | tr '!' '/')
-            timeout 300 gdb --batch -ex 'thread apply all bt' "$exe" "$core" || true
-          done
+      - uses: xorza/rust-ci/test@9629682b748c30f471b2904c9c85a520765cb542 # master
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        with:
+          command: cargo --locked gate-doctest
+      - uses: xorza/rust-ci/failure-report@9629682b748c30f471b2904c9c85a520765cb542 # master
+        if: failure()
 
   api-surface:
     name: public API surface
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          save-if: ${{ github.ref == 'refs/heads/master' }}
-      - run: cargo install --locked --git https://github.com/xorza/drive
+          persist-credentials: false
+      - uses: xorza/rust-ci/setup@9629682b748c30f471b2904c9c85a520765cb542 # master
+      - run: cargo install --locked --git https://github.com/xorza/drive --rev "$DRIVE_REV"
       # The committed surface must be what the tree renders: a change to the public API shows
       # here as a diff until `.notes/API_SURFACE.md` is regenerated with it.
       - run: cargo drive surface
       - run: git diff --exit-code -- .notes/API_SURFACE.md
+
+  workflows:
+    name: workflow checks
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: xorza/rust-ci/workflow-check@9629682b748c30f471b2904c9c85a520765cb542 # master

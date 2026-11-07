@@ -1,0 +1,5 @@
+# One compiler in CI and on each machine, so a new lint arrives in a commit, not on a red master.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

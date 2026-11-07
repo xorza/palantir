@@ -1,5 +1,5 @@
-# x86-64-v3 makes F16C static, so the f16 conversions inline. An env `RUSTFLAGS` replaces this
-# section, so CI, which sets `-D warnings`, builds the baseline.
+# x86-64-v3 makes F16C static, so the f16 conversions inline. An env `RUSTFLAGS` would replace this
+# section, so CI sets none and builds this, as a local gate and Darkroom do.
 [target.'cfg(target_arch = "x86_64")']
 rustflags = ["-C", "target-cpu=x86-64-v3"]
 
@@ -12,7 +12,9 @@ gate-ship = "clippy --workspace --release --keep-going -- -D warnings"
 gate-ship-nowinit = "clippy --workspace --exclude palantir-showcase --release --no-default-features --keep-going -- -D warnings"
 gate-test = "test --workspace --lib --test alloc --example reel --no-fail-fast --features golden,gpu-debug-markers"
 gate-test-nowinit = "test --workspace --exclude palantir-showcase --lib --no-default-features --no-fail-fast"
-gate-doc = "doc --workspace --no-deps --document-private-items --all-features"
+# `-D warnings` through a `cfg(all())` entry, as an env `RUSTDOCFLAGS` would replace the one Darkroom's
+# config holds for x86-64-v3.
+gate-doc = 'doc --workspace --no-deps --document-private-items --all-features --keep-going --config target."cfg(all())".rustdocflags=["-D","warnings"]'
 gate-doctest = "test --workspace --doc --no-fail-fast --features golden,gpu-debug-markers"
 visual = "test --workspace --features golden,gpu-debug-markers --test visual"
 shot = "run -p palantir-showcase --features golden -- --shot"
