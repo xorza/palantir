@@ -72,7 +72,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         &mut self,
         at: &Locator<X>,
     ) -> Result<Found, PlayError> {
-        at.find(&*self.app, self.harness.window.driver.ui())
+        at.find(&*self.app, self.harness.window.frames.ui())
             .map_err(PlayError::Locate)
     }
 

@@ -22,7 +22,7 @@ use crate::window::window_directory::WindowDirectory;
 pub(crate) mod app_settings;
 pub(crate) mod shared_device;
 
-/// One `Rc` over what a host shares, cloned onto each window's `Ui`. Refused: a `CpuCore` that owns
+/// One `Rc` over what a host shares, cloned onto each window's `Ui`. Refused: a `HostCpu` that owns
 /// them, as `&mut Ui` has no lifetime, and lending them needs `Ui<'res>` at each of the 356 widget
 /// signatures; an `Rc` per resource, for one concept. Refcounts of their own stay for a handle an app
 /// holds or drops (`ImageHandle`, `IconSet`, `Clipboard`, a `GpuView`'s paint), a `TextShaper` two

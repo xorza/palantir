@@ -28,11 +28,11 @@ use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
-use crate::ui::frame_loop::FrameLoop;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{self, SURFACE};
 use crate::ui::ui_preferences::UiPreferences;
+use crate::ui::window_frames::WindowFrames;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::Vec2;
@@ -282,7 +282,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(h.ui().record_frame_id(), recorded + 1);
 }
 
-/// Regression: `FrameLoop::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.
+/// Regression: `WindowFrames::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
     fn body(ui: &mut Ui, half: Duration) {
@@ -341,12 +341,12 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
 #[test]
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
-    fn rows(frames: &FrameLoop, encoder: &mut Encoder) -> Vec<LutRow> {
+    fn rows(frames: &WindowFrames, encoder: &mut Encoder) -> Vec<LutRow> {
         let plan = RenderPlan {
-            clear: frames.ui.theme().window_bg,
+            clear: frames.ui().theme().window_bg,
             damage: Damage::Full,
         };
-        encoder::internals::encode(frames.ui.frame_scene(), encoder, plan)
+        encoder::internals::encode(frames.ui().frame_scene(), encoder, plan)
             .calls
             .iter()
             .filter_map(|command| match command {

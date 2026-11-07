@@ -1,4 +1,4 @@
-//! Driver tests, grouped by the decision each pins: present-mode selection, output
+//! Present tests, grouped by the decision each pins: present-mode selection, output
 //! validity, record-store lifecycle.
 
 use crate::display::frame_stamp::FrameStamp;
@@ -6,44 +6,45 @@ use crate::display::system_scale::SystemScale;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::render_owner_id::RenderOwners;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::window_driver::{
-    BuildCtx, CpuFrame, DriverSpec, FrameSpec, PresentStrategy, TargetKey, WindowDriver,
-};
 use crate::renderer::frontend::Frontend;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
+use crate::ui::window_frames::WindowFrames;
+use crate::ui::window_frames::present::{
+    BuildCtx, CpuFrame, FrameSpec, PresentStrategy, TargetKey, WindowSpec,
+};
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
 
-/// What a host sets on a driver it opens: its strategy, and the host's pixel snapping, which
+/// What a host sets on a window it opens: its strategy, and the host's pixel snapping, which
 /// the shared settings hold.
 #[derive(Clone, Copy, Debug)]
-struct DriverConfig {
+struct FramesConfig {
     strategy: PresentStrategy,
     pixel_snap: bool,
 }
 
-const fn config(strategy: PresentStrategy, pixel_snap: bool) -> DriverConfig {
-    DriverConfig {
+const fn config(strategy: PresentStrategy, pixel_snap: bool) -> FramesConfig {
+    FramesConfig {
         strategy,
         pixel_snap,
     }
 }
 
-/// A driver for `token` over `shared`, set by `config`, on a stream with no device behind it that
+/// The frames of `token` over `shared`, set by `config`, on a stream with no device behind it that
 /// shades every cutout.
-fn new_driver(token: WindowToken, shared: &UiResources, config: DriverConfig) -> WindowDriver {
+fn new_frames(token: WindowToken, shared: &UiResources, config: FramesConfig) -> WindowFrames {
     shared.settings().set_pixel_snap(config.pixel_snap);
-    let spec = DriverSpec {
+    let spec = WindowSpec {
         token,
         owner: RenderOwners::default().reserve(),
         strategy: config.strategy,
     };
-    WindowDriver::new(spec, shared)
+    WindowFrames::new(spec, shared)
 }
 
-impl WindowDriver {
+impl WindowFrames {
     /// [`Self::build_paint`] on placements of its own, as a test with no held cutouts builds.
     fn build_alone<'f>(&mut self, frontend: &'f mut Frontend, report: FrameReport) -> CpuFrame<'f> {
         let ctx = BuildCtx {
@@ -60,7 +61,7 @@ impl WindowDriver {
         stamp: FrameStamp,
         app: &mut T,
     ) -> CpuFrame<'f> {
-        let report = self.frames.frame(stamp, self.damage_base, app);
+        let report = self.frame(stamp, app);
         self.build_alone(frontend, report)
     }
 }
@@ -84,14 +85,16 @@ mod present_mode_tests {
     use crate::damage::sweep::scenario::catalog;
     use crate::damage::sweep::stage::Stage;
     use crate::gpu::frame::submission::Route;
-    use crate::host::window_driver::PresentStrategy;
-    use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
-    use crate::host::window_driver::present_facts::{
-        PaintPath, PresentFacts, promote_share, rows_per_mpx,
-    };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::ui::window_frames::present::PresentStrategy;
+    use crate::ui::window_frames::present::PresentStrategy::{
+        BackbufferCopy, DirectAdaptive, Retained,
+    };
+    use crate::ui::window_frames::present::present_facts::{
+        PaintPath, PresentFacts, promote_share, rows_per_mpx,
+    };
     use glam::UVec2;
 
     /// 100×100 logical surface (10_000 px²) the partial fixtures collapse against:
@@ -293,21 +296,22 @@ mod present_mode_tests {
 
 mod output_validity_tests {
     use crate::display::system_scale::SystemScale;
-    use crate::host::window_driver::TargetKey;
-    use crate::host::window_driver::tests::new_driver;
+    use crate::ui::window_frames::present::TargetKey;
+    use crate::ui::window_frames::present::tests::new_frames;
     use glam::UVec2;
 
     use crate::gpu::frame::submission::Route;
     use crate::gpu::surface::capture::Capture;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
-    use crate::host::window_driver::screenshot_lane::PendingScreenshot;
-    use crate::host::window_driver::tests::{config, spec};
-    use crate::host::window_driver::{BuiltFrame, FrameSpec, PresentStrategy, WindowDriver};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::ui::window_frames::WindowFrames;
+    use crate::ui::window_frames::present::screenshot_lane::PendingScreenshot;
+    use crate::ui::window_frames::present::tests::{config, spec};
+    use crate::ui::window_frames::present::{BuiltFrame, FrameSpec, PresentStrategy};
     use crate::window::screenshot::{ScreenshotId, ScreenshotRequest};
     use std::time::Duration;
 
@@ -320,8 +324,8 @@ mod output_validity_tests {
     use crate::window::window_commands::WindowCommands;
     use crate::window::window_token::WindowToken;
 
-    fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
-        new_driver(token, shared, config(PresentStrategy::DirectAdaptive, true))
+    fn frames(token: WindowToken, shared: &UiResources) -> WindowFrames {
+        new_frames(token, shared, config(PresentStrategy::DirectAdaptive, true))
     }
 
     /// A close request reaches the recorder only from the winit host, so the veto
@@ -335,18 +339,17 @@ mod output_validity_tests {
 
         let shared = UiResources::isolated_mono();
         let token = WindowToken(17);
-        let mut driver = driver(token, &shared);
+        let mut frames = frames(token, &shared);
         let opened = WindowToken(18);
         let mut commands = WindowCommands::default();
 
-        driver
-            .frames
+        frames
             .ui
             .open_window(opened, WindowConfig::new("inspector"));
-        driver.frames.ui.request_cursor(CursorIcon::Pointer);
-        driver.frames.ui.window_frame_mut().facts.close_requested = true;
+        frames.ui.request_cursor(CursorIcon::Pointer);
+        frames.ui.window_frame_mut().facts.close_requested = true;
 
-        let output = driver.frames.drain_window_output(&mut commands);
+        let output = frames.drain_window_output(&mut commands);
         assert_eq!(output.cursor, CursorIcon::Pointer);
         assert_eq!(
             output.vsync,
@@ -358,31 +361,23 @@ mod output_validity_tests {
             [Seen::Open(opened, "inspector"), Seen::Close(token)],
             "an un-vetoed close becomes this window's own close command"
         );
-        assert!(
-            driver
-                .frames
-                .ui
-                .window_requests()
-                .commands
-                .seen()
-                .is_empty()
-        );
+        assert!(frames.ui.window_requests().commands.seen().is_empty());
         // Drained by `append`, not `mem::take`, so the recorder keeps its buffer.
-        let capacity = driver.frames.ui.window_requests().commands.capacity();
+        let capacity = frames.ui.window_requests().commands.capacity();
         assert!(capacity > 0);
 
-        driver.frames.ui.window_frame_mut().facts.close_requested = true;
-        driver.frames.ui.keep_open();
+        frames.ui.window_frame_mut().facts.close_requested = true;
+        frames.ui.keep_open();
         let mut vetoed = WindowCommands::default();
-        driver.frames.drain_window_output(&mut vetoed);
+        frames.drain_window_output(&mut vetoed);
         assert!(vetoed.seen().is_empty());
 
         let mut settled = WindowCommands::default();
-        driver.frames.drain_window_output(&mut settled);
+        frames.drain_window_output(&mut settled);
         assert!(settled.seen().is_empty());
-        assert!(!driver.frames.ui.window_requests().close_vetoed);
+        assert!(!frames.ui.window_requests().close_vetoed);
         assert_eq!(
-            driver.frames.ui.window_requests().commands.capacity(),
+            frames.ui.window_requests().commands.capacity(),
             capacity,
             "draining must not hand away the recorder's buffer"
         );
@@ -394,41 +389,24 @@ mod output_validity_tests {
     #[test]
     fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
         let shared = UiResources::isolated_mono();
-        let mut driver = driver(WindowToken(3), &shared);
+        let mut frames = frames(WindowToken(3), &shared);
         let mut commands = WindowCommands::default();
 
-        assert_eq!(
-            driver.frames.ui.vsync(),
-            Vsync::On,
-            "vsync is on unless asked off"
-        );
-        assert_eq!(
-            driver.frames.drain_window_output(&mut commands).vsync,
-            Vsync::On
-        );
+        assert_eq!(frames.ui.vsync(), Vsync::On, "vsync is on unless asked off");
+        assert_eq!(frames.drain_window_output(&mut commands).vsync, Vsync::On);
 
-        driver.frames.ui.set_vsync(Vsync::Off);
+        frames.ui.set_vsync(Vsync::Off);
+        assert_eq!(frames.ui.vsync(), Vsync::Off, "the setter reads back");
+        assert_eq!(frames.drain_window_output(&mut commands).vsync, Vsync::Off);
         assert_eq!(
-            driver.frames.ui.vsync(),
-            Vsync::Off,
-            "the setter reads back"
-        );
-        assert_eq!(
-            driver.frames.drain_window_output(&mut commands).vsync,
-            Vsync::Off
-        );
-        assert_eq!(
-            driver.frames.drain_window_output(&mut commands).vsync,
+            frames.drain_window_output(&mut commands).vsync,
             Vsync::Off,
             "the level survives the drain that delivered it",
         );
 
-        driver.frames.ui.set_vsync(Vsync::On);
-        driver.frames.ui.set_vsync(Vsync::Off);
-        assert_eq!(
-            driver.frames.drain_window_output(&mut commands).vsync,
-            Vsync::Off
-        );
+        frames.ui.set_vsync(Vsync::On);
+        frames.ui.set_vsync(Vsync::Off);
+        assert_eq!(frames.drain_window_output(&mut commands).vsync, Vsync::Off);
     }
 
     fn report(plan: Option<RenderPlan>) -> FrameReport {
@@ -446,7 +424,7 @@ mod output_validity_tests {
     #[test]
     fn note_target_invalidates_once_per_size_or_format() {
         let shared = UiResources::isolated_mono();
-        let mut driver = new_driver(
+        let mut frames = new_frames(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -481,11 +459,11 @@ mod output_validity_tests {
         };
         // Whether noting `spec` cleared what a kept target holds.
         let mut clears = |spec: &FrameSpec| {
-            driver.damage_base = DamageBase::Prev;
-            driver.stream.assume_backbuffer_fresh();
-            driver.note_target(spec);
-            assert_eq!(driver.output_valid(), driver.stream.is_backbuffer_fresh());
-            !driver.output_valid()
+            frames.damage_base = DamageBase::Prev;
+            frames.stream.assume_backbuffer_fresh();
+            frames.note_target(spec);
+            assert_eq!(frames.output_valid(), frames.stream.is_backbuffer_fresh());
+            !frames.output_valid()
         };
         for (label, spec, want) in [
             ("the first target", first, true),
@@ -506,23 +484,23 @@ mod output_validity_tests {
     #[test]
     fn a_frame_below_paint_keeps_its_base_and_drops_its_screenshots() {
         let shared = UiResources::isolated_mono();
-        let mut driver = new_driver(
+        let mut frames = new_frames(
             WindowToken(1),
             &shared,
             config(PresentStrategy::BackbufferCopy, true),
         );
         let mut asked = None;
         let mut app = |ui: &mut Ui| asked = ui.request_screenshot(None);
-        let _ = driver.record(spec(UVec2::new(100, 80), 1.0), &mut app);
+        let _ = frames.record(spec(UVec2::new(100, 80), 1.0), &mut app);
         assert!(asked.is_some());
-        assert!(!driver.output_valid(), "a first target discards the base");
-        assert_eq!(driver.frames.ui.window_requests().screenshots.len(), 1);
+        assert!(!frames.output_valid(), "a first target discards the base");
+        assert_eq!(frames.ui.window_requests().screenshots.len(), 1);
 
-        driver.finish_unpainted();
+        frames.finish_unpainted();
 
-        assert!(driver.output_valid());
-        assert_eq!(driver.frames.ui.window_requests().screenshots.len(), 0);
-        assert_eq!(driver.screenshots.requests.len(), 0);
+        assert!(frames.output_valid());
+        assert_eq!(frames.ui.window_requests().screenshots.len(), 0);
+        assert_eq!(frames.screenshots.requests.len(), 0);
     }
 
     /// A built frame dropped unsubmitted, as a failed acquire or a lost device leaves it, leaves
@@ -533,20 +511,20 @@ mod output_validity_tests {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
         for (submitted, next_paints) in [(false, true), (true, false)] {
-            let mut driver = new_driver(
+            let mut frames = new_frames(
                 WindowToken(1),
                 &shared,
                 config(PresentStrategy::DirectAdaptive, true),
             );
             let mut app = |_: &mut Ui| {};
             let at = spec(UVec2::new(100, 80), 1.0);
-            let first = driver.record(at, &mut app);
-            let _ = driver.build_alone(&mut frontend, first);
+            let first = frames.record(at, &mut app);
+            let _ = frames.build_alone(&mut frontend, first);
             if submitted {
                 // What the GPU half does, which `offscreen::tests` runs on a device.
-                driver.damage_base = DamageBase::Prev;
+                frames.damage_base = DamageBase::Prev;
             }
-            let next = driver.record(at, &mut app);
+            let next = frames.record(at, &mut app);
             assert_eq!(next.plan.is_some(), next_paints, "submitted: {submitted}");
             if next_paints {
                 assert_eq!(next.plan.map(|plan| plan.damage), Some(Damage::Full));
@@ -558,18 +536,18 @@ mod output_validity_tests {
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
-        let mut driver = new_driver(
+        let mut frames = new_frames(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
         assert!(
-            !driver.output_valid(),
+            !frames.output_valid(),
             "first frame has no presented output"
         );
 
-        driver.damage_base = DamageBase::Prev;
-        let paint = driver.build_alone(
+        frames.damage_base = DamageBase::Prev;
+        let paint = frames.build_alone(
             &mut frontend,
             report(Some(RenderPlan {
                 clear: RgbaF32::BLACK,
@@ -581,18 +559,18 @@ mod output_validity_tests {
             Some(Route::Direct)
         );
         assert!(
-            !driver.output_valid(),
+            !frames.output_valid(),
             "paint stays pending until acquire and submit complete"
         );
 
-        // The GPU half completes the paint (`offscreen::tests` runs it); a driver
+        // The GPU half completes the paint (`offscreen::tests` runs it); a window
         // without one has no submit, so a still frame's precondition is set here.
-        driver.damage_base = DamageBase::Prev;
+        frames.damage_base = DamageBase::Prev;
 
-        let skip = driver.build_alone(&mut frontend, report(None));
+        let skip = frames.build_alone(&mut frontend, report(None));
         assert!(matches!(skip.built, BuiltFrame::Still));
         assert!(
-            driver.output_valid(),
+            frames.output_valid(),
             "a still frame preserves valid target pixels"
         );
         assert!(
@@ -602,7 +580,7 @@ mod output_validity_tests {
 
         // A screenshot still on the device keeps the frames coming, as nothing else wakes the
         // host when it lands; a still frame asks for nothing once it has.
-        driver.screenshots.pending.push_back(PendingScreenshot {
+        frames.screenshots.pending.push_back(PendingScreenshot {
             capture: Capture::never_landing(&headless_test_gpu()),
             request: ScreenshotRequest {
                 region: Rect::new(0.0, 0.0, 1.0, 1.0),
@@ -610,61 +588,61 @@ mod output_validity_tests {
             },
             scale: 1.0,
         });
-        let waiting = driver.build_alone(&mut frontend, report(None));
+        let waiting = frames.build_alone(&mut frontend, report(None));
         assert!(matches!(waiting.built, BuiltFrame::Still));
         assert!(
             waiting.report.repaint_requested,
             "a pending screenshot asks for the next frame"
         );
-        driver.screenshots.pending.clear();
-        let landed = driver.build_alone(&mut frontend, report(None));
+        frames.screenshots.pending.clear();
+        let landed = frames.build_alone(&mut frontend, report(None));
         assert!(!landed.report.repaint_requested);
 
-        driver.strategy = PresentStrategy::BackbufferCopy;
-        let skip_copy = driver.build_alone(&mut frontend, report(None));
+        frames.strategy = PresentStrategy::BackbufferCopy;
+        let skip_copy = frames.build_alone(&mut frontend, report(None));
         assert!(matches!(skip_copy.built, BuiltFrame::CopyBackbuffer));
         assert!(
-            !driver.output_valid(),
+            !frames.output_valid(),
             "a copy stays pending until it is submitted"
         );
     }
 }
 
-/// What a driver owns while it exists: its place in the app-global window directory
+/// What a window's frames own while they exist: its place in the app-global window directory
 /// and a render-owner id no sibling shares.
 mod lifecycle_tests {
-    use crate::host::window_driver::PresentStrategy;
-    use crate::host::window_driver::tests::config;
-    use crate::host::window_driver::tests::new_driver;
     use crate::ui::resources::UiResources;
+    use crate::ui::window_frames::present::PresentStrategy;
+    use crate::ui::window_frames::present::tests::config;
+    use crate::ui::window_frames::present::tests::new_frames;
     use crate::window::window_token::WindowToken;
 
-    /// The directory entry belongs to the driver, not whoever opened or closed it:
+    /// The directory entry belongs to the frames, not whoever opened or closed it:
     /// `new` mints it and `Drop` retires it, as a retirement left to the host would
     /// need remembering on two close paths.
     #[test]
-    fn a_driver_owns_its_directory_entry_from_build_to_drop() {
+    fn a_window_owns_its_directory_entry_from_build_to_drop() {
         let shared = UiResources::isolated_mono();
         let token = WindowToken(11);
         assert!(!shared.windows().contains(token));
 
-        let driver = new_driver(
+        let frames = new_frames(
             token,
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
         assert!(shared.windows().contains(token));
-        drop(driver);
+        drop(frames);
         assert!(
             !shared.windows().contains(token),
-            "the entry cannot outlive the driver",
+            "the entry cannot outlive the frames",
         );
     }
 }
 
 mod record_store_tests {
     use crate::damage::DamageBase;
-    use crate::host::window_driver::tests::new_driver;
+    use crate::ui::window_frames::present::tests::new_frames;
     use std::time::Duration;
 
     use glam::{UVec2, Vec2};
@@ -673,14 +651,15 @@ mod record_store_tests {
     use crate::ui::update_ctx::UpdateCtx;
 
     use crate::display::frame_stamp::FrameStamp;
-    use crate::host::window_driver::tests::config;
-    use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::Frontend;
+    use crate::ui::window_frames::WindowFrames;
+    use crate::ui::window_frames::present::PresentStrategy;
+    use crate::ui::window_frames::present::tests::config;
 
     use crate::shape::Shape;
 
@@ -720,8 +699,8 @@ mod record_store_tests {
         }
     }
 
-    fn snapshot(driver: &WindowDriver) -> RecordPayloadSnapshot {
-        let store = driver.frames.ui.record_store();
+    fn snapshot(frames: &WindowFrames) -> RecordPayloadSnapshot {
+        let store = frames.ui.record_store();
         RecordPayloadSnapshot {
             mesh_vertices: store.mesh_vertices.clone(),
             mesh_idxs: store.mesh_idxs.clone(),
@@ -770,13 +749,13 @@ mod record_store_tests {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
         let token = WindowToken(17);
-        let mut window = new_driver(
+        let mut window = new_frames(
             token,
             &shared,
             config(PresentStrategy::DirectAdaptive, false),
         );
         assert_eq!(window.strategy, PresentStrategy::DirectAdaptive);
-        assert!(!window.frames.pixel_snap());
+        assert!(!window.ui.resources.settings().pixel_snap());
         let mut app = LifecycleApp::default();
 
         let _ = window.paint_at(
@@ -802,12 +781,12 @@ mod record_store_tests {
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
-        let mut window_a = new_driver(
+        let mut window_a = new_frames(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
-        let mut window_b = new_driver(
+        let mut window_b = new_frames(
             WindowToken(2),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -901,39 +880,36 @@ mod record_store_tests {
 /// The one place both host-owned display settings reach a frame.
 mod display_tests {
     use crate::display::system_scale::SystemScale;
-    use crate::host::window_driver::tests::new_driver;
+    use crate::ui::window_frames::present::tests::new_frames;
     use glam::UVec2;
 
     use crate::display::user_scale::UserScale;
-    use crate::host::window_driver::PresentStrategy;
-    use crate::host::window_driver::tests::{config, spec};
     use crate::primitives::geometry::size::Size;
+    use crate::ui::window_frames::present::PresentStrategy;
+    use crate::ui::window_frames::present::tests::{config, spec};
 
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
-    /// The driver mints its stamp from what it owns, so a scale the app wrote
+    /// A window mints its stamp from what it owns, so a scale the app wrote
     /// during a frame is in the very next one. `pixel_snap` rides the same call.
     #[test]
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
         let shared = UiResources::isolated_mono();
-        let mut driver = new_driver(
+        let mut frames = new_frames(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, false),
         );
 
-        let plain = driver.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
+        let plain = frames.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
         assert_eq!(plain.system_scale, SystemScale::new(2.0).unwrap());
         assert_eq!(plain.user_scale, UserScale::ONE);
         assert_eq!(plain.scale_factor(), 2.0);
         assert!(!plain.pixel_snap, "the snap comes from the host, not here");
 
-        driver
-            .frames
-            .ui
-            .set_user_scale(UserScale::new(1.25).unwrap());
-        let zoomed = driver.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
+        frames.ui.set_user_scale(UserScale::new(1.25).unwrap());
+        let zoomed = frames.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
         assert_eq!(
             zoomed.system_scale,
             SystemScale::new(2.0).unwrap(),
@@ -945,25 +921,25 @@ mod display_tests {
         assert_eq!(zoomed.system_logical_size(), Size::new(400.0, 300.0));
     }
 
-    /// The scale is app-global, so two drivers over one `UiResources` mint the same
+    /// The scale is app-global, so two windows over one `UiResources` mint the same
     /// one.
     #[test]
     fn two_windows_mint_the_one_scale() {
         let shared = UiResources::isolated_mono();
-        let mut first = new_driver(
+        let mut first = new_frames(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
-        let second = new_driver(
+        let second = new_frames(
             WindowToken(2),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
 
-        first.frames.ui.set_user_scale(UserScale::new(1.5).unwrap());
+        first.ui.set_user_scale(UserScale::new(1.5).unwrap());
 
-        assert_eq!(second.frames.ui.user_scale(), UserScale::new(1.5).unwrap());
+        assert_eq!(second.ui.user_scale(), UserScale::new(1.5).unwrap());
         assert_eq!(
             second
                 .stamp(&spec(UVec2::new(400, 400), 1.0))
@@ -989,7 +965,6 @@ mod cutout_census_tests {
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::render_owner_id::RenderOwners;
-    use crate::host::window_driver::{BuildCtx, DriverSpec, PresentStrategy, WindowDriver};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
@@ -999,6 +974,8 @@ mod cutout_census_tests {
     use crate::shape::Shape;
     use crate::ui::Ui;
     use crate::ui::resources::UiResources;
+    use crate::ui::window_frames::WindowFrames;
+    use crate::ui::window_frames::present::{BuildCtx, PresentStrategy, WindowSpec};
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
     use crate::widgets::panel::Panel;
@@ -1013,14 +990,14 @@ mod cutout_census_tests {
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
-        let spec = DriverSpec {
+        let spec = WindowSpec {
             token: WindowToken(1),
             owner: RenderOwners::default().reserve(),
             strategy: PresentStrategy::BackbufferCopy,
         };
-        let mut driver = WindowDriver::new(spec, &shared);
-        driver.attach(RenderStream::detached(
-            driver.render_owner(),
+        let mut frames = WindowFrames::new(spec, &shared);
+        frames.attach(RenderStream::detached(
+            frames.render_owner(),
             CutoutMode::Bake,
         ));
         let display = FrameStamp::new(
@@ -1062,13 +1039,13 @@ mod cutout_census_tests {
         let mut damage = |cards_now: usize, tick_now: bool| {
             cards.set(cards_now);
             tick.set(tick_now);
-            let report = driver.frames.frame(display, driver.damage_base, &mut app);
+            let report = frames.frame(display, &mut app);
             let ctx = BuildCtx {
                 frontend: &mut frontend,
                 placements: &mut placements,
             };
-            let frame = driver.build_paint(ctx, report);
-            driver.damage_base = DamageBase::Prev;
+            let frame = frames.build_paint(ctx, report);
+            frames.damage_base = DamageBase::Prev;
             let path = frame.built.path().expect("a painting frame");
             assert_eq!(path.route, Route::ViaBackbuffer);
             path.plan.damage
@@ -1367,10 +1344,6 @@ mod escalation_tests {
     use crate::damage::region::{DamageRegion, MergePolicy};
     use crate::gpu::frame::submission::Route;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
-    use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
-    use crate::host::window_driver::present_facts::{PaintPath, PresentFacts};
-    use crate::host::window_driver::tests::{config, new_driver, spec};
-    use crate::host::window_driver::{BuildCtx, FrameSpec, PresentStrategy, TargetKey};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::layout::sizing::Sizing;
@@ -1382,6 +1355,12 @@ mod escalation_tests {
     use crate::shape::Shape;
     use crate::ui::Ui;
     use crate::ui::resources::UiResources;
+    use crate::ui::window_frames::present::PresentStrategy::{
+        BackbufferCopy, DirectAdaptive, Retained,
+    };
+    use crate::ui::window_frames::present::present_facts::{PaintPath, PresentFacts};
+    use crate::ui::window_frames::present::tests::{config, new_frames, spec};
+    use crate::ui::window_frames::present::{BuildCtx, FrameSpec, PresentStrategy, TargetKey};
     use crate::widget_core::configure::Configure;
     use crate::widgets::panel::Panel;
     use crate::window::window_token::WindowToken;
@@ -1454,7 +1433,7 @@ mod escalation_tests {
     fn run(row: Row) -> PaintPath {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
-        let mut driver = new_driver(WindowToken(1), &shared, config(row.strategy, true));
+        let mut frames = new_frames(WindowToken(1), &shared, config(row.strategy, true));
         let base = spec(PHYSICAL, 1.0);
         let spec = FrameSpec {
             target: TargetKey {
@@ -1463,11 +1442,11 @@ mod escalation_tests {
             },
             ..base
         };
-        driver.note_target(&spec);
-        driver.target_outlined = row.outlined;
+        frames.note_target(&spec);
+        frames.target_outlined = row.outlined;
         let mut app = |ui: &mut Ui| bars(ui, row.panes);
-        let stamp = driver.stamp(&spec);
-        let _ = driver.frames.frame(stamp, driver.damage_base, &mut app);
+        let stamp = frames.stamp(&spec);
+        let _ = frames.frame(stamp, &mut app);
         let plan = bands(row.bands);
         let facts = PresentFacts {
             strategy: row.strategy,
@@ -1479,7 +1458,7 @@ mod escalation_tests {
             frontend: &mut frontend,
             placements: &mut CutoutPlacements::default(),
         };
-        let job = driver.build_painted(ctx, facts.path(plan), facts);
+        let job = frames.build_painted(ctx, facts.path(plan), facts);
         assert_eq!(
             job.fitted.scissors.is_partial(),
             !row.whole,
@@ -1496,14 +1475,13 @@ mod escalation_tests {
     fn a_composed_frame_past_the_cap_captures_every_pane() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
-        let mut driver = new_driver(WindowToken(1), &shared, config(Retained, true));
-        driver.note_target(&spec(PHYSICAL, 1.0));
+        let mut frames = new_frames(WindowToken(1), &shared, config(Retained, true));
+        frames.note_target(&spec(PHYSICAL, 1.0));
         let mut app = |ui: &mut Ui| bars(ui, 10);
-        let stamp = driver.stamp(&spec(PHYSICAL, 1.0));
-        let report = driver.frames.frame(stamp, driver.damage_base, &mut app);
-        driver.compose(&mut frontend, report.plan.expect("a first frame paints"));
-        let keys: Vec<PaneKey> = driver
-            .frames
+        let stamp = frames.stamp(&spec(PHYSICAL, 1.0));
+        let report = frames.frame(stamp, &mut app);
+        frames.compose(&mut frontend, report.plan.expect("a first frame paints"));
+        let keys: Vec<PaneKey> = frames
             .ui
             .frame_scene()
             .panes()
@@ -1511,10 +1489,10 @@ mod escalation_tests {
             .collect();
         assert_eq!(keys.len(), 10);
         for &key in &keys[..9] {
-            driver.pane_captures.forget(key);
+            frames.pane_captures.forget(key);
         }
 
-        driver.compose(&mut frontend, bands(1));
+        frames.compose(&mut frontend, bands(1));
 
         let held = frontend
             .buffer
@@ -1681,11 +1659,6 @@ mod escalation_tests {
 
 mod capture_path_tests {
     use crate::gpu::frame::submission::Route;
-    use crate::host::window_driver::TargetKey;
-    use crate::host::window_driver::present_facts::PaintPath;
-    use crate::host::window_driver::tests::new_driver;
-    use crate::host::window_driver::tests::{config, spec};
-    use crate::host::window_driver::{FrameSpec, PresentStrategy};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -1694,6 +1667,11 @@ mod capture_path_tests {
     use crate::shape::Shape;
     use crate::ui::Ui;
     use crate::ui::resources::UiResources;
+    use crate::ui::window_frames::present::TargetKey;
+    use crate::ui::window_frames::present::present_facts::PaintPath;
+    use crate::ui::window_frames::present::tests::new_frames;
+    use crate::ui::window_frames::present::tests::{config, spec};
+    use crate::ui::window_frames::present::{FrameSpec, PresentStrategy};
     use crate::widget_core::configure::Configure;
     use crate::widgets::panel::Panel;
     use crate::window::window_token::WindowToken;
@@ -1704,7 +1682,7 @@ mod capture_path_tests {
     fn first_frame(pane: Rect, gives_copy: bool) -> PaintPath {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
-        let mut driver = new_driver(
+        let mut frames = new_frames(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -1717,7 +1695,7 @@ mod capture_path_tests {
             },
             ..base
         };
-        driver.note_target(&spec);
+        frames.note_target(&spec);
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("panes")
@@ -1735,8 +1713,8 @@ mod capture_path_tests {
                     );
                 });
         };
-        let stamp = driver.stamp(&spec);
-        driver
+        let stamp = frames.stamp(&spec);
+        frames
             .paint_at(&mut frontend, stamp, &mut app)
             .built
             .path()

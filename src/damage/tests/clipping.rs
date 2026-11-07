@@ -219,7 +219,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
 /// the per-shape rect must be the host's deflated mask, not the full 400 px.
 #[test]
 fn direct_shape_on_clipped_node_clips_to_own_mask() {
-    // WindowDriver panel: 80x40, padding 4 per side via chrome. The direct
+    // WindowFrames panel: 80x40, padding 4 per side via chrome. The direct
     // shape extends to x=400; after the cascade walk `shape_rects[idx]` must be
     // clipped to the host's deflated mask.
     let mut h = Harness::mono(DISPLAY.physical);

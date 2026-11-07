@@ -1,33 +1,34 @@
-//! [`HostCore`]: the composition root of a host that paints: the [`CpuCore`] and the
-//! [`DeviceCore`], built together to share registries and one texture-dimension cap. It does not
-//! own the [`WindowDriver`]s; each host pairs its own.
+//! [`HostCore`]: the composition root of a host that paints: the [`HostCpu`] and the
+//! [`HostDevice`], built together to share registries and one texture-dimension cap. It does not
+//! own the [`WindowFrames`]s; each host pairs its own.
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
-use crate::host::cpu_core::CpuCore;
-use crate::host::device_core::{BackendSpec, DeviceCore};
+use crate::host::host_cpu::HostCpu;
+use crate::host::host_device::{BackendSpec, HostDevice};
 use crate::host::host_options::HostOptions;
-use crate::host::window_driver::{PresentStrategy, WindowDriver};
 use crate::image_registry::ImageRegistry;
 use crate::text::shaper::TextShaper;
 use crate::ui::resources::UiResources;
+use crate::ui::window_frames::WindowFrames;
+use crate::ui::window_frames::present::PresentStrategy;
 use crate::window::window_token::WindowToken;
 use std::rc::Rc;
 
 /// A host's two halves, each its own type, so a host that always paints holds a device by
-/// construction and a harness that paints nothing holds the [`CpuCore`] alone.
+/// construction and a harness that paints nothing holds the [`HostCpu`] alone.
 #[derive(Debug)]
 pub(super) struct HostCore {
-    pub(super) cpu: CpuCore,
-    pub(super) device: DeviceCore,
+    pub(super) cpu: HostCpu,
+    pub(super) device: HostDevice,
 }
 
 impl HostCore {
     /// The CPU half over `shaper`, then the device half on `gpu`, as
-    /// [`DeviceCore::attach`] builds it again.
+    /// [`HostDevice::attach`] builds it again.
     pub(super) fn new(gpu: Gpu, options: &HostOptions, shaper: TextShaper) -> Self {
         let image_store = Rc::new(WgpuImageStore::default());
-        let mut cpu = CpuCore::over(
+        let mut cpu = HostCpu::over(
             UiResources::new(
                 shaper,
                 options.clipboard(),
@@ -39,15 +40,15 @@ impl HostCore {
             image_store,
             timing: options.timing,
         };
-        let device = DeviceCore::new(spec, gpu, &mut cpu);
+        let device = HostDevice::new(&spec, gpu, &mut cpu);
         Self { cpu, device }
     }
 
-    /// A driver for the window `token`, presenting by `strategy`, over a render stream of its own.
-    pub(super) fn open(&mut self, token: WindowToken, strategy: PresentStrategy) -> WindowDriver {
-        let mut driver = self.cpu.open(token, strategy);
-        self.device.attach_window(&mut driver);
-        driver
+    /// The frames of the window `token`, presenting by `strategy`, over a render stream of its own.
+    pub(super) fn open(&mut self, token: WindowToken, strategy: PresentStrategy) -> WindowFrames {
+        let mut frames = self.cpu.open(token, strategy);
+        self.device.attach_window(&mut frames);
+        frames
     }
 }
 
@@ -61,11 +62,9 @@ mod tests {
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
-    use crate::host::core::HostCore;
+    use crate::gpu::wgpu_backend::FrameTiming;
+    use crate::host::host_core::HostCore;
     use crate::host::host_options::HostOptions;
-    use crate::host::window_driver::TargetKey;
-    use crate::host::window_driver::WindowDriver;
-    use crate::host::window_driver::{CpuFrame, FrameSpec, PresentStrategy};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
@@ -75,11 +74,15 @@ mod tests {
     use crate::text::font_scope::FontScope;
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
+    use crate::ui::window_frames::WindowFrames;
+    use crate::ui::window_frames::present::TargetKey;
+    use crate::ui::window_frames::present::{CpuFrame, FrameSpec, PresentStrategy};
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
     use crate::widgets::panel::Panel;
     use crate::window::window_token::WindowToken;
     use glam::UVec2;
+    use std::rc::Rc;
 
     /// What every test core is built with: bundled fonts, no GPU timing.
     const OPTIONS: HostOptions = HostOptions::new(FontScope::Bundled);
@@ -204,13 +207,33 @@ mod tests {
         assert_eq!(uses(&mut core), 1, "the second window's use alone");
     }
 
+    /// A new device's backend keeps what the old one was built with: the timing the host chose,
+    /// each way, and the one image store its registries write through.
+    #[test]
+    fn an_attach_keeps_the_timing_and_the_image_store() {
+        for timing in [FrameTiming::Off, FrameTiming::On] {
+            let first = isolated_headless_test_gpu();
+            let mut options = OPTIONS;
+            options.timing = timing;
+            let mut core = HostCore::new(first.handles(), &options, TextShaper::test_mono());
+            let store = Rc::clone(core.device.backend().image_store());
+            first.lose();
+
+            let second = isolated_headless_test_gpu();
+            core.device.attach(second.handles(), &mut core.cpu, []);
+
+            assert_eq!(core.device.backend().frame_timing(), timing);
+            assert!(Rc::ptr_eq(&store, core.device.backend().image_store()));
+        }
+    }
+
     /// A recovery reaches every window of a host, as the windowed host attaches all of them: after
     /// a loss, each of two windows paints its own fill on the new device in its first frame.
     #[test]
     fn attaching_a_new_device_reaches_every_window() {
         const FILLS: [u32; 2] = [0xd23f7a, 0x2f6fd0];
         let size = UVec2::splat(8);
-        let paint = |core: &mut HostCore, driver: &mut WindowDriver, gpu: &Gpu, fill: u32| {
+        let paint = |core: &mut HostCore, frames: &mut WindowFrames, gpu: &Gpu, fill: u32| {
             let target = OwnedTarget::window(
                 gpu,
                 "palantir.test.core.recover",
@@ -226,11 +249,11 @@ mod tests {
             };
             let CpuFrame { built, .. } = core.device.frame(
                 &mut core.cpu,
-                driver,
+                frames,
                 FrameSpec::at_rest(TargetKey::of(target.as_target())),
                 &mut app,
             );
-            core.device.submit(driver, target.as_target(), built);
+            core.device.submit(frames, target.as_target(), built);
             let [r, g, b, _] = target.read_back().get_pixel(4, 4).0;
             u32::from_be_bytes([0, r, g, b])
         };

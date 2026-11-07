@@ -131,9 +131,9 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
             "frame {frame}: the backbuffer drawn out paints other pixels"
         );
     }
-    assert!(!on_backbuffer.window.driver.holds_canvas());
+    assert!(!on_backbuffer.window.frames.holds_canvas());
     assert!(
-        on_canvas.window.driver.holds_canvas(),
+        on_canvas.window.frames.holds_canvas(),
         "the device that moves its whole target painted a canvas"
     );
 }

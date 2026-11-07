@@ -9,7 +9,6 @@ use crate::gpu::frame::submission::Route;
 use crate::gpu::render_owner_id::RenderOwners;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::headless_window::record_window_commands;
-use crate::host::window_driver::{BuiltFrame, CpuFrame, DriverSpec, WindowDriver};
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -18,6 +17,8 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::ui::resources::UiResources;
+use crate::ui::window_frames::WindowFrames;
+use crate::ui::window_frames::present::{BuiltFrame, CpuFrame, WindowSpec};
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
@@ -28,14 +29,14 @@ use crate::window::window_config::WindowConfig;
 use glam::UVec2;
 use image::{Rgba, imageops};
 
-/// A driver as this host opens its one window, over `shared`, on a stream with no device.
-fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
-    let spec = DriverSpec {
+/// The frames of this host's one window as it opens them, over `shared`, on a stream with no device.
+fn frames(token: WindowToken, shared: &UiResources) -> WindowFrames {
+    let spec = WindowSpec {
         token,
         owner: RenderOwners::default().reserve(),
         strategy: PresentStrategy::BackbufferCopy,
     };
-    WindowDriver::new(spec, shared)
+    WindowFrames::new(spec, shared)
 }
 
 /// A host with no window lifecycle drains a quiet frame as a windowed one does (the veto lives a
@@ -43,7 +44,7 @@ fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
 #[test]
 fn a_quiet_frame_records_no_command_and_clears_the_veto() {
     let shared = UiResources::isolated_mono();
-    let mut quiet = driver(WindowToken(1), &shared);
+    let mut quiet = frames(WindowToken(1), &shared);
     quiet.ui_mut().keep_open();
     quiet.ui_mut().set_vsync(Vsync::Off);
     quiet.ui_mut().request_cursor(CursorIcon::Text);
@@ -69,7 +70,7 @@ fn a_quiet_frame_records_no_command_and_clears_the_veto() {
 #[test]
 fn a_frame_records_its_window_commands_and_the_next_replaces_them() {
     let shared = UiResources::isolated_mono();
-    let mut host = driver(WindowToken(1), &shared);
+    let mut host = frames(WindowToken(1), &shared);
     let mut commands = WindowCommands::default();
     host.ui_mut()
         .open_window(WindowToken(9), WindowConfig::new("other"));
@@ -323,7 +324,7 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
     };
 
     for (frame, paints) in [(0, true), (1, false)] {
-        host.halves(texture.as_target(), &mut app, |built, driver| {
+        host.halves(texture.as_target(), &mut app, |built, frames| {
             assert_eq!(built.path().is_some(), paints, "frame {frame}");
             if !paints {
                 assert!(
@@ -332,12 +333,12 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
                 );
             }
             assert!(
-                !driver.output_valid(),
+                !frames.output_valid(),
                 "frame {frame} is pending until the GPU half runs",
             );
         });
         assert!(
-            host.window.driver.output_valid(),
+            host.window.frames.output_valid(),
             "frame {frame} is complete once submitted",
         );
     }

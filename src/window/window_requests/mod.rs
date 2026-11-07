@@ -15,7 +15,7 @@ pub(crate) struct WindowRequests {
     pub(crate) close_vetoed: bool,
     /// The cursor and presentation pacing this window is set to; levels, retained for opposite reasons. `cursor` is re-asserted each record pass and kept only so a `PaintOnly` frame does not flicker it to default (hence no `Ui` reader). `vsync` is seeded from the opened swapchain, so [`Ui::set_vsync`](crate::Ui::set_vsync) answers truthfully from frame one. The host acts only on a real flip, since reconfiguring a swapchain is expensive.
     pub(crate) levels: WindowOutput,
-    /// The images this frame asked for, one per distinct region; the driver takes them once the
+    /// The images this frame asked for, one per distinct region; `WindowFrames` takes them once the
     /// frame is recorded.
     pub(crate) screenshots: Vec<ScreenshotRequest>,
     /// The id the next new ask takes; `None` before the first.
@@ -50,7 +50,7 @@ impl WindowRequests {
     ///
     /// Uses [`WindowCommands::append`] so the recorder keeps its buffer's capacity.
     ///
-    /// **The veto's one-frame life is enforced here** for every host (the offscreen one drains through this too), so no caller clears it and `FrameLoop::set_window_facts` can assert.
+    /// **The veto's one-frame life is enforced here** for every host (the offscreen one drains through this too), so no caller clears it and `WindowFrames::set_window_facts` can assert.
     pub(crate) fn drain(
         &mut self,
         token: WindowToken,

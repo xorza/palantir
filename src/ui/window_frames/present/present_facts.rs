@@ -2,8 +2,8 @@
 
 use crate::damage::Damage;
 use crate::gpu::frame::submission::Route;
-use crate::host::window_driver::PresentStrategy;
 use crate::renderer::render_plan::RenderPlan;
+use crate::ui::window_frames::present::PresentStrategy;
 use glam::UVec2;
 
 /// The density at which [`promote_share`] reads one half, in rows that draw on the surface per

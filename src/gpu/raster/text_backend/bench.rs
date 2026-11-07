@@ -1,4 +1,4 @@
-//! Text-backend microbench: `prepare`, `flush` and `render_batch` driven directly against `TextBackend`, bypassing `WindowDriver`.
+//! Text-backend microbench: `prepare`, `flush` and `render_batch` driven directly against `TextBackend`, bypassing `WindowFrames`.
 //!
 //! - `steady_warm`: fixed scale, atlas primed; every glyph is an `atlas.touch` hit.
 //! - `zoom_smooth`: five resident scale rungs, stepped in turn; every run hits the encoded cache.

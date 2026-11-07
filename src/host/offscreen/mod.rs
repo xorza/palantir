@@ -13,10 +13,9 @@ use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::clock::RealtimeClock;
-use crate::host::core::HostCore;
-use crate::host::device_core::DeviceCore;
 use crate::host::headless_window::{HeadlessCanvas, HeadlessSettings, HeadlessWindow};
-use crate::host::window_driver::PresentStrategy;
+use crate::host::host_core::HostCore;
+use crate::host::host_device::HostDevice;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::reduction::Reduction;
@@ -26,6 +25,7 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
+use crate::ui::window_frames::present::PresentStrategy;
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
 use std::time::Duration;
@@ -34,7 +34,7 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct OffscreenHost {
     window: HeadlessWindow,
-    device: DeviceCore,
+    device: HostDevice,
     time: HostTime,
 }
 
@@ -76,7 +76,7 @@ impl HostTime {
     }
 }
 
-/// Seals offscreen policy before allocating the backend and window driver.
+/// Seals offscreen policy before allocating the backend and the window's frames.
 #[derive(Debug)]
 #[must_use]
 pub struct OffscreenHostBuilder {
@@ -183,7 +183,7 @@ impl OffscreenHostBuilder {
         self
     }
 
-    /// Allocates the shared core and the window driver from the sealed settings.
+    /// Allocates the shared core and the window's frames from the sealed settings.
     ///
     /// # Panics
     ///
@@ -193,9 +193,9 @@ impl OffscreenHostBuilder {
         let fonts = options.fonts;
         let shaper = options.shaper_or_else(|| TextShaper::with_fonts(fonts));
         let mut core = HostCore::new(self.gpu, options, shaper);
-        let driver = core.open(OffscreenHost::WINDOW, self.strategy);
+        let frames = core.open(OffscreenHost::WINDOW, self.strategy);
         let HostCore { cpu, device } = core;
-        let window = HeadlessWindow::open(cpu, driver, &self.settings);
+        let window = HeadlessWindow::open(cpu, frames, &self.settings);
         let time = match self.time {
             OffscreenTime::Realtime => HostTime::Realtime(RealtimeClock::new()),
             OffscreenTime::Manual => HostTime::Manual(Duration::ZERO),
@@ -224,18 +224,18 @@ impl OffscreenHost {
 
     /// The window's `Ui`, for what no method here reads.
     pub const fn ui(&self) -> &Ui {
-        self.window.driver.ui()
+        self.window.frames.ui()
     }
 
     /// The window's `Ui`, to change what no method here changes.
     pub const fn ui_mut(&mut self) -> &mut Ui {
-        self.window.driver.ui_mut()
+        self.window.frames.ui_mut()
     }
 
     /// Delivers one input event to the window's `Ui` and reports whether it asks for a repaint, stamped with the time the next frame reads.
     pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         let now = self.time.now();
-        self.window.driver.on_input(event, now)
+        self.window.frames.on_input(event, now)
     }
 
     /// Move the host's time forward by `dt`; events fed afterward and the next frame carry it.
@@ -291,7 +291,7 @@ impl OffscreenHost {
     /// frame reads it in [`Ui::screenshot_taken`](crate::Ui::screenshot_taken). Returns how the
     /// wait ended: [`GpuWait::Done`], or why the copies did not come back.
     pub fn wait_for_gpu(&self) -> GpuWait {
-        self.device.wait_for_gpu(&self.window.driver)
+        self.device.wait_for_gpu(&self.window.frames)
     }
 
     /// The windows the last frame opened or closed with [`Ui::open_window`] and
@@ -364,18 +364,20 @@ pub(crate) mod internals {
     use crate::damage::Damage;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
-    use crate::host::window_driver::PresentStrategy;
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_buffer::RenderBuffer;
+    use crate::ui::window_frames::present::PresentStrategy;
 
     #[cfg(test)]
     use crate::gpu::surface::render_target::RenderTarget;
     #[cfg(test)]
-    use crate::host::window_driver::present_facts::PaintPath;
-    #[cfg(test)]
-    use crate::host::window_driver::{BuiltFrame, CpuFrame, FrameSpec, TargetKey, WindowDriver};
-    #[cfg(test)]
     use crate::ui::app::App;
+    #[cfg(test)]
+    use crate::ui::window_frames::WindowFrames;
+    #[cfg(test)]
+    use crate::ui::window_frames::present::present_facts::PaintPath;
+    #[cfg(test)]
+    use crate::ui::window_frames::present::{BuiltFrame, CpuFrame, FrameSpec, TargetKey};
 
     impl OffscreenHostBuilder {
         /// Present as the winit host does, through `PresentStrategy::DirectAdaptive`, so a bench
@@ -389,7 +391,7 @@ pub(crate) mod internals {
     impl OffscreenHost {
         /// Have the next frame paint `damage` over a change of `changed`, whatever damage it finds.
         pub(crate) fn force_next_frame(&mut self, damage: Damage, changed: &[Rect]) {
-            self.window.driver.force_next_frame(damage, changed);
+            self.window.frames.force_next_frame(damage, changed);
         }
 
         /// The frame `target` describes at the host's time, as [`Self::frame`] runs it.
@@ -403,7 +405,7 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(super) fn record(&mut self, spec: FrameSpec, app: &mut impl App) -> CpuFrame<'_> {
             self.device
-                .frame(&mut self.window.cpu, &mut self.window.driver, spec, app)
+                .frame(&mut self.window.cpu, &mut self.window.frames, spec, app)
         }
 
         /// Both halves of a frame onto `target`, as [`Self::frame`] runs them whatever the device
@@ -414,14 +416,14 @@ pub(crate) mod internals {
             &mut self,
             target: RenderTarget<'_>,
             app: &mut impl App,
-            between: impl FnOnce(&BuiltFrame<'_>, &WindowDriver) -> R,
+            between: impl FnOnce(&BuiltFrame<'_>, &WindowFrames) -> R,
         ) -> R {
             let spec = self.spec(target);
             let CpuFrame { built, .. } =
                 self.device
-                    .frame(&mut self.window.cpu, &mut self.window.driver, spec, app);
-            let read = between(&built, &self.window.driver);
-            self.device.submit(&mut self.window.driver, target, built);
+                    .frame(&mut self.window.cpu, &mut self.window.frames, spec, app);
+            let read = between(&built, &self.window.frames);
+            self.device.submit(&mut self.window.frames, target, built);
             read
         }
 
@@ -442,7 +444,7 @@ pub(crate) mod internals {
 
         /// Shades every shadow corner's cutout instead of baking tables; the visual suite's reference.
         pub fn disable_cutout_tables(&mut self) {
-            self.window.driver.disable_cutout_tables();
+            self.window.frames.disable_cutout_tables();
         }
 
         /// Draws every shadow as one cell instead of its grid; the visual suite's reference.
@@ -467,7 +469,7 @@ pub(crate) mod internals {
 
         /// Paints the next frame in full, as after a swapchain reconfigure.
         pub const fn invalidate_target_contents(&mut self) {
-            self.window.driver.invalidate_target_contents();
+            self.window.frames.invalidate_target_contents();
         }
     }
 }

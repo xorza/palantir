@@ -1,4 +1,4 @@
-//! Per-frame damage detection, computed in [`FrameLoop::frame`](crate::ui::frame_loop::FrameLoop::frame)
+//! Per-frame damage detection, computed in [`WindowFrames::frame`](crate::ui::window_frames::WindowFrames::frame)
 //! after `compute_rollups`, rebuilding the prev-frame snapshot in the same
 //! pass. `PlaneWalk::classify` reads `DamageEngine.prev` to pick a tier and
 //! the tier's arm writes the same key back; the read repeats so a live `Entry`
@@ -57,7 +57,7 @@ pub(crate) mod sweep;
 /// [`Damage::Full`]: past this, per-node filter, per-pass scissor, `Load` and
 /// backbuffer-copy bookkeeping costs more than redrawing everything. Checked
 /// against the coverage `DamageRegion::collapse_from` measured. The desktop
-/// present path's promote share (`host::window_driver::present_facts::promote_share`) is its own
+/// present path's promote share (`ui::window_frames::present::present_facts::promote_share`) is its own
 /// call, and reads below this on all but the densest screens.
 ///
 /// It can sit this high because the region keeps far rects apart, so `coverage`

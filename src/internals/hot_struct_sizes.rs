@@ -61,7 +61,7 @@ use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaped_text::ShapedText;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::ui::Ui;
-use crate::ui::frame_loop::FrameLoop;
+use crate::ui::window_frames::WindowFrames;
 use crate::widget_core::widget::Widget;
 use crate::widgets::block::Block;
 use crate::widgets::button::Button;
@@ -112,10 +112,10 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// heap.
 const UI_SIZE: usize = 2960;
 
-/// Expected `size_of::<FrameLoop>()` under `cfg(test)`, the only build this
+/// Expected `size_of::<WindowFrames>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const FRAME_LOOP_SIZE: usize = 5376;
+const WINDOW_FRAMES_SIZE: usize = 7160;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)
@@ -127,7 +127,7 @@ const PINS: &[Pin] = &[
     // an `Rc` measured -6% on `integration/frame/cpu/cached` and `integration/frame/cpu/partial`.
     pin::<Ui>("ui::Ui", UI_SIZE, 8),
     // Beside `Ui`, so growth here alone is cache growth and not recorder growth.
-    pin::<FrameLoop>("ui::FrameLoop", FRAME_LOOP_SIZE, 8),
+    pin::<WindowFrames>("ui::WindowFrames", WINDOW_FRAMES_SIZE, 8),
     pin::<NodeRecord>("scene::NodeRecord", 72, 8),
     pin::<IdEntry>("scene::IdEntry", 56, 8),
     pin::<Option<WidgetId>>("primitives::Option<WidgetId>", 8, 8),

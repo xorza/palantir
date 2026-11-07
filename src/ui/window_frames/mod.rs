@@ -1,29 +1,30 @@
-//! [`FrameLoop`]: what owns one window's frames, the [`Ui`] an app records through and the engines
-//! only a frame runs. A host's window driver holds it, and a widget, which holds a `&mut Ui`, cannot
-//! reach it.
+//! [`WindowFrames`]: what owns one window's frames, the [`Ui`] an app records through and the engines
+//! only a frame runs, and what the window keeps to reach its target. A host holds it, and a widget,
+//! which holds a `&mut Ui`, cannot reach it.
 //!
-//! [`FrameLoop::frame`] classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`FrameLoop::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last, in `close_frame`. Per-pass resets live in [`FrameLoop::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
+//! [`WindowFrames::frame`] classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`WindowFrames::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last, in `close_frame`. Per-pass resets live in [`WindowFrames::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
+
+pub(crate) mod present;
 
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
 use crate::common::tracy;
 use crate::damage::DamageBase;
-use crate::damage::dirty_panes::DirtyPanes;
 use crate::damage::engine::{DamageEngine, DamageInput};
 use crate::damage::frame_baseline::FrameBaseline;
-use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::gpu::gpu_paint::gpu_views::GpuViews;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
+use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::layout::engine::LayoutEngine;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
+use crate::renderer::pane_captures::PaneCaptures;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::IdRecipe;
-use crate::shape::record_store::RecordStore;
 use crate::ui::Ui;
 use crate::ui::app::{App, InputOutcome};
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
@@ -31,7 +32,8 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan, RecordBaseline};
 use crate::ui::frame_stats_readout;
 use crate::ui::resources::UiResources;
-use crate::window::screenshot::{Screenshot, ScreenshotRequest};
+use crate::ui::window_frames::present::screenshot_lane::ScreenshotLane;
+use crate::ui::window_frames::present::{PresentStrategy, TargetKey, WindowSpec};
 #[cfg(feature = "winit")]
 use crate::window::vsync::Vsync;
 use crate::window::waker::Waker;
@@ -42,28 +44,21 @@ use crate::window::window_token::WindowToken;
 use std::mem;
 use std::time::Duration;
 
-/// The parts of a [`FrameLoop`] a submit borrows at once ([`FrameLoop::submit_parts`]).
-#[derive(Debug)]
-pub(crate) struct SubmitParts<'a> {
-    pub(crate) stats: &'a mut GpuPassStats,
-    pub(crate) store: &'a RecordStore,
-    pub(crate) gpu_views: &'a GpuViews,
-}
-
-/// One window's frames: its [`Ui`], and the engines that run over it with the retained caches each
-/// needs to run incrementally (measure cache, previous cascade, last paint snapshot). The engines
-/// sit beside the `Ui`, so a pass can hold `&ui.forest` while it writes `&mut layout`, and so a
-/// widget cannot reach them. The host's side of the window's seam is here for the same reason. This
-/// is the shape of Masonry's `RenderRoot`, the composition root a host gives events and asks to
-/// redraw. Refused: this logic in `WindowDriver`, as `host` sits far to the right of the layer order
-/// and needs nothing here beyond the port. [`FrameRuntime`](crate::ui::frame_runtime::FrameRuntime)
-/// stays on `Ui`, as a record reads its clock and writes its requests and wakes.
+/// One window's frames: its [`Ui`], the engines that run over it with the retained caches each needs
+/// to run incrementally (measure cache, previous cascade, last paint snapshot), and what the window
+/// keeps to reach its target. The engines sit beside the `Ui`, so a pass can hold `&ui.forest` while
+/// it writes `&mut layout`, and so a widget cannot reach them. This is the shape of Masonry's
+/// `RenderRoot`, the composition root a host gives events and asks to redraw. Its methods here run a
+/// frame through damage, and those in [`present`] take it to a target. Refused: a frame type under a
+/// driver type, always built together, which a dozen forwarding methods joined.
+/// [`FrameRuntime`](crate::ui::frame_runtime::FrameRuntime) stays on `Ui`, as a record reads its
+/// clock and writes its requests and wakes.
 ///
 /// Registers its token in the window directory for as long as it lives, so no close path can leave
 /// `Ui::is_window_open` true.
 #[derive(Debug)]
-pub(crate) struct FrameLoop {
-    pub(crate) ui: Ui,
+pub(crate) struct WindowFrames {
+    ui: Ui,
     /// Measure/arrange, plus the measure cache and the `TextSystem` whose clock ages the glyph atlas.
     layout: LayoutEngine,
     cascade: CascadeEngine,
@@ -71,19 +66,41 @@ pub(crate) struct FrameLoop {
     damage: DamageEngine,
     /// The window the app records for.
     token: WindowToken,
+    /// What the window's frames keep on the device.
+    stream: RenderStream,
+    /// What the next frame's damage diffs against: the last frame, once it completed its
+    /// presentation. Discarded while a paint/copy is pending or after target invalidation.
+    damage_base: DamageBase,
+    /// Whether the target holds the damage outline the last painted frame drew onto it, which a
+    /// frame that keeps the target's pixels would keep too.
+    target_outlined: bool,
+    strategy: PresentStrategy,
+    /// The target the last [`Self::note_target`] saw.
+    target: Option<TargetKey>,
+    /// The captures this window's panes hold, which decide what a frame captures again.
+    pane_captures: PaneCaptures,
+    screenshots: ScreenshotLane,
+    /// What the next frame paints in place of its own damage, for a bench that measures a decision.
+    #[cfg(feature = "internals")]
+    forced: present::internals::ForcedFrame,
 }
 
-impl Drop for FrameLoop {
+impl Drop for WindowFrames {
     fn drop(&mut self) {
         self.ui.resources.windows().remove(self.token);
     }
 }
 
-impl FrameLoop {
-    /// The frames of the window `token`, over the shared `resources`. Pass the same loop every
-    /// frame: a new one discards the measure cache, cascade and damage baseline, forcing a full
-    /// repaint.
-    pub(crate) fn new(token: WindowToken, resources: &UiResources) -> Self {
+impl WindowFrames {
+    /// The frames of the window `spec` says, over the shared `resources`, on a detached stream until
+    /// the host [attaches](Self::attach) its device's. Keep one for the window's life: a new one
+    /// discards the measure cache, cascade and damage baseline, forcing a full repaint.
+    pub(crate) fn new(spec: WindowSpec, resources: &UiResources) -> Self {
+        let WindowSpec {
+            token,
+            owner,
+            strategy,
+        } = spec;
         resources.windows().add(token);
         Self {
             ui: Ui::new(resources.clone()),
@@ -91,7 +108,26 @@ impl FrameLoop {
             cascade: CascadeEngine::default(),
             damage: DamageEngine::default(),
             token,
+            stream: RenderStream::detached(owner, CutoutMode::Shade),
+            damage_base: DamageBase::Discarded,
+            target_outlined: false,
+            strategy,
+            target: None,
+            pane_captures: PaneCaptures::default(),
+            screenshots: ScreenshotLane::default(),
+            #[cfg(feature = "internals")]
+            forced: present::internals::ForcedFrame::default(),
         }
+    }
+
+    /// The window's `Ui`.
+    pub(crate) const fn ui(&self) -> &Ui {
+        &self.ui
+    }
+
+    /// The window's `Ui`, mutably.
+    pub(crate) const fn ui_mut(&mut self) -> &mut Ui {
+        &mut self.ui
     }
 
     /// No frame has been stamped yet.
@@ -100,7 +136,7 @@ impl FrameLoop {
     }
 
     /// The window the app records for.
-    #[cfg(any(test, feature = "winit"))]
+    #[cfg(feature = "winit")]
     pub(crate) const fn token(&self) -> WindowToken {
         self.token
     }
@@ -154,45 +190,6 @@ impl FrameLoop {
         levels
     }
 
-    /// Move the images this frame asked for onto `into`, as the driver takes them once the frame
-    /// is recorded.
-    pub(crate) fn take_screenshot_requests(&mut self, into: &mut Vec<ScreenshotRequest>) {
-        into.append(&mut self.ui.host.window_requests.screenshots);
-    }
-
-    /// Hand the next frame the image that landed for it, or none.
-    pub(crate) fn set_screenshot_taken(&mut self, screenshot: Option<Screenshot>) {
-        if screenshot.is_some() {
-            self.ui.frame_runtime.request_repaint();
-        }
-        self.ui.host.window_frame.screenshot = screenshot.map(Box::new);
-    }
-
-    /// The panes the last frame's damage left stale.
-    pub(crate) const fn dirty_panes(&self) -> &DirtyPanes {
-        self.damage.dirty_panes()
-    }
-
-    /// Every `GpuView` this window records, which its frames paint through.
-    pub(crate) const fn gpu_views(&self) -> &GpuViews {
-        &self.ui.memory.gpu_views
-    }
-
-    /// What a submit of the last frame reads, and where it publishes the window's GPU samples,
-    /// borrowed at once.
-    pub(crate) fn submit_parts(&mut self) -> SubmitParts<'_> {
-        SubmitParts {
-            stats: &mut self.ui.host.gpu_pass_stats,
-            store: &self.ui.forest.record_store,
-            gpu_views: &self.ui.memory.gpu_views,
-        }
-    }
-
-    /// Whether the host snaps axis-aligned paint edges to physical pixels, in every window.
-    pub(crate) fn pixel_snap(&self) -> bool {
-        self.ui.resources.settings().pixel_snap()
-    }
-
     /// The scale the current cascade was laid out at; a host divides event
     /// positions by it. `None` before the first frame.
     #[cfg(any(test, feature = "winit"))]
@@ -209,19 +206,14 @@ impl FrameLoop {
         self.ui.frame_runtime.set_prev_stamp(stamp);
     }
 
-    /// Replace the display the next frame lays out at, as the window driver does.
+    /// Replace the display the next frame lays out at, as a harness shows it before the frame.
     pub(crate) const fn set_display(&mut self, display: Display) {
         self.ui.frame_runtime.set_display(display);
     }
 
-    /// Drives one application frame: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input [`App::update`] left to it, or `request_relayout`. Paint-only frames skip both. `damage_base` says whether last frame's damage snapshot still describes the surface.
-    pub(crate) fn frame<T: App>(
-        &mut self,
-        stamp: FrameStamp,
-        damage_base: DamageBase,
-        app: &mut T,
-    ) -> FrameReport {
-        tracy::zone!("FrameLoop::frame");
+    /// Drives one application frame: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input [`App::update`] left to it, or `request_relayout`. Paint-only frames skip both.
+    fn frame<T: App>(&mut self, stamp: FrameStamp, app: &mut T) -> FrameReport {
+        tracy::zone!("WindowFrames::frame");
         debug_assert!(
             display::scale_factor_is_valid(stamp.display.scale_factor()),
             "SystemScale's range keeps the product with any UserScale valid, got {}",
@@ -229,10 +221,10 @@ impl FrameLoop {
         );
 
         let first_frame = self.is_first_frame();
-        let plan = self.open_frame(stamp, damage_base);
+        let plan = self.open_frame(stamp);
         let processing = match plan {
             FramePlan::PaintOnly => {
-                tracy::zone!("FrameLoop::frame.paint_only");
+                tracy::zone!("WindowFrames::frame.paint_only");
                 // Record payloads are not cleared: the live `tree.shapes` still index into them. PaintOnly skips `post_record`'s input cleanup, so under `OnDelta` an unrouted event can land here with the sticky arrival flag set.
                 self.ui.input.drain_per_frame_queues();
                 FrameProcessing::PaintOnly
@@ -257,7 +249,7 @@ impl FrameLoop {
 
     /// The frame's entry: move the clock and the theme on, tick the text clock, and classify the
     /// frame against what the retained tree was recorded under.
-    fn open_frame(&mut self, stamp: FrameStamp, damage_base: DamageBase) -> FramePlan {
+    fn open_frame(&mut self, stamp: FrameStamp) -> FramePlan {
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui.advance_theme();
@@ -274,7 +266,7 @@ impl FrameLoop {
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
             record_baseline,
-            damage_base,
+            damage_base: self.damage_base,
             input_policy: self.ui.input_policy(),
             input_signal: self.ui.input.signal_since_last_frame(),
             close_requested: self.ui.close_requested(),
@@ -290,7 +282,7 @@ impl FrameLoop {
     /// passes, and the frame's sweep.
     fn record_frame<T: App>(&mut self, app: &mut T) -> FrameProcessing {
         {
-            tracy::zone!("FrameLoop::update_user");
+            tracy::zone!("WindowFrames::update_user");
             // On the first frame `update` runs ahead of the warmup, as an app sets up in it and a
             // record needs that. No frame is on screen then, so it reads no rects, and nothing
             // routes against the empty cascade: a Tab held from before frame 1 waits for pass A's
@@ -312,7 +304,7 @@ impl FrameLoop {
             }
         }
         let action_flag = {
-            tracy::zone!("FrameLoop::record_pass.A");
+            tracy::zone!("WindowFrames::record_pass.A");
             self.record_pass(app)
         };
         // A modal in pass A cancelled an overlay already recorded there, which no record can take
@@ -323,7 +315,7 @@ impl FrameLoop {
         let double_layout = action_flag || self.ui.frame_runtime.relayout_requested() || cancel;
         if double_layout {
             tracy::zone!(
-                "FrameLoop::record_pass.B",
+                "WindowFrames::record_pass.B",
                 text = if self.ui.frame_runtime.relayout_requested() {
                     "relayout"
                 } else if cancel {
@@ -423,7 +415,7 @@ impl FrameLoop {
     ///
     /// [`Input`]: crate::input::Input
     fn warmup<T: App>(&mut self, app: &mut T) {
-        tracy::zone!("FrameLoop::record_pass.warmup");
+        tracy::zone!("WindowFrames::record_pass.warmup");
         let scratch = self.ui.input.warmup_scratch();
         let saved_input = mem::replace(&mut self.ui.input, scratch);
         let _ = self.record_pass(app);
@@ -449,7 +441,7 @@ impl FrameLoop {
             .resolve_ident(IdRecipe::Verbatim(WidgetId::VIEWPORT));
         self.ui.open_node(viewport_id, &Node::viewport(), None);
         {
-            tracy::zone!("FrameLoop::record_user");
+            tracy::zone!("WindowFrames::record_user");
             app.record(self.token, &mut self.ui);
         }
         let action_flag = self.ui.input.take_action_flag();
@@ -464,7 +456,7 @@ impl FrameLoop {
     ///
     /// The first four resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. The overlay stack steps a modal's cancel on by one pass, so a `PaintOnly` frame leaves it for the next pass that records. A further per-pass reset goes here.
     fn pre_record(&mut self) {
-        tracy::zone!("FrameLoop::pre_record");
+        tracy::zone!("WindowFrames::pre_record");
         self.ui.frame_runtime.begin_pass();
         self.ui
             .forest
@@ -476,7 +468,7 @@ impl FrameLoop {
 
     /// Record half of a pass: finalize hashes, measure, arrange, cascade. Cascade runs here so pass B of a `request_relayout` frame reads pass A's rects via [`Ui::response_for`]. Stale cache entries can't match live keys and are reaped in `finalize_frame`.
     fn post_record(&mut self) {
-        tracy::zone!("FrameLoop::post_record");
+        tracy::zone!("WindowFrames::post_record");
         self.ui.forest.post_record();
         self.layout.run(
             &self.ui.forest,
@@ -496,7 +488,7 @@ impl FrameLoop {
 
     /// Paint half of the frame: diffs seen ids against the last painted frame, fans `removed` out to per-widget caches, runs input and damage. Once per [`Self::frame`], so a widget vanishing in pass A and returning in pass B keeps its state.
     fn finalize_frame(&mut self) {
-        tracy::zone!("FrameLoop::finalize_frame");
+        tracy::zone!("WindowFrames::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
         self.layout.end_frame(removed);
         self.ui
@@ -512,13 +504,21 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::cascade::engine::CascadeEngine;
     use crate::damage::engine::DamageEngine;
+    #[cfg(test)]
+    use crate::gpu::gpu_paint::gpu_views::GpuViews;
     use crate::layout::Layout;
     use crate::layout::engine::LayoutEngine;
     use crate::primitives::geometry::rect::Rect;
     use crate::ui::app::App;
-    use crate::ui::frame_loop::FrameLoop;
+    use crate::ui::window_frames::WindowFrames;
 
-    impl FrameLoop {
+    impl WindowFrames {
+        /// Every `GpuView` this window records.
+        #[cfg(test)]
+        pub(crate) const fn gpu_views(&self) -> &GpuViews {
+            &self.ui.memory.gpu_views
+        }
+
         #[cfg(test)]
         pub(crate) const fn layout(&self) -> &LayoutEngine {
             &self.layout
@@ -553,37 +553,5 @@ pub(crate) mod internals {
             let _ = self.record_user(app);
             self.ui.forest.post_record();
         }
-
-        /// Mark as stale each pane whose footprint a rect of `changed` touches, for a bench that
-        /// forces a frame's decision.
-        pub(crate) fn force_stale_panes(&mut self, changed: &[Rect]) {
-            for pane in self.ui.frame_scene().panes() {
-                if changed.iter().any(|rect| rect.intersects(pane.footprint)) {
-                    self.damage.force_stale_pane(pane.key);
-                }
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::host::harness::Harness;
-    use crate::ui::frame_loop::FrameLoop;
-    use crate::window::window_token::WindowToken;
-    use glam::UVec2;
-
-    /// A window stays open for exactly as long as its frames live.
-    #[test]
-    fn the_window_directory_holds_a_token_while_its_loop_lives() {
-        let h = Harness::mono(UVec2::ONE);
-        let token = WindowToken(7);
-        let resources = h.frames().ui.resources.clone();
-        assert!(!h.ui().is_window_open(token));
-        let frames = FrameLoop::new(token, &resources);
-        assert!(h.ui().is_window_open(token));
-        assert_eq!(frames.token(), token);
-        drop(frames);
-        assert!(!h.ui().is_window_open(token));
     }
 }

@@ -559,7 +559,7 @@ impl Input {
     /// `double_click` is how soon a second press on the same target chains a run, which the host
     /// shares among its windows. Refused: a field on `Input`, which cannot read the settings, so
     /// each entry would copy the value first, state synced by hand. `now` is the arrival time on
-    /// the host's clock (see [`FrameLoop::on_input`](crate::ui::frame_loop::FrameLoop::on_input)).
+    /// the host's clock (see [`WindowFrames::on_input`](crate::ui::window_frames::WindowFrames::on_input)).
     pub(crate) fn on_input(
         &mut self,
         event: InputEvent<'_>,
@@ -896,7 +896,7 @@ impl Input {
         EventOutcome::repaint(observable)
     }
 
-    /// Read and reset [`Self::frame_had_action`]; [`FrameLoop::frame`](crate::ui::frame_loop::FrameLoop::frame) uses it to decide on a
+    /// Read and reset [`Self::frame_had_action`]; [`WindowFrames::frame`](crate::ui::window_frames::WindowFrames::frame) uses it to decide on a
     /// discarded pre-pass.
     pub(crate) fn take_action_flag(&mut self) -> bool {
         mem::take(&mut self.frame_had_action)

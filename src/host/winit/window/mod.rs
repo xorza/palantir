@@ -17,9 +17,8 @@ use crate::common::tracy::{self, FrameSet};
 use crate::display::system_scale::SystemScale;
 use crate::gpu::surface::window_surface::{Acquired, Prepared, SurfaceFrame, WindowSurface};
 use crate::host::clock::RealtimeClock;
-use crate::host::core::HostCore;
-use crate::host::device_core::DeviceCore;
-use crate::host::window_driver::{BuiltFrame, CpuFrame, FrameSpec, TargetKey, WindowDriver};
+use crate::host::host_core::HostCore;
+use crate::host::host_device::HostDevice;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
@@ -34,6 +33,8 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::input::input_event::InputEvent;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::app::App;
+use crate::ui::window_frames::WindowFrames;
+use crate::ui::window_frames::present::{BuiltFrame, CpuFrame, FrameSpec, TargetKey};
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFacts;
@@ -95,7 +96,7 @@ impl PointerAnchor {
 pub(super) struct Window {
     pub(super) window: Arc<WinitWindow>,
     pub(super) surface: WindowSurface,
-    pub(super) driver: WindowDriver,
+    pub(super) frames: WindowFrames,
     /// The device pixel ratio winit reports; the drawn scale is [`Self::effective_scale`].
     pub(super) system_scale: SystemScale,
     pub(super) next: FramePresent,
@@ -125,14 +126,14 @@ pub(super) struct Window {
     remote: RemoteEnd,
 }
 
-/// What a [`Window`] opens with: its native half, its surface and driver, its decorations'
+/// What a [`Window`] opens with: its native half, its surface and frames, its decorations'
 /// scheme, and the logical content size its config asked for, which it returns to from
 /// maximized until it shows unmaximized.
 #[derive(Debug)]
 pub(super) struct OpenedWindow {
     pub(super) window: Arc<WinitWindow>,
     pub(super) surface: WindowSurface,
-    pub(super) driver: WindowDriver,
+    pub(super) frames: WindowFrames,
     pub(super) decorations: ColorScheme,
     pub(super) inner_size: Option<Size>,
 }
@@ -142,7 +143,7 @@ impl Window {
         let OpenedWindow {
             window,
             surface,
-            mut driver,
+            mut frames,
             decorations,
             inner_size,
         } = opened;
@@ -155,13 +156,13 @@ impl Window {
         });
         // Seed the recorder's pacing level from the opened swapchain, so `Ui::vsync` is
         // truthful before any frame.
-        driver.seed_vsync(surface.vsync());
+        frames.seed_vsync(surface.vsync());
         Self {
             inner: native::physical_size(&window),
             restored,
             window,
             surface,
-            driver,
+            frames,
             system_scale,
             next: FramePresent::Immediate,
             close_requested: false,
@@ -181,7 +182,7 @@ impl Window {
 
     /// Ask the window for the screenshot a remote wants, which a later frame hands back.
     pub(super) fn ask_shot(&mut self, ask: ShotAsk) {
-        self.remote.ask_shot(self.driver.ui_mut(), ask);
+        self.remote.ask_shot(self.frames.ui_mut(), ask);
         self.next = FramePresent::Immediate;
     }
 
@@ -190,10 +191,10 @@ impl Window {
         let scale = self.translation_scale();
         // Stamped where the event arrived: the frame clock stands still between frames.
         let now = self.input_epoch.elapsed();
-        let driver = &mut self.driver;
+        let frames = &mut self.frames;
         let mut repaint_requested = false;
         let trace = self.translator.translate(event, scale, |input| {
-            repaint_requested |= driver.on_input(input, now).repaint_requested;
+            repaint_requested |= frames.on_input(input, now).repaint_requested;
         });
         self.note_pointer(trace, scale);
         repaint_requested
@@ -204,7 +205,7 @@ impl Window {
     pub(super) fn on_sent_input(&mut self, event: InputEvent<'_>) {
         let scale = self.translation_scale();
         let now = self.input_epoch.elapsed();
-        self.driver.on_input(event, now);
+        self.frames.on_input(event, now);
         self.note_pointer(PointerTrace::of_input(event, scale), scale);
         self.remote.note_sent();
         self.next = FramePresent::Immediate;
@@ -213,7 +214,7 @@ impl Window {
     /// Run `task` with `&mut` `app` and this window's `Ui`, then ask for a frame that records, as
     /// [`Self::on_sent_input`] does for an input.
     pub(super) fn on_query<T>(&mut self, app: &mut T, task: QueryTask<T>) {
-        self.remote.run_query(app, self.driver.ui_mut(), task);
+        self.remote.run_query(app, self.frames.ui_mut(), task);
         self.next = FramePresent::Immediate;
     }
 
@@ -222,7 +223,7 @@ impl Window {
     /// misplace a click queued before a user-scale write lands; `resync_pointer`
     /// restates the pointer when it moves.
     fn translation_scale(&self) -> f32 {
-        self.driver
+        self.frames
             .laid_out_scale()
             .unwrap_or_else(|| self.effective_scale())
     }
@@ -240,7 +241,7 @@ impl Window {
             && let Some(logical) = anchor.restate_at(scale)
         {
             let now = self.input_epoch.elapsed();
-            self.driver.on_input(InputEvent::PointerMoved(logical), now);
+            self.frames.on_input(InputEvent::PointerMoved(logical), now);
         }
     }
 
@@ -248,7 +249,7 @@ impl Window {
     /// read live since the user scale is written inside a frame. Events between frames
     /// use [`Self::translation_scale`].
     pub(super) fn effective_scale(&self) -> f32 {
-        self.driver.ui().user_scale().applied_to(self.system_scale)
+        self.frames.ui().user_scale().applied_to(self.system_scale)
     }
 
     /// This frame's [`SystemFacts`], asking the windowing system only after an event
@@ -330,9 +331,9 @@ impl Window {
         if facts.is_normal() {
             self.restored = Some(self.inner);
         }
-        // Also where the previous frame's veto is asserted spent (`FrameLoop::set_window_facts`).
+        // Also where the previous frame's veto is asserted spent (`WindowFrames::set_window_facts`).
         // `finish` is outside the occlusion branch, so every frame reaches the drain.
-        self.driver.set_window_facts(WindowFacts {
+        self.frames.set_window_facts(WindowFacts {
             close_requested: self.close_requested,
             placement: facts.placement,
             restored_size: self.restored,
@@ -356,7 +357,7 @@ impl Window {
             self.resync_pointer();
             // Before the record, which reads whether the target still holds the last frame.
             if self.surface.prepare(core.device.gpu()) == Prepared::Rebuilt {
-                self.driver.invalidate_target_contents();
+                self.frames.invalidate_target_contents();
             }
             let spec = FrameSpec {
                 target: TargetKey {
@@ -369,10 +370,10 @@ impl Window {
                 now: self.clock.now(),
             };
             let HostCore { cpu, device } = core;
-            let frame = device.frame(cpu, &mut self.driver, spec, app);
+            let frame = device.frame(cpu, &mut self.frames, spec, app);
             let summary = self
                 .remote
-                .after_frame(self.driver.ui(), &frame.report, app.is_busy());
+                .after_frame(self.frames.ui(), &frame.report, app.is_busy());
             let ran_app = frame.report.processing.ran_app();
             self.next = self.present(device, frame);
             Some(RanFrame { summary, ran_app })
@@ -386,7 +387,7 @@ impl Window {
         ran
     }
 
-    fn present(&mut self, device: &mut DeviceCore, frame: CpuFrame<'_>) -> FramePresent {
+    fn present(&mut self, device: &mut HostDevice, frame: CpuFrame<'_>) -> FramePresent {
         let CpuFrame { report, built } = frame;
         let outcome = if device.will_submit(&built) {
             self.acquire_and_present(device, built)
@@ -411,7 +412,7 @@ impl Window {
     /// Acquire the swapchain image and, if it came, draw `built` into it and present.
     fn acquire_and_present(
         &mut self,
-        device: &mut DeviceCore,
+        device: &mut HostDevice,
         built: BuiltFrame<'_>,
     ) -> AcquireOutcome {
         match self.surface.acquire() {
@@ -449,11 +450,11 @@ impl Window {
 
     fn submit_and_present(
         &mut self,
-        device: &mut DeviceCore,
+        device: &mut HostDevice,
         frame: SurfaceFrame,
         built: BuiltFrame<'_>,
     ) {
-        device.submit(&mut self.driver, frame.target(), built);
+        device.submit(&mut self.frames, frame.target(), built);
         self.window.pre_present_notify();
         frame.present(device.gpu());
     }
@@ -462,13 +463,13 @@ impl Window {
     /// un-vetoed close request becomes this window's close command), push the cursor,
     /// apply a vsync change, and consume the one-shot close request.
     fn finish(&mut self, commands: &mut WindowCommands) {
-        let output = self.driver.drain_window_output(commands);
+        let output = self.frames.drain_window_output(commands);
         if self.levels.set_cursor(output.cursor) {
             self.window.set_cursor(native::cursor(output.cursor));
         }
         self.set_vsync(output.vsync);
         self.set_ime_area(output.ime_area);
-        let color_scheme = self.driver.ui().color_scheme();
+        let color_scheme = self.frames.ui().color_scheme();
         if self.levels.set_color_scheme(color_scheme) {
             self.window
                 .set_theme(Some(native::color_scheme(color_scheme)));

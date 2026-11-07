@@ -320,7 +320,7 @@ fn a_host_recovers_from_a_loss_between_frames() {
     assert!(host.is_device_lost());
     host.frame(target.as_target(), &mut scene);
     assert!(
-        !host.window.driver.output_valid(),
+        !host.window.frames.output_valid(),
         "the frame submitted nothing"
     );
     assert_eq!(

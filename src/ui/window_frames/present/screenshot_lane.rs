@@ -46,7 +46,7 @@ pub(super) struct PendingScreenshot {
 /// Where each screenshot of a window stands: asked and not yet painted, or on its way back from
 /// the device.
 #[derive(Debug, Default)]
-pub(super) struct ScreenshotLane {
+pub(crate) struct ScreenshotLane {
     /// The images a recorded frame asked for, until a frame paints them: ones the host did not
     /// present (an outdated swapchain) carry to the next, and are resolved against the display of
     /// the frame that paints them, so a resize in between cannot leave one outside.
@@ -145,8 +145,8 @@ impl ScreenshotLane {
 mod tests {
     use crate::gpu::surface::capture::Capture;
     use crate::gpu::test_gpu::headless_test_gpu;
-    use crate::host::window_driver::screenshot_lane::{PendingScreenshot, ScreenshotLane};
     use crate::primitives::geometry::rect::Rect;
+    use crate::ui::window_frames::present::screenshot_lane::{PendingScreenshot, ScreenshotLane};
     use crate::window::screenshot::{ScreenshotId, ScreenshotRequest};
 
     fn request(id: ScreenshotId) -> ScreenshotRequest {

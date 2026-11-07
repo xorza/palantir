@@ -20,7 +20,7 @@
 //!   keeps the rare frames a mean would hide.
 //! - **Measured on a still screen, through the real frame.** The host keeps its own record, build
 //!   and submit, and the decision replaces only the frame's plan
-//!   (`WindowDriver::force_next_frame`), so an arm's own cost is all that differs. Refused: widgets
+//!   (`WindowFrames::force_next_frame`), so an arm's own cost is all that differs. Refused: widgets
 //!   flipping under the rects, whose fills would paint in the merged arms as they do not in a
 //!   real frame.
 

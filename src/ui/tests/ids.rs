@@ -8,15 +8,15 @@ use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
-use crate::ui::frame_loop::FrameLoop;
 use crate::ui::tests::support::SURFACE;
+use crate::ui::window_frames::WindowFrames;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
 /// The magenta outlines the encoder emitted for this frame's explicit-id collisions, in physical pixels. Selected by stroke width, the only 3 px stroke the encoder emits.
-fn collision_outlines(frames: &FrameLoop) -> Vec<Rect> {
+fn collision_outlines(frames: &WindowFrames) -> Vec<Rect> {
     use crate::damage::Damage;
     use crate::renderer::frontend::{BuildPlan, Frontend};
     use crate::renderer::render_plan::RenderPlan;
@@ -24,9 +24,9 @@ fn collision_outlines(frames: &FrameLoop) -> Vec<Rect> {
     // Share Ui's record store so mesh/polyline bytes pushed at record time are visible at compose.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        frames.ui.frame_scene(),
+        frames.ui().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: frames.ui.theme().window_bg,
+            clear: frames.ui().theme().window_bg,
             damage: Damage::Full,
         }),
     );

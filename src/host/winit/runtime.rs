@@ -9,9 +9,8 @@ use winit::window::WindowId;
 use crate::common::tracy;
 use crate::gpu::error::SurfaceStartError;
 use crate::gpu::surface::surface_manager::{FirstWindow, SurfaceManager, SurfaceStartup};
-use crate::host::core::HostCore;
+use crate::host::host_core::HostCore;
 use crate::host::system_preferences::SystemPreferences;
-use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
@@ -24,6 +23,7 @@ use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::app::App;
+use crate::ui::window_frames::present::PresentStrategy;
 use crate::window::waker::Waker;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_config::WindowConfig;
@@ -100,8 +100,8 @@ impl<T: App + 'static> WinitRuntime<T> {
         let mut core = HostCore::new(gpu, options, shaper);
         // Before the first `Ui`, so it starts in the system's scheme.
         let _ = system.apply(&core.cpu.resources);
-        let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
-        driver.set_waker(Self::waker(&handle, token));
+        let mut frames = core.open(token, PresentStrategy::DirectAdaptive);
+        frames.set_waker(Self::waker(&handle, token));
         let create_app = bootstrap
             .create_app
             .take()
@@ -116,7 +116,7 @@ impl<T: App + 'static> WinitRuntime<T> {
                 handle.send(UserEvent::SystemPreferences(preferences)).ok();
             })
         };
-        let mut app = create_app(driver.ui_mut(), handle);
+        let mut app = create_app(frames.ui_mut(), handle);
         for task in pending_tasks {
             task(&mut app);
         }
@@ -125,7 +125,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         windows.push(Window::new(OpenedWindow {
             window,
             surface: first_surface,
-            driver,
+            frames,
             decorations,
             inner_size: config.window.inner_size,
         }));
@@ -183,7 +183,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         let win = self.windows.at(slot);
         self.handle
             .frame_log
-            .set_hidden(win.driver.token(), win.is_hidden());
+            .set_hidden(win.frames.token(), win.is_hidden());
     }
 
     /// Paint one window; it drains its commands into the pending queue. A lost device is replaced
@@ -207,7 +207,7 @@ impl<T: App + 'static> WinitRuntime<T> {
                 let ran = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)?;
                 self.handle
                     .frame_log
-                    .record(win.driver.token(), ran.summary);
+                    .record(win.frames.token(), ran.summary);
                 Some(ran.ran_app)
             },
             Instant::now,
@@ -269,7 +269,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// new surface.
     fn attach_new_device(&mut self) -> Result<(), WinitHostError> {
         let first = self.windows.iter_mut().next().expect("a window draws");
-        let token = first.driver.token();
+        let token = first.frames.token();
         let gpu = self
             .surfaces
             .reopen(&first.window, &mut first.surface)
@@ -280,7 +280,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         self.core.device.attach(
             gpu,
             &mut self.core.cpu,
-            self.windows.iter_mut().map(|win| &mut win.driver),
+            self.windows.iter_mut().map(|win| &mut win.frames),
         );
         let max_texture_dim = self.core.device.gpu().max_texture_dim();
         for win in self.windows.iter_mut().skip(1) {
@@ -362,12 +362,12 @@ impl<T: App + 'static> WinitRuntime<T> {
                 ),
             )
             .map_err(|source| WinitHostError::Surface { token, source })?;
-        let mut driver = self.core.open(token, PresentStrategy::DirectAdaptive);
-        driver.set_waker(Self::waker(&self.handle, token));
+        let mut frames = self.core.open(token, PresentStrategy::DirectAdaptive);
+        frames.set_waker(Self::waker(&self.handle, token));
         self.windows.push(Window::new(OpenedWindow {
             window,
             surface,
-            driver,
+            frames,
             decorations,
             inner_size: config.inner_size,
         }));
@@ -381,18 +381,18 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
     }
 
-    /// Tear down `win`: its render stream retires before the driver drops, and its surface goes
+    /// Tear down `win`: its render stream retires before its frames drop, and its surface goes
     /// before the native window, whose last share this must hold. A share held anywhere else keeps
     /// the window on screen past its close: on Wayland its toplevel goes only with the last one.
     fn retire(&mut self, win: Window) {
         let Window {
             window,
             surface,
-            driver,
+            frames,
             ..
         } = win;
-        self.handle.frame_log.remove(driver.token());
-        self.core.device.close(driver);
+        self.handle.frame_log.remove(frames.token());
+        self.core.device.close(frames);
         drop(surface);
         debug_assert_eq!(
             Arc::strong_count(&window),
@@ -406,6 +406,6 @@ impl<T: App + 'static> WinitRuntime<T> {
 /// again after a pause.
 fn renew_surface(surfaces: &SurfaceManager, win: &mut Window, max_texture_dim: NonZeroU32) {
     if let Err(error) = surfaces.renew(&win.window, &mut win.surface, max_texture_dim) {
-        tracing::error!(token = ?win.driver.token(), %error, "window surface not made again");
+        tracing::error!(token = ?win.frames.token(), %error, "window surface not made again");
     }
 }

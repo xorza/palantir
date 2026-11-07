@@ -101,7 +101,7 @@ fn cascade_visible_to_relayout_pass() {
     assert_eq!(b.size.h, 40.0);
 }
 
-/// `FrameLoop::frame` re-records when the frame had routed input that could drive a state mutation, else runs the closure once.
+/// `WindowFrames::frame` re-records when the frame had routed input that could drive a state mutation, else runs the closure once.
 #[test]
 fn frame_pass_count_matches_action_trigger() {
     use crate::primitives::input::input_event::InputEvent;
@@ -499,7 +499,7 @@ fn frame_value_records_both_relayout_passes_and_returns_the_first() {
     assert_eq!(captured, 1, "capture returns the input-observing pass");
 }
 
-/// `FrameLoop::frame` plumbs `now`, `dt` (clamped to `MAX_ANIMATION_DT`) and the repaint-requested flag (reset every call) end-to-end to `FrameOutput`.
+/// `WindowFrames::frame` plumbs `now`, `dt` (clamped to `MAX_ANIMATION_DT`) and the repaint-requested flag (reset every call) end-to-end to `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
     let mut h = Harness::mono(UVec2::new(100, 100));

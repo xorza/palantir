@@ -386,7 +386,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
 
     let mut frontend = Frontend::for_test();
     frontend.build(
-        idle.frames().ui.frame_scene(),
+        idle.frames().ui().frame_scene(),
         BuildPlan::without_panes(plan),
     );
     let run = frontend
@@ -396,7 +396,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
         .find(|run| run.text.key == idle_key)
         .copied()
         .expect("PaintOnly must emit the retained text run");
-    let scene = idle.frames().ui.frame_scene();
+    let scene = idle.frames().ui().frame_scene();
     let interned_text = scene.forest.record_store.text.interned();
     assert_eq!(
         interned_text.resolve(run.text.span),

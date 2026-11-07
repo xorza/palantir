@@ -26,7 +26,7 @@ fn empty_ui_drives_a_frame_safely() {
     // Empty first frame has damage `None`; force `Full`.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        h.frames().ui.frame_scene(),
+        h.frames().ui().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
             clear: h.ui().theme().window_bg,
             damage: Damage::Full,

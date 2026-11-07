@@ -5,15 +5,16 @@ use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::core::HostCore;
-use crate::host::cpu_core::CpuCore;
 use crate::host::harness::{Harness, HarnessPaint, Seal};
 use crate::host::headless_window::{HeadlessSettings, HeadlessWindow};
-use crate::host::window_driver::{PresentStrategy, WindowDriver};
+use crate::host::host_core::HostCore;
+use crate::host::host_cpu::HostCpu;
 use crate::primitives::reduction::Reduction;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
+use crate::ui::window_frames::WindowFrames;
+use crate::ui::window_frames::present::PresentStrategy;
 use glam::UVec2;
 use std::time::Duration;
 
@@ -196,33 +197,33 @@ impl HarnessBuilder {
         let token = Harness::WINDOW;
         match &self.depth {
             Depth::Record => {
-                let mut cpu = CpuCore::new(options, shaper);
-                let driver = cpu.open(token, self.strategy);
+                let mut cpu = HostCpu::new(options, shaper);
+                let frames = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Record { size: self.size };
-                self.open(cpu, driver, paint)
+                self.open(cpu, frames, paint)
             }
             Depth::Compose => {
-                let mut cpu = CpuCore::new(options, shaper);
-                let driver = cpu.open(token, self.strategy);
+                let mut cpu = HostCpu::new(options, shaper);
+                let frames = cpu.open(token, self.strategy);
                 let paint = HarnessPaint::Compose { size: self.size };
-                self.open(cpu, driver, paint)
+                self.open(cpu, frames, paint)
             }
             Depth::Gpu { gpu, format } => {
                 let target = OwnedTarget::window(gpu, TARGET_LABEL, self.size, *format);
                 let mut core = HostCore::new(gpu.clone(), options, shaper);
-                let driver = core.open(token, self.strategy);
+                let frames = core.open(token, self.strategy);
                 let HostCore { cpu, device } = core;
-                self.open(cpu, driver, HarnessPaint::Gpu { target, device })
+                self.open(cpu, frames, HarnessPaint::Gpu { target, device })
             }
         }
     }
 
-    fn open(self, cpu: CpuCore, driver: WindowDriver, paint: HarnessPaint) -> Harness {
+    fn open(self, cpu: HostCpu, frames: WindowFrames, paint: HarnessPaint) -> Harness {
         Harness::assert_frame_dt(self.frame_dt);
         assert!(self.frame_dt > Duration::ZERO, "a frame takes some time");
         assert!(self.settle_frames > 0, "a settle runs at least one frame");
         Harness::open(
-            HeadlessWindow::open(cpu, driver, &self.settings),
+            HeadlessWindow::open(cpu, frames, &self.settings),
             Seal {
                 paint,
                 frame_dt: self.frame_dt,
@@ -237,16 +238,16 @@ impl HarnessBuilder {
 pub(crate) mod internals {
     use crate::gpu::wgpu_backend::FrameTiming;
     #[cfg(test)]
-    use crate::host::cpu_core::CpuCore;
-    #[cfg(test)]
     use crate::host::harness::harness_builder::Depth;
     use crate::host::harness::harness_builder::HarnessBuilder;
     #[cfg(test)]
     use crate::host::harness::{Harness, HarnessPaint};
-    use crate::host::window_driver::PresentStrategy;
+    #[cfg(test)]
+    use crate::host::host_cpu::HostCpu;
     use crate::text::shaper::TextShaper;
     #[cfg(test)]
     use crate::ui::resources::UiResources;
+    use crate::ui::window_frames::present::PresentStrategy;
     #[cfg(test)]
     use crate::window::window_token::WindowToken;
 
@@ -276,14 +277,14 @@ pub(crate) mod internals {
     impl HarnessBuilder {
         /// A recording window over `resources`, as `token` among the windows that share them.
         pub(crate) fn build_over(self, resources: UiResources, token: WindowToken) -> Harness {
-            let mut cpu = CpuCore::over(resources, &self.settings.options);
-            let driver = cpu.open(token, self.strategy);
+            let mut cpu = HostCpu::over(resources, &self.settings.options);
+            let frames = cpu.open(token, self.strategy);
             let paint = match self.depth {
                 Depth::Record => HarnessPaint::Record { size: self.size },
                 Depth::Compose => HarnessPaint::Compose { size: self.size },
                 Depth::Gpu { .. } => unreachable!("a window over shared resources has no device"),
             };
-            self.open(cpu, driver, paint)
+            self.open(cpu, frames, paint)
         }
     }
 }

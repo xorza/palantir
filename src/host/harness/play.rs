@@ -54,7 +54,7 @@ impl Harness {
         }
         let asked = self
             .window
-            .driver
+            .frames
             .ui_mut()
             .request_screenshot(region)
             .ok_or(PlayError::EmptyRegion)?;
@@ -67,7 +67,7 @@ impl Harness {
                 return Err(PlayError::DeviceLost);
             }
             self.next_frame(app);
-            if let Some(shot) = self.window.driver.ui().screenshot_taken(asked) {
+            if let Some(shot) = self.window.frames.ui().screenshot_taken(asked) {
                 return Ok(shot.clone());
             }
         }
@@ -120,7 +120,7 @@ impl Harness {
         loop {
             let report = self.next_frame(app);
             let busy = app.is_busy();
-            let screenshots = self.window.driver.has_pending_screenshots();
+            let screenshots = self.window.frames.has_pending_screenshots();
             // A wake that is no busy work's progress asks for frames as an animation does.
             if report.repaint_requested || screenshots || (self.window.is_wake_pending() && !busy) {
                 // A lost device lands no screenshot and paints no frame an animation asks for.
@@ -177,7 +177,7 @@ struct HarnessStage<'a, A> {
 
 impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
     fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError> {
-        Ok(at.point_for(self.app, self.h.window.driver.ui(), reach)?)
+        Ok(at.point_for(self.app, self.h.window.frames.ui(), reach)?)
     }
 
     /// A modifier change that holds what is held already sends nothing, which would wait a frame.
@@ -209,7 +209,7 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
         let Some(pressed) = self.h.last_press else {
             return Ok(());
         };
-        let interval = self.h.window.driver.ui().double_click_interval();
+        let interval = self.h.window.frames.ui().double_click_interval();
         let since = self.h.time.saturating_sub(pressed);
         if since <= interval {
             self.h.advance(interval - since + Duration::from_millis(1));

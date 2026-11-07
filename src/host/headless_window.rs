@@ -7,29 +7,30 @@
 use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::RenderTarget;
-use crate::host::cpu_core::CpuCore;
-use crate::host::device_core::DeviceCore;
+use crate::host::host_cpu::HostCpu;
+use crate::host::host_device::HostDevice;
 use crate::host::host_options::HostOptions;
 use crate::host::system_preferences::SystemPreferences;
 use crate::host::wake_signal::WakeSignal;
-use crate::host::window_driver::{CpuFrame, FrameSpec, TargetKey, WindowDriver};
 use crate::text::font_scope::FontScope;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
+use crate::ui::window_frames::WindowFrames;
+use crate::ui::window_frames::present::{CpuFrame, FrameSpec, TargetKey};
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::vec::Drain;
 
-/// A headless host's one window: the CPU core, the window's driver, the wakes its waker sends, the
+/// A headless host's one window: the CPU half, the window's frames, the wakes its waker sends, the
 /// display facts the host reports, and the window commands its last frame recorded. Each frame
 /// runs through [`Self::record_frame`], [`Self::compose_frame`] or [`Self::paint_frame`], so the
 /// two headless hosts keep only their clock and their target. Refused: a field and a method of
 /// each copied into both hosts, which drifted (the window commands, the system's preferences).
 #[derive(Debug)]
 pub(super) struct HeadlessWindow {
-    pub(super) cpu: CpuCore,
-    pub(super) driver: WindowDriver,
+    pub(super) cpu: HostCpu,
+    pub(super) frames: WindowFrames,
     wake: Arc<WakeSignal>,
     pub(super) system_scale: SystemScale,
     pub(super) refresh_millihertz: Option<u32>,
@@ -65,24 +66,24 @@ impl HeadlessSettings {
 /// texture's key, so no frame lays out for a texture other than the one it paints.
 #[derive(Debug)]
 pub(super) struct HeadlessCanvas<'a> {
-    pub(super) device: &'a mut DeviceCore,
+    pub(super) device: &'a mut HostDevice,
     pub(super) target: RenderTarget<'a>,
 }
 
 impl HeadlessWindow {
-    /// The window `driver` opened on `cpu`, under `settings`' display facts and system
+    /// The window `frames` opened on `cpu`, under `settings`' display facts and system
     /// preferences.
     pub(super) fn open(
-        cpu: CpuCore,
-        mut driver: WindowDriver,
+        cpu: HostCpu,
+        mut frames: WindowFrames,
         settings: &HeadlessSettings,
     ) -> Self {
         let wake = Arc::<WakeSignal>::default();
-        driver.set_waker(wake.waker());
+        frames.set_waker(wake.waker());
         let _ = settings.preferences.apply(&cpu.resources);
         Self {
             cpu,
-            driver,
+            frames,
             wake,
             system_scale: settings.system_scale,
             refresh_millihertz: settings.refresh_millihertz,
@@ -100,9 +101,9 @@ impl HeadlessWindow {
         now: Duration,
     ) -> FrameReport {
         self.take_wake();
-        let report = self.driver.record(self.spec(target, now), app);
-        self.driver.finish_unpainted();
-        record_window_commands(&mut self.driver, &mut self.commands);
+        let report = self.frames.record(self.spec(target, now), app);
+        self.frames.finish_unpainted();
+        record_window_commands(&mut self.frames, &mut self.commands);
         report
     }
 
@@ -115,7 +116,7 @@ impl HeadlessWindow {
     ) -> FrameReport {
         let report = self.record_frame(app, target, now);
         if let Some(plan) = report.plan {
-            self.driver.compose(&mut self.cpu.frontend, plan);
+            self.frames.compose(&mut self.cpu.frontend, plan);
         }
         report
     }
@@ -130,18 +131,18 @@ impl HeadlessWindow {
         let HeadlessCanvas { device, target } = canvas;
         self.take_wake();
         let spec = self.spec(TargetKey::of(target), now);
-        let CpuFrame { report, built } = device.frame(&mut self.cpu, &mut self.driver, spec, app);
+        let CpuFrame { report, built } = device.frame(&mut self.cpu, &mut self.frames, spec, app);
         if device.will_submit(&built) {
-            device.submit(&mut self.driver, target, built);
+            device.submit(&mut self.frames, target, built);
         }
-        record_window_commands(&mut self.driver, &mut self.commands);
+        record_window_commands(&mut self.frames, &mut self.commands);
         report
     }
 
     /// A frame opens by taking the waker's wake.
     fn take_wake(&mut self) {
         if self.wake.take() {
-            self.driver.ui_mut().request_repaint();
+            self.frames.ui_mut().request_repaint();
         }
     }
 
@@ -183,21 +184,21 @@ impl HeadlessWindow {
     pub(super) fn set_preferences(&mut self, change: impl FnOnce(&mut SystemPreferences)) {
         change(&mut self.preferences);
         if self.preferences.apply(&self.cpu.resources) {
-            self.driver.ui_mut().request_repaint();
+            self.frames.ui_mut().request_repaint();
         }
     }
 
     /// Paint with `gpu` from now on, in place of `device`'s lost one: every GPU object is built
     /// again on it, and the UI state stays.
-    pub(super) fn recover(&mut self, device: &mut DeviceCore, gpu: Gpu) {
-        device.attach(gpu, &mut self.cpu, [&mut self.driver]);
+    pub(super) fn recover(&mut self, device: &mut HostDevice, gpu: Gpu) {
+        device.attach(gpu, &mut self.cpu, [&mut self.frames]);
     }
 }
 
 /// Drain a frame's window output into `commands` on a host with no window lifecycle, which keeps
 /// one frame's: levels (cursor, vsync) stay with the recorder and are inert here, and the opens
 /// and closes are kept for the app to read.
-pub(super) fn record_window_commands(driver: &mut WindowDriver, commands: &mut WindowCommands) {
+pub(super) fn record_window_commands(frames: &mut WindowFrames, commands: &mut WindowCommands) {
     commands.clear();
-    driver.drain_window_output(commands);
+    frames.drain_window_output(commands);
 }

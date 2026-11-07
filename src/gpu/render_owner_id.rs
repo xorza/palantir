@@ -3,7 +3,7 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct RenderOwnerId(u64);
 
-/// The source of one host's [`RenderOwnerId`]s, held by the host's `CpuCore`, which opens all
+/// The source of one host's [`RenderOwnerId`]s, held by the host's `HostCpu`, which opens all
 /// its windows: the ids scope that host's backend, which serves them all.
 #[derive(Debug, Default)]
 pub(crate) struct RenderOwners {

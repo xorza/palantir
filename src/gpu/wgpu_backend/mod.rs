@@ -401,6 +401,20 @@ impl WgpuBackend {
         }
     }
 
+    /// The registered images, which the next device's backend holds too.
+    pub(crate) const fn image_store(&self) -> &Rc<WgpuImageStore> {
+        &self.image_store
+    }
+
+    /// Whether this backend times frames, which the next device's does too.
+    pub(crate) const fn frame_timing(&self) -> FrameTiming {
+        if self.timing.is_some() {
+            FrameTiming::On
+        } else {
+            FrameTiming::Off
+        }
+    }
+
     /// A stream for `owner`'s frames: its cutouts take the device's mode, and its frames are
     /// timed where the backend times frames.
     pub(crate) fn open_stream(&self, owner: RenderOwnerId) -> RenderStream {

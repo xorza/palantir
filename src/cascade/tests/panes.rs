@@ -44,7 +44,7 @@ fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: BackdropFilte
             ui.add_shape(Shape::rect().at(rect).backdrop_filter(filter));
         });
     });
-    let scene = h.frames().ui.frame_scene();
+    let scene = h.frames().ui().frame_scene();
     let panes: Vec<PaneRow> = scene.panes().copied().collect();
     assert_eq!(panes.len(), 1);
     Listed {

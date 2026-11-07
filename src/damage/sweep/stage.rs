@@ -5,7 +5,6 @@ use crate::damage::sweep::policy::FrameFacts;
 use crate::damage::sweep::scenario::{REFERENCE, Scenario, Scope};
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
-use crate::host::window_driver::present_facts::rows_per_mpx;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -14,6 +13,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::bench::settle_look;
+use crate::ui::window_frames::present::present_facts::rows_per_mpx;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
@@ -179,7 +179,7 @@ impl Stage {
         h.frame(|ui| self.record(&mut scene, ui));
         settle_look(h.ui_mut(), 1);
         h.frame(|ui| self.record(&mut scene, ui));
-        let frame_scene = h.frames().ui.frame_scene();
+        let frame_scene = h.frames().ui().frame_scene();
         FrameFacts {
             surface: self.surface(),
             rows_per_mpx: rows_per_mpx(frame_scene.visible_row_count(), self.physical),

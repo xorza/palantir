@@ -1,4 +1,4 @@
-//! What one `FrameLoop::frame` does: how many passes it runs, what it plumbs
+//! What one `WindowFrames::frame` does: how many passes it runs, what it plumbs
 //! through, and what it retains.
 
 mod cascade_skip;

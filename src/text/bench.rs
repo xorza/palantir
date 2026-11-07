@@ -143,7 +143,7 @@ fn drag_width(step: u32) -> f32 {
     40.0 + (step % DRAG_WIDTHS) as f32 * 0.25
 }
 
-/// One frame boundary as `FrameLoop::frame` drives it: the reuse-row sweep,
+/// One frame boundary as `WindowFrames::frame` drives it: the reuse-row sweep,
 /// then the clock tick. The tick is the caller's in production too; leaving it
 /// out measures a cache nothing can expire from.
 fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {

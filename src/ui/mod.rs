@@ -1,5 +1,5 @@
 //! The recorder: [`Ui`], the handle a widget authors a frame through, and the retained state that
-//! frame reads and writes. `frame_loop` holds it and runs the frame.
+//! frame reads and writes. `window_frames` holds it, runs the frame and takes it to its target.
 //!
 //! It records through `Node` and shapes, never through a widget, so the recorder sits below the
 //! authoring layer.
@@ -7,7 +7,6 @@
 pub(crate) mod app;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-pub(crate) mod frame_loop;
 pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
 mod frame_stats_readout;
@@ -22,6 +21,7 @@ mod theme_pair;
 mod theme_transition;
 pub(crate) mod ui_preferences;
 pub(crate) mod update_ctx;
+pub(crate) mod window_frames;
 mod window_theme;
 
 use crate::animation::animated::Animated;
@@ -136,7 +136,7 @@ pub struct Ui {
 }
 
 /// Widget-facing authoring API; mostly one-line delegations to sealed subsystems. The host's side
-/// is on `FrameLoop`.
+/// is on `WindowFrames`.
 impl Ui {
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
     fn new(resources: UiResources) -> Self {
@@ -334,7 +334,7 @@ impl Ui {
     /// epoch, so the frame records again under it. A frame that snaps motion
     /// (`Self::motion_snaps`) snaps the theme; a scheme change starts its transition at the theme
     /// shown, so the frame that adopts it shows no step yet. The frame a running transition owes is asked
-    /// for after the frame's plan takes this one's requests (`FrameLoop::frame`).
+    /// for after the frame's plan takes this one's requests (`WindowFrames::frame`).
     fn advance_theme(&mut self) {
         let motion = self.theme_motion();
         let resolved = self.resources.color_scheme();
@@ -484,7 +484,7 @@ impl Ui {
     /// Panics outside a record pass.
     #[track_caller]
     pub fn request_relayout(&mut self) {
-        // `FrameLoop::frame` clears the flag before the app runs, so a call outside a
+        // `WindowFrames::frame` clears the flag before the app runs, so a call outside a
         // record would be dropped silently.
         assert!(
             self.forest.is_recording(),

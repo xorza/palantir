@@ -111,14 +111,14 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s module doc.
 
 - **A host owns its windows; the frame step is the core's.** A host that paints holds a
-  `HostCore`, its `CpuCore` and its `DeviceCore`, each its own type, and runs every frame through
-  `DeviceCore::frame` and `DeviceCore::submit` on its `WindowDriver`; a harness below
-  `Depth::Gpu` holds the `CpuCore` alone. The two headless hosts share one private
+  `HostCore`, its `HostCpu` and its `HostDevice`, each its own type, and runs every frame through
+  `HostDevice::frame` and `HostDevice::submit` on its `WindowFrames`; a harness below
+  `Depth::Gpu` holds the `HostCpu` alone. The two headless hosts share one private
   `HeadlessWindow`, which runs their frame, and each keeps only its clock and its target.
   Refused: one core with an optional device half, which every host that always paints
   unwrapped; the two headless hosts merged into one public type, which splits the window by how
   many a host has; their fields and methods copied into both, which drifted.
-- **The harness is a host**, on the core and window driver the desktop runs. Refused: a `Ui`
+- **The harness is a host**, on the core and window frames the desktop runs. Refused: a `Ui`
   field, a frame loop every app pays for; a separate crate, which cannot reach the core; a
   frame path of its own, which drifts
   ([egui_kittest](https://docs.rs/egui_kittest/latest/egui_kittest/struct.Harness.html),
