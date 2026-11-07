@@ -2,7 +2,7 @@
 //! only a frame runs, and what the window keeps to reach its target. A host holds it, and a widget,
 //! which holds a `&mut Ui`, cannot reach it.
 //!
-//! [`WindowFrames::frame`] classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`WindowFrames::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last, in `close_frame`. Per-pass resets live in [`WindowFrames::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
+//! [`WindowFrames::frame`] classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs one to three [`WindowFrames::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last, in `close_frame`. Per-pass resets live in [`WindowFrames::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
 
 pub(crate) mod present;
 
@@ -26,7 +26,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::IdRecipe;
 use crate::ui::Ui;
-use crate::ui::app::{App, InputOutcome};
+use crate::ui::app::{App, RecordPass};
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan, RecordBaseline};
@@ -211,7 +211,7 @@ impl WindowFrames {
         self.ui.frame_runtime.set_display(display);
     }
 
-    /// Drives one application frame: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input [`App::update`] left to it, or `request_relayout`. Paint-only frames skip both.
+    /// Drives one application frame: runs [`App::record`], and replays it for cold-start warmup, action input, or `request_relayout`. Paint-only frames skip it.
     fn frame<T: App>(&mut self, stamp: FrameStamp, app: &mut T) -> FrameReport {
         tracy::zone!("WindowFrames::frame");
         debug_assert!(
@@ -278,34 +278,15 @@ impl WindowFrames {
         plan
     }
 
-    /// A frame that runs the app: [`App::update`] once, the first frame's warmup, one or two record
-    /// passes, and the frame's sweep.
+    /// A frame that runs the app: the first frame's warmup, one or two record passes, and the
+    /// frame's sweep.
     fn record_frame<T: App>(&mut self, app: &mut T) -> FrameProcessing {
-        {
-            tracy::zone!("WindowFrames::update_user");
-            // On the first frame `update` runs ahead of the warmup, as an app sets up in it and a
-            // record needs that. No frame is on screen then, so it reads no rects, and nothing
-            // routes against the empty cascade: a Tab held from before frame 1 waits for pass A's
-            // routing. Each later frame routes first, so `update` reads pass A's focus.
-            let first_frame = self.is_first_frame();
-            if first_frame {
-                self.ui.input.snapshot_frame_quiescent();
-            } else {
-                self.ui.input.open_update();
-            }
-            let outcome = app.update(self.token, self.ui.update_ctx());
-            self.ui.input.close_update();
-            if first_frame {
-                self.warmup(app);
-            }
-            // As a second pass reads it: the edges are gone, so no record can react.
-            if outcome == InputOutcome::Handled {
-                self.ui.input.drain_per_frame_queues();
-            }
+        if self.is_first_frame() {
+            self.warmup(app);
         }
         let action_flag = {
             tracy::zone!("WindowFrames::record_pass.A");
-            self.record_pass(app)
+            self.record_pass(app, RecordPass::First)
         };
         // A modal in pass A cancelled an overlay already recorded there, which no record can take
         // back, as an app decides what to show only as it records. Pass B paints it closed; left to
@@ -325,7 +306,7 @@ impl WindowFrames {
                 }
             );
             self.ui.input.drain_per_frame_queues();
-            let _ = self.record_pass(app);
+            let _ = self.record_pass(app, RecordPass::Second);
             // A modal that first recorded in pass B cancelled an overlay past the frame's last
             // pass: the next frame applies it.
             if self.ui.overlays.needs_pass() {
@@ -418,7 +399,7 @@ impl WindowFrames {
         tracy::zone!("WindowFrames::record_pass.warmup");
         let scratch = self.ui.input.warmup_scratch();
         let saved_input = mem::replace(&mut self.ui.input, scratch);
-        let _ = self.record_pass(app);
+        let _ = self.record_pass(app, RecordPass::Warmup);
         let warmup_input = mem::replace(&mut self.ui.input, saved_input);
         self.ui.input.adopt_warmup(warmup_input);
         self.ui.input.refresh_pointer_targets();
@@ -426,15 +407,15 @@ impl WindowFrames {
     }
 
     /// One `pre_record`, user record, drain action flag, `post_record` cycle; returns whether it saw action input (which triggers a second pass).
-    fn record_pass<T: App>(&mut self, app: &mut T) -> bool {
-        let action_flag = self.record_user(app);
+    fn record_pass<T: App>(&mut self, app: &mut T, pass: RecordPass) -> bool {
+        let action_flag = self.record_user(app, pass);
         self.post_record();
         action_flag
     }
 
     /// The record half of a pass before `post_record`: `pre_record`, then the user closure under the viewport root; returns whether it saw action input.
-    fn record_user<T: App>(&mut self, app: &mut T) -> bool {
-        self.pre_record();
+    fn record_user<T: App>(&mut self, app: &mut T, pass: RecordPass) -> bool {
+        self.pre_record(pass);
         // Synthetic viewport root for Layer::Main; else the first user node becomes the root and layout forces its rect to the surface, overriding its `Sizing` / `Sense`.
         let viewport_id = self
             .ui
@@ -455,9 +436,15 @@ impl WindowFrames {
     /// Opens the pass: clears everything the user closure is about to refill.
     ///
     /// The first four resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. The overlay stack steps a modal's cancel on by one pass, so a `PaintOnly` frame leaves it for the next pass that records. A further per-pass reset goes here.
-    fn pre_record(&mut self) {
+    fn pre_record(&mut self, pass: RecordPass) {
         tracy::zone!("WindowFrames::pre_record");
-        self.ui.frame_runtime.begin_pass();
+        self.ui.frame_runtime.begin_pass(pass);
+        // A second pass keeps the first's watches: an app reads its input in the first alone, and
+        // what that pass watched must still wake the window. Cost: a widget gone from the second
+        // keeps its watch for one more frame, which at most asks one spare frame.
+        if pass == RecordPass::First {
+            self.ui.input.clear_watches();
+        }
         self.ui
             .forest
             .pre_record(self.ui.frame_runtime.transparency);
@@ -509,7 +496,7 @@ pub(crate) mod internals {
     use crate::layout::Layout;
     use crate::layout::engine::LayoutEngine;
     use crate::primitives::geometry::rect::Rect;
-    use crate::ui::app::App;
+    use crate::ui::app::{App, RecordPass};
     use crate::ui::window_frames::WindowFrames;
 
     impl WindowFrames {
@@ -550,7 +537,7 @@ pub(crate) mod internals {
         /// One record pass of `app` alone, its hashes finalized: no layout, cascade, damage or
         /// frame sweep, so a bench times record apart from the stages after it.
         pub(crate) fn record_alone<T: App>(&mut self, app: &mut T) {
-            let _ = self.record_user(app);
+            let _ = self.record_user(app, RecordPass::First);
             self.ui.forest.post_record();
         }
     }

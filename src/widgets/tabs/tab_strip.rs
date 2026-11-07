@@ -1,6 +1,5 @@
 //! The chip row on its own: geometry, selection cap, close button, overflow, keyboard travel, drag sensing.
 
-use crate::input::Input;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -191,16 +190,16 @@ impl<'a> TabStrip<'a> {
     /// What the chips keyed `keys` under `strip` reported last frame, read before the strip records,
     /// as a caller that acts a phase early does. The same fold as [`TabStripResponse`]'s.
     pub(crate) fn scan(
-        input: &Input,
+        ui: &Ui,
         strip: WidgetId,
         keys: impl IntoIterator<Item = TabKey>,
     ) -> ChipHits {
         let mut hits = ChipHits::default();
         for (slot, key) in keys.into_iter().enumerate() {
-            let close = input.response_for(Self::close_id(strip, key));
+            let close = ui.response_for(Self::close_id(strip, key));
             hits.add(
                 slot,
-                &input.response_for(Self::chip_id(strip, key)),
+                &ui.response_for(Self::chip_id(strip, key)),
                 Some(&close),
             );
         }

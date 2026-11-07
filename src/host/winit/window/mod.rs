@@ -341,7 +341,7 @@ impl Window {
         });
 
         // A hidden window skips its frame except the one carrying a close request:
-        // only `App::update` / `App::record` can veto, and skipping would close a
+        // only `App::record` can veto, and skipping would close a
         // minimized document past its "save changes?" prompt. One-shot.
         let ran = if self.visibility.is_hidden() && !self.close_requested {
             self.next = FramePresent::Idle;

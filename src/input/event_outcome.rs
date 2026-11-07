@@ -13,7 +13,7 @@ pub(super) struct EventOutcome {
     /// read live), `ReleaseKind::Miss`, scroll, pinch, `PointerLeft`, modifier changes, key releases and unrouted events: they reach
     /// at most one target that applies them in the pass that receives them. That lets a click-driven UI settle once
     /// per gesture; an app reacting to a press-driven focus change by writing state a *prefix* widget shows gains a
-    /// one-frame lag and should handle it in [`crate::App::update`].
+    /// one-frame lag and should handle it in that pass, ahead of the widgets.
     pub(super) settles: bool,
 }
 

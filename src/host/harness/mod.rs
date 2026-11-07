@@ -9,10 +9,9 @@
 //!
 //! | pass | when it runs | what it sees |
 //! |---|---|---|
-//! | warmup | the very first frame of a cold recorder | No input. Builds the cascade so pass A has something to hit-test. |
-//! | `App::update` | once, before any record | Not a record: pass A's input and focus, with no way to record. On a cold recorder it runs ahead of the warmup, and reads no rects. |
-//! | A | always, except on a paint-only frame | The real input, including one-frame edges (`clicked`, `drag.started()`), unless `App::update` returned `Handled`. |
-//! | B | pass A acted or asked a relayout | The edges are gone. At most one retry. |
+//! | `Warmup` | the very first frame of a cold recorder | No input. Builds the cascade so pass A has something to hit-test. |
+//! | `First`, or A | always, except on a paint-only frame | The real input, including one-frame edges (`clicked`, `drag.started()`). |
+//! | `Second`, or B | pass A acted or asked a relayout | The edges are gone. At most one retry. |
 //!
 //! A paint-only frame runs no record pass. The harness keeps no copy of the pointer position or
 //! the modifiers, which would part from the window's once an event goes in through
@@ -27,7 +26,7 @@
 //! 4. **Read the first record pass.** Pass B has no edges, so [`Harness::frame_value`] keeps
 //!    pass A's value.
 //! 5. **The closure's side effects run once per pass too.** Anything that adds up across frames
-//!    reads pass A alone or is idempotent.
+//!    reads pass A alone ([`Ui::record_pass`](crate::Ui::record_pass)) or is idempotent.
 //! 6. **One clock, two doors.** [`Harness::advance`] and [`Harness::at`] move the time that
 //!    stamps both frames and input.
 //! 7. **A frozen clock makes every click one run of clicks**: the double-click interval is 500 ms
@@ -80,7 +79,7 @@ use crate::primitives::input::zoom_factor::ZoomFactor;
 use crate::primitives::reduction::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
-use crate::ui::app::App;
+use crate::ui::app::{App, RecordPass};
 use crate::ui::frame_report::FrameReport;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::window_frames::present::{FrameSpec, TargetKey};
@@ -207,7 +206,7 @@ struct PressOrigin {
 }
 
 impl Harness {
-    /// The token of a harness's one window, as [`App::update`] and [`App::record`] receive it.
+    /// The token of a harness's one window, as [`App::record`] receives it.
     pub const WINDOW: WindowToken = WindowToken(0);
 
     /// A window of `size` physical pixels at scale 1 that records and builds no draw list,
@@ -269,14 +268,11 @@ impl Harness {
         self.deliver_held_input(&mut |ui: &mut Ui| {
             record(ui);
         });
-        let mut warmup = self.window.frames.is_first_frame();
         let mut first = None;
         self.step(|ui| {
             // `record` runs on every pass: skipping it would record an empty tree.
             let value = record(ui);
-            if warmup {
-                warmup = false;
-            } else if first.is_none() {
+            if ui.record_pass() == RecordPass::First {
                 first = Some(value);
             }
         });

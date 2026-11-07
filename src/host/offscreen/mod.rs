@@ -209,7 +209,7 @@ impl OffscreenHostBuilder {
 }
 
 impl OffscreenHost {
-    /// The token of this host's one window, as handed to [`App::update`] and [`App::record`].
+    /// The token of this host's one window, as handed to [`App::record`].
     pub const WINDOW: WindowToken = WindowToken(0);
 
     /// Starts building an offscreen host: bundled fonts, no GPU timing, wall-clock time, pixel snapping on.
@@ -340,7 +340,7 @@ impl OffscreenHost {
         self
     }
 
-    /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged. The target may change between calls, unless the builder promised [`OffscreenHostBuilder::retained_target`], whose one target keeps what a still frame leaves in it. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`]. On a lost device it paints nothing ([`Self::is_device_lost`]).
+    /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged. The target may change between calls, unless the builder promised [`OffscreenHostBuilder::retained_target`], whose one target keeps what a still frame leaves in it. [`Self::WINDOW`] goes to [`App::record`], with the semantics of [`crate::WinitHost`]. On a lost device it paints nothing ([`Self::is_device_lost`]).
     ///
     /// The frame runs at the host's [system scale](Self::set_system_scale); the app's scale
     /// multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200%

@@ -29,7 +29,7 @@ use crate::input::key_reader::KeyReader;
 use crate::input::keyboard::{HeldKey, Keyboard};
 use crate::input::pointer::Pointer;
 use crate::input::scope::Scopes;
-use crate::input::watches::{WatchMark, Watches};
+use crate::input::watches::Watches;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::ime_preedit::ImePreedit;
@@ -40,7 +40,6 @@ use crate::primitives::input::interaction::drag::Drag;
 use crate::primitives::input::interaction::input_delta::InputDelta;
 use crate::primitives::input::interaction::pointer_action::PointerAction;
 use crate::primitives::input::interaction::pointer_edge::PointerEdge;
-use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::input::interaction::scroll_delta::ScrollDelta;
 use crate::primitives::input::key_class::KeyClass;
@@ -65,32 +64,13 @@ fn pointer_in_widget_space(pointer: Vec2, layout_origin: Vec2, transform: Transl
 
 /// What input leaves behind between events: the pointer and what it routes to, each button's
 /// capture, focus, the modifiers and the IME composition, plus this frame's edges for the record
-/// passes to read. An app has it in [`UpdateCtx`](crate::UpdateCtx), once a frame, before any record.
-///
-/// What it answers holds wherever it is asked. A read that a scope routes, as a key press, is on
-/// [`UpdateCtx`](crate::UpdateCtx) and [`Ui`](crate::Ui), which know where they read from.
+/// passes to read. [`Ui`](crate::Ui) is its public face.
 ///
 /// It owns the latest arranged frame, the one thing an event means anything against, so no read
 /// takes it as a parameter. Refused: the cascade and layout on `Ui`, which threaded them through 27
 /// signatures here.
-///
-/// It holds no [`Ui`](crate::Ui), so it cannot record:
-///
-/// ```compile_fail,E0308
-/// # use palantir::{Button, Input};
-/// fn input(input: &mut Input) {
-///     Button::new().show(input);
-/// }
-/// ```
-///
-/// ```compile_fail,E0599
-/// # use palantir::{Input, Shape};
-/// fn input(input: &mut Input) {
-///     input.add_shape(Shape::rect());
-/// }
-/// ```
 #[derive(Debug)]
-pub struct Input {
+pub(crate) struct Input {
     /// The latest arranged frame. The engines write it, and the encoder and damage read it too.
     pub(crate) arranged: Arranged,
     pointer: Pointer,
@@ -98,7 +78,7 @@ pub struct Input {
     ime: Ime,
     focus: Focus,
     /// Snapshot of "no widget can hold non-default interaction state this frame".
-    /// Taken before `App::update` and per record pass so [`Self::response_for`] can
+    /// Taken per record pass so [`Ui::response_for`](crate::Ui::response_for) can
     /// skip the interaction half; `false` before the first fill. `focused` is excluded.
     frame_quiescent: bool,
     /// The text of a held event being replayed, kept for the next.
@@ -111,11 +91,9 @@ pub struct Input {
     /// read (see [`EventOutcome::settles`]); taken by [`Self::take_action_flag`].
     frame_had_action: bool,
     signal_since_last_frame: InputSignal,
-    /// Wake-gate watches, rewound pre-record to [`Self::update_subs`]. The masks persist across
-    /// silent frames so a dormant popup is paged in by the next click.
+    /// Wake-gate watches, cleared as a frame's first pass opens. The masks persist across silent
+    /// frames so a dormant popup is paged in by the next click.
     subs: Watches,
-    /// What this frame's update watched, which each of its record passes keeps.
-    update_subs: WatchMark,
     queue: InputQueue,
 }
 
@@ -142,32 +120,18 @@ impl Input {
             frame_had_action: false,
             signal_since_last_frame: InputSignal::default(),
             subs: Watches::default(),
-            update_subs: WatchMark::default(),
             queue: InputQueue::default(),
         }
     }
 
-    /// Open a recorded frame's update: drop last frame's watches, and route as its first pass
-    /// will, so the stage and the pass read one focus.
-    pub(crate) fn open_update(&mut self) {
+    /// Drop last frame's watches.
+    pub(crate) fn clear_watches(&mut self) {
         self.subs.clear();
-        self.route();
     }
 
-    /// Close the update: what it watched outlives each pass's reset.
-    pub(crate) const fn close_update(&mut self) {
-        self.update_subs = self.subs.mark();
-    }
-
-    /// Start a record pass: drop last pass's watches, keep the update's, and resolve this
-    /// pass's scope path once.
+    /// Start a record pass: resolve this pass's scope path once, take focus keys, and note whether
+    /// any widget can hold state.
     pub(crate) fn pre_record(&mut self) {
-        self.subs.rewind(self.update_subs);
-        self.route();
-    }
-
-    /// Resolve the scope path, take focus keys, and note whether any widget can hold state.
-    fn route(&mut self) {
         self.scopes
             .resolve(self.focus.focused(), &self.arranged.cascade);
         self.traverse_focus();
@@ -234,16 +198,9 @@ impl Input {
         }
     }
 
-    /// Move focus to the first Tab stop under `ancestor` at the end of this frame. See
-    /// [`Ui::focus_first_within`](crate::Ui::focus_first_within).
-    #[inline]
-    pub const fn focus_first_within(&mut self, ancestor: WidgetId) {
-        self.focus_within(ancestor, TabEnd::First);
-    }
-
     /// Move focus to the Tab stop at `end` under `ancestor` at the end of this frame. See
     /// [`Ui::focus_within`](crate::Ui::focus_within).
-    pub const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
+    pub(crate) const fn focus_within(&mut self, ancestor: WidgetId, end: TabEnd) {
         self.focus.enter_within(FocusEntry {
             within: ancestor,
             end,
@@ -252,7 +209,7 @@ impl Input {
 
     /// Currently focused widget id, or `None`. See [`Ui::focus`](crate::Ui::focus).
     #[inline]
-    pub const fn focus(&self) -> Option<WidgetId> {
+    pub(crate) const fn focus(&self) -> Option<WidgetId> {
         self.focus.focused()
     }
 
@@ -270,21 +227,21 @@ impl Input {
     /// Currently held modifier keys, and a watch of them. See
     /// [`Ui::modifiers`](crate::Ui::modifiers).
     #[inline]
-    pub const fn modifiers(&mut self) -> Modifiers {
+    pub(crate) const fn modifiers(&mut self) -> Modifiers {
         self.watch_keyboard(KeyboardWake::MODIFIER);
         self.keyboard.modifiers
     }
 
     /// [`Self::modifiers`] with no watch. See [`Ui::peek_modifiers`](crate::Ui::peek_modifiers).
     #[inline]
-    pub const fn peek_modifiers(&self) -> Modifiers {
+    pub(crate) const fn peek_modifiers(&self) -> Modifiers {
         self.keyboard.modifiers
     }
 
     /// Pointer position in logical pixels (surface space), or `None` off-surface, and a watch of
     /// it. See [`Ui::pointer_pos`](crate::Ui::pointer_pos).
     #[inline]
-    pub const fn pointer_pos(&mut self) -> Option<Vec2> {
+    pub(crate) const fn pointer_pos(&mut self) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
         self.pointer.pos
     }
@@ -292,7 +249,7 @@ impl Input {
     /// [`Self::pointer_pos`] with no watch. See
     /// [`Ui::peek_pointer_pos`](crate::Ui::peek_pointer_pos).
     #[inline]
-    pub const fn peek_pointer_pos(&self) -> Option<Vec2> {
+    pub(crate) const fn peek_pointer_pos(&self) -> Option<Vec2> {
         self.pointer.pos
     }
 
@@ -329,13 +286,13 @@ impl Input {
 
     /// Move keyboard focus to `id` now. See [`Ui::set_focus`](crate::Ui::set_focus).
     #[inline]
-    pub const fn set_focus(&mut self, id: WidgetId) {
+    pub(crate) const fn set_focus(&mut self, id: WidgetId) {
         self.move_focus(Some(id));
     }
 
     /// Leave nothing focused. See [`Ui::clear_focus`](crate::Ui::clear_focus).
     #[inline]
-    pub const fn clear_focus(&mut self) {
+    pub(crate) const fn clear_focus(&mut self) {
         self.move_focus(None);
     }
 
@@ -373,7 +330,7 @@ impl Input {
     /// Declare interest in off-focus keyboard categories. See
     /// [`Ui::watch_keyboard`](crate::Ui::watch_keyboard).
     #[inline]
-    pub const fn watch_keyboard(&mut self, flags: KeyboardWake) {
+    pub(crate) const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.subs.keyboard_mask.insert(flags);
     }
 
@@ -440,24 +397,24 @@ impl Input {
 
     /// Whether `key` is down now, whatever the modifiers. A fact of the keyboard, as the
     /// modifiers are, so not routed.
-    pub fn key_held(&mut self, key: Key) -> bool {
+    pub(crate) fn key_held(&mut self, key: Key) -> bool {
         self.subs.watch_key(key);
         self.keyboard.is_held(key)
     }
 
     /// Whether `key` came up this frame, or was held when the surface lost the keyboard.
-    pub fn key_released(&mut self, key: Key) -> bool {
+    pub(crate) fn key_released(&mut self, key: Key) -> bool {
         self.subs.watch_key(key);
         self.keyboard.was_released(key)
     }
 
     /// Every edge the pointer produced this frame, widget by widget, from the same
-    /// capture state as [`Self::response_for`]. Three slots per button, at most two
+    /// capture state as [`Ui::response_for`](crate::Ui::response_for). Three slots per button, at most two
     /// filled (`InputQueue` admits one press-or-release per button per frame). A widget
     /// the arranged frame holds disabled, itself or by an ancestor, has none, as its response is
     /// empty: the press still latched on it, so nothing behind it takes the input.
     #[inline]
-    pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
+    pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
         let cascade = &self.arranged.cascade;
         let disabled = move |id| {
             cascade
@@ -903,8 +860,7 @@ impl Input {
     }
 
     /// Drain the per-frame input queues without touching cascade-dependent state.
-    /// A second pass needs empty queues so clicks do not double-fire, and a frame the update
-    /// handled needs them so no record reads what it acted on.
+    /// A second pass needs empty queues so clicks do not double-fire.
     pub(crate) fn drain_per_frame_queues(&mut self) {
         self.pointer.end_frame();
         self.keyboard.end_frame();
@@ -954,7 +910,7 @@ impl Input {
 
     /// True when focus sits on `ancestor` or in its subtree, per the arranged frame.
     #[inline]
-    pub fn is_focus_within(&self, ancestor: WidgetId) -> bool {
+    pub(crate) fn is_focus_within(&self, ancestor: WidgetId) -> bool {
         self.focus
             .focused()
             .is_some_and(|focused| self.arranged.cascade.is_within(focused, ancestor))
@@ -963,12 +919,12 @@ impl Input {
     /// True when the pointer's hover target is `ancestor` or in its subtree, per the arranged
     /// frame.
     #[inline]
-    pub fn is_hover_within(&self, ancestor: WidgetId) -> bool {
+    pub(crate) fn is_hover_within(&self, ancestor: WidgetId) -> bool {
         self.hovered()
             .is_some_and(|hovered| self.arranged.cascade.is_within(hovered, ancestor))
     }
 
-    pub(crate) fn scroll_delta_for(&self, id: WidgetId) -> ScrollDelta {
+    fn scroll_delta_for(&self, id: WidgetId) -> ScrollDelta {
         self.pointer.delta(id).copied().unwrap_or_default()
     }
 
@@ -977,7 +933,7 @@ impl Input {
     /// [`crate::Ui::set_focus`] can set it mid-record. The pointer test covers the
     /// routed targets ([`Self::refresh_pointer_targets`] clears them when `pointer_pos`
     /// is `None`), so the fast path opens only while the pointer is off the surface.
-    pub(crate) fn snapshot_frame_quiescent(&mut self) {
+    fn snapshot_frame_quiescent(&mut self) {
         debug_assert!(
             self.pointer.pos.is_some()
                 || (self.pointer.hovered.is_none()
@@ -993,17 +949,6 @@ impl Input {
                 .captures
                 .iter()
                 .all(|c| c.press.is_none() && c.release.is_none());
-    }
-
-    /// The [`Response`] of the widget `id`: its rect from the latest arranged frame, its
-    /// interaction from this frame's input. See [`Ui::response_for`](crate::Ui::response_for),
-    /// which reads the disabled state of the widgets open as it records too.
-    pub fn response_for(&self, id: WidgetId) -> Response {
-        let loc = self.arranged.cascade.locate(id);
-        Response {
-            id,
-            state: self.response_state(id, loc),
-        }
     }
 
     /// `id`'s state, at `loc`, where the arranged frame holds it.

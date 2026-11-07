@@ -12,6 +12,7 @@ use crate::primitives::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::math::domain::EPS;
 use crate::primitives::reduction::Reduction;
 use crate::text::shaper::TextShaper;
+use crate::ui::app::RecordPass;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
 use std::mem;
@@ -70,6 +71,8 @@ pub(super) const MAX_WAKES: usize = 64;
 /// Retained clock and scheduling state owned by [`Ui`](crate::Ui).
 #[derive(Debug, Default)]
 pub(crate) struct FrameRuntime {
+    /// The record pass that runs, or that ran last.
+    pub(super) record_pass: RecordPass,
     /// The per-frame dt fed to the animation integrators: the wall delta since the last frame,
     /// clamped at [`MAX_ANIMATION_DT`] so a stall freezes motion instead of jumping it. Not
     /// gathered into steps: rows step in offset space, where a small delta keeps its precision,
@@ -217,7 +220,8 @@ impl FrameRuntime {
     }
 
     /// Open a record pass with no settling pass asked.
-    pub(super) const fn begin_pass(&mut self) {
+    pub(super) const fn begin_pass(&mut self, pass: RecordPass) {
+        self.record_pass = pass;
         self.relayout_requested = false;
     }
 

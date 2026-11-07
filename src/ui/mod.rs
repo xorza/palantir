@@ -20,7 +20,6 @@ pub(crate) mod state;
 mod theme_pair;
 mod theme_transition;
 pub(crate) mod ui_preferences;
-pub(crate) mod update_ctx;
 pub(crate) mod window_frames;
 mod window_theme;
 
@@ -85,6 +84,7 @@ use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
+use crate::ui::app::RecordPass;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::host_seam::HostSeam;
@@ -94,7 +94,6 @@ use crate::ui::memory::Memory;
 use crate::ui::overlay_stack::OverlayStack;
 use crate::ui::resources::UiResources;
 use crate::ui::ui_preferences::UiPreferences;
-use crate::ui::update_ctx::UpdateCtx;
 use crate::ui::window_theme::{Motion, WindowTheme};
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::screenshot::{Screenshot, ScreenshotId};
@@ -113,10 +112,10 @@ use std::time::Duration;
 /// `Display::scale_factor` converts to physical at the wgpu boundary. Fields are
 /// private so widgets share one method surface.
 ///
-/// It repeats the reads of [`Input`] and [`UpdateCtx`], each sugar over the one on its part, as call
-/// sites read better. Cost: a new read is written up to three times. Refused: a public
-/// `Ui::input()`, as egui's `ui.input(|i| …)` reads, which makes each call longer; a trait for the
-/// reads, which each caller imports and which takes `const fn` off them.
+/// It repeats the reads of the crate's `Input`, each sugar over the one there, as call sites read
+/// better. Cost: a new read is written twice. Refused: a public `Ui::input()`, as egui's
+/// `ui.input(|i| …)` reads, which makes each call longer; a trait for the reads, which each caller
+/// imports and which takes `const fn` off them.
 #[derive(Debug)]
 pub struct Ui {
     forest: Forest,
@@ -152,10 +151,10 @@ impl Ui {
         }
     }
 
-    /// The view [`App::update`](crate::App::update) has, for a helper it and a record both call.
+    /// Which pass of its frame this record is. Read it before work that must not replay.
     #[inline]
-    pub fn update_ctx(&mut self) -> UpdateCtx<'_> {
-        UpdateCtx::of(self)
+    pub const fn record_pass(&self) -> RecordPass {
+        self.frame_runtime.record_pass
     }
 
     /// What the frontend builds the last frame's draw list from.
@@ -471,12 +470,10 @@ impl Ui {
     }
 
     /// A widget's first record has no rect, so what reads it takes this pass, as egui's `Grid` takes
-    /// through `request_discard`. An app that learns of the need in `App::update` keeps it for its
-    /// record, as this asks only in a record.
+    /// through `request_discard`.
     ///
-    /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer
-    /// a layout driver or [`App::update`](crate::App::update). Asked in the frame's second pass, it asks for the next
-    /// frame. An app that asks in every pass has a relayout loop: after a few frames, it logs an
+    /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer a layout
+    /// driver. Asked in the frame's second pass, it asks for the next frame. An app that asks in every pass has a relayout loop: after a few frames, it logs an
     /// error and asks no more frames.
     ///
     /// # Panics
@@ -489,8 +486,7 @@ impl Ui {
         assert!(
             self.forest.is_recording(),
             "Ui::request_relayout outside a record pass: it re-runs *this* \
-             frame's record, so there is nothing for it to retry — drop the \
-             call, or move the work into App::update",
+             frame's record, so there is nothing for it to retry",
         );
         self.frame_runtime.request_relayout();
     }
@@ -576,7 +572,11 @@ impl Ui {
     /// frame. Images land in the order they were asked for, one per frame, and the frame one
     /// lands in records.
     pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot> {
-        self.host.screenshot_taken(id)
+        self.host
+            .window_frame
+            .screenshot
+            .as_deref()
+            .filter(|screenshot| screenshot.id() == id)
     }
 
     /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.
@@ -644,7 +644,7 @@ impl Ui {
     /// Always `false` headless.
     #[inline]
     pub const fn close_requested(&self) -> bool {
-        self.host.close_requested()
+        self.host.window_frame.facts.close_requested
     }
 
     /// Veto the auto-close pending from [`Self::close_requested`].
@@ -659,8 +659,20 @@ impl Ui {
     /// logical pixels (see [`Display::system_logical_size`]), since the platform never
     /// hears about [`Self::set_user_scale`].
     pub fn window_geometry(&self) -> WindowGeometry {
-        self.host
-            .window_geometry(self.frame_runtime.stamp().display)
+        let display = self.frame_runtime.stamp().display;
+        let facts = &self.host.window_frame.facts;
+        let physical = facts.restored_size.unwrap_or(display.physical);
+        // A window skips its frames while hidden, minimized included, so one that records has an
+        // extent, as `WindowConfig::with_geometry` asks.
+        debug_assert!(
+            physical.min_element() > 0,
+            "a recording window has a size: {physical}"
+        );
+        let scale = display.system_scale.get();
+        WindowGeometry {
+            inner_size: Size::new(physical.x as f32 / scale, physical.y as f32 / scale),
+            placement: facts.placement,
+        }
     }
 
     /// This app's debug-overlay flags, by value; modify then [`Self::set_debug_overlay`].

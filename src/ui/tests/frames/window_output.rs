@@ -4,7 +4,6 @@ use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::paint::image::Image;
 use crate::ui::tests::support::SURFACE;
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_geometry::WindowGeometry;
@@ -121,44 +120,30 @@ fn close_request_veto_protocol() {
     );
 }
 
-/// The view `App::update` holds reads what the `Ui` reads, from the part that owns it: the host's
-/// facts at a 2x scale, where 200 physical px are 100 logical, then a close, and the shared
-/// clipboard and image limit.
+/// The `Ui` reads the host's facts at a 2x scale, where 200 physical px are 100 logical, then a
+/// close, and the shared clipboard.
 #[test]
-fn the_update_view_reads_what_the_ui_reads() {
+fn the_ui_reads_the_hosts_facts_and_the_shared_clipboard() {
     let mut h = Harness::builder(SURFACE)
         .mono()
         .system_scale(SystemScale::new(2.0).unwrap())
         .build();
     h.frame(|_| {});
     h.ui_mut().host.window_frame.facts.restored_size = Some(UVec2::new(641, 361));
-    assert!(!h.ui_mut().update_ctx().close_requested());
+    assert!(!h.ui().close_requested());
     h.ui_mut().host.window_frame.facts.close_requested = true;
-    assert!(h.ui_mut().update_ctx().close_requested());
-    assert_eq!(
-        h.ui_mut().update_ctx().window_geometry().inner_size,
-        Size::new(320.5, 180.5),
-    );
+    assert!(h.ui().close_requested());
+    assert_eq!(h.ui().window_geometry().inner_size, Size::new(320.5, 180.5),);
     h.ui_mut().host.window_frame.facts.close_requested = false;
 
     h.ui()
         .clipboard()
-        .set_text("through the view")
+        .set_text("through the ui")
         .expect("the harness holds a clipboard");
     assert_eq!(
-        h.ui_mut()
-            .update_ctx()
-            .clipboard()
-            .text()
-            .unwrap()
-            .as_deref(),
-        Some("through the view"),
+        h.ui().clipboard().text().unwrap().as_deref(),
+        Some("through the ui"),
     );
-    let limit = h.ui().max_image_dimension();
-    assert_eq!(h.ui_mut().update_ctx().max_image_dimension(), limit);
-    let image = Image::blank(UVec2::new(6, 4));
-    let loaded = h.ui_mut().update_ctx().load_image(&image).unwrap();
-    assert_eq!(loaded.size(), UVec2::new(6, 4));
 }
 
 /// `window_geometry` answers in the window manager's logical pixels, so a persisted geometry reopens the same window whatever the user scale: a 200×200 surface at dpr 2 is 100×100 to the platform at any scale, while dividing by the product would shrink it 20% per launch at 125%. A restored size takes the same division, exact: 641 × 361 physical px at dpr 2 is 320.5 × 180.5, which reopens at the same 641 × 361.

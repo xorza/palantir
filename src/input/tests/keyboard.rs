@@ -17,8 +17,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
-use crate::ui::app::{App, InputOutcome};
-use crate::ui::update_ctx::UpdateCtx;
+use crate::ui::app::App;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
@@ -411,49 +410,41 @@ fn popup_with_claim(ui: &mut Ui) {
     popup_claim(ui, "overlay", |_| {});
 }
 
-/// Reads one key at the window's root in the update and at the root of the first record pass.
+/// Reads one key at the root of the first record pass.
 #[derive(Debug)]
 struct RootReads {
     overlay: bool,
     read: Option<bool>,
-    pass: Option<bool>,
 }
 
 impl App for RootReads {
-    fn update(&mut self, _: WindowToken, mut ctx: UpdateCtx<'_>) -> InputOutcome {
-        self.read = Some(ctx.key_pressed(Key::Escape));
-        self.pass = None;
-        InputOutcome::Record
-    }
-
     fn record(&mut self, _: WindowToken, ui: &mut Ui) {
         let read = ui.key_pressed(Key::Escape);
-        self.pass.get_or_insert(read);
+        self.read.get_or_insert(read);
         if self.overlay {
             popup_with_claim(ui);
         }
     }
 }
 
-/// A key read in the update and one at a record's root agree: both see a press with no scope in the
-/// way, and an overlay's claim silences both.
+/// A key read at a record's root sees a press with no scope in the way, and an overlay's claim
+/// silences it.
 #[test]
-fn a_key_read_in_update_agrees_with_a_read_at_the_records_root() {
+fn a_key_read_at_the_records_root_yields_to_an_overlays_claim() {
     for (overlay, seen) in [(false, true), (true, false)] {
         let mut h = Harness::mono(BUTTON_SURFACE);
         let mut app = RootReads {
             overlay,
             read: None,
-            pass: None,
         };
         h.frame_app(&mut app);
         h.ui_mut().request_repaint();
         h.frame_app(&mut app);
         h.key_down(Key::Escape);
         h.ui_mut().request_repaint();
+        app.read = None;
         h.frame_app(&mut app);
-        assert_eq!(app.read, Some(seen), "input, overlay {overlay}");
-        assert_eq!(app.pass, Some(seen), "record, overlay {overlay}");
+        assert_eq!(app.read, Some(seen), "overlay {overlay}");
     }
 }
 

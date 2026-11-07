@@ -647,8 +647,7 @@ mod record_store_tests {
 
     use glam::{UVec2, Vec2};
 
-    use crate::ui::app::{App, InputOutcome};
-    use crate::ui::update_ctx::UpdateCtx;
+    use crate::ui::app::App;
 
     use crate::display::frame_stamp::FrameStamp;
     use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
@@ -684,16 +683,10 @@ mod record_store_tests {
 
     #[derive(Debug, Default)]
     struct LifecycleApp {
-        updates: Vec<WindowToken>,
         records: Vec<WindowToken>,
     }
 
     impl App for LifecycleApp {
-        fn update(&mut self, win: WindowToken, _ctx: UpdateCtx<'_>) -> InputOutcome {
-            self.updates.push(win);
-            InputOutcome::Record
-        }
-
         fn record(&mut self, win: WindowToken, _ui: &mut Ui) {
             self.records.push(win);
         }
@@ -767,7 +760,6 @@ mod record_store_tests {
             &mut app,
         );
 
-        assert_eq!(app.updates, [token], "update runs once");
         assert_eq!(
             app.records,
             [token, token],

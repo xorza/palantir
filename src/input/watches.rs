@@ -5,19 +5,8 @@ use crate::primitives::input::keyboard::key_press::KeyPress;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::input::watch::{KeyboardWake, PointerWake};
 
-/// How far [`Watches`] had come when the update closed: each pass goes back to this, so its
-/// watches outlive the pass's reset. Refused: a second `Watches` to copy from, which holds each
-/// watch twice and copies them per pass.
-#[derive(Clone, Copy, Debug, Default)]
-pub(super) struct WatchMark {
-    pointer_mask: PointerWake,
-    keyboard_mask: KeyboardWake,
-    shortcuts: usize,
-    keys: usize,
-}
-
-/// Per-`Ui` wake-gate registry, re-declared by widgets during record. Bounded by the reads one
-/// record makes, as each record starts from what the update declared, its capacity kept.
+/// Per-`Ui` wake-gate registry, re-declared by widgets during record. Bounded by the reads of one
+/// frame's two passes, its capacity kept.
 #[derive(Debug, Default)]
 pub(super) struct Watches {
     pub(super) pointer_mask: PointerWake,
@@ -49,25 +38,7 @@ impl Watches {
         self.keys.iter().any(|watched| watched.same_key(key))
     }
 
-    /// What these watches hold now, for [`Self::rewind`].
-    pub(super) const fn mark(&self) -> WatchMark {
-        WatchMark {
-            pointer_mask: self.pointer_mask,
-            keyboard_mask: self.keyboard_mask,
-            shortcuts: self.shortcuts.len(),
-            keys: self.keys.len(),
-        }
-    }
-
-    /// Drop every watch made since `mark`. Capacity-retained, run before each record pass.
-    pub(super) fn rewind(&mut self, mark: WatchMark) {
-        self.pointer_mask = mark.pointer_mask;
-        self.keyboard_mask = mark.keyboard_mask;
-        self.shortcuts.truncate(mark.shortcuts);
-        self.keys.truncate(mark.keys);
-    }
-
-    /// Capacity-retained clear, run as a recorded frame opens.
+    /// Capacity-retained clear, run as a frame's first pass opens.
     pub(super) fn clear(&mut self) {
         self.pointer_mask = PointerWake::NONE;
         self.keyboard_mask = KeyboardWake::NONE;

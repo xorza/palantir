@@ -16,7 +16,7 @@ pub(crate) enum FrameProcessing {
 }
 
 impl FrameProcessing {
-    /// Whether the frame ran the app, `App::update` and its record: what may have changed the app
+    /// Whether the frame ran the app's record: what may have changed the app
     /// every window records from. A paint-only frame ran none of it.
     #[cfg(feature = "winit")]
     pub(crate) const fn ran_app(self) -> bool {

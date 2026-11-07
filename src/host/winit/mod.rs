@@ -2,7 +2,7 @@
 //!
 //! This file owns only what winit's lifecycle dictates: deferred construction (winit hands out `&ActiveEventLoop` only inside callbacks) and event dispatch. Shared host work lives in [`runtime`]; winit types are converted in [`native`] and [`input`].
 //!
-//! The app implements [`App`]: [`App::update`] runs once before a fully recorded frame, [`App::record`] may replay for warmup or relayout. The closure given to [`WinitHostBuilder::build`] makes the app once the first window's `Ui` and [`HostHandle`] are ready.
+//! The app implements [`App`]: [`App::record`] may replay for warmup or relayout, and [`Ui::record_pass`](crate::Ui::record_pass) tells the passes apart. The closure given to [`WinitHostBuilder::build`] makes the app once the first window's `Ui` and [`HostHandle`] are ready.
 //!
 //! Usage:
 //!

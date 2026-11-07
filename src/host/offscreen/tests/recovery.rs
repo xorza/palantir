@@ -38,9 +38,8 @@ use crate::shape::Shape;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
-use crate::ui::app::{App, InputOutcome};
+use crate::ui::app::App;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::update_ctx::UpdateCtx;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::gpu_view::GpuView;
@@ -142,7 +141,7 @@ impl Scene {
 }
 
 impl App for Scene {
-    fn update(&mut self, _window: WindowToken, ctx: UpdateCtx<'_>) -> InputOutcome {
+    fn record(&mut self, _window: WindowToken, ui: &mut Ui) {
         if let Some(handle) = &self.handle
             && !handle.is_resident()
         {
@@ -150,12 +149,8 @@ impl App for Scene {
             handle.update(&self.image).unwrap();
         }
         if self.handle.is_none() {
-            self.handle = Some(ctx.load_image(&self.image).unwrap());
+            self.handle = Some(ui.load_image(&self.image).unwrap());
         }
-        InputOutcome::Record
-    }
-
-    fn record(&mut self, _window: WindowToken, ui: &mut Ui) {
         let icons = self.held.insert(ui.load_icons(Rc::clone(&self.icons)));
         let mask = icons.by_name("mask").unwrap();
         let color = icons.by_name("color").unwrap();
