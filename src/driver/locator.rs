@@ -42,8 +42,9 @@ pub(crate) enum Reach {
     Press,
 }
 
-/// A place an app names, which [`Locator::App`] carries: a graph node, a canvas point.
-pub trait Locate<A>: Debug {
+/// A place an app names, which [`Locator::App`] carries: a graph node, a canvas point. A locator
+/// crosses to a live window's thread, hence the owned, sendable copy.
+pub trait Locate<A>: Clone + Debug + Send + 'static {
     /// Every place this names in `app`'s last frame, as `ui` laid it out, in order, into `out`.
     /// Naming none is the impl's own [`LocateError::NotFound`], with the nearest it knows.
     ///

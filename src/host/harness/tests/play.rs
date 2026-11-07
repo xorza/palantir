@@ -2,7 +2,7 @@ use crate::display::system_scale::SystemScale;
 use crate::driver::action::Action;
 use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{ActError, LocateError, PlayError};
-use crate::driver::locator::Locator;
+use crate::driver::locator::{Found, Locator};
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::host::harness::Harness;
@@ -602,6 +602,57 @@ fn input_aims_by_text_id_and_point() {
         .collect();
     assert_eq!(texts, ["Twin", "Twin"]);
     assert!(window.widgets(Some("hidden")).unwrap().is_empty());
+}
+
+/// A read hands back the app and the last frame, and runs no frame and moves no clock, as a find
+/// through it does, which also says when a locator names nothing; the next caret blink only paints,
+/// so `record_frame_id` holds. A query changes the app and asks a repaint, so the frame at the same
+/// blink records: `record_frame_id` moves by exactly 1.
+#[test]
+fn a_session_reads_with_no_frame_and_queries_with_one() {
+    let blink = Duration::from_secs(1);
+    let mut h = Harness::builder(UVec2::new(320, 200)).build();
+    let mut app = Board::default();
+    h.session(&mut app).settle().unwrap();
+    h.session(&mut app).play(&[Action::click(edit())]).unwrap();
+    let recorded = h.ui().record_frame_id();
+    let (frames, time) = (h.frames, h.time);
+
+    let read = h
+        .session(&mut app)
+        .read(|app, ui| (app.text.clone(), ui.record_frame_id()));
+    assert_eq!(read, Ok((String::new(), recorded)));
+    let field = h.rect(edit()).unwrap();
+    assert_eq!(
+        h.session(&mut app)
+            .find(&Locator::<Infallible>::from(edit())),
+        Ok(Found::center_of(field))
+    );
+    assert!(matches!(
+        h.session(&mut app)
+            .find(&Locator::<Infallible>::from("Missing")),
+        Err(PlayError::Locate(LocateError::NotFound { .. }))
+    ));
+    assert_eq!(h.frames, frames, "a read runs no frame");
+    assert_eq!(h.time, time, "a read moves no clock");
+    h.advance(blink);
+    h.frame_app(&mut app);
+    assert_eq!(h.ui().record_frame_id(), recorded, "the blink only paints");
+
+    assert_eq!(
+        h.session(&mut app)
+            .query(|app, _| app.text = "typed".to_owned()),
+        Ok(())
+    );
+    assert_eq!(app.text, "typed");
+    assert_eq!(h.frames, frames + 1, "a query runs no frame by itself");
+    h.advance(blink);
+    h.frame_app(&mut app);
+    assert_eq!(
+        h.ui().record_frame_id(),
+        recorded + 1,
+        "the frame after a query records"
+    );
 }
 
 /// A white 2 × 1 logical block at the origin over a black clear. At scale 1 on 8 × 6 it covers

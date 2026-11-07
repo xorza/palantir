@@ -376,6 +376,11 @@ where
                     runtime.query(token, task);
                 }
             }
+            UserEvent::Read(token, task) => {
+                if let Some(runtime) = self.running() {
+                    runtime.read(token, task);
+                }
+            }
             UserEvent::Shot(token, ask) => {
                 if let Some(runtime) = self.running()
                     && let Some(win) = runtime.by_token(token)

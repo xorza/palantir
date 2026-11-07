@@ -207,7 +207,7 @@ fn a_locator_says_why_it_found_nothing() {
 }
 
 /// The places an app names: a list of rects, by index.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Slot(usize);
 
 impl Locate<Vec<Rect>> for Slot {

@@ -15,19 +15,12 @@ server do. One set of rules plays over a `Stage`, so both players agree, and a t
 
 ## Root causes
 
-1. **A remote has one door to the window, and that door records.** `query` takes `&mut` the app, asks a
-   frame and counts a sent event. `find`, `widgets`, `point` and the double-click read all go through it,
-   so each read runs a whole frame, and a `find` on a hidden window makes the next settle fail. The
-   harness runs no frame for the same reads. `AgentWindow` has no such verb at all, so a driver goes
-   around the trait, and Darkroom writes `with_app` and `shot` twice.
-2. **Harness state and code sit where they do by history.** `impl Harness` is split across `play.rs`, a
+1. **Harness state and code sit where they do by history.** `impl Harness` is split across `play.rs`, a
    frame counter counts other frames than the remote's, and three settings are stored in three structs.
 
 ## Target design
 
 - **Data.** `Harness::frames` goes: both players count `record_frame_id`.
-- **Interfaces.** `AgentWindow` gains `read` and `query`, so a driver writes a step once for both hosts,
-  as the trait's doc already claims. `Locate` carries its own `Clone + Debug + Send + 'static` bound.
 - **Module layout.** `harness/play.rs` goes. The verbs and `HarnessStage` move to `harness_session.rs`,
   and the rest of `impl Harness` to `mod.rs`, as one major struct holds its file.
 
@@ -47,7 +40,7 @@ Every shared-ownership case in the scope:
 
 - **`AgentWindow` stays a trait with generic methods.** It has no `dyn` caller, and Darkroom's `Backend`
   enum stays, as the two backends differ in more than the verbs. The trait still makes a missing verb a
-  compile error, and batch 4 gives it a real generic caller.
+  compile error, and Darkroom's `Capture::take` is its generic caller.
 - **`Remote::sent` stays per remote.** A second remote can settle early, which its doc says. A sequence
   shared through the handle fixes a case no caller has, at the cost of a lock across each send.
 - **`RemoteStage` and `HarnessStage` stay.** A direct `impl Stage for Remote` makes `settle` ambiguous
@@ -61,24 +54,6 @@ Every shared-ownership case in the scope:
 - **`Harness::state`, `rect` and `clipboard_text` stay.** They are sugar over `Ui`, and tests read better.
 
 # Part 2: plan
-
-## Batch 4: a read door, on the trait
-
-Files: `src/driver/agent_window.rs`, `src/driver/locator.rs`, `remote/mod.rs`, `remote/remote_end.rs`,
-`handle.rs`, `window/mod.rs`, `harness_session.rs`, `remote/tests.rs`; **Darkroom** `driver/backend.rs`,
-`offscreen.rs`, `window_backend.rs`, `shot.rs`.
-
-- [ ] **API** `Remote::read(f: FnOnce(&T, &Ui) -> R)`: runs between two frames, asks no frame and counts no
-  event. Target: `find`, `widgets`, `RemoteStage::point` and `space_press` use it. A find on a hidden
-  window then leaves the next settle alone, and `record_frame_id` does not move.
-- [ ] **API** `AgentWindow`: add `read` and `query`. `HarnessSession::read` calls `f` directly, and
-  `query` also asks a repaint, as the remote's does.
-- [ ] **Darkroom** `WindowBackend::shot` and `Offscreen::shot` are the same steps. Target: one generic
-  `Capture::take(window: &mut impl AgentWindow<App>, region, max_side)`, the trait's first generic caller.
-- [ ] **API** `X: Locate<A> + Clone + Send + 'static` repeats on each verb. Target: `Locate<A>: Clone +
-  Debug + Send + 'static`, and the verbs bound `X: Locate<A>`.
-- [ ] Test gap: a read asks no frame, as `record_frame_id` before and after shows, and a settle after a read
-  on a hidden window returns `Ok`.
 
 ## Batch 5: locators reuse what they reason about
 

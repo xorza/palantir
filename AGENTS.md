@@ -136,8 +136,9 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
   locators; any sensing widget, which reaches a button a label covers.
 - **Methods are input; `play` is a person.** A method queues events and panics on a missed
   locator; `play` settles, spaces presses and returns an error an agent reads.
-- **One set of agent verbs**: `AgentWindow` (`play`, `settle`, `shot`, `find`, `widgets`), on a
-  `Remote` and on `Harness::session(&mut app)`, so a driver writes a step once for both hosts.
+- **One set of agent verbs**: `AgentWindow` (`play`, `settle`, `shot`, `read`, `query`, `find`,
+  `widgets`), on a `Remote` and on `Harness::session(&mut app)`, so a driver writes a step once for
+  both hosts.
   Refused: matching inherent methods on each host, which darkroom still joined in an enum; a
   harness that owns its app, which the closure-as-app rule refuses.
 - **`play` refuses a step that would pass with no sign**: a press on a disabled widget, a drag
@@ -155,8 +156,12 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **Scroll names its kind** (`scroll_pixels`, `scroll_lines`). Refused: `ScrollDelta`, negated
   at ingest.
 - **One window; its commands are recorded.** Refused: a panic, which ends an agent's session.
-- **`Remote` queries between two frames inside the app**, as Flutter's driver extension and
-  Slint's MCP server do.
+- **`Remote` reads and queries between two frames inside the app**, as Flutter's driver extension
+  and Slint's MCP server do.
+- **A read asks no frame; a query does.** `read` takes `&` the app and counts no event, so a look
+  at a hidden window leaves the next settle alone, and locators and widget lists go through it.
+  `query` takes `&mut` the app, and the frame it asks makes what it changed show. Refused: one
+  door that records, where each look ran a frame and a look at a hidden window failed the settle.
 - **No MCP server in palantir.** Refused for now: a feature over rmcp, which brings an async runtime
   and a fast-moving public dependency; a feature written by hand, as Slint's internal `mcp` is
   ([Slint](https://cdn.jsdelivr.net/gh/slint-ui/slint@1.16.0/docs/development/mcp-server.md)), a

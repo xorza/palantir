@@ -35,11 +35,13 @@ Action
 
 AgentWindow
     trait AgentWindow<A>
-        fn play<X: Locate<A> + Clone + Send + 'static>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>
+        fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>
         fn settle(&mut self) -> Result<u32, PlayError>
         fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError>
-        fn find<X: Locate<A> + Clone + Send + 'static>(&mut self, at: &Locator<X>) -> Result<Found, PlayError>
-        fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>
+        fn read<R: Send + 'static>(&mut self, f: impl FnOnce(&A, &Ui) -> R + Send + 'static) -> Result<R, PlayError>
+        fn query<R: Send + 'static>(&mut self, f: impl FnOnce(&mut A, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
+        fn find<X: Locate<A>>(&mut self, at: &Locator<X>) -> Result<Found, PlayError> { .. }
+        fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> { .. }
 
 Align
     struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1351,7 +1353,7 @@ LinearGradient
     type LinearGradient = Gradient<LinearGeometry>
 
 Locate
-    trait Locate<A>: Debug
+    trait Locate<A>: Clone + Debug + Send + 'static
         fn find_all(&self, app: &A, ui: &Ui, out: &mut Vec<Found>) -> Result<(), LocateError>
 
 LocateError
@@ -1850,7 +1852,6 @@ Remote  [features: winit]
     struct Remote<T: 'static>: AgentWindow<T>, Debug
         pub fn with_blocked(self, blocked: impl Fn() -> bool + Send + 'static) -> Self
         pub const fn with_wait(self, wait: Duration) -> Self
-        pub fn query<R: Send + 'static>(&mut self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
 
 RenderTarget
     struct RenderTarget<'a>: Clone, Copy, Debug

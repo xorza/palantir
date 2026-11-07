@@ -14,7 +14,7 @@ use crate::host::system_preferences::SystemPreferences;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
-use crate::host::winit::remote::QueryTask;
+use crate::host::winit::remote::{QueryTask, ReadTask};
 use crate::host::winit::system_preferences;
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::host::winit::window::{OpenedWindow, Window};
@@ -189,6 +189,14 @@ impl<T: App + 'static> WinitRuntime<T> {
     pub(super) fn query(&mut self, token: WindowToken, task: QueryTask<T>) {
         if let Some(win) = self.windows.by_token(token) {
             win.on_query(&mut self.app, task);
+        }
+    }
+
+    /// Run `task` with the app and the `Ui` of `token`'s window, between two of its frames, asking
+    /// no frame and counting no event. A window that is gone drops the task unrun.
+    pub(super) fn read(&mut self, token: WindowToken, task: ReadTask<T>) {
+        if let Some(win) = self.windows.by_token(token) {
+            task(&self.app, win.frames.ui());
         }
     }
 

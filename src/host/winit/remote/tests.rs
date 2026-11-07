@@ -1,6 +1,7 @@
 //! A remote against a loop of the test's own, which serves a handle's events on a GPU harness of
-//! its thread as the event loop serves a window's: a query between two frames, sent input before
-//! a frame, a shot handed back in the frame it lands in, a frame summary after each frame.
+//! its thread as the event loop serves a window's: a query between two frames with a frame after,
+//! a read between two frames with none, sent input before a frame, a shot handed back in the frame
+//! it lands in, a frame summary after each frame.
 
 use crate::driver::agent_window::AgentWindow;
 use std::convert::Infallible;
@@ -14,7 +15,7 @@ use glam::{UVec2, Vec2};
 
 use crate::driver::action::Action;
 use crate::driver::error::{LocateError, PlayError};
-use crate::driver::locator::Locator;
+use crate::driver::locator::{Found, Locator};
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
@@ -166,6 +167,10 @@ impl Loop {
                 UserEvent::Query(WINDOW, task) => {
                     self.remote.run_query(&mut self.app, self.h.ui_mut(), task);
                 }
+                UserEvent::Read(WINDOW, task) => {
+                    task(&self.app, self.h.ui());
+                    continue;
+                }
                 UserEvent::Input(WINDOW, event) => {
                     self.h.at(self.start.elapsed());
                     self.h.on_input(event.as_event());
@@ -260,6 +265,10 @@ fn a_remote_plays_and_reads_a_live_window() {
         handle.remote(WindowToken(5)).query(|_, _| ()),
         Err(PlayError::Disconnected)
     );
+    assert_eq!(
+        handle.remote(WindowToken(5)).read(|_, _| ()),
+        Err(PlayError::Disconnected)
+    );
 
     // A query that outlasts a 50 ms wait gives up after it: the query holds the window's thread
     // until the test lets it go, so no sleep of the test's sets how long it takes.
@@ -277,9 +286,16 @@ fn a_remote_plays_and_reads_a_live_window() {
         short.settle(),
         Err(PlayError::NoFrame { waited }) if waited >= Duration::from_millis(50)
     ));
+    // So does a read, which never runs once the thread lets go.
+    let read_late = Arc::new(AtomicBool::new(false));
+    let marked = Arc::clone(&read_late);
+    assert!(matches!(
+        short.read(move |_, _| marked.store(true, Ordering::Release)),
+        Err(PlayError::NoFrame { waited }) if waited >= Duration::from_millis(50)
+    ));
     release.send(()).ok();
 
-    // A query gives up at once while the window's thread is held, and never runs.
+    // A query or a read gives up at once while the window's thread is held, and never runs.
     let mut held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);
     let ran = Arc::new(AtomicBool::new(false));
     let marked = Arc::clone(&ran);
@@ -287,14 +303,24 @@ fn a_remote_plays_and_reads_a_live_window() {
         held.query(move |_, _| marked.store(true, Ordering::Release)),
         Err(PlayError::Blocked)
     );
+    let marked = Arc::clone(&ran);
+    assert_eq!(
+        held.read(move |_, _| marked.store(true, Ordering::Release)),
+        Err(PlayError::Blocked)
+    );
     remote.query(|_, _| ()).unwrap();
     assert!(
         !ran.load(Ordering::Acquire),
-        "a query given up on never runs"
+        "a query or a read given up on never runs"
+    );
+    assert!(
+        !read_late.load(Ordering::Acquire),
+        "a read that outlasted its wait never runs"
     );
     handle.quit();
     thread.join().unwrap();
     assert_eq!(remote.query(|_, _| ()), Err(PlayError::Disconnected));
+    assert_eq!(remote.read(|_, _| ()), Err(PlayError::Disconnected));
 }
 
 /// A step whose frame fails while the window's thread is held still lets go: once the hold ends, the
@@ -395,21 +421,40 @@ fn a_settle_after_a_query_sees_what_it_changed() {
     thread.join().unwrap();
 }
 
-/// A slow query to a hidden window answers. A settle waits out a busy app until a frame finds it
-/// idle: work another thread ends after the settle began.
+/// A read, a find and a widget list of a hidden window answer, run no frame, count no event and
+/// leave the next settle `Ok` with no frame run; a query counts one. A slow query to a hidden window
+/// answers. A settle waits out a busy app until a frame finds it idle: work another thread ends
+/// after the settle began.
 #[test]
 fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
     let (handle, thread) = serve();
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
+    remote.settle().unwrap();
+    let frame = remote.record_frame_id();
+    let sent = remote.sent;
+    assert!(frame > 0, "a frame ran before the reads");
+    handle.frame_log.set_hidden(WINDOW, true);
+    assert_eq!(
+        remote.read(|app, ui| (app.clicks, ui.record_frame_id())),
+        Ok((0, frame))
+    );
+    let button = remote.widgets(Some("press")).unwrap()[0].rect;
+    assert_eq!(
+        remote.find(&Locator::<Infallible>::from("Press me")),
+        Ok(Found::center_of(button))
+    );
+    assert_eq!(remote.sent, sent);
+    assert_eq!(remote.settle(), Ok(0));
+    assert_eq!(remote.record_frame_id(), frame);
     // A query runs between frames, a hidden window's too, so its answer outlasts the ticks that
     // give up a wait for a hidden window's frame.
-    handle.frame_log.set_hidden(WINDOW, true);
     let slow = remote.query(|app, _| {
         thread::sleep(TICK * 4);
         app.clicks
     });
     assert_eq!(slow, Ok(0));
+    assert_eq!(remote.sent, sent + 1);
     // A frame's answer does not come from a hidden window, and that says so at once. A held thread
     // is the cause first, as no frame runs when the window shows either.
     assert_eq!(remote.shot(None).err(), Some(PlayError::Hidden));
@@ -475,6 +520,11 @@ fn a_settle_that_outlasts_its_wait_says_why() {
 
     handle.quit();
     thread.join().unwrap();
+}
+
+/// What the pad took, read the one way on either host.
+fn gestures_of(window: &mut impl AgentWindow<Counter>) -> Gestures {
+    window.read(|app, _| app.gestures.clone()).unwrap()
 }
 
 /// One table of steps a person takes, played on a [`Harness`] and on a served [`Remote`] alike,
@@ -557,7 +607,7 @@ fn both_players_play_each_gesture_alike() {
         let on_remote = remote
             .play(std::slice::from_ref(&action))
             .map_err(|failed| failed.error)
-            .and_then(|_| remote.query(|app, _| app.gestures.clone()));
+            .map(|_| gestures_of(&mut remote));
         let outcome = |result: &Result<Gestures, PlayError>| {
             result.as_ref().map(|_| ()).map_err(Clone::clone)
         };
@@ -576,8 +626,8 @@ fn both_players_play_each_gesture_alike() {
             );
         }
         assert_eq!(
-            remote.query(|app, _| app.gestures.clone()).unwrap(),
-            app.gestures,
+            gestures_of(&mut remote),
+            gestures_of(&mut h.session(&mut app)),
             "step {i}: the remote's app reads as the harness's"
         );
         last = app.gestures.clone();

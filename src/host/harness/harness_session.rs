@@ -3,11 +3,11 @@
 use crate::driver::action::Action;
 use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{ActError, PlayError};
-use crate::driver::locator::{Found, Locate, Locator};
+use crate::driver::locator::Locate;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
+use crate::ui::Ui;
 use crate::ui::app::App;
-use crate::ui::inspected_widget::InspectedWidget;
 use crate::window::screenshot::Screenshot;
 
 /// A [`Harness`] with the app it runs, from [`Harness::session`]: the [`AgentWindow`] verbs, as a
@@ -29,10 +29,7 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
     /// # Errors
     ///
     /// [`ActError`], naming the step it stopped at.
-    fn play<X: Locate<A> + Clone + Send + 'static>(
-        &mut self,
-        actions: &[Action<X>],
-    ) -> Result<u32, ActError> {
+    fn play<X: Locate<A>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError> {
         self.harness.play(self.app, actions)
     }
 
@@ -70,15 +67,23 @@ impl<A: App> AgentWindow<A> for HarnessSession<'_, A> {
         self.harness.shot(self.app, region)
     }
 
-    fn find<X: Locate<A> + Clone + Send + 'static>(
+    /// `f` on the app and the last frame, at once: no frame runs and the clock holds still.
+    fn read<R: Send + 'static>(
         &mut self,
-        at: &Locator<X>,
-    ) -> Result<Found, PlayError> {
-        at.find(&*self.app, self.harness.window.frames.ui())
-            .map_err(PlayError::Locate)
+        f: impl FnOnce(&A, &Ui) -> R + Send + 'static,
+    ) -> Result<R, PlayError> {
+        Ok(f(self.app, self.harness.ui()))
     }
 
-    fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
-        Ok(self.harness.widgets(filter))
+    /// `f` on the app and the last frame, at once, and the next frame records, as `f` may have
+    /// changed the app.
+    fn query<R: Send + 'static>(
+        &mut self,
+        f: impl FnOnce(&mut A, &mut Ui) -> R + Send + 'static,
+    ) -> Result<R, PlayError> {
+        let ui = self.harness.ui_mut();
+        let answer = f(self.app, ui);
+        ui.request_repaint();
+        Ok(answer)
     }
 }

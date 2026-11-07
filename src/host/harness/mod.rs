@@ -592,7 +592,8 @@ impl Harness {
     }
 
     /// This harness with `app`, driven through the [`AgentWindow`](crate::AgentWindow) verbs a
-    /// [`Remote`](crate::Remote) offers on a live window: play, settle, shot, find and widgets.
+    /// [`Remote`](crate::Remote) offers on a live window: play, settle, shot, read, query, find and
+    /// widgets.
     pub const fn session<'h, A>(&'h mut self, app: &'h mut A) -> HarnessSession<'h, A> {
         HarnessSession { harness: self, app }
     }

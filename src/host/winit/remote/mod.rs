@@ -16,7 +16,7 @@ use glam::Vec2;
 use crate::driver::action::Action;
 use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{ActError, PlayError};
-use crate::driver::locator::{Found, Locate, Locator, Reach};
+use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{HostHandle, UserEvent};
@@ -24,7 +24,6 @@ use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::input::input_event::InputEvent;
 use crate::ui::Ui;
-use crate::ui::inspected_widget::InspectedWidget;
 use crate::window::screenshot::Screenshot;
 use crate::window::window_token::WindowToken;
 
@@ -40,6 +39,10 @@ const TICK: Duration = Duration::from_millis(50);
 /// window's `Ui`.
 pub(crate) type QueryTask<T> = Box<dyn FnOnce(&mut T, &mut Ui) + Send>;
 
+/// A closure the event loop runs between two frames of one window, with the app and the window's
+/// `Ui`, which asks no frame.
+pub(crate) type ReadTask<T> = Box<dyn FnOnce(&T, &Ui) + Send>;
+
 /// A screenshot a remote asked of a window, and where its image goes.
 #[derive(Debug)]
 pub(crate) struct ShotAsk {
@@ -47,8 +50,8 @@ pub(crate) struct ShotAsk {
     pub(super) reply: SyncSender<Result<Screenshot, PlayError>>,
 }
 
-/// One window of a running [`WinitHost`](crate::WinitHost), driven from another thread: queries
-/// run between two of its frames with `&mut` the app and its `Ui`, input goes in as the window's
+/// One window of a running [`WinitHost`](crate::WinitHost), driven from another thread: reads and
+/// queries run between two of its frames with the app and its `Ui`, input goes in as the window's
 /// OS input does, and every wait is bounded in real time. Made by [`HostHandle::remote`].
 ///
 /// Its waits read the window's frame summaries, counting the inputs and queries this remote sent:
@@ -103,10 +106,7 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
     /// # Errors
     ///
     /// [`ActError`], naming the step it stopped at.
-    fn play<X: Locate<T> + Clone + Send + 'static>(
-        &mut self,
-        actions: &[Action<X>],
-    ) -> Result<u32, ActError> {
+    fn play<X: Locate<T>>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError> {
         let first = self.record_frame_id();
         let mut stage = RemoteStage { remote: self };
         for (ran, action) in actions.iter().enumerate() {
@@ -132,29 +132,47 @@ impl<T: 'static> AgentWindow<T> for Remote<T> {
         self.receive(&answer, Answer::InFrame)?
     }
 
-    /// The one place `at` names in the last frame, as a [`HarnessSession`](crate::HarnessSession)
-    /// finds it.
-    ///
-    /// # Errors
-    ///
-    /// [`PlayError::Locate`] when `at` names no one place, and as [`Self::query`].
-    fn find<X: Locate<T> + Clone + Send + 'static>(
-        &mut self,
-        at: &Locator<X>,
-    ) -> Result<Found, PlayError> {
-        let at = at.clone();
-        Ok(self.query(move |app, ui| at.find(&*app, ui))??)
-    }
-
-    /// The visible interactive widgets of the last frame whose text holds `filter`, ignoring
-    /// case, in paint order, as a [`HarnessSession`](crate::HarnessSession) lists them.
+    /// Run `f` between two frames of the window, with the app and the window's `Ui`, which holds
+    /// the last frame. No frame follows and no event counts, so a hidden window answers, and its
+    /// next settle ends as it would have. Returns what `f` returns. A read given up on never runs
+    /// later, unless it had begun. A panic in `f` is the window's, as for [`Self::query`].
     ///
     /// # Errors
     ///
     /// As [`Self::query`].
-    fn widgets(&mut self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
-        let filter = filter.map(str::to_owned);
-        self.query(move |_, ui| InspectedWidget::visible(ui, filter.as_deref()))
+    fn read<R: Send + 'static>(
+        &mut self,
+        f: impl FnOnce(&T, &Ui) -> R + Send + 'static,
+    ) -> Result<R, PlayError> {
+        let window = self.window;
+        self.ask(move |asked| {
+            let task: ReadTask<T> = Box::new(move |app, ui| asked.answer(|| f(app, ui)));
+            UserEvent::Read(window, task)
+        })
+    }
+
+    /// Run `f` between two frames of the window with `&mut` the app and the window's `Ui`, which
+    /// holds the last frame; a frame that records follows, which the next [settle](Self::settle)
+    /// waits for, so a read after it sees what `f` changed; a hidden window runs that frame when
+    /// it shows, so a settle meanwhile ends with [`PlayError::Hidden`]. Returns what `f`
+    /// returns. A query given up on never runs later, unless it had begun. A panic in `f` is the
+    /// window's: it ends the process under `panic = "abort"`, as any panic on the window's thread
+    /// does.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::Disconnected`] when the window is not open or the loop ended,
+    /// [`PlayError::Blocked`] at once while its thread is held, and [`PlayError::NoFrame`] when no
+    /// answer came within the [wait](Self::with_wait).
+    fn query<R: Send + 'static>(
+        &mut self,
+        f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static,
+    ) -> Result<R, PlayError> {
+        let window = self.window;
+        self.ask(move |asked| {
+            let task: QueryTask<T> = Box::new(move |app, ui| asked.answer(|| f(app, ui)));
+            UserEvent::Query(window, task)
+        })
     }
 }
 
@@ -191,37 +209,22 @@ impl<T: 'static> Remote<T> {
         self
     }
 
-    /// Run `f` between two frames of the window with `&mut` the app and the window's `Ui`, which
-    /// holds the last frame; a frame that records follows, which the next [settle](Self::settle)
-    /// waits for, so a read after it sees what `f` changed; a hidden window runs that frame when
-    /// it shows, so a settle meanwhile ends with [`PlayError::Hidden`]. Returns what `f`
-    /// returns. A query given up on never runs later, unless it had begun. A panic in `f` is the
-    /// window's: it ends the process under `panic = "abort"`, as any panic on the window's thread
-    /// does.
-    ///
-    /// # Errors
-    ///
-    /// [`PlayError::Disconnected`] when the window is not open or the loop ended,
-    /// [`PlayError::Blocked`] at once while its thread is held, and [`PlayError::NoFrame`] when no
-    /// answer came within the [wait](Self::with_wait).
-    pub fn query<R: Send + 'static>(
-        &mut self,
-        f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static,
-    ) -> Result<R, PlayError> {
-        // Before sending, so a held thread gives up at once and the query never runs.
+    /// Send the event `event` builds and wait for its answer. A query counts as a sent event, as
+    /// the window counts it when it runs.
+    fn ask<R>(&mut self, event: impl FnOnce(Asked<R>) -> UserEvent<T>) -> Result<R, PlayError> {
+        // Before sending, so a held thread gives up at once and the task never runs.
         self.check_waiting(Instant::now(), Answer::BetweenFrames)?;
         let (reply, answer) = mpsc::sync_channel(1);
         let given_up = Arc::new(AtomicBool::new(false));
-        let skip = Arc::clone(&given_up);
-        let task: QueryTask<T> = Box::new(move |app, ui| {
-            if !skip.load(Ordering::Acquire) {
-                reply.send(f(app, ui)).ok();
-            }
+        let event = event(Asked {
+            reply,
+            given_up: Arc::clone(&given_up),
         });
+        let counted = u64::from(matches!(event, UserEvent::Query(..)));
         self.handle
-            .send(UserEvent::Query(self.window, task))
+            .send(event)
             .map_err(|_| PlayError::Disconnected)?;
-        self.sent += 1;
+        self.sent += counted;
         let answered = self.receive(&answer, Answer::BetweenFrames);
         if answered.is_err() {
             given_up.store(true, Ordering::Release);
@@ -317,6 +320,22 @@ impl<T: 'static> Remote<T> {
     }
 }
 
+/// An answer a task owes the remote that sent it, unless that remote gave up waiting.
+#[derive(Debug)]
+struct Asked<R> {
+    reply: SyncSender<R>,
+    given_up: Arc<AtomicBool>,
+}
+
+impl<R> Asked<R> {
+    /// Answer with what `f` returns; a task given up on runs nothing.
+    fn answer(self, f: impl FnOnce() -> R) {
+        if !self.given_up.load(Ordering::Acquire) {
+            self.reply.send(f()).ok();
+        }
+    }
+}
+
 /// Which frame a remote waits for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Until {
@@ -329,7 +348,7 @@ enum Until {
 /// Where an answer a remote waits for comes from, which decides whether a hidden window gives it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Answer {
-    /// A query, which the loop runs between frames, also of a hidden window.
+    /// A read or a query, which the loop runs between frames, also of a hidden window.
     BetweenFrames,
     /// A frame, which a hidden window does not run.
     InFrame,
@@ -340,12 +359,12 @@ struct RemoteStage<'a, T: 'static> {
     remote: &'a mut Remote<T>,
 }
 
-impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage<'_, T> {
+impl<T: 'static, X: Locate<T>> Stage<X> for RemoteStage<'_, T> {
     fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError> {
         let at = at.clone();
         Ok(self
             .remote
-            .query(move |app, ui| at.point_for(&*app, ui, reach))??)
+            .read(move |app, ui| at.point_for(app, ui, reach))??)
     }
 
     fn input(&mut self, event: InputEvent<'_>) {
@@ -372,7 +391,7 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
         let Some(pressed) = self.remote.last_press else {
             return Ok(());
         };
-        let interval = self.remote.query(|_, ui| ui.double_click_interval())?;
+        let interval = self.remote.read(|_, ui| ui.double_click_interval())?;
         let since = pressed.elapsed();
         if since <= interval {
             thread::sleep(interval - since + Duration::from_millis(1));
