@@ -223,8 +223,24 @@ impl Locate<Vec<Rect>> for Slot {
     }
 }
 
+/// A place that names nothing and returns no error of its own.
+#[derive(Clone, Debug)]
+struct Nowhere;
+
+impl Locate<Vec<Rect>> for Nowhere {
+    fn find_all(
+        &self,
+        _app: &Vec<Rect>,
+        _ui: &Ui,
+        _out: &mut Vec<Found>,
+    ) -> Result<(), LocateError> {
+        Ok(())
+    }
+}
+
 /// An app's place resolves through its `Locate`: one match is found, several are ambiguous until
-/// `Nth` picks one, and its own error passes through.
+/// `Nth` picks one, and its own error passes through. One that returns `Ok` with nothing reads as
+/// `NotFound` with no nearest, alone and under `Nth`.
 #[test]
 fn an_app_names_its_own_places() {
     let h = primed();
@@ -244,6 +260,13 @@ fn an_app_names_its_own_places() {
         slot(2).find(&app, ui),
         Err(LocateError::NotFound { .. })
     ));
+    let nowhere = LocateError::NotFound {
+        locator: "App(Nowhere)".to_owned(),
+        nearest: Vec::new(),
+    };
+    let named = Locator::App(Nowhere);
+    assert_eq!(named.find(&app, ui), Err(nowhere.clone()));
+    assert_eq!(named.nth(0).find(&app, ui), Err(nowhere));
 }
 
 /// Each error tells the reader what to change.

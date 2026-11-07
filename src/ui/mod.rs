@@ -27,6 +27,7 @@ use crate::animation::animated::Animated;
 use crate::animation::animation_map_typed::AnimationClock;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
+use crate::cascade::Cascade;
 use crate::cascade::WidgetLocation;
 use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::clipboard::Clipboard;
@@ -165,6 +166,11 @@ impl Ui {
             cascade: &self.input.arranged.cascade,
             stamp: self.frame_runtime.stamp(),
         }
+    }
+
+    /// The last frame's cascade, which a driver asks what an input reaches.
+    pub(crate) const fn cascade(&self) -> &Cascade {
+        &self.input.arranged.cascade
     }
 
     /// The input machine, which a harness asks where the pointer and its widgets are.
@@ -1364,8 +1370,6 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::animation::AnimationMap;
     #[cfg(test)]
-    use crate::cascade::Cascade;
-    #[cfg(test)]
     use crate::input::Input;
     use crate::layout::Layout;
     #[cfg(test)]
@@ -1427,10 +1431,6 @@ pub(crate) mod internals {
         /// This frame's record payloads, valid until the next record pass refills the arena.
         pub(crate) const fn record_store(&self) -> &RecordStore {
             &self.forest.record_store
-        }
-
-        pub(crate) const fn cascade(&self) -> &Cascade {
-            &self.input.arranged.cascade
         }
 
         /// The input machine, mutably, for tests that drive routing state.

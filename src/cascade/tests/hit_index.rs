@@ -142,6 +142,16 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         h.ui().cascade().hit_test(pos, Sense::clicks),
         Some(disabled)
     );
+    // The row says what its id does not, and the filter picks it: a scroll passes the disabled row to the popup's. A filter nothing passes, or a point over no row, finds none.
+    let row = |pos, filter: fn(Sense) -> bool| h.ui().cascade().hit_row(pos, filter).copied();
+    let clicked = row(pos, Sense::clicks).unwrap();
+    assert_eq!(clicked.widget_id, disabled);
+    assert!(clicked.disabled);
+    let scrolled = row(pos, |sense| sense.contains(Sense::SCROLL_Y)).unwrap();
+    assert_eq!(scrolled.widget_id, popup_scroll);
+    assert!(!scrolled.disabled);
+    assert_eq!(row(pos, |_| false), None);
+    assert_eq!(row(Vec2::splat(500.0), |_| true), None);
     // One walk must agree with the two separate filters (the press path resolves both from one scan). `focus` is empty: the press stopped at the disabled row.
     let press = h.ui().cascade().hit_test_press(pos);
     assert_eq!(press.click, Some(disabled));

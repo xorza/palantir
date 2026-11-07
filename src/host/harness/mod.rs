@@ -634,7 +634,7 @@ impl Harness {
             panic!("{id:?} has no arranged rect: it did not record, or no frame ran")
         });
         let pos = response.transform.apply_point(layout.min + local);
-        let cascade = &self.window.frames.ui().input().arranged.cascade;
+        let cascade = self.window.frames.ui().cascade();
         let routing = cascade
             .hit_rows()
             .iter()
@@ -656,9 +656,7 @@ impl Harness {
         self.window
             .frames
             .ui()
-            .input()
-            .arranged
-            .cascade
+            .cascade()
             .hit_test(pos, Sense::hovers)
     }
 
@@ -1124,13 +1122,7 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {
-            self.window
-                .frames
-                .ui()
-                .input()
-                .arranged
-                .cascade
-                .endpoint(id)
+            self.window.frames.ui().cascade().endpoint(id)
         }
 
         pub(crate) fn main_child_ids(&self, parent: NodeId) -> Vec<NodeId> {

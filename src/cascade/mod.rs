@@ -211,11 +211,14 @@ impl Cascade {
             .filter(move |row| row.rect.contains(pos))
     }
 
+    /// Topmost row under `pos` whose `Sense` passes `filter`: what that input reaches there.
+    pub(crate) fn hit_row(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<&HitRow> {
+        self.hits_under(pos).find(|row| filter(row.sense))
+    }
+
     /// Topmost entry under `pos` whose `Sense` passes `filter`.
     pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
-        self.hits_under(pos)
-            .find(|row| filter(row.sense))
-            .map(|row| row.widget_id)
+        self.hit_row(pos, filter).map(|row| row.widget_id)
     }
 
     /// One reverse walk finding the topmost hover, scroll and pinch targets; [`Self::hit_test_press`] is the press twin. Slots are independent, and the walk stops once all are filled.

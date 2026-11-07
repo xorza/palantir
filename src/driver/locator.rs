@@ -46,7 +46,8 @@ pub(crate) enum Reach {
 /// crosses to a live window's thread, hence the owned, sendable copy.
 pub trait Locate<A>: Clone + Debug + Send + 'static {
     /// Every place this names in `app`'s last frame, as `ui` laid it out, in order, into `out`.
-    /// Naming none is the impl's own [`LocateError::NotFound`], with the nearest it knows.
+    /// Naming none is the impl's own [`LocateError::NotFound`], with the nearest it knows; an `Ok`
+    /// with none reads as that error with no nearest.
     ///
     /// # Errors
     ///
@@ -157,9 +158,8 @@ impl<X> Locator<X> {
     {
         let point = self.find(app, ui)?.point;
         if reach == Reach::Press {
-            let mut widgets = Vec::new();
-            ui.inspect(&mut widgets);
-            if topmost(&widgets, point, Sense::clicks).is_some_and(|widget| widget.disabled) {
+            let top = ui.cascade().hit_row(point, Sense::clicks);
+            if top.is_some_and(|row| row.disabled) {
                 return Err(LocateError::Disabled {
                     locator: format!("{self:?}"),
                 });
@@ -187,7 +187,7 @@ impl<X> Locator<X> {
                     if widget.clipped {
                         hidden = true;
                     } else {
-                        match reached(&widgets, widget, locator) {
+                        match reached(ui, widget, locator) {
                             Ok(found) => out.push(found),
                             Err(error) => covered = covered.or(Some(error)),
                         }
@@ -219,11 +219,16 @@ impl<X> Locator<X> {
                 if widget.clipped {
                     return Err(LocateError::OffScreen { locator: locator() });
                 }
-                out.push(reached(&widgets, widget, locator)?);
+                out.push(reached(ui, widget, locator)?);
             }
             Self::App(place) => {
                 place.find_all(app, ui, out)?;
-                debug_assert!(!out.is_empty(), "{place:?} found nothing and said nothing");
+                if out.is_empty() {
+                    return Err(LocateError::NotFound {
+                        locator: locator(),
+                        nearest: Vec::new(),
+                    });
+                }
             }
             Self::Point(_) | Self::Offset(..) | Self::Nth(..) => out.push(self.find(app, ui)?),
         }
@@ -232,9 +237,9 @@ impl<X> Locator<X> {
 }
 
 /// `widget` pressed at its center, when the input it senses reaches it there by its
-/// [routing](Sense::routing), as the hit test reads the paint-ordered table `widgets`.
+/// [routing](Sense::routing).
 fn reached(
-    widgets: &[InspectedWidget],
+    ui: &Ui,
     widget: &InspectedWidget,
     locator: impl Fn() -> String,
 ) -> Result<Found, LocateError> {
@@ -242,26 +247,13 @@ fn reached(
     let Some(routes) = widget.sense.routing() else {
         return Ok(found);
     };
-    match topmost(widgets, found.point, routes) {
-        Some(top) if top.id == widget.id => Ok(found),
+    match ui.cascade().hit_row(found.point, routes) {
+        Some(top) if top.widget_id == widget.id => Ok(found),
         _ => Err(LocateError::Covered {
             locator: locator(),
             point: found.point,
         }),
     }
-}
-
-/// The last widget of the paint-ordered table `widgets` at `point` that `routes` accepts: the one
-/// the hit test hands that input to.
-fn topmost(
-    widgets: &[InspectedWidget],
-    point: Vec2,
-    routes: fn(Sense) -> bool,
-) -> Option<&InspectedWidget> {
-    widgets
-        .iter()
-        .rev()
-        .find(|widget| routes(widget.sense) && widget.rect.contains(point))
 }
 
 /// The visible texts that contain `wanted`, ignoring case, or the first few when none does.

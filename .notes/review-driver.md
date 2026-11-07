@@ -49,22 +49,9 @@ Every shared-ownership case in the scope:
   reads as "the whole window" and "no filter".
 - **No `#[non_exhaustive]` on the errors.** Darkroom's exhaustive match on `PlayError` is what makes a new
   case get its hint.
-- **`Locator::point_for` walks the widgets twice per step.** One agent step does so, and it costs no
-  frame budget.
 - **`Harness::state`, `rect` and `clipboard_text` stay.** They are sugar over `Ui`, and tests read better.
 
 # Part 2: plan
-
-## Batch 5: locators reuse what they reason about
-
-Files: `src/driver/locator.rs`, `src/cascade/mod.rs`, `src/driver/tests.rs`.
-
-- [ ] Bug, `Locator::find` over `Locate::find_all`: an impl that returns `Ok` with nothing panics in a debug
-  build, and in a release build reads `Ambiguous` with zero matches. Target: `NotFound` with no nearest in
-  every build, and a test.
-- [ ] `locator.rs` `topmost` writes `Cascade::hits_under` again over a copy of its rows, so "what the input
-  reaches" has two walks. Target: a `Cascade::hit_row(pos, filter)` under `hit_test` and the locator.
-  `reached` and `point_for` read it, and `Harness::point_in` already reads the same walk.
 
 ## Batch 6: the harness's shape
 
