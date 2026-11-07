@@ -1,6 +1,8 @@
 //! The theme bundle every widget styles from: one submodule per widget theme, over the shared [`palette`], [`text_style`], [`text_style_overrides`] and [`look`] vocabulary.
 //!
 //! [`Theme`] aggregates them; a widget reads only its own slice, so a bundle grows a field without changing existing widgets.
+//!
+//! Plain look data: it knows no `Widget` or `Ui`, and `Widget::wear` applies a look.
 
 pub(crate) mod button;
 pub(crate) mod check_state;

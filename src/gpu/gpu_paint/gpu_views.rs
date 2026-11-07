@@ -47,7 +47,12 @@ pub(crate) struct RecordedTarget {
     pub(crate) epoch: u64,
 }
 
-/// Every `GpuView` the `Ui` has seen and not yet swept.
+/// Every `GpuView` the `Ui` has seen and not yet swept. A view's callback stays here: the shape, the
+/// paint payload and the frame's target draw carry only the view's target id, owner and epoch, and
+/// the backend looks the callback up by owner as it paints, as Flutter's `Texture` layer holds a
+/// `textureId` and the engine's `TextureRegistry` holds the producer. Refused: the callback carried
+/// as data, as egui's `PaintCallback` and iced's `shader::Primitive` do, which made `renderer` and
+/// `gpu` a cycle. Cost: one hash lookup per repainted `GpuView` per frame.
 #[derive(Debug, Default)]
 pub(crate) struct GpuViews {
     entries: WidgetIdMap<GpuViewEntry>,

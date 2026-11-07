@@ -16,7 +16,7 @@ fn a_directory_holds_the_live_windows() {
     assert!(directory.contains(WindowToken(2)));
 }
 
-/// Two drivers under one token, or dropping a never-added token, is a host bug the directory refuses.
+/// Two frame loops under one token, or dropping a never-added token, is a host bug the directory refuses.
 #[test]
 fn a_duplicate_add_or_an_unknown_remove_panics() {
     let dir = WindowDirectory::default();

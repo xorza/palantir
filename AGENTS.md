@@ -39,30 +39,6 @@ common → primitives → {animation, text, display, window, clipboard, image_re
        → renderer → gpu → theme → ui → widget_core → widgets → driver → host
 ```
 
-- **`theme` is plain look data**: it knows no `Widget` or `Ui`, and `Widget::wear` applies a look.
-- **`ui` records through `Node` and shapes**, never through a widget, so the recorder sits below
-  the authoring layer.
-- **A `GpuView`'s callback stays in `gpu`'s `GpuViews`**, which `Ui` holds; the shape, the paint
-  payload and the frame's target draw carry only the view's target id, owner and epoch, and the
-  backend looks the callback up by owner as it paints, as Flutter's `Texture` layer holds a
-  `textureId` and the engine's `TextureRegistry` holds the producer. Refused: the callback carried
-  as data, as egui's `PaintCallback` and iced's `shader::Primitive` do, which made `renderer` and
-  `gpu` a cycle. Cost: one hash lookup per repainted `GpuView` per frame.
-- **A frame runs `App::update` once, then `App::record` in each pass.** `update` holds an
-  `UpdateCtx`, which cannot record, and answers what the record may read of the input
-  (`InputOutcome`). A host holds `FrameLoop`, which runs them, so no widget reaches the frame. Those
-  types' doc comments hold the decisions.
-- **`App` lives in `ui`**, beside the frame cycle that calls it, as winit's `ApplicationHandler`
-  sits beside its event loop and eframe's `App` beside its run loop. Refused: a top-level `app`
-  module for the contract alone, which made a cycle with `ui`.
-- **`common` is a leaf.** The clipboard holds an `Image`, so it is a platform service beside
-  `window` and `display`, and every validation kind, the font length's included, lives in
-  `primitives::math::domain`, so no rule reaches up into `text`.
-- **`golden`, `internals` and `bench` sit outside the order.** They do not ship in the
-  default build, and each may import any module it tests or measures.
-- **A bench may import modules to its right**, so a whole-frame case sits beside the code it
-  measures. Refused: a `src/bench/` away from that code.
-
 ## GPU memory
 
 - **Scratch decays.** Per-frame GPU scratch (the blur textures, every `DynamicBuffer`, a window's

@@ -50,7 +50,7 @@ impl WindowRequests {
     ///
     /// Uses [`WindowCommands::append`] so the recorder keeps its buffer's capacity.
     ///
-    /// **The veto's one-frame life is enforced here** for every host (the offscreen one drains through this too), so no caller clears it and `Ui::set_window_facts` can assert.
+    /// **The veto's one-frame life is enforced here** for every host (the offscreen one drains through this too), so no caller clears it and `FrameLoop::set_window_facts` can assert.
     pub(crate) fn drain(
         &mut self,
         token: WindowToken,

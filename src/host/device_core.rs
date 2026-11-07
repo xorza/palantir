@@ -123,8 +123,8 @@ impl DeviceCore {
 
     /// Close a window: the backend drops what it keeps for its render owner, `GpuView` targets
     /// that owner-scoped eviction would otherwise hold until shutdown and the cutout cells its
-    /// plan holds, its render stream drops with it, and the driver's `Drop` retires its directory
-    /// entry.
+    /// plan holds, its render stream drops with it, and its
+    /// [`FrameLoop`](crate::ui::frame_loop::FrameLoop)'s `Drop` retires its directory entry.
     #[cfg_attr(
         all(not(feature = "winit"), not(test)),
         expect(

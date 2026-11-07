@@ -1,5 +1,8 @@
 //! The recorder: [`Ui`], the handle a widget authors a frame through, and the retained state that
 //! frame reads and writes. `frame_loop` holds it and runs the frame.
+//!
+//! It records through `Node` and shapes, never through a widget, so the recorder sits below the
+//! authoring layer.
 
 pub(crate) mod app;
 #[cfg(feature = "internals")]
@@ -109,6 +112,11 @@ use std::time::Duration;
 /// Recorder + input/response broker. Coordinates are logical pixels;
 /// `Display::scale_factor` converts to physical at the wgpu boundary. Fields are
 /// private so widgets share one method surface.
+///
+/// It repeats the reads of [`Input`] and [`UpdateCtx`], each sugar over the one on its part, as call
+/// sites read better. Cost: a new read is written up to three times. Refused: a public
+/// `Ui::input()`, as egui's `ui.input(|i| …)` reads, which makes each call longer; a trait for the
+/// reads, which each caller imports and which takes `const fn` off them.
 #[derive(Debug)]
 pub struct Ui {
     forest: Forest,

@@ -557,8 +557,9 @@ impl Input {
 
     /// Feed a palantir-native input event, hit-tested against this frame's latest cascade;
     /// `double_click` is how soon a second press on the same target chains a run, which the host
-    /// shares among its windows. `now` is the arrival time on the host's clock (see
-    /// [`FrameLoop::on_input`](crate::ui::frame_loop::FrameLoop::on_input)).
+    /// shares among its windows. Refused: a field on `Input`, which cannot read the settings, so
+    /// each entry would copy the value first, state synced by hand. `now` is the arrival time on
+    /// the host's clock (see [`FrameLoop::on_input`](crate::ui::frame_loop::FrameLoop::on_input)).
     pub(crate) fn on_input(
         &mut self,
         event: InputEvent<'_>,

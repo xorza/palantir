@@ -1,4 +1,8 @@
 //! Cross-cutting utilities. Submodules are `pub(crate)` at `crate::common::<sub>::<item>`, except [`flag_set`], which holds a macro reached textually.
+//!
+//! A leaf. The clipboard holds an `Image`, so it is a platform service beside `window` and
+//! `display`, and every validation kind, the font length's included, lives in
+//! `primitives::math::domain`, so no rule reaches up into `text`.
 
 pub(crate) mod block_arena;
 pub(crate) mod content_hash;

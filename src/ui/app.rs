@@ -1,4 +1,6 @@
-//! The per-window, per-frame hook a host calls.
+//! The per-window, per-frame hook a host calls. It lives in `ui`, beside the frame cycle that calls
+//! it, as winit's `ApplicationHandler` sits beside its event loop and eframe's `App` beside its run
+//! loop. Refused: a top-level `app` module for the contract alone, which made a cycle with `ui`.
 
 use crate::ui::Ui;
 use crate::ui::update_ctx::UpdateCtx;

@@ -32,7 +32,9 @@ const ORDER: [&[&str]; 17] = [
     &["host"],
 ];
 
-/// What `AGENTS.md` sets outside the order: it does not ship, and may import any module.
+/// What sits outside the order: it does not ship in the default build, and each may import any
+/// module it tests or measures. So may a bench file, so a whole-frame case sits beside the code it
+/// measures. Refused: a `src/bench/` away from that code.
 const OUTSIDE: [&str; 3] = ["golden", "internals", "bench"];
 
 fn tier(module: &str) -> Option<usize> {

@@ -24,7 +24,10 @@ pub(crate) mod shared_device;
 
 /// One `Rc` over what a host shares, cloned onto each window's `Ui`. Refused: a `CpuCore` that owns
 /// them, as `&mut Ui` has no lifetime, and lending them needs `Ui<'res>` at each of the 356 widget
-/// signatures; an `Rc` per resource, for one concept.
+/// signatures; an `Rc` per resource, for one concept. Refcounts of their own stay for a handle an app
+/// holds or drops (`ImageHandle`, `IconSet`, `Clipboard`, a `GpuView`'s paint), a `TextShaper` two
+/// hosts may share, a `Theme` too costly to copy that outlives a `&mut Ui` reborrow, and what a thread
+/// or a wgpu callback reads.
 #[derive(Clone, Debug)]
 pub(crate) struct UiResources(Rc<SharedResources>);
 

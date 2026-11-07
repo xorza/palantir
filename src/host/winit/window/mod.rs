@@ -330,7 +330,7 @@ impl Window {
         if facts.is_normal() {
             self.restored = Some(self.inner);
         }
-        // Also where the previous frame's veto is asserted spent (`Ui::set_window_facts`).
+        // Also where the previous frame's veto is asserted spent (`FrameLoop::set_window_facts`).
         // `finish` is outside the occlusion branch, so every frame reaches the drain.
         self.driver.set_window_facts(WindowFacts {
             close_requested: self.close_requested,

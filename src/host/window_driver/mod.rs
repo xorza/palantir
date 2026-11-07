@@ -46,7 +46,10 @@ use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::time::Duration;
 
-/// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
+/// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`]. A host reaches a
+/// window through it, and its [`FrameLoop`] keeps its engines private. Cost: a dozen forwarding
+/// methods. Refused: one type, as `FrameLoop` sits in `ui`, left of `host`, and needs nothing from
+/// the device.
 #[derive(Debug)]
 pub(super) struct WindowDriver {
     /// The window's `Ui` and the engines its frames run on.
@@ -136,9 +139,13 @@ pub(super) enum PresentStrategy {
 }
 
 /// What a frame's GPU half does, sealed in [`WindowDriver::build_paint`]. A frame that paints holds
-/// the one frontend its draw list sits in, so no other window can build until this one is submitted
-/// or dropped. Dropped, as on a failed acquire or a lost device, its base stays discarded, so the
-/// next frame paints whole.
+/// the one frontend its draw list sits in, and `submit` consumes it, as `Widget::record` takes
+/// `self`, so no other window can build until this one is submitted or dropped, and no stale path
+/// survives. A frame that draws, dropped on a failed acquire or a lost device, leaves the base
+/// discarded, and the next frame paints whole. Refused: the path, the scissors and the draw list in
+/// three owners, held together by convention; typestate markers on `WindowDriver`
+/// ([typestate](https://cliffle.com/blog/rust-typestate/)), as a driver lives in a `Vec` across
+/// frames.
 #[derive(Debug)]
 #[expect(
     clippy::large_enum_variant,
@@ -192,8 +199,8 @@ pub(super) struct CpuFrame<'f> {
 
 impl WindowDriver {
     /// A driver as `spec` says over the shared [`UiResources`], on a detached stream until the
-    /// host [attaches](Self::attach) its device's; registered in the window directory here, as
-    /// its `Drop` retires it.
+    /// host [attaches](Self::attach) its device's. Its [`FrameLoop`] holds the window's place in
+    /// the window directory.
     pub(super) fn new(spec: DriverSpec, resources: &UiResources) -> Self {
         let DriverSpec {
             token,
@@ -346,7 +353,12 @@ impl WindowDriver {
 
     /// The stage every host runs: the app's lifecycle under the display minted from `spec`, record
     /// through damage. The host picks what follows: [`Self::build_paint`] for a frame that paints,
-    /// else [`Self::finish_unpainted`].
+    /// else [`Self::finish_unpainted`], as
+    /// [branches gather at the top](https://matklad.github.io/2023/11/15/push-ifs-up-and-fors-down.html).
+    /// Refused: a depth parameter, which rode the frontend and the cutout placements through calls
+    /// that read neither; a `Frame<'a>` context over the whole stack, which hides what each stage
+    /// reads; a `HostCore` method per step, as a headless host holds its device beside its
+    /// `HeadlessWindow`.
     pub(super) fn record<T: App>(&mut self, spec: FrameSpec, app: &mut T) -> FrameReport {
         tracy::zone!();
         self.note_target(&spec);
@@ -440,7 +452,7 @@ impl WindowDriver {
         if !matches!(built, BuiltFrame::Still) {
             self.damage_base = DamageBase::Discarded;
         }
-        // In the report, as all an offscreen caller reads to know it owes a frame.
+        // In the report, as an offscreen caller has no other sign that the window owes a frame.
         if self.screenshots.owes_frame() {
             report.repaint_requested = true;
         }
