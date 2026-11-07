@@ -62,6 +62,23 @@ jobs:
           MSYS_NO_PATHCONV=1 reg.exe add 'HKLM\SOFTWARE\Khronos\Vulkan\Drivers' /v "$(cygpath --windows "$PWD/vulkan/lvp_icd.x86_64.json")" /t REG_DWORD /d 0 /f
           ./vulkan/vulkaninfo.exe --summary
           cygpath --windows "$PWD/vulkan" >> "$GITHUB_PATH"
+      # A crash leaves a core, whose stack names what no test's output can. On Ubuntu alone, the one
+      # lane where the crash of the issue log shows. Ubuntu's apport takes a core by default, and a
+      # step starts at core limit 0, so `BASH_ENV` raises it in each later step, as HAProxy's CI
+      # keeps its cores:
+      # https://git01.mediatek.com/plugins/gitiles/haproxy/+/6435801d09cac089e705baed57f839495f61a972%5E%21
+      # The limit, 4 GiB in KiB, keeps a core from filling the disk the later steps build on. The
+      # one crash here, of a plain binary as bash handles SIGSEGV itself, proves the route, so that
+      # a later "no core" means no crash.
+      - name: Keep the core of a crashed process
+        if: runner.os == 'Linux'
+        run: |
+          sudo sysctl -w 'kernel.core_pattern=/tmp/core.%p.%E'
+          echo 'ulimit -c 4194304' > "$RUNNER_TEMP/core-limit.sh"
+          echo "BASH_ENV=$RUNNER_TEMP/core-limit.sh" >> "$GITHUB_ENV"
+          (ulimit -c 4194304; sleep 60 & kill -SEGV $!; wait $!) || true
+          compgen -G '/tmp/core.*' || echo '::warning::a crash left no core file'
+          rm -f /tmp/core.*
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -92,6 +109,20 @@ jobs:
           RUSTDOCFLAGS: -D warnings
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-doctest
+      # After every gate step, so a crash in any of them reports. `%E` holds the binary's path, with
+      # `!` for each `/`.
+      - name: Print the stack of each crashed process
+        if: ${{ failure() && runner.os == 'Linux' }}
+        run: |
+          shopt -s nullglob
+          cores=(/tmp/core.*)
+          echo "${#cores[@]} core(s) at core limit $(ulimit -c)"
+          [ "${#cores[@]}" -gt 0 ] || exit 0
+          sudo apt-get install -y --no-install-recommends gdb
+          for core in "${cores[@]}"; do
+            exe=$(basename "$core" | sed 's/^core\.[0-9]*\.//' | tr '!' '/')
+            timeout 300 gdb --batch -ex 'thread apply all bt' "$exe" "$core" || true
+          done
 
   api-surface:
     name: public API surface
