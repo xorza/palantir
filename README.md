@@ -131,26 +131,26 @@ measure → arrange → cascade → damage → encode + compose), and the full
 public path through `OffscreenHost`, the **CPU + GPU frame**, with the GPU
 drained before the next iteration.
 
-|                     | Apple M5<br>Metal | Raspberry Pi 5<br>V3D, Vulkan | Steam Deck<br>RADV, Vulkan |
-| ------------------- | ----------------: | ----------------------------: | -------------------------: |
-| **CPU pipeline**    |                   |                               |                            |
-| `cached`            |           18.2 µs |                       80.7 µs |                    51.7 µs |
-| `hovering`          |           21.7 µs |                        102 µs |                    64.8 µs |
-| `partial`           |           28.4 µs |                        138 µs |                    87.4 µs |
-| `alternating`       |           31.9 µs |                        150 µs |                     138 µs |
-| `scrolling`         |           34.7 µs |                        155 µs |                    99.0 µs |
-| `resizing`          |           43.9 µs |                        194 µs |                     127 µs |
-| `typing`            |           52.2 µs |                        241 µs |                     154 µs |
-| `theming`           |           70.6 µs |                        343 µs |                     224 µs |
-| **CPU + GPU frame** |                   |                               |                            |
-| `cached`            |           18.3 µs |                       83.2 µs |                    66.9 µs |
-| `hovering`          |            261 µs |                       2.46 ms |                     661 µs |
-| `partial`           |            276 µs |                       2.74 ms |                     753 µs |
-| `alternating`       |            348 µs |                       6.73 ms |                    1.04 ms |
-| `scrolling`         |            315 µs |                       5.49 ms |                     797 µs |
-| `resizing`          |            318 µs |                       5.27 ms |                     930 µs |
-| `typing`            |            292 µs |                       2.65 ms |                     894 µs |
-| `theming`           |            398 µs |                       6.19 ms |                    1.57 ms |
+|                     | Apple M5<br>Metal | Raspberry Pi 5<br>V3D, Vulkan | Steam Deck<br>RADV, Vulkan | Intel i9-13980HX<br>RTX 4090 Laptop, Vulkan |
+| ------------------- | ----------------: | ----------------------------: | -------------------------: | ------------------------------------------: |
+| **CPU pipeline**    |                   |                               |                            |                                             |
+| `cached`            |           18.2 µs |                       80.7 µs |                    51.7 µs |                                     22.5 µs |
+| `hovering`          |           21.7 µs |                        102 µs |                    64.8 µs |                                     27.1 µs |
+| `partial`           |           28.4 µs |                        138 µs |                    87.4 µs |                                     34.0 µs |
+| `alternating`       |           31.9 µs |                        150 µs |                     138 µs |                                     38.7 µs |
+| `scrolling`         |           34.7 µs |                        155 µs |                    99.0 µs |                                     42.6 µs |
+| `resizing`          |           43.9 µs |                        194 µs |                     127 µs |                                     52.5 µs |
+| `typing`            |           52.2 µs |                        241 µs |                     154 µs |                                     63.8 µs |
+| `theming`           |           70.6 µs |                        343 µs |                     224 µs |                                     99.2 µs |
+| **CPU + GPU frame** |                   |                               |                            |                                             |
+| `cached`            |           18.3 µs |                       83.2 µs |                    66.9 µs |                                     22.7 µs |
+| `hovering`          |            261 µs |                       2.46 ms |                     661 µs |                                      140 µs |
+| `partial`           |            276 µs |                       2.74 ms |                     753 µs |                                      152 µs |
+| `alternating`       |            348 µs |                       6.73 ms |                    1.04 ms |                                      156 µs |
+| `scrolling`         |            315 µs |                       5.49 ms |                     797 µs |                                      171 µs |
+| `resizing`          |            318 µs |                       5.27 ms |                     930 µs |                                      185 µs |
+| `typing`            |            292 µs |                       2.65 ms |                     894 µs |                                      197 µs |
+| `theming`           |            398 µs |                       6.19 ms |                    1.57 ms |                                      373 µs |
 
 - **Scenarios.** `cached` changes nothing, so layout hits its cache and
   damage skips the paint. `hovering` moves the pointer between two widgets,
@@ -160,8 +160,8 @@ drained before the next iteration.
   measure runs again. `typing` types a character into a focused field, then
   deletes it. `theming` blends two themes at a new phase every frame, so text
   reshapes and rasterizes anew.
-- **Run.** Each number is the median of one full run. The Raspberry Pi and the
-  Steam Deck run pinned to one core; the Apple M5 runs unpinned.
+- **Run.** Each number is the median of one full run. The Apple M5 runs
+  unpinned; every other machine runs pinned to one core.
 - **Build.** The x86 build sets `-C target-cpu=x86-64-v3` (see
   [Recommended build flag](#recommended-build-flag)); an aarch64 build sets
   no flag.
