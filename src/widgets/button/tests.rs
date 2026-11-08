@@ -400,8 +400,8 @@ mod press {
     /// it.
     fn input(released: f32) -> PressInput {
         PressInput {
-            color: [0.25, 0.5, 0.75, 0.125],
-            point: [30.0, 10.0],
+            color: COLOR,
+            point: Vec2::new(30.0, 10.0),
             released,
             enter: 0.225,
             exit: 0.15,
@@ -485,11 +485,11 @@ mod press {
         h.at(ms(1000));
         h.key(Key::Char(' '));
         h.frame(&mut record);
-        let read: Vec<([f32; 2], f32, f32)> = press_draws(&h)
+        let read: Vec<(Vec2, f32, f32)> = press_draws(&h)
             .iter()
             .map(|draw| (draw.input.point, draw.time, draw.input.released))
             .collect();
-        assert_eq!(read, [([40.0, 15.0], 0.0, 0.0)]);
+        assert_eq!(read, [(Vec2::new(40.0, 15.0), 0.0, 0.0)]);
     }
 
     /// Under reduced motion a press shows its end at once, as any decorative pass does: held, the

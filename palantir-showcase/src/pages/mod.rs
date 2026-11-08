@@ -6,6 +6,7 @@ pub(crate) mod containers;
 pub(crate) mod controls;
 pub(crate) mod custom_widget;
 pub(crate) mod dock;
+pub(crate) mod effects;
 pub(crate) mod focus;
 pub(crate) mod gpu_view;
 pub mod gradients;

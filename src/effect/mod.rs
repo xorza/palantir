@@ -1,7 +1,20 @@
 //! App-written effects: an effect is a WGSL function palantir wraps in its own fragment stage, so
 //! it stays correct under partial repaint and clips. This module holds its name, its parameters,
-//! its source and the registry that loads it. Decisions: `.notes/effects-proposal.md` until the
-//! proposal lands.
+//! its source, the registry that loads it and palantir's stock effects. Facts and sources:
+//! `.notes/research/2026-11-08-custom-shaders.md`.
+//!
+//! # Decisions
+//!
+//! - **Two kinds, each with its own signature.** A color effect reads its position, size, corners,
+//!   time, parameters and images; a backdrop effect also reads what is painted under it, through
+//!   the capture a [`BackdropFilter`](crate::BackdropFilter) takes
+//!   ([`EffectKind`](crate::EffectKind)). Deferred: an effect that reads its own subtree (SwiftUI's `layerEffect`), which needs an
+//!   offscreen pass per node; a stateful effect, which a [`GpuPaint`](crate::GpuPaint) serves.
+//! - **A name nothing loaded is a logic error.** A shape that names one panics with the name
+//!   (`EffectRegistry::resolve`); a theme that names one is refused at its set
+//!   ([`ThemeEffectError`](crate::ThemeEffectError)), as a theme file is untrusted data. Refused:
+//!   painting nothing, which is quietly wrong; a fallback as a [`FontFamily`](crate::FontFamily)
+//!   has, which no effect has an equal of.
 
 pub(crate) mod contract;
 pub(crate) mod effect_kind;

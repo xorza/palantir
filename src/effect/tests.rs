@@ -5,7 +5,7 @@
 use std::error;
 use std::rc::Rc;
 
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 use std::time::Duration;
 
 use crate::effect::contract::{self, ParamsLayout};
@@ -705,8 +705,8 @@ fn the_ripples_paint_their_exact_values() {
                 Shape::effect(
                     effect,
                     PressInput {
-                        color: [1.0, 1.0, 1.0, 0.5],
-                        point: [20.0, 20.0],
+                        color: RgbaF32::new(1.0, 1.0, 1.0, 0.5),
+                        point: Vec2::new(20.0, 20.0),
                         released,
                         enter: 0.225,
                         exit: 0.15,

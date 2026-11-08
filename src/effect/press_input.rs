@@ -1,5 +1,9 @@
 //! [`PressInput`]: what a press effect reads of the press it draws.
 
+use glam::Vec2;
+
+use crate::primitives::paint::color::RgbaF32;
+
 /// The parameters of a press effect, an `EffectName<PressInput>` a theme's press slot names
 /// ([`PressEffect`](crate::PressEffect)), which palantir fills for each press of a widget. Its
 /// effect's time is the seconds since the press: it runs to `enter` and holds there while the
@@ -27,10 +31,10 @@
 #[repr(C)]
 pub struct PressInput {
     /// The theme's color, linear and straight.
-    pub color: [f32; 4],
+    pub color: RgbaF32,
     /// Where the press landed, logical px from the widget's top-left; its center for a press of a
     /// key.
-    pub point: [f32; 2],
+    pub point: Vec2,
     /// Seconds from the press to its release; −1 while it is held.
     pub released: f32,
     /// Seconds the press takes to grow in.

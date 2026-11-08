@@ -26,7 +26,6 @@ use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::color::RgbaF32;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
@@ -577,7 +576,6 @@ fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
         .remove_state::<PressList>(id)
         .expect("a widget that wore a live press holds its list");
     let press = presses.effect();
-    let RgbaF32 { r, g, b, a } = press.color;
     for live in presses.iter() {
         let released = live
             .released_at
@@ -586,8 +584,8 @@ fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
             .ends_at(&press)
             .map_or(press.enter, |end| end - live.pressed_at);
         let input = PressInput {
-            color: [r, g, b, a],
-            point: live.point.into(),
+            color: press.color,
+            point: live.point,
             released,
             enter: press.enter.as_secs_f32(),
             exit: press.exit.as_secs_f32(),

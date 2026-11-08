@@ -156,6 +156,14 @@ macro_rules! source {
         let _ = pages::$module::build;
         concat!("palantir-showcase/src/pages/", stringify!($module), ".rs")
     }};
+    (mod $module:ident) => {{
+        let _ = pages::$module::build;
+        concat!(
+            "palantir-showcase/src/pages/",
+            stringify!($module),
+            "/mod.rs"
+        )
+    }};
 }
 
 const PAGES: &[Page] = &[
@@ -327,6 +335,15 @@ const PAGES: &[Page] = &[
         flow: Flow::Scroll,
         source: source!(materials),
         build: |ui, _, k| pages::materials::build(ui, k),
+    },
+    Page {
+        group: Group::Paint,
+        label: "Effects",
+        blurb: "App-written WGSL effects: a background, press ripples, a ring and water.",
+        keys: &[],
+        flow: Flow::Scroll,
+        source: source!(mod effects),
+        build: |ui, _, k| pages::effects::build(ui, k),
     },
     Page {
         group: Group::Paint,

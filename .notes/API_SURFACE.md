@@ -1873,8 +1873,8 @@ PressEffect
 
 PressInput
     struct PressInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
-        pub color: [f32; 4]
-        pub point: [f32; 2]
+        pub color: RgbaF32
+        pub point: Vec2
         pub released: f32
         pub enter: f32
         pub exit: f32
