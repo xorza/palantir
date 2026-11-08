@@ -26,8 +26,13 @@ pub struct DeviceRequirements {
 }
 
 impl DeviceRequirements {
-    /// Features no configuration runs without: immediate data, which the viewport rides in.
-    pub const FEATURES: wgpu::Features = wgpu::Features::IMMEDIATES;
+    /// Features no configuration runs without: immediate data, which the viewport rides in, and
+    /// dual-source blending, through which an app's effect weighs what is under it
+    /// (`src·One + dst·Src1`), so one pipeline gives over, add, multiply and screen. Lavapipe,
+    /// NVIDIA's and V3D's Vulkan drivers, Metal from MSL 1.2 and GL with
+    /// `ARB_blend_func_extended` all offer it (`.notes/research/2026-11-08-custom-shaders.md`).
+    pub const FEATURES: wgpu::Features =
+        wgpu::Features::IMMEDIATES.union(wgpu::Features::DUAL_SOURCE_BLENDING);
 
     /// Backend capabilities no configuration runs without: compute shaders, which Palantir's
     /// compute pipelines and wgpu's own indirect-draw validation run, and which OpenGL ES 3.0
@@ -141,19 +146,23 @@ mod tests {
             max_immediate_size: IMMEDIATES_BYTES,
             ..Limits::default()
         };
-        let available = Features::IMMEDIATES | Features::TIMESTAMP_QUERY;
+        let available = DeviceRequirements::FEATURES | Features::TIMESTAMP_QUERY;
         let optional = Features::TIMESTAMP_QUERY | Features::PIPELINE_STATISTICS_QUERY;
 
         // Only the optional features the adapter has come along.
         let requirements = DeviceRequirements::against(available, &ceiling, optional).unwrap();
         assert_eq!(
             requirements.features,
-            Features::IMMEDIATES | Features::TIMESTAMP_QUERY
+            DeviceRequirements::FEATURES | Features::TIMESTAMP_QUERY
         );
         assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
 
-        let missing =
-            DeviceRequirements::against(Features::TIMESTAMP_QUERY, &ceiling, optional).unwrap_err();
+        let missing = DeviceRequirements::against(
+            Features::TIMESTAMP_QUERY | Features::DUAL_SOURCE_BLENDING,
+            &ceiling,
+            optional,
+        )
+        .unwrap_err();
         assert_eq!(
             missing,
             UnmetRequirements::Features {
@@ -165,11 +174,24 @@ mod tests {
             missing.to_string(),
             "graphics device is missing IMMEDIATES, which Palantir requires"
         );
+        let no_dual_source =
+            DeviceRequirements::against(Features::IMMEDIATES, &ceiling, optional).unwrap_err();
+        assert_eq!(
+            no_dual_source,
+            UnmetRequirements::Features {
+                missing: Features::DUAL_SOURCE_BLENDING
+            }
+        );
+        assert_eq!(
+            no_dual_source.to_string(),
+            "graphics device is missing DUAL_SOURCE_BLENDING, which Palantir requires"
+        );
 
         let mut short = ceiling;
         short.max_immediate_size = IMMEDIATES_BYTES - 1;
-        let unmet = DeviceRequirements::against(Features::IMMEDIATES, &short, Features::empty())
-            .unwrap_err();
+        let unmet =
+            DeviceRequirements::against(DeviceRequirements::FEATURES, &short, Features::empty())
+                .unwrap_err();
         assert_eq!(
             unmet,
             UnmetRequirements::Limit {
@@ -194,8 +216,9 @@ mod tests {
             max_immediate_size: IMMEDIATES_BYTES,
             ..Limits::downlevel_webgl2_defaults()
         };
-        let unmet = DeviceRequirements::against(Features::IMMEDIATES, &ceiling, Features::empty())
-            .unwrap_err();
+        let unmet =
+            DeviceRequirements::against(DeviceRequirements::FEATURES, &ceiling, Features::empty())
+                .unwrap_err();
         assert_eq!(
             unmet,
             UnmetRequirements::Limit {
@@ -224,7 +247,8 @@ mod tests {
         );
 
         let requirements =
-            DeviceRequirements::against(Features::IMMEDIATES, &ceiling, Features::empty()).unwrap();
+            DeviceRequirements::against(DeviceRequirements::FEATURES, &ceiling, Features::empty())
+                .unwrap();
 
         assert!(requirements.limits.check_limits(&ceiling));
         assert_eq!(requirements.limits.max_inter_stage_shader_variables, 15);

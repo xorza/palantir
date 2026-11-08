@@ -7,6 +7,7 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
@@ -30,6 +31,8 @@ pub(super) struct HostDevice {
 pub(super) struct BackendSpec {
     /// Built with no device, so the registry every recorder clones holds it from the start.
     pub(super) image_store: Rc<WgpuImageStore>,
+    /// Built with no device, so the registry every recorder clones loads through it from the start.
+    pub(super) effect_store: Rc<WgpuEffectStore>,
     pub(super) timing: FrameTiming,
 }
 
@@ -52,6 +55,7 @@ impl HostDevice {
     ) {
         let spec = BackendSpec {
             image_store: Rc::clone(self.backend.image_store()),
+            effect_store: Rc::clone(self.backend.effect_store()),
             timing: self.backend.frame_timing(),
         };
         self.backend = spec.open(gpu, cpu);
@@ -161,12 +165,14 @@ impl BackendSpec {
         }
         let texture_binding = TextureBinding::new(&gpu);
         self.image_store.attach(&gpu, texture_binding.clone());
+        self.effect_store.attach(&gpu);
         cpu.attach_device(TextureLimit::from_device(gpu.max_texture_dim()));
         WgpuBackend::new(
             gpu,
             BackendResources {
                 text: cpu.resources.text(),
                 image_store: &self.image_store,
+                effect_store: &self.effect_store,
                 icons: cpu.resources.icons(),
                 gradient_rows: cpu.frontend.gradient_rows(),
                 texture_binding,

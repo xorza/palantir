@@ -1,6 +1,7 @@
 //! The app-global handles a backend is built over.
 
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::icons::icon_registry::IconRegistry;
 use crate::text::shaper::TextShaper;
@@ -11,6 +12,7 @@ use std::rc::Rc;
 pub(crate) struct BackendResources<'a> {
     pub(crate) text: &'a TextShaper,
     pub(crate) image_store: &'a Rc<WgpuImageStore>,
+    pub(crate) effect_store: &'a Rc<WgpuEffectStore>,
     pub(crate) icons: &'a IconRegistry,
     /// Rows the frontend's gradient atlas holds, the height the LUT texture starts at.
     pub(crate) gradient_rows: u32,

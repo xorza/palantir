@@ -1,5 +1,5 @@
-//! The effect contract: palantir's prelude, which follows the app's WGSL, and the checks an effect
-//! passes before it loads.
+//! The effect contract: the declarations that follow the app's WGSL, palantir's stages around it,
+//! and the checks an effect passes before it loads.
 
 use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
@@ -8,22 +8,20 @@ use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 use crate::effect::effect_params::{EffectParam, ParamType};
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
+use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 
-/// What palantir declares for every effect. It follows the app's text, as WGSL declarations hold
-/// in any order, so a position in a parse error reads in the app's text.
-const PRELUDE: &str = "
-struct EffectInput {
-    pos: vec2<f32>,
-    size: vec2<f32>,
-    corners: vec4<f32>,
-    time: f32,
-}
+/// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's
+/// text, as WGSL declarations hold in any order, so a position in a parse error reads in the app's
+/// text.
+const CONTRACT: &str = include_str!("contract.wgsl");
 
-struct EffectOutput {
-    color: vec4<f32>,
-    under: vec4<f32>,
-}
-";
+/// Palantir's own stages around `effect`, with markers for the antialiasing reach, the parameter
+/// read and the call.
+const WRAPPER: &str = include_str!("wrapper.wgsl");
+
+/// What the module starts with: the enable for the wrapper's dual-source output, on the app's first
+/// line, so the app's line numbers hold.
+const ENABLE: &str = "enable dual_source_blending; ";
 
 const ENTRY: &str = "effect";
 const INPUT: &str = "EffectInput";
@@ -36,20 +34,42 @@ pub(crate) struct ParamsLayout {
     pub(crate) size: usize,
 }
 
-/// `wgsl` with the prelude, parsed and validated, once its `effect` takes the contract's
-/// arguments and its parameter struct matches `params`.
+/// The complete module palantir compiles for `wgsl`: the app's text, the contract and palantir's
+/// stages, once the app's text parses and validates with the contract, its `effect` takes the
+/// contract's arguments, and its parameter struct matches `params`.
 pub(crate) fn check(
     wgsl: &str,
     params: ParamsLayout,
     image_slots: u8,
-) -> Result<Module, EffectError> {
+) -> Result<String, EffectError> {
     if image_slots > MAX_IMAGE_SLOTS {
         return Err(EffectError::TooManyImageSlots { slots: image_slots });
     }
     if params.size > MAX_PARAMS_SIZE {
         return Err(EffectError::ParamsTooLarge { size: params.size });
     }
-    let text = format!("{wgsl}\n{PRELUDE}");
+    let app = parse_and_validate(format!("{wgsl}\n{CONTRACT}"), Capabilities::default())?;
+    let params_struct = check_entry(&app.module, params)?;
+    let full = format!(
+        "{ENABLE}{wgsl}\n{CONTRACT}{}",
+        wrapper(params_struct.as_deref(), params.fields)
+    );
+    let full = parse_and_validate(
+        full,
+        Capabilities::default() | Capabilities::DUAL_SOURCE_BLENDING | Capabilities::IMMEDIATES,
+    )?;
+    Ok(full.text)
+}
+
+/// A text naga parsed and validated, with its module.
+#[derive(Debug)]
+struct Parsed {
+    module: Module,
+    text: String,
+}
+
+/// `text` parsed and validated under `capabilities`; an error carries the text.
+fn parse_and_validate(text: String, capabilities: Capabilities) -> Result<Parsed, EffectError> {
     let module = match wgsl::parse_str(&text) {
         Ok(module) => module,
         Err(source) => {
@@ -59,19 +79,64 @@ pub(crate) fn check(
             });
         }
     };
-    if let Err(source) =
-        Validator::new(ValidationFlags::all(), Capabilities::default()).validate(&module)
-    {
+    if let Err(source) = Validator::new(ValidationFlags::all(), capabilities).validate(&module) {
         return Err(EffectError::Validation {
             source: Box::new(source),
             text,
         });
     }
-    check_entry(&module, params)?;
-    Ok(module)
+    Ok(Parsed { module, text })
 }
 
-fn check_entry(module: &Module, params: ParamsLayout) -> Result<(), EffectError> {
+/// Palantir's stages, reading the parameters into `params_struct` from `fields`' words, or with
+/// no parameters where `params_struct` is `None`.
+fn wrapper(params_struct: Option<&str>, fields: &[EffectParam]) -> String {
+    let (read, call) = match params_struct {
+        Some(name) => {
+            let members: Vec<String> = fields.iter().map(read_field).collect();
+            (
+                format!(
+                    "\nfn palantir_params(at: u32) -> {name} {{\n    return {name}({});\n}}\n",
+                    members.join(", ")
+                ),
+                "effect(input, palantir_params(v.params))",
+            )
+        }
+        None => (String::new(), "effect(input)"),
+    };
+    WRAPPER
+        .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
+        .replace("/*{PARAMS}*/", &read)
+        .replace("/*{CALL}*/", call)
+}
+
+/// The WGSL that reads `field` from the instance's words, starting at `at`.
+fn read_field(field: &EffectParam) -> String {
+    let word = field.offset / 4;
+    let words = |count: usize| -> String {
+        (word..word + count)
+            .map(|w| format!("palantir_words[at + {w}u]"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match field.ty {
+        ParamType::F32 => format!("bitcast<f32>({})", words(1)),
+        ParamType::I32 => format!("bitcast<i32>({})", words(1)),
+        ParamType::U32 => words(1),
+        ParamType::Vec2F32 => format!("bitcast<vec2<f32>>(vec2<u32>({}))", words(2)),
+        ParamType::Vec3F32 => format!("bitcast<vec3<f32>>(vec3<u32>({}))", words(3)),
+        ParamType::Vec4F32 => format!("bitcast<vec4<f32>>(vec4<u32>({}))", words(4)),
+        ParamType::Vec2I32 => format!("bitcast<vec2<i32>>(vec2<u32>({}))", words(2)),
+        ParamType::Vec3I32 => format!("bitcast<vec3<i32>>(vec3<u32>({}))", words(3)),
+        ParamType::Vec4I32 => format!("bitcast<vec4<i32>>(vec4<u32>({}))", words(4)),
+        ParamType::Vec2U32 => format!("vec2<u32>({})", words(2)),
+        ParamType::Vec3U32 => format!("vec3<u32>({})", words(3)),
+        ParamType::Vec4U32 => format!("vec4<u32>({})", words(4)),
+    }
+}
+
+/// `effect` against the contract; the name of its parameter struct, where it takes one.
+fn check_entry(module: &Module, params: ParamsLayout) -> Result<Option<String>, EffectError> {
     if module.entry_points.iter().any(|entry| entry.name == ENTRY) {
         return Err(EffectError::Entry(EntryMismatch::Stage));
     }
@@ -103,13 +168,15 @@ fn check_entry(module: &Module, params: ParamsLayout) -> Result<(), EffectError>
     if entry.result.as_ref().map(|result| result.ty) != named(OUTPUT) {
         return Err(EffectError::Entry(EntryMismatch::Output));
     }
-    if let Some(argument) = entry.arguments.get(1) {
-        let TypeInner::Struct { members, span } = &module.types[argument.ty].inner else {
-            return Err(EffectError::Entry(EntryMismatch::Params));
-        };
-        check_params(module, members, *span, params).map_err(EffectError::ParamLayout)?;
-    }
-    Ok(())
+    let Some(argument) = entry.arguments.get(1) else {
+        return Ok(None);
+    };
+    let ty = &module.types[argument.ty];
+    let TypeInner::Struct { members, span } = &ty.inner else {
+        return Err(EffectError::Entry(EntryMismatch::Params));
+    };
+    check_params(module, members, *span, params).map_err(EffectError::ParamLayout)?;
+    Ok(Some(ty.name.clone().expect("a WGSL struct has a name")))
 }
 
 /// The WGSL struct against `U`, member for member: count, then each name, offset and type, then

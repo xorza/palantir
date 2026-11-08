@@ -262,6 +262,7 @@ impl WindowFrames {
         let record_baseline = RecordBaseline {
             theme_epoch: self.ui.window_theme.epoch(),
             font_epoch: self.ui.resources.text().font_epoch(),
+            effect_epoch: self.ui.resources.effects().epoch(),
             device_epoch,
             transparency: self.ui.frame_runtime.transparency,
             power: self.ui.frame_runtime.power,
@@ -337,6 +338,7 @@ impl WindowFrames {
         let baseline = FrameBaseline {
             clear: self.ui.theme().window_bg,
             font_epoch: self.ui.resources.text().font_epoch(),
+            effect_epoch: self.ui.resources.effects().epoch(),
             collision_overlay: !self.ui.forest.collisions.is_empty(),
         };
         let input = DamageInput {

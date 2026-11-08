@@ -4,10 +4,12 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
 use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::float_hash::FloatHash;
@@ -100,6 +102,16 @@ pub(crate) enum ShapeRecord {
         tint: RgbaF16,
         /// Draws a color icon as its own luminance, see [`IconShape::desaturate`](crate::widget::IconShape::desaturate).
         desaturate: bool,
+    },
+    /// An app-written color effect over a rounded rect: `local_rect = None` paints the owner's
+    /// rect, `Some(r)` paints `r` owner-relative, which may exceed the owner. `params` indexes the
+    /// `RecordStore`'s parameter words; `content_hash` covers the effect and those words.
+    Effect {
+        local_rect: Option<Rect>,
+        corners: Corners,
+        effect: EffectId,
+        params: Span,
+        content_hash: ContentHash,
     },
     /// Native GPU stroke: a cubic Bézier or exact circular arc, per [`CurveBasis`] (quadratics promote to cubic, lines degenerate; see `CurveShape`'s lowering). Owner-local, no joins. `bbox` is the tight centerline AABB.
     ///
@@ -335,6 +347,19 @@ impl ShapeRecord {
                 h.write_u16(handle.icon.icon.idx());
                 h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
             }
+            // `content_hash` folds the effect and its parameter words, which live in the
+            // `RecordStore`; the span is frame-local.
+            Self::Effect {
+                local_rect,
+                corners,
+                content_hash,
+                effect: _,
+                params: _,
+            } => {
+                hash_optional_rect(*local_rect, &mut h);
+                corners.hash(&mut h);
+                content_hash.hash(&mut h);
+            }
             // Geometry + style are hashed inline (every input lives on the record).
             // `bbox` is excluded. The ramp goes in by content hash so equal geometry
             // with different ramps differs. `CurveBasis`'s discriminant goes in first
@@ -463,6 +488,7 @@ impl NanCheck for ShapeRecord {
                 local_rect, tint, ..
             } => local_rect.has_nan() || tint.has_nan(),
             Self::Curve { stroke, bbox, .. } => stroke.has_nan() || bbox.has_nan(),
+            Self::Effect { local_rect, .. } => local_rect.has_nan(),
         }
     }
 }

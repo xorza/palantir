@@ -1,7 +1,6 @@
 //! Shapes that must hash apart, and the spans that must not count.
 
 use crate::common::hash;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::color::RgbaF32;

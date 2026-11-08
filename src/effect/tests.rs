@@ -1,5 +1,5 @@
 //! Loading effects: the derive's layout, each refusal, a replacing load, a refused reload, and a
-//! name used with other types.
+//! name used with other types; on a device, each blend, a clip, a recovery and a reload.
 
 use std::error;
 
@@ -11,9 +11,23 @@ use crate::effect::effect_params::{EffectParam, EffectParams, ParamType};
 use crate::effect::effect_registry::{EffectRegistry, PowerSaverName};
 use crate::effect::effect_source::{EffectSource, PowerSaverPaint};
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
+use crate::gpu::test_gpu::headless_test_gpu;
+use crate::gpu::test_gpu::isolated_headless_test_gpu;
 use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::internals::panic_probe::assert_panics_with;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::inline_name::InlineName;
+use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
+use crate::shape::Shape;
+use crate::ui::Ui;
+use crate::ui::frame_report::FramePaint;
+use crate::widget_core::configure::Configure;
+use crate::widgets::panel::Panel;
 
 /// A ring's parameters: a vec4 and four f32s, 32 B in Rust and in WGSL.
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
@@ -110,7 +124,10 @@ fn each_refusal_is_its_own_case() {
     assert!(text.starts_with("fn effect(\n"), "the app's text first");
     assert!(text.contains("struct EffectInput"), "then the prelude");
     let printed = source.emit_to_string(text);
-    assert!(printed.contains("wgsl:3:"), "{printed}");
+    assert!(
+        printed.contains("struct EffectInput"),
+        "the error at the end of the app's text prints the contract's line"
+    );
     assert!(
         error::Error::source(&parse).is_some(),
         "naga's error is the source"
@@ -332,7 +349,8 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
 }
 
 /// A name keeps the parameter type and kind it loaded with: naming it with others, to load or to
-/// ask, panics with both, and so does a power-saver alternative loaded with other types.
+/// ask, panics with both, and so does a power-saver alternative loaded with other types. A shape
+/// that names an effect nothing loaded panics with the name as it is added.
 #[test]
 fn a_name_used_with_other_types_panics() {
     let registry = EffectRegistry::default();
@@ -348,6 +366,18 @@ fn a_name_used_with_other_types_panics() {
     let same: EffectName<Ring, ColorEffect> = EffectName::named("ring").unwrap();
     assert!(registry.contains(same));
 
+    let mut h = Harness::new(UVec2::new(8, 8));
+    let params = Ring {
+        tint: [1.0; 4],
+        radius: 0.0,
+        width: 0.0,
+        edge: 0.0,
+        r#speed: 0.0,
+    };
+    assert_panics_with("no effect is loaded under `ring`", || {
+        h.frame(|ui| ui.add_shape(Shape::effect(RING, params)));
+    });
+
     let untyped_thin: EffectName<()> = EffectName::named("thin ring").unwrap();
     let plain = "fn effect(input: EffectInput) -> EffectOutput { return EffectOutput(); }";
     registry
@@ -360,4 +390,232 @@ fn a_name_used_with_other_types_panics() {
                 .power_saver(PowerSaverPaint::Effect(THIN_RING)),
         )
     });
+}
+
+/// A blend picker's parameters: a premultiplied linear color, and which blend `effect` returns.
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
+#[repr(C)]
+struct Blend {
+    color: [f32; 4],
+    mode: u32,
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
+}
+
+const BLEND: EffectName<Blend> = EffectName::named("blend").expect("the name fits");
+
+const BLEND_WGSL: &str = "
+struct Params { color: vec4<f32>, mode: u32, pad0: u32, pad1: u32, pad2: u32 }
+
+fn effect(input: EffectInput, params: Params) -> EffectOutput {
+    switch params.mode {
+        case 0u: { return effect_over(params.color); }
+        case 1u: { return effect_add(params.color); }
+        case 2u: { return effect_multiply(params.color); }
+        default: { return effect_screen(params.color); }
+    }
+}
+";
+
+/// The pixel at `(x, y)` of a 160 × 40 window whose ground is linear `(0.2, 0.4, 0.6)` and which
+/// `paint` draws over, at scale 1.
+fn painted(paint: impl Fn(&mut Ui), at: &[(u32, u32)]) -> Vec<[u8; 4]> {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(160, 40))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
+    h.prime(2, |ui| {
+        ui.add_shape(Shape::rect().fill(ground));
+        paint(ui);
+    });
+    let image = h.read_back();
+    at.iter().map(|&(x, y)| image.get_pixel(x, y).0).collect()
+}
+
+/// Each blend over the linear ground `g = (0.2, 0.4, 0.6, 1)`, with the premultiplied color
+/// `c = (0.4, 0.2, 0.1, 0.5)`, in its own 40 px square; each center's pixel is the blend's exact
+/// value, encoded to sRGB:
+/// - over, `c + g·(1 − α)`: `(0.5, 0.4, 0.4)`;
+/// - add, `c + g`: `(0.6, 0.6, 0.7)`;
+/// - multiply, `g·(c + 1 − α)`: `(0.18, 0.28, 0.36)`;
+/// - screen, `c + g·(1 − c)`: `(0.52, 0.52, 0.64)`.
+///
+/// Alpha holds at 1 under each.
+#[test]
+fn each_blend_paints_its_exact_value() {
+    let centers: Vec<(u32, u32)> = (0..4).map(|i| (40 * i + 20, 20)).collect();
+    let got = painted(
+        |ui| {
+            for mode in 0..4 {
+                ui.add_shape(
+                    Shape::effect(
+                        BLEND,
+                        Blend {
+                            color: [0.4, 0.2, 0.1, 0.5],
+                            mode,
+                            pad0: 0,
+                            pad1: 0,
+                            pad2: 0,
+                        },
+                    )
+                    .at(Rect::new(40.0 * mode as f32, 0.0, 40.0, 40.0)),
+                );
+            }
+        },
+        &centers,
+    );
+    let want: Vec<[u8; 4]> = [
+        (0.5, 0.4, 0.4),
+        (0.6, 0.6, 0.7),
+        (0.18, 0.28, 0.36),
+        (0.52, 0.52, 0.64),
+    ]
+    .into_iter()
+    .map(|(r, g, b)| {
+        let srgb = RgbaF32::new(r, g, b, 1.0).to_srgba8();
+        [srgb.r, srgb.g, srgb.b, srgb.a]
+    })
+    .collect();
+    for (mode, (got, want)) in got.iter().zip(&want).enumerate() {
+        for lane in 0..4 {
+            assert!(
+                got[lane].abs_diff(want[lane]) <= 1,
+                "blend {mode}: got {got:?}, want {want:?}"
+            );
+        }
+    }
+}
+
+/// An effect reaches past its node, as a ring does, and a clipping ancestor cuts it. In a 160 × 40
+/// window, an 80 × 40 panel clips; inside it, a 20 × 20 node paints an opaque blue effect over
+/// `(-30, -10, 140, 40)` of its own frame, so `(-30, -10)..(110, 30)` on screen. Inside the clip
+/// and past the node, `(50, 10)` shows blue; past the clip, `(100, 10)`, and below the rect,
+/// `(50, 35)`, show the ground. Under a rounded clip of radius 12 the rounded-clip twin draws: the
+/// middle shows blue and the corner pixel `(1, 1)` the ground.
+#[test]
+fn an_effect_past_its_node_meets_its_ancestors_clip() {
+    let ring = |clip: ClipMode| {
+        move |ui: &mut Ui| {
+            Panel::vstack()
+                .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
+                .chrome(Chrome {
+                    fill: RgbaF32::TRANSPARENT.into(),
+                    corners: Corners::all(12.0),
+                    ..Chrome::default()
+                })
+                .clip(clip)
+                .show(ui, |ui| {
+                    Panel::vstack()
+                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                        .show(ui, |ui| {
+                            ui.add_shape(
+                                Shape::effect(
+                                    BLEND,
+                                    Blend {
+                                        color: [0.0, 0.0, 1.0, 1.0],
+                                        mode: 0,
+                                        pad0: 0,
+                                        pad1: 0,
+                                        pad2: 0,
+                                    },
+                                )
+                                .at(Rect::new(-30.0, -10.0, 140.0, 40.0)),
+                            );
+                        });
+                });
+        }
+    };
+    let blue = [0, 0, 255, 255];
+    let ground = {
+        let srgb = RgbaF32::new(0.2, 0.4, 0.6, 1.0).to_srgba8();
+        [srgb.r, srgb.g, srgb.b, srgb.a]
+    };
+    assert_eq!(
+        painted(ring(ClipMode::Rect), &[(50, 10), (100, 10), (50, 35)]),
+        [blue, ground, ground]
+    );
+    assert_eq!(
+        painted(ring(ClipMode::Rounded), &[(40, 15), (1, 1)]),
+        [blue, ground],
+        "the rounded clip's corner cuts the effect"
+    );
+}
+
+/// A new device builds every loaded effect again: after a loss and a recovery onto a fresh
+/// device, the same frame paints the effect's blue, as before the loss.
+#[test]
+fn a_recovered_device_paints_the_loaded_effects() {
+    let gpu = isolated_headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(16, 16))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    let paint = |ui: &mut Ui| {
+        ui.add_shape(Shape::rect().fill(RgbaF32::new(0.2, 0.4, 0.6, 1.0)));
+        ui.add_shape(Shape::effect(
+            BLEND,
+            Blend {
+                color: [0.0, 0.0, 1.0, 1.0],
+                mode: 0,
+                pad0: 0,
+                pad1: 0,
+                pad2: 0,
+            },
+        ));
+    };
+    h.prime(2, paint);
+    assert_eq!(h.read_back().get_pixel(8, 8).0, [0, 0, 255, 255]);
+    gpu.handles().lose();
+    let fresh = isolated_headless_test_gpu();
+    h.recover(fresh.handles());
+    h.prime(2, paint);
+    assert_eq!(h.read_back().get_pixel(8, 8).0, [0, 0, 255, 255]);
+}
+
+/// A reload under the same name repaints whole, though no shape's hash moves: an opaque blue
+/// effect over a 16 × 16 window, then a reload that paints red, and the next frame of the same
+/// record is a full repaint whose pixels are red.
+#[test]
+fn a_reload_repaints_the_unchanged_shapes() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(16, 16))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    let paint = |ui: &mut Ui| {
+        ui.add_shape(Shape::effect(
+            BLEND,
+            Blend {
+                color: [0.0, 0.0, 1.0, 1.0],
+                mode: 0,
+                pad0: 0,
+                pad1: 0,
+                pad2: 0,
+            },
+        ));
+    };
+    h.prime(2, paint);
+    assert_eq!(h.read_back().get_pixel(8, 8).0, [0, 0, 255, 255]);
+    let red = "
+struct Params { color: vec4<f32>, mode: u32, pad0: u32, pad1: u32, pad2: u32 }
+
+fn effect(input: EffectInput, params: Params) -> EffectOutput {
+    return effect_over(vec4<f32>(1.0, 0.0, 0.0, 1.0));
+}
+";
+    h.ui().load_effect(BLEND, EffectSource::new(red)).unwrap();
+    assert_eq!(h.frame(paint).paint(), FramePaint::Full);
+    assert_eq!(h.read_back().get_pixel(8, 8).0, [255, 0, 0, 255]);
 }

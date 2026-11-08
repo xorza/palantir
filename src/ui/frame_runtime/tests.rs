@@ -34,6 +34,7 @@ struct Case {
 const BASELINE: RecordBaseline = RecordBaseline {
     theme_epoch: 3,
     font_epoch: 7,
+    effect_epoch: 4,
     device_epoch: 1,
     transparency: Reduction::Full,
     power: Reduction::Full,
@@ -136,6 +137,17 @@ fn frame_classification_covers_external_entry_facts() {
             label: "font loaded since the record",
             recorded: Some(RecordBaseline {
                 font_epoch: 6,
+                ..BASELINE
+            }),
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Prev,
+            },
+            ..QUIET
+        },
+        Case {
+            label: "effect loaded since the record",
+            recorded: Some(RecordBaseline {
+                effect_epoch: 3,
                 ..BASELINE
             }),
             expected: FramePlan::FullRecord {

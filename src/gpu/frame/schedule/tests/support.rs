@@ -33,6 +33,7 @@ pub(super) enum DrawOp {
     Images(usize),
     Icons(usize),
     Curves(usize),
+    Effects(usize),
 }
 
 pub(super) fn collect(
@@ -95,6 +96,7 @@ pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawO
                     PaintTier::Image => DrawOp::Images(group),
                     PaintTier::Icon => DrawOp::Icons(group),
                     PaintTier::Curve => DrawOp::Curves(group),
+                    PaintTier::Effect => DrawOp::Effects(group),
                 });
             }
         }

@@ -761,7 +761,14 @@ impl Ui {
     /// Attach a paint primitive to the active node. Direct text counts toward
     /// layout only on a leaf; container-owned text is an overlay shaped against the
     /// container's padded width.
-    pub fn add_shape(&mut self, shape: impl Lower) {
+    ///
+    /// # Panics
+    ///
+    /// When `shape` is an [`EffectShape`](crate::widget::EffectShape) whose effect is not
+    /// loaded, or loaded with other parameters or kind.
+    #[track_caller]
+    pub fn add_shape(&mut self, mut shape: impl Lower) {
+        shape.resolve(self.resources.effects());
         self.forest.add_shape(shape);
     }
 
@@ -811,7 +818,9 @@ impl Ui {
     /// Load the effect `source` under `name`, for the app's life, as a font loads; the same name
     /// again replaces it, so a reload is this call with the new source. The WGSL is parsed with
     /// palantir's prelude and validated, `fn effect` is checked against the contract
-    /// ([`EffectSource`]), and its parameter struct against `U`, member for member. App-global.
+    /// ([`EffectSource`]), and its parameter struct against `U`, member for member. On a host
+    /// with a device, the call also builds the effect's pipelines, so the first frame that paints
+    /// it does not stall. App-global.
     /// Refused: a handle that unloads an effect when it drops, a second route to one effect beside
     /// its name.
     ///
@@ -935,7 +944,9 @@ impl Ui {
     /// );
     /// # }
     /// ```
-    pub fn add_shape_animated(&mut self, shape: impl Lower, animation: PaintAnimation) {
+    #[track_caller]
+    pub fn add_shape_animated(&mut self, mut shape: impl Lower, animation: PaintAnimation) {
+        shape.resolve(self.resources.effects());
         let animation = if self.is_motion_reduced() {
             animation.reduced()
         } else {

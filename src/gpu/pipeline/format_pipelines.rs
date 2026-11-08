@@ -2,6 +2,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
+use crate::gpu::pipeline::effect_pipeline::EffectPipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
@@ -40,6 +41,8 @@ pub(crate) struct Programs {
     pub(crate) curve: CurvePipeline,
     /// The one shader and group-0 layout both raster tenants draw through; see [`RasterProgram`].
     pub(crate) raster: RasterProgram,
+    /// The frame's effect instances and words; each effect's pipelines are the store's.
+    pub(crate) effect: EffectPipeline,
 }
 
 /// What a frame draws through, which its pipelines are built for: the stencil mode of its passes,
@@ -151,6 +154,11 @@ impl<'a> PassPipelines<'a> {
             flat: self.fmt.raster.flat.select(self.stencil),
             spun: self.fmt.raster.spun.select(self.stencil),
         }
+    }
+
+    /// Whether the pass has the rounded-clip attachment, which picks an effect's pipeline.
+    pub(crate) const fn stencil(self) -> StencilMode {
+        self.stencil
     }
 
     /// The stencil-writing mask pipelines, which only a pass with the attachment binds.

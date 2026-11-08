@@ -1,6 +1,7 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
 use crate::clipboard::Clipboard;
+use crate::effect::effect_registry::EffectRegistry;
 use crate::host::harness::Harness;
 use crate::image_registry::ImageRegistry;
 use crate::internals::panic_probe;
@@ -665,7 +666,12 @@ fn the_text_clock_ticks_once_per_host_frame() {
 fn a_load_reaches_the_cascade_and_the_screen() {
     let shaper = TextShaper::with_no_fonts();
     let mut h = Harness::from_resources(
-        UiResources::new(shaper, Clipboard::memory(), ImageRegistry::default()),
+        UiResources::new(
+            shaper,
+            Clipboard::memory(),
+            ImageRegistry::default(),
+            EffectRegistry::default(),
+        ),
         UVec2::new(400, 300),
     );
     h.ui().load_font(INTER).expect("the bundled Inter loads");
@@ -725,6 +731,7 @@ fn every_window_keys_a_family_in_its_shapers_table() {
                 shaper.clone(),
                 Clipboard::memory(),
                 ImageRegistry::default(),
+                EffectRegistry::default(),
             ),
             SURFACE,
         )

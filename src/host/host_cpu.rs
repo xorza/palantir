@@ -1,5 +1,6 @@
 //! [`HostCpu`]: the half of a host's composition root that needs no device.
 
+use crate::effect::effect_registry::EffectRegistry;
 use crate::gpu::render_owner_id::RenderOwners;
 use crate::host::host_options::HostOptions;
 use crate::image_registry::ImageRegistry;
@@ -31,7 +32,12 @@ impl HostCpu {
     /// recorders read no texture ceiling, as no device holds them.
     pub(super) fn new(options: &HostOptions, shaper: TextShaper) -> Self {
         Self::over(
-            UiResources::new(shaper, options.clipboard(), ImageRegistry::default()),
+            UiResources::new(
+                shaper,
+                options.clipboard(),
+                ImageRegistry::default(),
+                EffectRegistry::default(),
+            ),
             options,
         )
     }

@@ -13,6 +13,7 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -20,6 +21,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -299,6 +301,20 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
         ],
     )
     .draw(b);
+}
+
+/// An effect over `r` with sharp corners, the first effect's id and two words of parameters.
+pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
+    b.draw(
+        DrawEffectPayload {
+            rect: r,
+            corners: Corners::ZERO,
+            effect: EffectId(0),
+            params: Span::new(0, 2),
+            opacity: 1.0,
+        },
+        1.0,
+    );
 }
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {

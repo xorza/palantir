@@ -231,8 +231,13 @@ date. wgpu facts are read from wgpu 29.0.4 in the cargo registry, and palantir p
   `GL_ARB_blend_func_extended` (`vulkan/adapter.rs`, `metal/adapter.rs`, `gles/adapter.rs`).
   With `src·One + dst·Src1`, the shader picks the destination weight per channel: `1 − α` is
   source-over, `1` is add, the color with a zero first output is multiply, and `1 − c` with `c`
-  first is screen. Every blend linear in the destination needs one pipeline. Palantir requests
-  no such feature now.
+  first is screen. Every blend linear in the destination needs one pipeline.
+- **Who offers it** (2026-11-08): `vulkaninfo` on a Linux desktop reads `dualSrcBlend = true` for
+  lavapipe (llvmpipe, LLVM 23.1.4, the driver CI runs) and for an NVIDIA laptop GPU; Mesa's V3D
+  Vulkan driver sets `.dualSrcBlend = true` (`src/broadcom/vulkan/v3dv_device.c`), and lavapipe
+  sets it from llvmpipe's `max_dual_source_render_targets`
+  (`src/gallium/frontends/lavapipe/lvp_device.c`). An Apple laptop's Metal device ran the
+  effect tests with it.
 
 ## Press ripples
 

@@ -7,6 +7,7 @@
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -75,6 +76,7 @@ paint_calls! {
     Icon(DrawIconPayload) => icon,
     Image(DrawImagePayload) => image,
     Curve(DrawCurvePayload) => curve,
+    Effect(DrawEffectPayload) => effect,
     --
     PopClip => pop_clip,
     PopTransform => pop_transform,

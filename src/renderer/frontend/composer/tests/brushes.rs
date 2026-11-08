@@ -3,9 +3,11 @@
 use crate::common::span::Span;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::packed::fill_axis::FillAxis;
@@ -18,6 +20,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -528,4 +531,39 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
         UVec2::new(20, 10),
         "the whole view"
     );
+}
+
+/// An effect at scale 2 lands as one row: its rect in physical px, `(5, 6, 10, 8)` doubled to
+/// `(10, 12, 20, 16)`; its corners `(4, 6, 6, 4)` doubled to `(8, 12, 12, 8)`, then fitted as CSS
+/// fits them: the right side's two 12s sum 24 against its 16 px, so every radius scales by
+/// `16 / 24`, to `(5.33, 8, 8, 5.33)`, 5.33 as the f16 lane holds it, 5.3320313; its parameters'
+/// first word; the fade a paint animation gave it, 0.5; and the scale. The clock starts at 0.
+#[test]
+fn an_effect_lands_as_one_physical_row() {
+    let buf = run(
+        |b, _arena| {
+            b.draw(
+                DrawEffectPayload {
+                    rect: Rect::new(5.0, 6.0, 10.0, 8.0),
+                    corners: Corners::new(4.0, 6.0, 6.0, 4.0),
+                    effect: EffectId(3),
+                    params: Span::new(12, 8),
+                    opacity: 1.0,
+                },
+                0.5,
+            );
+        },
+        &params(2.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.effects.len(), 1);
+    assert_eq!(buf.batches(PaintTier::Effect).len(), 1);
+    assert_eq!(buf.batches(PaintTier::Effect)[0].items, Span::new(0, 1));
+    assert_eq!(buf.effects.id()[0], EffectId(3));
+    let instance = buf.effects.instance()[0];
+    assert_eq!(instance.rect, Rect::new(10.0, 12.0, 20.0, 16.0));
+    assert_eq!(instance.corners, [5.332_031_3, 8.0, 8.0, 5.332_031_3]);
+    assert_eq!(instance.params, 12);
+    assert_eq!(instance.opacity, 0.5);
+    assert_eq!(instance.scale, 2.0);
+    assert_eq!(instance.time, 0.0);
 }

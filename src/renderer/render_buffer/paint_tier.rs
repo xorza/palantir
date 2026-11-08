@@ -8,13 +8,21 @@ pub(crate) enum PaintTier {
     /// Above `Image`, so an icon over an image backdrop lands on top without a group flush.
     Icon,
     Curve,
+    /// App-written effects, last: rare, and each run binds a pipeline of its own.
+    Effect,
 }
 
 impl PaintTier {
     /// Every tier in paint order (`Ord` order): the single source of the replay sequence `HigherKindRects::conflicts` relies on. [`RenderBuffer::batches`](crate::renderer::render_buffer::RenderBuffer) is sized by [`Self::COUNT`].
-    pub(crate) const ALL: [Self; Self::COUNT] = [Self::Mesh, Self::Image, Self::Icon, Self::Curve];
+    pub(crate) const ALL: [Self; Self::COUNT] = [
+        Self::Mesh,
+        Self::Image,
+        Self::Icon,
+        Self::Curve,
+        Self::Effect,
+    ];
 
-    pub(crate) const COUNT: usize = 4;
+    pub(crate) const COUNT: usize = 5;
 
     #[inline]
     pub(crate) const fn idx(self) -> usize {

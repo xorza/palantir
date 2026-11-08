@@ -299,6 +299,17 @@ impl PaintRectCtx<'_> {
                         ),
                         shape_clip,
                     ),
+                    // The rect, grown by the physical antialiasing reach its stages draw, as a
+                    // triangle's is.
+                    ShapeRecord::Effect { local_rect, .. } => clip_screen(
+                        shape
+                            .to_screen(
+                                spun_if_animated(owner_local.resolve_local(*local_rect), idx),
+                                None,
+                            )
+                            .inflated(AA_HALF_WIDTH / display_scale),
+                        shape_clip,
+                    ),
                     ShapeRecord::Icon {
                         local_rect,
                         handle,

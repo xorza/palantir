@@ -28,11 +28,13 @@ pub enum BatchKind {
     Curve = 8,
     /// Icon replay.
     Icon = 9,
+    /// Effect replay.
+    Effect = 10,
 }
 
 impl BatchKind {
     /// How many kinds there are.
-    pub(crate) const COUNT: usize = 10;
+    pub(crate) const COUNT: usize = 11;
 
     /// Every kind, in discriminant order.
     pub const ALL: [Self; Self::COUNT] = [
@@ -46,6 +48,7 @@ impl BatchKind {
         Self::Image,
         Self::Curve,
         Self::Icon,
+        Self::Effect,
     ];
 
     pub(crate) const fn idx(self) -> usize {
@@ -65,6 +68,7 @@ impl BatchKind {
             Self::Image => "image",
             Self::Curve => "curve",
             Self::Icon => "icon",
+            Self::Effect => "effect",
         }
     }
 }
@@ -79,7 +83,7 @@ const _: () = {
         );
         i += 1;
     }
-    assert!(BatchKind::Icon.idx() + 1 == BatchKind::COUNT);
+    assert!(BatchKind::Effect.idx() + 1 == BatchKind::COUNT);
 };
 
 /// Counters surfaced by [`GpuPassStats::last_pipeline_stats`], in

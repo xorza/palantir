@@ -10,4 +10,5 @@ pub(crate) mod gpu_view_targets;
 pub(crate) mod packed_atlas;
 pub(crate) mod shelf_packer;
 pub(crate) mod texture_binding;
+pub(crate) mod wgpu_effect_store;
 pub(crate) mod wgpu_image_store;

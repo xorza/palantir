@@ -1,5 +1,6 @@
 //! The ids that cross-frame state and GPU resources hang off.
 
+pub(crate) mod effect_id;
 pub(crate) mod icon_handle;
 pub(crate) mod icon_id;
 pub(crate) mod icon_ref;

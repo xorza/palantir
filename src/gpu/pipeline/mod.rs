@@ -4,6 +4,7 @@
 pub(crate) mod blit_pipeline;
 pub(crate) mod clip_stencil;
 pub(crate) mod curve_pipeline;
+pub(crate) mod effect_pipeline;
 pub(crate) mod format_pipelines;
 pub(crate) mod image_pipeline;
 pub(crate) mod instanced_pipeline;

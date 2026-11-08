@@ -14,10 +14,24 @@ use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 /// The WGSL declares `fn effect(input: EffectInput, params: Params) -> EffectOutput`, where
 /// `Params` is the struct `U` describes, or `fn effect(input: EffectInput) -> EffectOutput` for an
 /// effect with no parameters (`U` of no bytes, as `()`). `effect` is a plain function, with no
-/// stage attribute. Palantir declares `EffectInput` and `EffectOutput` after the app's text, so a
-/// parse error's position reads in the app's own text, and builds the real fragment stage around
-/// `effect`, as SwiftUI's stitchable functions and Skia's SkSL `main` are wrapped.
-/// Plain WGSL: an app that wants modules runs WESL or naga_oil itself, as both emit WGSL.
+/// stage attribute. Palantir declares, after the app's text, so a parse error's position reads in
+/// the app's own text:
+///
+/// - `EffectInput { pos, size, corners, time, scale }`: the pixel's center from the rect's
+///   top-left, the rect's size and its corner radii in logical px, the shape's clock in seconds,
+///   and physical px per logical px;
+/// - `EffectOutput { color, under }`: `color + under · dst` per channel, linear and
+///   premultiplied, with the shape's coverage applied exactly, as the blend is linear in it;
+/// - `effect_over`, `effect_add`, `effect_multiply` and `effect_screen`, each an
+///   `EffectOutput` from a premultiplied color.
+///
+/// Palantir builds the real stages around `effect`, as SwiftUI's stitchable functions and Skia's
+/// SkSL `main` are wrapped, so an effect stays correct under partial repaint and clips. Names that
+/// start with `palantir_` are palantir's. A blend that is not linear in what is under it is a
+/// backdrop effect. Refused: a whole vertex and fragment module (Qt's `ShaderEffect`, Godot),
+/// which leaves each app's shader to keep palantir's coverage, clip and output rules.
+/// Plain WGSL: an app that wants modules runs WESL or naga_oil itself, as both emit WGSL. Refused:
+/// either inside palantir, a public dependency every app pays for.
 #[must_use]
 pub struct EffectSource<U: EffectParams, K: EffectKind = ColorEffect> {
     pub(crate) wgsl: Cow<'static, str>,

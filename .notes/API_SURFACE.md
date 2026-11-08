@@ -171,7 +171,8 @@ BatchKind
         Image = 7
         Curve = 8
         Icon = 9
-        pub const ALL: [Self; 10]
+        Effect = 10
+        pub const ALL: [Self; 11]
         pub const fn label(self) -> &'static str
 
 Block
@@ -3265,6 +3266,11 @@ widget::CurveShape
         pub const fn ramp(self, ramp: ColorRamp) -> Self
         pub const fn cap(self, cap: LineCap) -> Self
 
+widget::EffectShape
+    struct EffectShape<U: EffectParams>: Debug, Lower (blanket)
+        pub const fn at(self, rect: Rect) -> Self
+        pub fn corners(self, corners: impl Into<Corners>) -> Self
+
 widget::GlyphFont
     struct GlyphFont: Clone, Copy, Debug, PartialEq
         pub font_size: f32
@@ -3447,6 +3453,7 @@ widget::ShadowShape
 
 widget::Shape
     struct Shape: Clone, Copy, Debug
+        pub const fn effect<U: EffectParams>(name: EffectName<U, ColorEffect>, params: U) -> EffectShape<U>
         pub const fn rect() -> RectShape
         pub const fn windowed_rect() -> RectShape
         pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape

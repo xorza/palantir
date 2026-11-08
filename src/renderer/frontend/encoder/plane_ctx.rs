@@ -18,6 +18,7 @@ use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -390,6 +391,23 @@ impl PlaneCtx<'_, '_> {
                     alpha,
                 );
             }
+            // An effect fades with its paint animation and does not turn.
+            ShapeRecord::Effect {
+                local_rect,
+                corners,
+                effect,
+                params,
+                content_hash: _,
+            } => out.draw(
+                DrawEffectPayload {
+                    rect: owner_rect.resolve_local(*local_rect),
+                    corners: *corners,
+                    effect: *effect,
+                    params: *params,
+                    opacity: 1.0,
+                },
+                alpha,
+            ),
             ShapeRecord::Icon {
                 local_rect,
                 handle,

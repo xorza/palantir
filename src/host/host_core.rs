@@ -2,7 +2,9 @@
 //! [`HostDevice`], built together to share registries and one texture-dimension cap. It does not
 //! own the [`WindowFrames`]s; each host pairs its own.
 
+use crate::effect::effect_registry::EffectRegistry;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::host::host_cpu::HostCpu;
 use crate::host::host_device::{BackendSpec, HostDevice};
@@ -28,16 +30,19 @@ impl HostCore {
     /// [`HostDevice::attach`] builds it again.
     pub(super) fn new(gpu: Gpu, options: &HostOptions, shaper: TextShaper) -> Self {
         let image_store = Rc::new(WgpuImageStore::default());
+        let effect_store = Rc::new(WgpuEffectStore::default());
         let mut cpu = HostCpu::over(
             UiResources::new(
                 shaper,
                 options.clipboard(),
                 ImageRegistry::new(Rc::clone(&image_store)),
+                EffectRegistry::new(Rc::clone(&effect_store)),
             ),
             options,
         );
         let spec = BackendSpec {
             image_store,
+            effect_store,
             timing: options.timing,
         };
         let device = HostDevice::new(&spec, gpu, &mut cpu);

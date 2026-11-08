@@ -13,7 +13,7 @@ use crate::gpu::pipeline::pipeline_recipe::{Pipeline, PipelineRecipe};
 /// census asks before its passes record, so an app that never clips to a rounded rect builds no
 /// twin. Refused: both built up front, which made every format compile its twins, at startup and
 /// again at each device recovery.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct StencilVariant {
     base: Option<Pipeline>,
     test: Option<Pipeline>,

@@ -53,6 +53,7 @@
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -101,6 +102,9 @@ pub(crate) trait PaintSink {
     fn icon(&mut self, payload: DrawIconPayload);
 
     fn curve(&mut self, payload: DrawCurvePayload);
+
+    /// Paint an app-written effect over a rounded rect.
+    fn effect(&mut self, payload: DrawEffectPayload);
 
     /// The gate the encoder paints through: fade `payload` by `alpha` (a paint animation's
     /// opacity, `1.0` when still), drop it where it paints nothing, else hand it to the method of

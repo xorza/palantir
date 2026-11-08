@@ -88,7 +88,8 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
             | PaintCall::Polyline(_)
             | PaintCall::Image { .. }
             | PaintCall::Icon(_)
-            | PaintCall::Curve(_) => {}
+            | PaintCall::Curve(_)
+            | PaintCall::Effect(_) => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");

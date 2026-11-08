@@ -126,6 +126,7 @@ fn higher_kind_replay_follows_paint_tier_order() {
             DrawOp::Images(_) => Some(PaintTier::Image),
             DrawOp::Icons(_) => Some(PaintTier::Icon),
             DrawOp::Curves(_) => Some(PaintTier::Curve),
+            DrawOp::Effects(_) => Some(PaintTier::Effect),
             _ => None,
         })
         .collect();

@@ -20,25 +20,14 @@ power-saver mode", "Reduced power starts a frame at most at 30 Hz"), the docs of
 
 ### Contract
 
-- **An app writes one WGSL fragment function.** Palantir owns the vertex stage, SDF coverage,
-  AA, rounded clips, `frag_origin` and the output, so an effect stays correct under partial
-  repaint and clips. As SwiftUI's stitchable functions, Skia's SkSL and Bevy's `UiMaterial` with
-  its default vertex shader. Refused: a whole vertex and fragment module (Qt `ShaderEffect`,
-  Godot), which leaves each app shader to keep those rules; vertex distortion goes with it.
+Landed with batch 5: the contract, its blends and palantir's stages are in the docs of
+`EffectSource` and `effect_pipeline`, and `effect/contract.wgsl` and `effect/wrapper.wgsl`.
+
 - **Two kinds, each with its own signature.** A color effect reads its position, size, corners,
   time, parameters and images. A backdrop effect also reads the pixels painted below it, through
   the capture `BackdropFilter` uses. Deferred: effects that read their own subtree (SwiftUI
   `layerEffect`), which need an offscreen pass per node; stateful effects, which `GpuPaint`
   already serves.
-- **Plain WGSL beside palantir's prelude.** Palantir puts its prelude and the effect contract
-  after the app's text, so a parse error's position reads in the app's text. An app that wants modules runs WESL or naga_oil itself, as both emit
-  WGSL. Refused: WESL or naga_oil inside palantir, a public dependency every app pays for.
-- **The output is a color and a weight for what is under it.** The pipeline blends
-  `src·One + dst·Src1` (dual-source blending), so one pipeline gives over, add, multiply and
-  screen, and the prelude names each. Coverage applies exactly, as the blend is linear in it.
-  A blend that is not linear in the destination is a backdrop effect. Refused: a pipeline per
-  blend mode (Godot render modes); source-over alone, which sends multiply and screen through a
-  copy. wgpu 30 has no framebuffer fetch (wgpu#10148).
 
 ### Identity and parameters
 
@@ -52,14 +41,9 @@ Landed with batch 4: the decisions are in the docs of `EffectName`, `EffectParam
 
 ### Paint
 
-- **An effect is a shape of its own.** `Shape::effect(rect, corners, name)` for a color effect,
-  `Shape::backdrop_effect(rect, corners, name, max_read_offset)` for a backdrop one. It paints in
-  record order, and its rect may exceed its node, as a ring does. Refused: a `Brush` variant,
-  which every brush family would have to draw; a `Chrome` field, which no ring past the rect
-  fits.
-- **Clipping ancestors clip it**, as they clip a drop-shadow halo and as CSS clips ink overflow.
-  Refused: Android's projection onto the nearest ancestor with a background, a new paint route;
-  a higher layer, which paints over neighbors.
+Landed with batch 5 for color effects: `EffectShape`'s doc holds the shape and its clips, and
+`WgpuEffectStore`'s the compile at load.
+
 - **A backdrop effect states how far it reads, per shape**, as SwiftUI's `maxSampleOffset`. A read
   past it clamps to the captured area. Refused: one bound per effect, which the largest instance
   sets for all; the whole surface (Flutter without a `ClipRect`).
@@ -76,9 +60,6 @@ Landed with batch 4: the decisions are in the docs of `EffectName`, `EffectParam
   the capture shared and the composites apart, two composite paths to keep.
 - **Up to 4 image slots**, declared at load and bound per shape. A draw splits where instances
   bind other images. Refused: a bindless array, which GL and older Metal tiers lack.
-- **Every pipeline compiles at load**, for each live swapchain format, with its rounded-clip twin,
-  and again for a new format or device. Refused: the first draw, a stutter on the first press,
-  the reason Flutter wrote Impeller.
 
 ### Time
 
@@ -130,16 +111,11 @@ A `PowerSaverWatch` in each `host/winit/platform/` file, folded with `mundy`'s r
 `EffectRegistry` in the shared resources, `#[derive(EffectParams)]` in `palantir-derive` (renamed
 from `palantir-anim-derive`), and `naga` 30 as a direct dependency. Pipelines compile in batch 5.
 
-### 5. Color effects paint
+### 5. Color effects paint — done
 
-- Confirm `DUAL_SOURCE_BLENDING` on lavapipe, which CI runs, before anything else; then request
-  it, and refuse a device without it with a reason that names it.
-- `Shape::effect`, its record, lowering and hash; a new `PaintTier`, ordered by the existing
-  conflict flush; culling and damage over its rect; ancestor clips.
-- The effect pipeline family: the prelude and contract, the blend, the per-instance storage
-  buffer, compile at load, again on a new format and after device loss.
-- Tests: the parameters and coverage the encoder writes; goldens of over, add, multiply and
-  screen; a ring past its node under a clipping scroll.
+`DUAL_SOURCE_BLENDING` is required (lavapipe, NVIDIA and V3D offer it); `Shape::effect` lowers
+through `PaintTier::Effect`; `WgpuEffectStore` builds each effect at load, for each format and
+device. The blends and the clip are held by exact-pixel GPU tests in place of goldens.
 
 ### 6. Effect motion
 

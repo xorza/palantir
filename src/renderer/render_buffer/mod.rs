@@ -10,6 +10,7 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
+use crate::renderer::render_buffer::effect_draw_row::EffectDrawRow;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
@@ -27,6 +28,7 @@ pub(crate) mod curve_caps;
 pub(crate) mod curve_instance;
 pub(crate) mod curve_kind;
 pub(crate) mod draw_group;
+pub(crate) mod effect_draw_row;
 pub(crate) mod group_batch;
 pub(crate) mod icon_draw_row;
 pub(crate) mod image_draw_row;
@@ -61,6 +63,9 @@ pub(crate) struct RenderBuffer {
     /// Every `GpuView` recorded this frame, painted or not: the backend's retention roster. An undamaged view leaves [`Self::frame_targets`] but stays here, keeping its texture alive.
     pub(crate) live_targets: Vec<TextureId>,
     pub(crate) icons: Vec<IconDrawRow>,
+    /// Effect rows, SoA, one rounded-rect draw per row; each instance's parameters are words of
+    /// [`RecordStore::effect_params`](crate::shape::record_store::RecordStore::effect_params).
+    pub(crate) effects: Soa<EffectDrawRow>,
     /// Native GPU stroke instances: a `[t0, t1]` sub-range of a cubic/arc, a polyline segment, or a join billboard. One indexed instanced draw per batch.
     pub(crate) curves: Vec<CurveInstance>,
     /// Flat pool of rounded-clip mask chains (outer→inner); `DrawGroup.rounded_clips` and `TextBatch.rounded_clips` are spans into it. Value-equal chains dedup at mask staging.
@@ -92,6 +97,7 @@ impl RenderBuffer {
             frame_targets: Vec::new(),
             live_targets: Vec::new(),
             icons: Vec::new(),
+            effects: Soa::default(),
             curves: Vec::new(),
             rounded_clips: Vec::new(),
             backdrops: Vec::new(),
@@ -117,6 +123,7 @@ impl RenderBuffer {
             PaintTier::Image => self.images.len(),
             PaintTier::Icon => self.icons.len(),
             PaintTier::Curve => self.curves.len(),
+            PaintTier::Effect => self.effects.len(),
         };
         len as u32
     }
@@ -167,6 +174,7 @@ impl RenderBuffer {
             batches.clear();
         }
         self.icons.clear();
+        self.effects.clear();
         self.curves.clear();
         self.rounded_clips.clear();
     }

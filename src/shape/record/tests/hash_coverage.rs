@@ -1,7 +1,6 @@
 //! The exhaustive pin: every named field on every shape either moves the
 //! hash or is listed as deliberately excluded.
 
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;

@@ -51,12 +51,17 @@ struct SharedResources {
 impl UiResources {
     /// Resources whose images go to `images`, the registry over the host's texture store; the
     /// default registry is a deviceless recorder's.
-    pub(crate) fn new(text: TextShaper, clipboard: Clipboard, images: ImageRegistry) -> Self {
+    pub(crate) fn new(
+        text: TextShaper,
+        clipboard: Clipboard,
+        images: ImageRegistry,
+        effects: EffectRegistry,
+    ) -> Self {
         Self(Rc::new(SharedResources {
             text,
             images,
             icons: IconRegistry::default(),
-            effects: EffectRegistry::default(),
+            effects,
             device: SharedDevice::default(),
             clipboard,
             settings: AppSettings::default(),
@@ -122,6 +127,7 @@ impl UiResources {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::clipboard::Clipboard;
+    use crate::effect::effect_registry::EffectRegistry;
     use crate::image_registry::ImageRegistry;
     use crate::text::shaper::TextShaper;
     use crate::ui::resources::UiResources;
@@ -134,6 +140,7 @@ pub(crate) mod internals {
                 TextShaper::test_mono(),
                 Clipboard::memory(),
                 ImageRegistry::default(),
+                EffectRegistry::default(),
             )
         }
 
@@ -143,6 +150,7 @@ pub(crate) mod internals {
                 TextShaper::new(),
                 Clipboard::memory(),
                 ImageRegistry::default(),
+                EffectRegistry::default(),
             )
         }
     }

@@ -24,6 +24,7 @@ use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -36,6 +37,7 @@ use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
+use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInstance};
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
@@ -396,6 +398,37 @@ impl PaintSink for ComposeSession<'_> {
             // view's off-screen paint is scheduled above, in `frame_targets`.
             id: p.handle,
             instance,
+        });
+    }
+
+    fn effect(&mut self, p: DrawEffectPayload) {
+        let physical = self.lowering().scaled_rect(p.rect).physical;
+        // The stages draw the rect grown by the antialiasing reach.
+        let fringe = Vec2::splat(AA_HALF_WIDTH);
+        let urect = geometry::urect_from_physical(
+            physical.min - fringe,
+            physical.max() + fringe,
+            self.out.display.physical,
+        );
+        if self
+            .ordering()
+            .admit(Lane::Tier(PaintTier::Effect), urect)
+            .is_none()
+        {
+            return;
+        }
+        let scale = self.composer.transform.physical_scale();
+        self.out.effects.push(EffectDrawRow {
+            id: p.effect,
+            instance: EffectInstance {
+                rect: physical,
+                corners: p.corners.fit_to(physical.size, scale).to_array(),
+                time: 0.0,
+                opacity: p.opacity,
+                scale,
+                params: p.params.start,
+                ..bytemuck::Zeroable::zeroed()
+            },
         });
     }
 

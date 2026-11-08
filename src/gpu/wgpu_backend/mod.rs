@@ -67,6 +67,7 @@ use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
+use crate::gpu::pipeline::effect_pipeline::{EffectBatch, EffectPipeline, EffectUpload};
 use crate::gpu::pipeline::format_pipelines::{
     FormatPipelines, PassPipelines, PipelineCensus, Programs,
 };
@@ -88,6 +89,7 @@ use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource, TexelOrder};
@@ -133,6 +135,8 @@ pub(crate) struct WgpuBackend {
     /// The registered images; host recorders create, rewrite and free them through the
     /// `ImageRegistry` the host built over this `Rc`.
     image_store: Rc<WgpuImageStore>,
+    /// The loaded effects' pipelines; the host's `EffectRegistry` loads through this `Rc`.
+    effect_store: Rc<WgpuEffectStore>,
     gpu_view_targets: GpuViewTargets,
     blit: BlitPipeline,
     icon: IconBackend,
@@ -348,6 +352,7 @@ impl WgpuBackend {
     /// a window first notes a target of the format ([`Self::prepare_format`]).
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, timing: FrameTiming) -> Self {
         let image_store = Rc::clone(resources.image_store);
+        let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
         let gradient =
             GpuGradientAtlas::new(&gpu, resources.gradient_rows, texture_binding.clone());
@@ -358,6 +363,7 @@ impl WgpuBackend {
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
         let curve = CurvePipeline::new(&gpu, &texture_binding);
         let raster = RasterProgram::new(&gpu);
+        let effect = EffectPipeline::new(&gpu);
         let blit = BlitPipeline::new(&gpu, &texture_binding);
         let text = TextBackend::new(&gpu, &raster, resources.text.clone());
         let icon = IconBackend::new(&gpu, &raster, resources.icons.clone());
@@ -385,9 +391,11 @@ impl WgpuBackend {
                 image,
                 curve,
                 raster,
+                effect,
             },
             backdrops,
             image_store,
+            effect_store,
             gpu_view_targets,
             blit,
             icon,
@@ -404,6 +412,11 @@ impl WgpuBackend {
     /// The registered images, which the next device's backend holds too.
     pub(crate) const fn image_store(&self) -> &Rc<WgpuImageStore> {
         &self.image_store
+    }
+
+    /// The loaded effects, which the next device's backend builds again.
+    pub(crate) const fn effect_store(&self) -> &Rc<WgpuEffectStore> {
+        &self.effect_store
     }
 
     /// Whether this backend times frames, which the next device's does too.
@@ -434,6 +447,7 @@ impl WgpuBackend {
             self.pipelines.insert(format, built);
         }
         self.blit.ensure(&self.gpu, format.get());
+        self.effect_store.ensure_format(format.get());
     }
 
     /// Render one frame of `stream` into `target`. Skip frames never reach this method.
@@ -836,6 +850,15 @@ impl WgpuBackend {
             },
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
+        self.programs.effect.upload(
+            &mut ctx,
+            &self.effect_store,
+            EffectUpload {
+                instances: buffer.effects.instance(),
+                words: &store.effect_params,
+                format: format.get(),
+            },
+        );
 
         // Every frame, so a pane that left frees its cached result.
         self.backdrops.prepare(
@@ -1126,6 +1149,14 @@ impl WgpuBackend {
                             &self.gradient.bind_group,
                             items(),
                         ),
+                        PaintTier::Effect => self.programs.effect.draw_batch(
+                            ctx.rec,
+                            ctx.pipelines.stencil(),
+                            EffectBatch {
+                                ids: buffer.effects.id(),
+                                items: items(),
+                            },
+                        ),
                     }
                 });
             }
@@ -1258,6 +1289,7 @@ const fn batch_kind(tier: PaintTier) -> BatchKind {
         PaintTier::Image => BatchKind::Image,
         PaintTier::Icon => BatchKind::Icon,
         PaintTier::Curve => BatchKind::Curve,
+        PaintTier::Effect => BatchKind::Effect,
     }
 }
 

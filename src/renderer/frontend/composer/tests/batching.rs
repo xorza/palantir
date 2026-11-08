@@ -14,8 +14,8 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    TestPolyline, clip, clip_rounded, curve, draw, gpu_view_payload, icon, image, inked_text, mesh,
-    params, params_unsnapped, run, text,
+    TestPolyline, clip, clip_rounded, curve, draw, effect, gpu_view_payload, icon, image,
+    inked_text, mesh, params, params_unsnapped, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -461,6 +461,7 @@ fn a_draw_under_an_earlier_tier_starts_a_group() {
         PaintTier::Image => image(b, r),
         PaintTier::Icon => icon(b, r, IconRef::fixture(0, 0)),
         PaintTier::Curve => curve(b, r),
+        PaintTier::Effect => effect(b, r),
     };
     for first in PaintTier::ALL {
         for second in PaintTier::ALL {

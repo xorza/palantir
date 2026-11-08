@@ -47,6 +47,9 @@ pub(crate) struct RecordStore {
     /// The families of the shaper that shapes what this store records, keyed as a text shape
     /// lowers. `Default` gives a table of its own, for a store no shaper reads.
     families: FamilyKeys,
+    /// Parameter words for `ShapeRecord::Effect`, indexed by the record's `params`: each
+    /// instance's `EffectParams` bytes, as the backend's storage buffer holds them.
+    pub(crate) effect_params: Vec<u32>,
     /// Whether a backdrop filter lowers as a solid fill this pass
     /// ([`crate::Ui::is_transparency_reduced`]).
     pub(crate) transparency: Reduction,
@@ -75,6 +78,17 @@ impl RecordStore {
         }
     }
 
+    /// Stage one effect instance's parameter bytes as words. A loaded effect's parameters span a
+    /// whole number of words, as its WGSL struct does.
+    pub(crate) fn stage_effect_params(&mut self, bytes: &[u8]) -> Span {
+        let (words, rest) = bytes.as_chunks::<4>();
+        debug_assert!(rest.is_empty(), "effect parameters span whole words");
+        let start = self.effect_params.len();
+        self.effect_params
+            .extend(words.iter().map(|word| u32::from_ne_bytes(*word)));
+        Span::new(start as u32, (self.effect_params.len() - start) as u32)
+    }
+
     pub(crate) const fn families(&self) -> &FamilyKeys {
         &self.families
     }
@@ -89,6 +103,7 @@ impl RecordStore {
             polyline_colors,
             gradients,
             text,
+            effect_params,
             families: _,
             transparency: _,
         } = self;
@@ -96,6 +111,7 @@ impl RecordStore {
         mesh_idxs.clear();
         polyline_points.clear();
         polyline_colors.clear();
+        effect_params.clear();
         gradients.clear();
         text.clear();
     }

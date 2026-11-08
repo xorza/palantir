@@ -205,6 +205,7 @@ pub mod widget {
     pub use crate::shape::Lower;
     pub use crate::shape::Shape;
     pub use crate::shape::curve::CurveShape;
+    pub use crate::shape::effect::EffectShape;
     pub use crate::shape::icon::IconShape;
     pub use crate::shape::image::ImageShape;
     pub use crate::shape::mesh::MeshShape;

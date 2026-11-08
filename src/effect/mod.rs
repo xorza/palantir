@@ -9,6 +9,7 @@ pub(crate) mod effect_name;
 pub(crate) mod effect_params;
 pub(crate) mod effect_registry;
 pub(crate) mod effect_source;
+pub(crate) mod effect_store;
 pub(crate) mod error;
 
 /// The most bytes an instance's parameters hold, so one storage buffer row serves any effect.
