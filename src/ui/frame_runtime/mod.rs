@@ -10,7 +10,7 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::primitives::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::math::domain::EPS;
-use crate::primitives::reduction::Reductions;
+use crate::primitives::reduction::{Reduction, Reductions};
 use crate::text::shaper::TextShaper;
 use crate::ui::app::RecordPass;
 use crate::ui::frame_report::FrameProcessing;
@@ -125,6 +125,9 @@ pub(crate) struct FrameRuntime {
     /// ([`AppSettings::reductions`](crate::ui::resources::app_settings::AppSettings::reductions))
     /// so a frame never mixes two: a preference written during a frame holds from the next.
     pub(super) reductions: Reductions,
+    /// Whether this frame's value transitions run or snap, fixed with [`Self::reductions`]
+    /// ([`AppSettings::transitions`](crate::ui::resources::app_settings::AppSettings::transitions)).
+    pub(super) transitions: Reduction,
     /// The Ui time of the next frame's slot on the reduced-power grid, which this frame's report
     /// hands the host; `None` while power is full.
     pub(super) earliest_repaint_at: Option<Duration>,

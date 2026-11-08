@@ -405,5 +405,5 @@ fn a_spinner_turns_under_reduced_motion_and_decoration_does_not() {
         .iter()
         .map(|e| e.animation.motion)
         .collect();
-    assert_eq!(motions, [PaintMotion::Progress]);
+    assert_eq!(motions, [PaintMotion::Essential]);
 }

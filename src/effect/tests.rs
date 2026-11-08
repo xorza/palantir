@@ -36,6 +36,8 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
+use crate::primitives::preference::Preference;
+use crate::primitives::reduction::Reduction;
 use crate::shape::Shape;
 use crate::shape::paint_animation::{PaintAnimation, PaintMotion, PaintRepeat};
 use crate::theme::Theme;
@@ -43,6 +45,7 @@ use crate::theme::error::ThemeEffectError;
 use crate::theme::look::press_effect::PressEffect;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
+use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 
@@ -1005,7 +1008,9 @@ fn an_effect_reads_its_time_each_frame_and_wakes_while_it_moves() {
 
 /// Under reduced motion each effect paints as any paint animation does, with no wake: a
 /// decorative loop reads 0, as unanimated; a decorative single pass of 2 s reads its end, 2 s,
-/// from the first frame; a progress loop runs on, 0.5 s into its 2 s pass at 0.5 s.
+/// from the first frame; an essential loop runs on, 0.5 s into its 2 s pass at 0.5 s. Reduced
+/// power stops no paint motion: under it alone, with motion following the system, both decorative
+/// animations run, 0.5 s into their pass, and the loop asks for its next frame.
 #[test]
 fn reduced_motion_holds_a_decorative_effect() {
     let ms = Duration::from_millis;
@@ -1013,7 +1018,7 @@ fn reduced_motion_holds_a_decorative_effect() {
         .with_period(ms(2000))
         .with_repeat(PaintRepeat::Forever);
     let once = PaintAnimation::clock().with_period(ms(2000));
-    let progress = looping.with_motion(PaintMotion::Progress);
+    let progress = looping.with_motion(PaintMotion::Essential);
     let mut h = blend_window();
     h.set_system_motion_reduced(true);
     let record = |ui: &mut Ui| {
@@ -1030,6 +1035,13 @@ fn reduced_motion_holds_a_decorative_effect() {
         .frame(|ui| ui.add_shape_animated(Shape::effect(BLEND, BLUE), progress));
     assert_eq!(report.repaint_at, Some(ms(500)));
     assert_eq!(effect_draws(&h), [(app(0), 0.5)]);
+
+    let mut saver = blend_window();
+    saver.set_system_power_reduced(true);
+    let report = saver.at(ms(500)).frame(record);
+    assert_eq!(report.repaint_at, Some(ms(500)), "the loop runs on");
+    let times: Vec<f32> = effect_draws(&saver).iter().map(|&(_, time)| time).collect();
+    assert_eq!(times, [0.5, 0.5]);
 }
 
 /// While power is reduced each effect paints what its source named: `blend` paints `lite`,
@@ -1489,7 +1501,8 @@ fn a_backdrop_effect_blurs_as_a_backdrop_filter() {
 
 /// Each preference picks its own alternative, transparency's over motion's over power's: an
 /// effect whose source names one for each paints itself with nothing reduced, power's with power
-/// reduced, motion's with motion and power, and transparency's with all three. An alternative
+/// reduced and transparency held full by hand, motion's with motion and power, and transparency's
+/// with all three, reduced power reducing a transparency that follows the system. An alternative
 /// nothing loaded panics with the preference that named it.
 #[test]
 fn each_reduction_paints_its_alternative_in_order() {
@@ -1516,11 +1529,15 @@ fn each_reduction_paints_its_alternative_in_order() {
         effect_draws(h)[0].0
     };
     assert_eq!(painted(&mut h), app(0));
+    h.ui_mut().set_preferences(UiPreferences {
+        transparency: Preference::Fixed(Reduction::Full),
+        ..UiPreferences::default()
+    });
     h.set_system_power_reduced(true);
     assert_eq!(painted(&mut h), app(3), "power");
     h.set_system_motion_reduced(true);
     assert_eq!(painted(&mut h), app(2), "motion over power");
-    h.set_system_transparency_reduced(true);
+    h.ui_mut().set_preferences(UiPreferences::default());
     assert_eq!(painted(&mut h), app(1), "transparency over both");
 
     let gone: EffectName<Blend> = EffectName::named("gone").unwrap();

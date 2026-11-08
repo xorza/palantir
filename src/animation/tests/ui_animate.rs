@@ -286,8 +286,9 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
 
 /// With motion reduced, a retarget lands on its target in the frame that asks, with no repaint to
 /// finish it; with full motion, the same retarget is in flight. The motion preference decides,
-/// the system's ask under `System`, and a pick by hand over it either way. A motion in flight when
-/// the window hides lands on its target on the first frame shown again, and stays there.
+/// the system's ask under `System`, and a pick by hand over it either way. Reduced power snaps it
+/// too under `System`, and a pick of full motion moves it still. A motion in flight when the
+/// window hides lands on its target on the first frame shown again, and stays there.
 #[test]
 fn reduced_motion_and_a_hidden_span_snap_every_transition() {
     let step = |h: &mut Harness, id: WidgetId, target: f32| {
@@ -300,9 +301,10 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
         });
         (value, report.repaint_requested)
     };
-    let retarget = |system_reduced: bool, preference: Preference<Reduction>| {
+    let retarget = |system_reduced: bool, power: bool, preference: Preference<Reduction>| {
         let AnimationUi { mut h, id } = support::setup_animation_ui("reduced");
         h.set_system_motion_reduced(system_reduced);
+        h.set_system_power_reduced(power);
         h.ui_mut().set_preferences(UiPreferences {
             motion: preference,
             ..UiPreferences::default()
@@ -311,17 +313,25 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
         let moved = step(h.at(Duration::from_millis(16)), id, 1.0);
         (h, id, moved)
     };
-    assert_eq!(retarget(true, Preference::System).2, (1.0, false));
+    assert_eq!(retarget(true, false, Preference::System).2, (1.0, false));
     assert_eq!(
-        retarget(false, Preference::Fixed(Reduction::Reduced)).2,
+        retarget(false, false, Preference::Fixed(Reduction::Reduced)).2,
         (1.0, false)
     );
-    let (value, repaint) = retarget(true, Preference::Fixed(Reduction::Full)).2;
-    assert!(
-        value < 1.0 && repaint,
-        "a pick of full motion moves: {value}"
+    assert_eq!(
+        retarget(false, true, Preference::System).2,
+        (1.0, false),
+        "reduced power snaps a transition that follows the system"
     );
-    let (mut h, id, (value, repaint)) = retarget(false, Preference::System);
+    for (system_reduced, power) in [(true, false), (false, true)] {
+        let (value, repaint) =
+            retarget(system_reduced, power, Preference::Fixed(Reduction::Full)).2;
+        assert!(
+            value < 1.0 && repaint,
+            "a pick of full motion moves: {value}"
+        );
+    }
+    let (mut h, id, (value, repaint)) = retarget(false, false, Preference::System);
     assert!(value < 1.0 && repaint, "{value}");
 
     h.ui_mut().window_frame_mut().facts.shown_again = true;

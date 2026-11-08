@@ -177,7 +177,11 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
         "Motion",
         REDUCE,
         held.motion,
-        follows_reduction(ui.system_motion_reduced()),
+        if ui.is_power_reduced() {
+            "Follows the system, transitions snap under reduced power"
+        } else {
+            follows_reduction(ui.system_motion_reduced())
+        },
     );
     let transparency = track.row(
         ui,
@@ -185,7 +189,11 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
         "Transparency",
         REDUCE,
         held.transparency,
-        follows_reduction(ui.system_transparency_reduced()),
+        if ui.is_power_reduced() {
+            "Follows the system, less now under reduced power"
+        } else {
+            follows_reduction(ui.system_transparency_reduced())
+        },
     );
     let power = track.row(
         ui,

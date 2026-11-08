@@ -134,6 +134,41 @@ fn caret_blinks_on_and_off_while_focused() {
     );
 }
 
+/// The caret blinks under reduced motion and under reduced power alike, as its blink is
+/// essential, not decoration: visible at 0.3 s, hidden at 0.7 s, visible at 1.2 s.
+#[test]
+fn caret_blinks_under_reduced_motion_and_power() {
+    for (motion, power) in [(true, false), (false, true)] {
+        let mut h = Harness::mono(NARROW);
+        h.set_system_motion_reduced(motion);
+        h.set_system_power_reduced(power);
+        let mut buf = String::new();
+        let mut body = |ui: &mut Ui| {
+            TextEdit::new(&mut buf)
+                .id(WidgetId::from_hash("blink-ed"))
+                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                .show(ui)
+                .response
+                .node(ui)
+        };
+        let leaf = h.at(Duration::ZERO).frame_value(&mut body);
+        h.click(Vec2::new(20.0, 20.0));
+        h.at(Duration::ZERO).frame(|ui| {
+            body(ui);
+        });
+        for (at, shown) in [(0.3, true), (0.7, false), (1.2, true)] {
+            h.at(Duration::from_secs_f32(at)).frame(|ui| {
+                body(ui);
+            });
+            assert_eq!(
+                caret_painted(h.ui(), leaf),
+                shown,
+                "motion {motion}, power {power}, at {at} s"
+            );
+        }
+    }
+}
+
 /// Caret motion alone resets the blink: `End` moves the caret, leaving text
 /// alone, so the reset rides on `caret_moved` with `edited` and `focus_gained`
 /// false. Separate from the sweep above because it moves that test's

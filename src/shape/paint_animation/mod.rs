@@ -100,20 +100,25 @@ pub enum PaintRepeat {
 }
 
 /// What an animation's motion tells the person, which decides whether it runs while the system
-/// asks for reduced motion. [`Ui::animate`](crate::Ui::animate) snaps every motion then, as a
-/// value it moves is the widget's state, never progress.
+/// asks for reduced motion; each animation says its own, as only its author knows. Reduced power
+/// stops none: a loop runs on at its 30 Hz. [`Ui::animate`](crate::Ui::animate) snaps every
+/// motion under reduced motion, as a value it moves is the widget's state, never progress.
 ///
 /// WCAG 2.3.3 lets motion that is essential to what the content says stay on under that
 /// preference, and asks for the rest to stop
 /// ([WCAG 2.3.3](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions)).
+/// Refused: telling them apart by channel, as WCAG leaves an opacity change out of motion, which
+/// stops a turn that shows work and keeps a fade that only decorates.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PaintMotion {
     /// Motion that only decorates. Under reduced motion a single pass paints its end value
-    /// ([`PaintRepeat::Held`]) and a repeating one paints as if unanimated, as a caret holds still.
+    /// ([`PaintRepeat::Held`]) and a repeating one paints as if unanimated.
     #[default]
     Decorative,
-    /// Motion that shows work under way, as a spinner's turn: it runs whatever the preference.
-    Progress,
+    /// Motion essential to what the content says, which runs whatever the preference: a spinner's
+    /// turn shows work under way, a caret's blink where typing goes, as GTK, Windows and macOS
+    /// blink a caret under their reduced-motion settings.
+    Essential,
 }
 
 /// When an animation runs, and how finely.
@@ -300,7 +305,9 @@ impl PaintAnimation {
     /// an effect's time; a decorative repeat goes; progress runs on.
     pub(crate) const fn reduced(self) -> Option<Self> {
         match (self.motion, self.timing.repeat) {
-            (PaintMotion::Progress, _) | (PaintMotion::Decorative, PaintRepeat::Held) => Some(self),
+            (PaintMotion::Essential, _) | (PaintMotion::Decorative, PaintRepeat::Held) => {
+                Some(self)
+            }
             (PaintMotion::Decorative, PaintRepeat::Once) => Some(Self {
                 timing: PaintTiming {
                     started_at: Duration::ZERO,

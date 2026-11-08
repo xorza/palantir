@@ -225,8 +225,8 @@ impl Ui {
     ///
     /// It applies at once, to the widgets recorded after the call, and asks for a frame that records
     /// the rest under it, under [`AnimationSpec::SNAP`], before the window's second frame, in the
-    /// first frame after the window was hidden, or with motion reduced
-    /// ([`Self::is_motion_reduced`]). A theme that differs in its transition alone counts as a
+    /// first frame after the window was hidden, or while transitions snap, with motion reduced
+    /// ([`Self::is_motion_reduced`]) or under reduced power ([`Self::is_power_reduced`]). A theme that differs in its transition alone counts as a
     /// change.
     ///
     /// A live edit, one theme a frame, blends too: under [`AnimationSpec::THEME`] at 60 Hz it trails
@@ -297,12 +297,13 @@ impl Ui {
         }
     }
 
-    /// Whether every motion lands on its end this frame: the system asks for less motion, or the
-    /// window shows again after a hidden span, where a motion that ran unseen would show its last
-    /// shown point and finish late.
+    /// Whether every value transition lands on its end this frame: motion is reduced, or power is
+    /// and the motion preference follows the system (`AppSettings::transitions`), or the window
+    /// shows again after a hidden span, where a motion that ran unseen would show its last shown
+    /// point and finish late.
     #[inline]
     const fn motion_snaps(&self) -> bool {
-        self.host.window_frame.facts.shown_again || self.is_motion_reduced()
+        self.host.window_frame.facts.shown_again || self.frame_runtime.transitions.is_reduced()
     }
 
     /// The person's picks over the system's answers; each
@@ -338,9 +339,12 @@ impl Ui {
     /// [`Self::system_motion_reduced`] at the frame's start, so no frame mixes two, as transparency
     /// and power. Then every [`Self::animate`] and theme
     /// transition snaps to its target, as CSS `prefers-reduced-motion` asks of transitions, and a
-    /// [decorative](crate::widget::PaintMotion::Decorative) paint animation holds still; one that
-    /// shows progress, as a spinner's turn, still runs, as WCAG 2.3.3 lets essential motion stay
-    /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). App-global.
+    /// [decorative](crate::widget::PaintMotion::Decorative) paint animation holds still; an
+    /// [essential](crate::widget::PaintMotion::Essential) one, as a spinner's turn or a caret's
+    /// blink, still runs, as WCAG 2.3.3 lets essential motion stay
+    /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). Under
+    /// [reduced power](Self::is_power_reduced) with motion that follows the system, the
+    /// transitions snap too, and paint loops run on. App-global.
     #[inline]
     pub const fn is_motion_reduced(&self) -> bool {
         self.frame_runtime.reductions.motion.is_reduced()
@@ -362,9 +366,9 @@ impl Ui {
     /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then
     /// every [`BackdropFilter`](crate::BackdropFilter) paints as a solid fill, as CSS
     /// `prefers-reduced-transparency` asks and as WinUI's acrylic falls back to its
-    /// `FallbackColor`: no capture and no blur run. App-global. The power-saver mode is
-    /// [`Self::is_power_reduced`]: Windows' Energy saver turns transparency off too, but macOS Low
-    /// Power Mode and Linux's power-saver profile do not.
+    /// `FallbackColor`: no capture and no blur run. Under [reduced power](Self::is_power_reduced)
+    /// the system's answer reads as reduced, as Windows' Energy saver turns transparency effects
+    /// off, so only a pick by hand keeps transparency whole. App-global.
     #[inline]
     pub const fn is_transparency_reduced(&self) -> bool {
         self.frame_runtime.reductions.transparency.is_reduced()
@@ -386,7 +390,9 @@ impl Ui {
     /// [`Self::system_power_reduced`] at the frame's start, so no frame mixes two, and a move
     /// records every window again. Then every host starts a frame at most at 30 Hz, on whole
     /// refresh periods, input frames included
-    /// ([`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at)), and an app
+    /// ([`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at)),
+    /// transparency reduces and every [`Self::animate`] and theme transition snaps where its
+    /// preference follows the system, paint loops run on, and an app
     /// reads it to swap to cheaper paint, as Apple asks an app to reduce its activity in Low Power
     /// Mode (<https://developer.apple.com/documentation/foundation/processinfo/islowpowermodeenabled>).
     /// App-global.
@@ -1229,9 +1235,9 @@ impl Ui {
 
     /// Advance the animation row `request` names toward its target and return the current
     /// value, and whether the motion is at rest there. [`AnimationSpec::SNAP`] lands on the
-    /// target now, settled, and requests no repaint, as every spec does with motion reduced and
-    /// on the first frame after the window was hidden; a row it leaves goes at the end of the
-    /// frame.
+    /// target now, settled, and requests no repaint, as every spec does with motion reduced, under
+    /// reduced power where motion follows the system, and on the first frame after the window was
+    /// hidden; a row it leaves goes at the end of the frame.
     ///
     /// # Panics
     ///

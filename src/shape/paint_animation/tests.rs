@@ -400,7 +400,7 @@ fn hash_static_covers_channel_timing_and_curve() {
 /// from the first frame, and a decorative repeat, settling or not, goes.
 #[test]
 fn reduced_motion_keeps_progress_and_lands_decoration() {
-    let spinner = spinning(1.0).with_motion(PaintMotion::Progress);
+    let spinner = spinning(1.0).with_motion(PaintMotion::Essential);
     let kept = spinner.reduced().expect("progress runs");
     assert_eq!(
         (kept.channel, kept.timing),

@@ -3434,7 +3434,7 @@ widget::PaintCurve
 widget::PaintMotion
     enum PaintMotion: Clone, Copy, Debug, Default, Eq, PartialEq
         Decorative
-        Progress
+        Essential
 
 widget::PaintRange
     struct PaintRange: Clone, Copy, Debug, PartialEq

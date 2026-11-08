@@ -7,6 +7,7 @@ use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::shape::paint_animation::PaintAnimation;
+use crate::shape::paint_animation::PaintMotion;
 use crate::shape::paint_animation::PaintRepeat;
 use crate::shape::paint_animation::curves;
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
@@ -144,7 +145,8 @@ impl ViewState {
                 .with_period(BLINK_HALF * 2)
                 .with_steps(2)
                 .with_repeat(PaintRepeat::Settle(BLINK_STOP_AFTER_IDLE))
-                .with_curve(curves::square),
+                .with_curve(curves::square)
+                .with_motion(PaintMotion::Essential),
         )
     }
 }

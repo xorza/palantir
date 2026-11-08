@@ -3,7 +3,7 @@
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
 use crate::input::capture::DOUBLE_CLICK_INTERVAL;
-use crate::primitives::reduction::Reductions;
+use crate::primitives::reduction::{Reduction, Reductions};
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::ui_preferences::UiPreferences;
 use std::cell::Cell;
@@ -107,16 +107,39 @@ impl AppSettings {
     }
 
     /// The reductions every window runs under now: each preference resolved against the system's
-    /// report, the one place they are resolved. A frame fixes them at its start
-    /// (`FrameRuntime::reductions`).
+    /// report, the one place they are resolved. Reduced power also reduces transparency where its
+    /// preference follows the system, as Windows' Energy saver turns transparency effects off; a
+    /// pick by hand wins. A frame fixes them at its start (`FrameRuntime::reductions`).
     pub(crate) const fn reductions(&self) -> Reductions {
         let preferences = self.preferences();
         let system = self.system_reductions();
+        let power = self.power();
         Reductions {
-            transparency: preferences.transparency.resolve(system.transparency),
+            transparency: preferences.transparency.resolve(Reduction::of(
+                power.is_reduced() || system.transparency.is_reduced(),
+            )),
             motion: preferences.motion.resolve(system.motion),
-            power: preferences.power.resolve(system.power),
+            power,
         }
+    }
+
+    /// Whether value transitions run whole or snap: reduced with motion, and under reduced power
+    /// where the motion preference follows the system, so a state change costs one frame; a pick
+    /// of full motion by hand wins. Paint loops follow motion alone, and run on at reduced power's
+    /// 30 Hz. Resolved beside [`Self::reductions`], and a frame fixes both at its start.
+    pub(crate) const fn transitions(&self) -> Reduction {
+        let system = self.system_reductions();
+        self.preferences().motion.resolve(Reduction::of(
+            self.power().is_reduced() || system.motion.is_reduced(),
+        ))
+    }
+
+    /// The power use the preference and the system's report resolve to, which
+    /// [`Self::reductions`] and [`Self::transitions`] both follow.
+    const fn power(&self) -> Reduction {
+        self.preferences()
+            .power
+            .resolve(self.system_reductions().power)
     }
 
     pub(crate) const fn double_click_interval(&self) -> Duration {
@@ -267,5 +290,58 @@ mod tests {
             Reduction::Reduced,
             "a pick of reduced over a system with no saver mode"
         );
+    }
+
+    /// Reduced power reduces transparency, and snaps transitions, where their preference follows
+    /// the system, whichever side reduced the power; a pick by hand of either wins, full power
+    /// leaves them to the system, and paint motion never follows power. Each row: the system's
+    /// power, the power, motion and transparency picks, then the transitions, motion and
+    /// transparency that run, the system asking for neither.
+    #[test]
+    fn reduced_power_reduces_what_follows_the_system() {
+        use Preference::{Fixed, System};
+        use Reduction::{Full, Reduced};
+        let rows = [
+            (Full, System, System, System, Full, Full, Full),
+            (Reduced, System, System, System, Reduced, Full, Reduced),
+            (Full, Fixed(Reduced), System, System, Reduced, Full, Reduced),
+            (Reduced, Fixed(Full), System, System, Full, Full, Full),
+            (Reduced, System, Fixed(Full), System, Full, Full, Reduced),
+            (Reduced, System, System, Fixed(Full), Reduced, Full, Full),
+            (Full, System, Fixed(Reduced), System, Reduced, Reduced, Full),
+        ];
+        for (
+            row,
+            (
+                system_power,
+                power,
+                motion,
+                transparency,
+                transitions,
+                want_motion,
+                want_transparency,
+            ),
+        ) in rows.into_iter().enumerate()
+        {
+            let settings = AppSettings::default();
+            settings.set_system_reductions(Reductions {
+                transparency: Full,
+                motion: Full,
+                power: system_power,
+            });
+            settings.set_preferences(UiPreferences {
+                scheme: System,
+                motion,
+                transparency,
+                power,
+            });
+            let reductions = settings.reductions();
+            assert_eq!(settings.transitions(), transitions, "row {row} transitions");
+            assert_eq!(reductions.motion, want_motion, "row {row} motion");
+            assert_eq!(
+                reductions.transparency, want_transparency,
+                "row {row} transparency"
+            );
+        }
     }
 }

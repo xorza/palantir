@@ -281,6 +281,12 @@ driver serves that command alone; the drive table's `version` names it
   "on battery" alone, which overrides a person who chose no saver mode (Chrome's trigger); a
   palantir battery threshold, a rule the person never set; a three-level enum whose middle level
   only Windows reports.
+- **Reduced power turns transparency off and snaps transitions**, where their preference follows
+  the system, a pick by hand winning; paint loops run on at its 30 Hz. A blur and a transition's
+  frames are work a power-saver mode asks to save, as Windows' Energy saver turns transparency
+  effects off, while a loop shows what the content is, as WebKit keeps animations running at 30 fps
+  in Low Power Mode. Refused: reduced motion under power, which stops a loop a person needs, as a
+  turning page under a pane; no reduction past the frame rate, which blurs and transitions on.
 - **Reduced power starts a frame at most at 30 Hz**, input frames included, on a grid of whole
   refresh periods so each frame lands on a vsync, as WebKit limits its rendering update in Low
   Power Mode ([WebKit bug 215745](https://bugs.webkit.org/show_bug.cgi?id=215745)). Each frame

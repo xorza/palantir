@@ -120,7 +120,7 @@ impl<'a> Spinner<'a> {
                     PaintAnimation::turn(0.0, 1.0)
                         .with_period(period)
                         .with_repeat(PaintRepeat::Forever)
-                        .with_motion(PaintMotion::Progress),
+                        .with_motion(PaintMotion::Essential),
                 );
             })
             .response
