@@ -9,6 +9,7 @@
 - md viewer
 - custom shaders for backgrounds
 - power saver to mundy
+- disable animations and build-in backdrops on lowpower
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
