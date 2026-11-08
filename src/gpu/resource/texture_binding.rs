@@ -1,5 +1,9 @@
-//! [`TextureBinding`]: the texture-plus-sampler group every texture-sampling shader binds.
+//! [`TextureBinding`]: the texture-plus-sampler group every texture-sampling shader binds, and the
+//! group of an effect's images.
 
+use std::array;
+
+use crate::effect::MAX_IMAGE_SLOTS;
 use crate::gpu::device::gpu::Gpu;
 
 /// How a shader reads a texture: through a filtering sampler, or texel by texel, which a format
@@ -16,6 +20,12 @@ pub(crate) enum Filtering {
 #[derive(Clone, Debug)]
 pub(crate) struct TextureBinding {
     layout: wgpu::BindGroupLayout,
+    /// An effect's image group for each count of slots from 1: the sampler at binding 0, then each
+    /// image at the binding after, as `effect/contract.rs` declares them. One group for all of a
+    /// draw's images, as a material's textures share one (Toji, "WebGPU Bind Group best
+    /// practices"), so a draw binds them at once and an effect needs two groups of the four the
+    /// baseline grants. Refused: a group per image, which needs five.
+    images: [wgpu::BindGroupLayout; MAX_IMAGE_SLOTS as usize],
     /// Linear within a mip, nearest between, clamped on all axes. Safe because no user passes a coordinate outside `0..1`: the gradient shader applies [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t` first and the image shader `fract`s uv under `FLAG_TILED`. Nearest image filtering is a shader-side snap, so all filters ride this sampler.
     sampler: wgpu::Sampler,
 }
@@ -29,11 +39,62 @@ impl TextureBinding {
                 entries: &[texture_entry(0, Filtering::Filtered), sampler_entry(1)],
             });
         let sampler = sampler(gpu, "palantir.texture.sampler");
-        Self { layout, sampler }
+        let images = array::from_fn(|idx| {
+            let entries: Vec<wgpu::BindGroupLayoutEntry> = [sampler_entry(0)]
+                .into_iter()
+                .chain(
+                    (1..=idx as u32 + 1).map(|binding| texture_entry(binding, Filtering::Filtered)),
+                )
+                .collect();
+            gpu.device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("palantir.effect.images.bgl"),
+                    entries: &entries,
+                })
+        });
+        Self {
+            layout,
+            images,
+            sampler,
+        }
     }
 
     pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
+    }
+
+    /// The layout of an effect's image group of `slots` images, from 1.
+    pub(crate) fn images_layout(&self, slots: u8) -> &wgpu::BindGroupLayout {
+        assert!(
+            (1..=MAX_IMAGE_SLOTS).contains(&slots),
+            "an image group holds 1 to {MAX_IMAGE_SLOTS} images, not {slots}"
+        );
+        &self.images[usize::from(slots) - 1]
+    }
+
+    /// The group binding `views`, an effect draw's images in slot order, through its layout and
+    /// this sampler.
+    pub(crate) fn images_group(&self, gpu: &Gpu, views: &[&wgpu::TextureView]) -> wgpu::BindGroup {
+        let layout = self.images_layout(u8::try_from(views.len()).expect("at most 4 images"));
+        let entries: Vec<wgpu::BindGroupEntry<'_>> = [wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Sampler(&self.sampler),
+        }]
+        .into_iter()
+        .chain(
+            (1..)
+                .zip(views)
+                .map(|(binding, view)| wgpu::BindGroupEntry {
+                    binding,
+                    resource: wgpu::BindingResource::TextureView(view),
+                }),
+        )
+        .collect();
+        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("palantir.effect.images.bg"),
+            layout,
+            entries: &entries,
+        })
     }
 
     /// The group binding `view` through this layout and sampler.

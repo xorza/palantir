@@ -111,6 +111,8 @@ pub(crate) enum ShapeRecord {
         corners: Corners,
         effect: EffectId,
         params: Span,
+        /// Into `RecordStore::effect_images`.
+        images: Span,
         content_hash: ContentHash,
     },
     /// Native GPU stroke: a cubic Bézier or exact circular arc, per [`CurveBasis`] (quadratics promote to cubic, lines degenerate; see `CurveShape`'s lowering). Owner-local, no joins. `bbox` is the tight centerline AABB.
@@ -355,6 +357,7 @@ impl ShapeRecord {
                 content_hash,
                 effect: _,
                 params: _,
+                images: _,
             } => {
                 hash_optional_rect(*local_rect, &mut h);
                 corners.hash(&mut h);

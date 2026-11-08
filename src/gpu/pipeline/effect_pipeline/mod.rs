@@ -2,9 +2,13 @@
 //! of one effect through that effect's own pipeline. The pipelines live in the
 //! [`WgpuEffectStore`], which builds them as each effect loads.
 
+use std::array;
 use std::mem::offset_of;
 
 use crate::common::span::Span;
+use crate::effect::MAX_IMAGE_SLOTS;
+use crate::effect::contract::IMAGES_GROUP;
+use crate::effect::effect_store::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
@@ -12,20 +16,25 @@ use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
+use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::primitives::identity::effect_id::EffectId;
+use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 
-/// The layouts every effect's pipeline builds over: the parameter words at group 0, and the
-/// immediates every pipeline declares.
+/// The layouts every effect's pipeline builds over: the parameter words at group 0, the images
+/// at [`IMAGES_GROUP`] for an effect that binds any, and the immediates every pipeline declares.
 #[derive(Debug)]
 pub(crate) struct EffectLayouts {
     group: wgpu::BindGroupLayout,
-    pipeline: wgpu::PipelineLayout,
+    /// At each count of image slots, from 0.
+    pipelines: [wgpu::PipelineLayout; MAX_IMAGE_SLOTS as usize + 1],
 }
 
 impl EffectLayouts {
-    pub(crate) fn new(gpu: &Gpu) -> Self {
+    pub(crate) fn new(gpu: &Gpu, binding: &TextureBinding) -> Self {
         let group = gpu
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -41,8 +50,15 @@ impl EffectLayouts {
                     count: None,
                 }],
             });
-        let pipeline = pipeline_recipe::pipeline_layout(gpu, "palantir.effect.pl", &[Some(&group)]);
-        Self { group, pipeline }
+        let pipelines = array::from_fn(|slots| match u8::try_from(slots).unwrap() {
+            0 => pipeline_recipe::pipeline_layout(gpu, "palantir.effect.pl", &[Some(&group)]),
+            slots => pipeline_recipe::pipeline_layout(
+                gpu,
+                "palantir.effect.images.pl",
+                &[Some(&group), Some(binding.images_layout(slots))],
+            ),
+        });
+        Self { group, pipelines }
     }
 }
 
@@ -94,11 +110,12 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
     &INSTANCE_ATTRS,
 );
 
-/// The effect at `idx`, from its module `text`, against `format`, with its rounded-clip twin.
+/// The effect at `idx`, from `module`, over the layout of its image slots, against `format`, with
+/// its rounded-clip twin.
 pub(crate) fn build(
     gpu: &Gpu,
     layouts: &EffectLayouts,
-    text: &str,
+    module: &EffectModule,
     format: wgpu::TextureFormat,
     idx: usize,
 ) -> StencilVariant {
@@ -107,7 +124,7 @@ pub(crate) fn build(
         .device
         .create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(&label),
-            source: wgpu::ShaderSource::Wgsl(text.into()),
+            source: wgpu::ShaderSource::Wgsl(module.text.as_str().into()),
         });
     let recipe = PipelineRecipe {
         vertex_entry: "palantir_vs",
@@ -115,7 +132,12 @@ pub(crate) fn build(
         vertex_buffers: &[Some(INSTANCE_LAYOUT)],
         topology: wgpu::PrimitiveTopology::TriangleStrip,
         blend: Some(BLEND),
-        ..PipelineRecipe::color(&label, &shader, &layouts.pipeline, format)
+        ..PipelineRecipe::color(
+            &label,
+            &shader,
+            &layouts.pipelines[usize::from(module.image_slots)],
+            format,
+        )
     };
     let mut variant = StencilVariant::NONE;
     variant.ensure(gpu, StencilMode::Off, &recipe);
@@ -124,12 +146,14 @@ pub(crate) fn build(
 }
 
 /// One frame's effects: their instances, their parameter words, the group the words bind
-/// through, and the frame's format's pipelines, copied from the store as they change, so a pass
-/// binds them for as long as it records.
+/// through, each draw's images, and the frame's format's pipelines, copied from the store as they
+/// change, so a pass binds them for as long as it records.
 #[derive(Debug)]
 pub(crate) struct EffectPipeline {
     instances: DynamicBuffer<EffectInstance>,
     words: DynamicBuffer<u32>,
+    /// Each draw's images this frame, at its index; scratch kept across frames.
+    images: Vec<EffectImages>,
     /// Bound over `words`; made again when the buffer grows or shrinks.
     group: Option<wgpu::BindGroup>,
     group_capacity: usize,
@@ -145,17 +169,22 @@ struct PipelinesCopy {
     revision: u64,
 }
 
-/// One batch of effect draws: the frame's per-draw effect column and this batch's slice of it.
+/// One batch of effect draws: the frame's per-draw effect column, this batch's slice of it, and
+/// the groups the draws bind their images through.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
     pub(crate) ids: &'a [EffectId],
     pub(crate) items: Span,
+    pub(crate) groups: &'a EffectImageGroups,
 }
 
-/// What one frame uploads.
+/// What one frame uploads: each draw's instance and the span of its images in `textures`, the
+/// record store's image column, and the parameter words.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectUpload<'a> {
     pub(crate) instances: &'a [EffectInstance],
+    pub(crate) images: &'a [Span],
+    pub(crate) textures: &'a [TextureId],
     pub(crate) words: &'a [u32],
     pub(crate) format: wgpu::TextureFormat,
 }
@@ -165,6 +194,7 @@ impl EffectPipeline {
         Self {
             instances: DynamicBuffer::vertex(gpu, "palantir.effect.instances", 4),
             words: DynamicBuffer::storage(gpu, "palantir.effect.words", 64),
+            images: Vec::new(),
             group: None,
             group_capacity: 0,
             copied: None,
@@ -172,16 +202,33 @@ impl EffectPipeline {
         }
     }
 
-    /// Upload the frame's instances and words, and copy the format's pipelines where the store
-    /// built since.
+    /// Upload the frame's instances and words, note each draw's images with the image store,
+    /// which makes the group of a set first drawn, and copy the format's pipelines where the
+    /// store built since.
     pub(crate) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        store: &WgpuEffectStore,
+        stores: EffectStores<'_>,
         upload: EffectUpload<'_>,
     ) {
         self.instances.upload_instances(ctx, upload.instances);
         self.words.upload_instances(ctx, upload.words);
+        self.images.clear();
+        self.images.extend(
+            upload
+                .images
+                .iter()
+                .map(|span| EffectImages::new(&upload.textures[span.range()])),
+        );
+        // Neighbors share a set as a run of draws does, so each run notes its set once.
+        stores.images.ensure_effect_groups(
+            self.images
+                .chunk_by(|a, b| a == b)
+                .map(|run| run[0])
+                .filter(|set| !set.ids().is_empty()),
+            ctx.frame,
+        );
+        let store = stores.effects;
         let read = store.read();
         if self.group.is_none() || self.words.capacity() != self.group_capacity {
             self.group = Some(
@@ -211,22 +258,42 @@ impl EffectPipeline {
         }
     }
 
-    /// Draw one batch, one `draw` per run of instances of one effect.
+    /// Draw one batch, one `draw` per run of instances of one effect over one set of images. A
+    /// run whose image is not on the device is skipped, as an image draw is.
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
         stencil: StencilMode,
-        EffectBatch { ids, items }: EffectBatch<'_>,
+        EffectBatch { ids, items, groups }: EffectBatch<'_>,
     ) {
         let group = self
             .group
             .as_ref()
             .expect("a frame uploads before it draws");
         rec.vertex(0, &self.instances.buffer);
-        for run in Runs::new(items, |i| ids[i as usize]) {
-            rec.pipeline(self.pipelines[run.key.idx()].select(stencil));
+        for run in Runs::new(items, |i| (ids[i as usize], self.images[i as usize])) {
+            let (effect, images) = run.key;
+            let images_group = if images.ids().is_empty() {
+                None
+            } else {
+                let Some(images_group) = groups.get(&images) else {
+                    continue;
+                };
+                Some(images_group)
+            };
+            rec.pipeline(self.pipelines[effect.idx()].select(stencil));
             rec.group(0, group);
+            if let Some(images_group) = images_group {
+                rec.group_once(IMAGES_GROUP, images_group);
+            }
             rec.draw(0..4, run.instances.u32_range());
         }
     }
+}
+
+/// The two stores an effect upload reads: the effects' pipelines and the images' textures.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EffectStores<'a> {
+    pub(crate) effects: &'a WgpuEffectStore,
+    pub(crate) images: &'a WgpuImageStore,
 }

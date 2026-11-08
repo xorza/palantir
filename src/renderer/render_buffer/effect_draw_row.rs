@@ -5,16 +5,18 @@
     reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
 )]
 
+use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
 use soa_rs::Soars;
 
 /// One effect draw row. SoA storage lets the backend upload `rows.instance()` in one write; `id`
-/// picks the effect's pipeline.
+/// picks the effect's pipeline, and `images` its images in the record store's image column.
 #[derive(Soars, Clone, Copy, Debug, PartialEq)]
 #[soa_derive(Debug)]
 pub(crate) struct EffectDrawRow {
     pub(crate) id: EffectId,
+    pub(crate) images: Span,
     pub(crate) instance: EffectInstance,
 }
 

@@ -47,6 +47,12 @@ pub enum EffectError {
         /// The slots asked for.
         slots: u8,
     },
+    /// The WGSL declares a binding of its own: palantir binds every resource an effect reads, an
+    /// image through a slot ([`EffectSource::image_slots`](crate::EffectSource::image_slots)).
+    Binding {
+        /// The bound variable's name.
+        name: String,
+    },
 }
 
 /// How `effect`'s signature departs from the contract.
@@ -129,6 +135,10 @@ impl fmt::Display for EffectError {
             Self::TooManyImageSlots { slots } => write!(
                 f,
                 "the effect asks for {slots} image slots, past the {MAX_IMAGE_SLOTS} an effect binds"
+            ),
+            Self::Binding { name } => write!(
+                f,
+                "the effect's WGSL binds `{name}` itself, where palantir binds every resource"
             ),
         }
     }

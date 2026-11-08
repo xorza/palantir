@@ -398,6 +398,7 @@ impl PlaneCtx<'_, '_> {
                 corners,
                 effect,
                 params,
+                images,
                 content_hash: _,
             } => out.draw(
                 DrawEffectPayload {
@@ -405,6 +406,7 @@ impl PlaneCtx<'_, '_> {
                     corners: *corners,
                     effect: *effect,
                     params: *params,
+                    images: *images,
                     opacity: 1.0,
                     time: paint_mod.time,
                 },

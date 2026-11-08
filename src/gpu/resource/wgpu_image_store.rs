@@ -2,6 +2,7 @@
 //! freed as the registry asks.
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
@@ -40,6 +41,8 @@ struct AttachedStore {
     /// The device's group-0 layout and sampler, which an image's group binds through.
     binding: TextureBinding,
     textures: FxHashMap<TextureId, ImageTexture>,
+    /// The groups effect draws bind these textures through.
+    effect_groups: EffectImageGroups,
     /// Staging for [`premultiply_into`], reused across updates and held to [`STAGED_BYTES`]: a
     /// translucent image is premultiplied and written a band of rows at a time. Opaque images skip
     /// it ([`WgpuImageStore::write`]).
@@ -49,6 +52,8 @@ struct AttachedStore {
 #[derive(Debug)]
 pub(crate) struct ImageTexture {
     texture: wgpu::Texture,
+    /// The whole texture, which `bind_group` and each effect's image group bind.
+    view: wgpu::TextureView,
     pub(crate) bind_group: wgpu::BindGroup,
 }
 
@@ -78,8 +83,41 @@ impl WgpuImageStore {
             gpu: gpu.clone(),
             binding,
             textures: FxHashMap::default(),
+            effect_groups: EffectImageGroups::default(),
             staged: Vec::new(),
         });
+    }
+
+    /// Note that display frame `frame` draws each set of `images`, making the group of each set
+    /// first drawn, before the pass that binds them.
+    pub(crate) fn ensure_effect_groups(
+        &self,
+        images: impl IntoIterator<Item = EffectImages>,
+        frame: u64,
+    ) {
+        let mut attached = self.attached_mut();
+        let AttachedStore {
+            gpu,
+            binding,
+            textures,
+            effect_groups,
+            staged: _,
+        } = &mut *attached;
+        for set in images {
+            effect_groups.ensure(set, frame, || {
+                let views: Option<Vec<&wgpu::TextureView>> = set
+                    .ids()
+                    .iter()
+                    .map(|id| textures.get(id).map(|texture| &texture.view))
+                    .collect();
+                Some(binding.images_group(gpu, &views?))
+            });
+        }
+    }
+
+    /// The groups effect draws bind their images through, one borrow per render traversal.
+    pub(crate) fn read_effect_groups(&self) -> Ref<'_, EffectImageGroups> {
+        Ref::map(self.attached(), |attached| &attached.effect_groups)
     }
 
     /// One borrow per render traversal, avoiding a `RefCell` probe per run.
@@ -118,6 +156,7 @@ fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> Im
     let bind_group = binding.bind_group(gpu, &view, &bind_group_label);
     ImageTexture {
         texture,
+        view,
         bind_group,
     }
 }
@@ -131,6 +170,7 @@ impl ImageStore for WgpuImageStore {
             gpu,
             binding,
             textures,
+            effect_groups: _,
             staged,
         } = &mut *attached;
         let entry = textures
@@ -183,7 +223,9 @@ impl ImageStore for WgpuImageStore {
     }
 
     fn free(&self, id: TextureId) {
-        self.attached_mut().textures.remove(&id);
+        let mut attached = self.attached_mut();
+        attached.textures.remove(&id);
+        attached.effect_groups.forget(id);
     }
 }
 

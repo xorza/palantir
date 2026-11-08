@@ -2,14 +2,15 @@
 
 use std::cell::{Ref, RefCell};
 
-use crate::effect::effect_store::EffectStore;
+use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::effect_id::EffectId;
 
 /// The [`EffectStore`] a host's registry loads through and its backend draws from. It keeps each
-/// effect's module text, so a new swapchain format or a new device builds every effect again, and
+/// effect's module, so a new swapchain format or a new device builds every effect again, and
 /// builds at the load, not at the first draw, which would stutter on a first press: the reason
 /// Flutter wrote Impeller.
 ///
@@ -22,8 +23,8 @@ pub(crate) struct WgpuEffectStore {
 
 #[derive(Debug, Default)]
 struct StoreState {
-    /// Each loaded effect's module text, at its id.
-    texts: Vec<String>,
+    /// Each loaded effect's module, at its id.
+    modules: Vec<EffectModule>,
     /// `None` until the first attach.
     attached: Option<AttachedEffects>,
     /// Moves with every build, so a reader of [`AttachedEffects::pipelines`] knows to copy again.
@@ -42,14 +43,15 @@ pub(crate) struct AttachedEffects {
 }
 
 impl WgpuEffectStore {
-    /// Build on `gpu` from now on: every loaded effect again, for no format yet, as the backend
-    /// names each one it draws to ([`Self::ensure_format`]).
-    pub(crate) fn attach(&self, gpu: &Gpu) {
+    /// Build on `gpu` from now on, binding images through `binding`, the device's: every loaded
+    /// effect again, for no format yet, as the backend names each one it draws to
+    /// ([`Self::ensure_format`]).
+    pub(crate) fn attach(&self, gpu: &Gpu, binding: &TextureBinding) {
         let mut state = self.state.borrow_mut();
-        let pipelines = state.texts.iter().map(|_| Vec::new()).collect();
+        let pipelines = state.modules.iter().map(|_| Vec::new()).collect();
         state.attached = Some(AttachedEffects {
             gpu: gpu.clone(),
-            layouts: EffectLayouts::new(gpu),
+            layouts: EffectLayouts::new(gpu, binding),
             formats: Vec::new(),
             pipelines,
         });
@@ -60,7 +62,7 @@ impl WgpuEffectStore {
     pub(crate) fn ensure_format(&self, format: wgpu::TextureFormat) {
         let mut state = self.state.borrow_mut();
         let StoreState {
-            texts,
+            modules,
             attached,
             revision,
         } = &mut *state;
@@ -69,8 +71,9 @@ impl WgpuEffectStore {
             return;
         }
         attached.formats.push(format);
-        for (idx, text) in texts.iter().enumerate() {
-            let built = effect_pipeline::build(&attached.gpu, &attached.layouts, text, format, idx);
+        for (idx, module) in modules.iter().enumerate() {
+            let built =
+                effect_pipeline::build(&attached.gpu, &attached.layouts, module, format, idx);
             attached.pipelines[idx].push(built);
         }
         *revision += 1;
@@ -108,28 +111,34 @@ impl AttachedEffects {
 const ATTACHED: &str = "the host attaches a device before it draws or loads an effect";
 
 impl EffectStore for WgpuEffectStore {
-    fn load(&self, id: EffectId, wgsl: &str) {
+    fn load(&self, id: EffectId, module: &EffectModule) {
         let mut state = self.state.borrow_mut();
         let StoreState {
-            texts,
+            modules,
             attached,
             revision,
         } = &mut *state;
         debug_assert!(
-            id.idx() <= texts.len(),
+            id.idx() <= modules.len(),
             "the registry hands out ids in order"
         );
-        if id.idx() == texts.len() {
-            texts.push(wgsl.to_owned());
+        if id.idx() == modules.len() {
+            modules.push(module.clone());
         } else {
-            wgsl.clone_into(&mut texts[id.idx()]);
+            module.clone_into(&mut modules[id.idx()]);
         }
         if let Some(attached) = attached {
             let built: Vec<StencilVariant> = attached
                 .formats
                 .iter()
                 .map(|&format| {
-                    effect_pipeline::build(&attached.gpu, &attached.layouts, wgsl, format, id.idx())
+                    effect_pipeline::build(
+                        &attached.gpu,
+                        &attached.layouts,
+                        module,
+                        format,
+                        id.idx(),
+                    )
                 })
                 .collect();
             if id.idx() == attached.pipelines.len() {

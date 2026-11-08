@@ -67,7 +67,9 @@ use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
-use crate::gpu::pipeline::effect_pipeline::{EffectBatch, EffectPipeline, EffectUpload};
+use crate::gpu::pipeline::effect_pipeline::{
+    EffectBatch, EffectPipeline, EffectStores, EffectUpload,
+};
 use crate::gpu::pipeline::format_pipelines::{
     FormatPipelines, PassPipelines, PipelineCensus, Programs,
 };
@@ -852,9 +854,14 @@ impl WgpuBackend {
         self.programs.curve.upload(&mut ctx, &buffer.curves);
         self.programs.effect.upload(
             &mut ctx,
-            &self.effect_store,
+            EffectStores {
+                effects: &self.effect_store,
+                images: &self.image_store,
+            },
             EffectUpload {
                 instances: buffer.effects.instance(),
+                images: buffer.effects.images(),
+                textures: &store.effect_images,
                 words: &store.effect_params,
                 format: format.get(),
             },
@@ -1062,6 +1069,7 @@ impl WgpuBackend {
         let draw = ctx.draw;
         let buffer = draw.buffer;
         let images = self.image_store.read();
+        let effect_groups = self.image_store.read_effect_groups();
         let textures = ImageTextures {
             images: &images,
             targets: &self.gpu_view_targets,
@@ -1155,6 +1163,7 @@ impl WgpuBackend {
                             EffectBatch {
                                 ids: buffer.effects.id(),
                                 items: items(),
+                                groups: &effect_groups,
                             },
                         ),
                     }

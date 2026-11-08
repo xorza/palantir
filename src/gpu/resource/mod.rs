@@ -1,9 +1,10 @@
 //! Device resources the pipelines draw from: buffers, texture bindings and
-//! uploads, registered images, the gradient atlas, the packed atlases, and `GpuView` targets.
+//! uploads, registered images and the groups effects bind them through, the gradient atlas, the packed atlases, and `GpuView` targets.
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod dynamic_buffer;
+pub(crate) mod effect_image_groups;
 pub(crate) mod expiry_window;
 pub(crate) mod gpu_gradient_atlas;
 pub(crate) mod gpu_view_targets;

@@ -420,6 +420,7 @@ impl PaintSink for ComposeSession<'_> {
         let scale = self.composer.transform.physical_scale();
         self.out.effects.push(EffectDrawRow {
             id: p.effect,
+            images: p.images,
             instance: EffectInstance {
                 rect: physical,
                 corners: p.corners.fit_to(physical.size, scale).to_array(),

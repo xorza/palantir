@@ -537,7 +537,8 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
 /// `(10, 12, 20, 16)`; its corners `(4, 6, 6, 4)` doubled to `(8, 12, 12, 8)`, then fitted as CSS
 /// fits them: the right side's two 12s sum 24 against its 16 px, so every radius scales by
 /// `16 / 24`, to `(5.33, 8, 8, 5.33)`, 5.33 as the f16 lane holds it, 5.3320313; its parameters'
-/// first word; the fade a paint animation gave it, 0.5; the scale; and its time, 1.25 s.
+/// first word; its images' span; the fade a paint animation gave it, 0.5; the scale; and its time,
+/// 1.25 s.
 #[test]
 fn an_effect_lands_as_one_physical_row() {
     let buf = run(
@@ -548,6 +549,7 @@ fn an_effect_lands_as_one_physical_row() {
                     corners: Corners::new(4.0, 6.0, 6.0, 4.0),
                     effect: EffectId(3),
                     params: Span::new(12, 8),
+                    images: Span::new(4, 2),
                     opacity: 1.0,
                     time: 1.25,
                 },
@@ -560,6 +562,7 @@ fn an_effect_lands_as_one_physical_row() {
     assert_eq!(buf.batches(PaintTier::Effect).len(), 1);
     assert_eq!(buf.batches(PaintTier::Effect)[0].items, Span::new(0, 1));
     assert_eq!(buf.effects.id()[0], EffectId(3));
+    assert_eq!(buf.effects.images()[0], Span::new(4, 2));
     let instance = buf.effects.instance()[0];
     assert_eq!(instance.rect, Rect::new(10.0, 12.0, 20.0, 16.0));
     assert_eq!(instance.corners, [5.332_031_3, 8.0, 8.0, 5.332_031_3]);

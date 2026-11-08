@@ -1137,6 +1137,18 @@ pub(crate) mod internals {
             }
         }
 
+        /// The groups effect draws bind their images through, one per set of images kept.
+        pub(crate) fn effect_image_groups(&self) -> usize {
+            match &self.paint {
+                HarnessPaint::Gpu { device, .. } => {
+                    device.backend().image_store().read_effect_groups().len()
+                }
+                HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
+                    panic!("a harness below Depth::Gpu binds no image")
+                }
+            }
+        }
+
         /// A window of `size` that shapes with the mono fallback, whose metrics this crate's
         /// tests compute by hand.
         pub(crate) fn mono(size: UVec2) -> Self {

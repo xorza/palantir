@@ -748,6 +748,7 @@ EffectError
         ParamLayout(ParamMismatch)
         ParamsTooLarge { size: usize }
         TooManyImageSlots { slots: u8 }
+        Binding { name: String }
 
 EffectKind
     trait EffectKind: Kind
@@ -3268,6 +3269,7 @@ widget::CurveShape
 
 widget::EffectShape
     struct EffectShape<U: EffectParams>: Debug, Lower (blanket)
+        pub fn images<const N: usize>(self, images: [ImageHandle; N]) -> Self
         pub const fn at(self, rect: Rect) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
 

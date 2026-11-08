@@ -1,11 +1,14 @@
 //! The effect contract: the declarations that follow the app's WGSL, palantir's stages around it,
 //! and the checks an effect passes before it loads.
 
+use std::fmt::Write as _;
+
 use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 
 use crate::effect::effect_params::{EffectParam, ParamType};
+use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
@@ -34,31 +37,82 @@ pub(crate) struct ParamsLayout {
     pub(crate) size: usize,
 }
 
-/// The complete module palantir compiles for `wgsl`: the app's text, the contract and palantir's
-/// stages, once the app's text parses and validates with the contract, its `effect` takes the
-/// contract's arguments, and its parameter struct matches `params`.
+/// The group an effect's images bind at, past the parameter words at group 0.
+pub(crate) const IMAGES_GROUP: u32 = 1;
+
+/// The complete module palantir compiles for `wgsl`: the app's text, the contract with its
+/// `image_slots` images, and palantir's stages, once the app's text parses and validates with the
+/// contract, declares no binding of its own, its `effect` takes the contract's arguments, and its
+/// parameter struct matches `params`.
 pub(crate) fn check(
     wgsl: &str,
     params: ParamsLayout,
     image_slots: u8,
-) -> Result<String, EffectError> {
+) -> Result<EffectModule, EffectError> {
     if image_slots > MAX_IMAGE_SLOTS {
         return Err(EffectError::TooManyImageSlots { slots: image_slots });
     }
     if params.size > MAX_PARAMS_SIZE {
         return Err(EffectError::ParamsTooLarge { size: params.size });
     }
-    let app = parse_and_validate(format!("{wgsl}\n{CONTRACT}"), Capabilities::default())?;
+    let contract = format!("{CONTRACT}{}", images(image_slots));
+    let app = parse_and_validate(format!("{wgsl}\n{contract}"), Capabilities::default())?;
+    check_bindings(&app.module, image_slots)?;
     let params_struct = check_entry(&app.module, params)?;
     let full = format!(
-        "{ENABLE}{wgsl}\n{CONTRACT}{}",
+        "{ENABLE}{wgsl}\n{contract}{}",
         wrapper(params_struct.as_deref(), params.fields)
     );
     let full = parse_and_validate(
         full,
         Capabilities::default() | Capabilities::DUAL_SOURCE_BLENDING | Capabilities::IMMEDIATES,
     )?;
-    Ok(full.text)
+    Ok(EffectModule {
+        text: full.text,
+        image_slots,
+    })
+}
+
+/// The contract's image declarations for `slots` images: the sampler at binding 0 of
+/// [`IMAGES_GROUP`], then `effect_image0` and on, each at the binding after.
+fn images(slots: u8) -> String {
+    if slots == 0 {
+        return String::new();
+    }
+    let mut out = format!(
+        "\n// The sampler every image reads through: linear, clamped to the edge.\n\
+         @group({IMAGES_GROUP}) @binding(0) var effect_sampler: sampler;\n\
+         // The shape's images, in the order it binds them; a sample is linear, premultiplied.\n"
+    );
+    for slot in 0..slots {
+        writeln!(
+            out,
+            "@group({IMAGES_GROUP}) @binding({}) var effect_image{slot}: texture_2d<f32>;",
+            slot + 1
+        )
+        .expect("a `String` takes every write");
+    }
+    out
+}
+
+/// Refuse a binding the app's text declares: palantir binds every resource an effect reads, its
+/// images through the contract's `slots`, so a binding of the app's own matches no layout. The
+/// contract's own are known by name, which no app declares again, as WGSL refuses a second
+/// declaration of one name.
+fn check_bindings(module: &Module, slots: u8) -> Result<(), EffectError> {
+    let contract = |name: &str| {
+        slots > 0 && name == "effect_sampler"
+            || (0..slots).any(|slot| name == format!("effect_image{slot}"))
+    };
+    let own = module.global_variables.iter().find(|(_, global)| {
+        global.binding.is_some() && !global.name.as_deref().is_some_and(contract)
+    });
+    match own {
+        Some((_, global)) => Err(EffectError::Binding {
+            name: global.name.clone().unwrap_or_default(),
+        }),
+        None => Ok(()),
+    }
 }
 
 /// A text naga parsed and validated, with its module.

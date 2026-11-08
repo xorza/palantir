@@ -1,22 +1,25 @@
 //! Loading effects: the derive's layout, each refusal, a replacing load, a refused reload, and a
 //! name used with other types; the time each frame reads, reduced motion and the power-saver
-//! alternative; on a device, each blend, a clip, a recovery, a reload and the time.
+//! alternative; on a device, each blend, a clip, a recovery, a reload, the time and the images.
 
 use std::error;
 
 use glam::UVec2;
 use std::time::Duration;
 
+use crate::effect::contract::{self, ParamsLayout};
 use crate::effect::effect_kind::{BackdropEffect, ColorEffect};
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::{EffectParam, EffectParams, ParamType};
 use crate::effect::effect_registry::{EffectRegistry, PowerSaverName};
 use crate::effect::effect_source::{EffectSource, PowerSaverPaint};
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::gpu::test_gpu::isolated_headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
+use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::paint_capture::PaintCall;
 use crate::internals::panic_probe::assert_panics_with;
 use crate::primitives::geometry::corners::Corners;
@@ -27,6 +30,8 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::image::Image;
 use crate::shape::Shape;
 use crate::shape::paint_animation::{PaintAnimation, PaintMotion, PaintRepeat};
 use crate::ui::Ui;
@@ -119,7 +124,7 @@ fn a_matching_effect_loads() {
 }
 
 /// Each refusal its own case: text that does not parse, a module that does not validate, no
-/// `effect`, each signature departure, too many image slots.
+/// `effect`, each signature departure, too many image slots, a binding of the app's own.
 #[test]
 fn each_refusal_is_its_own_case() {
     let parse = load("fn effect(").unwrap_err();
@@ -202,6 +207,79 @@ fn each_refusal_is_its_own_case() {
             )
             .is_ok()
     );
+
+    let own = format!(
+        "{RING_PARAMS}
+        @group(2) @binding(0) var other: texture_2d<f32>;
+        {RING_ENTRY}"
+    );
+    let binding = load(&own).unwrap_err();
+    assert!(
+        matches!(&binding, EffectError::Binding { name } if name == "other"),
+        "{binding:?}"
+    );
+    assert_eq!(
+        binding.to_string(),
+        "the effect's WGSL binds `other` itself, where palantir binds every resource"
+    );
+    // A name like a slot's binds of its own past the slots declared: no slot here, so neither
+    // the sampler nor `effect_image0` is the contract's.
+    for name in ["effect_image0", "effect_sampler"] {
+        let ty = if name == "effect_sampler" {
+            "sampler"
+        } else {
+            "texture_2d<f32>"
+        };
+        let posing = format!(
+            "{RING_PARAMS}
+            @group(1) @binding(3) var {name}: {ty};
+            {RING_ENTRY}"
+        );
+        assert!(
+            matches!(load(&posing), Err(EffectError::Binding { name: got }) if got == name),
+            "{name}"
+        );
+    }
+}
+
+/// A source of `n` image slots declares the sampler at binding 0 of group 1 and `effect_image0` to
+/// `effect_image{n-1}` at bindings 1 to `n`: two slots read `effect_image1`, and the module
+/// carries both declarations and the slot count; `effect_image2` is no name with two slots, and
+/// `effect_sampler` none with no slot.
+#[test]
+fn image_slots_declare_their_images() {
+    let params = ParamsLayout {
+        fields: Ring::FIELDS,
+        size: size_of::<Ring>(),
+    };
+    let sampling = |image: &str| {
+        ring_wgsl(
+            RING_PARAMS,
+            &format!(
+                "fn effect(input: EffectInput, params: Params) -> EffectOutput {{
+                    return effect_over(textureSample({image}, effect_sampler, input.pos / input.size));
+                }}"
+            ),
+        )
+    };
+    let module = contract::check(&sampling("effect_image1"), params, 2).unwrap();
+    assert_eq!(module.image_slots, 2);
+    for line in [
+        "@group(1) @binding(0) var effect_sampler: sampler;",
+        "@group(1) @binding(1) var effect_image0: texture_2d<f32>;",
+        "@group(1) @binding(2) var effect_image1: texture_2d<f32>;",
+    ] {
+        assert!(module.text.contains(line), "{line}");
+    }
+    assert!(!module.text.contains("effect_image2:"));
+    assert!(matches!(
+        contract::check(&sampling("effect_image2"), params, 2),
+        Err(EffectError::Parse { .. })
+    ));
+    assert!(matches!(
+        contract::check(&sampling("effect_image0"), params, 0),
+        Err(EffectError::Parse { .. })
+    ));
 }
 
 /// The parameter struct against `Ring`, one departure each: a member short, a member renamed, a
@@ -852,6 +930,207 @@ fn a_moving_effect_damages_its_rect_alone() {
     let mut h = blend_window();
     h.frame(record);
     let report = h.at(Duration::from_millis(16)).frame(record);
+    assert_eq!(report.paint(), FramePaint::Partial);
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    assert_eq!(rects, [Rect::new(1.5, 1.5, 7.0, 7.0)]);
+}
+
+const PAIR: EffectName<()> = EffectName::named("pair").expect("the name fits");
+
+/// Two images, the first over the rect's left half and the second over its right; both sampled,
+/// as a sample needs uniform control flow.
+const PAIR_WGSL: &str = "
+fn effect(input: EffectInput) -> EffectOutput {
+    let uv = vec2<f32>(0.5);
+    let left = textureSample(effect_image0, effect_sampler, uv);
+    let right = textureSample(effect_image1, effect_sampler, uv);
+    return effect_over(select(right, left, input.pos.x < input.size.x * 0.5));
+}
+";
+
+/// A 2 × 2 opaque image of sRGB `hex`.
+fn solid(hex: u32) -> Image {
+    let mut image = Image::blank(UVec2::splat(2));
+    image.texels_mut().fill(SrgbaU8::hex(hex));
+    image
+}
+
+/// A 32 × 16 window on a device with [`PAIR`] loaded.
+fn pair_window(gpu: &Gpu) -> Harness {
+    let h = Harness::builder(UVec2::new(32, 16))
+        .mono()
+        .depth(Depth::gpu(gpu.clone()))
+        .build();
+    h.ui()
+        .load_effect(PAIR, EffectSource::new(PAIR_WGSL).image_slots(2))
+        .unwrap();
+    h
+}
+
+/// Each shape binds its own images, in slot order, and neighbors that bind other images split
+/// into their own draws: `(0, 0, 16, 16)` binds red then blue, `(16, 0, 16, 16)` green then red,
+/// so the four half centers read red, blue, green and red. Two sets keep two groups, and a third
+/// shape over the first set adds none. Dropping the green image's handle drops the group that
+/// binds it.
+#[test]
+fn each_shape_binds_its_images_in_slot_order() {
+    let gpu = headless_test_gpu();
+    let mut h = pair_window(&gpu.handles());
+    let red = h.ui().load_image(&solid(0xff0000)).unwrap();
+    let blue = h.ui().load_image(&solid(0x0000ff)).unwrap();
+    let green = h.ui().load_image(&solid(0x00ff00)).unwrap();
+    let shapes = |ui: &mut Ui, sets: &[(f32, [&ImageHandle; 2])]| {
+        for &(x, [first, second]) in sets {
+            ui.add_shape(
+                Shape::effect(PAIR, ())
+                    .at(Rect::new(x, 0.0, 16.0, 16.0))
+                    .images([first.clone(), second.clone()]),
+            );
+        }
+    };
+    h.prime(2, |ui| {
+        shapes(
+            ui,
+            &[
+                (0.0, [&red, &blue]),
+                (16.0, [&green, &red]),
+                (0.0, [&red, &blue]),
+            ],
+        );
+    });
+    let image = h.read_back();
+    let at = |x| image.get_pixel(x, 8).0;
+    assert_eq!(
+        [at(4), at(12), at(20), at(28)],
+        [
+            [255, 0, 0, 255],
+            [0, 0, 255, 255],
+            [0, 255, 0, 255],
+            [255, 0, 0, 255]
+        ]
+    );
+    assert_eq!(h.effect_image_groups(), 2);
+
+    h.prime(1, |ui| shapes(ui, &[(0.0, [&red, &blue])]));
+    drop(green);
+    assert_eq!(
+        h.effect_image_groups(),
+        1,
+        "the group that bound green goes with it"
+    );
+}
+
+/// An image not on the device paints nothing and stops nothing: after a loss and a recovery onto
+/// a fresh device, the effect over the ground shows the ground until the app writes its image
+/// again, and then the image.
+#[test]
+fn an_image_lost_with_its_device_paints_nothing_until_written_again() {
+    let gpu = isolated_headless_test_gpu();
+    let mut h = pair_window(&gpu.handles());
+    let red = h.ui().load_image(&solid(0xff0000)).unwrap();
+    let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
+    let paint = |ui: &mut Ui| {
+        ui.add_shape(Shape::rect().fill(ground));
+        ui.add_shape(Shape::effect(PAIR, ()).images([red.clone(), red.clone()]));
+    };
+    h.prime(2, paint);
+    assert_eq!(h.read_back().get_pixel(8, 8).0, [255, 0, 0, 255]);
+
+    gpu.handles().lose();
+    let fresh = isolated_headless_test_gpu();
+    h.recover(fresh.handles());
+    assert!(!red.is_resident());
+    h.prime(2, paint);
+    let srgb = ground.to_srgba8();
+    assert_eq!(
+        h.read_back().get_pixel(8, 8).0,
+        [srgb.r, srgb.g, srgb.b, srgb.a]
+    );
+
+    red.update(&solid(0xff0000)).unwrap();
+    h.prime(2, paint);
+    assert_eq!(h.read_back().get_pixel(8, 8).0, [255, 0, 0, 255]);
+}
+
+/// A shape binds as many images as the effect it paints declares: one image for two slots panics
+/// with both counts as it is added; so does a power-saver alternative of other slots, at the load
+/// when it is loaded already, and at the shape while power is reduced when it loads later.
+#[test]
+fn a_shape_binds_as_many_images_as_its_effect_declares() {
+    let mut h = Harness::mono(UVec2::new(8, 8));
+    h.ui()
+        .load_effect(PAIR, EffectSource::new(PAIR_WGSL).image_slots(2))
+        .unwrap();
+    let red = h.ui().load_image(&solid(0xff0000)).unwrap();
+    assert_panics_with(
+        "`pair` paints an effect that binds 2 images, and the shape binds 1",
+        || h.frame(|ui| ui.add_shape(Shape::effect(PAIR, ()).images([red.clone()]))),
+    );
+
+    let single: EffectName<()> = EffectName::named("single").unwrap();
+    let one_image = "fn effect(input: EffectInput) -> EffectOutput {
+        return effect_over(textureSample(effect_image0, effect_sampler, vec2<f32>(0.5)));
+    }";
+    h.ui()
+        .load_effect(single, EffectSource::new(one_image).image_slots(1))
+        .unwrap();
+    assert_panics_with(
+        "effect `single` binds 1 images, and `pair`, which paints in its place, 2",
+        || {
+            h.ui().load_effect(
+                PAIR,
+                EffectSource::new(PAIR_WGSL)
+                    .image_slots(2)
+                    .power_saver(PowerSaverPaint::Effect(single)),
+            )
+        },
+    );
+    let later: EffectName<()> = EffectName::named("later").unwrap();
+    h.ui()
+        .load_effect(
+            PAIR,
+            EffectSource::new(PAIR_WGSL)
+                .image_slots(2)
+                .power_saver(PowerSaverPaint::Effect(later)),
+        )
+        .unwrap();
+    h.ui()
+        .load_effect(later, EffectSource::new(one_image).image_slots(1))
+        .unwrap();
+    h.set_system_power_reduced(true);
+    assert_panics_with(
+        "`pair` paints an effect that binds 1 images, and the shape binds 2",
+        || h.frame(|ui| ui.add_shape(Shape::effect(PAIR, ()).images([red.clone(), red.clone()]))),
+    );
+}
+
+/// An image update repaints each effect that binds it, as it repaints an image shape: the effect
+/// over `(2, 2, 6, 6)` binds the image that changes, and the one over `(10, 10, 4, 4)` another,
+/// so the update damages `(1.5, 1.5, 7, 7)`, the first rect grown by the 0.5 px reach, alone.
+#[test]
+fn an_image_update_repaints_the_effects_that_bind_it() {
+    let mut h = Harness::mono(UVec2::new(16, 16));
+    h.ui()
+        .load_effect(PAIR, EffectSource::new(PAIR_WGSL).image_slots(2))
+        .unwrap();
+    let changing = h.ui().load_image(&solid(0xff0000)).unwrap();
+    let still = h.ui().load_image(&solid(0x0000ff)).unwrap();
+    let record = |ui: &mut Ui| {
+        ui.add_shape(
+            Shape::effect(PAIR, ())
+                .at(Rect::new(2.0, 2.0, 6.0, 6.0))
+                .images([changing.clone(), still.clone()]),
+        );
+        ui.add_shape(
+            Shape::effect(PAIR, ())
+                .at(Rect::new(10.0, 10.0, 4.0, 4.0))
+                .images([still.clone(), still.clone()]),
+        );
+    };
+    h.frame(record);
+    changing.update(&solid(0x00ff00)).unwrap();
+    h.ui_mut().request_repaint();
+    let report = h.frame(record);
     assert_eq!(report.paint(), FramePaint::Partial);
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(rects, [Rect::new(1.5, 1.5, 7.0, 7.0)]);

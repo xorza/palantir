@@ -5,10 +5,12 @@ use std::hash::Hasher as _;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
+use crate::effect::MAX_IMAGE_SLOTS;
 use crate::effect::effect_kind::ColorEffect;
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
 use crate::effect::effect_registry::EffectRegistry;
+use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
@@ -35,6 +37,8 @@ pub struct EffectShape<U: EffectParams> {
     params: U,
     local_rect: Option<Rect>,
     corners: Corners,
+    /// The images bound, in slot order, each slot past the last `None`.
+    images: [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
     /// What `Ui::add_shape` finds the name paints.
     paint: EffectPaint,
 }
@@ -55,8 +59,28 @@ impl<U: EffectParams> EffectShape<U> {
             params,
             local_rect: None,
             corners: Corners::ZERO,
+            images: [const { None }; MAX_IMAGE_SLOTS as usize],
             paint: EffectPaint::Unresolved,
         }
+    }
+
+    /// Bind `images` to the effect's slots, in order: as many as its source declares
+    /// ([`EffectSource::image_slots`](crate::EffectSource::image_slots)), at most
+    /// [`EffectSource::MAX_IMAGE_SLOTS`](crate::EffectSource::MAX_IMAGE_SLOTS), which the build
+    /// holds. The effect reads them as `effect_image0` and on. An image not on the device, as
+    /// after a loss before the app uploads it again, paints nothing, as an image shape does.
+    pub fn images<const N: usize>(mut self, images: [ImageHandle; N]) -> Self {
+        const {
+            assert!(
+                N <= MAX_IMAGE_SLOTS as usize,
+                "an effect binds at most 4 images"
+            );
+        }
+        self.images = [const { None }; MAX_IMAGE_SLOTS as usize];
+        for (slot, image) in self.images.iter_mut().zip(images) {
+            *slot = Some(image);
+        }
+        self
     }
 
     /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect; it may
@@ -92,6 +116,7 @@ impl<U: EffectParams> fmt::Debug for EffectShape<U> {
             .field("name", &self.name)
             .field("local_rect", &self.local_rect)
             .field("corners", &self.corners)
+            .field("images", &self.images)
             .finish_non_exhaustive()
     }
 }
@@ -107,9 +132,19 @@ impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
 
     #[track_caller]
     fn resolve(&mut self, effects: &EffectRegistry, power: Reduction) {
-        self.paint = effects
-            .resolve(self.name, power)
-            .map_or(EffectPaint::Nothing, EffectPaint::Effect);
+        self.paint = match effects.resolve(self.name, power) {
+            Some(resolved) => {
+                let bound = self.images.iter().flatten().count();
+                assert!(
+                    bound == usize::from(resolved.image_slots),
+                    "`{}` paints an effect that binds {} images, and the shape binds {bound}",
+                    self.name.name(),
+                    resolved.image_slots,
+                );
+                EffectPaint::Effect(resolved.id)
+            }
+            None => EffectPaint::Nothing,
+        };
     }
 
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
@@ -118,6 +153,7 @@ impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
             params,
             local_rect,
             corners,
+            images,
             paint,
         } = self;
         let EffectPaint::Effect(effect) = paint else {
@@ -129,11 +165,17 @@ impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
         let mut h = Hasher::new();
         h.write_u32(effect.0);
         h.pod_slice(bytes);
+        // Each image by its id and generation, so an update repaints as an image shape's does.
+        for image in images.iter().flatten() {
+            h.write_u64(image.id().0);
+            h.write_u32(image.generation());
+        }
         ShapeRecord::Effect {
             local_rect,
             corners,
             effect,
             params: store.stage_effect_params(bytes),
+            images: store.stage_effect_images(images.iter().flatten()),
             content_hash: ContentHash::finish(&h),
         }
     }

@@ -24,7 +24,14 @@ use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 /// - `EffectOutput { color, under }`: `color + under · dst` per channel, linear and
 ///   premultiplied, with the shape's coverage applied exactly, as the blend is linear in it;
 /// - `effect_over`, `effect_add`, `effect_multiply` and `effect_screen`, each an
-///   `EffectOutput` from a premultiplied color.
+///   `EffectOutput` from a premultiplied color;
+/// - with [image slots](Self::image_slots), `effect_image0` and on, each a `texture_2d<f32>` of
+///   the image a shape binds in that slot ([`EffectShape::images`](crate::widget::EffectShape::images)),
+///   whose sample is linear and premultiplied, and `effect_sampler`, linear and clamped to the
+///   edge, as `textureSample(effect_image0, effect_sampler, uv)` reads them.
+///
+/// The WGSL declares no binding of its own, as palantir binds every resource an effect reads;
+/// one is [`EffectError::Binding`](crate::EffectError::Binding).
 ///
 /// Palantir builds the real stages around `effect`, as SwiftUI's stitchable functions and Skia's
 /// SkSL `main` are wrapped, so an effect stays correct under partial repaint and clips. Names that
@@ -57,6 +64,8 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
 
     /// How many images each shape of the effect binds, at most [`Self::MAX_IMAGE_SLOTS`]; a load
     /// past it returns [`EffectError::TooManyImageSlots`](crate::EffectError::TooManyImageSlots).
+    /// Each shape binds exactly this many, so a draw binds one group of them, which splits a run
+    /// of draws only where neighbors bind other images.
     pub const fn image_slots(mut self, slots: u8) -> Self {
         self.image_slots = slots;
         self

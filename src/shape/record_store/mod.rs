@@ -14,7 +14,9 @@ pub(crate) mod recorded_gradients;
 pub(crate) mod text_store;
 
 use crate::common::span::Span;
+use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
+use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::reduction::Reduction;
@@ -50,6 +52,9 @@ pub(crate) struct RecordStore {
     /// Parameter words for `ShapeRecord::Effect`, indexed by the record's `params`: each
     /// instance's `EffectParams` bytes, as the backend's storage buffer holds them.
     pub(crate) effect_params: Vec<u32>,
+    /// Image storage for `ShapeRecord::Effect`, indexed by the record's `images`: each instance's
+    /// bound images, in slot order.
+    pub(crate) effect_images: Vec<TextureId>,
     /// Whether a backdrop filter lowers as a solid fill this pass
     /// ([`crate::Ui::is_transparency_reduced`]).
     pub(crate) transparency: Reduction,
@@ -89,6 +94,17 @@ impl RecordStore {
         Span::new(start as u32, (self.effect_params.len() - start) as u32)
     }
 
+    /// Stage one effect instance's images, in slot order.
+    pub(crate) fn stage_effect_images<'a>(
+        &mut self,
+        images: impl IntoIterator<Item = &'a ImageHandle>,
+    ) -> Span {
+        let start = self.effect_images.len();
+        self.effect_images
+            .extend(images.into_iter().map(ImageHandle::id));
+        Span::new(start as u32, (self.effect_images.len() - start) as u32)
+    }
+
     pub(crate) const fn families(&self) -> &FamilyKeys {
         &self.families
     }
@@ -104,6 +120,7 @@ impl RecordStore {
             gradients,
             text,
             effect_params,
+            effect_images,
             families: _,
             transparency: _,
         } = self;
@@ -112,6 +129,7 @@ impl RecordStore {
         polyline_points.clear();
         polyline_colors.clear();
         effect_params.clear();
+        effect_images.clear();
         gradients.clear();
         text.clear();
     }

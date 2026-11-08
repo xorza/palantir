@@ -14,6 +14,8 @@ pub(crate) struct DrawEffectPayload {
     pub(crate) corners: Corners,
     pub(crate) effect: EffectId,
     pub(crate) params: Span,
+    /// Its images, indexed into the record store's image column.
+    pub(crate) images: Span,
     /// A paint animation's fade, which scales the coverage.
     pub(crate) opacity: f32,
     /// Seconds into the paint animation's pass, which the effect reads; 0 when unanimated.

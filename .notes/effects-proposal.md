@@ -58,8 +58,8 @@ Landed with batch 5 for color effects: `EffectShape`'s doc holds the shape and i
   tables reach the spectrum effect through an internal extension of the contract. The rewrite is
   measured against the benches behind `gpu/backdrop`'s decisions before the forms go. Refused:
   the capture shared and the composites apart, two composite paths to keep.
-- **Up to 4 image slots**, declared at load and bound per shape. A draw splits where instances
-  bind other images. Refused: a bindless array, which GL and older Metal tiers lack.
+Image slots landed with batch 7: the docs of `EffectSource`, `EffectShape::images`,
+`TextureBinding::images` and `EffectImageGroups` hold them.
 
 ### Time
 
@@ -117,10 +117,10 @@ The effect's time rides `PaintAnimation` (`PaintAnimation::clock`, `PaintRepeat:
 reduced single pass), sampled in exact nanoseconds; the power-saver alternative resolves as a
 shape is added.
 
-### 7. Image slots
+### 7. Image slots — done
 
-- Up to 4 slots per effect, bound per shape, a split where the images differ.
-- Tests: the binding, the split, an `ImageHandle` that is not resident after device loss.
+Up to 4 slots, declared at load and bound per shape through one group of all its images, kept
+by the image store for each set drawn; an app's own binding is refused.
 
 ### 8. Backdrop effects, `BackdropFilter` on them
 

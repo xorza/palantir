@@ -311,6 +311,7 @@ pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
             corners: Corners::ZERO,
             effect: EffectId(0),
             params: Span::new(0, 2),
+            images: Span::new(0, 0),
             opacity: 1.0,
             time: 0.0,
         },

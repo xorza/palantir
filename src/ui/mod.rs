@@ -832,7 +832,7 @@ impl Ui {
     /// # Panics
     ///
     /// When `name`, or the power-saver alternative `source` names, was loaded before with another
-    /// parameter type or kind.
+    /// parameter type or kind, or the alternative with other image slots.
     #[inline]
     #[track_caller]
     pub fn load_effect<U: EffectParams, K: EffectKind>(
