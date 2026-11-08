@@ -82,6 +82,14 @@ mundy = { version = "0.2", default-features = false, features = [
     "reduced-transparency",
 ] }
 naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
+objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSNotification",
+    "NSObject",
+    "NSProcessInfo",
+    "NSString",
+] }
 padding-struct = { version = "0.2", default-features = false }
 pollster = { version = "1.0", default-features = false }
 proc-macro2 = { version = "1.0", default-features = false, features = [
@@ -131,6 +139,11 @@ wgpu = { version = "30.0", default-features = false, features = [
     "gles",
 ] }
 windows = { version = "0.62", default-features = false, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Power",
+    "Win32_System_SystemServices",
     "Win32_UI_WindowsAndMessaging",
 ] }
 winit = { version = "0.30", default-features = false, features = [
@@ -139,6 +152,10 @@ winit = { version = "0.30", default-features = false, features = [
     "wayland",
     "wayland-dlopen",
     "wayland-csd-adwaita",
+] }
+zbus = { version = "5.19", default-features = false, features = [
+    "async-io",
+    "blocking-api",
 ] }
 
 [lints]
@@ -185,13 +202,29 @@ naga = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, optional = true }
 
+# The power-saver mode, which `mundy` does not read (`host/winit/platform/`).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { workspace = true, optional = true }
+objc2-foundation = { workspace = true, optional = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+zbus = { workspace = true, optional = true }
+
 [features]
 default = ["winit"]
 internals = ["dep:criterion", "dep:image", "dep:strum"]
 golden = ["dep:image"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
-winit = ["dep:winit", "system-clipboard", "dep:mundy", "dep:windows"]
+winit = [
+    "dep:winit",
+    "system-clipboard",
+    "dep:mundy",
+    "dep:windows",
+    "dep:objc2",
+    "dep:objc2-foundation",
+    "dep:zbus",
+]
 profile-with-tracy = ["dep:tracy-client"]
 
 

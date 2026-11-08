@@ -1,16 +1,18 @@
-//! The system's settings palantir follows, as a
-//! [`SystemPreferences`], read through
-//! `mundy` on every OS, once before the first window and then followed. Refused: winit's `ThemeChanged`,
-//! silent on X11 and Wayland and on macOS while a window's appearance is pinned; `dark-light`,
-//! which reads the scheme alone and polls macOS. Facts and sources:
+//! The system's settings palantir follows, as a [`SystemPreferences`], from two sources: `mundy`
+//! on every OS, read once before the first window and then followed, and the platform's
+//! power-saver watch ([`PowerSaverWatch`]), as `mundy` 0.2.3 reads no power state. Refused:
+//! winit's `ThemeChanged`, silent on X11 and Wayland and on macOS while a window's appearance is
+//! pinned; `dark-light`, which reads the scheme alone and polls macOS; waiting for `mundy` to read
+//! the power state, which leaves the preference with no source. Facts and sources:
 //! `.notes/research/2026-10-31-system-preferences.md`.
 
+use std::fmt;
 use std::time::Duration;
 
 use mundy::{Interest, Preferences, Subscription};
 
 use crate::host::system_preferences::SystemPreferences;
-use crate::host::winit::platform;
+use crate::host::winit::platform::{self, PowerSaverWatch};
 use crate::primitives::reduction::Reduction;
 use crate::theme::color_scheme::ColorScheme;
 
@@ -26,20 +28,78 @@ const FIRST_READ_TIMEOUT: Duration = Duration::from_millis(100);
 /// preferences.
 const INTEREST: Interest = Interest::All;
 
-/// The settings as the system holds them now, waiting at most [`FIRST_READ_TIMEOUT`]; on the
-/// main thread, as `mundy` asks on macOS.
+/// `mundy`'s settings as the system holds them now, waiting at most [`FIRST_READ_TIMEOUT`], and no
+/// power-saver mode, which its watch reports once it starts; on the main thread, as `mundy` asks
+/// on macOS.
 pub(super) fn read() -> SystemPreferences {
-    Preferences::once_blocking(INTEREST, FIRST_READ_TIMEOUT).map_or(UNREAD, from_mundy)
+    Preferences::once_blocking(INTEREST, FIRST_READ_TIMEOUT).map_or(UNREAD, |preferences| {
+        from_mundy(preferences, Reduction::Full)
+    })
 }
 
-/// Follow the settings: `on_change` runs on `mundy`'s thread with their first values and each
-/// change after, until the subscription drops. On the main thread, as `mundy` asks on macOS.
-pub(super) fn subscribe(
-    on_change: impl Fn(SystemPreferences) + Send + Sync + 'static,
-) -> Subscription {
-    Preferences::subscribe(INTEREST, move |preferences| {
-        on_change(from_mundy(preferences));
-    })
+/// What one source of the system's settings reports, from a thread of its own.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SystemReport {
+    /// `mundy`'s answers: every setting but the power-saver mode.
+    Desktop(Preferences),
+    /// The platform's power-saver mode.
+    PowerSaver(Reduction),
+}
+
+/// The winit host's following of the system's settings: both sources, which stop when it drops,
+/// and the settings as their last reports left them, which each report updates in its own part.
+/// Refused: each source sending a whole [`SystemPreferences`], whose other part would undo the
+/// other source's last report.
+pub(super) struct SystemFollow {
+    held: SystemPreferences,
+    _desktop: Subscription,
+    _power_saver: PowerSaverWatch,
+}
+
+impl fmt::Debug for SystemFollow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SystemFollow")
+            .field("held", &self.held)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SystemFollow {
+    /// Follow both sources from `held`, the settings [`read`] gave; `send` runs on each source's
+    /// thread with its first report and each change after. On the main thread, as `mundy` asks on
+    /// macOS.
+    pub(super) fn start(
+        held: SystemPreferences,
+        send: impl Fn(SystemReport) + Clone + Send + Sync + 'static,
+    ) -> Self {
+        let desktop = {
+            let send = send.clone();
+            Preferences::subscribe(INTEREST, move |preferences| {
+                send(SystemReport::Desktop(preferences));
+            })
+        };
+        let power_saver =
+            PowerSaverWatch::follow(move |power| send(SystemReport::PowerSaver(power)));
+        Self {
+            held,
+            _desktop: desktop,
+            _power_saver: power_saver,
+        }
+    }
+
+    /// The settings once `report` replaces its source's part.
+    pub(super) fn fold(&mut self, report: SystemReport) -> SystemPreferences {
+        self.held = folded(self.held, report);
+        self.held
+    }
+}
+
+/// `held` with `report`'s part replaced and the other source's part kept.
+fn folded(held: SystemPreferences, report: SystemReport) -> SystemPreferences {
+    match report {
+        SystemReport::Desktop(preferences) => from_mundy(preferences, held.power),
+        SystemReport::PowerSaver(power) => SystemPreferences { power, ..held },
+    }
 }
 
 /// What a read that timed out gives: no scheme, so the fallback shows until the subscription
@@ -49,8 +109,10 @@ const UNREAD: SystemPreferences = SystemPreferences {
     ..SystemPreferences::NONE
 };
 
-fn from_mundy(preferences: Preferences) -> SystemPreferences {
+/// `mundy`'s answers, beside `power`, which `mundy` does not read.
+fn from_mundy(preferences: Preferences, power: Reduction) -> SystemPreferences {
     SystemPreferences {
+        power,
         motion: Reduction::of(preferences.reduced_motion == mundy::ReducedMotion::Reduce),
         transparency: Reduction::of(
             preferences.reduced_transparency == mundy::ReducedTransparency::Reduce,
@@ -63,7 +125,7 @@ fn from_mundy(preferences: Preferences) -> SystemPreferences {
 }
 
 /// The settings from `mundy`'s scheme and double-click answers, no less motion or transparency
-/// asked and no power-saver mode on. No preference reports no scheme, so `System` shows the dark
+/// asked and no power-saver mode on, which [`from_mundy`] replaces. No preference reports no scheme, so `System` shows the dark
 /// fallback: `mundy` answers it for a failed read too, as for a Linux portal that fails while the
 /// host runs, which must not turn the app light. Cost: GNOME writes it for its own Light setting, so GNOME's light users see
 /// dark until they pick Light. A double-click time of zero, or none, is the platform's fallback.
@@ -88,6 +150,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::host::system_preferences::SystemPreferences;
+    use crate::host::winit::system_preferences::SystemReport;
     use crate::host::winit::{platform, system_preferences};
     use crate::primitives::reduction::Reduction;
     use crate::theme::color_scheme::ColorScheme;
@@ -136,5 +199,37 @@ mod tests {
                 "{scheme:?}, {double_click:?}"
             );
         }
+    }
+
+    /// Each source's report replaces its own part and keeps the other's: `mundy`'s answers, light
+    /// and less motion, leave the power-saver mode on, and the mode's report then leaves the scheme
+    /// and the motion as they were.
+    #[test]
+    fn each_report_replaces_its_own_part() {
+        let mut desktop = mundy::Preferences::default();
+        desktop.color_scheme = mundy::ColorScheme::Light;
+        desktop.reduced_motion = mundy::ReducedMotion::Reduce;
+        let saving = SystemPreferences {
+            power: Reduction::Reduced,
+            ..SystemPreferences::NONE
+        };
+        let light = system_preferences::folded(saving, SystemReport::Desktop(desktop));
+        assert_eq!(
+            light,
+            SystemPreferences {
+                color_scheme: Some(ColorScheme::Light),
+                double_click: platform::DOUBLE_CLICK_FALLBACK,
+                motion: Reduction::Reduced,
+                transparency: Reduction::Full,
+                power: Reduction::Reduced,
+            }
+        );
+        assert_eq!(
+            system_preferences::folded(light, SystemReport::PowerSaver(Reduction::Full)),
+            SystemPreferences {
+                power: Reduction::Full,
+                ..light
+            }
+        );
     }
 }

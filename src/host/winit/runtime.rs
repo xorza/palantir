@@ -10,12 +10,11 @@ use crate::common::tracy;
 use crate::gpu::error::SurfaceStartError;
 use crate::gpu::surface::surface_manager::{FirstWindow, SurfaceManager, SurfaceStartup};
 use crate::host::host_core::HostCore;
-use crate::host::system_preferences::SystemPreferences;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask};
-use crate::host::winit::system_preferences;
+use crate::host::winit::system_preferences::{self, SystemFollow, SystemReport};
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::host::winit::window::{OpenedWindow, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
@@ -33,8 +32,6 @@ use std::fmt;
 use std::mem;
 use std::num::NonZeroU32;
 
-use mundy::Subscription;
-
 pub(super) struct WinitRuntime<T: 'static> {
     /// The caller's app, created once the first window's `Ui` existed.
     pub(super) app: T,
@@ -48,7 +45,7 @@ pub(super) struct WinitRuntime<T: 'static> {
     /// each window's last frame for the handles to read.
     handle: HostHandle<T>,
     /// Follows the system's settings while the host runs; dropping it ends the following.
-    _system_preferences: Subscription,
+    system: SystemFollow,
 }
 
 impl<T: 'static> fmt::Debug for WinitRuntime<T> {
@@ -110,11 +107,11 @@ impl<T: App + 'static> WinitRuntime<T> {
         let pending_tasks = mem::take(&mut bootstrap.pending_tasks);
 
         let own_handle = handle.clone();
-        let system_preferences = {
+        let system = {
             let handle = handle.clone();
             // A host gone quiet drops the report, as it has no window left to show it in.
-            system_preferences::subscribe(move |preferences| {
-                handle.send(UserEvent::SystemPreferences(preferences)).ok();
+            SystemFollow::start(system, move |report| {
+                handle.send(UserEvent::System(report)).ok();
             })
         };
         let mut app = create_app(frames.ui_mut(), handle);
@@ -138,7 +135,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             pending_commands: WindowCommands::default(),
             recovery: RecoveryBackoff::default(),
             handle: own_handle,
-            _system_preferences: system_preferences,
+            system,
         };
         Ok(runtime)
     }
@@ -163,10 +160,10 @@ impl<T: App + 'static> WinitRuntime<T> {
         Waker::new(move || handle.request_repaint(token, &latch))
     }
 
-    /// Adopt the system's settings as `mundy` reports a change; [`Self::repaint_on_shared_change`]
-    /// then repaints every window if the scheme moved.
-    pub(super) fn apply_system_preferences(&self, preferences: SystemPreferences) {
-        let _ = preferences.apply(&self.core.cpu.resources);
+    /// Adopt the system's settings as one of their sources reports a change;
+    /// [`Self::repaint_on_shared_change`] then repaints every window if one moved.
+    pub(super) fn apply_system_report(&mut self, report: SystemReport) {
+        let _ = self.system.fold(report).apply(&self.core.cpu.resources);
     }
 
     /// Resolve the window winit reports events for as `id`, once per event.

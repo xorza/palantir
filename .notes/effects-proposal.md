@@ -11,17 +11,10 @@ API, so each batch also runs `cargo drive surface`.
 
 ## Power-saver preference
 
-The preference landed with batch 1 and the 30 Hz limit with batch 2: their decisions are in
-`AGENTS.md` ("Reduced power follows the OS power-saver mode", "Reduced power starts a frame at
-most at 30 Hz"), the doc of `Ui::is_power_reduced` and that of `FrameRuntime::take_power_slot`.
-
-- **The winit host reads the mode with its own platform code**, beside `mundy`, which reads no
-  power state. Linux reads the portal over `zbus` and reads the first value itself (GLib #2481
-  missed it); macOS reads `NSProcessInfo` through `objc2-foundation`; Windows reads
-  `GUID_ENERGY_SAVER_STATUS`, and `SYSTEM_POWER_STATUS::SystemStatusFlag` before 24H2.
-  Windows' standard and high-savings levels both read `Reduced`.
-  `zbus` 5 and `objc2-foundation` 0.3 become direct dependencies, both in `Cargo.lock` already.
-  Refused: waiting for `mundy` upstream; `ashpd`, a new package for one boolean.
+Landed with batches 1 to 3. The decisions are in `AGENTS.md` ("Reduced power follows the OS
+power-saver mode", "Reduced power starts a frame at most at 30 Hz"), the docs of
+`Ui::is_power_reduced` and `FrameRuntime::take_power_slot`, and each `PowerSaverWatch` in
+`host/winit/platform/`.
 
 ## Effects
 
@@ -127,13 +120,10 @@ Each batch ends green on the gate, `cargo visual` where it paints, and `cargo dr
 `FrameReport::earliest_repaint_at`, a slot on a grid of whole refresh periods; the winit host and
 the harness hold every frame to it.
 
-### 3. The winit host reads the mode
+### 3. The winit host reads the mode — done
 
-- `zbus` and `objc2-foundation` as direct dependencies.
-- `host/winit/platform/{linux,macos,windows,other}.rs` read and follow the mode into
-  `SystemPreferences`; `other.rs` reports none.
-- Tests: the mapping from each OS answer, Windows' three levels included. CI cannot change an
-  OS mode, so each OS is checked by hand once and the result goes into the research file.
+A `PowerSaverWatch` in each `host/winit/platform/` file, folded with `mundy`'s report by
+`SystemFollow`.
 
 ### 4. The effect registry
 
@@ -187,7 +177,5 @@ the harness hold every frame to it.
 
 - **Where a theme's names are checked.** `Theme` deserializes with no `Ui`, so the check runs where
   a theme is set or loaded; batch 9 picks the call and its error.
-- **Windows 24H2 and the older read.** Whether the effective power mode API reports Energy saver
-  too, so one read serves every version, is unverified; batch 3 checks it on a machine.
 - **Reduced transparency and backdrop effects.** A distortion adds no transparency, so whether
   the preference applies to it stays open until batch 8.

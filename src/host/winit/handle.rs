@@ -7,12 +7,12 @@ use std::sync::mpsc;
 
 use winit::event_loop::EventLoopProxy;
 
-use crate::host::system_preferences::SystemPreferences;
 use crate::host::winit::error::HostDisconnected;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask, Remote, ShotAsk};
+use crate::host::winit::system_preferences::SystemReport;
 use crate::host::winit::wake_latch::WakeLatch;
 use crate::window::window_token::WindowToken;
 
@@ -43,8 +43,8 @@ pub(crate) enum UserEvent<T> {
     /// Runs a closure with the host's device between two of the named window's frames, which
     /// loses it, then runs a frame, which opens a new one; dropped unrun when the window is gone.
     LoseDevice(WindowToken, LoseTask),
-    /// The system's settings moved, as `mundy`'s subscription reports them from its thread.
-    SystemPreferences(SystemPreferences),
+    /// The system's settings moved, as one of their sources reports from its thread.
+    System(SystemReport),
     /// Asks the event loop to exit.
     Quit,
 }
@@ -65,10 +65,7 @@ impl<T> fmt::Debug for UserEvent<T> {
                 .debug_tuple("LoseDevice")
                 .field(token)
                 .finish_non_exhaustive(),
-            Self::SystemPreferences(preferences) => f
-                .debug_tuple("SystemPreferences")
-                .field(preferences)
-                .finish(),
+            Self::System(report) => f.debug_tuple("System").field(report).finish(),
             Self::Quit => f.write_str("Quit"),
         }
     }

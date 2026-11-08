@@ -347,9 +347,9 @@ where
 {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent<T>) {
         match event {
-            UserEvent::SystemPreferences(preferences) => {
+            UserEvent::System(report) => {
                 if let Some(runtime) = self.running() {
-                    runtime.apply_system_preferences(preferences);
+                    runtime.apply_system_report(report);
                 }
             }
             UserEvent::Quit => match self.running() {

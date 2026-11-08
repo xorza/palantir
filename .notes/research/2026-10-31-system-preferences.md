@@ -119,6 +119,48 @@ Facts behind `host/winit/system_preferences.rs`, which reads them through `mundy
   and scrollbar visibility.
 - In palantir's `Cargo.lock` already: `zbus` 5.19.0 (through `mundy`, Linux), `objc2-foundation`
   0.3.2, `windows` 0.62.2. `ashpd` is not.
+- **`zbus` 6** (6.0.0 on 2026-10-16, 6.2.1 the latest on 2026-11-08) has no blocking API, and
+  `mundy` 0.2.3 still depends on `zbus` 5, so a direct `zbus` 6 would build a second D-Bus stack.
+
+- **What the reference implementations do.** GLib reads power-profiles-daemon's `ActiveProfile`
+  (`"power-saver"`, compared exactly) on the system bus and watches the name, reporting off when
+  it vanishes; it uses the portal only when `glib_should_use_portal()` holds, inside a sandbox
+  (<https://gitlab.gnome.org/GNOME/glib/-/blob/main/gio/gpowerprofilemonitordbus.c>,
+  <https://gitlab.gnome.org/GNOME/glib/-/blob/main/gio/gpowerprofilemonitorportal.c>). Its portal
+  monitor reads the cached property once and follows `g-properties-changed`, ignoring a value of
+  the wrong type. Windows: `RegisterPowerSettingNotification` asks an interactive app for a window
+  handle; `PowerSettingRegisterNotification`'s callback gets the current value at once, but
+  `PowerSettingUnregisterNotification` says nothing of a callback still running when it returns
+  (<https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-registerpowersettingnotification>,
+  <https://learn.microsoft.com/windows/win32/api/powersetting/nf-powersetting-powersettingregisternotification>,
+  <https://learn.microsoft.com/windows/win32/api/powersetting/nf-powersetting-powersettingunregisternotification>).
+  The Windows App SDK's `PowerManager` keeps its callbacks static with no context, and its
+  `EnergySaverStatus` is `GUID_POWER_SAVING_STATUS`
+  (<https://github.com/microsoft/WindowsAppSDK/blob/main/dev/PowerNotifications/PowerNotifications.cpp>).
+
+### Measured with palantir's watches (2026-11-08)
+
+- **Linux** (Arch, xdg-desktop-portal 1.22.1, power-profiles-daemon 0.30, a desktop): the first
+  `power-saver-enabled` arrives 2.7 to 4.1 ms after the watch starts, `Reduced` when the profile
+  was `power-saver` before it started. `powerprofilesctl set power-saver` and back arrive as
+  `PropertiesChanged` signals at once. `zbus` 5.19's property stream on a caching proxy yields
+  the current value first, as its docs say, but does not end on `Connection::close`; an iterator
+  over the `PropertiesChanged` signal does, and the thread ends within 300 ms of the drop.
+- **macOS 27.2** (an Apple laptop): `isLowPowerModeEnabled` reads in 0.3 ms; the first
+  `addObserver` for `NSProcessInfoPowerStateDidChangeNotification` takes 218 ms, three runs in a
+  row. Low Power Mode turned on and off by hand arrives as one notification each, on a thread
+  with no name.
+- **Windows 11 25H2** (build 26200, a desktop with no battery): `PowerSettingRegisterNotification`
+  with `DEVICE_NOTIFY_CALLBACK` returns `ERROR_SUCCESS` for `GUID_ENERGY_SAVER_STATUS`
+  (550E8400-E29B-41D4-A716-446655440000, which `windows` 0.62 does not declare) and for
+  `GUID_POWER_SAVING_STATUS`, and each calls back within 1 ms with a 4-byte value, 0 with the
+  saver off. `PowerRegisterForEffectivePowerModeNotifications` calls back with 3, high
+  performance. `ESBATTTHRESHOLD` set to 100 on AC turns no saver on with no battery. Energy saver
+  turned on in Quick Settings reads non-zero at registration, and each toggle by hand, off, on
+  and off, arrives as one callback. `RegisterPowerSettingNotification` to a message-only window,
+  the route palantir took after, delivers both settings' current values within 6 ms of the
+  registration, and Energy saver turned on and off by hand arrives as `Reduced`, then `Full`, about
+  4 s apart, one report each.
 
 ### What others do with it
 

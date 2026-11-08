@@ -6,6 +6,7 @@ use winit::event_loop::EventLoopBuilder;
 use winit::window::WindowAttributes;
 
 use crate::host::winit::input::wheel_steps::WheelSteps;
+use crate::primitives::reduction::Reduction;
 
 /// Nothing to configure.
 pub(super) const fn configure_event_loop<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
@@ -24,6 +25,17 @@ pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
 /// One line per notch: no scroll setting is assumed.
 pub(super) fn wheel_steps() -> WheelSteps {
     WheelSteps::default()
+}
+
+/// No power-saver mode is read here: the watch reports none and holds nothing.
+#[derive(Debug)]
+pub(super) struct PowerSaverWatch;
+
+impl PowerSaverWatch {
+    /// Follow nothing: power stays full.
+    pub(super) fn follow(_on_change: impl Fn(Reduction) + Send + Sync + 'static) -> Self {
+        Self
+    }
 }
 
 #[cfg(test)]
