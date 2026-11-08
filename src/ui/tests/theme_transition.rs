@@ -265,7 +265,7 @@ fn a_scheme_change_blends_from_the_next_frame() {
 }
 
 /// A change snaps before the window's second frame, to a theme under no transition, with motion
-/// reduced, and on a frame after a hidden span; a change to a theme under no transition ends a
+/// reduced since the last frame, which fixes it, and on a frame after a hidden span; a change to a theme under no transition ends a
 /// running one at once, and reducing motion ends it where it heads on the next frame.
 #[test]
 fn a_change_snaps_where_nothing_should_move() {
@@ -282,6 +282,7 @@ fn a_change_snaps_where_nothing_should_move() {
 
     let (mut h, _) = running();
     h.set_system_motion_reduced(true);
+    h.frame(record);
     h.ui_mut().set_theme(Dark, Rc::clone(&light));
     assert!(shows(&h, &light), "motion reduced");
 

@@ -19,8 +19,8 @@ pub struct UiPreferences {
     /// scheme, so no frame mixes two. The system's is [`ColorScheme::FALLBACK`] where nothing
     /// reports one.
     pub scheme: Preference<ColorScheme>,
-    /// Whether motion is reduced, at once: a motion that starts or steps after the set runs
-    /// under it ([`Ui::is_motion_reduced`](crate::Ui::is_motion_reduced)).
+    /// Whether motion is reduced, from every window's next frame
+    /// ([`Ui::is_motion_reduced`](crate::Ui::is_motion_reduced)).
     pub motion: Preference<Reduction>,
     /// Whether transparency is reduced, from every window's next frame
     /// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)).

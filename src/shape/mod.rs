@@ -60,7 +60,8 @@ pub trait Lower: sealed::LowerShape {}
 impl<T: sealed::LowerShape> Lower for T {}
 
 mod sealed {
-    use crate::effect::effect_registry::{EffectRegistry, Reductions};
+    use crate::effect::effect_registry::EffectRegistry;
+    use crate::primitives::reduction::Reductions;
     use crate::shape::record::ShapeRecord;
     use crate::shape::record_store::RecordStore;
     use std::fmt;

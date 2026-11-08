@@ -3,7 +3,7 @@
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
 use crate::input::capture::DOUBLE_CLICK_INTERVAL;
-use crate::primitives::reduction::Reduction;
+use crate::primitives::reduction::Reductions;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::ui_preferences::UiPreferences;
 use std::cell::Cell;
@@ -29,15 +29,9 @@ pub(crate) struct AppSettings {
     /// The scheme the system reports, which the winit host writes; `None` where nothing reports
     /// one.
     system_color_scheme: Cell<Option<ColorScheme>>,
-    /// Whether the system asks for less motion, which the winit host writes; full where nothing
-    /// reports it.
-    system_motion: Cell<Reduction>,
-    /// Whether the system asks for less transparency, which the winit host writes; full where
-    /// nothing reports it.
-    system_transparency: Cell<Reduction>,
-    /// Whether the system's power-saver mode is on, which the winit host writes; full where
-    /// nothing reports it.
-    system_power: Cell<Reduction>,
+    /// Whether the system asks for less transparency and motion and its power-saver mode is on,
+    /// as every host reports them; full where nothing reports one.
+    system_reductions: Cell<Reductions>,
     /// How soon a second press on the same target makes a double click: the platform's, where
     /// the winit host reads one, else [`DOUBLE_CLICK_INTERVAL`]. Its change shows nothing, and
     /// repaints the windows only as every setting's does.
@@ -55,9 +49,7 @@ impl Default for AppSettings {
             user_scale: Cell::default(),
             preferences: Cell::default(),
             system_color_scheme: Cell::default(),
-            system_motion: Cell::default(),
-            system_transparency: Cell::default(),
-            system_power: Cell::default(),
+            system_reductions: Cell::default(),
             double_click_interval: Cell::new(DOUBLE_CLICK_INTERVAL),
             pixel_snap: Cell::new(true),
             changed: Cell::default(),
@@ -106,45 +98,25 @@ impl AppSettings {
         self.write(&self.system_color_scheme, scheme)
     }
 
-    pub(crate) const fn system_motion(&self) -> Reduction {
-        self.system_motion.get()
+    pub(crate) const fn system_reductions(&self) -> Reductions {
+        self.system_reductions.get()
     }
 
-    pub(crate) fn set_system_motion(&self, motion: Reduction) -> bool {
-        self.write(&self.system_motion, motion)
+    pub(crate) fn set_system_reductions(&self, reductions: Reductions) -> bool {
+        self.write(&self.system_reductions, reductions)
     }
 
-    /// The motion every window runs now: the preference resolved against the system's.
-    pub(crate) const fn motion(&self) -> Reduction {
-        self.preferences().motion.resolve(self.system_motion())
-    }
-
-    pub(crate) const fn system_transparency(&self) -> Reduction {
-        self.system_transparency.get()
-    }
-
-    pub(crate) fn set_system_transparency(&self, transparency: Reduction) -> bool {
-        self.write(&self.system_transparency, transparency)
-    }
-
-    /// The transparency every window paints now: the preference resolved against the system's.
-    pub(crate) const fn transparency(&self) -> Reduction {
-        self.preferences()
-            .transparency
-            .resolve(self.system_transparency())
-    }
-
-    pub(crate) const fn system_power(&self) -> Reduction {
-        self.system_power.get()
-    }
-
-    pub(crate) fn set_system_power(&self, power: Reduction) -> bool {
-        self.write(&self.system_power, power)
-    }
-
-    /// The power use every window runs at now: the preference resolved against the system's.
-    pub(crate) const fn power(&self) -> Reduction {
-        self.preferences().power.resolve(self.system_power())
+    /// The reductions every window runs under now: each preference resolved against the system's
+    /// report, the one place they are resolved. A frame fixes them at its start
+    /// (`FrameRuntime::reductions`).
+    pub(crate) const fn reductions(&self) -> Reductions {
+        let preferences = self.preferences();
+        let system = self.system_reductions();
+        Reductions {
+            transparency: preferences.transparency.resolve(system.transparency),
+            motion: preferences.motion.resolve(system.motion),
+            power: preferences.power.resolve(system.power),
+        }
     }
 
     pub(crate) const fn double_click_interval(&self) -> Duration {
@@ -187,7 +159,7 @@ mod tests {
     use crate::diagnostics::DebugOverlayConfig;
     use crate::display::user_scale::UserScale;
     use crate::primitives::preference::Preference;
-    use crate::primitives::reduction::Reduction;
+    use crate::primitives::reduction::{Reduction, Reductions};
     use crate::theme::color_scheme::ColorScheme;
     use crate::ui::resources::app_settings::AppSettings;
     use crate::ui::ui_preferences::UiPreferences;
@@ -203,7 +175,7 @@ mod tests {
             ColorScheme::FALLBACK,
             "nothing reports a scheme"
         );
-        let writes: [&dyn Fn(&AppSettings) -> bool; 8] = [
+        let writes: [&dyn Fn(&AppSettings) -> bool; 7] = [
             &|s| {
                 s.set_debug_overlay(DebugOverlayConfig {
                     frame_stats: true,
@@ -212,9 +184,19 @@ mod tests {
             },
             &|s| s.set_user_scale(UserScale::new(1.25).unwrap()),
             &|s| s.set_system_color_scheme(Some(ColorScheme::Dark)),
-            &|s| s.set_system_motion(Reduction::Reduced),
-            &|s| s.set_system_transparency(Reduction::Reduced),
-            &|s| s.set_system_power(Reduction::Reduced),
+            &|s| {
+                s.set_system_reductions(Reductions {
+                    transparency: Reduction::Reduced,
+                    motion: Reduction::Reduced,
+                    power: Reduction::Full,
+                })
+            },
+            &|s| {
+                s.set_system_reductions(Reductions {
+                    power: Reduction::Reduced,
+                    ..s.system_reductions()
+                })
+            },
             &|s| {
                 s.set_preferences(UiPreferences {
                     scheme: Preference::Fixed(ColorScheme::Light),
@@ -244,17 +226,17 @@ mod tests {
         assert_eq!(settings.user_scale(), UserScale::new(1.25).unwrap());
         assert_eq!(settings.color_scheme(), ColorScheme::Light, "the pick wins");
         assert_eq!(
-            settings.motion(),
+            settings.reductions().motion,
             Reduction::Full,
             "the pick wins over the system"
         );
         assert_eq!(
-            settings.transparency(),
+            settings.reductions().transparency,
             Reduction::Reduced,
             "System follows the system"
         );
         assert_eq!(
-            settings.power(),
+            settings.reductions().power,
             Reduction::Full,
             "the last pick of full wins over the system's saver mode"
         );
@@ -263,18 +245,25 @@ mod tests {
             ..settings.preferences()
         }));
         assert_eq!(
-            settings.power(),
+            settings.reductions().power,
             Reduction::Reduced,
             "System follows the saver mode"
         );
-        assert!(settings.set_system_power(Reduction::Full));
-        assert_eq!(settings.power(), Reduction::Full, "the mode turned off");
+        assert!(settings.set_system_reductions(Reductions {
+            power: Reduction::Full,
+            ..settings.system_reductions()
+        }));
+        assert_eq!(
+            settings.reductions().power,
+            Reduction::Full,
+            "the mode turned off"
+        );
         assert!(settings.set_preferences(UiPreferences {
             power: Preference::Fixed(Reduction::Reduced),
             ..settings.preferences()
         }));
         assert_eq!(
-            settings.power(),
+            settings.reductions().power,
             Reduction::Reduced,
             "a pick of reduced over a system with no saver mode"
         );

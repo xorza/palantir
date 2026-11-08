@@ -157,7 +157,7 @@ impl OffscreenHostBuilder {
     /// by default. The host's
     /// [`set_system_motion_reduced`](OffscreenHost::set_system_motion_reduced) changes it later.
     pub const fn system_motion_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.motion = Reduction::of(reduced);
+        self.settings.preferences.reductions.motion = Reduction::of(reduced);
         self
     }
 
@@ -166,7 +166,7 @@ impl OffscreenHostBuilder {
     /// [`set_system_transparency_reduced`](OffscreenHost::set_system_transparency_reduced)
     /// changes it later.
     pub const fn system_transparency_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.transparency = Reduction::of(reduced);
+        self.settings.preferences.reductions.transparency = Reduction::of(reduced);
         self
     }
 
@@ -174,7 +174,7 @@ impl OffscreenHostBuilder {
     /// `false` by default. The host's
     /// [`set_system_power_reduced`](OffscreenHost::set_system_power_reduced) changes it later.
     pub const fn system_power_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.power = Reduction::of(reduced);
+        self.settings.preferences.reductions.power = Reduction::of(reduced);
         self
     }
 
@@ -281,15 +281,16 @@ impl OffscreenHost {
     /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
-            .set_preferences(|preferences| preferences.motion = Reduction::of(reduced));
+            .set_preferences(|preferences| preferences.reductions.motion = Reduction::of(reduced));
         self
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.transparency = Reduction::of(reduced));
+        self.window.set_preferences(|preferences| {
+            preferences.reductions.transparency = Reduction::of(reduced);
+        });
         self
     }
 
@@ -297,7 +298,7 @@ impl OffscreenHost {
     /// desktop's; `false` at the start. See [`Ui::is_power_reduced`].
     pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
-            .set_preferences(|preferences| preferences.power = Reduction::of(reduced));
+            .set_preferences(|preferences| preferences.reductions.power = Reduction::of(reduced));
         self
     }
 

@@ -2818,7 +2818,7 @@ Ui
         pub fn set_preferences(&mut self, preferences: UiPreferences)
         pub const fn color_scheme(&self) -> ColorScheme
         pub fn system_color_scheme(&self) -> Option<ColorScheme>
-        pub fn is_motion_reduced(&self) -> bool
+        pub const fn is_motion_reduced(&self) -> bool
         pub fn system_motion_reduced(&self) -> bool
         pub const fn is_transparency_reduced(&self) -> bool
         pub fn system_transparency_reduced(&self) -> bool

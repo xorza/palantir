@@ -1,4 +1,4 @@
-use crate::primitives::reduction::Reduction;
+use crate::primitives::reduction::{Reduction, Reductions};
 use std::time::Duration;
 
 use glam::UVec2;
@@ -36,8 +36,7 @@ const BASELINE: RecordBaseline = RecordBaseline {
     font_epoch: 7,
     effect_epoch: 4,
     device_epoch: 1,
-    transparency: Reduction::Full,
-    power: Reduction::Full,
+    reductions: Reductions::FULL,
 };
 
 /// A warm frame with only an animation wake pending paints without recording.
@@ -158,7 +157,10 @@ fn frame_classification_covers_external_entry_facts() {
         Case {
             label: "transparency reduced since the record",
             recorded: Some(RecordBaseline {
-                transparency: Reduction::Reduced,
+                reductions: Reductions {
+                    transparency: Reduction::Reduced,
+                    ..Reductions::FULL
+                },
                 ..BASELINE
             }),
             expected: FramePlan::FullRecord {
@@ -169,7 +171,24 @@ fn frame_classification_covers_external_entry_facts() {
         Case {
             label: "power reduced since the record",
             recorded: Some(RecordBaseline {
-                power: Reduction::Reduced,
+                reductions: Reductions {
+                    power: Reduction::Reduced,
+                    ..Reductions::FULL
+                },
+                ..BASELINE
+            }),
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Prev,
+            },
+            ..QUIET
+        },
+        Case {
+            label: "motion reduced since the record",
+            recorded: Some(RecordBaseline {
+                reductions: Reductions {
+                    motion: Reduction::Reduced,
+                    ..Reductions::FULL
+                },
                 ..BASELINE
             }),
             expected: FramePlan::FullRecord {
@@ -305,7 +324,10 @@ fn a_frame_takes_its_reduced_power_slot_within_the_slack() {
     let at = |held: Option<Duration>, time: Duration, power: Reduction| {
         let mut runtime = FrameRuntime {
             stamp: FrameStamp::new(display, time),
-            power,
+            reductions: Reductions {
+                power,
+                ..Reductions::FULL
+            },
             earliest_repaint_at: held,
             ..FrameRuntime::default()
         };

@@ -10,7 +10,7 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::primitives::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::math::domain::EPS;
-use crate::primitives::reduction::Reduction;
+use crate::primitives::reduction::Reductions;
 use crate::text::shaper::TextShaper;
 use crate::ui::app::RecordPass;
 use crate::ui::frame_report::FrameProcessing;
@@ -52,10 +52,10 @@ pub(super) struct RecordBaseline {
     /// `SharedDevice::epoch`, which a new device moves: the app uploads its images again in the
     /// record, as `ImageHandle::is_resident` reads false.
     pub(super) device_epoch: u32,
-    /// Whether backdrop filters lower as solid fills, which every chrome and rect records under.
-    pub(super) transparency: Reduction,
-    /// Whether power use is reduced, which an app's record reads to pick its paint.
-    pub(super) power: Reduction,
+    /// What the system asks to reduce: backdrop filters lower as solid fills under reduced
+    /// transparency, an animation snaps under reduced motion, an app's record reads the power to
+    /// pick its paint, and an effect's alternative follows all three.
+    pub(super) reductions: Reductions,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -121,11 +121,10 @@ pub(crate) struct FrameRuntime {
     relayouts_carried: u8,
     /// The baseline the retained tree was last recorded under, `None` before the first record.
     recorded: Option<RecordBaseline>,
-    /// The transparency this frame paints with, resolved once at its start so a frame never
-    /// mixes two.
-    pub(super) transparency: Reduction,
-    /// The power use this frame runs at, resolved once at its start so a frame never mixes two.
-    pub(super) power: Reduction,
+    /// The reductions this frame runs under, resolved once at its start
+    /// ([`AppSettings::reductions`](crate::ui::resources::app_settings::AppSettings::reductions))
+    /// so a frame never mixes two: a preference written during a frame holds from the next.
+    pub(super) reductions: Reductions,
     /// The Ui time of the next frame's slot on the reduced-power grid, which this frame's report
     /// hands the host; `None` while power is full.
     pub(super) earliest_repaint_at: Option<Duration>,
@@ -270,7 +269,7 @@ impl FrameRuntime {
         let now = self.stamp.time;
         let refresh = self.stamp.display.refresh_millihertz;
         let slack = time::reduced_power_slack(refresh);
-        self.earliest_repaint_at = self.power.is_reduced().then(|| {
+        self.earliest_repaint_at = self.reductions.power.is_reduced().then(|| {
             let slot = self
                 .earliest_repaint_at
                 .filter(|&held| (held.saturating_sub(slack)..=held).contains(&now))

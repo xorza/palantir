@@ -13,7 +13,7 @@ use mundy::{Interest, Preferences, Subscription};
 
 use crate::host::system_preferences::SystemPreferences;
 use crate::host::winit::platform::{self, PowerSaverWatch};
-use crate::primitives::reduction::Reduction;
+use crate::primitives::reduction::{Reduction, Reductions};
 use crate::theme::color_scheme::ColorScheme;
 
 /// How long the host waits at startup for the first read, before it opens a window in the
@@ -97,8 +97,14 @@ impl SystemFollow {
 /// `held` with `report`'s part replaced and the other source's part kept.
 fn folded(held: SystemPreferences, report: SystemReport) -> SystemPreferences {
     match report {
-        SystemReport::Desktop(preferences) => from_mundy(preferences, held.power),
-        SystemReport::PowerSaver(power) => SystemPreferences { power, ..held },
+        SystemReport::Desktop(preferences) => from_mundy(preferences, held.reductions.power),
+        SystemReport::PowerSaver(power) => SystemPreferences {
+            reductions: Reductions {
+                power,
+                ..held.reductions
+            },
+            ..held
+        },
     }
 }
 
@@ -112,11 +118,13 @@ const UNREAD: SystemPreferences = SystemPreferences {
 /// `mundy`'s answers, beside `power`, which `mundy` does not read.
 fn from_mundy(preferences: Preferences, power: Reduction) -> SystemPreferences {
     SystemPreferences {
-        power,
-        motion: Reduction::of(preferences.reduced_motion == mundy::ReducedMotion::Reduce),
-        transparency: Reduction::of(
-            preferences.reduced_transparency == mundy::ReducedTransparency::Reduce,
-        ),
+        reductions: Reductions {
+            transparency: Reduction::of(
+                preferences.reduced_transparency == mundy::ReducedTransparency::Reduce,
+            ),
+            motion: Reduction::of(preferences.reduced_motion == mundy::ReducedMotion::Reduce),
+            power,
+        },
         ..from_answers(
             preferences.color_scheme,
             preferences.double_click_interval.0,
@@ -152,7 +160,7 @@ mod tests {
     use crate::host::system_preferences::SystemPreferences;
     use crate::host::winit::system_preferences::SystemReport;
     use crate::host::winit::{platform, system_preferences};
-    use crate::primitives::reduction::Reduction;
+    use crate::primitives::reduction::{Reduction, Reductions};
     use crate::theme::color_scheme::ColorScheme;
 
     /// A stated scheme passes through; no preference reports none; a zero or missing double-click
@@ -192,9 +200,7 @@ mod tests {
                 SystemPreferences {
                     color_scheme: want_scheme,
                     double_click: want_double_click,
-                    motion: Reduction::Full,
-                    transparency: Reduction::Full,
-                    power: Reduction::Full,
+                    reductions: Reductions::FULL,
                 },
                 "{scheme:?}, {double_click:?}"
             );
@@ -210,7 +216,10 @@ mod tests {
         desktop.color_scheme = mundy::ColorScheme::Light;
         desktop.reduced_motion = mundy::ReducedMotion::Reduce;
         let saving = SystemPreferences {
-            power: Reduction::Reduced,
+            reductions: Reductions {
+                power: Reduction::Reduced,
+                ..Reductions::FULL
+            },
             ..SystemPreferences::NONE
         };
         let light = system_preferences::folded(saving, SystemReport::Desktop(desktop));
@@ -219,15 +228,20 @@ mod tests {
             SystemPreferences {
                 color_scheme: Some(ColorScheme::Light),
                 double_click: platform::DOUBLE_CLICK_FALLBACK,
-                motion: Reduction::Reduced,
-                transparency: Reduction::Full,
-                power: Reduction::Reduced,
+                reductions: Reductions {
+                    transparency: Reduction::Full,
+                    motion: Reduction::Reduced,
+                    power: Reduction::Reduced,
+                },
             }
         );
         assert_eq!(
             system_preferences::folded(light, SystemReport::PowerSaver(Reduction::Full)),
             SystemPreferences {
-                power: Reduction::Full,
+                reductions: Reductions {
+                    power: Reduction::Full,
+                    ..light.reductions
+                },
                 ..light
             }
         );

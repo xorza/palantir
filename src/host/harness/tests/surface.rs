@@ -45,10 +45,10 @@ fn resize_and_set_system_scale_move_the_surface_between_frames() {
 }
 
 /// The builder seeds the scheme, the motion, the transparency and the power the system reports,
-/// as the setters set them.
+/// as the setters set them; the first frame runs under them.
 #[test]
 fn the_builder_seeds_the_system_preferences() {
-    let seeded = Harness::builder(SURFACE)
+    let mut seeded = Harness::builder(SURFACE)
         .mono()
         .system_color_scheme(ColorScheme::Light)
         .system_motion_reduced(true)
@@ -56,12 +56,16 @@ fn the_builder_seeds_the_system_preferences() {
         .system_power_reduced(true)
         .build();
     assert_eq!(seeded.ui().system_color_scheme(), Some(ColorScheme::Light));
-    assert!(seeded.ui().is_motion_reduced());
+    assert!(seeded.ui().system_motion_reduced());
     assert!(seeded.ui().system_transparency_reduced());
     assert!(seeded.ui().system_power_reduced());
+    seeded.frame(|_| {});
+    assert!(seeded.ui().is_motion_reduced());
+    assert!(seeded.ui().is_transparency_reduced());
+    assert!(seeded.ui().is_power_reduced());
     let plain = Harness::builder(SURFACE).mono().build();
     assert_eq!(plain.ui().system_color_scheme(), None);
-    assert!(!plain.ui().is_motion_reduced());
+    assert!(!plain.ui().system_motion_reduced());
     assert!(!plain.ui().system_transparency_reduced());
     assert!(!plain.ui().system_power_reduced());
 }

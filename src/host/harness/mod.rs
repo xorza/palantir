@@ -376,15 +376,16 @@ impl Harness {
     /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
     pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
-            .set_preferences(|preferences| preferences.motion = Reduction::of(reduced));
+            .set_preferences(|preferences| preferences.reductions.motion = Reduction::of(reduced));
         self
     }
 
     /// Report the system as asking for less transparency, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
     pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.window
-            .set_preferences(|preferences| preferences.transparency = Reduction::of(reduced));
+        self.window.set_preferences(|preferences| {
+            preferences.reductions.transparency = Reduction::of(reduced);
+        });
         self
     }
 
@@ -392,7 +393,7 @@ impl Harness {
     /// desktop's; `false` at the start. See [`Ui::is_power_reduced`].
     pub fn set_system_power_reduced(&mut self, reduced: bool) -> &mut Self {
         self.window
-            .set_preferences(|preferences| preferences.power = Reduction::of(reduced));
+            .set_preferences(|preferences| preferences.reductions.power = Reduction::of(reduced));
         self
     }
 

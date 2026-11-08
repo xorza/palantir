@@ -14,7 +14,7 @@ use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
-use crate::primitives::reduction::Reduction;
+use crate::primitives::reduction::Reductions;
 
 /// Every effect loaded under a name, for the app's life, as a font is: loading the same name again
 /// replaces it, and a refused load leaves the one before. A name keeps the parameter type and
@@ -69,22 +69,13 @@ impl ReducedBy {
             Self::Power => "power-saver",
         }
     }
-}
 
-/// What the system asks to reduce now, which picks the alternative a shape paints.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Reductions {
-    pub(crate) transparency: Reduction,
-    pub(crate) motion: Reduction,
-    pub(crate) power: Reduction,
-}
-
-impl Reductions {
-    const fn reduces(self, by: ReducedBy) -> bool {
-        match by {
-            ReducedBy::Transparency => self.transparency.is_reduced(),
-            ReducedBy::Motion => self.motion.is_reduced(),
-            ReducedBy::Power => self.power.is_reduced(),
+    /// Whether `reductions` reduces this preference.
+    const fn is_reduced_in(self, reductions: Reductions) -> bool {
+        match self {
+            Self::Transparency => reductions.transparency.is_reduced(),
+            Self::Motion => reductions.motion.is_reduced(),
+            Self::Power => reductions.power.is_reduced(),
         }
     }
 }
@@ -224,10 +215,13 @@ impl EffectRegistry {
             image_slots: effects.loaded[id.idx()].image_slots,
         };
         let alternatives = effects.loaded[id.idx()].alternatives;
-        let Some((by, alternative)) = ReducedBy::ALL
-            .into_iter()
-            .zip(alternatives)
-            .find(|&(by, alternative)| alternative != ReducedName::Same && reductions.reduces(by))
+        let Some((by, alternative)) =
+            ReducedBy::ALL
+                .into_iter()
+                .zip(alternatives)
+                .find(|&(by, alternative)| {
+                    alternative != ReducedName::Same && by.is_reduced_in(reductions)
+                })
         else {
             return Some(resolved(id));
         };

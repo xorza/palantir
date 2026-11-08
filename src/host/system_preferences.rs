@@ -2,7 +2,7 @@
 //! them: the winit host reads them from the desktop, a headless host takes them from its builder
 //! and its setters.
 
-use crate::primitives::reduction::Reduction;
+use crate::primitives::reduction::Reductions;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::resources::UiResources;
 use std::time::Duration;
@@ -16,9 +16,7 @@ use std::time::Duration;
 pub(crate) struct SystemPreferences {
     pub(crate) color_scheme: Option<ColorScheme>,
     pub(crate) double_click: Option<Duration>,
-    pub(crate) motion: Reduction,
-    pub(crate) transparency: Reduction,
-    pub(crate) power: Reduction,
+    pub(crate) reductions: Reductions,
 }
 
 impl SystemPreferences {
@@ -27,9 +25,7 @@ impl SystemPreferences {
     pub(crate) const NONE: Self = Self {
         color_scheme: None,
         double_click: None,
-        motion: Reduction::Full,
-        transparency: Reduction::Full,
-        power: Reduction::Full,
+        reductions: Reductions::FULL,
     };
 
     /// Write the settings into the host's shared cells: the scheme, the motion, the transparency
@@ -40,13 +36,11 @@ impl SystemPreferences {
     pub(crate) fn apply(self, resources: &UiResources) -> bool {
         let settings = resources.settings();
         let scheme = settings.set_system_color_scheme(self.color_scheme);
-        let motion = settings.set_system_motion(self.motion);
-        let transparency = settings.set_system_transparency(self.transparency);
-        let power = settings.set_system_power(self.power);
+        let reductions = settings.set_system_reductions(self.reductions);
         let double_click = self
             .double_click
             .is_some_and(|interval| settings.set_double_click_interval(interval));
-        scheme || motion || transparency || power || double_click
+        scheme || reductions || double_click
     }
 }
 
@@ -54,7 +48,7 @@ impl SystemPreferences {
 mod tests {
     use crate::host::system_preferences::SystemPreferences;
     use crate::input::capture::DOUBLE_CLICK_INTERVAL;
-    use crate::primitives::reduction::Reduction;
+    use crate::primitives::reduction::{Reduction, Reductions};
     use crate::theme::color_scheme::ColorScheme;
     use crate::ui::resources::UiResources;
     use std::time::Duration;
@@ -74,9 +68,11 @@ mod tests {
         let reported = SystemPreferences {
             color_scheme: Some(ColorScheme::Light),
             double_click: Some(ms(250)),
-            motion: Reduction::Reduced,
-            transparency: Reduction::Reduced,
-            power: Reduction::Reduced,
+            reductions: Reductions {
+                transparency: Reduction::Reduced,
+                motion: Reduction::Reduced,
+                power: Reduction::Reduced,
+            },
         };
         assert!(reported.apply(&resources));
         assert!(!reported.apply(&resources), "the same report again");
@@ -85,27 +81,25 @@ mod tests {
             Some(ColorScheme::Light)
         );
         assert_eq!(resources.settings().double_click_interval(), ms(250));
-        assert_eq!(resources.settings().system_motion(), Reduction::Reduced);
         assert_eq!(
-            resources.settings().system_transparency(),
-            Reduction::Reduced
+            resources.settings().system_reductions(),
+            reported.reductions
         );
-        assert_eq!(resources.settings().system_power(), Reduction::Reduced);
 
         assert!(SystemPreferences::NONE.apply(&resources));
         assert_eq!(resources.settings().system_color_scheme(), None);
         assert_eq!(resources.settings().double_click_interval(), ms(250));
-        assert_eq!(resources.settings().system_motion(), Reduction::Full);
-        assert_eq!(resources.settings().system_transparency(), Reduction::Full);
-        assert_eq!(resources.settings().system_power(), Reduction::Full);
+        assert_eq!(resources.settings().system_reductions(), Reductions::FULL);
 
         let saver = SystemPreferences {
-            power: Reduction::Reduced,
+            reductions: Reductions {
+                power: Reduction::Reduced,
+                ..Reductions::FULL
+            },
             ..SystemPreferences::NONE
         };
         assert!(saver.apply(&resources), "the power alone moved");
         assert!(!saver.apply(&resources), "the same report again");
-        assert_eq!(resources.settings().system_power(), Reduction::Reduced);
-        assert_eq!(resources.settings().system_motion(), Reduction::Full);
+        assert_eq!(resources.settings().system_reductions(), saver.reductions);
     }
 }

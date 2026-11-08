@@ -252,9 +252,9 @@ impl WindowFrames {
     fn open_frame(&mut self, stamp: FrameStamp) -> FramePlan {
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.frame_runtime.begin_frame(stamp);
+        // Before the theme moves on, so a transition it starts reads this frame's motion.
+        self.ui.frame_runtime.reductions = self.ui.resources.settings().reductions();
         self.ui.advance_theme();
-        self.ui.frame_runtime.transparency = self.ui.resources.settings().transparency();
-        self.ui.frame_runtime.power = self.ui.resources.settings().power();
         self.ui.frame_runtime.take_power_slot();
         self.ui
             .frame_runtime
@@ -264,8 +264,7 @@ impl WindowFrames {
             font_epoch: self.ui.resources.text().font_epoch(),
             effect_epoch: self.ui.resources.effects().epoch(),
             device_epoch,
-            transparency: self.ui.frame_runtime.transparency,
-            power: self.ui.frame_runtime.power,
+            reductions: self.ui.frame_runtime.reductions,
         };
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
@@ -453,7 +452,7 @@ impl WindowFrames {
         }
         self.ui
             .forest
-            .pre_record(self.ui.frame_runtime.transparency);
+            .pre_record(self.ui.frame_runtime.reductions.transparency);
         self.ui.input.pre_record();
         self.ui.host.window_requests.begin_pass();
         self.ui.overlays.begin_pass();

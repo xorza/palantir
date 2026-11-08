@@ -39,7 +39,6 @@ use crate::display::user_scale::UserScale;
 use crate::effect::effect_kind::EffectKind;
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
-use crate::effect::effect_registry::Reductions;
 use crate::effect::effect_source::EffectSource;
 use crate::effect::error::EffectError;
 use crate::gpu::gpu_paint::gpu_views::RecordedView;
@@ -256,7 +255,7 @@ impl Ui {
     /// Whether a change of the shown theme may now animate. Not before the window's second frame:
     /// a change before the first or during it lands on a window that showed nothing, and one
     /// right after it is the system's first answer (`SystemPreferences::read`'s timeout).
-    fn theme_motion(&self) -> Motion {
+    const fn theme_motion(&self) -> Motion {
         if !self.motion_snaps() && self.frame_runtime.render_frame_id > 1 {
             Motion::Animate
         } else {
@@ -268,7 +267,7 @@ impl Ui {
     /// window shows again after a hidden span, where a motion that ran unseen would show its last
     /// shown point and finish late.
     #[inline]
-    fn motion_snaps(&self) -> bool {
+    const fn motion_snaps(&self) -> bool {
         self.host.window_frame.facts.shown_again || self.is_motion_reduced()
     }
 
@@ -301,23 +300,27 @@ impl Ui {
         self.resources.settings().system_color_scheme()
     }
 
-    /// Whether motion is reduced: [`UiPreferences::motion`] resolved
-    /// against [`Self::system_motion_reduced`], read when a motion starts, so a theme set between
-    /// two frames snaps as the setting stands. Then every [`Self::animate`] and theme
+    /// Whether this frame runs with motion reduced: [`UiPreferences::motion`] resolved against
+    /// [`Self::system_motion_reduced`] at the frame's start, so no frame mixes two, as transparency
+    /// and power. Then every [`Self::animate`] and theme
     /// transition snaps to its target, as CSS `prefers-reduced-motion` asks of transitions, and a
     /// [decorative](crate::widget::PaintMotion::Decorative) paint animation holds still; one that
     /// shows progress, as a spinner's turn, still runs, as WCAG 2.3.3 lets essential motion stay
     /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). App-global.
     #[inline]
-    pub fn is_motion_reduced(&self) -> bool {
-        self.resources.settings().motion().is_reduced()
+    pub const fn is_motion_reduced(&self) -> bool {
+        self.frame_runtime.reductions.motion.is_reduced()
     }
 
     /// Whether the system asks for less motion, whatever the preference; `false` where nothing
     /// reports it, as in a [`Harness`](crate::Harness) until its test sets it.
     #[inline]
     pub fn system_motion_reduced(&self) -> bool {
-        self.resources.settings().system_motion().is_reduced()
+        self.resources
+            .settings()
+            .system_reductions()
+            .motion
+            .is_reduced()
     }
 
     /// Whether this frame paints with transparency reduced: [`UiPreferences::transparency`]
@@ -330,7 +333,7 @@ impl Ui {
     /// Power Mode and Linux's power-saver profile do not.
     #[inline]
     pub const fn is_transparency_reduced(&self) -> bool {
-        self.frame_runtime.transparency.is_reduced()
+        self.frame_runtime.reductions.transparency.is_reduced()
     }
 
     /// Whether the system asks for less transparency, whatever the preference; `false` where
@@ -338,7 +341,11 @@ impl Ui {
     /// [`Harness`](crate::Harness) until its test sets it.
     #[inline]
     pub fn system_transparency_reduced(&self) -> bool {
-        self.resources.settings().system_transparency().is_reduced()
+        self.resources
+            .settings()
+            .system_reductions()
+            .transparency
+            .is_reduced()
     }
 
     /// Whether this frame runs with power use reduced: [`UiPreferences::power`] resolved against
@@ -351,16 +358,7 @@ impl Ui {
     /// App-global.
     #[inline]
     pub const fn is_power_reduced(&self) -> bool {
-        self.frame_runtime.power.is_reduced()
-    }
-
-    /// What the system asks to reduce this frame, which picks an effect's alternative.
-    fn reductions(&self) -> Reductions {
-        Reductions {
-            transparency: self.frame_runtime.transparency,
-            motion: self.resources.settings().motion(),
-            power: self.frame_runtime.power,
-        }
+        self.frame_runtime.reductions.power.is_reduced()
     }
 
     /// Whether the system's power-saver mode is on, whatever the preference: macOS Low Power Mode,
@@ -368,7 +366,11 @@ impl Ui {
     /// reports it, as in a [`Harness`](crate::Harness) until its test sets it.
     #[inline]
     pub fn system_power_reduced(&self) -> bool {
-        self.resources.settings().system_power().is_reduced()
+        self.resources
+            .settings()
+            .system_reductions()
+            .power
+            .is_reduced()
     }
 
     /// At a frame's start, after its clock: move a theme transition one `dt` on, then adopt the
@@ -779,7 +781,7 @@ impl Ui {
     /// alternative it paints in place of it.
     #[track_caller]
     pub fn add_shape(&mut self, mut shape: impl Lower) {
-        shape.resolve(self.resources.effects(), self.reductions());
+        shape.resolve(self.resources.effects(), self.frame_runtime.reductions);
         self.forest.add_shape(shape);
     }
 
@@ -971,7 +973,7 @@ impl Ui {
             S::TURNS || animation.channel.turn.is_none(),
             "{shape:?} does not turn: an effect's coverage is computed in its unturned rect"
         );
-        shape.resolve(self.resources.effects(), self.reductions());
+        shape.resolve(self.resources.effects(), self.frame_runtime.reductions);
         let animation = if self.is_motion_reduced() {
             animation.reduced()
         } else {

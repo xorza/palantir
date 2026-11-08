@@ -127,7 +127,7 @@ impl HarnessBuilder {
     /// by default. The harness's
     /// [`set_system_motion_reduced`](Harness::set_system_motion_reduced) changes it later.
     pub const fn system_motion_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.motion = Reduction::of(reduced);
+        self.settings.preferences.reductions.motion = Reduction::of(reduced);
         self
     }
 
@@ -136,7 +136,7 @@ impl HarnessBuilder {
     /// [`set_system_transparency_reduced`](Harness::set_system_transparency_reduced) changes it
     /// later.
     pub const fn system_transparency_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.transparency = Reduction::of(reduced);
+        self.settings.preferences.reductions.transparency = Reduction::of(reduced);
         self
     }
 
@@ -144,7 +144,7 @@ impl HarnessBuilder {
     /// `false` by default. The harness's
     /// [`set_system_power_reduced`](Harness::set_system_power_reduced) changes it later.
     pub const fn system_power_reduced(mut self, reduced: bool) -> Self {
-        self.settings.preferences.power = Reduction::of(reduced);
+        self.settings.preferences.reductions.power = Reduction::of(reduced);
         self
     }
 
