@@ -14,6 +14,7 @@ use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
+use crate::primitives::reduction::Reduction;
 
 /// Every effect loaded under a name, for the app's life, as a font is: loading the same name again
 /// replaces it, and a refused load leaves the one before. A name keeps the parameter type and
@@ -47,13 +48,6 @@ struct LoadedEffect {
         reason = "a shape binds this many images (proposal batch 7)"
     )]
     image_slots: u8,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "a reduced-power frame paints this (proposal batch 6)"
-        )
-    )]
     power_saver: PowerSaverName,
 }
 
@@ -144,20 +138,48 @@ impl EffectRegistry {
         self.id_of(name).is_some()
     }
 
-    /// The id of the effect loaded under `name`, which a shape that names it records.
+    /// The id of the effect a shape that names `name` paints, which it records: the effect loaded
+    /// under `name`, or while `power` is reduced the alternative its source names; `None` when
+    /// that is nothing. A power move records every window again, so the record resolves it each
+    /// frame it changes.
     ///
     /// # Panics
     ///
-    /// When no effect is loaded under `name`, or one with another parameter type or kind: a
-    /// shape that names an effect nothing loaded is a logic error, as painting nothing would be
-    /// quietly wrong.
+    /// When no effect is loaded under `name`, or under the alternative it paints in place of it,
+    /// or one is loaded with another parameter type or kind: a shape that names an effect nothing
+    /// loaded is a logic error, as painting nothing would be quietly wrong.
     #[track_caller]
     pub(crate) fn resolve<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
-    ) -> EffectId {
-        self.id_of(name)
-            .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name()))
+        power: Reduction,
+    ) -> Option<EffectId> {
+        let id = self
+            .id_of(name)
+            .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name()));
+        if !power.is_reduced() {
+            return Some(id);
+        }
+        let effects = self.effects.borrow();
+        match effects.loaded[id.idx()].power_saver {
+            PowerSaverName::Same => Some(id),
+            PowerSaverName::Nothing => None,
+            PowerSaverName::Effect(other) => {
+                let other_id = *effects.ids.get(&other).unwrap_or_else(|| {
+                    panic!(
+                        "no effect is loaded under `{}`, the power-saver alternative of `{}`",
+                        other.as_str(),
+                        name.name()
+                    )
+                });
+                assert_types(
+                    other.as_str(),
+                    effects.loaded[other_id.idx()].types,
+                    EffectTypes::of::<U, K>(),
+                );
+                Some(other_id)
+            }
+        }
     }
 
     #[track_caller]

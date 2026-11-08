@@ -61,6 +61,7 @@ impl<T: sealed::LowerShape> Lower for T {}
 
 mod sealed {
     use crate::effect::effect_registry::EffectRegistry;
+    use crate::primitives::reduction::Reduction;
     use crate::shape::record::ShapeRecord;
     use crate::shape::record_store::RecordStore;
     use std::fmt;
@@ -75,12 +76,21 @@ mod sealed {
         /// carries a backdrop filter, so every other kind skips the check.
         const CAN_BE_PANE: bool = false;
 
+        /// Whether the shape reads a paint animation's time, so an animation that drives no
+        /// channel moves it; only an effect does.
+        const READS_TIME: bool = false;
+
+        /// Whether a paint animation's turn rotates the shape; an effect, whose coverage the
+        /// wrapper computes in its unturned rect, does not.
+        const TURNS: bool = true;
+
         /// True if this shape paints nothing; checked before [`Self::lower`].
         fn is_noop(&self) -> bool;
 
-        /// Resolve what the shape names in the host's registries, before [`Self::lower`]: an
-        /// effect's id. Nothing by default.
-        fn resolve(&mut self, _effects: &EffectRegistry) {}
+        /// Resolve what the shape names in the host's registries, before [`Self::is_noop`] and
+        /// [`Self::lower`]: an effect's id, or its power-saver alternative's while `power` is
+        /// reduced. Nothing by default.
+        fn resolve(&mut self, _effects: &EffectRegistry, _power: Reduction) {}
 
         /// Convert to the stored form. Every impl destructures `Self`, so an unrecorded authoring field is a build error.
         fn lower(self, store: &mut RecordStore) -> ShapeRecord;

@@ -765,10 +765,11 @@ impl Ui {
     /// # Panics
     ///
     /// When `shape` is an [`EffectShape`](crate::widget::EffectShape) whose effect is not
-    /// loaded, or loaded with other parameters or kind.
+    /// loaded, or loaded with other parameters or kind; while power is reduced, the same for the
+    /// alternative it paints in place of it.
     #[track_caller]
     pub fn add_shape(&mut self, mut shape: impl Lower) {
-        shape.resolve(self.resources.effects());
+        shape.resolve(self.resources.effects(), self.frame_runtime.power);
         self.forest.add_shape(shape);
     }
 
@@ -928,7 +929,13 @@ impl Ui {
     /// shape is identical every frame, so the widget never re-records. Drops silently
     /// if the shape was noop-collapsed. With motion reduced ([`Self::is_motion_reduced`]), a
     /// decorative animation lands at once, as
-    /// [`PaintMotion::Decorative`](crate::widget::PaintMotion::Decorative) says.
+    /// [`PaintMotion::Decorative`](crate::widget::PaintMotion::Decorative) says. An
+    /// [`EffectShape`](crate::widget::EffectShape) reads the animation's time.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::add_shape`]; when `animation` drives no channel and `shape` reads no time, so
+    /// nothing would move; when `animation` turns a shape that does not turn, an effect.
     ///
     /// ```
     /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
@@ -945,8 +952,16 @@ impl Ui {
     /// # }
     /// ```
     #[track_caller]
-    pub fn add_shape_animated(&mut self, mut shape: impl Lower, animation: PaintAnimation) {
-        shape.resolve(self.resources.effects());
+    pub fn add_shape_animated<S: Lower>(&mut self, mut shape: S, animation: PaintAnimation) {
+        assert!(
+            S::READS_TIME || animation.drives_channel(),
+            "a paint animation that drives no channel moves only an effect's time, and {shape:?} reads none"
+        );
+        assert!(
+            S::TURNS || animation.channel.turn.is_none(),
+            "{shape:?} does not turn: an effect's coverage is computed in its unturned rect"
+        );
+        shape.resolve(self.resources.effects(), self.frame_runtime.power);
         let animation = if self.is_motion_reduced() {
             animation.reduced()
         } else {

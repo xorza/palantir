@@ -1,9 +1,11 @@
 //! Loading effects: the derive's layout, each refusal, a replacing load, a refused reload, and a
-//! name used with other types; on a device, each blend, a clip, a recovery and a reload.
+//! name used with other types; the time each frame reads, reduced motion and the power-saver
+//! alternative; on a device, each blend, a clip, a recovery, a reload and the time.
 
 use std::error;
 
 use glam::UVec2;
+use std::time::Duration;
 
 use crate::effect::effect_kind::{BackdropEffect, ColorEffect};
 use crate::effect::effect_name::EffectName;
@@ -15,15 +17,18 @@ use crate::gpu::test_gpu::headless_test_gpu;
 use crate::gpu::test_gpu::isolated_headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
+use crate::internals::paint_capture::PaintCall;
 use crate::internals::panic_probe::assert_panics_with;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
+use crate::shape::paint_animation::{PaintAnimation, PaintMotion, PaintRepeat};
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
@@ -618,4 +623,236 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
     h.ui().load_effect(BLEND, EffectSource::new(red)).unwrap();
     assert_eq!(h.frame(paint).paint(), FramePaint::Full);
     assert_eq!(h.read_back().get_pixel(8, 8).0, [255, 0, 0, 255]);
+}
+
+const BLUE: Blend = Blend {
+    color: [0.0, 0.0, 1.0, 1.0],
+    mode: 0,
+    pad0: 0,
+    pad1: 0,
+    pad2: 0,
+};
+
+/// A 16 × 16 deviceless window with [`BLEND`] loaded.
+fn blend_window() -> Harness {
+    let h = Harness::mono(UVec2::new(16, 16));
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    h
+}
+
+/// Each effect draw of the frame `h` shows: its effect and its time.
+fn effect_draws(h: &Harness) -> Vec<(EffectId, f32)> {
+    h.encode_paint()
+        .calls
+        .iter()
+        .filter_map(|call| match call {
+            PaintCall::Effect(p) => Some((p.effect, p.time)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Each frame encodes the time into the pass at its own instant, paint-only frames included: a 2 s
+/// loop from 1 s reads 0 at 0.5 s, before its start, and asks for a frame at the start; then
+/// 0.5 s at 1.5 s, 0 at 3 s, the wrap, and 0.75 s at 3.75 s, each frame asking for the next at
+/// once. A still effect beside it reads 0 throughout, and alone it asks for no frame.
+#[test]
+fn an_effect_reads_its_time_each_frame_and_wakes_while_it_moves() {
+    let ms = Duration::from_millis;
+    let looping = PaintAnimation::clock()
+        .with_started_at(ms(1000))
+        .with_period(ms(2000))
+        .with_repeat(PaintRepeat::Forever);
+    let record = |ui: &mut Ui| {
+        ui.add_shape(Shape::effect(BLEND, BLUE));
+        ui.add_shape_animated(Shape::effect(BLEND, BLUE), looping);
+    };
+    let mut h = blend_window();
+    for (at, time, wake) in [
+        (ms(500), 0.0, ms(1000)),
+        (ms(1500), 0.5, ms(1500)),
+        (ms(3000), 0.0, ms(3000)),
+        (ms(3750), 0.75, ms(3750)),
+    ] {
+        let report = h.at(at).frame(record);
+        assert_eq!(report.repaint_at, Some(wake), "at {at:?}");
+        assert_eq!(
+            effect_draws(&h),
+            [(EffectId(0), 0.0), (EffectId(0), time)],
+            "at {at:?}"
+        );
+    }
+
+    let mut still = blend_window();
+    let report = still.frame(|ui| ui.add_shape(Shape::effect(BLEND, BLUE)));
+    assert_eq!(report.repaint_at, None, "a still effect asks for no frame");
+}
+
+/// Under reduced motion each effect paints as any paint animation does, with no wake: a
+/// decorative loop reads 0, as unanimated; a decorative single pass of 2 s reads its end, 2 s,
+/// from the first frame; a progress loop runs on, 0.5 s into its 2 s pass at 0.5 s.
+#[test]
+fn reduced_motion_holds_a_decorative_effect() {
+    let ms = Duration::from_millis;
+    let looping = PaintAnimation::clock()
+        .with_period(ms(2000))
+        .with_repeat(PaintRepeat::Forever);
+    let once = PaintAnimation::clock().with_period(ms(2000));
+    let progress = looping.with_motion(PaintMotion::Progress);
+    let mut h = blend_window();
+    h.set_system_motion_reduced(true);
+    let record = |ui: &mut Ui| {
+        ui.add_shape_animated(Shape::effect(BLEND, BLUE), looping);
+        ui.add_shape_animated(Shape::effect(BLEND, BLUE), once);
+    };
+    let report = h.at(ms(500)).frame(record);
+    assert_eq!(report.repaint_at, None);
+    let times: Vec<f32> = effect_draws(&h).iter().map(|&(_, time)| time).collect();
+    assert_eq!(times, [0.0, 2.0]);
+
+    let report = h
+        .at(ms(500))
+        .frame(|ui| ui.add_shape_animated(Shape::effect(BLEND, BLUE), progress));
+    assert_eq!(report.repaint_at, Some(ms(500)));
+    assert_eq!(effect_draws(&h), [(EffectId(0), 0.5)]);
+}
+
+/// While power is reduced each effect paints what its source named: `blend` paints `lite`,
+/// `gone` paints nothing, and `lite` itself, `Same`, paints as itself. With full power each
+/// paints as itself: ids 0, 2 and 1 in load order `blend`, `lite`, `gone`.
+#[test]
+fn reduced_power_paints_each_alternative() {
+    let lite: EffectName<Blend> = EffectName::named("lite").unwrap();
+    let gone: EffectName<Blend> = EffectName::named("gone").unwrap();
+    let mut h = Harness::mono(UVec2::new(16, 16));
+    h.ui()
+        .load_effect(
+            BLEND,
+            EffectSource::new(BLEND_WGSL).power_saver(PowerSaverPaint::Effect(lite)),
+        )
+        .unwrap();
+    h.ui()
+        .load_effect(lite, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    h.ui()
+        .load_effect(
+            gone,
+            EffectSource::new(BLEND_WGSL).power_saver(PowerSaverPaint::Nothing),
+        )
+        .unwrap();
+    let record = |ui: &mut Ui| {
+        for name in [BLEND, gone, lite] {
+            ui.add_shape(Shape::effect(name, BLUE));
+        }
+    };
+    h.frame(record);
+    let ids =
+        |h: &Harness| -> Vec<EffectId> { effect_draws(h).iter().map(|&(id, _)| id).collect() };
+    assert_eq!(ids(&h), [EffectId(0), EffectId(2), EffectId(1)]);
+    h.set_system_power_reduced(true);
+    h.frame(record);
+    assert_eq!(ids(&h), [EffectId(1), EffectId(1)]);
+    h.set_system_power_reduced(false);
+    h.frame(record);
+    assert_eq!(
+        ids(&h),
+        [EffectId(0), EffectId(2), EffectId(1)],
+        "back at full power"
+    );
+}
+
+/// What an effect's paint cannot be panics as the shape is added: an alternative nothing loaded,
+/// or one loaded later with other types, while power is reduced; a clock-only animation on a
+/// shape that reads no time; a turn on an effect.
+#[test]
+fn an_effect_that_cannot_paint_panics() {
+    let missing: EffectName<Blend> = EffectName::named("missing").unwrap();
+    let mut h = Harness::mono(UVec2::new(16, 16));
+    h.ui()
+        .load_effect(
+            BLEND,
+            EffectSource::new(BLEND_WGSL).power_saver(PowerSaverPaint::Effect(missing)),
+        )
+        .unwrap();
+    h.set_system_power_reduced(true);
+    assert_panics_with(
+        "no effect is loaded under `missing`, the power-saver alternative of `blend`",
+        || h.frame(|ui| ui.add_shape(Shape::effect(BLEND, BLUE))),
+    );
+    let untyped: EffectName<()> = EffectName::named("missing").unwrap();
+    let plain = "fn effect(input: EffectInput) -> EffectOutput { return EffectOutput(); }";
+    h.ui()
+        .load_effect(untyped, EffectSource::new(plain))
+        .unwrap();
+    assert_panics_with("effect `missing` was loaded as", || {
+        h.frame(|ui| ui.add_shape(Shape::effect(BLEND, BLUE)))
+    });
+
+    let mut h = blend_window();
+    assert_panics_with("drives no channel", || {
+        h.frame(|ui| {
+            ui.add_shape_animated(Shape::rect().fill(RgbaF32::WHITE), PaintAnimation::clock());
+        })
+    });
+    assert_panics_with("does not turn", || {
+        h.frame(|ui| {
+            ui.add_shape_animated(Shape::effect(BLEND, BLUE), PaintAnimation::turn(0.0, 1.0));
+        })
+    });
+}
+
+/// The time reaches the shader: an effect that paints `time / 2` in red over a 2 s loop, at
+/// 1.5 s, paints red 0.75, encoded to sRGB.
+#[test]
+fn the_time_reaches_the_effect() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(16, 16))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    let timed = "
+struct Params { color: vec4<f32>, mode: u32, pad0: u32, pad1: u32, pad2: u32 }
+
+fn effect(input: EffectInput, params: Params) -> EffectOutput {
+    return effect_over(vec4<f32>(input.time / 2.0, 0.0, 0.0, 1.0));
+}
+";
+    h.ui().load_effect(BLEND, EffectSource::new(timed)).unwrap();
+    let looping = PaintAnimation::clock()
+        .with_period(Duration::from_secs(2))
+        .with_repeat(PaintRepeat::Forever);
+    h.at(Duration::from_millis(1500)).prime(2, |ui| {
+        ui.add_shape_animated(Shape::effect(BLEND, BLUE), looping);
+    });
+    let red = RgbaF32::new(0.75, 0.0, 0.0, 1.0).to_srgba8();
+    assert_eq!(
+        h.read_back().get_pixel(8, 8).0,
+        [red.r, red.g, red.b, red.a]
+    );
+}
+
+/// A moving effect repaints its own rect each paint-only frame, past its node and with its
+/// antialiasing reach, and nothing else: a loop over `(2, 2, 6, 6)` beside a still effect over
+/// `(10, 10, 4, 4)`, at scale 1, damages `(1.5, 1.5, 7, 7)` at 16 ms, the rect grown by the
+/// 0.5 px reach.
+#[test]
+fn a_moving_effect_damages_its_rect_alone() {
+    let looping = PaintAnimation::clock()
+        .with_period(Duration::from_secs(2))
+        .with_repeat(PaintRepeat::Forever);
+    let record = |ui: &mut Ui| {
+        ui.add_shape_animated(
+            Shape::effect(BLEND, BLUE).at(Rect::new(2.0, 2.0, 6.0, 6.0)),
+            looping,
+        );
+        ui.add_shape(Shape::effect(BLEND, BLUE).at(Rect::new(10.0, 10.0, 4.0, 4.0)));
+    };
+    let mut h = blend_window();
+    h.frame(record);
+    let report = h.at(Duration::from_millis(16)).frame(record);
+    assert_eq!(report.paint(), FramePaint::Partial);
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    assert_eq!(rects, [Rect::new(1.5, 1.5, 7.0, 7.0)]);
 }

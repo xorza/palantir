@@ -5,8 +5,12 @@
 //! It does not affect layout, hit-test or structure. Unlike `crate::animation`, sampling is a pure
 //! function of `now` at encode time, so irregular `dt` does not drift.
 //!
-//! An animation drives alpha, rotation, or both. Translation and scale would need a swept union the
-//! cascade can't bound without sampling; a rotation's cover is the same square at every angle.
+//! An animation drives alpha, rotation, or both, and gives an effect its time: the time into the
+//! current pass, so it keeps its precision however long the run. Translation and scale would need
+//! a swept union the cascade can't bound without sampling; a rotation's cover is the same square at
+//! every angle. Refused for an effect's time: one global clock (Godot `TIME`, Shadertoy), which
+//! wraps and loses precision; time the app passes (SwiftUI `TimelineView`), which damage cannot see;
+//! a motion type of its own, a second clock beside this one.
 //!
 //! A turn rotates any shape kind about its owner box's center, at paint time only; it is not a
 //! rotation in `TranslateScale`, whose axis-aligned rects the scissor and hit-test math rely on.
@@ -15,7 +19,9 @@
 //! composer, a triangle's in the encoder, a mesh through a complex scale in its instance, a quad
 //! and an image through an angle about their own center in the vertex shader (the fragment works
 //! in their unturned frame, where a rotation keeps the AA width), and text and icons through a
-//! turned instance buffer of their own, so an unturned glyph keeps its size. Refused:
+//! turned instance buffer of their own, so an unturned glyph keeps its size. An effect does not
+//! turn: its wrapper computes coverage in the unturned rect, so `Ui::add_shape_animated` refuses a
+//! turn on it. Refused:
 //! tessellating quads and text into meshes, which loses the SDF's AA and the instanced batching;
 //! drawing a turned shape offscreen and compositing it, a pass and a texture per shape.
 
@@ -41,7 +47,8 @@ const NANOS_PER_SEC: u128 = 1_000_000_000;
 /// A plain `fn`, so it cannot capture: the encoder samples with no accumulator, so a dropped frame or irregular `dt` must not make it drift.
 pub type PaintCurve = fn(f32) -> f32;
 
-/// What an animation's unit value drives. Both channels ride one curve, and a shape carries one animation.
+/// What an animation's unit value drives. Both channels ride one curve, and a shape carries one
+/// animation. With neither, the animation only gives an effect its time ([`PaintAnimation::clock`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaintChannel {
     /// Alpha multiplier over its range. `None` leaves opacity alone. The sample is a *fraction*: clamped to `0..=1`, `0` if not finite.
@@ -86,6 +93,11 @@ pub enum PaintRepeat {
     ///
     /// Evaluated here because a paint-only wake runs no widget code: a record-time cutoff would never fire and the blink would run forever.
     Settle(Duration),
+    /// No pass runs: the end of one pass holds at every time, and an effect reads the period as
+    /// its time. What reduced motion makes of a decorative `Once`, as Android's animator duration
+    /// scale of 0 ends each animation at once
+    /// ([`ANIMATOR_DURATION_SCALE`](https://developer.android.com/reference/android/provider/Settings.Global#ANIMATOR_DURATION_SCALE)).
+    Held,
 }
 
 /// What an animation's motion tells the person, which decides whether it runs while the system
@@ -97,8 +109,8 @@ pub enum PaintRepeat {
 /// ([WCAG 2.3.3](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions)).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PaintMotion {
-    /// Motion that only decorates. Under reduced motion a single pass paints its end value and a
-    /// repeating one paints as if unanimated, as a caret holds still.
+    /// Motion that only decorates. Under reduced motion a single pass paints its end value
+    /// ([`PaintRepeat::Held`]) and a repeating one paints as if unanimated, as a caret holds still.
     #[default]
     Decorative,
     /// Motion that shows work under way, as a spinner's turn: it runs whatever the preference.
@@ -182,6 +194,7 @@ impl PaintAnimation {
                 h.write_u8(2);
                 h.write_u128(after.as_nanos());
             }
+            PaintRepeat::Held => h.write_u8(3),
         }
         match steps {
             PaintSteps::Continuous => h.write_u32(0),
@@ -217,6 +230,15 @@ impl PaintAnimation {
         Self::new(PaintChannel {
             alpha: None,
             turn: Some(PaintRange { from, to }),
+        })
+    }
+
+    /// Drive no channel: only give an effect ([`Shape::effect`](crate::widget::Shape::effect)) its
+    /// time, the seconds into the current pass. Without an animation an effect's time is 0.
+    pub fn clock() -> Self {
+        Self::new(PaintChannel {
+            alpha: None,
+            turn: None,
         })
     }
 
@@ -275,16 +297,16 @@ impl PaintAnimation {
     }
 
     /// This animation under reduced motion: `None` paints the shape as if unanimated. A
-    /// decorative single pass holds its end value at once through a zero period; a decorative
-    /// repeat goes; progress runs on.
+    /// decorative single pass holds its end at once ([`PaintRepeat::Held`]), its period kept for
+    /// an effect's time; a decorative repeat goes; progress runs on.
     pub(crate) const fn reduced(self) -> Option<Self> {
         match (self.motion, self.timing.repeat) {
-            (PaintMotion::Progress, _) => Some(self),
+            (PaintMotion::Progress, _) | (PaintMotion::Decorative, PaintRepeat::Held) => Some(self),
             (PaintMotion::Decorative, PaintRepeat::Once) => Some(Self {
                 timing: PaintTiming {
                     started_at: Duration::ZERO,
-                    period: Duration::ZERO,
-                    repeat: PaintRepeat::Once,
+                    period: self.timing.period,
+                    repeat: PaintRepeat::Held,
                     steps: PaintSteps::Continuous,
                 },
                 ..self
@@ -293,12 +315,17 @@ impl PaintAnimation {
         }
     }
 
+    /// Whether this drives a channel; one that drives none only gives an effect its time.
+    pub(crate) const fn drives_channel(self) -> bool {
+        self.channel.alpha.is_some() || self.channel.turn.is_some()
+    }
+
     #[inline]
     pub(crate) fn sample(self, now: Duration) -> PaintMod {
         let Some(phase) = self.timing.phase(now) else {
             return PaintMod::IDENTITY;
         };
-        let t = (self.curve)(phase);
+        let t = (self.curve)(phase as f32);
         let rotation = |range: PaintRange| {
             let radians = range.at(t) * TAU;
             if radians.is_finite() { radians } else { 0.0 }
@@ -309,6 +336,7 @@ impl PaintAnimation {
                 .alpha
                 .map_or(1.0, |range| domain::fraction(range.at(t))),
             rotation: self.channel.turn.map_or(0.0, rotation),
+            time: (phase * self.timing.period.as_secs_f64()) as f32,
         }
     }
 
@@ -326,32 +354,33 @@ impl PaintAnimation {
 }
 
 impl PaintTiming {
-    /// Where in the curve `now` falls, or `None` once settled.
+    /// Where in the curve `now` falls, or `None` once settled. Counted in exact nanoseconds up
+    /// to the one division, so a long run reads its pass as precisely as the first.
     #[inline]
-    fn phase(self, now: Duration) -> Option<f32> {
+    fn phase(self, now: Duration) -> Option<f64> {
         let elapsed = now.saturating_sub(self.started_at);
-        if let PaintRepeat::Settle(after) = self.repeat
-            && elapsed >= after
-        {
-            return None;
+        match self.repeat {
+            PaintRepeat::Held => return Some(1.0),
+            PaintRepeat::Settle(after) if elapsed >= after => return None,
+            PaintRepeat::Once | PaintRepeat::Forever | PaintRepeat::Settle(_) => {}
         }
-        if let (PaintSteps::Steps(n), false) = (self.steps, self.period.is_zero()) {
+        if self.period.is_zero() {
+            // Every pass ends at once: a single pass holds its end from the start, a repeat its start.
+            let ended = self.repeat == PaintRepeat::Once && now >= self.started_at;
+            return Some(if ended { 1.0 } else { 0.0 });
+        }
+        if let PaintSteps::Steps(n) = self.steps {
             let step = Step::of(self.period, n, elapsed);
             if self.repeat == PaintRepeat::Once && step.pass >= 1 {
                 return Some(1.0);
             }
-            return Some(step.idx as f32 / n.get() as f32);
+            return Some(step.idx as f64 / f64::from(n.get()));
         }
-        let passes = if self.period.is_zero() {
-            if now >= self.started_at { 1.0 } else { 0.0 }
-        } else {
-            elapsed.as_secs_f64() / self.period.as_secs_f64()
-        };
-        let raw = match self.repeat {
-            PaintRepeat::Once => passes.min(1.0),
-            PaintRepeat::Forever | PaintRepeat::Settle(_) => passes.fract(),
-        };
-        Some(raw as f32)
+        let (elapsed, period) = (elapsed.as_nanos(), self.period.as_nanos());
+        if self.repeat == PaintRepeat::Once && elapsed >= period {
+            return Some(1.0);
+        }
+        Some((elapsed % period) as f64 / period as f64)
     }
 
     #[inline]
@@ -360,19 +389,22 @@ impl PaintTiming {
             PaintRepeat::Once => Some(self.started_at.saturating_add(self.period)),
             PaintRepeat::Forever => None,
             PaintRepeat::Settle(after) => Some(self.started_at.saturating_add(after)),
+            // Settled before any time, whatever its start.
+            PaintRepeat::Held => Some(Duration::ZERO),
         }
     }
 
     #[inline]
     fn next_wake(self, now: Duration) -> Option<Duration> {
-        if now < self.started_at {
-            return Some(self.started_at);
-        }
-        // A window that is not a whole number of steps ends between boundaries, so the settle caps the wake.
+        // Checked before the start: every settle but a held pass's falls at or after the start.
         let settles_at = self.settles_at();
         if settles_at.is_some_and(|at| now >= at) {
             return None;
         }
+        if now < self.started_at {
+            return Some(self.started_at);
+        }
+        // A window that is not a whole number of steps ends between boundaries, so the settle caps the wake.
         if self.period.is_zero() {
             // Every pass ends instantly; only the settle is left.
             return settles_at;

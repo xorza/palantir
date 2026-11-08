@@ -423,7 +423,7 @@ impl PaintSink for ComposeSession<'_> {
             instance: EffectInstance {
                 rect: physical,
                 corners: p.corners.fit_to(physical.size, scale).to_array(),
-                time: 0.0,
+                time: p.time,
                 opacity: p.opacity,
                 scale,
                 params: p.params.start,

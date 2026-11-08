@@ -2860,7 +2860,7 @@ Ui
         pub fn fmt(&mut self, args: Arguments<'_>) -> InternedStr
         pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr
         pub fn text(&self, text: InternedStr) -> &str
-        pub fn add_shape_animated(&mut self, shape: impl Lower, animation: PaintAnimation)
+        pub fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation)
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
         pub fn close_overlay(&mut self)
         pub fn withdraw_input_scope(&mut self, id: WidgetId)
@@ -3367,6 +3367,7 @@ widget::PaintAnimation
         pub motion: PaintMotion
         pub fn alpha(from: f32, to: f32) -> Self
         pub fn turn(from: f32, to: f32) -> Self
+        pub fn clock() -> Self
         pub const fn with_alpha(self, from: f32, to: f32) -> Self
         pub const fn with_turn(self, from: f32, to: f32) -> Self
         pub const fn with_period(self, period: Duration) -> Self
@@ -3399,6 +3400,7 @@ widget::PaintRepeat
         Once
         Forever
         Settle(Duration)
+        Held
 
 widget::PaintSteps
     enum PaintSteps: Clone, Copy, Debug, Eq, PartialEq

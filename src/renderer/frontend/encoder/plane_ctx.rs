@@ -391,7 +391,8 @@ impl PlaneCtx<'_, '_> {
                     alpha,
                 );
             }
-            // An effect fades with its paint animation and does not turn.
+            // An effect fades with its paint animation and reads its time; `Ui::add_shape_animated`
+            // refuses a turn on it.
             ShapeRecord::Effect {
                 local_rect,
                 corners,
@@ -405,6 +406,7 @@ impl PlaneCtx<'_, '_> {
                     effect: *effect,
                     params: *params,
                     opacity: 1.0,
+                    time: paint_mod.time,
                 },
                 alpha,
             ),

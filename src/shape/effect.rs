@@ -12,6 +12,7 @@ use crate::effect::effect_registry::EffectRegistry;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
+use crate::primitives::reduction::Reduction;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
@@ -20,14 +21,31 @@ use crate::shape::sealed;
 /// record order, as any shape does, and its rect may exceed its node, as a ring does; clipping
 /// ancestors clip it. Refused: a `Brush` variant, which every brush family would have to draw; a
 /// `Chrome` field, which no ring past the rect fits.
+///
+/// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
+/// [`Ui::add_shape_animated`](crate::Ui::add_shape_animated), [`PaintAnimation::clock`] when only
+/// the time moves; a turn on it panics, as the coverage is computed in the unturned rect. While
+/// power is reduced ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)) it paints the
+/// alternative its source names ([`PowerSaverPaint`](crate::PowerSaverPaint)).
+///
+/// [`PaintAnimation::clock`]: crate::widget::PaintAnimation::clock
 #[must_use]
 pub struct EffectShape<U: EffectParams> {
     name: EffectName<U, ColorEffect>,
     params: U,
     local_rect: Option<Rect>,
     corners: Corners,
-    /// The id `Ui::add_shape` finds the name loaded under.
-    id: Option<EffectId>,
+    /// What `Ui::add_shape` finds the name paints.
+    paint: EffectPaint,
+}
+
+/// What an [`EffectShape`] paints, which only the resolve before it lowers knows.
+#[derive(Clone, Copy, Debug)]
+enum EffectPaint {
+    Unresolved,
+    Effect(EffectId),
+    /// The power-saver alternative is nothing.
+    Nothing,
 }
 
 impl<U: EffectParams> EffectShape<U> {
@@ -37,7 +55,7 @@ impl<U: EffectParams> EffectShape<U> {
             params,
             local_rect: None,
             corners: Corners::ZERO,
-            id: None,
+            paint: EffectPaint::Unresolved,
         }
     }
 
@@ -79,13 +97,19 @@ impl<U: EffectParams> fmt::Debug for EffectShape<U> {
 }
 
 impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
+    const READS_TIME: bool = true;
+    const TURNS: bool = false;
+
     fn is_noop(&self) -> bool {
-        self.local_rect.is_some_and(Rect::is_paint_empty)
+        matches!(self.paint, EffectPaint::Nothing)
+            || self.local_rect.is_some_and(Rect::is_paint_empty)
     }
 
     #[track_caller]
-    fn resolve(&mut self, effects: &EffectRegistry) {
-        self.id = Some(effects.resolve(self.name));
+    fn resolve(&mut self, effects: &EffectRegistry, power: Reduction) {
+        self.paint = effects
+            .resolve(self.name, power)
+            .map_or(EffectPaint::Nothing, EffectPaint::Effect);
     }
 
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
@@ -94,9 +118,13 @@ impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
             params,
             local_rect,
             corners,
-            id,
+            paint,
         } = self;
-        let effect = id.expect("`Ui::add_shape` resolves an effect's name before it lowers");
+        let EffectPaint::Effect(effect) = paint else {
+            unreachable!(
+                "`Ui::add_shape` resolves an effect's name before it lowers, and nothing is a noop: {paint:?}"
+            );
+        };
         let bytes = bytemuck::bytes_of(&params);
         let mut h = Hasher::new();
         h.write_u32(effect.0);

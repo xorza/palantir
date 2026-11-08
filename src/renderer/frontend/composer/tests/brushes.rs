@@ -537,7 +537,7 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
 /// `(10, 12, 20, 16)`; its corners `(4, 6, 6, 4)` doubled to `(8, 12, 12, 8)`, then fitted as CSS
 /// fits them: the right side's two 12s sum 24 against its 16 px, so every radius scales by
 /// `16 / 24`, to `(5.33, 8, 8, 5.33)`, 5.33 as the f16 lane holds it, 5.3320313; its parameters'
-/// first word; the fade a paint animation gave it, 0.5; and the scale. The clock starts at 0.
+/// first word; the fade a paint animation gave it, 0.5; the scale; and its time, 1.25 s.
 #[test]
 fn an_effect_lands_as_one_physical_row() {
     let buf = run(
@@ -549,6 +549,7 @@ fn an_effect_lands_as_one_physical_row() {
                     effect: EffectId(3),
                     params: Span::new(12, 8),
                     opacity: 1.0,
+                    time: 1.25,
                 },
                 0.5,
             );
@@ -565,5 +566,5 @@ fn an_effect_lands_as_one_physical_row() {
     assert_eq!(instance.params, 12);
     assert_eq!(instance.opacity, 0.5);
     assert_eq!(instance.scale, 2.0);
-    assert_eq!(instance.time, 0.0);
+    assert_eq!(instance.time, 1.25);
 }

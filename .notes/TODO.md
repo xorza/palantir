@@ -10,6 +10,7 @@
 - custom shaders for backgrounds
 - power saver to mundy
 - disable animations and build-in backdrops on lowpower
+- make showcase have full animations, effects and disable lowpower by default
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows

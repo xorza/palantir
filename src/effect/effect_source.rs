@@ -18,8 +18,9 @@ use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 /// the app's own text:
 ///
 /// - `EffectInput { pos, size, corners, time, scale }`: the pixel's center from the rect's
-///   top-left, the rect's size and its corner radii in logical px, the shape's clock in seconds,
-///   and physical px per logical px;
+///   top-left, the rect's size and its corner radii in logical px, the seconds into the pass of
+///   the shape's [`PaintAnimation`](crate::widget::PaintAnimation), 0 without one, and physical px
+///   per logical px;
 /// - `EffectOutput { color, under }`: `color + under · dst` per channel, linear and
 ///   premultiplied, with the shape's coverage applied exactly, as the blend is linear in it;
 /// - `effect_over`, `effect_add`, `effect_multiply` and `effect_screen`, each an
@@ -71,8 +72,10 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
 }
 
 /// What paints in place of an effect while power is reduced, carried by its source, as a
-/// [`BackdropFilter`](crate::BackdropFilter) carries its own fallback. Refused: a theme slot for
-/// each power mode, which doubles every slot; a branch at each call site.
+/// [`BackdropFilter`](crate::BackdropFilter) carries its own fallback. A shape resolves it as it
+/// is added, and a power move records every window again. An alternative paints as itself: its
+/// own alternative does not apply. Refused: a theme slot for each power mode, which doubles every
+/// slot; a branch at each call site.
 pub enum PowerSaverPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     /// The effect itself, as cheap enough already.
     Same,

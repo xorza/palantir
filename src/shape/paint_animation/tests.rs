@@ -104,7 +104,7 @@ fn every_wake_samples_the_next_step() {
             .with_steps(n)
             .with_repeat(PaintRepeat::Forever)
             .timing;
-        let step = |k: u32| (k % n) as f32 / n as f32;
+        let step = |k: u32| f64::from(k % n) / f64::from(n);
         let mut now = START;
         assert_eq!(timing.phase(now), Some(step(0)));
         for k in 1..=3 * n {
@@ -388,6 +388,7 @@ fn hash_static_covers_channel_timing_and_curve() {
         ("started_at", base.with_started_at(START + HP)),
         ("period", base.with_period(HP)),
         ("repeat", base.with_repeat(PaintRepeat::Forever)),
+        ("held", base.with_repeat(PaintRepeat::Held)),
         ("steps", base.with_steps(3)),
         ("curve", base.with_curve(Easing::Linear.curve())),
     ] {
@@ -412,11 +413,90 @@ fn reduced_motion_keeps_progress_and_lands_decoration() {
         .with_started_at(START)
         .with_period(HP);
     let landed = fade.reduced().expect("a single pass lands");
+    assert_eq!(landed.timing.repeat, PaintRepeat::Held);
     assert_eq!(landed.sample(Duration::ZERO), fade.sample(START + HP));
     assert_eq!(landed.sample(Duration::ZERO).alpha, 1.0, "the fade's end");
+    assert_eq!(
+        landed.sample(Duration::ZERO).time,
+        0.5,
+        "an effect reads the end of the 500 ms pass"
+    );
+    assert_eq!(landed.next_wake(Duration::ZERO), None);
+    let held_later = landed.with_started_at(START);
+    assert_eq!(
+        (
+            held_later.sample(Duration::ZERO),
+            held_later.next_wake(Duration::ZERO)
+        ),
+        (landed.sample(Duration::ZERO), None),
+        "a held pass ignores its start: it neither waits for it nor wakes at it"
+    );
+    let again = landed.reduced().expect("a held pass stays");
+    assert_eq!(again.timing, landed.timing);
     assert_ne!(
         fade.sample(START).alpha,
         1.0,
         "unreduced, it starts at 0.25"
     );
+}
+
+/// An effect reads the seconds into its pass of `2 s` from `START`, each counted from the exact
+/// nanoseconds:
+/// - a loop reads 0 before the start, 0.5 s at 0.5 s in, 0 at the wrap, 0.75 s at 2.75 s in;
+/// - a single pass reads 0.5 s, then its whole 2 s from its end on, and stops waking;
+/// - four steps read each step's start: 0.7 s in is step 1 of 4, 0.5 s, and so is 2.6 s in;
+/// - a loop that settles at 3 s reads 0.5 s at 2.5 s in, then 0 as unanimated.
+///
+/// A clock drives no channel: alpha holds at 1 and rotation at 0.
+#[test]
+fn an_effect_reads_the_time_into_its_pass() {
+    let ms = Duration::from_millis;
+    let clock = |repeat| {
+        PaintAnimation::clock()
+            .with_started_at(START)
+            .with_period(Duration::from_secs(2))
+            .with_repeat(repeat)
+    };
+    let looping = clock(PaintRepeat::Forever);
+    let once = clock(PaintRepeat::Once);
+    let stepped = clock(PaintRepeat::Forever).with_steps(4);
+    let settling = clock(PaintRepeat::Settle(Duration::from_secs(3)));
+    let cases = [
+        (looping, START - ms(200), 0.0),
+        (looping, START + ms(500), 0.5),
+        (looping, START + ms(2000), 0.0),
+        (looping, START + ms(2750), 0.75),
+        (once, START + ms(500), 0.5),
+        (once, START + ms(2000), 2.0),
+        (once, START + ms(5000), 2.0),
+        (stepped, START + ms(700), 0.5),
+        (stepped, START + ms(2600), 0.5),
+        (settling, START + ms(2500), 0.5),
+        (settling, START + ms(3000), 0.0),
+    ];
+    for (i, (animation, now, time)) in cases.into_iter().enumerate() {
+        assert_eq!(animation.sample(now).time, time, "case {i} at {now:?}");
+    }
+    assert_eq!(once.next_wake(START + ms(2000)), None);
+    let sampled = looping.sample(START + ms(500));
+    assert_eq!((sampled.alpha, sampled.rotation), (1.0, 0.0));
+    assert!(!looping.drives_channel());
+    assert!(PaintAnimation::alpha(0.0, 1.0).drives_channel());
+    assert!(PaintAnimation::turn(0.0, 1.0).drives_channel());
+}
+
+/// A long run reads its pass as precisely as the first: 10⁹ s and 123 456 789 ns into a 1 s loop
+/// reads 0.123 456 789 s as f32 rounds it. The seconds as one f64, 1 000 000 000.123 456 789,
+/// hold only 7 digits past the point, so a phase taken from them lands ulps away.
+#[test]
+fn a_long_run_keeps_the_time_into_its_pass_exact() {
+    let looping = PaintAnimation::clock()
+        .with_period(Duration::from_secs(1))
+        .with_repeat(PaintRepeat::Forever);
+    let now = Duration::new(1_000_000_000, 123_456_789);
+    // `as` rounds to the nearest f32, as the sample's own conversion does.
+    let exact = 0.123_456_789_f64 as f32;
+    assert_eq!(looping.sample(now).time, exact);
+    let from_seconds = (now.as_secs_f64() / 1.0).fract() as f32;
+    assert_ne!(from_seconds, exact, "the f64 seconds lose it");
 }

@@ -63,21 +63,15 @@ Landed with batch 5 for color effects: `EffectShape`'s doc holds the shape and i
 
 ### Time
 
-- **A shape-local clock.** A shape names its start and a motion: `Still`, `Once(duration)` or
-  `Loop(period)`, with optional steps. The shader reads the time since the start, wrapped at the
-  period, so it keeps its precision. Palantir samples it at encode time and wakes only while it
-  moves, as `PaintAnimation` does. Refused: one global clock (Godot `TIME`, Shadertoy), which
-  wraps and loses precision; time passed by the app (SwiftUI `TimelineView`), which damage
-  cannot see.
-- **Reduced motion:** a `Once` effect does not paint, and a `Loop` effect holds at its rest time,
-  0 unless the motion names one.
+Landed with batch 6: the decisions are in the docs of `shape::paint_animation`, `PaintRepeat::Held`
+and `EffectShape`. An effect's time is a `PaintAnimation`'s, through `Ui::add_shape_animated` and
+`PaintAnimation::clock`, so it shares its sampling, wakes, damage and reduced-motion rule.
 
 ### Power saver and themes
 
-- **A power-saver alternative on the load.** The source names what paints while power is
-  reduced: the same effect, another `EffectName<U, K>`, or nothing. Palantir resolves it each
-  frame, as `BackdropFilter` carries its own fallback. Refused: theme slots for each mode, which
-  double every slot; a branch at each call site.
+The power-saver alternative landed with batch 6: the docs of `PowerSaverPaint` and
+`EffectRegistry::resolve` hold it.
+
 - **A clickable theme has a press-effect slot**, as Compose's theme supplies its `Indication`.
   The slot names a color effect over palantir's own `PressInput` (the press point, the release
   time, the rect) with the theme's color and enter and exit times. Widget core keeps at most 10
@@ -117,12 +111,11 @@ from `palantir-anim-derive`), and `naga` 30 as a direct dependency. Pipelines co
 through `PaintTier::Effect`; `WgpuEffectStore` builds each effect at load, for each format and
 device. The blends and the clip are held by exact-pixel GPU tests in place of goldens.
 
-### 6. Effect motion
+### 6. Effect motion — done
 
-- `Still`, `Once`, `Loop` and steps; encode-time sampling on paint-only frames; wakes; reduced
-  motion; the power limit from batch 2 (`FrameReport::earliest_repaint_at`).
-- Tests: the time each frame passes, the wrap at the period, no wake when still, the reduced-
-  motion cases.
+The effect's time rides `PaintAnimation` (`PaintAnimation::clock`, `PaintRepeat::Held` for a
+reduced single pass), sampled in exact nanoseconds; the power-saver alternative resolves as a
+shape is added.
 
 ### 7. Image slots
 

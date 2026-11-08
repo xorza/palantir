@@ -16,6 +16,8 @@ pub(crate) struct DrawEffectPayload {
     pub(crate) params: Span,
     /// A paint animation's fade, which scales the coverage.
     pub(crate) opacity: f32,
+    /// Seconds into the paint animation's pass, which the effect reads; 0 when unanimated.
+    pub(crate) time: f32,
 }
 
 impl PaintPayload for DrawEffectPayload {

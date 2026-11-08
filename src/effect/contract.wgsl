@@ -9,7 +9,7 @@ struct EffectInput {
     size: vec2<f32>,
     // The rect's corner radii: top-left, top-right, bottom-right, bottom-left.
     corners: vec4<f32>,
-    // Seconds on the shape's clock.
+    // Seconds into the pass of the shape's paint animation; 0 without one.
     time: f32,
     // Physical px per logical px.
     scale: f32,
