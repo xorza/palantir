@@ -10,7 +10,6 @@
 - custom shaders for backgrounds
 - power saver to mundy
 - disable animations and build-in backdrops on lowpower
-- make showcase have full animations, effects and disable lowpower by default
 - optimal resolve strategies
 - theme dark/light for effects
 
