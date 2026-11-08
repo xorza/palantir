@@ -7,7 +7,6 @@
 - build-in colors
 - rich text edit
 - md viewer
-- disable animations and build-in backdrops on lowpower
 - optimal resolve strategies
 
 - table widget: sortable header, virtual rows over a fixed row height
