@@ -1,7 +1,7 @@
 //! Glass at its rim: the spectrum it spreads, read back in linear `f16` with no dither, and the
 //! shader's lens functions probed against their closed forms.
 
-use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::pipeline::effect_pipeline::PANE_SHADER;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
@@ -162,7 +162,7 @@ fn the_index_runs_along_the_spectrum_and_never_below_one() {
         ([1.0, 1.0, 1.0, 0.0], LensOptics::violet_index(1.0, 1.0)),
     ];
     let inputs: Vec<[f32; 4]> = cases.iter().map(|(input, _)| *input).collect();
-    let got: Vec<f32> = QuadPipeline::SHADER.probe(LENS_INDEX_PROBE, &inputs);
+    let got: Vec<f32> = PANE_SHADER.probe(LENS_INDEX_PROBE, &inputs);
     for ((input, want), got) in cases.iter().zip(got) {
         assert!(
             (got - want).abs() <= 8.0 * f32::EPSILON * want,
@@ -214,7 +214,7 @@ fn the_glint_fades_to_nothing_where_the_bezel_meets_the_flat_top() {
         .iter()
         .map(|&(inward, [x, y], _)| [inward, x, y, 0.0])
         .collect();
-    let got: Vec<f32> = QuadPipeline::SHADER.probe(LENS_GLINT_PROBE, &inputs);
+    let got: Vec<f32> = PANE_SHADER.probe(LENS_GLINT_PROBE, &inputs);
     for (&(inward, outward, want), got) in cases.iter().zip(got) {
         assert!(
             (f64::from(got) - want).abs() <= 1e-6,

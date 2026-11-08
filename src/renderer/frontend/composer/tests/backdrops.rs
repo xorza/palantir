@@ -7,10 +7,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::support::{
     draw, draw_marked, params, run, survivor_calls, text,
 };
@@ -20,6 +18,8 @@ use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::PaneCapture;
 use crate::renderer::render_buffer::backdrop_row::PaneSource;
+use crate::renderer::render_buffer::effect_draw_row::{EffectProgram, PaneForm};
+use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -85,8 +85,10 @@ fn barriers(buf: &RenderBuffer) -> Vec<u32> {
 }
 
 /// A capturing pane closes the group and the text batch before it, so its barrier is the first
-/// group after them and its quad opens that group; its row takes its ticket's footprint, plan and
-/// region.
+/// group after them and its effect row opens that group, and the quad over it after it closes that
+/// group in turn, as it paints over a draw that replays after quads; its row takes its ticket's
+/// footprint, plan and region, and its effect row reads that row as frost, at its whole opacity,
+/// unsaturated and ungrained.
 #[test]
 fn a_pane_cuts_the_frame_at_its_barrier() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
@@ -100,23 +102,33 @@ fn a_pane_cuts_the_frame_at_its_barrier() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.groups.len(), 2);
+    assert_eq!(buf.groups.len(), 3);
     assert_eq!(buf.groups[0].quads.range(), 0..1);
-    assert_eq!(buf.groups[1].quads.range(), 1..3);
+    assert_eq!(buf.groups[1].quads.range(), 1..1);
+    assert_eq!(buf.groups[2].quads.range(), 1..2);
     assert_eq!(buf.text_batches.len(), 1);
     assert_eq!(buf.text_batches[0].last_group, 0);
     assert_eq!(buf.backdrops.len(), 1);
     let row = buf.backdrops[0];
     assert_eq!(row.source, PaneSource::Capture { barrier: 1 });
     assert_eq!(row.capture, ticket.capture);
-    let quad = buf.quads[1];
-    assert!(quad.fill_kind.is_backdrop());
-    assert_eq!(quad.fill_lut_row, LutRow(0));
-    assert_eq!(quad.fill_axis.lanes(), [0.0, 1.0, 0.0, 1.0]);
+    let look = row.look.expect("a filter's pane has a look");
+    assert_eq!((look.saturation, look.noise), (1.0, 0.0));
+    let effects = buf.batches(PaintTier::Effect);
+    assert_eq!(effects.len(), 1);
+    assert_eq!(effects[0].last_group, 1);
+    assert_eq!(
+        buf.effects.program()[0],
+        EffectProgram::Pane(PaneForm::Frost)
+    );
+    let instance = buf.effects.instance()[0];
+    assert_eq!((instance.pane, instance.opacity), (0, 1.0));
+    assert_eq!(instance.rect, rect);
 }
 
-/// A held pane keeps its result, so it breaks nothing: its quad joins the open group after the
-/// quad before it, and its row is held, under its ticket's region.
+/// A held pane keeps its result, so it breaks nothing: its effect row joins the open group after
+/// the quad before it, and its row is held, under its ticket's region. The quad over it after it
+/// opens the next group, as it paints over a draw that replays after quads.
 #[test]
 fn a_held_pane_breaks_nothing() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
@@ -129,8 +141,10 @@ fn a_held_pane_breaks_nothing() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.groups[0].quads.range(), 0..3);
+    assert_eq!(buf.groups.len(), 2);
+    assert_eq!(buf.groups[0].quads.range(), 0..1);
+    assert_eq!(buf.batches(PaintTier::Effect)[0].last_group, 0);
+    assert_eq!(buf.groups[1].quads.range(), 1..2);
     let row = buf.backdrops[0];
     assert_eq!(row.source, PaneSource::Held);
     assert_eq!(row.capture.region, ticket.capture.region);
@@ -148,14 +162,11 @@ fn no_prune_crosses_a_barrier() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(
-        survivor_calls(&buf),
-        [0, 255, 2],
-        "the first quad, the white pane, the last"
-    );
+    assert_eq!(survivor_calls(&buf), [0, 2], "the first quad and the last");
+    assert_eq!(buf.effects.len(), 1, "the pane");
 }
 
-/// A paint animation's fade scales the pane's opacity lane, which fades the backdrop and the tint
+/// A paint animation's fade scales the pane's opacity, which fades the backdrop and the tint
 /// together; a pane faded to nothing draws nothing and cuts nothing.
 #[test]
 fn a_fade_scales_the_panes_opacity() {
@@ -169,18 +180,19 @@ fn a_fade_scales_the_panes_opacity() {
         &params(1.0, UVec2::new(100, 100)),
     );
     assert_eq!(buf.backdrops.len(), 1);
-    assert_eq!(buf.quads.len(), 1);
-    assert_eq!(buf.quads[0].fill_axis.lanes()[3], 0.5);
+    assert_eq!(buf.effects.len(), 1);
+    assert_eq!(buf.effects.instance()[0].opacity, 0.5);
+    let look = buf.backdrops[0].look.expect("a filter's pane has a look");
     assert_eq!(
-        RgbaF32::from(buf.quads[0].fill).a,
+        RgbaF32::from(look.tint).a,
         0.125,
         "the tint's quarter alpha, halved"
     );
 }
 
 /// An opaque quad over the whole surface after a pane hides the pane: the clear fold drops its
-/// quad and keeps its row, hidden, so it neither captures nor keeps a result that goes stale under
-/// the cover.
+/// effect row and keeps its pane row, hidden, so it neither captures nor keeps a result that goes
+/// stale under the cover.
 #[test]
 fn the_clear_fold_hides_the_panes_before_it() {
     let buf = run(
@@ -193,30 +205,7 @@ fn the_clear_fold_hides_the_panes_before_it() {
     let sources: Vec<PaneSource> = buf.backdrops.iter().map(|row| row.source).collect();
     assert_eq!(sources, [PaneSource::Hidden]);
     assert!(buf.quads.is_empty());
-}
-
-/// An opaque quad of a pane's group that covers the pane prunes its quad and hides its row; a
-/// pane beside it keeps both, shows the clear, and its quad still reads its own row.
-#[test]
-fn a_pane_under_an_opaque_quad_is_hidden() {
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 10.0, 10.0));
-            pane(b, Rect::new(20.0, 20.0, 20.0, 20.0), 1.0, 1.0);
-            pane(b, Rect::new(60.0, 20.0, 20.0, 20.0), 1.0, 1.0);
-            draw(b, Rect::new(10.0, 10.0, 40.0, 40.0));
-        },
-        &params(1.0, UVec2::new(100, 100)),
-    );
-    let sources: Vec<PaneSource> = buf.backdrops.iter().map(|row| row.source).collect();
-    assert_eq!(sources, [PaneSource::Hidden, PaneSource::Clear]);
-    let panes: Vec<LutRow> = buf
-        .quads
-        .iter()
-        .filter(|quad| quad.fill_kind.is_backdrop())
-        .map(|quad| quad.fill_lut_row)
-        .collect();
-    assert_eq!(panes, [LutRow(1)]);
+    assert!(buf.effects.is_empty());
 }
 
 /// A pane with nothing composed before it stands at barrier 0, which the backend reads as a
@@ -261,22 +250,19 @@ fn a_pane_shares_the_last_break_when_nothing_since_touches_it() {
     );
 }
 
-/// A pane's quad draws through the form of its glass: none, one index, or a spectrum spread by
+/// A pane draws through the form of its glass: frost with none, one index, or a spectrum spread by
 /// its dispersion, each a pipeline of its own.
 #[test]
-fn a_panes_quad_names_the_form_of_its_glass() {
+fn a_pane_names_the_form_of_its_glass() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
     let lens = |dispersion| Lens {
         dispersion,
         ..Lens::WINDOW_GLASS
     };
-    for (filter, kind) in [
-        (BackdropFilter::blur(4.0), FillKind::BACKDROP),
-        (BackdropFilter::glass(lens(0.0)), FillKind::BACKDROP_LENS),
-        (
-            BackdropFilter::glass(lens(0.06)),
-            FillKind::BACKDROP_SPECTRUM,
-        ),
+    for (filter, form) in [
+        (BackdropFilter::blur(4.0), PaneForm::Frost),
+        (BackdropFilter::glass(lens(0.0)), PaneForm::Lens),
+        (BackdropFilter::glass(lens(0.06)), PaneForm::Spectrum),
     ] {
         let pane = DrawPanePayload {
             kind: RectKind::Rounded,
@@ -289,6 +275,6 @@ fn a_panes_quad_names_the_form_of_its_glass() {
             opacity: 1.0,
             ticket: ticket(0, rect, 4.0, true),
         };
-        assert_eq!(pane.quad().fill.kind, kind, "{filter:?}");
+        assert_eq!(pane.form(), form, "{filter:?}");
     }
 }

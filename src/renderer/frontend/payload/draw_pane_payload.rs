@@ -12,6 +12,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, Qua
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::pane_captures::PaneTicket;
+use crate::renderer::render_buffer::effect_draw_row::PaneForm;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
@@ -35,19 +36,23 @@ pub(crate) struct DrawPanePayload {
 }
 
 impl DrawPanePayload {
-    /// The pane's quad: `FillKind::BACKDROP`, or `BACKDROP_LENS` or `BACKDROP_SPECTRUM` for glass,
-    /// with the backdrop's
-    /// look and the opacity in the
-    /// axis lanes.
-    pub(crate) fn quad(&self) -> DrawQuadPayload {
-        let mut kind = match self.backdrop.lens() {
-            None => FillKind::BACKDROP,
-            Some(lens) if lens.dispersion == 0.0 => FillKind::BACKDROP_LENS,
-            Some(_) => FillKind::BACKDROP_SPECTRUM,
-        };
-        if self.kind == RectKind::Windowed {
-            kind = kind.with_window();
+    /// The form the pane draws in: frost with no lens, glass of one index with no dispersion,
+    /// else glass that spreads the spectrum.
+    pub(crate) fn form(&self) -> PaneForm {
+        match self.backdrop.lens() {
+            None => PaneForm::Frost,
+            Some(lens) if lens.dispersion == 0.0 => PaneForm::Lens,
+            Some(_) => PaneForm::Spectrum,
         }
+    }
+
+    /// The rect as a quad packs it, which the pane's effect instance takes its rect, corners,
+    /// turn and stroke width from, so it lies on the pixels a rect of it does.
+    pub(crate) fn geometry(&self) -> DrawQuadPayload {
+        let kind = match self.kind {
+            RectKind::Rounded => FillKind::SOLID,
+            RectKind::Windowed => FillKind::SOLID.with_window(),
+        };
         DrawQuadPayload {
             geometry: QuadGeometry::Rect {
                 rect: self.rect,

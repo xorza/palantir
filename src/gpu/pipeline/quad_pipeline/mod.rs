@@ -24,13 +24,11 @@ use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::spectrum_tables;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
-use crate::shape::paint::lens_optics;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
 use std::mem::offset_of;
@@ -42,9 +40,6 @@ const fn draw_label(draw: QuadDraw) -> &'static str {
         QuadDraw::Form(QuadForm::Solid) => "palantir.quad.pipeline.solid",
         QuadDraw::Form(QuadForm::Gradient) => "palantir.quad.pipeline.gradient",
         QuadDraw::Form(QuadForm::Triangle) => "palantir.quad.pipeline.triangle",
-        QuadDraw::Form(QuadForm::Backdrop) => "palantir.quad.pipeline.backdrop",
-        QuadDraw::Form(QuadForm::BackdropLens) => "palantir.quad.pipeline.backdrop_lens",
-        QuadDraw::Form(QuadForm::BackdropSpectrum) => "palantir.quad.pipeline.backdrop_spectrum",
         QuadDraw::Shadow(ShadowEntry::General) => "palantir.quad.pipeline.shadow",
         QuadDraw::Shadow(ShadowEntry::Tables) => "palantir.quad.pipeline.shadow_tables",
         QuadDraw::Shadow(ShadowEntry::TablesWide) => "palantir.quad.pipeline.shadow_tables_wide",
@@ -55,9 +50,8 @@ const fn draw_label(draw: QuadDraw) -> &'static str {
 /// a shadow's entry, and two stencil-writing mask variants.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
-    /// Each draw's base and stencil-test twin, by [`QuadDraw::idx`]. The backdrop forms read
-    /// [`QuadPipeline`]'s backdrop layout; the shadows read the baked cutouts ([`CutoutTables`]),
-    /// apart from `fs` to keep the blur integral out of other quads.
+    /// Each draw's base and stencil-test twin, by [`QuadDraw::idx`]. The shadows read the baked
+    /// cutouts ([`CutoutTables`]), apart from `fs` to keep the blur integral out of other quads.
     draws: [StencilVariant; QuadDraw::ALL.len()],
     /// The stencil-writing masks, built on the first frame with a rounded clip.
     mask_stamp: Option<Pipeline>,
@@ -124,8 +118,6 @@ impl<'a> QuadBinding<'a> {
 pub(crate) struct QuadPass<'a> {
     pub(crate) pipelines: PassPipelines<'a>,
     pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
-    /// The frame's backdrop results, which a run of a backdrop form reads at group 2.
-    pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
 }
 
 /// A run of quads of one [`QuadDraw`].
@@ -218,9 +210,6 @@ pub(crate) struct QuadPipeline {
     pipeline_layout: wgpu::PipelineLayout,
     /// [`Self::pipeline_layout`] plus the cutout atlas at group 1, for the shadow variant.
     shadow_layout: wgpu::PipelineLayout,
-    /// [`Self::pipeline_layout`] plus the frame's backdrop results at group 2, for the backdrop
-    /// variant.
-    backdrop_layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
     /// How shadows draw (`vs_shadow`): [`ShadowCells::Whole`] only in internals, which build the one-cell reference.
@@ -282,11 +271,7 @@ impl QuadPipeline {
     }
 
     /// Build the format-independent quad resources; per-format pipelines come from [`Self::ensure_draw`] and [`Self::ensure_masks`].
-    pub(crate) fn new(
-        gpu: &Gpu,
-        textures: &TextureBinding,
-        backdrops: &wgpu::BindGroupLayout,
-    ) -> Self {
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
         let shader = Self::SHADER.module(gpu);
         let cutouts = CutoutTables::new(gpu, &shader);
 
@@ -309,11 +294,6 @@ impl QuadPipeline {
                 gpu,
                 "palantir.quad.shadow.pl",
                 &[Some(textures.layout()), Some(cutouts.layout())],
-            ),
-            backdrop_layout: pipeline_recipe::pipeline_layout(
-                gpu,
-                "palantir.quad.backdrop.pl",
-                &[Some(textures.layout()), None, Some(backdrops)],
             ),
             cutouts,
             shadow_cells: ShadowCells::Grid,
@@ -344,27 +324,6 @@ impl QuadPipeline {
                         vertex_buffers: &instance,
                         topology: wgpu::PrimitiveTopology::TriangleStrip,
                         ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
-                    },
-                );
-            }
-            QuadDraw::Form(
-                form @ (QuadForm::Backdrop | QuadForm::BackdropLens | QuadForm::BackdropSpectrum),
-            ) => {
-                let dither = f64::from(u8::from(
-                    format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
-                ));
-                variant.ensure(
-                    gpu,
-                    mode,
-                    &PipelineRecipe {
-                        fragment_entry: "fs_backdrop",
-                        constants: &[
-                            ("DITHER_SRGB8", dither),
-                            ("QUAD_FORM", f64::from(form as u32)),
-                        ],
-                        vertex_buffers: &instance,
-                        topology: wgpu::PrimitiveTopology::TriangleStrip,
-                        ..PipelineRecipe::color(label, &self.shader, &self.backdrop_layout, format)
                     },
                 );
             }
@@ -473,8 +432,7 @@ impl QuadPipeline {
 
     /// Bind the pipeline `run`'s draw picks over the instance buffer, with the groups the draw
     /// reads, and draw it:
-    /// a shadow reads the cutout tables and draws the eight cells around its hole, a backdrop pane
-    /// reads the frame's results.
+    /// a shadow reads the cutout tables and draws the eight cells around its hole.
     pub(crate) fn draw_run<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
@@ -491,15 +449,6 @@ impl QuadPipeline {
         }
         .bind_through(rec, &self.instance_buffer.buffer);
         match draw {
-            QuadDraw::Form(
-                QuadForm::Backdrop | QuadForm::BackdropLens | QuadForm::BackdropSpectrum,
-            ) => {
-                let backdrops = pass
-                    .backdrops
-                    .expect("a frame that draws a pane prepared its results");
-                rec.group(2, backdrops);
-                rec.draw(0..4, instances.u32_range());
-            }
             QuadDraw::Form(_) => rec.draw(0..4, instances.u32_range()),
             QuadDraw::Shadow(_) => {
                 self.cutouts.bind(rec);
@@ -563,11 +512,6 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
     ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
     ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
-    ShaderConstant::uint("QUAD_FORM_BACKDROP_LENS", QuadForm::BackdropLens as u32),
-    ShaderConstant::uint(
-        "QUAD_FORM_BACKDROP_SPECTRUM",
-        QuadForm::BackdropSpectrum as u32,
-    ),
     // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
     ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
     ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
@@ -580,12 +524,6 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("NO_CUTOUT_TABLE", CutoutPlan::NONE),
     ShaderConstant::uint("CUTOUT_NODES", CutoutPlan::SHADED_NODES),
     ShaderConstant::uint("CUTOUT_BAKE_NODES", CutoutPlan::BAKED_NODES),
-    ShaderConstant::float("LINE_D", lens_optics::LINE_D),
-    ShaderConstant::float("LINE_F", lens_optics::LINE_F),
-    ShaderConstant::float("LINE_C", lens_optics::LINE_C),
-    ShaderConstant::float("SPECTRUM_RED", lens_optics::SPECTRUM_RED),
-    ShaderConstant::float("SPECTRUM_VIOLET", lens_optics::SPECTRUM_VIOLET),
-    ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
 ];
 
 #[cfg(feature = "internals")]

@@ -33,7 +33,7 @@ use crate::shape::sealed;
 ///
 /// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
 /// [`Ui::add_shape_animated`](crate::Ui::add_shape_animated), [`PaintAnimation::clock`] when only
-/// the time moves; a turn on it panics, as the coverage is computed in the unturned rect. While
+/// the time moves; a turn turns it about its owner's center, as a quad turns. While
 /// transparency, motion or power use is reduced it paints the alternative its source names for it
 /// ([`ReducedPaint`](crate::ReducedPaint)).
 ///
@@ -135,6 +135,8 @@ impl<U: EffectParams> EffectShape<U, BackdropEffect> {
     /// Read up to `px` past the effect's rect, as a ring's glow or a lens's bent ray does
     /// (SwiftUI's `maxSampleOffset`); a read past it reads its edge. 0 by default: the effect
     /// reads under its own rect alone. The capture grows by it, so damage under it repaints.
+    /// Refused: one bound per effect, which its largest shape sets for all; the whole surface, as
+    /// Flutter reads without a `ClipRect`, which captures and blurs what no shape reads.
     ///
     /// # Panics
     ///
@@ -161,7 +163,6 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectShape<U, K> {
 impl<U: EffectParams, K: EffectKind> sealed::LowerShape for EffectShape<U, K> {
     const CAN_BE_PANE: bool = matches!(K::ID, KindId::Backdrop);
     const READS_TIME: bool = true;
-    const TURNS: bool = false;
 
     fn is_noop(&self) -> bool {
         matches!(self.paint, EffectPaint::Nothing)

@@ -33,17 +33,18 @@ use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRow, FilterLook, PaneSource};
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
 use std::cmp::Reverse;
 use std::ops::Range;
 
-/// How a pane's quad finds its result, as `quad_pipeline/shader.wgsl` declares `BackdropSlot`:
-/// the result's texel coordinate of the lattice's first texel, the physical px of a texel, or 0
-/// for a pane that shows `clear`, the pane's lens, `(bezel, thickness, refractive_index,
-/// dispersion)` with its highlight, zero for a pane of no glass, and its luminance ceiling and
-/// floor.
+/// How a pane's composite finds its result and, for a backdrop filter, shows it, as
+/// `effect/backdrop.wgsl` declares `PalantirPane` and `effect_pipeline/pane.wgsl` reads it: the
+/// result's texel coordinate of the lattice's first texel, the physical px of a texel, or 0 for a
+/// pane that shows `clear`; the rect it reads, `(min, max)`; and the filter's look
+/// ([`FilterLook`]), its lens `(bezel, thickness, refractive_index, dispersion)` with its
+/// highlight, zero for a pane of no glass.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct BackdropSlot {
@@ -54,14 +55,16 @@ struct BackdropSlot {
     clear: [f32; 3],
     max_luminance: f32,
     min_luminance: f32,
-    /// Rounds `reads` to WGSL's 16-byte alignment.
-    pad: [f32; 3],
-    /// The physical rect a backdrop effect reads, `(min, max)`, a read past it reading its edge.
+    saturation: f32,
+    noise: f32,
+    stroke_width: f32,
     reads: [f32; 4],
+    tint: [f32; 4],
+    stroke_color: [f32; 4],
 }
 
 impl BackdropSlot {
-    /// How `row`'s quad finds `kept`, its result.
+    /// How `row`'s composite finds `kept`, its result.
     fn of(row: &BackdropRow, kept: Kept) -> Self {
         let (offset, lattice, clear) = match kept {
             Kept::Slot(slot) => {
@@ -71,7 +74,8 @@ impl BackdropSlot {
             }
             Kept::Clear(clear) => (Vec2::ZERO, 0.0, clear),
         };
-        let lens = row.lens.map_or([0.0; 4], |lens| {
+        let look = row.look.unwrap_or(FilterLook::PLAIN);
+        let lens = look.lens.map_or([0.0; 4], |lens| {
             [
                 lens.bezel,
                 lens.thickness,
@@ -79,21 +83,29 @@ impl BackdropSlot {
                 lens.dispersion,
             ]
         });
+        let lanes = |color: RgbaF16| {
+            let color = RgbaF32::from(color);
+            [color.r, color.g, color.b, color.a]
+        };
         Self {
             offset,
             lattice,
-            highlight: row.lens.map_or(0.0, |lens| lens.highlight),
+            highlight: look.lens.map_or(0.0, |lens| lens.highlight),
             lens,
             clear,
-            max_luminance: row.max_luminance,
-            min_luminance: row.min_luminance,
-            pad: [0.0; 3],
+            max_luminance: look.max_luminance,
+            min_luminance: look.min_luminance,
+            saturation: look.saturation,
+            noise: look.noise,
+            stroke_width: look.stroke_width,
             reads: [
                 row.reads.min.x,
                 row.reads.min.y,
                 row.reads.max().x,
                 row.reads.max().y,
             ],
+            tint: lanes(look.tint),
+            stroke_color: lanes(look.stroke_color),
         }
     }
 }
@@ -192,8 +204,8 @@ pub(crate) struct BlurBreak {
 /// even then shows its tint over the clear and captures again.
 ///
 /// Refused: a texture of its own for a result wider than half the atlas, which would keep a full
-/// screen pane from doubling the atlas, as every pane's quad reads its result through the one
-/// group the quad pipeline binds, and a second texture would split the quads' draws.
+/// screen pane from doubling the atlas, as every pane's composite reads its result through the
+/// one group the effect pipeline binds, and a second texture would split their draws.
 #[derive(Debug)]
 pub(crate) struct Backdrops {
     cache: FxHashMap<(RenderOwnerId, PaneKey), Cached>,
@@ -287,7 +299,7 @@ impl PaneResources {
     }
 }
 
-/// What the group a pane's quad reads its result through binds.
+/// What the group a pane's composite reads its result through binds.
 #[derive(Clone, Copy, Debug)]
 struct CompositeParts<'a> {
     atlas: &'a PackedAtlas,

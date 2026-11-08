@@ -830,7 +830,7 @@ fn reduced_power_paints_each_alternative() {
 
 /// What an effect's paint cannot be panics as the shape is added: an alternative nothing loaded,
 /// or one loaded later with other types, while power is reduced; a clock-only animation on a
-/// shape that reads no time; a turn on an effect.
+/// shape that reads no time.
 #[test]
 fn an_effect_that_cannot_paint_panics() {
     let missing: EffectName<Blend> = EffectName::named("missing").unwrap();
@@ -859,11 +859,6 @@ fn an_effect_that_cannot_paint_panics() {
     assert_panics_with("drives no channel", || {
         h.frame(|ui| {
             ui.add_shape_animated(Shape::rect().fill(RgbaF32::WHITE), PaintAnimation::clock());
-        })
-    });
-    assert_panics_with("does not turn", || {
-        h.frame(|ui| {
-            ui.add_shape_animated(Shape::effect(BLEND, BLUE), PaintAnimation::turn(0.0, 1.0));
         })
     });
 }
@@ -1346,4 +1341,103 @@ fn a_reach_past_the_window_reads_its_edge() {
         );
     });
     assert_eq!(h.read_back().get_pixel(28, 8).0, bytes(green));
+}
+
+/// A paint animation turns an effect about its owner's center, as it turns a quad: an opaque blue
+/// effect over a 4 px band across the middle of a 32 × 32 window, a quarter turn, paints the
+/// band upright through the center, `(16, 2)` blue, and leaves where it lay, `(2, 16)`, the ground.
+#[test]
+fn a_turn_turns_an_effect_as_a_quad() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(32, 32))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
+    h.prime(2, |ui: &mut Ui| {
+        ui.add_shape(Shape::rect().fill(ground));
+        ui.add_shape_animated(
+            Shape::effect(BLEND, BLUE).at(Rect::new(0.0, 14.0, 32.0, 4.0)),
+            PaintAnimation::turn(0.25, 0.25),
+        );
+    });
+    let image = h.read_back();
+    assert_eq!(
+        [image.get_pixel(16, 2).0, image.get_pixel(2, 16).0],
+        [bytes(RgbaF32::new(0.0, 0.0, 1.0, 1.0)), bytes(ground)]
+    );
+}
+
+/// The reach is measured from the effect's rect, not from the pixels it rounds out to: with no
+/// pixel snap, the effect over `(4, 0, 11.5, 16)` reaches 8 px, to x 23.5, with blue under
+/// `16..24` and green from 24. Shifted by 12, pixel 14 would read x 26.5, and reads the reach's
+/// edge, 23.5, the center of the last blue pixel, pure blue; measured from the rounded rect it
+/// would read 24, half green.
+#[test]
+fn the_reach_runs_from_the_exact_rect() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(32, 16))
+        .mono()
+        .pixel_snap(false)
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
+        .unwrap();
+    let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
+    h.prime(2, |ui: &mut Ui| {
+        ui.add_shape(
+            Shape::rect()
+                .at(Rect::new(0.0, 0.0, 16.0, 16.0))
+                .fill(RgbaF32::new(1.0, 0.0, 0.0, 1.0)),
+        );
+        ui.add_shape(Shape::rect().at(Rect::new(16.0, 0.0, 8.0, 16.0)).fill(blue));
+        ui.add_shape(
+            Shape::rect()
+                .at(Rect::new(24.0, 0.0, 8.0, 16.0))
+                .fill(RgbaF32::new(0.0, 1.0, 0.0, 1.0)),
+        );
+        ui.add_shape(
+            Shape::backdrop_effect(SHIFT, Shift { dx: 12.0 })
+                .at(Rect::new(4.0, 0.0, 11.5, 16.0))
+                .reach(8.0),
+        );
+    });
+    assert_eq!(h.read_back().get_pixel(14, 8).0, bytes(blue));
+}
+
+/// A turned backdrop effect reads what lies under each of its pixels, through its turn: in a
+/// 32 × 32 window, red above y 16 and blue below, a band across the middle turned a quarter
+/// stands upright, and its pixel `(16, 28)` reads the blue under it. Read in the unturned frame,
+/// its center `(16.5, 28.5)` would land at `(28.5, 15.5)`, red.
+#[test]
+fn a_turned_backdrop_effect_reads_through_its_turn() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(32, 32))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
+        .unwrap();
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+    h.prime(2, |ui: &mut Ui| {
+        ui.add_shape(Shape::rect().at(Rect::new(0.0, 0.0, 32.0, 16.0)).fill(red));
+        ui.add_shape(
+            Shape::rect()
+                .at(Rect::new(0.0, 16.0, 32.0, 16.0))
+                .fill(RgbaF32::new(0.0, 0.0, 1.0, 1.0)),
+        );
+        ui.add_shape_animated(
+            Shape::backdrop_effect(SHIFT, SHARP).at(Rect::new(0.0, 14.0, 32.0, 4.0)),
+            PaintAnimation::turn(0.25, 0.25),
+        );
+    });
+    assert_eq!(
+        h.read_back().get_pixel(16, 28).0,
+        bytes(RgbaF32::new(0.0, 0.0, 1.0, 1.0))
+    );
 }

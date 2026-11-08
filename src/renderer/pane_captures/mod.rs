@@ -22,9 +22,9 @@
 //!   moved, as a row removed before it gives it a new key; the damage walk marks such a pane
 //!   stale too, so its rect repaints and the panes above it see it.
 //! - **A pane that should take a new result and does not drops what it held.** A capturing pane
-//!   that a fade, the occlusion pruner or the clear fold leaves undrawn keeps nothing, as damage
-//!   under it went to no capture; it captures once it draws. A hidden pane that should not capture
-//!   keeps its result. Refused: never pruning a pane, which pays a capture and a blur for a pane
+//!   that a fade or the clear fold leaves undrawn keeps nothing, as damage under it went to no
+//!   capture; it captures once it draws. A hidden pane that should not capture keeps its result.
+//!   Refused: keeping the panes the clear fold covers, which pays a capture and a blur for a pane
 //!   nobody sees.
 //! - **A capturing frame that would copy more than the surface paints through the backbuffer.**
 //!   The blurs then read the backbuffer in place, and the copy onto the target moves the surface

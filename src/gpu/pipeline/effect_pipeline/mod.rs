@@ -15,15 +15,17 @@ use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
+use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
-use crate::primitives::identity::effect_id::EffectId;
+use crate::gpu::spectrum_tables;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
+use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectProgram, PaneForm};
+use crate::shape::paint::lens_optics;
 
 /// The layouts every effect's pipeline builds over: the parameter words at group 0, the images
 /// at [`IMAGES_GROUP`] for an effect that binds any, a backdrop effect's pane results at
@@ -107,7 +109,7 @@ const BLEND: wgpu::BlendState = wgpu::BlendState {
     },
 };
 
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 5] = [
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Float32x4,
@@ -118,10 +120,10 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 5] = [
         wgpu::VertexFormat::Float32x4,
         offset_of!(EffectInstance, corners),
     ),
-    // `time`, `opacity` and `scale`, one after another.
+    // `time`, `opacity`, `scale` and `rotation`, one after another.
     vertex_attr(
         2,
-        wgpu::VertexFormat::Float32x3,
+        wgpu::VertexFormat::Float32x4,
         offset_of!(EffectInstance, time),
     ),
     vertex_attr(
@@ -134,7 +136,63 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 5] = [
         wgpu::VertexFormat::Uint32,
         offset_of!(EffectInstance, pane),
     ),
+    vertex_attr(
+        5,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(EffectInstance, flags),
+    ),
 ];
+
+/// Palantir's own backdrop effect, which a backdrop filter's pane draws through, one pipeline per
+/// [`PaneForm`].
+pub(crate) const PANE_SHADER: ShaderBody = ShaderBody {
+    label: "palantir.effect.pane",
+    wgsl: include_str!("pane.wgsl"),
+    includes: &[],
+    constants: PANE_CONSTANTS,
+};
+
+/// The numbers [`PANE_SHADER`] takes from the Rust types that own them.
+const PANE_CONSTANTS: &[ShaderConstant] = &[
+    ShaderConstant::uint("PANE_FORM_LENS", PaneForm::Lens as u32),
+    ShaderConstant::uint("PANE_FORM_SPECTRUM", PaneForm::Spectrum as u32),
+    ShaderConstant::uint("PANE_FLAG_WINDOW", EffectInstance::WINDOW),
+    ShaderConstant::float("LINE_D", lens_optics::LINE_D),
+    ShaderConstant::float("LINE_F", lens_optics::LINE_F),
+    ShaderConstant::float("LINE_C", lens_optics::LINE_C),
+    ShaderConstant::float("SPECTRUM_RED", lens_optics::SPECTRUM_RED),
+    ShaderConstant::float("SPECTRUM_VIOLET", lens_optics::SPECTRUM_VIOLET),
+    ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
+];
+
+/// The pane form `form` from `shader`, [`PANE_SHADER`]'s module, against `format`, with its
+/// rounded-clip twin. It dithers its result before an 8-bit sRGB target stores it.
+pub(crate) fn build_pane(
+    gpu: &Gpu,
+    layouts: &EffectLayouts,
+    shader: &wgpu::ShaderModule,
+    form: PaneForm,
+    format: wgpu::TextureFormat,
+) -> StencilVariant {
+    let dither = f64::from(u8::from(
+        format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
+    ));
+    let label = format!("palantir.effect.pane.{}", form as u32);
+    let recipe = PipelineRecipe {
+        constants: &[
+            ("DITHER_SRGB8", dither),
+            ("PANE_FORM", f64::from(form as u32)),
+        ],
+        vertex_buffers: &[Some(INSTANCE_LAYOUT)],
+        topology: wgpu::PrimitiveTopology::TriangleStrip,
+        blend: Some(BLEND),
+        ..PipelineRecipe::color(&label, shader, &layouts.backdrop[0], format)
+    };
+    let mut variant = StencilVariant::NONE;
+    variant.ensure(gpu, StencilMode::Off, &recipe);
+    variant.ensure(gpu, StencilMode::Test, &recipe);
+    variant
+}
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
     size_of::<EffectInstance>(),
@@ -189,6 +247,8 @@ pub(crate) struct EffectPipeline {
     pipelines: Vec<StencilVariant>,
     /// Each effect's kind, at its id, copied with `pipelines`.
     kinds: Vec<KindId>,
+    /// The pane forms' pipelines for the format, at each [`PaneForm`], copied with `pipelines`.
+    panes: Vec<StencilVariant>,
 }
 
 /// The format and store revision an [`EffectPipeline`]'s pipelines were copied at.
@@ -198,12 +258,12 @@ struct PipelinesCopy {
     revision: u64,
 }
 
-/// One batch of effect draws: the frame's per-draw effect column, this batch's slice of it, the
+/// One batch of effect draws: the frame's per-draw program column, this batch's slice of it, the
 /// groups the draws bind their images through, and the group a backdrop effect reads its pane's
 /// result through, `None` before the first frame with a pane.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
-    pub(crate) ids: &'a [EffectId],
+    pub(crate) programs: &'a [EffectProgram],
     pub(crate) items: Span,
     pub(crate) groups: &'a EffectImageGroups,
     pub(crate) panes: Option<&'a wgpu::BindGroup>,
@@ -231,6 +291,7 @@ impl EffectPipeline {
             copied: None,
             pipelines: Vec::new(),
             kinds: Vec::new(),
+            panes: Vec::new(),
         }
     }
 
@@ -289,6 +350,10 @@ impl EffectPipeline {
             self.kinds.clear();
             self.kinds
                 .extend(read.modules.iter().map(|module| module.kind));
+            self.panes.clear();
+            if let Some(panes) = read.attached.panes_for_format(upload.format) {
+                self.panes.extend_from_slice(panes);
+            }
             self.copied = Some(copy);
         }
     }
@@ -300,7 +365,7 @@ impl EffectPipeline {
         rec: &mut PassRecorder<'a>,
         stencil: StencilMode,
         EffectBatch {
-            ids,
+            programs,
             items,
             groups,
             panes,
@@ -311,8 +376,8 @@ impl EffectPipeline {
             .as_ref()
             .expect("a frame uploads before it draws");
         rec.vertex(0, &self.instances.buffer);
-        for run in Runs::new(items, |i| (ids[i as usize], self.images[i as usize])) {
-            let (effect, images) = run.key;
+        for run in Runs::new(items, |i| (programs[i as usize], self.images[i as usize])) {
+            let (program, images) = run.key;
             let images_group = if images.ids().is_empty() {
                 None
             } else {
@@ -321,12 +386,18 @@ impl EffectPipeline {
                 };
                 Some(images_group)
             };
-            rec.pipeline(self.pipelines[effect.idx()].select(stencil));
+            let (pipeline, kind) = match program {
+                EffectProgram::App(effect) => {
+                    (&self.pipelines[effect.idx()], self.kinds[effect.idx()])
+                }
+                EffectProgram::Pane(form) => (&self.panes[form.idx()], KindId::Backdrop),
+            };
+            rec.pipeline(pipeline.select(stencil));
             rec.group(0, group);
             if let Some(images_group) = images_group {
                 rec.group_once(IMAGES_GROUP, images_group);
             }
-            if self.kinds[effect.idx()] == KindId::Backdrop {
+            if kind == KindId::Backdrop {
                 let panes = panes.expect("a frame with a backdrop effect prepares its panes");
                 rec.group_once(PANES_GROUP, panes);
             }

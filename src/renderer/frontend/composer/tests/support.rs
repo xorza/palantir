@@ -309,6 +309,7 @@ pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
         DrawEffectPayload {
             rect: r,
             corners: Corners::ZERO,
+            spin: None,
             effect: EffectId(0),
             params: Span::new(0, 2),
             images: Span::new(0, 0),

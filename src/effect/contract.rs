@@ -32,8 +32,8 @@ const BACKDROP_BINDINGS: [&str; 3] = [
 
 /// What palantir's fragment stage sets before it calls a backdrop effect: the pane it draws, its
 /// rect's top-left and the scale `effect_backdrop` maps a logical position by.
-const BACKDROP_SET: &str =
-    "palantir_pane = v.pane;\n    palantir_origin = v.rect.xy;\n    palantir_scale = scale;\n    ";
+const BACKDROP_SET: &str = "palantir_pane = v.pane;\n    palantir_rect = v.rect;\n    \
+     palantir_rotation = v.clock.w;\n    palantir_scale = scale;\n    ";
 /// Palantir's own stages around `effect`, with markers for the antialiasing reach, the parameter
 /// read and the call.
 const WRAPPER: &str = include_str!("wrapper.wgsl");

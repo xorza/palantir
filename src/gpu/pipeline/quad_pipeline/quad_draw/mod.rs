@@ -15,13 +15,10 @@ pub(crate) enum QuadDraw {
 
 impl QuadDraw {
     /// Every draw, in [`Self::idx`] order.
-    pub(crate) const ALL: [Self; 9] = [
+    pub(crate) const ALL: [Self; 6] = [
         Self::Form(QuadForm::Solid),
         Self::Form(QuadForm::Gradient),
         Self::Form(QuadForm::Triangle),
-        Self::Form(QuadForm::Backdrop),
-        Self::Form(QuadForm::BackdropLens),
-        Self::Form(QuadForm::BackdropSpectrum),
         Self::Shadow(ShadowEntry::General),
         Self::Shadow(ShadowEntry::Tables),
         Self::Shadow(ShadowEntry::TablesWide),
@@ -31,9 +28,9 @@ impl QuadDraw {
     pub(crate) const fn idx(self) -> u32 {
         match self {
             Self::Form(form) => form as u32,
-            Self::Shadow(ShadowEntry::General) => 6,
-            Self::Shadow(ShadowEntry::Tables) => 7,
-            Self::Shadow(ShadowEntry::TablesWide) => 8,
+            Self::Shadow(ShadowEntry::General) => 3,
+            Self::Shadow(ShadowEntry::Tables) => 4,
+            Self::Shadow(ShadowEntry::TablesWide) => 5,
         }
     }
 

@@ -83,43 +83,6 @@ const FILTER_SERIES_MIN_SIGMA: f32 = /*{FILTER_SERIES_MIN_SIGMA}*/;
 // `FILTER_SERIES_MIN_SIGMA`, whose difference loses more, as it grows with σ.
 const FILTER_PDF_SERIES_MIN_SIGMA: f32 = 5.0;
 
-// A frame's backdrop panes (`Backdrops`): each pane's blurred last level in
-// its slot of `backdrop_results`, which its quad's `fill_lut_row` indexes,
-// read through a cubic B-spline, or texel for texel at full resolution.
-// Bound to the backdrop pipeline only.
-struct BackdropSlot {
-    // The slot's texel coordinate, texel `j`'s center at `j`, of the
-    // lattice's texel 0.
-    offset: vec2<f32>,
-    // Physical px of one texel of the pane's last level, or 0 for a pane with
-    // nothing painted before it, which shows `clear`.
-    lattice: f32,
-    // The strength of the lamp's glint off the lens's bezel.
-    highlight: f32,
-    // The lens, `(bezel, thickness, refractive_index, dispersion)` in
-    // physical px, zero for a pane of no glass (`LensOptics`).
-    lens: vec4<f32>,
-    // The linear clear a pane of lattice 0 shows, as the target holds it.
-    clear: vec3<f32>,
-    // The highest relative luminance the pane shows under its tint; 65504
-    // for a pane with no ceiling.
-    max_luminance: f32,
-    // The lowest; 0 for a pane with no floor.
-    min_luminance: f32,
-    _pad0: f32,
-    _pad1: f32,
-    _pad2: f32,
-    // The physical rect a backdrop effect reads (`effect/backdrop.wgsl`).
-    reads: vec4<f32>,
-};
-@group(2) @binding(0) var backdrop_results: texture_2d<f32>;
-@group(2) @binding(1) var backdrop_sampler: sampler;
-@group(2) @binding(2) var<storage, read> backdrop_slots: array<BackdropSlot>;
-
-// Whether the target stores 8 bits a channel through the sRGB curve, which a
-// pane dithers its smooth result for (`fs_backdrop`).
-override DITHER_SRGB8: bool = false;
-
 // The paths `fs` takes, pinned per pipeline (`QuadForm`): the driver drops
 // the rest, so a solid rect's pipeline does not hold a gradient's or a
 // triangle's registers.
@@ -127,11 +90,6 @@ override QUAD_FORM: u32;
 const QUAD_FORM_SOLID: u32 = /*{QUAD_FORM_SOLID}*/;
 const QUAD_FORM_GRADIENT: u32 = /*{QUAD_FORM_GRADIENT}*/;
 const QUAD_FORM_TRIANGLE: u32 = /*{QUAD_FORM_TRIANGLE}*/;
-// The backdrop's forms: glass of one index, and glass that spreads the
-// spectrum, each apart as the lens and its loop hold registers, which V3D
-// spilled on every pane while one shader drew them all.
-const QUAD_FORM_BACKDROP_LENS: u32 = /*{QUAD_FORM_BACKDROP_LENS}*/;
-const QUAD_FORM_BACKDROP_SPECTRUM: u32 = /*{QUAD_FORM_BACKDROP_SPECTRUM}*/;
 
 // A `core` no point is inside: the fragment always takes its full form.
 const NO_SPAN: f32 = 1e30;
@@ -397,17 +355,6 @@ struct Bounds {
     hi: vec2<f32>,
 };
 
-// `p` turned `rotation` radians about `center`. Exact at no turn, so an
-// unturned quad draws where it always has.
-fn turned(p: vec2<f32>, center: vec2<f32>, rotation: f32) -> vec2<f32> {
-    if (rotation == 0.0) {
-        return p;
-    }
-    let cs = vec2<f32>(cos(rotation), sin(rotation));
-    let v = p - center;
-    return center + vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
-}
-
 // `p` turned back by `turn` (`ShadowOut::turn`), the inverse of `turned`.
 fn unturned(p: vec2<f32>, turn: vec4<f32>) -> vec2<f32> {
     if (turn.w == 0.0) {
@@ -487,19 +434,6 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     return out;
 }
 
-// Rounded-rect SDF centered at the origin: half-extents `b`,
-// per-corner radius `r = (tl, tr, br, bl)`. Quadrant-select picks the
-// corner radius by sign of `p` so each corner can differ.
-fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f32 {
-    let right  = step(0.0, p.x);
-    let bottom = step(0.0, p.y);
-    let r = mix(mix(radius.x, radius.y, right),
-                mix(radius.w, radius.z, right),
-                bottom);
-    let q = abs(p) - (b - vec2<f32>(r));
-    return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
-}
-
 // CSS `box-shadow` spread on each radius: `max(r + s, 0)` for `s < 0`;
 // for `s ≥ 0`, `r + s` when `r ≥ s` and `r + s·(1 + (r/s − 1)³)` below, so
 // a sharp corner stays sharp, as CSS Backgrounds 3 §7.1 has it. The cutout
@@ -525,13 +459,6 @@ fn fit_radii(r: vec4<f32>, half: vec2<f32>) -> vec4<f32> {
     let ratios = select(vec4<f32>(1.0), sides / max(sums, vec4<f32>(1e-30)), sums > vec4<f32>(0.0));
     let f = min(1.0, min(min(ratios.x, ratios.y), min(ratios.z, ratios.w)));
     return r * f;
-}
-
-// Corner-origin convenience: `p` measured from the top-left of a rect
-// of `size`. Forwards to the centered form.
-fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
-    let half = size * 0.5;
-    return sdf_rounded_box_centered(p - half, half, radius);
 }
 
 // Signed distance to the triangle (a, b, c) — negative inside, positive
@@ -917,48 +844,6 @@ fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma:
 }
 
 // Composite an SDF shape's fill + inner-edge stroke into premultiplied linear
-// RGBA, given the signed distance `d` (negative inside). `outer_aa =
-// edge_coverage(d)` is the coverage. With a stroke, the stroke covers the annulus
-// between the outer edge and the edge inset by `stroke_width`, and the fill
-// covers the interior inside that inset. The two are *spatially disjoint*
-// within any pixel (stroke = `outer_aa - inner_aa`, fill = `inner_aa`), so they
-// sum additively in premultiplied space — the coverages partition and add back
-// to `outer_aa`. Compositing stroke OVER fill instead (`a = stroke_a +
-// fill_a*(1-stroke_a)`) dips total alpha to ~0.75 where the two AA bands cross
-// at ~0.5 each, showing a 1px seam of background bleeding between stroke and
-// fill at fractional zoom; summing keeps total coverage at `outer_aa`. Shared
-// by the rounded-rect and triangle paths so they can't drift.
-fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
-    let outer_aa = edge_coverage(d);
-    if (stroke_width > 0.0) {
-        let inner_aa = edge_coverage(d + stroke_width);
-        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
-        let fill_a   = inner_aa * fill.a;
-        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
-    }
-    return premultiply(fill.rgb, fill.a * outer_aa);
-}
-
-// Inverted-fill counterpart of `composite` for `FILL_FLAG_WINDOW`: the
-// stroke covers the same inner-edge annulus, but the fill paints the
-// complement of the rounded shape (`1 - outer_aa`) — the corner wedges
-// out to the quad edge — and the window interior is transparent. The
-// three coverages (fill, stroke, window) partition each pixel exactly,
-// so fill + stroke sum additively in premultiplied space with no seam,
-// same rationale as `composite`. The quad edge itself is a hard cut
-// (no outward AA): the shape is a mask laid exactly over content of
-// the same extent, so its outer boundary is never a visible edge.
-fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
-    let outer_aa = edge_coverage(d);
-    let fill_a = (1.0 - outer_aa) * fill.a;
-    if (stroke_width > 0.0) {
-        let inner_aa = edge_coverage(d + stroke_width);
-        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
-        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
-    }
-    return premultiply(fill.rgb, fill_a);
-}
-
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     if (QUAD_FORM == QUAD_FORM_TRIANGLE) {
@@ -1006,289 +891,6 @@ fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
         return window;
     }
     return composite(d, fill, in.stroke_color, in.stroke_width);
-}
-
-// The pane's result at screen position `p`: the B-spline over the slot's
-// texels through four bilinear fetches (Sigg and Hadwiger), whose weights
-// add the same variance at every phase, the texel itself at level 0, or the
-// clear the slot holds.
-fn backdrop_result(p: vec2<f32>, slot: BackdropSlot) -> vec3<f32> {
-    if (slot.lattice == 0.0) {
-        return slot.clear;
-    }
-    let x = p / slot.lattice - vec2<f32>(0.5) + slot.offset;
-    if (slot.lattice == 1.0) {
-        // A lens reads between pixels, where the bilinear read is the
-        // lens's own resampling; else a pixel center lands on a texel's.
-        if (slot.lens.x > 0.0) {
-            let size = vec2<f32>(textureDimensions(backdrop_results));
-            return textureSampleLevel(backdrop_results, backdrop_sampler, (x + vec2<f32>(0.5)) / size, 0.0).rgb;
-        }
-        return textureLoad(backdrop_results, vec2<i32>(floor(x + vec2<f32>(0.5))), 0).rgb;
-    }
-    let base = floor(x);
-    let f = x - base;
-    let g = vec2<f32>(1.0) - f;
-    let w0 = g * g * g / 6.0;
-    let w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
-    let w3 = f * f * f / 6.0;
-    let w2 = vec2<f32>(1.0) - w0 - w1 - w3;
-    let s0 = w0 + w1;
-    let s1 = w2 + w3;
-    let size = vec2<f32>(textureDimensions(backdrop_results));
-    let lo = (base - vec2<f32>(0.5) + w1 / s0) / size;
-    let hi = (base + vec2<f32>(1.5) + w3 / s1) / size;
-    return s0.y * (s0.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(lo.x, lo.y), 0.0).rgb
-                 + s1.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(hi.x, lo.y), 0.0).rgb)
-         + s1.y * (s0.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(lo.x, hi.y), 0.0).rgb
-                 + s1.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(hi.x, hi.y), 0.0).rgb);
-}
-
-// A grain value in `0..1` for the whole pixel of the pane's own frame at
-// `local`, so the grain moves and turns with the pane.
-fn grain(local: vec2<f32>) -> f32 {
-    let cell = vec2<u32>(vec2<i32>(floor(local)) + vec2<i32>(32768));
-    var h = cell.x * 0x9E3779B1u ^ (cell.y * 0x85EBCA77u);
-    h ^= h >> 15u;
-    h *= 0x2C1B3C6Du;
-    h ^= h >> 12u;
-    return f32(h >> 8u) / 16777216.0;
-}
-
-// How far in, px, a lens sends the sample `inward` px in from its edge for
-// light of index `index`: the squircle bezel's tilt, Snell's law in vector
-// form for light falling straight down, and the bent ray carried from the
-// glass's top to the plane under it. `LensOptics::displacement`'s copy.
-fn lens_displacement(lens: vec4<f32>, inward: f32, index: f32) -> f32 {
-    let x = clamp(inward / lens.x, 0.0, 1.0);
-    let g = 1.0 - x;
-    let rise = max(1.0 - g * g * g * g, 1e-30);
-    let height = lens.y * pow(rise, 0.25);
-    let slope = select(lens.y / lens.x * g * g * g * pow(rise, -0.75), 0.0, x >= 1.0);
-    let norm = sqrt(slope * slope + 1.0);
-    let nx = slope / norm;
-    let nz = 1.0 / norm;
-    let eta = 1.0 / index;
-    let k = 1.0 - eta * eta * (1.0 - nz * nz);
-    let along = eta * nz - sqrt(k);
-    return height * (-along * nx) / (eta - along * nz);
-}
-
-// Fraunhofer's D, F and C lines, µm: a lens's index is its index at D, and
-// its dispersion the step from C to F, `n_F − n_C` (`lens_optics`).
-const LINE_D: f32 = /*{LINE_D}*/;
-const LINE_F: f32 = /*{LINE_F}*/;
-const LINE_C: f32 = /*{LINE_C}*/;
-
-// The ends of the spectrum a lens spreads, µm.
-const SPECTRUM_RED: f32 = /*{SPECTRUM_RED}*/;
-const SPECTRUM_VIOLET: f32 = /*{SPECTRUM_VIOLET}*/;
-
-// The spectrum's weight in XYZ over the share `t` of the way along it, red
-// end first, held flat across each of `SPECTRUM_SAMPLES` cells: each cell's
-// integral, and the running integrals of the weight and of `t` times it at
-// the cell's start (`spectrum_tables::SpectrumTables`). A buffer, as V3D runs
-// a dynamically indexed constant array as a ladder of selects over every
-// entry, and spilled.
-const SPECTRUM_SAMPLES: u32 = /*{SPECTRUM_SAMPLES}*/;
-struct SpectrumCell {
-    weight: vec3<f32>,
-    cumulative: vec3<f32>,
-    moment: vec3<f32>,
-}
-@group(2) @binding(3) var<storage, read> spectrum: array<SpectrumCell, SPECTRUM_SAMPLES>;
-
-// The most whole steps a bezel pixel reads across the spectrum: it bounds a
-// pixel's cost at 33 reads, 22–27 % over the default dispersion's frame on
-// an Apple laptop (`.notes/research/2026-10-28-backdrops.md`, "Measured:
-// dispersion").
-const SPECTRUM_STEPS: f32 = 32.0;
-
-// The spectrum's running integrals from its red end to `t`: of the weight,
-// and of `t` times it.
-struct SpectrumIntegrals {
-    area: vec3<f32>,
-    moment: vec3<f32>,
-}
-
-fn spectrum_integrals(t: f32) -> SpectrumIntegrals {
-    let n = f32(SPECTRUM_SAMPLES);
-    let cell = min(u32(t * n), SPECTRUM_SAMPLES - 1u);
-    let start = f32(cell) / n;
-    let at = spectrum[cell];
-    return SpectrumIntegrals(
-        at.cumulative + at.weight * (t * n - f32(cell)),
-        at.moment + at.weight * (0.5 * n * (t * t - start * start)),
-    );
-}
-
-// Linear sRGB to CIE XYZ under D65, and back (IEC 61966-2-1), column-major.
-const RGB_TO_XYZ: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(0.4124564, 0.2126729, 0.0193339),
-    vec3<f32>(0.3575761, 0.7151522, 0.1191920),
-    vec3<f32>(0.1804375, 0.0721750, 0.9503041),
-);
-const XYZ_TO_RGB: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(3.2404542, -0.9692660, 0.0556434),
-    vec3<f32>(-1.5371385, 1.8760108, -0.2040259),
-    vec3<f32>(-0.4985314, 0.0415560, 1.0572252),
-);
-
-// The index of a lens for light the share `t` of the way from the
-// spectrum's red end to its violet end: Cauchy's `n(λ) = A + B / λ²`
-// through the index at D with `n_F − n_C` its dispersion, affine in
-// `u = 1 / λ²`, along which `t` runs. At least 1: the red end of a weak,
-// dispersive lens falls below it, where Snell's law has no ray at a steep
-// bezel and a ray would bend outward, past the reach.
-fn lens_index(lens: vec4<f32>, t: f32) -> f32 {
-    let u = mix(1.0 / (SPECTRUM_RED * SPECTRUM_RED), 1.0 / (SPECTRUM_VIOLET * SPECTRUM_VIOLET), t);
-    let per_u = lens.w / (1.0 / (LINE_F * LINE_F) - 1.0 / (LINE_C * LINE_C));
-    return max(lens.z + per_u * (u - 1.0 / (LINE_D * LINE_D)), 1.0);
-}
-
-// The pane's result in XYZ where light the share `t` along the spectrum
-// lands, refracted at its own index.
-fn lens_ray(p: vec2<f32>, outward: vec2<f32>, inward: f32, slot: BackdropSlot, t: f32) -> vec3<f32> {
-    let shift = lens_displacement(slot.lens, inward, lens_index(slot.lens, t));
-    return RGB_TO_XYZ * backdrop_result(p - outward * shift, slot);
-}
-
-// What the bezel shows `inward` px in at `p`, bent along `outward`: every
-// wavelength refracted at its own index and the spectrum summed back to
-// color in XYZ (`gpu::backdrop`, "Dispersion spreads the whole spectrum").
-//
-// The reads step a lattice texel apart, the finest the result holds, so no
-// read shows as a ghost of the next; past `SPECTRUM_STEPS` steps they spread
-// further. Between two reads the result is linear, as the bilinear read is,
-// and each stretch's integral against the weight comes in closed form from
-// the running integrals. Its integral against `(t − a) / (b − a)` divides a
-// difference of moments by the stretch's length, which `f32` cannot hold
-// below a thousandth; there the weight is flat enough to take half the
-// stretch's area. The last stretch is a part one, so no contour marks where
-// the step count grows with the spread. A spread under a thousandth of a px
-// shows nothing, so the pane keeps one read at D.
-fn lens_spectrum(p: vec2<f32>, outward: vec2<f32>, inward: f32, slot: BackdropSlot) -> vec3<f32> {
-    let lens = slot.lens;
-    let spread = abs(
-        lens_displacement(lens, inward, lens_index(lens, 1.0))
-            - lens_displacement(lens, inward, lens_index(lens, 0.0)),
-    );
-    if (slot.lattice == 0.0 || spread < 1e-3) {
-        return backdrop_result(p - outward * lens_displacement(lens, inward, lens.z), slot);
-    }
-    let dt = max(slot.lattice, spread / SPECTRUM_STEPS) / spread;
-    var a = 0.0;
-    var at_a = lens_ray(p, outward, inward, slot, 0.0);
-    var integrals_a = SpectrumIntegrals(vec3<f32>(0.0), vec3<f32>(0.0));
-    var step = 0u;
-    var xyz = vec3<f32>(0.0);
-    loop {
-        step++;
-        let b = min(f32(step) * dt, 1.0);
-        let at_b = lens_ray(p, outward, inward, slot, b);
-        let integrals_b = spectrum_integrals(b);
-        let area = integrals_b.area - integrals_a.area;
-        let length = b - a;
-        let toward_b = select(
-            (integrals_b.moment - integrals_a.moment - a * area) / length,
-            0.5 * area,
-            length < 1e-3,
-        );
-        xyz += at_a * (area - toward_b) + at_b * toward_b;
-        if (b >= 1.0) {
-            break;
-        }
-        a = b;
-        at_a = at_b;
-        integrals_a = integrals_b;
-    }
-    return XYZ_TO_RGB * xyz;
-}
-
-// The glint a lamp low at the top left leaves on the bezel `inward` px in,
-// its outward normal `outward` on the screen: Schlick's Fresnel at the
-// surface's tilt `θ`, times how squarely the surface's normal faces the
-// lamp, `sin θ` of it along `outward`. A flat face takes none, so the glint
-// fades to 0 where the bezel meets the flat top (`gpu::backdrop`, "The glint
-// fades into the flat top").
-//
-// The slope `k · g³ · r^(−¾)` is vertical at the edge, so the normal comes
-// from `(k · g³, r^¾)`, the slope times `r^¾`, which no edge overflows:
-// `f32` holds no square of the slope there.
-fn lens_glint(lens: vec4<f32>, inward: f32, outward: vec2<f32>) -> f32 {
-    let g = 1.0 - clamp(inward / lens.x, 0.0, 1.0);
-    let rise = 1.0 - g * g * g * g;
-    let across = lens.y / lens.x * g * g * g;
-    let up = sqrt(rise * sqrt(rise));
-    let norm = sqrt(across * across + up * up);
-    let cos_in = up / norm;
-    let sin_in = across / norm;
-    let f0 = pow((lens.z - 1.0) / (lens.z + 1.0), 2.0);
-    let fresnel = f0 + (1.0 - f0) * pow(1.0 - cos_in, 5.0);
-    let facing = max(dot(outward, vec2<f32>(-0.70710678, -0.70710678)), 0.0);
-    return fresnel * sin_in * facing;
-}
-
-// A pane over the pixels painted before it (`FillKind::BACKDROP`): its
-// blurred result, saturated, grained, held under its luminance ceiling and
-// tinted by `fill`, at the pane's opacity,
-// `fill_axis = (_, saturation, noise, opacity)`. A paint
-// animation's fade scaled the opacity and the tint's alpha alike, so the
-// tint's own share is its alpha over the opacity.
-//
-// A lens bends along the distance's screen gradient, the edge's outward
-// normal on the screen, turned with the pane. Only the glass pipelines
-// measure the distance, so the gradient is taken in uniform control flow.
-@fragment
-fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
-    let slot = backdrop_slots[in.fill_lut_row];
-    let lens = slot.lens;
-    var c: vec3<f32>;
-    if (QUAD_FORM == QUAD_FORM_BACKDROP_LENS || QUAD_FORM == QUAD_FORM_BACKDROP_SPECTRUM) {
-        let d = sdf_rounded_rect(in.local, in.size, in.radius);
-        let gradient = vec2<f32>(dpdx(d), dpdy(d));
-        let inward = -d;
-        if (inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
-            let outward = normalize(gradient);
-            if (QUAD_FORM == QUAD_FORM_BACKDROP_SPECTRUM) {
-                c = lens_spectrum(frag_px(in.clip), outward, inward, slot);
-            } else {
-                c = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, lens.z), slot);
-            }
-            c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
-        } else {
-            c = backdrop_result(frag_px(in.clip), slot);
-        }
-    } else {
-        c = backdrop_result(frag_px(in.clip), slot);
-    }
-    let saturation = in.fill_axis.y;
-    let noise = in.fill_axis.z;
-    let opacity = in.fill_axis.w;
-    c = max(mix(vec3<f32>(dot(c, LUMA)), c, saturation), vec3<f32>(0.0));
-    if (noise > 0.0) {
-        c = mix(c, vec3<f32>(grain(in.local)), noise);
-    }
-    // Scaled rather than clamped per channel, so the hue and the chroma hold.
-    let luminance = dot(c, LUMA);
-    if (luminance > slot.max_luminance) {
-        c *= slot.max_luminance / luminance;
-    }
-    // Lifted by a neutral, whose luminance is its level as LUMA sums to 1, so black reaches the
-    // floor too; after the ceiling, so the floor wins where the two cross.
-    let lifted = dot(c, LUMA);
-    if (lifted < slot.min_luminance) {
-        c += vec3<f32>(slot.min_luminance - lifted);
-    }
-    let tint = select(0.0, in.fill.a / opacity, opacity > 0.0);
-    c = mix(c, in.fill.rgb, clamp(tint, 0.0, 1.0));
-    if (DITHER_SRGB8) {
-        // Interleaved gradient noise (Jimenez) of one encoded step, so a
-        // smooth blur stores no band.
-        let ign = fract(52.9829189 * fract(dot(floor(frag_px(in.clip)), vec2<f32>(0.06711056, 0.00583715))));
-        c = srgb_to_linear(max(linear_to_srgb(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
-    }
-    return shade_rect(in, vec4<f32>(c, opacity));
 }
 
 // The box whose blur a shadow paints, relative to its quad's center, with

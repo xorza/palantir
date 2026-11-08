@@ -8,6 +8,7 @@ use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::effect_id::EffectId;
+use crate::renderer::render_buffer::effect_draw_row::PaneForm;
 
 /// The [`EffectStore`] a host's registry loads through and its backend draws from. It keeps each
 /// effect's module, so a new swapchain format or a new device builds every effect again, and
@@ -37,9 +38,13 @@ struct StoreState {
 pub(crate) struct AttachedEffects {
     gpu: Gpu,
     pub(crate) layouts: EffectLayouts,
+    /// [`effect_pipeline::PANE_SHADER`]'s module, which every pane form builds from.
+    pane_shader: wgpu::ShaderModule,
     formats: Vec<wgpu::TextureFormat>,
     /// At each effect's id, then in `formats` order.
     pipelines: Vec<Vec<StencilVariant>>,
+    /// In `formats` order, then at each [`PaneForm`].
+    panes: Vec<Vec<StencilVariant>>,
 }
 
 impl WgpuEffectStore {
@@ -52,8 +57,10 @@ impl WgpuEffectStore {
         state.attached = Some(AttachedEffects {
             gpu: gpu.clone(),
             layouts: EffectLayouts::new(gpu, binding),
+            pane_shader: effect_pipeline::PANE_SHADER.module(gpu),
             formats: Vec::new(),
             pipelines,
+            panes: Vec::new(),
         });
         state.revision += 1;
     }
@@ -71,6 +78,18 @@ impl WgpuEffectStore {
             return;
         }
         attached.formats.push(format);
+        let panes = PaneForm::ALL
+            .map(|form| {
+                effect_pipeline::build_pane(
+                    &attached.gpu,
+                    &attached.layouts,
+                    &attached.pane_shader,
+                    form,
+                    format,
+                )
+            })
+            .to_vec();
+        attached.panes.push(panes);
         for (idx, module) in modules.iter().enumerate() {
             let built =
                 effect_pipeline::build(&attached.gpu, &attached.layouts, module, format, idx);
@@ -114,6 +133,16 @@ impl AttachedEffects {
     ) -> Option<impl Iterator<Item = &StencilVariant>> {
         let at = self.formats.iter().position(|&built| built == format)?;
         Some(self.pipelines.iter().map(move |formats| &formats[at]))
+    }
+
+    /// The pane forms' pipelines for `format`, at each [`PaneForm`]; `None` where the format is
+    /// not built.
+    pub(crate) fn panes_for_format(
+        &self,
+        format: wgpu::TextureFormat,
+    ) -> Option<&[StencilVariant]> {
+        let at = self.formats.iter().position(|&built| built == format)?;
+        Some(&self.panes[at])
     }
 }
 

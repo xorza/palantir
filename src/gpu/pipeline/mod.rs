@@ -31,6 +31,7 @@ pub(crate) mod internals {
     use crate::gpu::backdrop::backdrop_blur::BackdropBlur;
     use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
     use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
+    use crate::gpu::pipeline::effect_pipeline;
     use crate::gpu::pipeline::image_pipeline::ImagePipeline;
     use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
@@ -38,7 +39,7 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::shader_body::ShaderBody;
 
     /// Every shader body the backend compiles, which the shader tests walk.
-    pub(crate) const SHADERS: [ShaderBody; 7] = [
+    pub(crate) const SHADERS: [ShaderBody; 8] = [
         QuadPipeline::SHADER,
         MeshPipeline::SHADER,
         CurvePipeline::SHADER,
@@ -46,5 +47,6 @@ pub(crate) mod internals {
         RasterProgram::SHADER,
         BlitPipeline::SHADER,
         BackdropBlur::SHADER,
+        effect_pipeline::PANE_SHADER,
     ];
 }

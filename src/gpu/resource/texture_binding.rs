@@ -26,9 +26,9 @@ pub(crate) struct TextureBinding {
     /// practices"), so a draw binds them at once and an effect needs two groups of the four the
     /// baseline grants. Refused: a group per image, which needs five.
     images: [wgpu::BindGroupLayout; MAX_IMAGE_SLOTS as usize],
-    /// The group a pane's composite reads its result through, a pane quad's and a backdrop
-    /// effect's alike: the results atlas, its sampler, the slot table and the spectrum a lens
-    /// spreads.
+    /// The group a pane's composite reads its result through, a backdrop filter's and an app's
+    /// backdrop effect's alike: the results atlas, its sampler, the slot table and the spectrum a
+    /// lens spreads.
     panes: wgpu::BindGroupLayout,
     /// Linear within a mip, nearest between, clamped on all axes. Safe because no user passes a coordinate outside `0..1`: the gradient shader applies [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t` first and the image shader `fract`s uv under `FLAG_TILED`. Nearest image filtering is a shader-side snap, so all filters ride this sampler.
     sampler: wgpu::Sampler,

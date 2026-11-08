@@ -21,22 +21,25 @@ const PALANTIR_CORNERS = array<vec2<f32>, 4>(
 );
 
 // One shape: its rect (`min`, `size`) and corner radii in physical px, its clock (`time`,
-// `opacity`, `scale`), the word its parameters start at, and a backdrop effect's pane.
+// `opacity`, `scale`, and its turn about its center in radians), the word its parameters start
+// at, and a backdrop effect's pane.
 struct PalantirInstance {
     @location(0) rect: vec4<f32>,
     @location(1) corners: vec4<f32>,
-    @location(2) clock: vec3<f32>,
+    @location(2) clock: vec4<f32>,
     @location(3) params: u32,
     @location(4) pane: u32,
 }
 
 struct PalantirVarying {
     @builtin(position) clip: vec4<f32>,
-    @location(0) @interpolate(flat) rect: vec4<f32>,
-    @location(1) @interpolate(flat) corners: vec4<f32>,
-    @location(2) @interpolate(flat) clock: vec3<f32>,
-    @location(3) @interpolate(flat) params: u32,
-    @location(4) @interpolate(flat) pane: u32,
+    // The shape's own frame, unturned, from its rect's top-left, in physical px.
+    @location(0) local: vec2<f32>,
+    @location(1) @interpolate(flat) rect: vec4<f32>,
+    @location(2) @interpolate(flat) corners: vec4<f32>,
+    @location(3) @interpolate(flat) clock: vec4<f32>,
+    @location(4) @interpolate(flat) params: u32,
+    @location(5) @interpolate(flat) pane: u32,
 }
 
 struct PalantirOut {
@@ -44,14 +47,29 @@ struct PalantirOut {
     @location(0) @blend_src(1) under: vec4<f32>,
 }
 
-// The rect grown by the antialiasing reach, so every pixel the edge's ramp touches draws.
+// Every pixel center within the antialiasing reach of the rect, as a quad shades it: the rect's
+// pixels grown by it, or past each edge by it where a turn takes the edges off the pixel grid.
+// Only the drawn corners turn: `local` stays in the shape's own frame.
 @vertex
 fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> PalantirVarying {
-    let reach = vec2<f32>(PALANTIR_AA_HALF_WIDTH);
-    let px = instance.rect.xy - reach + PALANTIR_CORNERS[vi] * (instance.rect.zw + 2.0 * reach);
+    let pos = instance.rect.xy;
+    let size = instance.rect.zw;
+    let rotation = instance.clock.w;
+    var lo = pos;
+    var hi = pos + size;
+    if (rotation != 0.0) {
+        lo -= vec2<f32>(PALANTIR_AA_HALF_WIDTH);
+        hi += vec2<f32>(PALANTIR_AA_HALF_WIDTH);
+    } else {
+        lo = floor(lo - vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
+        hi = ceil(hi + vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
+    }
+    let corner = select(lo, hi, PALANTIR_CORNERS[vi] > vec2<f32>(0.5));
+    let px = palantir_turned(corner, pos + size * 0.5, rotation);
     let ndc = px * (vec2<f32>(2.0, -2.0) / palantir_imm.viewport_size) + vec2<f32>(-1.0, 1.0);
     return PalantirVarying(
         vec4<f32>(ndc, 0.0, 1.0),
+        corner - pos,
         instance.rect,
         instance.corners,
         instance.clock,
@@ -73,7 +91,7 @@ fn palantir_sdf(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
 /*{PARAMS}*/
 @fragment
 fn palantir_fs(v: PalantirVarying) -> PalantirOut {
-    let local = v.clip.xy + palantir_imm.frag_origin - v.rect.xy;
+    let local = v.local;
     let d = palantir_sdf(local, v.rect.zw, v.corners);
     let coverage = clamp((PALANTIR_AA_HALF_WIDTH - d) / (2.0 * PALANTIR_AA_HALF_WIDTH), 0.0, 1.0)
         * v.clock.y;

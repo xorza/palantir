@@ -43,14 +43,20 @@
 //!   frames. Refused: an explicit group, as Flutter's `BackdropGroup` and SwiftUI's
 //!   `GlassEffectContainer` ask for, which lets a pane miss what another painted under it; one
 //!   capture for the union of the footprints, which copies and blurs the gap between them.
-//! - **The pane is a quad form, `QuadForm::Backdrop`, and glass two more.** SDF, corners, border,
-//!   AA, turn, rounded clips and scissors hold as for any quad, and the form keeps the backdrop's
-//!   reads off the solid form's registers. The fill is the tint; a gradient tint draws as its own
-//!   quad above. A per-frame slot table carries each pane's atlas origin, lattice and lens. Glass
-//!   of one index and glass that spreads the spectrum draw through forms of their own
-//!   (`BackdropLens`, `BackdropSpectrum`): one shader with the lens behind a branch held its
+//! - **The pane is palantir's own backdrop effect** (`effect_pipeline/pane.wgsl`), drawn through
+//!   the effect pipeline an app's backdrop effect takes, on one capture, ledger and atlas: one
+//!   backdrop path. It shades the rect a quad of it would, packed as one, so the SDF, corners,
+//!   stroke, AA, turn, window, rounded clips and scissors hold as for any quad, and the pixels
+//!   match the quad forms it replaced. A per-frame slot table carries each pane's atlas origin,
+//!   lattice and the filter's look (`FilterLook`); the solid tint and the stroke draw in the
+//!   pane's own stage, as two draws would cross their antialiased bands, and a gradient tint draws
+//!   as its own quad above. Frost, glass of one index and glass that spreads the spectrum draw
+//!   through forms of their own (`PaneForm`): one shader with the lens behind a branch held its
 //!   registers for every pane, and V3D spilled it, so a blurred pane's composite took the Pi 2.2
-//!   times as long.
+//!   times as long. Refused: the quad forms beside an app's effects, two composite paths to keep.
+//!   Cost: an opaque quad over a pane no longer prunes it, as the occlusion pruner reads quads, so
+//!   a covered pane captures and blurs. Not yet measured against the quad forms on the
+//!   `gpu/backdrop` benches, as the owner decided on 2026-11-08.
 //! - **Glass refracts by a closed form.** The bezel's height is a squircle
 //!   `(1 − (1 − x)⁴)^¼` of the inward distance; its slope along the SDF gradient is the normal,
 //!   Snell's law gives the bent ray, and thickness times its tangent the displacement (kube.io

@@ -5,6 +5,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::pane_captures::PaneTicket;
 
 /// An effect over a rounded rect in the logical frame; `params` indexes the window's
@@ -13,6 +14,8 @@ use crate::renderer::pane_captures::PaneTicket;
 pub(crate) struct DrawEffectPayload {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
+    /// A paint animation's turn.
+    pub(crate) spin: Option<Spin>,
     pub(crate) effect: EffectId,
     pub(crate) params: Span,
     /// Its images, indexed into the record store's image column.

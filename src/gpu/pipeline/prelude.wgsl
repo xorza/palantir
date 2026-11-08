@@ -1,3 +1,7 @@
+// Every pipeline's device has dual-source blending (`DeviceRequirements::FEATURES`), which a pane's
+// effect stage writes through; an enable stands before every declaration.
+enable dual_source_blending;
+
 // Shared WGSL prelude. `ShaderBody::specialize` concatenates it
 // ahead of every shader in this backend, so everything here has to
 // compile in front of every one of them — nothing may declare a
@@ -103,4 +107,80 @@ fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
     let low = c * 12.92;
     let high = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055;
     return select(high, low, c <= vec3<f32>(0.0031308));
+}
+
+// `p` turned `rotation` radians about `center`. Exact at no turn, so an
+// unturned quad draws where it always has.
+fn turned(p: vec2<f32>, center: vec2<f32>, rotation: f32) -> vec2<f32> {
+    if (rotation == 0.0) {
+        return p;
+    }
+    let cs = vec2<f32>(cos(rotation), sin(rotation));
+    let v = p - center;
+    return center + vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
+}
+
+
+// Rounded-rect SDF centered at the origin: half-extents `b`,
+// per-corner radius `r = (tl, tr, br, bl)`. Quadrant-select picks the
+// corner radius by sign of `p` so each corner can differ.
+fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f32 {
+    let right  = step(0.0, p.x);
+    let bottom = step(0.0, p.y);
+    let r = mix(mix(radius.x, radius.y, right),
+                mix(radius.w, radius.z, right),
+                bottom);
+    let q = abs(p) - (b - vec2<f32>(r));
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
+}
+
+
+// Corner-origin convenience: `p` measured from the top-left of a rect
+// of `size`. Forwards to the centered form.
+fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
+    let half = size * 0.5;
+    return sdf_rounded_box_centered(p - half, half, radius);
+}
+
+
+// RGBA, given the signed distance `d` (negative inside). `outer_aa =
+// edge_coverage(d)` is the coverage. With a stroke, the stroke covers the annulus
+// between the outer edge and the edge inset by `stroke_width`, and the fill
+// covers the interior inside that inset. The two are *spatially disjoint*
+// within any pixel (stroke = `outer_aa - inner_aa`, fill = `inner_aa`), so they
+// sum additively in premultiplied space — the coverages partition and add back
+// to `outer_aa`. Compositing stroke OVER fill instead (`a = stroke_a +
+// fill_a*(1-stroke_a)`) dips total alpha to ~0.75 where the two AA bands cross
+// at ~0.5 each, showing a 1px seam of background bleeding between stroke and
+// fill at fractional zoom; summing keeps total coverage at `outer_aa`. Shared
+// by the rounded-rect and triangle paths so they can't drift.
+fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+    let outer_aa = edge_coverage(d);
+    if (stroke_width > 0.0) {
+        let inner_aa = edge_coverage(d + stroke_width);
+        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
+        let fill_a   = inner_aa * fill.a;
+        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
+    }
+    return premultiply(fill.rgb, fill.a * outer_aa);
+}
+
+// Inverted-fill counterpart of `composite` for `FILL_FLAG_WINDOW`: the
+// stroke covers the same inner-edge annulus, but the fill paints the
+// complement of the rounded shape (`1 - outer_aa`) — the corner wedges
+// out to the quad edge — and the window interior is transparent. The
+// three coverages (fill, stroke, window) partition each pixel exactly,
+// so fill + stroke sum additively in premultiplied space with no seam,
+// same rationale as `composite`. The quad edge itself is a hard cut
+// (no outward AA): the shape is a mask laid exactly over content of
+// the same extent, so its outer boundary is never a visible edge.
+fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+    let outer_aa = edge_coverage(d);
+    let fill_a = (1.0 - outer_aa) * fill.a;
+    if (stroke_width > 0.0) {
+        let inner_aa = edge_coverage(d + stroke_width);
+        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
+        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
+    }
+    return premultiply(fill.rgb, fill_a);
 }

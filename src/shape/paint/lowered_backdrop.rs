@@ -67,8 +67,9 @@ impl LoweredBackdrop {
         self.look.lanes()[0]
     }
 
-    /// The pane quad's axis lanes, `(0, saturation, noise, opacity)`. The σ stays out: the
-    /// composer plans the blur from [`Self::sigma`] in f32, and no shader reads it.
+    /// The pane's lanes as a quad held them, `(0, saturation, noise, opacity)`, each an f16. The
+    /// σ stays out: the composer plans the blur from [`Self::sigma`] in f32, and no shader reads
+    /// it.
     pub(crate) fn fill_axis(self, opacity: f32) -> FillAxis {
         let [_, saturation, noise, _] = self.look.lanes();
         FillAxis::from_lanes([0.0, saturation, noise, opacity])

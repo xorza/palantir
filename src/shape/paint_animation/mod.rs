@@ -19,9 +19,8 @@
 //! composer, a triangle's in the encoder, a mesh through a complex scale in its instance, a quad
 //! and an image through an angle about their own center in the vertex shader (the fragment works
 //! in their unturned frame, where a rotation keeps the AA width), and text and icons through a
-//! turned instance buffer of their own, so an unturned glyph keeps its size. An effect does not
-//! turn: its wrapper computes coverage in the unturned rect, so `Ui::add_shape_animated` refuses a
-//! turn on it. Refused:
+//! turned instance buffer of their own, so an unturned glyph keeps its size, and an effect as a
+//! quad, its stages working in its unturned frame. Refused:
 //! tessellating quads and text into meshes, which loses the SDF's AA and the instanced batching;
 //! drawing a turned shape offscreen and compositing it, a pass and a texture per shape.
 

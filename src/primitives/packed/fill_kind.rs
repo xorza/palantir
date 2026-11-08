@@ -33,9 +33,6 @@ impl FillKind {
     pub(crate) const TAG_SHADOW_INSET: u32 = 5;
     pub(crate) const TAG_TRIANGLE: u32 = 6;
     pub(crate) const TAG_RAMP: u32 = 7;
-    pub(crate) const TAG_BACKDROP: u32 = 8;
-    pub(crate) const TAG_BACKDROP_LENS: u32 = 9;
-    pub(crate) const TAG_BACKDROP_SPECTRUM: u32 = 10;
 
     #[inline]
     pub(crate) const fn tag(self) -> u32 {
@@ -87,16 +84,6 @@ impl FillKind {
     /// `fill_lut_row`, so there is no axis or spread.
     pub(crate) const RAMP: Self = Self(Self::TAG_RAMP);
 
-    /// Backdrop-pane marker: `fill` is the tint, `fill_axis = (0, saturation, noise, opacity)`,
-    /// and `fill_lut_row` the pane's row in the frame's backdrops, whose plan holds the σ.
-    pub(crate) const BACKDROP: Self = Self(Self::TAG_BACKDROP);
-
-    /// [`Self::BACKDROP`] of a pane of glass of one index, and of glass that spreads the
-    /// spectrum: each draws through a pipeline of its own, as the lens and its loop over the
-    /// spectrum hold registers the simpler panes would pay for.
-    pub(crate) const BACKDROP_LENS: Self = Self(Self::TAG_BACKDROP_LENS);
-    pub(crate) const BACKDROP_SPECTRUM: Self = Self(Self::TAG_BACKDROP_SPECTRUM);
-
     /// Bit 16: fragment fast path, set by the composer on a solid, sharp,
     /// stroke-less, pixel-aligned quad whose fragments are all interior, so the
     /// shader skips the SDF + composite path. Read as `FILL_FLAG_FAST`.
@@ -136,21 +123,12 @@ impl FillKind {
     pub(crate) const fn is_shadow(self) -> bool {
         matches!(self.tag(), Self::TAG_SHADOW_DROP | Self::TAG_SHADOW_INSET)
     }
-
-    /// True iff this marks a backdrop pane, of glass or not.
-    #[inline]
-    pub(crate) const fn is_backdrop(self) -> bool {
-        matches!(
-            self.tag(),
-            Self::TAG_BACKDROP | Self::TAG_BACKDROP_LENS | Self::TAG_BACKDROP_SPECTRUM
-        )
-    }
 }
 
 // The fields tile the word without overlapping and every value fits its field.
 const _: () = {
     assert!(FillKind::TAG_MASK < 1 << FillKind::SPREAD_SHIFT);
-    assert!(FillKind::TAG_BACKDROP_SPECTRUM <= FillKind::TAG_MASK);
+    assert!(FillKind::TAG_RAMP <= FillKind::TAG_MASK);
     assert!(Spread::Reflect as u32 <= FillKind::SPREAD_MASK);
     let spread_bits = FillKind::SPREAD_MASK << FillKind::SPREAD_SHIFT;
     assert!(spread_bits & (FillKind::FAST_BIT | FillKind::WINDOW_BIT) == 0);

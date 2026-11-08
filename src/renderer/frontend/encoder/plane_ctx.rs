@@ -391,8 +391,8 @@ impl PlaneCtx<'_, '_> {
                     alpha,
                 );
             }
-            // An effect fades with its paint animation and reads its time; `Ui::add_shape_animated`
-            // refuses a turn on it. A backdrop effect the cascade lists not lies outside every clip.
+            // An effect fades, turns and reads its time with its paint animation. A backdrop effect
+            // the cascade lists not lies outside every clip.
             ShapeRecord::Effect {
                 pane,
                 local_rect,
@@ -423,6 +423,7 @@ impl PlaneCtx<'_, '_> {
                     DrawEffectPayload {
                         rect: owner_rect.resolve_local(*local_rect),
                         corners: *corners,
+                        spin,
                         effect: *effect,
                         params: *params,
                         images: *images,

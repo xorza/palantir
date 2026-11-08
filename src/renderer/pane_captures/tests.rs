@@ -94,9 +94,7 @@ fn frame(
             BackdropRow {
                 capture: ticket.capture,
                 reads: ticket.capture.footprint.into(),
-                lens: None,
-                max_luminance: 65504.0,
-                min_luminance: 0.0,
+                look: None,
                 source,
             }
         }));
@@ -424,9 +422,6 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
     assert_eq!(sources(&h), [(0, captured)], "moved");
     h.frame(record(false, red));
     assert_eq!(sources(&h), [(0, Held)], "still");
-    assert_eq!(
-        h.render_buffer().quads.len(),
-        2,
-        "the pane and the square over it"
-    );
+    assert_eq!(h.render_buffer().effects.len(), 1, "the pane");
+    assert_eq!(h.render_buffer().quads.len(), 1, "the square over it");
 }

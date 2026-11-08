@@ -44,20 +44,9 @@ Landed with batch 4: the decisions are in the docs of `EffectName`, `EffectParam
 Landed with batch 5 for color effects: `EffectShape`'s doc holds the shape and its clips, and
 `WgpuEffectStore`'s the compile at load.
 
-- **A backdrop effect states how far it reads, per shape**, as SwiftUI's `maxSampleOffset`. A read
-  past it clamps to the captured area. Refused: one bound per effect, which the largest instance
-  sets for all; the whole surface (Flutter without a `ClipRect`).
-- **One backdrop path, `BackdropFilter` on it too.** A backdrop effect is a pane of the existing
-  machinery: the copy out of the main pass at a barrier, the panes that share a break, the
-  footprint and damage ledger and the result atlas. Frost, glass and spectrum become palantir's
-  own backdrop effects on the effect pipeline, in place of the three quad forms (`Backdrop`,
-  `BackdropLens`, `BackdropSpectrum`); `BackdropFilter` stays a property of a rect and lowers to
-  them. The blur stays a pre-pass a backdrop effect asks for by σ, 0 for the raw capture, and the
-  pane's border and gradient tint draw as a quad above it, as a gradient tint does now. Each
-  built-in keeps its own pipeline, as the forms kept V3D's registers apart, and the dispersion
-  tables reach the spectrum effect through an internal extension of the contract. The rewrite is
-  measured against the benches behind `gpu/backdrop`'s decisions before the forms go. Refused:
-  the capture shared and the composites apart, two composite paths to keep.
+Backdrop effects landed with batch 8: `EffectShape::reach`'s doc holds the read bound, and
+`gpu::backdrop`'s "The pane is palantir's own backdrop effect" the one backdrop path.
+
 Image slots landed with batch 7: the docs of `EffectSource`, `EffectShape::images`,
 `TextureBinding::images` and `EffectImageGroups` hold them.
 
@@ -122,25 +111,11 @@ shape is added.
 Up to 4 slots, declared at load and bound per shape through one group of all its images, kept
 by the image store for each set drawn; an app's own binding is refused.
 
-### 8. Backdrop effects, `BackdropFilter` on them
+### 8. Backdrop effects, `BackdropFilter` on them — done but the benches
 
-Step one done: `Shape::backdrop_effect` with `blur` and `reach`, `effect_backdrop` in the contract
-over the pane's result, the panes of a filter and an effect on one capture, ledger and atlas, and
-an alternative on the load for each preference, transparency over motion over power
-(`ReducedPaint`). Left: the built-in looks and the quad forms' removal below. The benches wait,
-as the owner decided on 2026-11-08.
-
-- The backdrop signature with the σ it asks for, `Shape::backdrop_effect` and its read bound, as
-  panes of the existing capture, break sharing, ledger and atlas; the capture grown by the bound,
-  damage when content under the grown rect changes, the clamp past the bound.
-- Frost, glass and spectrum as built-in backdrop effects, the dispersion tables through an
-  internal extension of the contract; `BackdropFilter` lowers to them, its border and gradient
-  tint as a quad above; the three backdrop quad forms deleted.
-- Bench the new composite against the old on the `gpu/backdrop` benches (the handheld, the Apple
-  laptop, the AMD iGPU, V3D) before the forms go, and fold the result into `gpu/backdrop`'s
-  decisions.
-- Tests: the captured rect, damage from content under the bound, a golden of a displacement; the
-  existing backdrop goldens unchanged, or each moved pixel explained.
+`Shape::backdrop_effect` and the built-in panes on the effect pipeline, the three quad forms
+deleted, every golden unchanged. Left: the A/B on the `gpu/backdrop` benches (the handheld, the
+Apple laptop, the AMD iGPU, V3D), which wait, as the owner decided on 2026-11-08.
 
 ### 9. Press effects
 

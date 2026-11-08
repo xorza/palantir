@@ -16,9 +16,6 @@ fn a_quad_takes_its_tags_form() {
         ),
         (FillKind::conic(Spread::Reflect), QuadForm::Gradient),
         (FillKind::TRIANGLE, QuadForm::Triangle),
-        (FillKind::BACKDROP, QuadForm::Backdrop),
-        (FillKind::BACKDROP_LENS, QuadForm::BackdropLens),
-        (FillKind::BACKDROP_SPECTRUM, QuadForm::BackdropSpectrum),
     ] {
         assert_eq!(QuadForm::of(kind), form, "{kind:?}");
     }

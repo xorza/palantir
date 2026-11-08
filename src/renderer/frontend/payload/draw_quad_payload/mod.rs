@@ -212,10 +212,6 @@ impl PaintPayload for DrawQuadPayload {
         if by == 1.0 {
             return self;
         }
-        debug_assert!(
-            !self.fill.kind.is_backdrop(),
-            "a pane fades as a `DrawPanePayload`"
-        );
         Self {
             fill: self.fill.faded(by),
             stroke: self.stroke.faded(by),

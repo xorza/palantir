@@ -3,7 +3,7 @@ use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Kept, SpectrumCell, held_clear,
 };
 use crate::gpu::backdrop::tests::CLEAR;
-use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::pipeline::effect_pipeline::PANE_SHADER;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
@@ -152,13 +152,14 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
     );
 }
 
-/// `BackdropSlot` and `SpectrumCell` lie as the quad shader declares them, and the slot as the
-/// backdrop effect contract declares `PalantirPane`, which storage bindings read unchecked: the
-/// slot's clear, a `vec3` the shader aligns to 16 bytes, starts after the lens at 32, and its
-/// `reads` after the padding at 64; each of a cell's three `vec3`s takes 16 bytes, 48 in all.
+/// `BackdropSlot` lies as the pane shader declares it and as the backdrop effect contract declares
+/// `PalantirPane`, and `SpectrumCell` as the pane shader declares it, which storage bindings read
+/// unchecked: the slot's clear, a `vec3` the shader aligns to 16 bytes, starts after the lens at
+/// 32, and `reads` at 64 after the filter's scalars; each of a cell's three `vec3`s takes 16
+/// bytes, 48 in all.
 #[test]
 fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
-    QuadPipeline::SHADER.assert_struct_layout(
+    PANE_SHADER.assert_struct_layout(
         "SpectrumCell",
         size_of::<SpectrumCell>(),
         &[
@@ -167,47 +168,31 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
             ("moment", offset_of!(SpectrumCell, moment)),
         ],
     );
-    QuadPipeline::SHADER.assert_struct_layout(
-        "BackdropSlot",
-        size_of::<BackdropSlot>(),
-        &[
-            ("offset", offset_of!(BackdropSlot, offset)),
-            ("lattice", offset_of!(BackdropSlot, lattice)),
-            ("highlight", offset_of!(BackdropSlot, highlight)),
-            ("lens", offset_of!(BackdropSlot, lens)),
-            ("clear", offset_of!(BackdropSlot, clear)),
-            ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
-            ("min_luminance", offset_of!(BackdropSlot, min_luminance)),
-            ("_pad0", offset_of!(BackdropSlot, pad)),
-            ("_pad1", offset_of!(BackdropSlot, pad) + 4),
-            ("_pad2", offset_of!(BackdropSlot, pad) + 8),
-            ("reads", offset_of!(BackdropSlot, reads)),
-        ],
-    );
+    let members = [
+        ("offset", offset_of!(BackdropSlot, offset)),
+        ("lattice", offset_of!(BackdropSlot, lattice)),
+        ("highlight", offset_of!(BackdropSlot, highlight)),
+        ("lens", offset_of!(BackdropSlot, lens)),
+        ("clear", offset_of!(BackdropSlot, clear)),
+        ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
+        ("min_luminance", offset_of!(BackdropSlot, min_luminance)),
+        ("saturation", offset_of!(BackdropSlot, saturation)),
+        ("noise", offset_of!(BackdropSlot, noise)),
+        ("stroke_width", offset_of!(BackdropSlot, stroke_width)),
+        ("reads", offset_of!(BackdropSlot, reads)),
+        ("tint", offset_of!(BackdropSlot, tint)),
+        ("stroke_color", offset_of!(BackdropSlot, stroke_color)),
+    ];
+    assert_eq!(offset_of!(BackdropSlot, clear), 32);
     assert_eq!(offset_of!(BackdropSlot, reads), 64);
+    PANE_SHADER.assert_struct_layout("BackdropSlot", size_of::<BackdropSlot>(), &members);
     let contract = ShaderBody {
         label: "palantir.effect.backdrop",
         wgsl: include_str!("../../../effect/backdrop.wgsl"),
-        includes: &[],
+        includes: &[include_str!("../../../effect/contract.wgsl")],
         constants: &[],
     };
-    contract.assert_struct_layout(
-        "PalantirPane",
-        size_of::<BackdropSlot>(),
-        &[
-            ("offset", offset_of!(BackdropSlot, offset)),
-            ("lattice", offset_of!(BackdropSlot, lattice)),
-            ("highlight", offset_of!(BackdropSlot, highlight)),
-            ("lens", offset_of!(BackdropSlot, lens)),
-            ("clear", offset_of!(BackdropSlot, clear)),
-            ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
-            ("min_luminance", offset_of!(BackdropSlot, min_luminance)),
-            ("pad0", offset_of!(BackdropSlot, pad)),
-            ("pad1", offset_of!(BackdropSlot, pad) + 4),
-            ("pad2", offset_of!(BackdropSlot, pad) + 8),
-            ("reads", offset_of!(BackdropSlot, reads)),
-        ],
-    );
+    contract.assert_struct_layout("PalantirPane", size_of::<BackdropSlot>(), &members);
 }
 
 /// At its ceiling the shared atlas evicts the least recently used result no pane of the frame

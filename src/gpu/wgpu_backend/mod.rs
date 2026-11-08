@@ -200,8 +200,6 @@ struct FrameDraw<'a> {
     origin: UVec2,
     /// The frame's mask chains; `Some` exactly when the main pass has a stencil attachment.
     masks: Option<&'a MaskPlan>,
-    /// The frame's backdrop results, which its panes read; `None` before the first pane.
-    backdrops: Option<&'a wgpu::BindGroup>,
 }
 
 /// Where a frame's main pass paints, with what it paints through, built once per frame: the
@@ -359,7 +357,7 @@ impl WgpuBackend {
         let gradient =
             GpuGradientAtlas::new(&gpu, resources.gradient_rows, texture_binding.clone());
         let backdrops = Backdrops::new(&gpu, &texture_binding);
-        let quad = QuadPipeline::new(&gpu, &texture_binding, texture_binding.panes());
+        let quad = QuadPipeline::new(&gpu, &texture_binding);
         let mesh = MeshPipeline::new(&gpu);
         let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
@@ -585,7 +583,6 @@ impl WgpuBackend {
                     viewport: ViewportPush::for_buffer(buffer),
                     origin: frame_target.origin(),
                     masks: stencil.then_some(&self.mask_plan),
-                    backdrops: self.backdrops.group(),
                 },
                 main: MainPass {
                     color_view: frame_target.color_view(),
@@ -1114,7 +1111,6 @@ impl WgpuBackend {
                             QuadPass {
                                 pipelines: ctx.pipelines,
                                 gradient_bind_group: &self.gradient.bind_group,
-                                backdrops: draw.backdrops,
                             },
                             QuadRun {
                                 draw: run.key,
@@ -1161,7 +1157,7 @@ impl WgpuBackend {
                             ctx.rec,
                             ctx.pipelines.stencil(),
                             EffectBatch {
-                                ids: buffer.effects.id(),
+                                programs: buffer.effects.program(),
                                 items: items(),
                                 groups: &effect_groups,
                                 panes: self.backdrops.group(),

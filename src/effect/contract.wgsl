@@ -41,3 +41,14 @@ fn effect_multiply(color: vec4<f32>) -> EffectOutput {
 fn effect_screen(color: vec4<f32>) -> EffectOutput {
     return EffectOutput(color, vec4<f32>(1.0) - color);
 }
+
+// `p` turned `rotation` radians about `center`, exact at no turn: palantir's, as its stages and
+// `effect_backdrop` turn a shape's frame by it.
+fn palantir_turned(p: vec2<f32>, center: vec2<f32>, rotation: f32) -> vec2<f32> {
+    if (rotation == 0.0) {
+        return p;
+    }
+    let cs = vec2<f32>(cos(rotation), sin(rotation));
+    let v = p - center;
+    return center + vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
+}

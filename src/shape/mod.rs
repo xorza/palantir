@@ -80,10 +80,6 @@ mod sealed {
         /// channel moves it; only an effect does.
         const READS_TIME: bool = false;
 
-        /// Whether a paint animation's turn rotates the shape; an effect, whose coverage the
-        /// wrapper computes in its unturned rect, does not.
-        const TURNS: bool = true;
-
         /// True if this shape paints nothing; checked before [`Self::lower`].
         fn is_noop(&self) -> bool;
 

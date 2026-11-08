@@ -947,7 +947,7 @@ impl Ui {
     /// # Panics
     ///
     /// As [`Self::add_shape`]; when `animation` drives no channel and `shape` reads no time, so
-    /// nothing would move; when `animation` turns a shape that does not turn, an effect.
+    /// nothing would move.
     ///
     /// ```
     /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
@@ -968,10 +968,6 @@ impl Ui {
         assert!(
             S::READS_TIME || animation.drives_channel(),
             "a paint animation that drives no channel moves only an effect's time, and {shape:?} reads none"
-        );
-        assert!(
-            S::TURNS || animation.channel.turn.is_none(),
-            "{shape:?} does not turn: an effect's coverage is computed in its unturned rect"
         );
         shape.resolve(self.resources.effects(), self.frame_runtime.reductions);
         let animation = if self.is_motion_reduced() {
