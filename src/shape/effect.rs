@@ -1,4 +1,4 @@
-//! The effect builder. Lowers to `ShapeRecord::Effect`.
+//! The effect builder, of either kind. Lowers to `ShapeRecord::Effect`.
 
 use std::fmt;
 use std::hash::Hasher as _;
@@ -6,37 +6,45 @@ use std::hash::Hasher as _;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::effect::MAX_IMAGE_SLOTS;
-use crate::effect::effect_kind::ColorEffect;
+use crate::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind, KindId};
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
-use crate::effect::effect_registry::EffectRegistry;
+use crate::effect::effect_registry::{EffectRegistry, Reductions};
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
-use crate::primitives::reduction::Reduction;
-use crate::shape::record::ShapeRecord;
+use crate::primitives::math::domain;
+use crate::shape::record::{EffectPane, ShapeRecord};
 use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
 
-/// An app-written color effect over a rounded rect, with one instance of its parameters. Paints in
-/// record order, as any shape does, and its rect may exceed its node, as a ring does; clipping
-/// ancestors clip it. Refused: a `Brush` variant, which every brush family would have to draw; a
-/// `Chrome` field, which no ring past the rect fits.
+/// An app-written effect over a rounded rect, with one instance of its parameters: a color effect
+/// ([`Shape::effect`](crate::widget::Shape::effect)), or a backdrop effect
+/// ([`Shape::backdrop_effect`](crate::widget::Shape::backdrop_effect)), which also reads what is
+/// painted under it. Paints in record order, as any shape does, and its rect may exceed its node,
+/// as a ring does; clipping ancestors clip it. Refused: a `Brush` variant, which every brush family
+/// would have to draw; a `Chrome` field, which no ring past the rect fits.
+///
+/// A backdrop effect is a pane: what is painted under it is copied out of the frame at its place
+/// in paint order, blurred by its [σ](Self::blur), and kept across frames until something under
+/// its [reach](Self::reach) changes, as a [`BackdropFilter`](crate::BackdropFilter)'s is.
 ///
 /// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
 /// [`Ui::add_shape_animated`](crate::Ui::add_shape_animated), [`PaintAnimation::clock`] when only
 /// the time moves; a turn on it panics, as the coverage is computed in the unturned rect. While
-/// power is reduced ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)) it paints the
-/// alternative its source names ([`PowerSaverPaint`](crate::PowerSaverPaint)).
+/// transparency, motion or power use is reduced it paints the alternative its source names for it
+/// ([`ReducedPaint`](crate::ReducedPaint)).
 ///
 /// [`PaintAnimation::clock`]: crate::widget::PaintAnimation::clock
 #[must_use]
-pub struct EffectShape<U: EffectParams> {
-    name: EffectName<U, ColorEffect>,
+pub struct EffectShape<U: EffectParams, K: EffectKind = ColorEffect> {
+    name: EffectName<U, K>,
     params: U,
     local_rect: Option<Rect>,
     corners: Corners,
+    /// What a backdrop effect reads under it; zero for a color effect, which reads none.
+    pane: EffectPane,
     /// The images bound, in slot order, each slot past the last `None`.
     images: [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
     /// What `Ui::add_shape` finds the name paints.
@@ -48,17 +56,18 @@ pub struct EffectShape<U: EffectParams> {
 enum EffectPaint {
     Unresolved,
     Effect(EffectId),
-    /// The power-saver alternative is nothing.
+    /// The alternative it paints for what is reduced is nothing.
     Nothing,
 }
 
-impl<U: EffectParams> EffectShape<U> {
-    pub(super) const fn new(name: EffectName<U, ColorEffect>, params: U) -> Self {
+impl<U: EffectParams, K: EffectKind> EffectShape<U, K> {
+    pub(super) const fn new(name: EffectName<U, K>, params: U) -> Self {
         Self {
             name,
             params,
             local_rect: None,
             corners: Corners::ZERO,
+            pane: EffectPane::ZERO,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
             paint: EffectPaint::Unresolved,
         }
@@ -110,18 +119,46 @@ impl<U: EffectParams> EffectShape<U> {
     }
 }
 
-impl<U: EffectParams> fmt::Debug for EffectShape<U> {
+impl<U: EffectParams> EffectShape<U, BackdropEffect> {
+    /// Blur what the effect reads by a Gaussian of σ `sigma`; 0, the default, reads it sharp.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `sigma` is a [length](crate::widget::domain::length).
+    #[track_caller]
+    pub const fn blur(mut self, sigma: f32) -> Self {
+        self.pane.sigma = domain::length(sigma);
+        self
+    }
+
+    /// Read up to `px` past the effect's rect, as a ring's glow or a lens's bent ray does
+    /// (SwiftUI's `maxSampleOffset`); a read past it reads its edge. 0 by default: the effect
+    /// reads under its own rect alone. The capture grows by it, so damage under it repaints.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
+    pub const fn reach(mut self, px: f32) -> Self {
+        self.pane.reach = domain::length(px);
+        self
+    }
+}
+
+impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectShape<U, K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectShape")
             .field("name", &self.name)
             .field("local_rect", &self.local_rect)
             .field("corners", &self.corners)
+            .field("pane", &self.pane)
             .field("images", &self.images)
             .finish_non_exhaustive()
     }
 }
 
-impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
+impl<U: EffectParams, K: EffectKind> sealed::LowerShape for EffectShape<U, K> {
+    const CAN_BE_PANE: bool = matches!(K::ID, KindId::Backdrop);
     const READS_TIME: bool = true;
     const TURNS: bool = false;
 
@@ -131,8 +168,8 @@ impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
     }
 
     #[track_caller]
-    fn resolve(&mut self, effects: &EffectRegistry, power: Reduction) {
-        self.paint = match effects.resolve(self.name, power) {
+    fn resolve(&mut self, effects: &EffectRegistry, reductions: Reductions) {
+        self.paint = match effects.resolve(self.name, reductions) {
             Some(resolved) => {
                 let bound = self.images.iter().flatten().count();
                 assert!(
@@ -153,6 +190,7 @@ impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
             params,
             local_rect,
             corners,
+            pane,
             images,
             paint,
         } = self;
@@ -170,7 +208,13 @@ impl<U: EffectParams> sealed::LowerShape for EffectShape<U> {
             h.write_u64(image.id().0);
             h.write_u32(image.generation());
         }
+        let pane = matches!(K::ID, KindId::Backdrop).then_some(pane);
+        if let Some(pane) = pane {
+            h.write_u32(pane.sigma.to_bits());
+            h.write_u32(pane.reach.to_bits());
+        }
         ShapeRecord::Effect {
+            pane,
             local_rect,
             corners,
             effect,

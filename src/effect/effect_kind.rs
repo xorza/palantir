@@ -22,17 +22,40 @@ pub struct BackdropEffect;
 impl EffectKind for ColorEffect {}
 impl EffectKind for BackdropEffect {}
 
+/// Which kind an effect is, at run time: what its contract declares and its pipeline binds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KindId {
+    Color,
+    Backdrop,
+}
+
 mod sealed {
     #[expect(
         unnameable_types,
-        reason = "the seal: nothing outside the crate can name it, so no other kind can exist"
+        private_interfaces,
+        reason = "the seal: nothing outside the crate can name it, so no other kind can exist and \
+                  the crate-private id cannot leak"
     )]
-    pub trait Kind: 'static {}
+    pub trait Kind: 'static {
+        const ID: KindId;
+    }
 
-    use crate::effect::effect_kind::{BackdropEffect, ColorEffect};
+    use crate::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
 
-    impl Kind for ColorEffect {}
-    impl Kind for BackdropEffect {}
+    #[expect(
+        private_interfaces,
+        reason = "the sealed trait's id, which nothing outside the crate can name"
+    )]
+    impl Kind for ColorEffect {
+        const ID: KindId = KindId::Color;
+    }
+    #[expect(
+        private_interfaces,
+        reason = "the sealed trait's id, which nothing outside the crate can name"
+    )]
+    impl Kind for BackdropEffect {
+        const ID: KindId = KindId::Backdrop;
+    }
 }
 
 /// The run-time identity of an effect's parameter type and kind, which a name's types must match

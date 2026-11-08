@@ -8,11 +8,11 @@ use glam::UVec2;
 use std::time::Duration;
 
 use crate::effect::contract::{self, ParamsLayout};
-use crate::effect::effect_kind::{BackdropEffect, ColorEffect};
+use crate::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::{EffectParam, EffectParams, ParamType};
-use crate::effect::effect_registry::{EffectRegistry, PowerSaverName};
-use crate::effect::effect_source::{EffectSource, PowerSaverPaint};
+use crate::effect::effect_registry::{EffectRegistry, ReducedName};
+use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::test_gpu::headless_test_gpu;
@@ -28,6 +28,7 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -262,7 +263,7 @@ fn image_slots_declare_their_images() {
             ),
         )
     };
-    let module = contract::check(&sampling("effect_image1"), params, 2).unwrap();
+    let module = contract::check(&sampling("effect_image1"), KindId::Color, params, 2).unwrap();
     assert_eq!(module.image_slots, 2);
     for line in [
         "@group(1) @binding(0) var effect_sampler: sampler;",
@@ -273,11 +274,11 @@ fn image_slots_declare_their_images() {
     }
     assert!(!module.text.contains("effect_image2:"));
     assert!(matches!(
-        contract::check(&sampling("effect_image2"), params, 2),
+        contract::check(&sampling("effect_image2"), KindId::Color, params, 2),
         Err(EffectError::Parse { .. })
     ));
     assert!(matches!(
-        contract::check(&sampling("effect_image0"), params, 0),
+        contract::check(&sampling("effect_image0"), KindId::Color, params, 0),
         Err(EffectError::Parse { .. })
     ));
 }
@@ -386,13 +387,13 @@ fn parameters_past_the_limit_are_refused() {
         "{refused:?}"
     );
 
-    let source = EffectSource::<Huge>::new("x").power_saver(PowerSaverPaint::Nothing);
+    let source = EffectSource::<Huge>::new("x").power_saver(ReducedPaint::Nothing);
     assert!(format!("{source:?}").contains("Nothing"));
     assert_eq!(
-        PowerSaverPaint::Effect(huge),
-        PowerSaverPaint::<Huge>::Effect(huge)
+        ReducedPaint::Effect(huge),
+        ReducedPaint::<Huge>::Effect(huge)
     );
-    assert_ne!(PowerSaverPaint::<Huge>::Same, PowerSaverPaint::Nothing);
+    assert_ne!(ReducedPaint::<Huge>::Same, ReducedPaint::Nothing);
 }
 
 /// A second load under a name replaces the first, its power-saver alternative with it; a reload
@@ -402,31 +403,24 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     let registry = EffectRegistry::default();
     let valid = ring_wgsl(RING_PARAMS, RING_ENTRY);
     registry.load(RING, ring(valid.clone())).unwrap();
-    assert_eq!(registry.power_saver_of(RING), Some(PowerSaverName::Same));
+    assert_eq!(registry.power_saver_of(RING), Some(ReducedName::Same));
     registry
         .load(
             RING,
-            ring(valid).power_saver(PowerSaverPaint::Effect(THIN_RING)),
+            ring(valid).power_saver(ReducedPaint::Effect(THIN_RING)),
         )
         .unwrap();
     assert_eq!(
         registry.power_saver_of(RING),
-        Some(PowerSaverName::Effect(
-            InlineName::new("thin ring").unwrap()
-        ))
+        Some(ReducedName::Effect(InlineName::new("thin ring").unwrap()))
     );
 
-    let refused = registry.load(
-        RING,
-        ring("fn effect(").power_saver(PowerSaverPaint::Nothing),
-    );
+    let refused = registry.load(RING, ring("fn effect(").power_saver(ReducedPaint::Nothing));
     assert!(matches!(refused, Err(EffectError::Parse { .. })));
     assert!(registry.contains(RING));
     assert_eq!(
         registry.power_saver_of(RING),
-        Some(PowerSaverName::Effect(
-            InlineName::new("thin ring").unwrap()
-        )),
+        Some(ReducedName::Effect(InlineName::new("thin ring").unwrap())),
         "the effect before the refused reload"
     );
 }
@@ -469,8 +463,7 @@ fn a_name_used_with_other_types_panics() {
     assert_panics_with("effect `thin ring` was loaded as", || {
         registry.load(
             RING,
-            ring(ring_wgsl(RING_PARAMS, RING_ENTRY))
-                .power_saver(PowerSaverPaint::Effect(THIN_RING)),
+            ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).power_saver(ReducedPaint::Effect(THIN_RING)),
         )
     });
 }
@@ -560,10 +553,7 @@ fn each_blend_paints_its_exact_value() {
         (0.52, 0.52, 0.64),
     ]
     .into_iter()
-    .map(|(r, g, b)| {
-        let srgb = RgbaF32::new(r, g, b, 1.0).to_srgba8();
-        [srgb.r, srgb.g, srgb.b, srgb.a]
-    })
+    .map(|(r, g, b)| bytes(RgbaF32::new(r, g, b, 1.0)))
     .collect();
     for (mode, (got, want)) in got.iter().zip(&want).enumerate() {
         for lane in 0..4 {
@@ -615,10 +605,7 @@ fn an_effect_past_its_node_meets_its_ancestors_clip() {
         }
     };
     let blue = [0, 0, 255, 255];
-    let ground = {
-        let srgb = RgbaF32::new(0.2, 0.4, 0.6, 1.0).to_srgba8();
-        [srgb.r, srgb.g, srgb.b, srgb.a]
-    };
+    let ground = bytes(RgbaF32::new(0.2, 0.4, 0.6, 1.0));
     assert_eq!(
         painted(ring(ClipMode::Rect), &[(50, 10), (100, 10), (50, 35)]),
         [blue, ground, ground]
@@ -808,7 +795,7 @@ fn reduced_power_paints_each_alternative() {
     h.ui()
         .load_effect(
             BLEND,
-            EffectSource::new(BLEND_WGSL).power_saver(PowerSaverPaint::Effect(lite)),
+            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(lite)),
         )
         .unwrap();
     h.ui()
@@ -817,7 +804,7 @@ fn reduced_power_paints_each_alternative() {
     h.ui()
         .load_effect(
             gone,
-            EffectSource::new(BLEND_WGSL).power_saver(PowerSaverPaint::Nothing),
+            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Nothing),
         )
         .unwrap();
     let record = |ui: &mut Ui| {
@@ -851,7 +838,7 @@ fn an_effect_that_cannot_paint_panics() {
     h.ui()
         .load_effect(
             BLEND,
-            EffectSource::new(BLEND_WGSL).power_saver(PowerSaverPaint::Effect(missing)),
+            EffectSource::new(BLEND_WGSL).power_saver(ReducedPaint::Effect(missing)),
         )
         .unwrap();
     h.set_system_power_reduced(true);
@@ -904,10 +891,9 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
     h.at(Duration::from_millis(1500)).prime(2, |ui| {
         ui.add_shape_animated(Shape::effect(BLEND, BLUE), looping);
     });
-    let red = RgbaF32::new(0.75, 0.0, 0.0, 1.0).to_srgba8();
     assert_eq!(
         h.read_back().get_pixel(8, 8).0,
-        [red.r, red.g, red.b, red.a]
+        bytes(RgbaF32::new(0.75, 0.0, 0.0, 1.0))
     );
 }
 
@@ -1041,11 +1027,7 @@ fn an_image_lost_with_its_device_paints_nothing_until_written_again() {
     h.recover(fresh.handles());
     assert!(!red.is_resident());
     h.prime(2, paint);
-    let srgb = ground.to_srgba8();
-    assert_eq!(
-        h.read_back().get_pixel(8, 8).0,
-        [srgb.r, srgb.g, srgb.b, srgb.a]
-    );
+    assert_eq!(h.read_back().get_pixel(8, 8).0, bytes(ground));
 
     red.update(&solid(0xff0000)).unwrap();
     h.prime(2, paint);
@@ -1081,7 +1063,7 @@ fn a_shape_binds_as_many_images_as_its_effect_declares() {
                 PAIR,
                 EffectSource::new(PAIR_WGSL)
                     .image_slots(2)
-                    .power_saver(PowerSaverPaint::Effect(single)),
+                    .power_saver(ReducedPaint::Effect(single)),
             )
         },
     );
@@ -1091,7 +1073,7 @@ fn a_shape_binds_as_many_images_as_its_effect_declares() {
             PAIR,
             EffectSource::new(PAIR_WGSL)
                 .image_slots(2)
-                .power_saver(PowerSaverPaint::Effect(later)),
+                .power_saver(ReducedPaint::Effect(later)),
         )
         .unwrap();
     h.ui()
@@ -1134,4 +1116,234 @@ fn an_image_update_repaints_the_effects_that_bind_it() {
     assert_eq!(report.paint(), FramePaint::Partial);
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(rects, [Rect::new(1.5, 1.5, 7.0, 7.0)]);
+}
+
+/// A shift's parameters: how far right a backdrop effect reads, in logical px.
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
+#[repr(C)]
+struct Shift {
+    dx: f32,
+}
+
+const SHIFT: EffectName<Shift, BackdropEffect> = EffectName::named("shift").expect("the name fits");
+
+/// What is painted `dx` px to the right, opaque.
+const SHIFT_WGSL: &str = "
+struct Params { dx: f32 }
+
+fn effect(input: EffectInput, params: Params) -> EffectOutput {
+    return effect_over(effect_backdrop(input.pos + vec2<f32>(params.dx, 0.0)));
+}
+";
+
+/// sRGB bytes of an opaque linear color.
+fn bytes(color: RgbaF32) -> [u8; 4] {
+    let srgb = color.to_srgba8();
+    [srgb.r, srgb.g, srgb.b, srgb.a]
+}
+
+/// A backdrop effect reads what is painted under it and past its rect within its reach, and a
+/// read past the reach reads the reach's edge. In a 32 × 16 window, red fills `x < 16`, blue
+/// `16..26`, green from 26; the effect over `(4, 0, 12, 16)` reaches 8 px, so it reads up to
+/// x 24. Shifted by 6, pixel 6 reads x 12.5, red, and pixel 12 reads 18.5, blue; shifted by 14,
+/// pixel 14 would read 28.5, green, and reads the edge, 24, blue. When the blue under the reach
+/// turns green, the effect, whose own rect did not change, reads green: damage under its reach
+/// captures it again.
+#[test]
+fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(32, 16))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
+        .unwrap();
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+    let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
+    let green = RgbaF32::new(0.0, 1.0, 0.0, 1.0);
+    let paint = |middle: RgbaF32, dx: f32| {
+        move |ui: &mut Ui| {
+            ui.add_shape(Shape::rect().at(Rect::new(0.0, 0.0, 16.0, 16.0)).fill(red));
+            ui.add_shape(
+                Shape::rect()
+                    .at(Rect::new(16.0, 0.0, 10.0, 16.0))
+                    .fill(middle),
+            );
+            ui.add_shape(
+                Shape::rect()
+                    .at(Rect::new(26.0, 0.0, 6.0, 16.0))
+                    .fill(green),
+            );
+            ui.add_shape(
+                Shape::backdrop_effect(SHIFT, Shift { dx })
+                    .at(Rect::new(4.0, 0.0, 12.0, 16.0))
+                    .reach(8.0),
+            );
+        }
+    };
+    h.prime(2, paint(blue, 6.0));
+    let image = h.read_back();
+    assert_eq!(
+        [image.get_pixel(6, 8).0, image.get_pixel(12, 8).0],
+        [bytes(red), bytes(blue)]
+    );
+    h.prime(2, paint(blue, 14.0));
+    assert_eq!(
+        h.read_back().get_pixel(14, 8).0,
+        bytes(blue),
+        "the reach's edge"
+    );
+
+    h.prime(1, paint(blue, 6.0));
+    h.prime(2, paint(green, 6.0));
+    assert_eq!(
+        h.read_back().get_pixel(12, 8).0,
+        bytes(green),
+        "a change under the reach"
+    );
+}
+
+const SHARP: Shift = Shift { dx: 0.0 };
+
+/// A backdrop effect blurs what it reads by its σ through the capture and blur a backdrop filter
+/// takes, and reads the result as a filter's pane does: over a black and white edge at x 16 in a
+/// 32 × 16 window, an effect that shows what it reads, blurred by σ 3, paints row 8 exactly as a
+/// rect of `BackdropFilter::blur(3.0)` over the same edge, and unlike the sharp edge.
+#[test]
+fn a_backdrop_effect_blurs_as_a_backdrop_filter() {
+    let gpu = headless_test_gpu();
+    let row = |pane: &dyn Fn(&mut Ui)| {
+        let mut h = Harness::builder(UVec2::new(32, 16))
+            .mono()
+            .depth(Depth::gpu(gpu.handles()))
+            .build();
+        h.ui()
+            .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
+            .unwrap();
+        h.prime(2, |ui| {
+            ui.add_shape(
+                Shape::rect()
+                    .at(Rect::new(0.0, 0.0, 16.0, 16.0))
+                    .fill(RgbaF32::BLACK),
+            );
+            ui.add_shape(
+                Shape::rect()
+                    .at(Rect::new(16.0, 0.0, 16.0, 16.0))
+                    .fill(RgbaF32::WHITE),
+            );
+            pane(ui);
+        });
+        let image = h.read_back();
+        (0..32).map(|x| image.get_pixel(x, 8).0).collect::<Vec<_>>()
+    };
+    let effect = row(&|ui| {
+        ui.add_shape(Shape::backdrop_effect(SHIFT, SHARP).blur(3.0));
+    });
+    let filter = row(&|ui| {
+        ui.add_shape(Shape::rect().backdrop_filter(BackdropFilter::blur(3.0)));
+    });
+    let sharp = row(&|_| {});
+    assert_eq!(effect, filter);
+    assert_ne!(effect, sharp, "σ 3 blurs the edge");
+}
+
+/// Each preference picks its own alternative, transparency's over motion's over power's: an
+/// effect whose source names one for each paints itself with nothing reduced, power's with power
+/// reduced, motion's with motion and power, and transparency's with all three. An alternative
+/// nothing loaded panics with the preference that named it.
+#[test]
+fn each_reduction_paints_its_alternative_in_order() {
+    let names = ["base", "clear", "still", "saver"]
+        .map(|name| -> EffectName<Blend> { EffectName::named(name).unwrap() });
+    let [base, clear, still, saver] = names;
+    let mut h = Harness::mono(UVec2::new(16, 16));
+    h.ui()
+        .load_effect(
+            base,
+            EffectSource::new(BLEND_WGSL)
+                .reduced_transparency(ReducedPaint::Effect(clear))
+                .reduced_motion(ReducedPaint::Effect(still))
+                .power_saver(ReducedPaint::Effect(saver)),
+        )
+        .unwrap();
+    for name in [clear, still, saver] {
+        h.ui()
+            .load_effect(name, EffectSource::new(BLEND_WGSL))
+            .unwrap();
+    }
+    let painted = |h: &mut Harness| {
+        h.frame(|ui| ui.add_shape(Shape::effect(base, BLUE)));
+        effect_draws(h)[0].0
+    };
+    assert_eq!(painted(&mut h), EffectId(0));
+    h.set_system_power_reduced(true);
+    assert_eq!(painted(&mut h), EffectId(3), "power");
+    h.set_system_motion_reduced(true);
+    assert_eq!(painted(&mut h), EffectId(2), "motion over power");
+    h.set_system_transparency_reduced(true);
+    assert_eq!(painted(&mut h), EffectId(1), "transparency over both");
+
+    let gone: EffectName<Blend> = EffectName::named("gone").unwrap();
+    h.ui()
+        .load_effect(
+            base,
+            EffectSource::new(BLEND_WGSL).reduced_motion(ReducedPaint::Effect(gone)),
+        )
+        .unwrap();
+    assert_panics_with(
+        "no effect is loaded under `gone`, the reduced-motion alternative of `base`",
+        || h.frame(|ui| ui.add_shape(Shape::effect(base, BLUE))),
+    );
+}
+
+/// `effect_backdrop` is a backdrop effect's alone: the same text loads as a backdrop effect and
+/// fails to parse as a color effect, where the name is not declared.
+#[test]
+fn only_a_backdrop_effect_reads_what_is_under_it() {
+    let params = ParamsLayout {
+        fields: Shift::FIELDS,
+        size: size_of::<Shift>(),
+    };
+    let module = contract::check(SHIFT_WGSL, KindId::Backdrop, params, 0).unwrap();
+    assert_eq!(module.kind, KindId::Backdrop);
+    assert!(matches!(
+        contract::check(SHIFT_WGSL, KindId::Color, params, 0),
+        Err(EffectError::Parse { .. })
+    ));
+}
+
+/// A reach past the window reads the window's edge, the last pixel the capture holds: in a
+/// 32 × 16 window, red fills `x < 26` and green from 26, and the effect over `(16, 0, 16, 16)`
+/// reaches 8 px, to x 40 past the edge at 32. Shifted by 12, pixel 28 reads x 40.5, which holds
+/// nothing, and reads the edge pixel, green.
+#[test]
+fn a_reach_past_the_window_reads_its_edge() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(32, 16))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.ui()
+        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
+        .unwrap();
+    let green = RgbaF32::new(0.0, 1.0, 0.0, 1.0);
+    h.prime(2, |ui: &mut Ui| {
+        ui.add_shape(
+            Shape::rect()
+                .at(Rect::new(0.0, 0.0, 26.0, 16.0))
+                .fill(RgbaF32::new(1.0, 0.0, 0.0, 1.0)),
+        );
+        ui.add_shape(
+            Shape::rect()
+                .at(Rect::new(26.0, 0.0, 6.0, 16.0))
+                .fill(green),
+        );
+        ui.add_shape(
+            Shape::backdrop_effect(SHIFT, Shift { dx: 12.0 })
+                .at(Rect::new(16.0, 0.0, 16.0, 16.0))
+                .reach(8.0),
+        );
+    });
+    assert_eq!(h.read_back().get_pixel(28, 8).0, bytes(green));
 }

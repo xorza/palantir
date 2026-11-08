@@ -25,7 +25,7 @@ pub(crate) mod style;
 pub(crate) mod text;
 pub(crate) mod triangle;
 
-use crate::effect::effect_kind::ColorEffect;
+use crate::effect::effect_kind::{BackdropEffect, ColorEffect};
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
 use crate::image_registry::image_handle::ImageHandle;
@@ -60,8 +60,7 @@ pub trait Lower: sealed::LowerShape {}
 impl<T: sealed::LowerShape> Lower for T {}
 
 mod sealed {
-    use crate::effect::effect_registry::EffectRegistry;
-    use crate::primitives::reduction::Reduction;
+    use crate::effect::effect_registry::{EffectRegistry, Reductions};
     use crate::shape::record::ShapeRecord;
     use crate::shape::record_store::RecordStore;
     use std::fmt;
@@ -88,9 +87,9 @@ mod sealed {
         fn is_noop(&self) -> bool;
 
         /// Resolve what the shape names in the host's registries, before [`Self::is_noop`] and
-        /// [`Self::lower`]: an effect's id, or its power-saver alternative's while `power` is
-        /// reduced. Nothing by default.
-        fn resolve(&mut self, _effects: &EffectRegistry, _power: Reduction) {}
+        /// [`Self::lower`]: an effect's id, or the id of the alternative it paints for what
+        /// `reductions` reduces. Nothing by default.
+        fn resolve(&mut self, _effects: &EffectRegistry, _reductions: Reductions) {}
 
         /// Convert to the stored form. Every impl destructures `Self`, so an unrecorded authoring field is a build error.
         fn lower(self, store: &mut RecordStore) -> ShapeRecord;
@@ -113,6 +112,23 @@ impl Shape {
         name: EffectName<U, ColorEffect>,
         params: U,
     ) -> EffectShape<U> {
+        EffectShape::new(name, params)
+    }
+
+    /// The backdrop effect `name` with `params`, over the owner's arranged rect, or
+    /// [`EffectShape::at`] a rect of its own; sharp until [`EffectShape::corners`]. It reads what
+    /// is painted under it through `effect_backdrop`, sharp until
+    /// [`EffectShape::blur`](EffectShape#method.blur) and within its rect until
+    /// [`EffectShape::reach`](EffectShape#method.reach).
+    ///
+    /// # Panics
+    ///
+    /// At [`Ui::add_shape`](crate::Ui::add_shape), when no effect is loaded under `name`
+    /// ([`Ui::load_effect`](crate::Ui::load_effect)), or one with other parameters or kind.
+    pub const fn backdrop_effect<U: EffectParams>(
+        name: EffectName<U, BackdropEffect>,
+        params: U,
+    ) -> EffectShape<U, BackdropEffect> {
         EffectShape::new(name, params)
     }
 

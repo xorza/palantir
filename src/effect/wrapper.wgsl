@@ -21,12 +21,13 @@ const PALANTIR_CORNERS = array<vec2<f32>, 4>(
 );
 
 // One shape: its rect (`min`, `size`) and corner radii in physical px, its clock (`time`,
-// `opacity`, `scale`) and the word its parameters start at.
+// `opacity`, `scale`), the word its parameters start at, and a backdrop effect's pane.
 struct PalantirInstance {
     @location(0) rect: vec4<f32>,
     @location(1) corners: vec4<f32>,
     @location(2) clock: vec3<f32>,
     @location(3) params: u32,
+    @location(4) pane: u32,
 }
 
 struct PalantirVarying {
@@ -35,6 +36,7 @@ struct PalantirVarying {
     @location(1) @interpolate(flat) corners: vec4<f32>,
     @location(2) @interpolate(flat) clock: vec3<f32>,
     @location(3) @interpolate(flat) params: u32,
+    @location(4) @interpolate(flat) pane: u32,
 }
 
 struct PalantirOut {
@@ -54,6 +56,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
         instance.corners,
         instance.clock,
         instance.params,
+        instance.pane,
     );
 }
 
@@ -76,6 +79,6 @@ fn palantir_fs(v: PalantirVarying) -> PalantirOut {
         * v.clock.y;
     let scale = v.clock.z;
     let input = EffectInput(local / scale, v.rect.zw / scale, v.corners / scale, v.clock.x, scale);
-    let out = /*{CALL}*/;
+    /*{BACKDROP_SET}*/let out = /*{CALL}*/;
     return PalantirOut(out.color * coverage, vec4<f32>(1.0) - coverage * (vec4<f32>(1.0) - out.under));
 }

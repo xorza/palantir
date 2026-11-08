@@ -18,7 +18,7 @@ use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
+use crate::renderer::frontend::payload::draw_effect_payload::{DrawEffectPayload, EffectPaneDraw};
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -392,26 +392,47 @@ impl PlaneCtx<'_, '_> {
                 );
             }
             // An effect fades with its paint animation and reads its time; `Ui::add_shape_animated`
-            // refuses a turn on it.
+            // refuses a turn on it. A backdrop effect the cascade lists not lies outside every clip.
             ShapeRecord::Effect {
+                pane,
                 local_rect,
                 corners,
                 effect,
                 params,
                 images,
                 content_hash: _,
-            } => out.draw(
-                DrawEffectPayload {
-                    rect: owner_rect.resolve_local(*local_rect),
-                    corners: *corners,
-                    effect: *effect,
-                    params: *params,
-                    images: *images,
-                    opacity: 1.0,
-                    time: paint_mod.time,
-                },
-                alpha,
-            ),
+            } => {
+                let pane = match pane {
+                    Some(read) => {
+                        let site = PaneSite {
+                            owner: id,
+                            origin: PaneOrigin::Shape,
+                            shape_idx,
+                        };
+                        let Some(ticket) = self.pane_ticket(site) else {
+                            return;
+                        };
+                        Some(EffectPaneDraw {
+                            ticket,
+                            reach: read.reach,
+                        })
+                    }
+                    None => None,
+                };
+                out.draw(
+                    DrawEffectPayload {
+                        rect: owner_rect.resolve_local(*local_rect),
+                        corners: *corners,
+                        effect: *effect,
+                        params: *params,
+                        images: *images,
+                        pane,
+                        opacity: 1.0,
+                        time: paint_mod.time,
+                    },
+                    alpha,
+                );
+            }
             ShapeRecord::Icon {
                 local_rect,
                 handle,

@@ -42,6 +42,54 @@ pub(crate) enum ColorMode {
     PerSegment = 2,
 }
 
+/// What a backdrop effect reads under it, in logical px: the σ of its blur and how far past its
+/// rect it reads.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct EffectPane {
+    pub(crate) sigma: f32,
+    pub(crate) reach: f32,
+}
+
+impl EffectPane {
+    /// Reads under its rect alone, sharp.
+    pub(crate) const ZERO: Self = Self {
+        sigma: 0.0,
+        reach: 0.0,
+    };
+}
+
+/// What a pane reads, as the cascade plans its capture: a rect's backdrop filter or a backdrop
+/// effect.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum PaneRead {
+    Filter(LoweredBackdrop),
+    Effect(EffectPane),
+}
+
+impl PaneRead {
+    /// The blur's σ in logical px.
+    pub(crate) fn sigma(self) -> f32 {
+        match self {
+            Self::Filter(backdrop) => backdrop.sigma(),
+            Self::Effect(pane) => pane.sigma,
+        }
+    }
+
+    /// How far past the pane, in physical px under `scale` physical px per logical px, its
+    /// composite reads: a lens's margin ([`LoweredBackdrop::lens_margin`], `narrowest` its pane's
+    /// narrowest side), or an effect's reach rounded out.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "a reach is a length, which `EffectShape::reach` checks, and a scale is positive"
+    )]
+    pub(crate) fn margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
+        match self {
+            Self::Filter(backdrop) => backdrop.lens_margin(scale, narrowest),
+            Self::Effect(pane) => (pane.reach * scale).ceil() as u32,
+        }
+    }
+}
+
 /// `#[repr(u8)]` pins the discriminant to one byte (`hot_struct_sizes`). Reorder variants freely: hashes use `mem::discriminant` and are only compared within a process run.
 #[repr(u8)]
 #[derive(Clone, Debug)]
@@ -103,10 +151,13 @@ pub(crate) enum ShapeRecord {
         /// Draws a color icon as its own luminance, see [`IconShape::desaturate`](crate::widget::IconShape::desaturate).
         desaturate: bool,
     },
-    /// An app-written color effect over a rounded rect: `local_rect = None` paints the owner's
-    /// rect, `Some(r)` paints `r` owner-relative, which may exceed the owner. `params` indexes the
-    /// `RecordStore`'s parameter words; `content_hash` covers the effect and those words.
+    /// An app-written effect over a rounded rect: `local_rect = None` paints the owner's rect,
+    /// `Some(r)` paints `r` owner-relative, which may exceed the owner. `params` indexes the
+    /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images
+    /// and its pane.
     Effect {
+        /// What a backdrop effect reads under it; `None` for a color effect.
+        pane: Option<EffectPane>,
         local_rect: Option<Rect>,
         corners: Corners,
         effect: EffectId,
@@ -170,18 +221,24 @@ impl TextAnchor {
 }
 
 impl ShapeRecord {
-    /// The backdrop of a rect drawn as a pane over the pixels before it, `None` for every other
-    /// record.
-    pub(crate) const fn backdrop(&self) -> Option<LoweredBackdrop> {
+    /// What the record reads as a pane over the pixels before it: a rect's backdrop or a backdrop
+    /// effect's; `None` for every other record.
+    pub(crate) const fn pane(&self) -> Option<PaneRead> {
         match self {
-            Self::Quad(QuadShape::Rect { backdrop, .. }) => *backdrop,
+            Self::Quad(QuadShape::Rect {
+                backdrop: Some(backdrop),
+                ..
+            }) => Some(PaneRead::Filter(*backdrop)),
+            Self::Effect {
+                pane: Some(pane), ..
+            } => Some(PaneRead::Effect(*pane)),
             _ => None,
         }
     }
 
     /// Whether the record is a pane over the pixels before it.
     pub(crate) const fn is_pane(&self) -> bool {
-        self.backdrop().is_some()
+        self.pane().is_some()
     }
 
     /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::add`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
@@ -355,6 +412,7 @@ impl ShapeRecord {
                 local_rect,
                 corners,
                 content_hash,
+                pane: _,
                 effect: _,
                 params: _,
                 images: _,

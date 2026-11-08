@@ -23,7 +23,7 @@ use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
-use crate::gpu::resource::texture_binding::{self, Filtering};
+use crate::gpu::resource::texture_binding::{self, TextureBinding};
 use crate::gpu::spectrum_tables::{SPECTRUM_SAMPLES, SpectrumTables};
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::TargetFormat;
@@ -54,8 +54,10 @@ struct BackdropSlot {
     clear: [f32; 3],
     max_luminance: f32,
     min_luminance: f32,
-    /// Rounds the slot to WGSL's 16-byte stride for an array of structs.
+    /// Rounds `reads` to WGSL's 16-byte alignment.
     pad: [f32; 3],
+    /// The physical rect a backdrop effect reads, `(min, max)`, a read past it reading its edge.
+    reads: [f32; 4],
 }
 
 impl BackdropSlot {
@@ -86,6 +88,12 @@ impl BackdropSlot {
             max_luminance: row.max_luminance,
             min_luminance: row.min_luminance,
             pad: [0.0; 3],
+            reads: [
+                row.reads.min.x,
+                row.reads.min.y,
+                row.reads.max().x,
+                row.reads.max().y,
+            ],
         }
     }
 }
@@ -197,8 +205,8 @@ pub(crate) struct Backdrops {
     jobs: Vec<BlurJob>,
     breaks: Vec<BlurBreak>,
     slots: Vec<BackdropSlot>,
-    /// The layout of the group a pane's quad reads its result through, which the quad pipeline
-    /// names at group 2, so it is made with the backend; the group itself waits for a pane.
+    /// The layout of the group a pane's composite reads its result through
+    /// ([`TextureBinding::panes`]); the group itself waits for a pane.
     layout: wgpu::BindGroupLayout,
     /// The results atlas the first frame with a pane makes, which takes it.
     atlas_spec: Option<AtlasSpec>,
@@ -279,36 +287,6 @@ impl PaneResources {
     }
 }
 
-/// The layout of the group a pane's quad reads its result through: the results atlas, its
-/// sampler, the slot table and the spectrum.
-fn composite_layout(gpu: &Gpu) -> wgpu::BindGroupLayout {
-    let storage = |binding| wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::FRAGMENT,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Storage { read_only: true },
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
-    };
-    gpu.device
-        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.backdrop.composite.bgl"),
-            entries: &[
-                texture_binding::texture_entry(0, Filtering::Filtered),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                storage(2),
-                storage(3),
-            ],
-        })
-}
-
 /// What the group a pane's quad reads its result through binds.
 #[derive(Clone, Copy, Debug)]
 struct CompositeParts<'a> {
@@ -355,13 +333,14 @@ fn composite_group(
 }
 
 impl Backdrops {
-    pub(crate) fn new(gpu: &Gpu) -> Self {
-        Self::with_limits(gpu, gpu.max_texture_dim().get(), RESULTS_BUDGET)
+    /// Panes whose composites read their results through `binding`'s pane group.
+    pub(crate) fn new(gpu: &Gpu, binding: &TextureBinding) -> Self {
+        Self::with_limits(binding, gpu.max_texture_dim().get(), RESULTS_BUDGET)
     }
 
     /// [`Self::new`] with a results atlas that grows to `budget` bytes on its own, and past them
     /// to an edge of `ceiling` texels.
-    fn with_limits(gpu: &Gpu, ceiling: u32, budget: u64) -> Self {
+    fn with_limits(binding: &TextureBinding, ceiling: u32, budget: u64) -> Self {
         Self {
             cache: FxHashMap::default(),
             prepared: 0,
@@ -369,7 +348,7 @@ impl Backdrops {
             jobs: Vec::new(),
             breaks: Vec::new(),
             slots: Vec::new(),
-            layout: composite_layout(gpu),
+            layout: binding.panes().clone(),
             atlas_spec: Some(AtlasSpec {
                 label: "palantir.backdrop.results".to_owned(),
                 format: LEVEL_FORMAT,
@@ -384,11 +363,6 @@ impl Backdrops {
             moving_slots: Vec::new(),
             resources: None,
         }
-    }
-
-    /// The group a pane's quad reads its result through, at group 2.
-    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
-        &self.layout
     }
 
     /// The group the last prepared frame's panes read their results through; `None` before the

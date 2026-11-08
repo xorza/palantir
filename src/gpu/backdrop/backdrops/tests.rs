@@ -4,8 +4,10 @@ use crate::gpu::backdrop::backdrops::{
 };
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
@@ -79,7 +81,7 @@ fn each_window_keeps_its_own_results() {
     let gpu = headless_test_gpu();
     let mut owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
-    let mut backdrops = Backdrops::new(&gpu);
+    let mut backdrops = Backdrops::new(&gpu, &TextureBinding::new(&gpu));
     prepare(&mut backdrops, &gpu, a, &[]);
     assert!(backdrops.resources.is_none(), "no pane, no resources");
     prepare(&mut backdrops, &gpu, a, &[captured(0)]);
@@ -109,7 +111,7 @@ fn each_window_keeps_its_own_results() {
 fn a_pane_of_the_clear_frees_its_slot() {
     let gpu = headless_test_gpu();
     let owner = RenderOwners::default().reserve();
-    let mut backdrops = Backdrops::new(&gpu);
+    let mut backdrops = Backdrops::new(&gpu, &TextureBinding::new(&gpu));
     prepare(&mut backdrops, &gpu, owner, &[captured(0)]);
     let first = slot(&backdrops, owner, 0).unwrap();
     prepare(&mut backdrops, &gpu, owner, &[row(0, PaneSource::Clear)]);
@@ -150,9 +152,10 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
     );
 }
 
-/// `BackdropSlot` and `SpectrumCell` lie as the quad shader declares them, which storage
-/// bindings read unchecked: the slot's clear, a `vec3` the shader aligns to 16 bytes, starts
-/// after the lens at 32; each of a cell's three `vec3`s takes 16 bytes, 48 in all.
+/// `BackdropSlot` and `SpectrumCell` lie as the quad shader declares them, and the slot as the
+/// backdrop effect contract declares `PalantirPane`, which storage bindings read unchecked: the
+/// slot's clear, a `vec3` the shader aligns to 16 bytes, starts after the lens at 32, and its
+/// `reads` after the padding at 64; each of a cell's three `vec3`s takes 16 bytes, 48 in all.
 #[test]
 fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
     QuadPipeline::SHADER.assert_struct_layout(
@@ -178,6 +181,31 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
             ("_pad0", offset_of!(BackdropSlot, pad)),
             ("_pad1", offset_of!(BackdropSlot, pad) + 4),
             ("_pad2", offset_of!(BackdropSlot, pad) + 8),
+            ("reads", offset_of!(BackdropSlot, reads)),
+        ],
+    );
+    assert_eq!(offset_of!(BackdropSlot, reads), 64);
+    let contract = ShaderBody {
+        label: "palantir.effect.backdrop",
+        wgsl: include_str!("../../../effect/backdrop.wgsl"),
+        includes: &[],
+        constants: &[],
+    };
+    contract.assert_struct_layout(
+        "PalantirPane",
+        size_of::<BackdropSlot>(),
+        &[
+            ("offset", offset_of!(BackdropSlot, offset)),
+            ("lattice", offset_of!(BackdropSlot, lattice)),
+            ("highlight", offset_of!(BackdropSlot, highlight)),
+            ("lens", offset_of!(BackdropSlot, lens)),
+            ("clear", offset_of!(BackdropSlot, clear)),
+            ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
+            ("min_luminance", offset_of!(BackdropSlot, min_luminance)),
+            ("pad0", offset_of!(BackdropSlot, pad)),
+            ("pad1", offset_of!(BackdropSlot, pad) + 4),
+            ("pad2", offset_of!(BackdropSlot, pad) + 8),
+            ("reads", offset_of!(BackdropSlot, reads)),
         ],
     );
 }
@@ -192,7 +220,7 @@ fn a_full_atlas_evicts_the_least_recently_used_result() {
     let gpu = headless_test_gpu();
     let mut owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
-    let mut backdrops = Backdrops::with_limits(&gpu, 64, u64::MAX);
+    let mut backdrops = Backdrops::with_limits(&TextureBinding::new(&gpu), 64, u64::MAX);
     prepare(&mut backdrops, &gpu, a, &[captured(0), captured(1)]);
     assert_eq!(backdrops.evicted(a).count(), 0);
     prepare(
@@ -231,7 +259,7 @@ fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
     let gpu = headless_test_gpu();
     let mut owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
-    let mut backdrops = Backdrops::with_limits(&gpu, 64, 32 * 32 * 8);
+    let mut backdrops = Backdrops::with_limits(&TextureBinding::new(&gpu), 64, 32 * 32 * 8);
     let edge = |backdrops: &Backdrops| backdrops.resources.as_ref().unwrap().atlas.edge();
     prepare(&mut backdrops, &gpu, a, &[captured(0)]);
     assert_eq!(edge(&backdrops), 32, "the first side held to the budget");
@@ -259,7 +287,7 @@ fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
 fn an_atlas_past_its_budget_shrinks_back_after_idle() {
     let gpu = headless_test_gpu();
     let owner = RenderOwners::default().reserve();
-    let mut backdrops = Backdrops::with_limits(&gpu, 64, 32 * 32 * 8);
+    let mut backdrops = Backdrops::with_limits(&TextureBinding::new(&gpu), 64, 32 * 32 * 8);
     let edge = |backdrops: &Backdrops| backdrops.resources.as_ref().unwrap().atlas.edge();
     prepare(&mut backdrops, &gpu, owner, &[captured(0), captured(1)]);
     assert_eq!(edge(&backdrops), 64, "grown past the budget");

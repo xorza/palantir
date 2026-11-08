@@ -358,8 +358,8 @@ impl WgpuBackend {
         let texture_binding = resources.texture_binding;
         let gradient =
             GpuGradientAtlas::new(&gpu, resources.gradient_rows, texture_binding.clone());
-        let backdrops = Backdrops::new(&gpu);
-        let quad = QuadPipeline::new(&gpu, &texture_binding, backdrops.layout());
+        let backdrops = Backdrops::new(&gpu, &texture_binding);
+        let quad = QuadPipeline::new(&gpu, &texture_binding, texture_binding.panes());
         let mesh = MeshPipeline::new(&gpu);
         let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
@@ -1164,6 +1164,7 @@ impl WgpuBackend {
                                 ids: buffer.effects.id(),
                                 items: items(),
                                 groups: &effect_groups,
+                                panes: self.backdrops.group(),
                             },
                         ),
                     }

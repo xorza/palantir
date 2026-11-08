@@ -35,7 +35,7 @@ use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::record::ShapeRecord;
+use crate::shape::record::{PaneRead, ShapeRecord};
 use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -616,14 +616,17 @@ impl TreeSource<'_> {
                 continue;
             }
             let paint_row = after_children(tree, lc, entry).max(row);
-            let backdrop = match entry.origin {
-                PaneOrigin::Chrome => tree.chrome(entry.node).and_then(|row| row.backdrop),
-                PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
+            let read = match entry.origin {
+                PaneOrigin::Chrome => tree
+                    .chrome(entry.node)
+                    .and_then(|row| row.backdrop)
+                    .map(PaneRead::Filter),
+                PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].pane(),
             }
-            .expect("a listed pane has a backdrop");
+            .expect("a listed pane reads under it");
             let shape_scale = lc.shape_scales[node];
             let scale = shape_scale * display_scale;
-            let plan = BlurPlan::new(backdrop.sigma() * scale);
+            let plan = BlurPlan::new(read.sigma() * scale);
             let narrowest = self
                 .narrowest_side(entry, rect, shape_scale)
                 .map(|n| n * display_scale);
@@ -636,9 +639,8 @@ impl TreeSource<'_> {
                 paint_row,
                 rect,
                 plan,
-                footprint: rect.inflated(
-                    PaneRow::reach(plan, backdrop.lens_margin(scale, narrowest)) / display_scale,
-                ),
+                footprint: rect
+                    .inflated(PaneRow::reach(plan, read.margin(scale, narrowest)) / display_scale),
             });
         }
         lc.pane_rows.clear();

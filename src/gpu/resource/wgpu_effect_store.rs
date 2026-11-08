@@ -79,12 +79,19 @@ impl WgpuEffectStore {
         *revision += 1;
     }
 
-    /// The pipelines built now and the revision they are at.
+    /// The pipelines built now, each effect's module, and the revision they are at.
     pub(crate) fn read(&self) -> EffectsRead<'_> {
         let state = self.state.borrow();
         let revision = state.revision;
+        let (attached, modules) = Ref::map_split(state, |state| {
+            (
+                state.attached.as_ref().expect(ATTACHED),
+                state.modules.as_slice(),
+            )
+        });
         EffectsRead {
-            attached: Ref::map(state, |state| state.attached.as_ref().expect(ATTACHED)),
+            attached,
+            modules,
             revision,
         }
     }
@@ -94,6 +101,8 @@ impl WgpuEffectStore {
 #[derive(Debug)]
 pub(crate) struct EffectsRead<'a> {
     pub(crate) attached: Ref<'a, AttachedEffects>,
+    /// At each effect's id.
+    pub(crate) modules: Ref<'a, [EffectModule]>,
     pub(crate) revision: u64,
 }
 

@@ -7,6 +7,7 @@ use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 
+use crate::effect::effect_kind::KindId;
 use crate::effect::effect_params::{EffectParam, ParamType};
 use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
@@ -18,6 +19,21 @@ use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 /// text.
 const CONTRACT: &str = include_str!("contract.wgsl");
 
+/// What a backdrop effect reads besides: `effect_backdrop` over the pane's result, which follows
+/// the contract for that kind alone.
+const BACKDROP: &str = include_str!("backdrop.wgsl");
+
+/// The bindings the backdrop contract declares, which an app's text names not.
+const BACKDROP_BINDINGS: [&str; 3] = [
+    "palantir_results",
+    "palantir_results_sampler",
+    "palantir_panes",
+];
+
+/// What palantir's fragment stage sets before it calls a backdrop effect: the pane it draws, its
+/// rect's top-left and the scale `effect_backdrop` maps a logical position by.
+const BACKDROP_SET: &str =
+    "palantir_pane = v.pane;\n    palantir_origin = v.rect.xy;\n    palantir_scale = scale;\n    ";
 /// Palantir's own stages around `effect`, with markers for the antialiasing reach, the parameter
 /// read and the call.
 const WRAPPER: &str = include_str!("wrapper.wgsl");
@@ -40,12 +56,16 @@ pub(crate) struct ParamsLayout {
 /// The group an effect's images bind at, past the parameter words at group 0.
 pub(crate) const IMAGES_GROUP: u32 = 1;
 
-/// The complete module palantir compiles for `wgsl`: the app's text, the contract with its
-/// `image_slots` images, and palantir's stages, once the app's text parses and validates with the
-/// contract, declares no binding of its own, its `effect` takes the contract's arguments, and its
-/// parameter struct matches `params`.
+/// The group a backdrop effect reads its pane's result through, past its images.
+pub(crate) const PANES_GROUP: u32 = 2;
+
+/// The complete module palantir compiles for `wgsl`, an effect of `kind`: the app's text, the
+/// contract with its kind's reads and its `image_slots` images, and palantir's stages, once the
+/// app's text parses and validates with the contract, declares no binding of its own, its
+/// `effect` takes the contract's arguments, and its parameter struct matches `params`.
 pub(crate) fn check(
     wgsl: &str,
+    kind: KindId,
     params: ParamsLayout,
     image_slots: u8,
 ) -> Result<EffectModule, EffectError> {
@@ -55,13 +75,17 @@ pub(crate) fn check(
     if params.size > MAX_PARAMS_SIZE {
         return Err(EffectError::ParamsTooLarge { size: params.size });
     }
-    let contract = format!("{CONTRACT}{}", images(image_slots));
+    let reads = match kind {
+        KindId::Color => "",
+        KindId::Backdrop => BACKDROP,
+    };
+    let contract = format!("{CONTRACT}{reads}{}", images(image_slots));
     let app = parse_and_validate(format!("{wgsl}\n{contract}"), Capabilities::default())?;
-    check_bindings(&app.module, image_slots)?;
+    check_bindings(&app.module, kind, image_slots)?;
     let params_struct = check_entry(&app.module, params)?;
     let full = format!(
         "{ENABLE}{wgsl}\n{contract}{}",
-        wrapper(params_struct.as_deref(), params.fields)
+        wrapper(kind, params_struct.as_deref(), params.fields)
     );
     let full = parse_and_validate(
         full,
@@ -69,6 +93,7 @@ pub(crate) fn check(
     )?;
     Ok(EffectModule {
         text: full.text,
+        kind,
         image_slots,
     })
 }
@@ -99,10 +124,11 @@ fn images(slots: u8) -> String {
 /// images through the contract's `slots`, so a binding of the app's own matches no layout. The
 /// contract's own are known by name, which no app declares again, as WGSL refuses a second
 /// declaration of one name.
-fn check_bindings(module: &Module, slots: u8) -> Result<(), EffectError> {
+fn check_bindings(module: &Module, kind: KindId, slots: u8) -> Result<(), EffectError> {
     let contract = |name: &str| {
         slots > 0 && name == "effect_sampler"
             || (0..slots).any(|slot| name == format!("effect_image{slot}"))
+            || kind == KindId::Backdrop && BACKDROP_BINDINGS.contains(&name)
     };
     let own = module.global_variables.iter().find(|(_, global)| {
         global.binding.is_some() && !global.name.as_deref().is_some_and(contract)
@@ -142,9 +168,9 @@ fn parse_and_validate(text: String, capabilities: Capabilities) -> Result<Parsed
     Ok(Parsed { module, text })
 }
 
-/// Palantir's stages, reading the parameters into `params_struct` from `fields`' words, or with
-/// no parameters where `params_struct` is `None`.
-fn wrapper(params_struct: Option<&str>, fields: &[EffectParam]) -> String {
+/// Palantir's stages for an effect of `kind`, reading the parameters into `params_struct` from
+/// `fields`' words, or with no parameters where `params_struct` is `None`.
+fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) -> String {
     let (read, call) = match params_struct {
         Some(name) => {
             let members: Vec<String> = fields.iter().map(read_field).collect();
@@ -161,6 +187,13 @@ fn wrapper(params_struct: Option<&str>, fields: &[EffectParam]) -> String {
     WRAPPER
         .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
         .replace("/*{PARAMS}*/", &read)
+        .replace(
+            "/*{BACKDROP_SET}*/",
+            match kind {
+                KindId::Color => "",
+                KindId::Backdrop => BACKDROP_SET,
+            },
+        )
         .replace("/*{CALL}*/", call)
 }
 

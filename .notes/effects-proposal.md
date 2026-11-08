@@ -124,6 +124,12 @@ by the image store for each set drawn; an app's own binding is refused.
 
 ### 8. Backdrop effects, `BackdropFilter` on them
 
+Step one done: `Shape::backdrop_effect` with `blur` and `reach`, `effect_backdrop` in the contract
+over the pane's result, the panes of a filter and an effect on one capture, ledger and atlas, and
+an alternative on the load for each preference, transparency over motion over power
+(`ReducedPaint`). Left: the built-in looks and the quad forms' removal below. The benches wait,
+as the owner decided on 2026-11-08.
+
 - The backdrop signature with the σ it asks for, `Shape::backdrop_effect` and its read bound, as
   panes of the existing capture, break sharing, ledger and atlas; the capture grown by the bound,
   damage when content under the grown rect changes, the clamp past the bound.
@@ -151,5 +157,4 @@ by the image store for each set drawn; an app's own binding is refused.
 
 - **Where a theme's names are checked.** `Theme` deserializes with no `Ui`, so the check runs where
   a theme is set or loaded; batch 9 picks the call and its error.
-- **Reduced transparency and backdrop effects.** A distortion adds no transparency, so whether
-  the preference applies to it stays open until batch 8.
+

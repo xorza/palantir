@@ -109,6 +109,8 @@ struct BackdropSlot {
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
+    // The physical rect a backdrop effect reads (`effect/backdrop.wgsl`).
+    reads: vec4<f32>,
 };
 @group(2) @binding(0) var backdrop_results: texture_2d<f32>;
 @group(2) @binding(1) var backdrop_sampler: sampler;

@@ -785,7 +785,9 @@ EffectSource
             pub const MAX_PARAMS_SIZE: usize
             pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self
             pub const fn image_slots(self, slots: u8) -> Self
-            pub const fn power_saver(self, paint: PowerSaverPaint<U, K>) -> Self
+            pub const fn reduced_transparency(self, paint: ReducedPaint<U, K>) -> Self
+            pub const fn reduced_motion(self, paint: ReducedPaint<U, K>) -> Self
+            pub const fn power_saver(self, paint: ReducedPaint<U, K>) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectSource<U, K>
 
 Engagement
@@ -1838,17 +1840,6 @@ PowerPreference
         LowPower
         HighPerformance
 
-PowerSaverPaint
-    enum PowerSaverPaint<U: EffectParams, K: EffectKind = ColorEffect>
-        Same
-        Effect(EffectName<U, K>)
-        Nothing
-        impl<U: EffectParams, K: EffectKind> Clone for PowerSaverPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> Copy for PowerSaverPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> Debug for PowerSaverPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> Eq for PowerSaverPaint<U, K>
-        impl<U: EffectParams, K: EffectKind> PartialEq for PowerSaverPaint<U, K>
-
 Preference
     enum Preference<T>: Default, DockTab (blanket)
         System
@@ -1947,6 +1938,17 @@ Rect
         pub const fn intersect(self, other: Self) -> Option<Self>
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
+
+ReducedPaint
+    enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect>
+        Same
+        Effect(EffectName<U, K>)
+        Nothing
+        impl<U: EffectParams, K: EffectKind> Clone for ReducedPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> Copy for ReducedPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> Debug for ReducedPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> Eq for ReducedPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> PartialEq for ReducedPaint<U, K>
 
 Reduction
     enum Reduction: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -3268,10 +3270,15 @@ widget::CurveShape
         pub const fn cap(self, cap: LineCap) -> Self
 
 widget::EffectShape
-    struct EffectShape<U: EffectParams>: Debug, Lower (blanket)
-        pub fn images<const N: usize>(self, images: [ImageHandle; N]) -> Self
-        pub const fn at(self, rect: Rect) -> Self
-        pub fn corners(self, corners: impl Into<Corners>) -> Self
+    struct EffectShape<U: EffectParams, K: EffectKind = ColorEffect>: Lower (blanket)
+        impl<U: EffectParams, K: EffectKind> EffectShape<U, K>
+            pub fn images<const N: usize>(self, images: [ImageHandle; N]) -> Self
+            pub const fn at(self, rect: Rect) -> Self
+            pub fn corners(self, corners: impl Into<Corners>) -> Self
+        impl<U: EffectParams> EffectShape<U, BackdropEffect>
+            pub const fn blur(self, sigma: f32) -> Self
+            pub const fn reach(self, px: f32) -> Self
+        impl<U: EffectParams, K: EffectKind> Debug for EffectShape<U, K>
 
 widget::GlyphFont
     struct GlyphFont: Clone, Copy, Debug, PartialEq
@@ -3458,6 +3465,7 @@ widget::ShadowShape
 widget::Shape
     struct Shape: Clone, Copy, Debug
         pub const fn effect<U: EffectParams>(name: EffectName<U, ColorEffect>, params: U) -> EffectShape<U>
+        pub const fn backdrop_effect<U: EffectParams>(name: EffectName<U, BackdropEffect>, params: U) -> EffectShape<U, BackdropEffect>
         pub const fn rect() -> RectShape
         pub const fn windowed_rect() -> RectShape
         pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape

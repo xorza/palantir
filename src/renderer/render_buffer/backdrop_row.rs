@@ -1,5 +1,6 @@
 //! One pane of a frame: what its capture reads and where its result comes from.
 
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::paint::backdrop_filter::Lens;
@@ -25,6 +26,9 @@ pub(crate) struct PaneCapture {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BackdropRow {
     pub(crate) capture: PaneCapture,
+    /// The physical rect the pane's composite reads, a read past it reading its edge: a backdrop
+    /// effect's rect grown by its reach, a filter pane's footprint.
+    pub(crate) reads: Rect,
     /// The pane's lens with its lengths in physical px, if it is glass.
     pub(crate) lens: Option<Lens>,
     /// The highest relative luminance the pane shows under its tint.
@@ -73,6 +77,7 @@ pub(crate) mod internals {
         /// result: no lens and no luminance ceiling. Its region is `footprint` on the lattice.
         pub(crate) fn fixture(i: u32, footprint: URect, plan: BlurPlan) -> Self {
             Self {
+                reads: footprint.into(),
                 capture: PaneCapture {
                     key: PaneKey {
                         owner: WidgetId::from_hash("pane"),

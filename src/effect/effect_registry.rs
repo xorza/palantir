@@ -9,7 +9,7 @@ use crate::effect::contract::{self, ParamsLayout};
 use crate::effect::effect_kind::{EffectKind, EffectTypes};
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
-use crate::effect::effect_source::{EffectSource, PowerSaverPaint};
+use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
 use crate::primitives::identity::effect_id::EffectId;
@@ -44,7 +44,49 @@ struct Effects {
 struct LoadedEffect {
     types: EffectTypes,
     image_slots: u8,
-    power_saver: PowerSaverName,
+    /// What paints in its place for each preference, in [`ReducedBy`]'s order.
+    alternatives: [ReducedName; ReducedBy::COUNT],
+}
+
+/// A preference an effect's source names an alternative for, in the order one wins over the
+/// next where several reduce: what a person needs to read, then to bear, before what a device
+/// saves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReducedBy {
+    Transparency,
+    Motion,
+    Power,
+}
+
+impl ReducedBy {
+    const COUNT: usize = 3;
+    const ALL: [Self; Self::COUNT] = [Self::Transparency, Self::Motion, Self::Power];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Transparency => "reduced-transparency",
+            Self::Motion => "reduced-motion",
+            Self::Power => "power-saver",
+        }
+    }
+}
+
+/// What the system asks to reduce now, which picks the alternative a shape paints.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Reductions {
+    pub(crate) transparency: Reduction,
+    pub(crate) motion: Reduction,
+    pub(crate) power: Reduction,
+}
+
+impl Reductions {
+    const fn reduces(self, by: ReducedBy) -> bool {
+        match by {
+            ReducedBy::Transparency => self.transparency.is_reduced(),
+            ReducedBy::Motion => self.motion.is_reduced(),
+            ReducedBy::Power => self.power.is_reduced(),
+        }
+    }
 }
 
 /// The effect a shape paints, as [`EffectRegistry::resolve`] finds it: its id, and how many
@@ -55,12 +97,22 @@ pub(crate) struct ResolvedEffect {
     pub(crate) image_slots: u8,
 }
 
-/// [`PowerSaverPaint`] with the alternative's types checked at the load.
+/// [`ReducedPaint`] with the alternative's types checked at the load.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PowerSaverName {
+pub(crate) enum ReducedName {
     Same,
     Effect(InlineName),
     Nothing,
+}
+
+impl ReducedName {
+    const fn of<U: EffectParams, K: EffectKind>(paint: ReducedPaint<U, K>) -> Self {
+        match paint {
+            ReducedPaint::Same => Self::Same,
+            ReducedPaint::Effect(other) => Self::Effect(other.inline()),
+            ReducedPaint::Nothing => Self::Nothing,
+        }
+    }
 }
 
 impl EffectRegistry {
@@ -77,8 +129,8 @@ impl EffectRegistry {
     ///
     /// # Panics
     ///
-    /// When `name`, or the power-saver alternative its source names, was loaded before with
-    /// another parameter type or kind, or the alternative with other image slots.
+    /// When `name`, or an alternative its source names, was loaded before with another parameter
+    /// type or kind, or the alternative with other image slots.
     pub(crate) fn load<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
@@ -93,41 +145,37 @@ impl EffectRegistry {
             // An alternative loaded already is held to the same types and images now, as its
             // shapes pass both; one loaded later is held to them where it paints in place of this
             // one.
-            if let PowerSaverPaint::Effect(other) = source.power_saver
-                && let Some(loaded) = effects.get(other.inline())
-            {
-                assert_types(other.name(), loaded.types, types);
-                assert!(
-                    loaded.image_slots == source.image_slots,
-                    "effect `{}` binds {} images, and `{}`, which paints in its place, {}",
-                    other.name(),
-                    loaded.image_slots,
-                    name.name(),
-                    source.image_slots,
-                );
+            for paint in source.alternatives() {
+                if let ReducedPaint::Effect(other) = paint
+                    && let Some(loaded) = effects.get(other.inline())
+                {
+                    assert_types(other.name(), loaded.types, types);
+                    assert!(
+                        loaded.image_slots == source.image_slots,
+                        "effect `{}` binds {} images, and `{}`, which paints in its place, {}",
+                        other.name(),
+                        loaded.image_slots,
+                        name.name(),
+                        source.image_slots,
+                    );
+                }
             }
         }
         let params = ParamsLayout {
             fields: U::FIELDS,
             size: size_of::<U>(),
         };
+        let alternatives = source.alternatives().map(ReducedName::of);
         let EffectSource {
-            wgsl,
-            image_slots,
-            power_saver,
+            wgsl, image_slots, ..
         } = source;
-        let module = contract::check(&wgsl, params, image_slots)?;
-        let power_saver = match power_saver {
-            PowerSaverPaint::Same => PowerSaverName::Same,
-            PowerSaverPaint::Effect(other) => PowerSaverName::Effect(other.inline()),
-            PowerSaverPaint::Nothing => PowerSaverName::Nothing,
-        };
+        let module = contract::check(&wgsl, K::ID, params, image_slots)?;
         let id = self.effects.borrow_mut().insert(
             name.inline(),
             LoadedEffect {
                 types,
                 image_slots,
-                power_saver,
+                alternatives,
             },
         );
         if let Some(store) = &self.store {
@@ -152,9 +200,9 @@ impl EffectRegistry {
     }
 
     /// The effect a shape that names `name` paints, whose id it records: the effect loaded under
-    /// `name`, or while `power` is reduced the alternative its source names; `None` when that is
-    /// nothing. A power move records every window again, so the record resolves it each
-    /// frame it changes.
+    /// `name`, or the alternative its source names for the first preference `reductions` reduces
+    /// that names one, in [`ReducedBy`]'s order; `None` when that is nothing. A move of any of them
+    /// records every window again, so the record resolves it each frame it changes.
     ///
     /// # Panics
     ///
@@ -165,7 +213,7 @@ impl EffectRegistry {
     pub(crate) fn resolve<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
-        power: Reduction,
+        reductions: Reductions,
     ) -> Option<ResolvedEffect> {
         let id = self
             .id_of(name)
@@ -175,17 +223,23 @@ impl EffectRegistry {
             id,
             image_slots: effects.loaded[id.idx()].image_slots,
         };
-        if !power.is_reduced() {
+        let alternatives = effects.loaded[id.idx()].alternatives;
+        let Some((by, alternative)) = ReducedBy::ALL
+            .into_iter()
+            .zip(alternatives)
+            .find(|&(by, alternative)| alternative != ReducedName::Same && reductions.reduces(by))
+        else {
             return Some(resolved(id));
-        }
-        match effects.loaded[id.idx()].power_saver {
-            PowerSaverName::Same => Some(resolved(id)),
-            PowerSaverName::Nothing => None,
-            PowerSaverName::Effect(other) => {
+        };
+        match alternative {
+            ReducedName::Same => unreachable!("only an alternative of its own is found"),
+            ReducedName::Nothing => None,
+            ReducedName::Effect(other) => {
                 let other_id = *effects.ids.get(&other).unwrap_or_else(|| {
                     panic!(
-                        "no effect is loaded under `{}`, the power-saver alternative of `{}`",
+                        "no effect is loaded under `{}`, the {} alternative of `{}`",
                         other.as_str(),
+                        by.name(),
                         name.name()
                     )
                 });
@@ -243,16 +297,18 @@ pub(crate) mod internals {
     use crate::effect::effect_kind::EffectKind;
     use crate::effect::effect_name::EffectName;
     use crate::effect::effect_params::EffectParams;
-    use crate::effect::effect_registry::{EffectRegistry, PowerSaverName};
+    use crate::effect::effect_registry::{EffectRegistry, ReducedBy, ReducedName};
 
     impl EffectRegistry {
         /// The power-saver alternative loaded under `name`; `None` when nothing is loaded.
         pub(crate) fn power_saver_of<U: EffectParams, K: EffectKind>(
             &self,
             name: EffectName<U, K>,
-        ) -> Option<PowerSaverName> {
+        ) -> Option<ReducedName> {
             let effects = self.effects.borrow();
-            effects.get(name.inline()).map(|loaded| loaded.power_saver)
+            effects
+                .get(name.inline())
+                .map(|loaded| loaded.alternatives[ReducedBy::Power as usize])
         }
     }
 }

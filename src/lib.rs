@@ -258,7 +258,7 @@ pub use driver::locator::{Found, Locate, Locator};
 pub use effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
 pub use effect::effect_name::EffectName;
 pub use effect::effect_params::{EffectParam, EffectParams, ParamType, ParamValue};
-pub use effect::effect_source::{EffectSource, PowerSaverPaint};
+pub use effect::effect_source::{EffectSource, ReducedPaint};
 pub use effect::error::{EffectError, EntryMismatch, ParamMismatch};
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;

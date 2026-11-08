@@ -47,7 +47,6 @@ use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::text;
@@ -201,7 +200,20 @@ impl PaintSink for ComposeSession<'_> {
             return;
         };
         // Listed before it is ordered, so its own paint is not among what it shares a break past.
-        let row = self.list_pane(visible, p.ticket, p.backdrop);
+        let scale = self.composer.transform.physical_scale();
+        let backdrop = p.backdrop;
+        let row = LutRow(self.list_pane(visible, p.ticket, |source| BackdropRow {
+            capture: p.ticket.capture,
+            reads: p.ticket.capture.footprint.into(),
+            lens: backdrop.lens().map(|lens| Lens {
+                bezel: lens.bezel * scale,
+                thickness: lens.thickness * scale,
+                ..lens
+            }),
+            max_luminance: backdrop.max_luminance(),
+            min_luminance: backdrop.min_luminance(),
+            source,
+        }));
         self.ordering().order(Lane::Quad, visible);
         self.push_quad(&quad, &packed, row);
     }
@@ -410,14 +422,32 @@ impl PaintSink for ComposeSession<'_> {
             physical.max() + fringe,
             self.out.display.physical,
         );
-        if self
-            .ordering()
-            .admit(Lane::Tier(PaintTier::Effect), urect)
-            .is_none()
-        {
+        let Some(visible) = self.ordering().cull(urect) else {
             return;
-        }
+        };
         let scale = self.composer.transform.physical_scale();
+        // A pane is listed before it is ordered, so its own paint is not among what it shares a
+        // break past.
+        let pane = match p.pane {
+            Some(pane) => {
+                // Inside the capture by half a pixel, so a read at the window's edge blends no
+                // texel past it.
+                let reads = physical
+                    .inflated(pane.reach * scale)
+                    .clamp_to(Rect::from(pane.ticket.capture.footprint).deflated(0.5));
+                self.list_pane(visible, pane.ticket, |source| BackdropRow {
+                    capture: pane.ticket.capture,
+                    reads,
+                    lens: None,
+                    max_luminance: f32::from(half::f16::MAX),
+                    min_luminance: 0.0,
+                    source,
+                })
+            }
+            None => 0,
+        };
+        self.ordering()
+            .order(Lane::Tier(PaintTier::Effect), visible);
         self.out.effects.push(EffectDrawRow {
             id: p.effect,
             images: p.images,
@@ -428,6 +458,7 @@ impl PaintSink for ComposeSession<'_> {
                 opacity: p.opacity,
                 scale,
                 params: p.params.start,
+                pane,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -589,33 +620,23 @@ impl ComposeSession<'_> {
         });
     }
 
-    /// List the pane of `ticket` and `backdrop`, seen at `visible`, at the source paint order
-    /// gives it ([`Ordering::pane_source`]); its row is the quad's `fill_lut_row`.
+    /// List the pane of `ticket`, seen at `visible`, as `row` makes it from the source paint
+    /// order gives it ([`Ordering::pane_source`]); its index is a pane quad's `fill_lut_row` and a
+    /// backdrop effect instance's `pane`.
     fn list_pane(
         &mut self,
         visible: URect,
         ticket: PaneTicket,
-        backdrop: LoweredBackdrop,
-    ) -> LutRow {
+        row: impl FnOnce(PaneSource) -> BackdropRow,
+    ) -> u32 {
         debug_assert!(
             ticket.capture.footprint.union(visible) == ticket.capture.footprint,
             "a pane's footprint holds what it shows"
         );
         let source = self.ordering().pane_source(ticket);
-        let scale = self.composer.transform.physical_scale();
-        let row = LutRow(self.out.backdrops.len() as u32);
-        self.out.backdrops.push(BackdropRow {
-            capture: ticket.capture,
-            lens: backdrop.lens().map(|lens| Lens {
-                bezel: lens.bezel * scale,
-                thickness: lens.thickness * scale,
-                ..lens
-            }),
-            max_luminance: backdrop.max_luminance(),
-            min_luminance: backdrop.min_luminance(),
-            source,
-        });
-        row
+        let idx = self.out.backdrops.len() as u32;
+        self.out.backdrops.push(row(source));
+        idx
     }
 
     /// Clear fold: an opaque, solid, sharp, unclipped quad covering the viewport is

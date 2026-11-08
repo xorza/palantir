@@ -2,13 +2,15 @@
 
 use std::fmt::Debug;
 
+use crate::effect::effect_kind::KindId;
 use crate::primitives::identity::effect_id::EffectId;
 
-/// A validated effect module: the complete WGSL palantir compiles, and how many images each draw
-/// binds, which picks its pipeline layout.
+/// A validated effect module: the complete WGSL palantir compiles, its kind and how many images
+/// each draw binds, which pick its pipeline layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct EffectModule {
     pub(crate) text: String,
+    pub(crate) kind: KindId,
     pub(crate) image_slots: u8,
 }
 

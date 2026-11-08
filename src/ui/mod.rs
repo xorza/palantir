@@ -39,6 +39,7 @@ use crate::display::user_scale::UserScale;
 use crate::effect::effect_kind::EffectKind;
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
+use crate::effect::effect_registry::Reductions;
 use crate::effect::effect_source::EffectSource;
 use crate::effect::error::EffectError;
 use crate::gpu::gpu_paint::gpu_views::RecordedView;
@@ -351,6 +352,15 @@ impl Ui {
     #[inline]
     pub const fn is_power_reduced(&self) -> bool {
         self.frame_runtime.power.is_reduced()
+    }
+
+    /// What the system asks to reduce this frame, which picks an effect's alternative.
+    fn reductions(&self) -> Reductions {
+        Reductions {
+            transparency: self.frame_runtime.transparency,
+            motion: self.resources.settings().motion(),
+            power: self.frame_runtime.power,
+        }
     }
 
     /// Whether the system's power-saver mode is on, whatever the preference: macOS Low Power Mode,
@@ -769,7 +779,7 @@ impl Ui {
     /// alternative it paints in place of it.
     #[track_caller]
     pub fn add_shape(&mut self, mut shape: impl Lower) {
-        shape.resolve(self.resources.effects(), self.frame_runtime.power);
+        shape.resolve(self.resources.effects(), self.reductions());
         self.forest.add_shape(shape);
     }
 
@@ -831,7 +841,7 @@ impl Ui {
     ///
     /// # Panics
     ///
-    /// When `name`, or the power-saver alternative `source` names, was loaded before with another
+    /// When `name`, or an alternative `source` names, was loaded before with another
     /// parameter type or kind, or the alternative with other image slots.
     #[inline]
     #[track_caller]
@@ -961,7 +971,7 @@ impl Ui {
             S::TURNS || animation.channel.turn.is_none(),
             "{shape:?} does not turn: an effect's coverage is computed in its unturned rect"
         );
-        shape.resolve(self.resources.effects(), self.frame_runtime.power);
+        shape.resolve(self.resources.effects(), self.reductions());
         let animation = if self.is_motion_reduced() {
             animation.reduced()
         } else {

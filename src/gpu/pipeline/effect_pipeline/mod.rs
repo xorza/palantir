@@ -7,7 +7,8 @@ use std::mem::offset_of;
 
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
-use crate::effect::contract::IMAGES_GROUP;
+use crate::effect::contract::{IMAGES_GROUP, PANES_GROUP};
+use crate::effect::effect_kind::KindId;
 use crate::effect::effect_store::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
@@ -25,12 +26,15 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 
 /// The layouts every effect's pipeline builds over: the parameter words at group 0, the images
-/// at [`IMAGES_GROUP`] for an effect that binds any, and the immediates every pipeline declares.
+/// at [`IMAGES_GROUP`] for an effect that binds any, a backdrop effect's pane results at
+/// [`PANES_GROUP`], and the immediates every pipeline declares.
 #[derive(Debug)]
 pub(crate) struct EffectLayouts {
     group: wgpu::BindGroupLayout,
-    /// At each count of image slots, from 0.
-    pipelines: [wgpu::PipelineLayout; MAX_IMAGE_SLOTS as usize + 1],
+    /// A color effect's, at each count of image slots from 0.
+    color: [wgpu::PipelineLayout; MAX_IMAGE_SLOTS as usize + 1],
+    /// A backdrop effect's, at each count of image slots from 0.
+    backdrop: [wgpu::PipelineLayout; MAX_IMAGE_SLOTS as usize + 1],
 }
 
 impl EffectLayouts {
@@ -50,15 +54,38 @@ impl EffectLayouts {
                     count: None,
                 }],
             });
-        let pipelines = array::from_fn(|slots| match u8::try_from(slots).unwrap() {
-            0 => pipeline_recipe::pipeline_layout(gpu, "palantir.effect.pl", &[Some(&group)]),
-            slots => pipeline_recipe::pipeline_layout(
+        let images = |slots: usize| match u8::try_from(slots).unwrap() {
+            0 => None,
+            slots => Some(binding.images_layout(slots)),
+        };
+        let color = array::from_fn(|slots| {
+            pipeline_recipe::pipeline_layout(
                 gpu,
-                "palantir.effect.images.pl",
-                &[Some(&group), Some(binding.images_layout(slots))],
-            ),
+                "palantir.effect.pl",
+                &[Some(&group), images(slots)],
+            )
         });
-        Self { group, pipelines }
+        let backdrop = array::from_fn(|slots| {
+            pipeline_recipe::pipeline_layout(
+                gpu,
+                "palantir.effect.backdrop.pl",
+                &[Some(&group), images(slots), Some(binding.panes())],
+            )
+        });
+        Self {
+            group,
+            color,
+            backdrop,
+        }
+    }
+
+    /// The pipeline layout of an effect of `module`'s kind and image slots.
+    fn pipeline(&self, module: &EffectModule) -> &wgpu::PipelineLayout {
+        let layouts = match module.kind {
+            KindId::Color => &self.color,
+            KindId::Backdrop => &self.backdrop,
+        };
+        &layouts[usize::from(module.image_slots)]
     }
 }
 
@@ -80,7 +107,7 @@ const BLEND: wgpu::BlendState = wgpu::BlendState {
     },
 };
 
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 4] = [
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 5] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Float32x4,
@@ -102,6 +129,11 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 4] = [
         wgpu::VertexFormat::Uint32,
         offset_of!(EffectInstance, params),
     ),
+    vertex_attr(
+        4,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(EffectInstance, pane),
+    ),
 ];
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
@@ -110,8 +142,8 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
     &INSTANCE_ATTRS,
 );
 
-/// The effect at `idx`, from `module`, over the layout of its image slots, against `format`, with
-/// its rounded-clip twin.
+/// The effect at `idx`, from `module`, over the layout of its kind and image slots, against
+/// `format`, with its rounded-clip twin.
 pub(crate) fn build(
     gpu: &Gpu,
     layouts: &EffectLayouts,
@@ -132,12 +164,7 @@ pub(crate) fn build(
         vertex_buffers: &[Some(INSTANCE_LAYOUT)],
         topology: wgpu::PrimitiveTopology::TriangleStrip,
         blend: Some(BLEND),
-        ..PipelineRecipe::color(
-            &label,
-            &shader,
-            &layouts.pipelines[usize::from(module.image_slots)],
-            format,
-        )
+        ..PipelineRecipe::color(&label, &shader, layouts.pipeline(module), format)
     };
     let mut variant = StencilVariant::NONE;
     variant.ensure(gpu, StencilMode::Off, &recipe);
@@ -160,6 +187,8 @@ pub(crate) struct EffectPipeline {
     /// What `pipelines` were copied at; `None` before the first upload.
     copied: Option<PipelinesCopy>,
     pipelines: Vec<StencilVariant>,
+    /// Each effect's kind, at its id, copied with `pipelines`.
+    kinds: Vec<KindId>,
 }
 
 /// The format and store revision an [`EffectPipeline`]'s pipelines were copied at.
@@ -169,13 +198,15 @@ struct PipelinesCopy {
     revision: u64,
 }
 
-/// One batch of effect draws: the frame's per-draw effect column, this batch's slice of it, and
-/// the groups the draws bind their images through.
+/// One batch of effect draws: the frame's per-draw effect column, this batch's slice of it, the
+/// groups the draws bind their images through, and the group a backdrop effect reads its pane's
+/// result through, `None` before the first frame with a pane.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
     pub(crate) ids: &'a [EffectId],
     pub(crate) items: Span,
     pub(crate) groups: &'a EffectImageGroups,
+    pub(crate) panes: Option<&'a wgpu::BindGroup>,
 }
 
 /// What one frame uploads: each draw's instance and the span of its images in `textures`, the
@@ -199,6 +230,7 @@ impl EffectPipeline {
             group_capacity: 0,
             copied: None,
             pipelines: Vec::new(),
+            kinds: Vec::new(),
         }
     }
 
@@ -254,6 +286,9 @@ impl EffectPipeline {
             if let Some(pipelines) = read.attached.for_format(upload.format) {
                 self.pipelines.extend(pipelines.cloned());
             }
+            self.kinds.clear();
+            self.kinds
+                .extend(read.modules.iter().map(|module| module.kind));
             self.copied = Some(copy);
         }
     }
@@ -264,7 +299,12 @@ impl EffectPipeline {
         &'a self,
         rec: &mut PassRecorder<'a>,
         stencil: StencilMode,
-        EffectBatch { ids, items, groups }: EffectBatch<'_>,
+        EffectBatch {
+            ids,
+            items,
+            groups,
+            panes,
+        }: EffectBatch<'_>,
     ) {
         let group = self
             .group
@@ -285,6 +325,10 @@ impl EffectPipeline {
             rec.group(0, group);
             if let Some(images_group) = images_group {
                 rec.group_once(IMAGES_GROUP, images_group);
+            }
+            if self.kinds[effect.idx()] == KindId::Backdrop {
+                let panes = panes.expect("a frame with a backdrop effect prepares its panes");
+                rec.group_once(PANES_GROUP, panes);
             }
             rec.draw(0..4, run.instances.u32_range());
         }

@@ -37,4 +37,7 @@ pub(crate) struct EffectInstance {
     pub(crate) scale: f32,
     /// The word the instance's parameters start at in the window's parameter buffer.
     pub(crate) params: u32,
+    /// A backdrop effect's row in the frame's panes, the slot its result reads; 0 for a color
+    /// effect, whose stages read none.
+    pub(crate) pane: u32,
 }

@@ -93,6 +93,7 @@ fn frame(
             };
             BackdropRow {
                 capture: ticket.capture,
+                reads: ticket.capture.footprint.into(),
                 lens: None,
                 max_luminance: 65504.0,
                 min_luminance: 0.0,
