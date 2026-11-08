@@ -361,6 +361,11 @@ impl OffscreenHost {
     /// The frame runs at the host's [system scale](Self::set_system_scale); the app's scale
     /// multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200%
     /// render).
+    ///
+    /// The caller paces the frames, as the report asks: the next when
+    /// [`repaint_requested`](FrameReport::repaint_requested) or
+    /// [`repaint_at`](FrameReport::repaint_at) says, and no sooner than
+    /// [`earliest_repaint_at`](FrameReport::earliest_repaint_at) while power is reduced.
     pub fn frame(&mut self, target: RenderTarget<'_>, app: &mut impl App) -> FrameReport {
         let now = self.time.now();
         self.window.paint_frame(

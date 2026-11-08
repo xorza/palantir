@@ -846,6 +846,7 @@ FrameReport
     struct FrameReport: Clone, Debug, PartialEq
         pub repaint_requested: bool
         pub repaint_at: Option<Duration>
+        pub earliest_repaint_at: Option<Duration>
         pub const fn paint(&self) -> FramePaint
 
 Gpu

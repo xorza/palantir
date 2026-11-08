@@ -337,9 +337,11 @@ impl Ui {
 
     /// Whether this frame runs with power use reduced: [`UiPreferences::power`] resolved against
     /// [`Self::system_power_reduced`] at the frame's start, so no frame mixes two, and a move
-    /// records every window again. An app reads it to swap to cheaper paint, as Apple asks an app
-    /// to reduce its activity in Low Power Mode
-    /// (<https://developer.apple.com/documentation/foundation/processinfo/islowpowermodeenabled>).
+    /// records every window again. Then every host starts a frame at most at 30 Hz, on whole
+    /// refresh periods, input frames included
+    /// ([`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at)), and an app
+    /// reads it to swap to cheaper paint, as Apple asks an app to reduce its activity in Low Power
+    /// Mode (<https://developer.apple.com/documentation/foundation/processinfo/islowpowermodeenabled>).
     /// App-global.
     #[inline]
     pub const fn is_power_reduced(&self) -> bool {

@@ -274,3 +274,55 @@ fn wakes_past_the_cap_fold_without_firing_late() {
         "rides the last, which fires before it"
     );
 }
+
+/// The reduced-power grid at 60 Hz, interval 33_333_333 ns and slack 8_333_333 ns: a first frame
+/// at 10 ms holds the next slot an interval on. A frame at the slot, or a slack before it, takes
+/// it, so the next slot is two intervals from the first frame. A frame 1 ns sooner than that, or
+/// one past the slot, starts the grid again at its own time. Full power holds no slot.
+#[test]
+fn a_frame_takes_its_reduced_power_slot_within_the_slack() {
+    let ns = Duration::from_nanos;
+    let interval = ns(33_333_333);
+    let slack = ns(8_333_333);
+    let display = Display {
+        refresh_millihertz: Some(60_000),
+        ..Display::default()
+    };
+    let first = Duration::from_millis(10);
+    let slot = first + interval;
+    let at = |held: Option<Duration>, time: Duration, power: Reduction| {
+        let mut runtime = FrameRuntime {
+            stamp: FrameStamp::new(display, time),
+            power,
+            earliest_repaint_at: held,
+            ..FrameRuntime::default()
+        };
+        runtime.take_power_slot();
+        runtime.earliest_repaint_at
+    };
+    for (label, held, time, want) in [
+        ("first", None, first, Some(slot)),
+        ("at the slot", Some(slot), slot, Some(slot + interval)),
+        (
+            "a slack early",
+            Some(slot),
+            slot - slack,
+            Some(slot + interval),
+        ),
+        (
+            "past the slack",
+            Some(slot),
+            slot - slack - ns(1),
+            Some(slot - slack - ns(1) + interval),
+        ),
+        (
+            "late",
+            Some(slot),
+            slot + ns(1),
+            Some(slot + ns(1) + interval),
+        ),
+    ] {
+        assert_eq!(at(held, time, Reduction::Reduced), want, "{label}");
+    }
+    assert_eq!(at(Some(slot), slot, Reduction::Full), None, "full power");
+}

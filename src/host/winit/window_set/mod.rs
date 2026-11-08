@@ -6,14 +6,16 @@ use std::slice;
 use std::time::Instant;
 use winit::window::WindowId;
 
-/// What a window set's pacing reads and moves of each window: its next frame, and the redraw a
-/// frame due now asks the platform for. A trait so the pacing runs on a test's windows and clock,
-/// with no winit window or event loop. Refused: the next frames moved into a column of the set,
-/// which every window method that asks for a frame would have had to hand back.
+/// What a window set's pacing reads and moves of each window: its next frame, the instant before
+/// which it starts none, and the redraw a frame due now asks the platform for. A trait so the
+/// pacing runs on a test's windows and clock, with no winit window or event loop. Refused: the next
+/// frames moved into a column of the set, which every window method that asks for a frame would
+/// have had to hand back.
 pub(super) trait Paced {
     fn next(&self) -> FramePresent;
     fn set_next(&mut self, next: FramePresent);
     fn request_redraw(&self);
+    fn earliest_redraw_at(&self) -> Option<Instant>;
 }
 
 /// The host's live windows, in registration order, addressed by winit [`WindowId`] on the event path and by
@@ -117,12 +119,16 @@ impl<W: Paced> WindowSet<W> {
         }
     }
 
-    /// Ask a redraw of every window due at `now`, and return the nearest deadline ahead.
+    /// Ask a redraw of every window due at `now`, and return the nearest deadline ahead. A
+    /// window's next frame waits out its reduced-power interval first, whatever made it due.
     pub(super) fn wake(&self, now: Instant) -> Option<Instant> {
         earliest_wake(
-            self.windows
-                .iter()
-                .map(|win| (win, win.next().resolve(now))),
+            self.windows.iter().map(|win| {
+                (
+                    win,
+                    win.next().held_until(win.earliest_redraw_at()).resolve(now),
+                )
+            }),
             Paced::request_redraw,
         )
     }

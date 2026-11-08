@@ -43,6 +43,12 @@ pub struct FrameReport {
     pub repaint_requested: bool,
     /// Absolute Ui-time deadline at which the host should wake and run another frame; `None` for no scheduled wake. Set by [`crate::Ui::request_repaint_after`] and by a paint animation's next step.
     pub repaint_at: Option<Duration>,
+    /// Absolute Ui-time before which the host starts no next frame, whatever asks for it; `None`
+    /// while power is full ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)). It falls on a
+    /// grid of whole refresh periods at or above 1/30 s, so frames run at most at 30 Hz and land on
+    /// a vsync. A host on a real clock may start the frame up to half a refresh period sooner, or
+    /// 1/240 s where the rate is unknown, so it presents at the vsync of that time.
+    pub earliest_repaint_at: Option<Duration>,
     pub(crate) plan: Option<RenderPlan>,
     /// Which passes ran, see [`FrameProcessing`]; `WindowFrames::frame` asserts it against the paint outcome and tests read it.
     pub(crate) processing: FrameProcessing,
@@ -100,6 +106,7 @@ mod tests {
             let report = FrameReport {
                 repaint_requested: false,
                 repaint_at: None,
+                earliest_repaint_at: None,
                 plan,
                 processing: FrameProcessing::SingleLayout,
             };

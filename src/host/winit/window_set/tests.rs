@@ -6,10 +6,12 @@ use crate::host::winit::window_set::{Paced, WindowSet, WindowSlot};
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
-/// A window that keeps its next frame and counts the redraws the pacing asks of it.
+/// A window that keeps its next frame and its reduced-power hold, and counts the redraws the
+/// pacing asks of it.
 #[derive(Debug)]
 struct FakeWindow {
     next: FramePresent,
+    earliest_redraw_at: Option<Instant>,
     redraws: Cell<u32>,
 }
 
@@ -25,6 +27,10 @@ impl Paced for FakeWindow {
     fn request_redraw(&self) {
         self.redraws.set(self.redraws.get() + 1);
     }
+
+    fn earliest_redraw_at(&self) -> Option<Instant> {
+        self.earliest_redraw_at
+    }
 }
 
 fn set(nexts: impl IntoIterator<Item = FramePresent>) -> WindowSet<FakeWindow> {
@@ -33,6 +39,7 @@ fn set(nexts: impl IntoIterator<Item = FramePresent>) -> WindowSet<FakeWindow> {
             .into_iter()
             .map(|next| FakeWindow {
                 next,
+                earliest_redraw_at: None,
                 redraws: Cell::new(0),
             })
             .collect(),
@@ -99,6 +106,37 @@ fn a_wake_redraws_what_is_due_and_returns_the_nearest_deadline() {
         assert_eq!(windows.wake(t0), want_wake, "{label}: wake");
         assert_eq!(redrawn(&windows), want_redrawn, "{label}: redrawn");
     }
+}
+
+/// A reduced-power hold delays whatever made a window due, a follow and a deadline before it
+/// included, to the hold, and a deadline past it stays; an idle window stays idle, and a window
+/// with no hold redraws now. Each window's own next frame stays as it was, a follow a follow.
+#[test]
+fn a_reduced_power_hold_delays_each_due_frame_to_its_end() {
+    let t0 = Instant::now();
+    let presents = [
+        FramePresent::Immediate,
+        FramePresent::Follow,
+        FramePresent::At(ms(t0, 5)),
+        FramePresent::At(ms(t0, 30)),
+        FramePresent::Idle,
+        FramePresent::Immediate,
+    ];
+    let held = || {
+        let mut windows = set(presents);
+        for win in windows.iter_mut().take(5) {
+            win.earliest_redraw_at = Some(ms(t0, 10));
+        }
+        windows
+    };
+    let windows = held();
+    assert_eq!(windows.wake(t0), Some(ms(t0, 10)));
+    assert_eq!(redrawn(&windows), [5], "only the window with no hold");
+    assert_eq!(nexts(&windows), presents, "the next frames stay");
+
+    let windows = held();
+    assert_eq!(windows.wake(ms(t0, 10)), Some(ms(t0, 30)));
+    assert_eq!(redrawn(&windows), [0, 1, 2, 5], "the hold ended");
 }
 
 /// A frame as a window runs one: it sets its own next frame and answers whether it ran the app.

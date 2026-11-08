@@ -13,6 +13,7 @@ use winit::event::WindowEvent;
 use winit::window::Window as WinitWindow;
 
 use crate::common::platform::PLATFORM;
+use crate::common::time;
 use crate::common::tracy::{self, FrameSet};
 use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
@@ -101,6 +102,10 @@ pub(super) struct Window {
     /// The device pixel ratio winit reports; the drawn scale is [`Self::effective_scale`].
     pub(super) system_scale: SystemScale,
     pub(super) next: FramePresent,
+    /// The wall-clock instant before which the window starts no frame, from the last frame's
+    /// [`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at) less a
+    /// [`time::reduced_power_slack`]; `None` while power is full.
+    earliest_redraw_at: Option<Instant>,
     pub(super) close_requested: bool,
     levels: AppliedLevels,
     visibility: Visibility,
@@ -166,6 +171,7 @@ impl Window {
             frames,
             system_scale,
             next: FramePresent::Immediate,
+            earliest_redraw_at: None,
             close_requested: false,
             levels: AppliedLevels::new(decorations),
             visibility: Visibility::default(),
@@ -326,7 +332,8 @@ impl Window {
 
     /// Run one application/UI frame, acquire the swapchain texture, present it, then
     /// drain window-host output into `commands`. Stores the schedule on [`Self::next`].
-    /// Returns the frame's summary, or `None` when the hidden window skipped it.
+    /// Returns the frame's summary, or `None` when the hidden window skipped it or the
+    /// reduced-power interval held it.
     pub(super) fn frame<T: App>(
         &mut self,
         core: &mut HostCore,
@@ -334,6 +341,16 @@ impl Window {
         commands: &mut WindowCommands,
     ) -> Option<RanFrame> {
         tracy::zone!("Window::frame");
+
+        // A redraw the platform asks for inside the reduced-power interval, as an expose or a live
+        // resize does: the frame it owes runs at the slot, as every other cause's does.
+        if self
+            .earliest_redraw_at
+            .is_some_and(|at| Instant::now() < at)
+        {
+            self.next = self.next.owed();
+            return None;
+        }
 
         let facts = self.system_facts();
         if facts.is_normal() {
@@ -383,6 +400,11 @@ impl Window {
                 .remote
                 .after_frame(self.frames.ui(), &frame.report, app.is_busy());
             let ran_app = frame.report.processing.ran_app();
+            let slack = time::reduced_power_slack(facts.refresh_millihertz);
+            self.earliest_redraw_at = frame
+                .report
+                .earliest_repaint_at
+                .map(|slot| self.clock.deadline(slot.saturating_sub(slack)));
             self.next = self.present(device, frame);
             Some(RanFrame { summary, ran_app })
         };
@@ -530,6 +552,10 @@ impl Paced for Window {
     fn request_redraw(&self) {
         self.window.request_redraw();
     }
+
+    fn earliest_redraw_at(&self) -> Option<Instant> {
+        self.earliest_redraw_at
+    }
 }
 
 /// A frame a window ran: its summary, and whether it ran the app, which the other windows follow.
@@ -573,6 +599,29 @@ impl FramePresent {
         match self.resolve(now) {
             Self::Immediate => Self::Immediate,
             Self::At(_) | Self::Idle | Self::Follow => Self::Follow,
+        }
+    }
+
+    /// This frame as the reduced-power interval holds it: due no sooner than
+    /// `earliest_redraw_at`. Held apart from the window's own next frame, which keeps whether it is
+    /// a [`Self::Follow`].
+    pub(super) fn held_until(self, earliest_redraw_at: Option<Instant>) -> Self {
+        let Some(at) = earliest_redraw_at else {
+            return self;
+        };
+        match self {
+            Self::Immediate | Self::Follow => Self::At(at),
+            Self::At(due) => Self::At(due.max(at)),
+            Self::Idle => Self::Idle,
+        }
+    }
+
+    /// This next frame once the platform asked for a redraw: due now, as it owes the platform a
+    /// frame, and a follow stays one, so the frame asks no other window to follow it.
+    pub(super) const fn owed(self) -> Self {
+        match self {
+            Self::Follow => Self::Follow,
+            Self::Immediate | Self::At(_) | Self::Idle => Self::Immediate,
         }
     }
 

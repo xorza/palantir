@@ -11,15 +11,10 @@ API, so each batch also runs `cargo drive surface`.
 
 ## Power-saver preference
 
-The preference itself landed with batch 1: its decisions are in `AGENTS.md` ("Reduced power
-follows the OS power-saver mode") and in the doc of `Ui::is_power_reduced`.
+The preference landed with batch 1 and the 30 Hz limit with batch 2: their decisions are in
+`AGENTS.md` ("Reduced power follows the OS power-saver mode", "Reduced power starts a frame at
+most at 30 Hz"), the doc of `Ui::is_power_reduced` and that of `FrameRuntime::take_power_slot`.
 
-- **Every frame runs at most at 30 Hz while power is reduced**, input frames included, as
-  WebKit limits its rendering update in Low Power Mode (WebKit bug 215745). The interval is the
-  smallest whole number of refresh periods at or above 1/30 s, so each frame lands on a vsync:
-  every 4th at 120 Hz, every 5th at 144 Hz. Refused: decorative motion alone, which saves
-  nothing on a frame that input asks for; no limit, which saves nothing for an app with no
-  fallbacks.
 - **The winit host reads the mode with its own platform code**, beside `mundy`, which reads no
   power state. Linux reads the portal over `zbus` and reads the first value itself (GLib #2481
   missed it); macOS reads `NSProcessInfo` through `objc2-foundation`; Windows reads
@@ -127,12 +122,10 @@ Each batch ends green on the gate, `cargo visual` where it paints, and `cargo dr
 
 `UiPreferences::power`, resolved once at each frame's start. A move records every window again.
 
-### 2. The 30 Hz limit
+### 2. The 30 Hz limit — done
 
-- While power is reduced, no frame starts sooner than the smallest whole number of refresh
-  periods at or above 1/30 s after the last, in every host and for every cause of a frame.
-- Tests on the stepped clock: the interval at 60, 120 and 144 Hz (2, 4 and 5 periods), and input
-  that arrives inside the interval paints at its end.
+`FrameReport::earliest_repaint_at`, a slot on a grid of whole refresh periods; the winit host and
+the harness hold every frame to it.
 
 ### 3. The winit host reads the mode
 
@@ -164,7 +157,7 @@ Each batch ends green on the gate, `cargo visual` where it paints, and `cargo dr
 ### 6. Effect motion
 
 - `Still`, `Once`, `Loop` and steps; encode-time sampling on paint-only frames; wakes; reduced
-  motion; the power limit from batch 2.
+  motion; the power limit from batch 2 (`FrameReport::earliest_repaint_at`).
 - Tests: the time each frame passes, the wrap at the period, no wake when still, the reduced-
   motion cases.
 

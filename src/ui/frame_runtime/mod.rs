@@ -123,6 +123,9 @@ pub(crate) struct FrameRuntime {
     pub(super) transparency: Reduction,
     /// The power use this frame runs at, resolved once at its start so a frame never mixes two.
     pub(super) power: Reduction,
+    /// The Ui time of the next frame's slot on the reduced-power grid, which this frame's report
+    /// hands the host; `None` while power is full.
+    pub(super) earliest_repaint_at: Option<Duration>,
 }
 
 impl FrameRuntime {
@@ -249,6 +252,28 @@ impl FrameRuntime {
         self.dt = raw_dt;
         self.stamp.time = now;
         self.render_frame_id += 1;
+    }
+
+    /// Take this frame's slot on the reduced-power grid, and hold the next a
+    /// [`time::reduced_power_interval`] after it, so no frame starts sooner, as a game loop's frame
+    /// limiter schedules each frame from the last one's target. A frame at most a
+    /// [`time::reduced_power_slack`] before the held slot takes it, so the grid keeps whole refresh
+    /// periods through a timer's jitter. A later frame starts the grid again at its own time, as the
+    /// limiter drops its schedule after a stall, and so does a sooner one, which a host that ignored
+    /// the slot ran, so the grid never runs ahead of the clock. Refused: spacing each frame from the
+    /// last one's start, which a frame woken a slack early to meet its vsync shortens: 1.5 periods
+    /// at 60 Hz, 40 Hz where the swapchain does not block.
+    pub(super) fn take_power_slot(&mut self) {
+        let now = self.stamp.time;
+        let refresh = self.stamp.display.refresh_millihertz;
+        let slack = time::reduced_power_slack(refresh);
+        self.earliest_repaint_at = self.power.is_reduced().then(|| {
+            let slot = self
+                .earliest_repaint_at
+                .filter(|&held| (held.saturating_sub(slack)..=held).contains(&now))
+                .unwrap_or(now);
+            slot + time::reduced_power_interval(refresh)
+        });
     }
 
     /// No frame has been stamped yet: no previous display to compare and no

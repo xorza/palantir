@@ -255,6 +255,7 @@ impl WindowFrames {
         self.ui.advance_theme();
         self.ui.frame_runtime.transparency = self.ui.resources.settings().transparency();
         self.ui.frame_runtime.power = self.ui.resources.settings().power();
+        self.ui.frame_runtime.take_power_slot();
         self.ui
             .frame_runtime
             .tick_text_clock(self.ui.resources.text());
@@ -378,6 +379,7 @@ impl WindowFrames {
         FrameReport {
             repaint_requested: self.ui.frame_runtime.repaint_requested(),
             repaint_at: self.ui.frame_runtime.next_wake(),
+            earliest_repaint_at: self.ui.frame_runtime.earliest_repaint_at,
             plan: damage.map(|damage| RenderPlan {
                 clear: baseline.clear,
                 damage,

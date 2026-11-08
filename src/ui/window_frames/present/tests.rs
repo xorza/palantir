@@ -413,6 +413,7 @@ mod output_validity_tests {
         FrameReport {
             repaint_requested: false,
             repaint_at: None,
+            earliest_repaint_at: None,
             plan,
             processing: FrameProcessing::SingleLayout,
         }

@@ -74,7 +74,9 @@ fn due_deadlines_resolve_to_immediate_and_future_ones_stand() {
 
 /// Another window's frame makes every next frame due now: one due for itself stays its own, and
 /// leads, so the others follow it; any other turns into a follow, which leads none, so two
-/// windows stop after one follow each. A deadline still ahead folds in.
+/// windows stop after one follow each. A deadline still ahead folds in. A redraw the platform
+/// asked for, which the reduced-power interval held, owes a frame: every next frame is due now, a
+/// follow still a follow.
 #[test]
 fn a_frame_of_another_window_is_followed_and_a_follow_leads_none() {
     let now = Instant::now();
@@ -88,6 +90,14 @@ fn a_frame_of_another_window_is_followed_and_a_follow_leads_none() {
         (FramePresent::Follow, FramePresent::Follow),
     ] {
         assert_eq!(before.followed(now), after, "{before:?}");
+    }
+    for (before, after) in [
+        (FramePresent::Immediate, FramePresent::Immediate),
+        (FramePresent::At(future), FramePresent::Immediate),
+        (FramePresent::Idle, FramePresent::Immediate),
+        (FramePresent::Follow, FramePresent::Follow),
+    ] {
+        assert_eq!(before.owed(), after, "{before:?}");
     }
     for (present, leads) in [
         (FramePresent::Immediate, true),
@@ -285,6 +295,7 @@ fn the_schedule_follows_each_acquire_outcome() {
     let report = |repaint_requested, repaint_at| FrameReport {
         repaint_requested,
         repaint_at,
+        earliest_repaint_at: None,
         plan: None,
         processing: FrameProcessing::SingleLayout,
     };

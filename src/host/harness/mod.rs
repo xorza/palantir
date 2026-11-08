@@ -44,6 +44,10 @@
 //!     press after the frame's command key, waits for the next frame, so [`Harness::click`] is a
 //!     press frame then a release frame. [`Harness::frame`] runs the frames held input owes first
 //!     and answers from the last; [`Harness::step`] runs one.
+//! 13. **Reduced power spaces the frames.** While [`Ui::is_power_reduced`](crate::Ui::is_power_reduced)
+//!     holds, a frame starts no sooner than the last one's
+//!     [`earliest_repaint_at`](crate::FrameReport::earliest_repaint_at): the clock moves to it, so
+//!     input fed inside the interval paints at its end, as on the desktop.
 //!
 //! The input methods are a test's: each queues input, which the next frame plays, and a locator
 //! that names no one place panics. [`AgentWindow::play`](crate::AgentWindow::play), through [`Harness::session`], is a person's: it settles the window after
@@ -120,9 +124,11 @@ pub struct Harness {
     window: HeadlessWindow,
     /// How far frames run, and the window's size, held by its texture where it paints.
     paint: HarnessPaint,
-    /// Moves only on [`Self::advance`] and [`Self::at`], and the frames a [session](Self::session)'s settle and
-    /// play run.
+    /// Moves only on [`Self::advance`] and [`Self::at`], the frames a [session](Self::session)'s settle and
+    /// play run, and a frame the reduced-power interval holds (rule 13).
     time: Duration,
+    /// The last frame's [`FrameReport::earliest_repaint_at`]: the next frame starts no sooner.
+    earliest_repaint_at: Option<Duration>,
     /// Each button pressed and not released, with the press position; written only in
     /// [`Self::on_input`].
     held: [Option<PressOrigin>; PointerButton::COUNT],
@@ -212,6 +218,7 @@ impl Harness {
             window,
             paint,
             time: Duration::ZERO,
+            earliest_repaint_at: None,
             held: [None; PointerButton::COUNT],
             last_press: None,
             pace,
@@ -810,6 +817,9 @@ impl Harness {
     /// commands, and paint onto the target at [`Depth::Gpu`](crate::Depth::Gpu) while the device
     /// lives.
     fn drive(&mut self, app: &mut impl App) -> FrameReport {
+        if let Some(at) = self.earliest_repaint_at {
+            self.time = self.time.max(at);
+        }
         let now = self.time;
         let report = match &mut self.paint {
             HarnessPaint::Record { size } => {
@@ -832,6 +842,7 @@ impl Harness {
         for command in self.window.drain_commands() {
             log_window_command(&mut self.window_commands, command);
         }
+        self.earliest_repaint_at = report.earliest_repaint_at;
         report
     }
 

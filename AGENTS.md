@@ -281,6 +281,13 @@ driver serves that command alone; the drive table's `version` names it
   "on battery" alone, which overrides a person who chose no saver mode (Chrome's trigger); a
   palantir battery threshold, a rule the person never set; a three-level enum whose middle level
   only Windows reports.
+- **Reduced power starts a frame at most at 30 Hz**, input frames included, on a grid of whole
+  refresh periods so each frame lands on a vsync, as WebKit limits its rendering update in Low
+  Power Mode ([WebKit bug 215745](https://bugs.webkit.org/show_bug.cgi?id=215745)). Each frame
+  reports the next slot (`FrameReport::earliest_repaint_at`); the winit host and the harness hold
+  every cause of a frame to it, and an offscreen host's caller paces by it. Refused: decorative
+  motion alone, which saves nothing on a frame that input asks for; no limit, which saves nothing
+  for an app with no cheaper paint.
 - **The stock themes frost their floats** in `Metrics::float_material`: any `BackdropFilter`
   look under the float's tint, its luminance bound derived from each float's ink. Refused:
   opaque defaults, which made an app build its themes again to frost them and again to stop; a
