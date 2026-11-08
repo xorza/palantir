@@ -32,5 +32,5 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
     let k = 0.5 + 0.5 * sin(atan2(p.y, p.x) + input.time * TURN / LOOP_S);
     let color = mix(params.color_a, params.color_b, k);
     let a = color.a * glow;
-    return effect_add(vec4<f32>(color.rgb * a, a));
+    return effect_over(vec4<f32>(color.rgb * a, a));
 }

@@ -72,7 +72,10 @@ pub fn run() -> ExitCode {
 fn window(page: usize) -> Result<(), String> {
     WinitHost::builder(MAIN_WINDOW)
         .window(WindowConfig::new("palantir showcase").with_inner_size(Size::new(1600.0, 1000.0)))
-        .build(move |_ui, _handle| Shell::open(page))
+        .build(move |ui, _handle| {
+            ui.set_preferences(Shell::PREFERENCES);
+            Shell::open(page)
+        })
         .and_then(WinitHost::run)
         .map_err(|error| error.to_string())
 }

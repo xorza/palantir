@@ -12,6 +12,7 @@
 - disable animations and build-in backdrops on lowpower
 - make showcase have full animations, effects and disable lowpower by default
 - optimal resolve strategies
+- theme dark/light for effects
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows

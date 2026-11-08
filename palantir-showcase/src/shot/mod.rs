@@ -256,6 +256,7 @@ pub(crate) fn play(
         .depth(Depth::gpu(gpu))
         .build();
     h.set_system_color_scheme(header.scheme);
+    h.ui_mut().set_preferences(Shell::PREFERENCES);
     let mut shell = Shell::open(page);
     let mut window = h.session(&mut shell);
     let failed = |line| move |error| ShotError::Play { line, error };

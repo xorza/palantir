@@ -4,9 +4,9 @@
 
 use palantir::{
     Align, App, Block, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
-    FocusPolicy, FontFamily, Justify, Key, Palette, Panel, PopupTrigger, Scroll, Sense, Separator,
-    Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, TextWrap, Tooltip, Ui, UserScale,
-    VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
+    FocusPolicy, FontFamily, Justify, Key, Palette, Panel, PopupTrigger, Preference, Reduction,
+    Scroll, Sense, Separator, Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, TextWrap,
+    Tooltip, Ui, UiPreferences, UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
 };
 
 use crate::app_state::AppState;
@@ -414,6 +414,17 @@ pub struct Shell {
 impl Shell {
     /// How many pages the tour has.
     pub const PAGE_COUNT: usize = PAGES.len();
+
+    /// The picks the tour opens with: full motion, transparency and power use whatever the system
+    /// asks, so each page shows its effects whole until a person picks less on the rail; the
+    /// scheme follows the system. Each entry point sets them on its `Ui`, as an app sets the picks
+    /// it saved.
+    pub const PREFERENCES: UiPreferences = UiPreferences {
+        scheme: Preference::System,
+        motion: Preference::Fixed(Reduction::Full),
+        transparency: Preference::Fixed(Reduction::Full),
+        power: Preference::Fixed(Reduction::Full),
+    };
 
     /// The tour on the page at `page`, an index into `Self::page_labels`, its item scrolled into
     /// view, in the stock look.
