@@ -13,6 +13,7 @@ pub(crate) mod combo_box;
 pub(crate) mod dock;
 pub(crate) mod drag_value;
 mod duration_codec;
+pub(crate) mod error;
 pub(crate) mod expander;
 pub(crate) mod focus_ring;
 pub(crate) mod look;
@@ -41,6 +42,8 @@ pub(crate) mod toggle_kind;
 pub(crate) mod tooltip;
 
 use crate::animation::animation_spec::AnimationSpec;
+use crate::effect::effect_name::EffectName;
+use crate::effect::press_input::PressInput;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
@@ -55,6 +58,7 @@ use crate::theme::dock::DockTheme;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::focus_ring::FocusRingTheme;
+use crate::theme::look::press_effect::PressEffect;
 use crate::theme::menu::MenuTheme;
 use crate::theme::menu_bar::MenuBarTheme;
 use crate::theme::metrics::{FloatMaterial, Metrics};
@@ -101,7 +105,7 @@ use std::time::Duration;
 /// [`Self::text`] blends from that end's ambient value, so each step shows a blend of what the
 /// ends show.
 #[derive(
-    Clone, Debug, PartialEq, ::serde::Serialize, palantir_derive::Lerp, palantir_derive::TextSlots,
+    Clone, Debug, PartialEq, ::serde::Serialize, palantir_derive::Lerp, palantir_derive::ThemeWalk,
 )]
 #[animate(before_lerp = Self::share_text_axes)]
 pub struct Theme {
@@ -175,26 +179,27 @@ pub struct Theme {
     pub panel_clip: ClipMode,
 }
 
-/// One text-bearing slot of a theme, as [`TextSlots::for_each_text`] hands it over: a whole style, or a look's overrides folded onto [`Theme::text`].
+/// One text-bearing slot of a theme, as [`ThemeWalk::for_each_text`] hands it over: a whole style, or a look's overrides folded onto [`Theme::text`].
 #[derive(Debug)]
 pub(crate) enum ThemeText<'a> {
     Style(&'a mut TextStyle),
     Overrides(&'a mut TextStyleOverrides),
 }
 
-/// [`ThemeText`] to read, as [`TextSlots::each_text`] hands it over.
+/// [`ThemeText`] to read, as [`ThemeWalk::each_text`] hands it over.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ThemeTextRef<'a> {
     Style(&'a TextStyle),
     Overrides(&'a TextStyleOverrides),
 }
 
-/// A theme part's text slots: [`Self::for_each_text`] visits each, beside the same slot of
-/// `other` when one is given, in field order. [`Theme::faces_valid`], [`Theme::scale_text`] and
-/// [`Theme::share_text_axes`] drive it. A part derives it and walks every field, so each field's
-/// type implements it, a value that holds no text through `no_text_slots!`, and a field of a new
-/// type fails to compile until its type says whether it holds text.
-pub(crate) trait TextSlots {
+/// A theme part's text and press slots: [`Self::for_each_text`] visits each text slot, beside the
+/// same slot of `other` when one is given, and [`Self::each_press`] each press slot, in field
+/// order. [`Theme::faces_valid`], [`Theme::scale_text`], [`Theme::share_text_axes`] and
+/// [`Theme::press_effects`] drive it. A part derives it and walks every field, so each field's
+/// type implements it, a value that holds neither through `no_theme_walk!`, and a field of a new
+/// type fails to compile until its type says what it holds.
+pub(crate) trait ThemeWalk {
     /// Each text slot, in field order, to read.
     fn each_text<F>(&self, f: &mut F)
     where
@@ -203,12 +208,21 @@ pub(crate) trait TextSlots {
     fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
     where
         F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>);
+
+    /// Each press slot, in field order, to read ([`Theme::press_effects`]); a value that holds
+    /// none visits nothing.
+    #[inline]
+    fn each_press<F>(&self, _: &mut F)
+    where
+        F: FnMut(&PressEffect),
+    {
+    }
 }
 
-/// A walk that visits nothing, for each value type that holds no text slot.
-macro_rules! no_text_slots {
+/// A walk that visits nothing, for each value type that holds no text or press slot.
+macro_rules! no_theme_walk {
     ($($ty:ty),* $(,)?) => {$(
-        impl TextSlots for $ty {
+        impl ThemeWalk for $ty {
             #[inline]
             fn each_text<F>(&self, _: &mut F)
             where
@@ -226,7 +240,7 @@ macro_rules! no_text_slots {
     )*};
 }
 
-no_text_slots!(
+no_theme_walk!(
     f32,
     Vec2,
     [Vec2; 3],
@@ -243,7 +257,7 @@ no_text_slots!(
 );
 
 /// A whole style.
-impl TextSlots for TextStyle {
+impl ThemeWalk for TextStyle {
     fn each_text<F>(&self, f: &mut F)
     where
         F: FnMut(ThemeTextRef<'_>),
@@ -259,8 +273,35 @@ impl TextSlots for TextStyle {
     }
 }
 
+/// A press slot, which holds no text.
+impl ThemeWalk for Option<PressEffect> {
+    #[inline]
+    fn each_text<F>(&self, _: &mut F)
+    where
+        F: FnMut(ThemeTextRef<'_>),
+    {
+    }
+
+    #[inline]
+    fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+    {
+    }
+
+    #[inline]
+    fn each_press<F>(&self, f: &mut F)
+    where
+        F: FnMut(&PressEffect),
+    {
+        if let Some(press) = self {
+            f(press);
+        }
+    }
+}
+
 /// A look's overrides, folded onto [`Theme::text`].
-impl TextSlots for TextStyleOverrides {
+impl ThemeWalk for TextStyleOverrides {
     fn each_text<F>(&self, f: &mut F)
     where
         F: FnMut(ThemeTextRef<'_>),
@@ -375,6 +416,11 @@ impl Theme {
         ] {
             *panel = material.dress(panel, ink);
         }
+    }
+
+    /// The effect each press slot names, in field order, a name once for each slot that names it.
+    pub(crate) fn press_effects(&self, mut f: impl FnMut(EffectName<PressInput>)) {
+        self.each_press(&mut |press: &PressEffect| f(press.effect));
     }
 
     /// Whether every text slot, its font sizes scaled by `factor`, makes a face the shaper accepts:

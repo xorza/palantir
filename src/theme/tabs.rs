@@ -29,7 +29,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct TabsTheme {
     /// Look pack for every other chip; a ghost by default, filled only under the pointer.
@@ -181,6 +181,7 @@ impl TabsTheme {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
                 transition: m.transition,
+                press: None,
             },
         }
     }

@@ -21,7 +21,7 @@ use crate::theme::close_shown::CloseShown;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::theme::{TextSlots, Theme, ThemeText};
+use crate::theme::{Theme, ThemeText, ThemeWalk};
 
 const RED: RgbaF32 = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
 

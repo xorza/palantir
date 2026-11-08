@@ -96,7 +96,7 @@ fn force_full_effects(ui: &mut Ui) {
 /// second, at once.
 pub(crate) fn settle_look(ui: &mut Ui, n: u32) {
     if n == 1 {
-        ui.set_theme(ColorScheme::Dark, bench_theme());
+        ui.set_theme(ColorScheme::Dark, bench_theme()).unwrap();
     }
 }
 
@@ -345,7 +345,8 @@ impl Arm {
                 transition: THEMING,
                 ..if roomy { roomy_theme() } else { bench_theme() }
             },
-        );
+        )
+        .unwrap();
     }
 
     /// The clock its frames read: the wall clock, or one the arm steps itself.

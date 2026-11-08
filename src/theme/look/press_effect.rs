@@ -1,0 +1,66 @@
+//! [`PressEffect`]: the effect a themed widget draws for each press.
+
+use std::time::Duration;
+
+use crate::effect::effect_name::EffectName;
+use crate::effect::press_input::PressInput;
+use crate::primitives::paint::color::RgbaF32;
+
+/// The effect a themed widget draws over its chrome and under its content for each press, as
+/// Compose's theme supplies its `Indication` to every clickable: the effect, the color it reads,
+/// and how long a press takes to grow in and to fade out ([`PressInput`]). A widget keeps at most
+/// [`Self::MAX_PRESSES`] live; a press past them starts none. A theme file names the effect by its
+/// string, which [`Ui::set_theme`](crate::Ui::set_theme) checks against the loaded effects; a
+/// theme transition snaps it, as two effects do not blend. A slot with none holds `None`
+/// ([`SlotDefaults::press`](crate::SlotDefaults::press)), so no press effect lacks its effect.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PressEffect {
+    /// The color effect each press draws.
+    pub effect: EffectName<PressInput>,
+    /// The color the effect reads, linear.
+    pub color: RgbaF32,
+    /// How long a press takes to grow in.
+    #[serde(with = "crate::theme::duration_codec::seconds")]
+    pub enter: Duration,
+    /// How long it takes to fade out after the release.
+    #[serde(with = "crate::theme::duration_codec::seconds")]
+    pub exit: Duration,
+}
+
+impl PressEffect {
+    /// The most presses a widget draws at once, as Android's `RippleDrawable` holds at most
+    /// `MAX_RIPPLES`, 10.
+    pub const MAX_PRESSES: usize = 10;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use ron::ser;
+
+    use crate::effect::effect_name::EffectName;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::theme::look::press_effect::PressEffect;
+
+    /// A theme file names a press effect by its string and writes its times in seconds, and reads
+    /// back the same slot; a file that leaves a field out reads none.
+    #[test]
+    fn a_theme_file_names_the_press_effect_by_its_string() {
+        let press = PressEffect {
+            effect: EffectName::RIPPLE,
+            color: RgbaF32::new(1.0, 1.0, 1.0, 0.25),
+            enter: Duration::from_millis(225),
+            exit: Duration::from_millis(150),
+        };
+        let text = ser::to_string(&press).expect("serialize");
+        assert_eq!(
+            text,
+            r#"(effect:"palantir.ripple",color:"color(srgb-linear 1 1 1 / 0.25)",enter:0.225,exit:0.15)"#
+        );
+        let back: PressEffect = ron::from_str(&text).expect("parse");
+        assert_eq!(back, press);
+        let short = ron::from_str::<PressEffect>(r#"(effect:"palantir.ripple")"#);
+        assert!(short.is_err(), "{short:?}");
+    }
+}

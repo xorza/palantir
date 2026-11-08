@@ -8,6 +8,7 @@ use naga::front::wgsl::ParseError;
 use naga::valid::ValidationError;
 
 use crate::effect::effect_params::ParamType;
+use crate::effect::stock::RESERVED_PREFIX;
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 
 /// Why an effect did not load. The effect loaded before under the name, if any, keeps painting.
@@ -53,6 +54,9 @@ pub enum EffectError {
         /// The bound variable's name.
         name: String,
     },
+    /// The name starts with `palantir.`, the prefix of palantir's stock effects, as
+    /// [`EffectName::RIPPLE`](crate::EffectName::RIPPLE).
+    ReservedName,
 }
 
 /// How `effect`'s signature departs from the contract.
@@ -139,6 +143,10 @@ impl fmt::Display for EffectError {
             Self::Binding { name } => write!(
                 f,
                 "the effect's WGSL binds `{name}` itself, where palantir binds every resource"
+            ),
+            Self::ReservedName => write!(
+                f,
+                "the effect's name starts with `{RESERVED_PREFIX}`, which palantir's stock effects hold"
             ),
         }
     }

@@ -4,6 +4,7 @@ use crate::animation::animation_key::AnimationKey;
 use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::look_plan::LookPlan;
+use crate::theme::look::press_edge::PressEdge;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::text_style::TextStyle;
 use std::hash::Hash;
@@ -57,6 +58,7 @@ pub trait ThemeSlot {
                 response.hovered(),
             )),
             defaults: self.defaults(),
+            press: PressEdge::of(response),
         }
     }
 }

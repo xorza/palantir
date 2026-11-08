@@ -2,6 +2,7 @@
 
 use crate::animation::animation_key::AnimationKey;
 use crate::theme::look::animated_look::AnimatedLook;
+use crate::theme::look::press_edge::PressEdge;
 use crate::theme::look::slot_defaults::SlotDefaults;
 
 /// Everything a themed widget takes from its theme slot, owned so the
@@ -16,4 +17,6 @@ pub struct LookPlan {
     /// The state that picked `target`; see [`AnimationKey`].
     pub(crate) key: AnimationKey,
     pub(crate) defaults: SlotDefaults,
+    /// What the primary button did this frame, which the slot's press effect follows.
+    pub(crate) press: PressEdge,
 }

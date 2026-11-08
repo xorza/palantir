@@ -135,9 +135,11 @@ fn a_snap_is_the_default_a_theme_file_leaves_out() {
         padding: Spacing::ZERO,
         margin: Spacing::ZERO,
         transition,
+        press: None,
     };
     let snap = ser::to_string(&defaults(AnimationSpec::SNAP)).expect("serialize");
     assert!(!snap.contains("transition"), "{snap}");
+    assert!(!snap.contains("press"), "no press effect, no press: {snap}");
     let back: SlotDefaults = ron::from_str(&snap).expect("parse");
     assert_eq!(back, defaults(AnimationSpec::SNAP));
 

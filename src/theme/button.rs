@@ -32,7 +32,7 @@ pub(crate) const ACCENT_PRESS: f32 = 0.24;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct ButtonTheme {
     /// The four per-state looks of a button that is not selected; `flatten` keeps theme files
@@ -88,6 +88,7 @@ impl ButtonTheme {
                 padding: Spacing::xy(m.space.md, m.space.xs),
                 margin: Spacing::ZERO,
                 transition: m.transition,
+                press: None,
             },
         }
     }
@@ -156,6 +157,7 @@ impl ButtonTheme {
                 padding: m.row_padding(),
                 margin: Spacing::ZERO,
                 transition: m.transition,
+                press: None,
             },
         }
     }

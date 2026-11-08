@@ -14,7 +14,7 @@ use crate::theme::look::engagement::Engagement;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct StatefulLook {
     /// At rest.

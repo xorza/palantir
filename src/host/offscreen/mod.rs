@@ -391,6 +391,8 @@ pub(crate) mod internals {
     use crate::ui::window_frames::present::PresentStrategy;
 
     #[cfg(test)]
+    use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
+    #[cfg(test)]
     use crate::gpu::surface::render_target::RenderTarget;
     #[cfg(test)]
     use crate::ui::app::App;
@@ -447,6 +449,12 @@ pub(crate) mod internals {
             let read = between(&built, &self.window.frames);
             self.device.submit(&mut self.window.frames, target, built);
             read
+        }
+
+        /// The store the host's effects build in.
+        #[cfg(test)]
+        pub(crate) fn effect_store(&self) -> &WgpuEffectStore {
+            self.device.backend().effect_store()
         }
 
         /// A frame's path onto `target`, `None` where it draws nothing.

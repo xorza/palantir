@@ -29,6 +29,8 @@ pub(crate) struct WindowTheme {
     /// The scheme this frame shows, resolved once at its start so a frame never mixes two.
     scheme: ColorScheme,
     epoch: u32,
+    /// Whether a set replaced a theme since [`Self::take_replaced`] last handed the pair out.
+    replaced: bool,
 }
 
 impl WindowTheme {
@@ -39,6 +41,7 @@ impl WindowTheme {
             transition: ThemeTransition::default(),
             scheme,
             epoch: 0,
+            replaced: false,
         }
     }
 
@@ -78,11 +81,25 @@ impl WindowTheme {
             return false;
         }
         let old = mem::replace(slot, theme);
+        self.replaced = true;
         if scheme != self.scheme {
             return false;
         }
         self.follow(old, motion);
         true
+    }
+
+    /// Both themes, once after a set replaced either: what the next frame wants the press effects
+    /// of ([`Ui::set_theme`](crate::Ui::set_theme)). A theme a later set replaced before that
+    /// frame is never handed out, so its effects build nothing.
+    pub(crate) fn take_replaced(&mut self) -> Option<[&Rc<Theme>; 2]> {
+        if !mem::take(&mut self.replaced) {
+            return None;
+        }
+        Some([
+            self.pair.get(ColorScheme::Light),
+            self.pair.get(ColorScheme::Dark),
+        ])
     }
 
     /// At a frame's start, after its clock: move a transition `dt` seconds on, or land it under
@@ -136,6 +153,7 @@ pub(crate) mod internals {
         pub(crate) fn edit(&mut self) -> &mut Theme {
             self.transition.snap();
             self.bump();
+            self.replaced = true;
             Rc::make_mut(self.pair.get_mut(self.scheme))
         }
     }

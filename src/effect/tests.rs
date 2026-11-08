@@ -3,6 +3,7 @@
 //! alternative; on a device, each blend, a clip, a recovery, a reload, the time and the images.
 
 use std::error;
+use std::rc::Rc;
 
 use glam::UVec2;
 use std::time::Duration;
@@ -14,6 +15,8 @@ use crate::effect::effect_params::{EffectParam, EffectParams, ParamType};
 use crate::effect::effect_registry::{EffectRegistry, ReducedName};
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
+use crate::effect::press_input::PressInput;
+use crate::effect::stock;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::gpu::test_gpu::isolated_headless_test_gpu;
@@ -35,10 +38,18 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::shape::Shape;
 use crate::shape::paint_animation::{PaintAnimation, PaintMotion, PaintRepeat};
+use crate::theme::Theme;
+use crate::theme::error::ThemeEffectError;
+use crate::theme::look::press_effect::PressEffect;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
+
+/// The id of the app's load `n`, from 0, past the stock effects every registry holds first.
+fn app(n: u32) -> EffectId {
+    EffectId(u32::try_from(stock::COUNT).unwrap() + n)
+}
 
 /// A ring's parameters: a vec4 and four f32s, 32 B in Rust and in WGSL.
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
@@ -425,6 +436,111 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     );
 }
 
+/// Every registry holds the stock ripples from its start, the sparkle saving power with the flat
+/// one, and no app load takes a name in their prefix, valid source or not, so none replaces them.
+#[test]
+fn the_stock_ripples_hold_their_reserved_names() {
+    let registry = EffectRegistry::default();
+    assert!(registry.contains(EffectName::RIPPLE));
+    assert_eq!(
+        registry.power_saver_of(EffectName::RIPPLE),
+        Some(ReducedName::Same)
+    );
+    assert_eq!(
+        registry.power_saver_of(EffectName::SPARKLE),
+        Some(ReducedName::Effect(EffectName::RIPPLE.inline()))
+    );
+    let reserved = EffectName::<Ring>::named("palantir.ring").unwrap();
+    let refused = registry.load(reserved, ring(ring_wgsl(RING_PARAMS, RING_ENTRY)));
+    assert!(
+        matches!(refused, Err(EffectError::ReservedName)),
+        "{refused:?}"
+    );
+    assert_eq!(
+        refused.unwrap_err().to_string(),
+        "the effect's name starts with `palantir.`, which palantir's stock effects hold"
+    );
+    assert!(!registry.contains(reserved));
+    let ripple = EffectName::<PressInput>::named("palantir.ripple").unwrap();
+    assert!(matches!(
+        registry.load(ripple, EffectSource::new("fn effect(")),
+        Err(EffectError::ReservedName)
+    ));
+    assert_eq!(registry.epoch(), 2, "the two stock loads alone");
+}
+
+/// An app's press effect: its press color, over.
+const RIPPLE_WGSL: &str = concat!(
+    include_str!("stock/press.wgsl"),
+    "fn effect(input: EffectInput, params: Params) -> EffectOutput {
+        return effect_over(params.color);
+    }"
+);
+
+/// A theme's press slots name only effects over `PressInput` that are loaded: one nothing loaded
+/// and one of other parameters are each refused with the name, and the theme held before stays;
+/// a stock ripple and an app's press effect are taken.
+#[test]
+fn a_theme_names_only_loaded_press_effects() {
+    let mut h = Harness::mono(UVec2::new(16, 16));
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    let scheme = h.ui().color_scheme();
+    let held = Rc::clone(h.ui().scheme_theme(scheme));
+    let naming = |name: &str| {
+        let mut theme = Theme::stock(scheme);
+        theme.menu.item.defaults.press = Some(PressEffect {
+            effect: EffectName::named(name).unwrap(),
+            color: RgbaF32::WHITE,
+            enter: Duration::ZERO,
+            exit: Duration::ZERO,
+        });
+        theme
+    };
+    let missing = EffectName::named("missing").unwrap();
+    assert_eq!(
+        h.ui_mut().set_theme(scheme, naming("missing")),
+        Err(ThemeEffectError::Unloaded(missing))
+    );
+    assert_eq!(
+        ThemeEffectError::Unloaded(missing).to_string(),
+        "the theme's press effect `missing` is not loaded"
+    );
+    let blend = EffectName::named(BLEND.name()).unwrap();
+    assert_eq!(
+        h.ui_mut().set_theme(scheme, naming(BLEND.name())),
+        Err(ThemeEffectError::NotPress(blend))
+    );
+    assert_eq!(
+        ThemeEffectError::NotPress(blend).to_string(),
+        "the theme's press effect `blend` is not a color effect over `PressInput`"
+    );
+    assert!(
+        Rc::ptr_eq(h.ui().scheme_theme(scheme), &held),
+        "the theme before stays"
+    );
+
+    h.ui_mut()
+        .set_theme(scheme, naming("palantir.sparkle"))
+        .unwrap();
+    let ours = EffectName::<PressInput>::named("ours").unwrap();
+    h.ui()
+        .load_effect(ours, EffectSource::new(RIPPLE_WGSL))
+        .unwrap();
+    h.ui_mut().set_theme(scheme, naming("ours")).unwrap();
+    assert_eq!(
+        h.ui()
+            .scheme_theme(scheme)
+            .menu
+            .item
+            .defaults
+            .press
+            .map(|press| press.effect),
+        Some(ours)
+    );
+}
+
 /// A name keeps the parameter type and kind it loaded with: naming it with others, to load or to
 /// ask, panics with both, and so does a power-saver alternative loaded with other types. A shape
 /// that names an effect nothing loaded panics with the name as it is added.
@@ -561,6 +677,87 @@ fn each_blend_paints_its_exact_value() {
                 got[lane].abs_diff(want[lane]) <= 1,
                 "blend {mode}: got {got:?}, want {want:?}"
             );
+        }
+    }
+}
+
+/// The flat ripple paints Compose's disc over the linear ground `g = (0.2, 0.4, 0.6)` of a 160 ×
+/// 40 rect, its color white at α 0.5, pressed at (20, 20) with Material's 0.225 s enter and 0.15 s
+/// exit, at each time a held pass sets:
+/// - at 0 it has not faded in: the ground;
+/// - at 0.075 s, a third of the enter, it has faded in whole, and its center has run a third of
+///   the way to the rect's, to (40, 20); its radius is 48 + (92.46 − 48) · 0.45725 = 68.33,
+///   where 48 is 0.3 of the longer side, 92.46 the half diagonal plus 10, and 0.45725
+///   FastOutSlowIn at 1/3, so the pixel centered 65.5 px right of its center is over,
+///   `0.5 + g · 0.5 = (0.6, 0.7, 0.8)`, and the one 71.5 px right is the ground;
+/// - at 0.225 s, grown, it covers the rect to its corners, 82.46 px from the center;
+/// - released at 0.1 s and read at 0.3 s, it is half way through the fade that starts at the
+///   enter's end, 0.225 s, so its α is 0.25: `0.25 + g · 0.75 = (0.4, 0.55, 0.7)`.
+///
+/// The sparkle ripple at its enter's end, progress 0.5, has faded its sparkles out and shows its
+/// wave alone, centered on the rect, whole at its center and faded by `1 − (0.5 − 0.4) / 0.6`
+/// = 5/6: α `0.5 · 5/6 = 5/12`, so `5/12 + g · 7/12 = (0.5333, 0.65, 0.7667)`.
+#[test]
+fn the_ripples_paint_their_exact_values() {
+    let press = |effect, time_ms: u64, released: f32| {
+        move |ui: &mut Ui| {
+            ui.add_shape_animated(
+                Shape::effect(
+                    effect,
+                    PressInput {
+                        color: [1.0, 1.0, 1.0, 0.5],
+                        point: [20.0, 20.0],
+                        released,
+                        enter: 0.225,
+                        exit: 0.15,
+                        seed: 0.0,
+                        pad0: 0.0,
+                        pad1: 0.0,
+                    },
+                )
+                .at(Rect::new(0.0, 0.0, 160.0, 40.0)),
+                PaintAnimation::clock()
+                    .with_repeat(PaintRepeat::Held)
+                    .with_period(Duration::from_millis(time_ms)),
+            );
+        }
+    };
+    let ground = bytes(RgbaF32::new(0.2, 0.4, 0.6, 1.0));
+    let over = bytes(RgbaF32::new(0.6, 0.7, 0.8, 1.0));
+    let fading = bytes(RgbaF32::new(0.4, 0.55, 0.7, 1.0));
+    let ripple = EffectName::RIPPLE;
+    let cases = [
+        ("unfaded", press(ripple, 0, -1.0), [ground, ground, ground]),
+        (
+            "a third in",
+            press(ripple, 75, -1.0),
+            [over, ground, ground],
+        ),
+        ("grown", press(ripple, 225, -1.0), [over, over, over]),
+        ("fading", press(ripple, 300, 0.1), [fading, fading, fading]),
+    ];
+    let wave = bytes(RgbaF32::new(
+        5.0 / 12.0 + 0.2 * 7.0 / 12.0,
+        5.0 / 12.0 + 0.4 * 7.0 / 12.0,
+        5.0 / 12.0 + 0.6 * 7.0 / 12.0,
+        1.0,
+    ));
+    let sparkle = painted(press(EffectName::SPARKLE, 225, -1.0), &[(80, 20)]);
+    for lane in 0..4 {
+        assert!(
+            sparkle[0][lane].abs_diff(wave[lane]) <= 1,
+            "sparkle: got {sparkle:?}, want {wave:?}"
+        );
+    }
+    for (case, paint, want) in cases {
+        let got = painted(paint, &[(105, 20), (111, 20), (159, 0)]);
+        for (got, want) in got.iter().zip(&want) {
+            for lane in 0..4 {
+                assert!(
+                    got[lane].abs_diff(want[lane]) <= 1,
+                    "{case}: got {got:?}, want {want:?}"
+                );
+            }
         }
     }
 }
@@ -745,7 +942,7 @@ fn an_effect_reads_its_time_each_frame_and_wakes_while_it_moves() {
         assert_eq!(report.repaint_at, Some(wake), "at {at:?}");
         assert_eq!(
             effect_draws(&h),
-            [(EffectId(0), 0.0), (EffectId(0), time)],
+            [(app(0), 0.0), (app(0), time)],
             "at {at:?}"
         );
     }
@@ -781,7 +978,7 @@ fn reduced_motion_holds_a_decorative_effect() {
         .at(ms(500))
         .frame(|ui| ui.add_shape_animated(Shape::effect(BLEND, BLUE), progress));
     assert_eq!(report.repaint_at, Some(ms(500)));
-    assert_eq!(effect_draws(&h), [(EffectId(0), 0.5)]);
+    assert_eq!(effect_draws(&h), [(app(0), 0.5)]);
 }
 
 /// While power is reduced each effect paints what its source named: `blend` paints `lite`,
@@ -815,17 +1012,13 @@ fn reduced_power_paints_each_alternative() {
     h.frame(record);
     let ids =
         |h: &Harness| -> Vec<EffectId> { effect_draws(h).iter().map(|&(id, _)| id).collect() };
-    assert_eq!(ids(&h), [EffectId(0), EffectId(2), EffectId(1)]);
+    assert_eq!(ids(&h), [app(0), app(2), app(1)]);
     h.set_system_power_reduced(true);
     h.frame(record);
-    assert_eq!(ids(&h), [EffectId(1), EffectId(1)]);
+    assert_eq!(ids(&h), [app(1), app(1)]);
     h.set_system_power_reduced(false);
     h.frame(record);
-    assert_eq!(
-        ids(&h),
-        [EffectId(0), EffectId(2), EffectId(1)],
-        "back at full power"
-    );
+    assert_eq!(ids(&h), [app(0), app(2), app(1)], "back at full power");
 }
 
 /// What an effect's paint cannot be panics as the shape is added: an alternative nothing loaded,
@@ -1271,13 +1464,13 @@ fn each_reduction_paints_its_alternative_in_order() {
         h.frame(|ui| ui.add_shape(Shape::effect(base, BLUE)));
         effect_draws(h)[0].0
     };
-    assert_eq!(painted(&mut h), EffectId(0));
+    assert_eq!(painted(&mut h), app(0));
     h.set_system_power_reduced(true);
-    assert_eq!(painted(&mut h), EffectId(3), "power");
+    assert_eq!(painted(&mut h), app(3), "power");
     h.set_system_motion_reduced(true);
-    assert_eq!(painted(&mut h), EffectId(2), "motion over power");
+    assert_eq!(painted(&mut h), app(2), "motion over power");
     h.set_system_transparency_reduced(true);
-    assert_eq!(painted(&mut h), EffectId(1), "transparency over both");
+    assert_eq!(painted(&mut h), app(1), "transparency over both");
 
     let gone: EffectName<Blend> = EffectName::named("gone").unwrap();
     h.ui()

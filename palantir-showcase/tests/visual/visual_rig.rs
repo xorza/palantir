@@ -81,7 +81,9 @@ impl VisualRig {
             ..UiPreferences::default()
         });
         for scheme in [ColorScheme::Dark, ColorScheme::Light] {
-            host.ui_mut().set_theme(scheme, theme::fixture(scheme));
+            host.ui_mut()
+                .set_theme(scheme, theme::fixture(scheme))
+                .unwrap();
         }
 
         Self {

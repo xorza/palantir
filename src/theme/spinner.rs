@@ -14,7 +14,7 @@ use std::time::Duration;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct SpinnerTheme {
     /// Arc color at the comet's head; the tail fades to transparent.

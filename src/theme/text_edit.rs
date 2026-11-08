@@ -33,7 +33,7 @@ use glam::Vec2;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct TextEditTheme {
     /// The four per-state looks (`active` = focused). `flatten` keeps theme files
@@ -122,6 +122,7 @@ impl TextEditTheme {
                 padding: Spacing::xy(m.space.sm, m.space.xs),
                 margin: Spacing::ZERO,
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         }
     }

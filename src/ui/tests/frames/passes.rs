@@ -780,7 +780,8 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     );
 
     h.ui_mut()
-        .set_theme(ColorScheme::Dark, support::still_theme(ColorScheme::Dark));
+        .set_theme(ColorScheme::Dark, support::still_theme(ColorScheme::Dark))
+        .unwrap();
     assert_ne!(
         animation_frame(&mut h),
         FrameProcessing::PaintOnly,

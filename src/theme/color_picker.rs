@@ -30,7 +30,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px; also the bars' and rows' width.
@@ -135,6 +135,7 @@ fn chip(p: &Palette, m: &Metrics) -> ButtonTheme {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
             transition: m.transition,
+            press: None,
         },
     }
 }

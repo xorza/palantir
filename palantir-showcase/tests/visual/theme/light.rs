@@ -70,6 +70,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(12.0, 4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         checkbox: ToggleTheme {
@@ -136,6 +137,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         radio: ToggleTheme {
@@ -202,6 +204,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         segmented: SegmentedTheme {
@@ -276,6 +279,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::xy(8.0, 2.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
             },
         },
@@ -343,6 +347,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         scrollbar: ScrollbarTheme {
@@ -388,6 +393,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(8.0, 4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         drag_value: DragValueTheme {
@@ -420,6 +426,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(12.0, 4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
             caret: RgbaF32::hex(0x3d4248),
             caret_width: 1.5,
@@ -486,6 +493,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::xy(12.0, 8.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
             },
             separator: SeparatorTheme {
@@ -530,6 +538,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(12.0, 8.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         combo_box: ComboBoxTheme {
@@ -613,6 +622,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::all(0.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
             },
             disabled_veil: RgbaF32::hexa(0xffffff80),
@@ -671,6 +681,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::all(5.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
                 caret: RgbaF32::hex(0x3d4248),
                 caret_width: 1.5,
@@ -725,6 +736,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::all(5.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
             },
             label: TextStyleOverrides {
@@ -886,6 +898,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         dock: DockTheme {
@@ -932,6 +945,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         focus_ring: FocusRingTheme {

@@ -14,8 +14,9 @@ fn theme() -> Rc<Theme> {
 }
 
 /// A theme set on the shown scheme lands at once under `Snap` and moves the epoch; one set on the
-/// other scheme, the handle a slot holds already, or an equal theme in a new handle changes
-/// nothing shown and keeps it.
+/// other scheme is held and changes nothing shown; the handle a slot holds already, or an equal
+/// theme in a new handle, changes nothing. Each set that takes a theme hands both out once, for their
+/// press effects, and a kept one hands out nothing.
 #[test]
 fn a_snapped_set_moves_the_epoch_only_for_the_shown_scheme() {
     let mut window = WindowTheme::new(Dark);
@@ -25,6 +26,7 @@ fn a_snapped_set_moves_the_epoch_only_for_the_shown_scheme() {
         "the handle held already"
     );
     assert_eq!(window.epoch(), 0);
+    assert!(window.take_replaced().is_none());
 
     let other = theme();
     assert!(
@@ -33,16 +35,22 @@ fn a_snapped_set_moves_the_epoch_only_for_the_shown_scheme() {
     );
     assert!(Rc::ptr_eq(window.get(Light), &other));
     assert_eq!(window.epoch(), 0);
+    let [light, _] = window.take_replaced().unwrap();
+    assert!(Rc::ptr_eq(light, &other));
+    assert!(window.take_replaced().is_none(), "once");
 
     assert!(
         !window.set(Dark, Rc::new(Theme::stock(Dark)), Motion::Snap),
         "an equal theme in a new handle"
     );
     assert_eq!(window.epoch(), 0);
+    assert!(window.take_replaced().is_none());
 
     let new = theme();
     assert!(window.set(Dark, Rc::clone(&new), Motion::Snap));
     assert!(Rc::ptr_eq(window.shown(), &new));
+    let [_, dark] = window.take_replaced().unwrap();
+    assert!(Rc::ptr_eq(dark, &new));
     assert_eq!(window.epoch(), 1);
     assert!(!window.is_moving());
 }

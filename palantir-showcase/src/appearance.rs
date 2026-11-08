@@ -151,7 +151,8 @@ impl Appearance {
                 let palette = self.palette(scheme);
                 let mut theme = Theme::from_parts(palette, &M);
                 theme.focus_ring = self.ring(scheme);
-                ui.set_theme(scheme, theme);
+                ui.set_theme(scheme, theme)
+                    .expect("a theme built from parts names no press effect");
             }
             *applied = self.generation;
         });

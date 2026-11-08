@@ -70,6 +70,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(12.0, 4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
+                press: None,
             },
         },
         checkbox: ToggleTheme {
@@ -136,6 +137,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         radio: ToggleTheme {
@@ -202,6 +204,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         segmented: SegmentedTheme {
@@ -276,6 +279,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::xy(8.0, 2.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
             },
         },
@@ -343,6 +347,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::spring(170.0, 26.0),
+                press: None,
             },
         },
         scrollbar: ScrollbarTheme {
@@ -388,6 +393,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(8.0, 4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         drag_value: DragValueTheme {
@@ -420,6 +426,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(12.0, 4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
+                press: None,
             },
             caret: RgbaF32::hex(0xf2f2f2),
             caret_width: 1.5,
@@ -489,6 +496,7 @@ pub(super) fn theme() -> Theme {
                         Duration::from_millis(120),
                         Easing::OutCubic,
                     ),
+                    press: None,
                 },
             },
             separator: SeparatorTheme {
@@ -533,6 +541,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::xy(12.0, 8.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
+                press: None,
             },
         },
         combo_box: ComboBoxTheme {
@@ -616,6 +625,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::all(0.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
             },
             disabled_veil: RgbaF32::hexa(0x2e1f3880),
@@ -677,6 +687,7 @@ pub(super) fn theme() -> Theme {
                         Duration::from_millis(120),
                         Easing::OutCubic,
                     ),
+                    press: None,
                 },
                 caret: RgbaF32::hex(0xf2f2f2),
                 caret_width: 1.5,
@@ -731,6 +742,7 @@ pub(super) fn theme() -> Theme {
                     padding: Spacing::all(5.0),
                     margin: Spacing::all(0.0),
                     transition: AnimationSpec::SNAP,
+                    press: None,
                 },
             },
             label: TextStyleOverrides {
@@ -892,6 +904,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
+                press: None,
             },
         },
         dock: DockTheme {
@@ -938,6 +951,7 @@ pub(super) fn theme() -> Theme {
                 padding: Spacing::all(4.0),
                 margin: Spacing::all(0.0),
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         },
         focus_ring: FocusRingTheme {

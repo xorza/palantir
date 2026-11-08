@@ -343,7 +343,7 @@ fn a_drag_value_editor_wears_its_chips_looks() {
 /// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order, which is field order: the picker's mono 12 px values on the value chip and the hex field (four states each) and its mono 12 px captions; the tooltip's 12 px.
 #[test]
 fn bundled_text_inherits_every_axis_but_color() {
-    use crate::theme::{TextSlots, Theme, ThemeText, ThemeTextRef};
+    use crate::theme::{Theme, ThemeText, ThemeTextRef, ThemeWalk};
 
     let mono = TextStyleOverrides {
         family: Some(FontFamily::MONO),

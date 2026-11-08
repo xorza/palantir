@@ -36,11 +36,12 @@ use crate::diagnostics::frame_stats::FrameStats;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::effect::effect_kind::EffectKind;
+use crate::effect::effect_kind::{ColorEffect, EffectKind, EffectTypes};
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
 use crate::effect::effect_source::EffectSource;
 use crate::effect::error::EffectError;
+use crate::effect::press_input::PressInput;
 use crate::gpu::gpu_paint::gpu_views::RecordedView;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
@@ -90,6 +91,7 @@ use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
+use crate::theme::error::ThemeEffectError;
 use crate::ui::app::RecordPass;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
@@ -237,19 +239,51 @@ impl Ui {
     /// # use palantir::{ColorScheme, Preference, Theme, Ui, UiPreferences};
     /// # fn one_look(ui: &mut Ui) {
     /// // An app with one look sets it and pins its scheme.
-    /// ui.set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark));
+    /// ui.set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
+    ///     .expect("a stock theme names no press effect");
     /// ui.set_preferences(UiPreferences {
     ///     scheme: Preference::Fixed(ColorScheme::Dark),
     ///     ..ui.preferences()
     /// });
     /// # }
     /// ```
-    #[inline]
-    pub fn set_theme(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) {
+    ///
+    /// Each effect its press slots name ([`PressEffect`](crate::PressEffect)) builds with the
+    /// alternatives it names, at the next frame that draws, with the other scheme's theme's, so
+    /// no later press, turn of the scheme or switch of a preference stalls on a build: a theme
+    /// for the scheme not shown builds at the latest with the frame that turns to it, before any
+    /// press can reach it. A theme another set replaces before that frame builds nothing.
+    /// Refused: a build at the first press, which stalls that frame; a build at the set, which a
+    /// later set before the frame makes for nothing.
+    ///
+    /// # Errors
+    ///
+    /// A [`ThemeEffectError`] when a press slot names an effect not loaded, or not one over
+    /// [`PressInput`]; the theme held before stays.
+    pub fn set_theme(
+        &mut self,
+        scheme: ColorScheme,
+        theme: impl Into<Rc<Theme>>,
+    ) -> Result<(), ThemeEffectError> {
+        let theme = theme.into();
+        let effects = self.resources.effects();
+        let press = EffectTypes::of::<PressInput, ColorEffect>();
+        let mut checked = Ok(());
+        theme.press_effects(|name| {
+            if checked.is_ok() {
+                checked = match effects.types_of(name.inline()) {
+                    None => Err(ThemeEffectError::Unloaded(name)),
+                    Some(types) if types != press => Err(ThemeEffectError::NotPress(name)),
+                    Some(_) => Ok(()),
+                };
+            }
+        });
+        checked?;
         let motion = self.theme_motion();
-        if self.window_theme.set(scheme, theme.into(), motion) {
+        if self.window_theme.set(scheme, theme, motion) {
             self.frame_runtime.request_repaint();
         }
+        Ok(())
     }
 
     /// Whether a change of the shown theme may now animate. Not before the window's second frame:
@@ -832,8 +866,9 @@ impl Ui {
     /// again replaces it, so a reload is this call with the new source. The WGSL is parsed with
     /// palantir's prelude and validated, `fn effect` is checked against the contract
     /// ([`EffectSource`]), and its parameter struct against `U`, member for member. On a host
-    /// with a device, the call also builds the effect's pipelines, so the first frame that paints
-    /// it does not stall. App-global.
+    /// with a device, its pipelines build when its source's [`EffectBuild`](crate::EffectBuild)
+    /// says, and a wanted effect reloaded builds again before its next frame. Names that start
+    /// with `palantir.` are palantir's stock effects ([`EffectName::RIPPLE`]). App-global.
     /// Refused: a handle that unloads an effect when it drops, a second route to one effect beside
     /// its name.
     ///

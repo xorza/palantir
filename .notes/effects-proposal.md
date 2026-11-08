@@ -98,7 +98,8 @@ from `palantir-anim-derive`), and `naga` 30 as a direct dependency. Pipelines co
 
 `DUAL_SOURCE_BLENDING` is required (lavapipe, NVIDIA and V3D offer it); `Shape::effect` lowers
 through `PaintTier::Effect`; `WgpuEffectStore` builds each effect at load, for each format and
-device. The blends and the clip are held by exact-pixel GPU tests in place of goldens.
+device (batch 9 moved the build to where a use wants it). The blends and the clip are held by
+exact-pixel GPU tests in place of goldens.
 
 ### 6. Effect motion — done
 
@@ -117,19 +118,15 @@ by the image store for each set drawn; an app's own binding is refused.
 deleted, every golden unchanged. Left: the A/B on the `gpu/backdrop` benches (the handheld, the
 Apple laptop, the AMD iGPU, V3D), which wait, as the owner decided on 2026-11-08.
 
-### 9. Press effects
+### 9. Press effects — done
 
-- `PressInput`, the theme slot with its color and times, the press list in widget core, stock
-  flat and sparkle ripples, theme-file names and their check on load.
-- Tests: the press list's bound, the release time, reduced motion and the power-saver swap.
+`PressInput`, `SlotDefaults::press`, the press list in each widget's state, and the stock ripples
+under the reserved `palantir.` names, in every registry from its start. Every effect builds at the
+start of a frame's GPU phase, where a use wants it: a draw, `EffectBuild::Now`, or a window's
+themes (the `WgpuEffectStore` and `Ui::set_theme` docs). `Ui::set_theme` checks a theme's names
+and returns `ThemeEffectError`.
 
 ### 10. Showcase, docs, cleanup
 
 - A showcase page with a background, both ripples, a ring and water; a `cargo shot` script.
 - Fold each decision into its module doc or `AGENTS.md`; delete this file.
-
-## Open
-
-- **Where a theme's names are checked.** `Theme` deserializes with no `Ui`, so the check runs where
-  a theme is set or loaded; batch 9 picks the call and its error.
-

@@ -28,7 +28,7 @@ use glam::Vec2;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct ToggleTheme {
     /// Look when unchecked.
@@ -186,6 +186,7 @@ impl ToggleGeometry {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         }
     }

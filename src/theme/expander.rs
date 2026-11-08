@@ -25,7 +25,7 @@ use std::f32::consts::FRAC_PI_2;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct ExpanderTheme {
     /// The header's four per-state looks; `flatten` keeps theme files flat (`[expander.normal]`).
@@ -104,6 +104,7 @@ impl ExpanderTheme {
                 padding: Spacing::all(m.space.xs),
                 margin: Spacing::ZERO,
                 transition: AnimationSpec::SNAP,
+                press: None,
             },
         }
     }

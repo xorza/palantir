@@ -25,7 +25,7 @@ use crate::theme::text_edit::TextEditTheme;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct DragValueTheme {
     /// The four per-state looks (`active` = pressed on the chip). `flatten` keeps theme files

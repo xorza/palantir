@@ -739,6 +739,11 @@ EditableLabelResponse
         pub committed_text: Option<String>
         pub ended: Option<EditEnd>
 
+EffectBuild
+    enum EffectBuild: Clone, Copy, Debug, Default, Eq, PartialEq
+        OnUse
+        Now
+
 EffectError
     enum EffectError: Debug, Display, Error
         Parse { source: Box<ParseError>, text: String }
@@ -749,6 +754,7 @@ EffectError
         ParamsTooLarge { size: usize }
         TooManyImageSlots { slots: u8 }
         Binding { name: String }
+        ReservedName
 
 EffectKind
     trait EffectKind: Kind
@@ -759,6 +765,9 @@ EffectName
             pub const MAX_NAME_LEN: usize
             pub const fn named(name: &str) -> Option<Self>
             pub fn name(&self) -> &str
+        impl EffectName<PressInput>
+            pub const RIPPLE: Self
+            pub const SPARKLE: Self
         impl<'de, U: EffectParams, K: EffectKind> Deserialize<'de> for EffectName<U, K>
         impl<U: EffectParams, K: EffectKind> Clone for EffectName<U, K>
         impl<U: EffectParams, K: EffectKind> Copy for EffectName<U, K>
@@ -784,6 +793,7 @@ EffectSource
             pub const MAX_IMAGE_SLOTS: u8
             pub const MAX_PARAMS_SIZE: usize
             pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self
+            pub const fn build(self, build: EffectBuild) -> Self
             pub const fn image_slots(self, slots: u8) -> Self
             pub const fn reduced_transparency(self, paint: ReducedPaint<U, K>) -> Self
             pub const fn reduced_motion(self, paint: ReducedPaint<U, K>) -> Self
@@ -1853,6 +1863,25 @@ Preference
         impl<T: PartialEq> PartialEq for Preference<T>
         impl<T> Serialize where T: Serialize
 
+PressEffect
+    struct PressEffect: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub effect: EffectName<PressInput>
+        pub color: RgbaF32
+        pub enter: Duration
+        pub exit: Duration
+        pub const MAX_PRESSES: usize
+
+PressInput
+    struct PressInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
+        pub color: [f32; 4]
+        pub point: [f32; 2]
+        pub released: f32
+        pub enter: f32
+        pub exit: f32
+        pub seed: f32
+        pub pad0: f32
+        pub pad1: f32
+
 ProgressBar
     struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(fraction: f32) -> Self
@@ -2239,6 +2268,7 @@ SlotDefaults
         pub padding: Spacing
         pub margin: Spacing
         pub transition: AnimationSpec
+        pub press: Option<PressEffect>
 
 SpaceSteps
     struct SpaceSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -2731,6 +2761,11 @@ Theme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 
+ThemeEffectError
+    enum ThemeEffectError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+        Unloaded(EffectName<PressInput>)
+        NotPress(EffectName<PressInput>)
+
 ToggleKind
     enum ToggleKind: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         Checkbox
@@ -2813,7 +2848,7 @@ Ui
         pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
         pub const fn scheme_theme(&self, scheme: ColorScheme) -> &Rc<Theme>
-        pub fn set_theme(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>)
+        pub fn set_theme(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) -> Result<(), ThemeEffectError>
         pub fn preferences(&self) -> UiPreferences
         pub fn set_preferences(&mut self, preferences: UiPreferences)
         pub const fn color_scheme(&self) -> ColorScheme

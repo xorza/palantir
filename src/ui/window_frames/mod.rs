@@ -255,6 +255,12 @@ impl WindowFrames {
         // Before the theme moves on, so a transition it starts reads this frame's motion.
         self.ui.frame_runtime.reductions = self.ui.resources.settings().reductions();
         self.ui.advance_theme();
+        if let Some(themes) = self.ui.window_theme.take_replaced() {
+            let effects = self.ui.resources.effects();
+            for theme in themes {
+                theme.press_effects(|name| effects.want(name));
+            }
+        }
         self.ui.frame_runtime.take_power_slot();
         self.ui
             .frame_runtime

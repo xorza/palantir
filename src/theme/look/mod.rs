@@ -13,6 +13,8 @@
 pub(crate) mod animated_look;
 pub(crate) mod engagement;
 pub(crate) mod look_plan;
+pub(crate) mod press_edge;
+pub(crate) mod press_effect;
 pub(crate) mod slot_defaults;
 pub(crate) mod stateful_look;
 pub(crate) mod theme_slot;
@@ -35,7 +37,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct WidgetLook {
     /// Fill, stroke, corners and shadow.

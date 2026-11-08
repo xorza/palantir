@@ -101,7 +101,8 @@ fn morph(ui: &mut Ui, theme: Theme) {
             transition: MORPH,
             ..theme
         },
-    );
+    )
+    .unwrap();
 }
 
 /// Mark `deck`'s slide as started at its time; a slide's own pictures run from here.

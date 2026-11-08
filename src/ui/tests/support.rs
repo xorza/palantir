@@ -66,6 +66,6 @@ pub(super) fn still_theme(scheme: ColorScheme) -> Theme {
 /// Give a window that has shown nothing yet [`still_theme`] for both schemes.
 pub(super) fn set_still_themes(h: &mut Harness) {
     for scheme in [ColorScheme::Dark, ColorScheme::Light] {
-        h.ui_mut().set_theme(scheme, still_theme(scheme));
+        h.ui_mut().set_theme(scheme, still_theme(scheme)).unwrap();
     }
 }

@@ -13,7 +13,7 @@ use crate::theme::palette::Palette;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct SliderTheme {
     /// The colors of a slider that takes input.
@@ -36,7 +36,7 @@ pub struct SliderTheme {
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct SliderColors {
     /// Unfilled track color (right of the knob).

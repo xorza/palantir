@@ -53,6 +53,23 @@ pub struct EffectSource<U: EffectParams, K: EffectKind = ColorEffect> {
     pub(crate) reduced_transparency: ReducedPaint<U, K>,
     pub(crate) reduced_motion: ReducedPaint<U, K>,
     pub(crate) power_saver: ReducedPaint<U, K>,
+    pub(crate) build: EffectBuild,
+}
+
+/// When a loaded effect builds its pipelines. Every build runs at the start of a frame's GPU phase,
+/// before any pass; this picks the frame. A theme that names the effect builds it with its other
+/// effects at the next frame that draws after the theme is set
+/// ([`Ui::set_theme`](crate::Ui::set_theme)), whichever is picked here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EffectBuild {
+    /// At the first frame that draws it, or after a theme that names it is set; an effect no use
+    /// reaches builds nothing. The first frame that draws it with no theme naming it builds it
+    /// then, which a frame can show as a stutter.
+    #[default]
+    OnUse,
+    /// At the next frame, whether anything draws it yet: for an effect a shape draws at a moment
+    /// where a build would show.
+    Now,
 }
 
 impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
@@ -61,7 +78,8 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     /// The most bytes `U` holds, so one storage buffer row serves any effect's instance.
     pub const MAX_PARAMS_SIZE: usize = MAX_PARAMS_SIZE;
 
-    /// An effect of `wgsl` with no image slots, which paints the same whatever is reduced.
+    /// An effect of `wgsl` with no image slots, which paints the same whatever is reduced and
+    /// builds on use.
     pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self {
         Self {
             wgsl: wgsl.into(),
@@ -69,7 +87,14 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
             reduced_transparency: ReducedPaint::Same,
             reduced_motion: ReducedPaint::Same,
             power_saver: ReducedPaint::Same,
+            build: EffectBuild::OnUse,
         }
+    }
+
+    /// When the effect builds its pipelines; [`EffectBuild::OnUse`] by default.
+    pub const fn build(mut self, build: EffectBuild) -> Self {
+        self.build = build;
+        self
     }
 
     /// How many images each shape of the effect binds, at most [`Self::MAX_IMAGE_SLOTS`]; a load
@@ -171,6 +196,7 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectSource<U, K> {
             .field("reduced_transparency", &self.reduced_transparency)
             .field("reduced_motion", &self.reduced_motion)
             .field("power_saver", &self.power_saver)
+            .field("build", &self.build)
             .finish()
     }
 }

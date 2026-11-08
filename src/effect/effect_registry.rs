@@ -9,9 +9,10 @@ use crate::effect::contract::{self, ParamsLayout};
 use crate::effect::effect_kind::{EffectKind, EffectTypes};
 use crate::effect::effect_name::EffectName;
 use crate::effect::effect_params::EffectParams;
-use crate::effect::effect_source::{EffectSource, ReducedPaint};
+use crate::effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
+use crate::effect::stock;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
 use crate::primitives::reduction::Reductions;
@@ -20,8 +21,10 @@ use crate::primitives::reduction::Reductions;
 /// replaces it, and a refused load leaves the one before. A name keeps the parameter type and
 /// kind it first loaded with; using it with others is a logic error that panics with both. Each
 /// load goes to the [`EffectStore`] the host built the registry over, which compiles it; a
-/// deviceless recorder's registry has none.
-#[derive(Debug, Default)]
+/// deviceless recorder's registry has none. It holds palantir's stock effects
+/// (`crate::effect::stock`) from its start, loaded as an app's load, under names no app load
+/// takes.
+#[derive(Debug)]
 pub(crate) struct EffectRegistry {
     /// Fixed at construction: the host builds the store before any recorder exists.
     store: Option<Rc<dyn EffectStore>>,
@@ -106,14 +109,31 @@ impl ReducedName {
     }
 }
 
+/// A deviceless recorder's registry: the stock effects, compiled nowhere.
+impl Default for EffectRegistry {
+    fn default() -> Self {
+        Self::with_store(None)
+    }
+}
+
 impl EffectRegistry {
     /// A registry whose effects compile in `store`, the one the host's backend draws with.
     pub(crate) fn new<S: EffectStore + 'static>(store: Rc<S>) -> Self {
-        Self {
-            store: Some(store),
+        Self::with_store(Some(store))
+    }
+
+    fn with_store(store: Option<Rc<dyn EffectStore>>) -> Self {
+        let registry = Self {
+            store,
             effects: RefCell::default(),
             epoch: Cell::default(),
+        };
+        for (name, source) in stock::sources() {
+            registry
+                .insert(name, source)
+                .expect("a stock effect meets the contract");
         }
+        registry
     }
 
     /// Load `source` under `name`, replacing the effect loaded under it before.
@@ -123,6 +143,18 @@ impl EffectRegistry {
     /// When `name`, or an alternative its source names, was loaded before with another parameter
     /// type or kind, or the alternative with other image slots.
     pub(crate) fn load<U: EffectParams, K: EffectKind>(
+        &self,
+        name: EffectName<U, K>,
+        source: EffectSource<U, K>,
+    ) -> Result<(), EffectError> {
+        if name.name().starts_with(stock::RESERVED_PREFIX) {
+            return Err(EffectError::ReservedName);
+        }
+        self.insert(name, source)
+    }
+
+    /// [`Self::load`] under any name, the reserved ones included.
+    fn insert<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
         source: EffectSource<U, K>,
@@ -158,7 +190,10 @@ impl EffectRegistry {
         };
         let alternatives = source.alternatives().map(ReducedName::of);
         let EffectSource {
-            wgsl, image_slots, ..
+            wgsl,
+            image_slots,
+            build,
+            ..
         } = source;
         let module = contract::check(&wgsl, K::ID, params, image_slots)?;
         let id = self.effects.borrow_mut().insert(
@@ -170,10 +205,47 @@ impl EffectRegistry {
             },
         );
         if let Some(store) = &self.store {
-            store.load(id, &module);
+            store.register(id, &module);
+            if build == EffectBuild::Now {
+                store.want(id);
+            }
         }
         self.epoch.set(self.epoch.get().wrapping_add(1));
         Ok(())
+    }
+
+    /// The types the effect under `name` loaded with; `None` when nothing is loaded under it. A
+    /// check of a name that untrusted data holds, as a theme file's, which may name anything.
+    pub(crate) fn types_of(&self, name: InlineName) -> Option<EffectTypes> {
+        self.effects.borrow().get(name).map(|loaded| loaded.types)
+    }
+
+    /// Want the effect loaded under `name` built before the next frame draws, with each
+    /// alternative its source names that is loaded now, as a theme that names it does: no frame
+    /// after builds them again, whatever it reduces. An alternative loaded later builds where it
+    /// first paints.
+    ///
+    /// # Panics
+    ///
+    /// When no effect is loaded under `name`, or one with another parameter type or kind: a theme
+    /// set checks its names first ([`Self::types_of`]).
+    #[track_caller]
+    pub(crate) fn want<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) {
+        let id = self
+            .id_of(name)
+            .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name()));
+        let Some(store) = &self.store else {
+            return;
+        };
+        store.want(id);
+        let effects = self.effects.borrow();
+        for alternative in effects.loaded[id.idx()].alternatives {
+            if let ReducedName::Effect(other) = alternative
+                && let Some(&other_id) = effects.ids.get(&other)
+            {
+                store.want(other_id);
+            }
+        }
     }
 
     /// The count of successful loads, wrapping, which every window's frame baselines carry.

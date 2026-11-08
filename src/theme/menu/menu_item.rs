@@ -25,7 +25,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct MenuItemTheme {
     /// The four per-state looks of a row that is not the pick; `flatten` keeps theme files flat
@@ -84,6 +84,7 @@ impl MenuItemTheme {
                 padding: m.row_padding(),
                 margin: Spacing::ZERO,
                 transition: m.transition,
+                press: None,
             },
         }
     }

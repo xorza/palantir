@@ -19,7 +19,7 @@
 //!         for scheme in [ColorScheme::Light, ColorScheme::Dark] {
 //!             let mut theme = Theme::stock(scheme);
 //!             theme.button.defaults.transition = AnimationSpec::SPRING;
-//!             ui.set_theme(scheme, theme);
+//!             ui.set_theme(scheme, theme).expect("a stock theme names no press effect");
 //!         }
 //!         MyApp
 //!     })?

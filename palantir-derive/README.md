@@ -32,8 +32,8 @@ apply to structs with named fields only.
 `EffectParams` describes a `#[repr(C)]` struct field by field, with each field's name, offset
 and WGSL type, which `Ui::load_effect` checks against the effect's WGSL parameter struct.
 
-`#[derive(TextSlots)]` is palantir's own: a theme part's text walk, which
-visits every field through the field type's own walk.
+`#[derive(ThemeWalk)]` is palantir's own: a theme part's walks over its text and press slots,
+which visit every field through the field type's own walk.
 
 ## License
 

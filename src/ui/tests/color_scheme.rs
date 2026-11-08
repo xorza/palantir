@@ -128,7 +128,7 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
     let epoch = h.ui().window_theme.epoch();
 
     let light = Rc::new(edited(Light));
-    h.ui_mut().set_theme(Light, Rc::clone(&light));
+    h.ui_mut().set_theme(Light, Rc::clone(&light)).unwrap();
     assert_eq!(
         h.ui().window_theme.epoch(),
         epoch,
@@ -150,13 +150,13 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
     );
 
     let held = Theme::clone(h.ui().scheme_theme(Dark));
-    h.ui_mut().set_theme(Dark, held);
+    h.ui_mut().set_theme(Dark, held).unwrap();
     assert_eq!(
         h.ui().window_theme.epoch(),
         epoch,
         "an equal theme moves nothing"
     );
-    h.ui_mut().set_theme(Dark, edited(Dark));
+    h.ui_mut().set_theme(Dark, edited(Dark)).unwrap();
     assert_eq!(h.ui().window_theme.epoch(), epoch.wrapping_add(1));
 }
 
@@ -172,16 +172,16 @@ fn a_shown_theme_write_asks_for_a_frame() {
     let shown = Rc::new(edited(Dark));
     let report = h.frame(|ui| {
         record(ui);
-        ui.set_theme(Dark, Rc::clone(&shown));
+        ui.set_theme(Dark, Rc::clone(&shown)).unwrap();
     });
     assert!(report.repaint_requested);
     h.frame(record);
     let epoch = h.ui().window_theme.epoch();
     let report = h.frame(|ui| {
         record(ui);
-        ui.set_theme(Dark, Rc::clone(&shown));
-        ui.set_theme(Dark, Theme::clone(&shown));
-        ui.set_theme(Light, support::still_theme(Light));
+        ui.set_theme(Dark, Rc::clone(&shown)).unwrap();
+        ui.set_theme(Dark, Theme::clone(&shown)).unwrap();
+        ui.set_theme(Light, support::still_theme(Light)).unwrap();
     });
     assert!(!report.repaint_requested);
     assert_eq!(h.ui().window_theme.epoch(), epoch);

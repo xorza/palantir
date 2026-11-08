@@ -18,7 +18,7 @@ use std::time::Duration;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).

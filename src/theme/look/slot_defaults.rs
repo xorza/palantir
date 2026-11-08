@@ -2,9 +2,10 @@
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::theme::look::press_effect::PressEffect;
 
-/// What a themed widget contributes to the node rather than the paint: default
-/// spacing and the transition spec. Themed bundles `#[serde(flatten)]` it.
+/// What a themed widget contributes to the node rather than its look: default spacing, the
+/// transition spec and the press effect. Themed bundles `#[serde(flatten)]` it.
 /// Named fields because `padding` and `margin` share a type.
 #[derive(
     Clone,
@@ -14,7 +15,7 @@ use crate::primitives::geometry::spacing::Spacing;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none; explicit zero overrides it.
@@ -29,4 +30,9 @@ pub struct SlotDefaults {
     #[serde(default, skip_serializing_if = "AnimationSpec::is_instant")]
     #[animate(snap)]
     pub transition: AnimationSpec,
+    /// The effect each press draws ([`PressEffect`]); none in a stock theme, and in a theme file
+    /// that leaves it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[animate(snap)]
+    pub press: Option<PressEffect>,
 }

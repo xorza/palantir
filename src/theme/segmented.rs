@@ -25,7 +25,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     serde::Serialize,
     serde::Deserialize,
     palantir_derive::Lerp,
-    palantir_derive::TextSlots,
+    palantir_derive::ThemeWalk,
 )]
 pub struct SegmentedTheme {
     /// The track the segments sit on.
@@ -81,6 +81,7 @@ impl SegmentedTheme {
                     padding: Spacing::xy(m.space.sm, m.space.xxs),
                     margin: Spacing::ZERO,
                     transition: m.transition,
+                    press: None,
                 },
             },
         }

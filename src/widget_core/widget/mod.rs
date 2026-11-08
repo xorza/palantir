@@ -4,6 +4,8 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
+use crate::effect::press_input::PressInput;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -24,11 +26,14 @@ use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
+use crate::shape::Shape;
+use crate::shape::paint_animation::PaintAnimation;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::look_plan::LookPlan;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -36,6 +41,7 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::press_list::PressList;
 use crate::widget_core::response::InnerResponse;
 use glam::Vec2;
 use std::panic::Location;
@@ -47,6 +53,10 @@ use std::panic::Location;
 pub(crate) enum Ident {
     Recipe(IdRecipe),
     Resolved(ResolvedId),
+    /// Resolved by a [`Widget::wear`] that took a press effect from its slot, which
+    /// [`Widget::record`] draws from the widget's [`PressList`]: a wear resolves the id first, so
+    /// only a resolved widget wears one, and the flag costs the builder no byte.
+    Pressed(ResolvedId),
 }
 
 /// What a widget records: its identity, and the node the tree reads. Every widget
@@ -182,7 +192,7 @@ impl Widget {
     /// [`Self::resolve`], keeping the id table entry that [`Self::record`] hands to the open.
     fn resolved(&mut self, ui: &mut Ui) -> ResolvedId {
         match self.ident {
-            Ident::Resolved(resolved) => resolved,
+            Ident::Resolved(resolved) | Ident::Pressed(resolved) => resolved,
             Ident::Recipe(recipe) => {
                 let resolved = ui.resolve_ident(recipe);
                 self.ident = Ident::Resolved(resolved);
@@ -229,10 +239,11 @@ impl Widget {
         response
     }
 
-    /// Fills the padding and margin the builder left unset from `plan`, then animates toward its
-    /// look. The look is not stashed on the widget: a widget that wears it whole passes
-    /// `Some(&look.chrome)` to [`Self::record`], and one that paints a part in it, as a checkbox
-    /// paints its box, records that part with the chrome.
+    /// Fills the padding and margin the builder left unset from `plan`, follows the presses its
+    /// slot's [`PressEffect`](crate::PressEffect) draws, which [`Self::record`] draws over the
+    /// chrome, then animates toward its look. The look is not stashed on the widget: a widget that
+    /// wears it whole passes `Some(&look.chrome)` to [`Self::record`], and one that paints a part
+    /// in it, as a checkbox paints its box, records that part with the chrome.
     // Forced inline across the theme/widget codegen-unit boundary: left outlined, the resolver cost
     // 3.9% self-time in the frame bench.
     #[inline(always)]
@@ -245,12 +256,29 @@ impl Widget {
                     padding,
                     margin,
                     transition,
+                    press,
                 },
+            press: edge,
         } = plan;
         self.configure()
             .default_padding(padding)
             .default_margin(margin);
-        let id = self.resolve(ui);
+        let resolved = self.resolved(ui);
+        let id = resolved.id();
+        if let Some(press) = press {
+            let list = match ui.remove_state::<PressList>(id) {
+                Some(list) => Some(list),
+                None if edge.starts() => Some(PressList::new(press)),
+                None => None,
+            };
+            if let Some(mut list) = list {
+                list.note(edge, ui.now(), press);
+                if !list.is_empty() {
+                    ui.set_state(id, list);
+                    self.ident = Ident::Pressed(resolved);
+                }
+            }
+        }
         ui.animate(
             AnimationRequest::new(id, Self::LOOK_SLOT, target).with_key(key),
             transition,
@@ -295,6 +323,9 @@ impl Widget {
         }
         let resolved = self.resolved(ui);
         ui.open_node(resolved, &self.node, chrome);
+        if matches!(self.ident, Ident::Pressed(_)) {
+            draw_presses(ui, resolved.id(), chrome);
+        }
         let r = body(ui);
         ui.close_node();
         r
@@ -534,6 +565,46 @@ impl Authored<'_> {
     }
 }
 
+/// The span [`PressInput::seed`] wraps in, seconds: the sparkle ripple reads it as a noise phase
+/// in ms, which an f32 then holds to 1/128 ms.
+const SEED_PERIOD_S: f64 = 64.0;
+
+/// Draw each live press of the widget `id` opened, in the effect its [`PressList`] holds, over
+/// `chrome` and under the content, inside the chrome's corners, each timed as [`PressInput`] says.
+fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
+    let corners = chrome.map_or(Corners::ZERO, |chrome| chrome.corners);
+    let presses = ui
+        .remove_state::<PressList>(id)
+        .expect("a widget that wore a live press holds its list");
+    let press = presses.effect();
+    let RgbaF32 { r, g, b, a } = press.color;
+    for live in presses.iter() {
+        let released = live
+            .released_at
+            .map_or(-1.0, |at| (at - live.pressed_at).as_secs_f32());
+        let period = live
+            .ends_at(&press)
+            .map_or(press.enter, |end| end - live.pressed_at);
+        let input = PressInput {
+            color: [r, g, b, a],
+            point: live.point.into(),
+            released,
+            enter: press.enter.as_secs_f32(),
+            exit: press.exit.as_secs_f32(),
+            seed: (live.pressed_at.as_secs_f64() % SEED_PERIOD_S) as f32,
+            pad0: 0.0,
+            pad1: 0.0,
+        };
+        ui.add_shape_animated(
+            Shape::effect(press.effect, input).corners(corners),
+            PaintAnimation::clock()
+                .with_started_at(live.pressed_at)
+                .with_period(period),
+        );
+    }
+    ui.set_state(id, presses);
+}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::scene::node::id_recipe::IdRecipe;
@@ -544,7 +615,9 @@ pub(crate) mod internals {
         pub(crate) fn recipe(self) -> IdRecipe {
             match self {
                 Self::Recipe(recipe) => recipe,
-                Self::Resolved(resolved) => panic!("{:?} is resolved already", resolved.id()),
+                Self::Resolved(resolved) | Self::Pressed(resolved) => {
+                    panic!("{:?} is resolved already", resolved.id())
+                }
             }
         }
     }
