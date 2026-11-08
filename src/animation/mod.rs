@@ -11,6 +11,7 @@ pub(crate) mod animation_spec;
 pub(crate) mod bench;
 mod duration;
 pub(crate) mod easing;
+pub(crate) mod motion_role;
 pub(crate) mod phase;
 mod spring;
 

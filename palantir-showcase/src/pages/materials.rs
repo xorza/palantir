@@ -5,7 +5,7 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::glam::Vec2;
-use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
+use palantir::widget::{GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     Align, BackdropFilter, Button, Chrome, Configure, Corners, Lens, Menu, MenuItem, MenuTheme,
     Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Switch, Text, Ui, WidgetId, fmt,
@@ -207,9 +207,11 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
                 .fill(*color),
         );
     }
+    // Essential: the turning page is what each pane shows, so it turns under reduced motion too.
     let spin = PaintAnimation::turn(0.0, 1.0)
         .with_period(Duration::from_secs(8))
-        .with_repeat(PaintRepeat::Forever);
+        .with_repeat(PaintRepeat::Forever)
+        .with_motion(MotionRole::Essential);
     let arm = size.min_element() * 0.8;
     let bar = size.min_element() * 0.12;
     for (w, h) in [(arm, bar), (bar, arm)] {

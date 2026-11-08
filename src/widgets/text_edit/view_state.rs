@@ -1,13 +1,13 @@
 //! The editor's viewport: where the text block is scrolled to, and when the caret
 //! blinks.
 
+use crate::animation::motion_role::MotionRole;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::shape::paint_animation::PaintAnimation;
-use crate::shape::paint_animation::PaintMotion;
 use crate::shape::paint_animation::PaintRepeat;
 use crate::shape::paint_animation::curves;
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
@@ -146,7 +146,7 @@ impl ViewState {
                 .with_steps(2)
                 .with_repeat(PaintRepeat::Settle(BLINK_STOP_AFTER_IDLE))
                 .with_curve(curves::square)
-                .with_motion(PaintMotion::Essential),
+                .with_motion(MotionRole::Essential),
         )
     }
 }

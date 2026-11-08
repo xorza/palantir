@@ -265,14 +265,14 @@ driver serves that command alone; the drive table's `version` names it
 - **Reduced motion, transparency and power are preferences on the `Ui`**, each a
   `Preference<Reduction>` (`System` or `Fixed`) resolved against the system's setting, as the
   scheme's `Preference<ColorScheme>` is: the host reports the system's answer, and the app's pick
-  overrides it. The four are one `UiPreferences`, which `Ui::preferences` and
-  `Ui::set_preferences` read and write whole, as egui's `Context::options_mut` holds its options.
-  One theme holds every transition and every frost; reduced motion snaps them and stops
-  decorative paint motion, and reduced transparency paints every backdrop filter as its
-  `fallback` or its fill made opaque, with no capture or blur, as WinUI's acrylic falls back to
-  its `FallbackColor` ([acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)).
-  Refused: two switches in the `Theme`, a person's or a system's choice in a theme file that a
-  transition would blend.
+  overrides it. The four are one `UiPreferences`, which `Ui::preferences` and `Ui::set_preferences`
+  read and write whole, as egui's `Context::options_mut` holds its options. One theme holds every
+  transition and every frost; reduced motion snaps them and stops decorative paint motion, an
+  animation its author marks essential (`MotionRole`) running on, and reduced transparency paints
+  every backdrop filter as its `fallback` or its fill made opaque, with no capture or blur, as
+  WinUI's acrylic falls back to its `FallbackColor`
+  ([acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)). Refused: two switches
+  in the `Theme`, a person's or a system's choice in a theme file that a transition would blend.
 - **Reduced power follows the OS power-saver mode**: macOS Low Power Mode, Windows' Energy saver
   (battery saver before 24H2) and Linux's power-saver profile, each a mode the person turns on or
   sets the battery level of, so the system decides it. Facts and sources: "Power saving" in

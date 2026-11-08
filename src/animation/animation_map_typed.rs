@@ -71,6 +71,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
             slot,
             target,
             key,
+            motion: _,
         } = request;
         let AnimationClock {
             dt,

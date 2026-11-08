@@ -5,6 +5,7 @@ use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use std::f32::consts::TAU;
 
+use crate::animation::motion_role::MotionRole;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
@@ -12,7 +13,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::paint_animation::{PaintAnimation, PaintMotion, PaintRepeat};
+use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::shape::record::ShapeRecord;
 use crate::theme::spinner::SpinnerTheme;
 use crate::ui::Ui;
@@ -397,7 +398,7 @@ fn a_spinner_turns_under_reduced_motion_and_decoration_does_not() {
                 });
         });
     });
-    let motions: Vec<PaintMotion> = h
+    let motions: Vec<MotionRole> = h
         .ui()
         .tree(Layer::Main)
         .paint_animations
@@ -405,5 +406,5 @@ fn a_spinner_turns_under_reduced_motion_and_decoration_does_not() {
         .iter()
         .map(|e| e.animation.motion)
         .collect();
-    assert_eq!(motions, [PaintMotion::Essential]);
+    assert_eq!(motions, [MotionRole::Essential]);
 }

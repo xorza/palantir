@@ -3,6 +3,7 @@
 use crate::animation::animated::Animated;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
+use crate::animation::motion_role::MotionRole;
 use crate::animation::tests::support::{self, AnimationUi, SLOT};
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -285,58 +286,85 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
 }
 
 /// With motion reduced, a retarget lands on its target in the frame that asks, with no repaint to
-/// finish it; with full motion, the same retarget is in flight. The motion preference decides,
+/// finish it; with full motion, the same retarget is in flight: its frame shows the start, 0, and
+/// asks for the next. The motion preference decides,
 /// the system's ask under `System`, and a pick by hand over it either way. Reduced power snaps it
-/// too under `System`, and a pick of full motion moves it still. A motion in flight when the
-/// window hides lands on its target on the first frame shown again, and stays there.
+/// too under `System`, and a pick of full motion moves it still. An essential request moves under
+/// reduced motion and reduced power alike. A motion in flight when the window hides lands on its
+/// target on the first frame shown again, and stays there, essential or not.
 #[test]
 fn reduced_motion_and_a_hidden_span_snap_every_transition() {
-    let step = |h: &mut Harness, id: WidgetId, target: f32| {
+    let step = |h: &mut Harness, id: WidgetId, target: f32, role: MotionRole| {
         let mut value = f32::NAN;
         let report = h.frame(|ui| {
             value = ui
-                .animate(AnimationRequest::new(id, SLOT, target), AnimationSpec::FAST)
+                .animate(
+                    AnimationRequest::new(id, SLOT, target).with_motion(role),
+                    AnimationSpec::FAST,
+                )
                 .value;
             Block::new().id(id).show(ui);
         });
         (value, report.repaint_requested)
     };
-    let retarget = |system_reduced: bool, power: bool, preference: Preference<Reduction>| {
-        let AnimationUi { mut h, id } = support::setup_animation_ui("reduced");
-        h.set_system_motion_reduced(system_reduced);
-        h.set_system_power_reduced(power);
-        h.ui_mut().set_preferences(UiPreferences {
-            motion: preference,
-            ..UiPreferences::default()
-        });
-        step(&mut h, id, 0.0);
-        let moved = step(h.at(Duration::from_millis(16)), id, 1.0);
-        (h, id, moved)
-    };
-    assert_eq!(retarget(true, false, Preference::System).2, (1.0, false));
+    let retarget =
+        |system_reduced: bool, power: bool, preference: Preference<Reduction>, role: MotionRole| {
+            let AnimationUi { mut h, id } = support::setup_animation_ui("reduced");
+            h.set_system_motion_reduced(system_reduced);
+            h.set_system_power_reduced(power);
+            h.ui_mut().set_preferences(UiPreferences {
+                motion: preference,
+                ..UiPreferences::default()
+            });
+            step(&mut h, id, 0.0, role);
+            let moved = step(h.at(Duration::from_millis(16)), id, 1.0, role);
+            (h, id, moved)
+        };
+    let decorative = MotionRole::Decorative;
     assert_eq!(
-        retarget(false, false, Preference::Fixed(Reduction::Reduced)).2,
+        retarget(true, false, Preference::System, decorative).2,
         (1.0, false)
     );
     assert_eq!(
-        retarget(false, true, Preference::System).2,
+        retarget(
+            false,
+            false,
+            Preference::Fixed(Reduction::Reduced),
+            decorative
+        )
+        .2,
+        (1.0, false)
+    );
+    assert_eq!(
+        retarget(false, true, Preference::System, decorative).2,
         (1.0, false),
         "reduced power snaps a transition that follows the system"
     );
-    for (system_reduced, power) in [(true, false), (false, true)] {
-        let (value, repaint) =
-            retarget(system_reduced, power, Preference::Fixed(Reduction::Full)).2;
-        assert!(
-            value < 1.0 && repaint,
-            "a pick of full motion moves: {value}"
+    for (system_reduced, power, preference, role) in [
+        (true, false, Preference::Fixed(Reduction::Full), decorative),
+        (false, true, Preference::Fixed(Reduction::Full), decorative),
+        (true, false, Preference::System, MotionRole::Essential),
+        (false, true, Preference::System, MotionRole::Essential),
+    ] {
+        assert_eq!(
+            retarget(system_reduced, power, preference, role).2,
+            (0.0, true),
+            "motion {system_reduced}, power {power}, {preference:?}, {role:?}: in flight"
         );
     }
-    let (mut h, id, (value, repaint)) = retarget(false, false, Preference::System);
-    assert!(value < 1.0 && repaint, "{value}");
-
-    h.ui_mut().window_frame_mut().facts.shown_again = true;
-    assert_eq!(step(h.at(Duration::from_millis(32)), id, 1.0), (1.0, false));
-    assert_eq!(step(h.at(Duration::from_millis(48)), id, 1.0), (1.0, false));
+    for role in [decorative, MotionRole::Essential] {
+        let (mut h, id, moved) = retarget(false, false, Preference::System, role);
+        assert_eq!(moved, (0.0, true), "in flight");
+        h.ui_mut().window_frame_mut().facts.shown_again = true;
+        assert_eq!(
+            step(h.at(Duration::from_millis(32)), id, 1.0, role),
+            (1.0, false)
+        );
+        assert_eq!(
+            step(h.at(Duration::from_millis(48)), id, 1.0, role),
+            (1.0, false)
+        );
+    }
 }
 
 /// A look follows a theme change and fades a state change. A themed leaf at rest wears the dark

@@ -119,7 +119,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     /// What paints in place of the effect while motion is reduced
     /// ([`Ui::is_motion_reduced`](crate::Ui::is_motion_reduced)); [`ReducedPaint::Same`] by
     /// default, where the effect's paint animation alone holds still, as
-    /// [`PaintMotion`](crate::widget::PaintMotion) says. It wins over [`Self::power_saver`].
+    /// [`MotionRole`](crate::widget::MotionRole) says. It wins over [`Self::power_saver`].
     pub const fn reduced_motion(mut self, paint: ReducedPaint<U, K>) -> Self {
         self.reduced_motion = paint;
         self

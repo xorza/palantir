@@ -8,8 +8,8 @@ use crate::support::DemoCell;
 use crate::support::{Kit, Knob, Section, Swatches};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{
-    AnimationRequest, GlyphFont, LineCap, LineJoin, Mesh, PaintAnimation, PaintRepeat, RectShape,
-    Shape,
+    AnimationRequest, GlyphFont, LineCap, LineJoin, Mesh, MotionRole, PaintAnimation, PaintRepeat,
+    RectShape, Shape,
 };
 use palantir::{
     Align, Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconFit,
@@ -158,9 +158,11 @@ fn turn(ui: &mut Ui, k: Kit) {
                  time: the widget records the same shape every frame, and layout and hit tests \
                  never see the angle.",
             );
+            // The page shows motion, so its turn is essential and runs under reduced motion.
             let spin = PaintAnimation::turn(0.0, 1.0)
                 .with_period(Duration::from_secs(6))
-                .with_repeat(PaintRepeat::Forever);
+                .with_repeat(PaintRepeat::Forever)
+                .with_motion(MotionRole::Essential);
             let source = Rect::new(20.0, 30.0, 60.0, 40.0);
             let mut mesh = Mesh::new();
             let a = mesh.vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
@@ -262,6 +264,10 @@ fn easing(ui: &mut Ui, k: Kit) {
         .apis(&[
             api!(Ui::animate as fn(&mut Ui, AnimationRequest<f32>, AnimationSpec) -> Animated<f32>),
             api!(AnimationSpec::duration),
+            api!(
+                AnimationRequest::with_motion
+                    as fn(AnimationRequest<f32>, MotionRole) -> AnimationRequest<f32>
+            ),
         ])
         .show(ui, k, |ui| {
             support::note(
@@ -270,16 +276,9 @@ fn easing(ui: &mut Ui, k: Kit) {
                 "Each bar retargets on the same frame through Ui::animate, with an \
                  AnimationSpec of its own; the timed three share the knob's duration, which \
                  each run takes when it starts, the spring keeps its own. Toggle to send them \
-                 all the other way.",
+                 all the other way. Each request's motion is essential, so the bars move under \
+                 reduced motion too, where a decorative one snaps to its end.",
             );
-            if ui.is_motion_reduced() {
-                support::note(
-                    ui,
-                    k,
-                    "The system asks for reduced motion, so every bar snaps to its end: \
-                     Ui::animate honors it for the whole app.",
-                );
-            }
             ui.with_state::<Bars, _>(demo_id, |ui, s| {
                 support::row(ui, |ui| {
                     if Button::new().label("Toggle").show(ui).clicked() {
@@ -363,7 +362,10 @@ impl Bar {
     fn show(self, ui: &mut Ui, k: Kit, target_width: f32) {
         let id = WidgetId::from_hash(("motion::bar", self.key));
         let width = ui
-            .animate(AnimationRequest::new(id, "width", target_width), self.spec)
+            .animate(
+                AnimationRequest::new(id, "width", target_width).with_motion(MotionRole::Essential),
+                self.spec,
+            )
             .value;
         let bar = (Sizing::fixed(BAR_TRACK_W), Sizing::fixed(18.0));
         Panel::hstack()

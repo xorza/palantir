@@ -3187,8 +3187,10 @@ widget::AnimationRequest
         pub slot: AnimationSlot
         pub target: T
         pub key: Option<AnimationKey>
+        pub motion: MotionRole
         pub fn new(id: WidgetId, slot: impl Into<AnimationSlot>, target: T) -> Self
         pub const fn with_key(self, key: AnimationKey) -> Self
+        pub const fn with_motion(self, motion: MotionRole) -> Self
         impl<T: Clone + Animatable> Clone for AnimationRequest<T>
         impl<T: Debug + Animatable> Debug for AnimationRequest<T>
 
@@ -3393,6 +3395,11 @@ widget::MeshShape
         pub const fn at(self, rect: Rect) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
 
+widget::MotionRole
+    enum MotionRole: Clone, Copy, Debug, Default, Eq, PartialEq
+        Decorative
+        Essential
+
 widget::OverlayScope
     struct OverlayScope: Debug
         pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
@@ -3410,7 +3417,7 @@ widget::PaintAnimation
         pub channel: PaintChannel
         pub timing: PaintTiming
         pub curve: PaintCurve
-        pub motion: PaintMotion
+        pub motion: MotionRole
         pub fn alpha(from: f32, to: f32) -> Self
         pub fn turn(from: f32, to: f32) -> Self
         pub fn clock() -> Self
@@ -3421,7 +3428,7 @@ widget::PaintAnimation
         pub const fn with_repeat(self, repeat: PaintRepeat) -> Self
         pub const fn with_steps(self, n: u32) -> Self
         pub const fn with_curve(self, curve: PaintCurve) -> Self
-        pub const fn with_motion(self, motion: PaintMotion) -> Self
+        pub const fn with_motion(self, motion: MotionRole) -> Self
 
 widget::PaintChannel
     struct PaintChannel: Clone, Copy, Debug, PartialEq
@@ -3430,11 +3437,6 @@ widget::PaintChannel
 
 widget::PaintCurve
     type PaintCurve = fn(f32) -> f32
-
-widget::PaintMotion
-    enum PaintMotion: Clone, Copy, Debug, Default, Eq, PartialEq
-        Decorative
-        Essential
 
 widget::PaintRange
     struct PaintRange: Clone, Copy, Debug, PartialEq

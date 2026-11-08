@@ -8,6 +8,7 @@ use std::rc::Rc;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
+use crate::animation::motion_role::MotionRole;
 use crate::effect::contract::{self, ParamsLayout};
 use crate::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
 use crate::effect::effect_name::EffectName;
@@ -39,7 +40,7 @@ use crate::primitives::paint::image::Image;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::shape::Shape;
-use crate::shape::paint_animation::{PaintAnimation, PaintMotion, PaintRepeat};
+use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::theme::Theme;
 use crate::theme::error::ThemeEffectError;
 use crate::theme::look::press_effect::PressEffect;
@@ -1018,7 +1019,7 @@ fn reduced_motion_holds_a_decorative_effect() {
         .with_period(ms(2000))
         .with_repeat(PaintRepeat::Forever);
     let once = PaintAnimation::clock().with_period(ms(2000));
-    let progress = looping.with_motion(PaintMotion::Essential);
+    let progress = looping.with_motion(MotionRole::Essential);
     let mut h = blend_window();
     h.set_system_motion_reduced(true);
     let record = |ui: &mut Ui| {

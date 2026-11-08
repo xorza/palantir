@@ -27,6 +27,7 @@ use crate::animation::animated::Animated;
 use crate::animation::animation_map_typed::AnimationClock;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
+use crate::animation::motion_role::MotionRole;
 use crate::cascade::Cascade;
 use crate::cascade::WidgetLocation;
 use crate::cascade::rows::tab_stop_row::TabEnd;
@@ -290,20 +291,22 @@ impl Ui {
     /// a change before the first or during it lands on a window that showed nothing, and one
     /// right after it is the system's first answer (`SystemPreferences::read`'s timeout).
     const fn theme_motion(&self) -> Motion {
-        if !self.motion_snaps() && self.frame_runtime.render_frame_id > 1 {
+        if !self.motion_snaps(MotionRole::Decorative) && self.frame_runtime.render_frame_id > 1 {
             Motion::Animate
         } else {
             Motion::Snap
         }
     }
 
-    /// Whether every value transition lands on its end this frame: motion is reduced, or power is
-    /// and the motion preference follows the system (`AppSettings::transitions`), or the window
-    /// shows again after a hidden span, where a motion that ran unseen would show its last shown
-    /// point and finish late.
+    /// Whether a value transition of `role` lands on its end this frame: a decorative one while
+    /// motion is reduced, or power is and the motion preference follows the system
+    /// (`AppSettings::transitions`); any one when the window shows again after a hidden span,
+    /// where a motion that ran unseen would show its last shown point and finish late.
     #[inline]
-    const fn motion_snaps(&self) -> bool {
-        self.host.window_frame.facts.shown_again || self.frame_runtime.transitions.is_reduced()
+    const fn motion_snaps(&self, role: MotionRole) -> bool {
+        self.host.window_frame.facts.shown_again
+            || (matches!(role, MotionRole::Decorative)
+                && self.frame_runtime.transitions.is_reduced())
     }
 
     /// The person's picks over the system's answers; each
@@ -339,8 +342,8 @@ impl Ui {
     /// [`Self::system_motion_reduced`] at the frame's start, so no frame mixes two, as transparency
     /// and power. Then every [`Self::animate`] and theme
     /// transition snaps to its target, as CSS `prefers-reduced-motion` asks of transitions, and a
-    /// [decorative](crate::widget::PaintMotion::Decorative) paint animation holds still; an
-    /// [essential](crate::widget::PaintMotion::Essential) one, as a spinner's turn or a caret's
+    /// [decorative](crate::widget::MotionRole::Decorative) paint animation holds still; an
+    /// [essential](crate::widget::MotionRole::Essential) one, as a spinner's turn or a caret's
     /// blink, still runs, as WCAG 2.3.3 lets essential motion stay
     /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). Under
     /// [reduced power](Self::is_power_reduced) with motion that follows the system, the
@@ -982,7 +985,7 @@ impl Ui {
     /// shape is identical every frame, so the widget never re-records. Drops silently
     /// if the shape was noop-collapsed. With motion reduced ([`Self::is_motion_reduced`]), a
     /// decorative animation lands at once, as
-    /// [`PaintMotion::Decorative`](crate::widget::PaintMotion::Decorative) says. An
+    /// [`MotionRole::Decorative`] says. An
     /// [`EffectShape`](crate::widget::EffectShape) reads the animation's time.
     ///
     /// # Panics
@@ -1235,9 +1238,11 @@ impl Ui {
 
     /// Advance the animation row `request` names toward its target and return the current
     /// value, and whether the motion is at rest there. [`AnimationSpec::SNAP`] lands on the
-    /// target now, settled, and requests no repaint, as every spec does with motion reduced, under
-    /// reduced power where motion follows the system, and on the first frame after the window was
-    /// hidden; a row it leaves goes at the end of the frame.
+    /// target now, settled, and requests no repaint, as every spec of a decorative request does
+    /// with motion reduced and under reduced power where motion follows the system
+    /// ([`AnimationRequest::with_motion`](crate::widget::AnimationRequest::with_motion)), and every
+    /// spec on the first frame after the window was hidden; a row it leaves goes at the end of the
+    /// frame.
     ///
     /// # Panics
     ///
@@ -1251,7 +1256,7 @@ impl Ui {
         request: AnimationRequest<V>,
         spec: AnimationSpec,
     ) -> Animated<V> {
-        let spec = if self.motion_snaps() {
+        let spec = if self.motion_snaps(request.motion) {
             AnimationSpec::SNAP
         } else {
             spec

@@ -12,6 +12,7 @@ use crate::ui::tests::support::SURFACE;
 use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
+use crate::widgets::spinner::Spinner;
 
 fn pick(ui: &mut Ui, power: Preference<Reduction>) {
     ui.set_preferences(UiPreferences {
@@ -134,4 +135,45 @@ fn input_inside_the_interval_paints_at_its_end() {
     h.advance(Duration::from_millis(100));
     let idle = slot + Duration::from_millis(100);
     assert_eq!(frame_times(&mut h, 2), [idle, idle + slot]);
+}
+
+/// A spinner, essential paint motion, turns on under reduced power, held to the 30 Hz grid: at
+/// 60 Hz its frames land at 0, 33_333_333 and 66_666_666 ns though each asks for the next at once,
+/// the second and third paint without a record, and each reports the next slot.
+#[test]
+fn a_spinner_turns_on_the_reduced_power_grid() {
+    let slot = Duration::from_nanos(33_333_333);
+    let mut h = reduced_at(60_000);
+    let mut spinner = |ui: &mut Ui| {
+        Spinner::new().show(ui);
+    };
+    let mut frames = Vec::new();
+    for _ in 0..3 {
+        let report = h.frame(&mut spinner);
+        let now = h.ui().now();
+        frames.push((
+            now,
+            report.processing,
+            report.repaint_at,
+            report.earliest_repaint_at,
+        ));
+    }
+    assert_eq!(
+        frames,
+        [
+            (
+                Duration::ZERO,
+                FrameProcessing::SingleLayout,
+                Some(Duration::ZERO),
+                Some(slot)
+            ),
+            (slot, FrameProcessing::PaintOnly, Some(slot), Some(slot * 2)),
+            (
+                slot * 2,
+                FrameProcessing::PaintOnly,
+                Some(slot * 2),
+                Some(slot * 3)
+            ),
+        ]
+    );
 }

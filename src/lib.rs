@@ -191,6 +191,7 @@ pub mod widget {
     pub use crate::animation::animation_key::AnimationKey;
     pub use crate::animation::animation_request::AnimationRequest;
     pub use crate::animation::animation_slot::AnimationSlot;
+    pub use crate::animation::motion_role::MotionRole;
     pub use crate::common::content_hash::ContentHash;
     pub use crate::primitives::geometry::circular_arc::CircularArc;
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
@@ -213,8 +214,7 @@ pub mod widget {
     /// `fn(f32) -> f32`, see [`PaintCurve`].
     pub use crate::shape::paint_animation::curves;
     pub use crate::shape::paint_animation::{
-        PaintAnimation, PaintChannel, PaintCurve, PaintMotion, PaintRange, PaintRepeat, PaintSteps,
-        PaintTiming,
+        PaintAnimation, PaintChannel, PaintCurve, PaintRange, PaintRepeat, PaintSteps, PaintTiming,
     };
     pub use crate::shape::polyline::PolylineShape;
     pub use crate::shape::rect::RectShape;
