@@ -37,11 +37,11 @@ features = ["golden"]
 version = "0.2.7"
 
 [workspace]
-members = ["palantir-anim-derive", "palantir-showcase"]
+members = ["palantir-derive", "palantir-showcase"]
 
 [workspace.dependencies]
 palantir = { path = ".", default-features = false }
-palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.8.3", default-features = false }
+palantir-derive = { path = "palantir-derive", version = "=0.8.3", default-features = false }
 palantir-showcase = { path = "palantir-showcase" }
 arboard = { version = "3.7", default-features = false, features = [
     "image-data",
@@ -163,7 +163,7 @@ workspace = true
 
 
 [dependencies]
-palantir-anim-derive = { workspace = true }
+palantir-derive = { workspace = true }
 arboard = { workspace = true, optional = true }
 bytemuck = { workspace = true }
 cosmic-text = { workspace = true }
@@ -171,6 +171,7 @@ fixedbitset = { workspace = true }
 foldhash = { workspace = true }
 glam = { workspace = true }
 libm = { workspace = true }
+naga = { workspace = true }
 resvg = { workspace = true }
 image = { workspace = true, optional = true }
 half = { workspace = true }
@@ -197,7 +198,6 @@ palantir = { workspace = true, features = ["internals"] }
 tracing-subscriber = { workspace = true }
 static_assertions = { workspace = true }
 ron = { workspace = true }
-naga = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, optional = true }

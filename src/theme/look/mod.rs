@@ -34,8 +34,8 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct WidgetLook {
     /// Fill, stroke, corners and shadow.

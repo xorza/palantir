@@ -114,6 +114,7 @@ pub(crate) mod diagnostics;
 /// Per-output display state shared by host and renderer.
 pub(crate) mod display;
 pub(crate) mod driver;
+pub(crate) mod effect;
 pub(crate) mod gpu;
 pub(crate) mod host;
 pub(crate) mod icons;
@@ -150,6 +151,13 @@ pub use wgpu;
 // (`Configure::at`, `Display::physical`, polyline points), so a consumer names them from the
 // version palantir is built against.
 pub use glam;
+
+// Re-exported whole: `EffectParams` is a `bytemuck::Pod`, which a consumer derives from the
+// version palantir checks against.
+pub use bytemuck;
+
+// Re-exported whole: `EffectError` carries naga's parse and validation errors as its sources.
+pub use naga;
 
 /// Format text straight into the frame's record store with no `String`:
 /// `fmt!(ui, "…", args…)` is [`Ui::fmt`] over `format_args!`.
@@ -227,7 +235,7 @@ pub mod widget {
     pub use crate::widget_core::configure::ThemeDefaults;
     pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
     pub use crate::widget_core::widget::{Authored, Widget};
-    pub use palantir_anim_derive::{Animatable, Lerp};
+    pub use palantir_derive::{Animatable, Lerp};
 }
 
 pub use animation::animated::Animated;
@@ -246,6 +254,11 @@ pub use driver::action::Action;
 pub use driver::agent_window::AgentWindow;
 pub use driver::error::{LocateError, PlayError, StepError};
 pub use driver::locator::{Found, Locate, Locator};
+pub use effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
+pub use effect::effect_name::EffectName;
+pub use effect::effect_params::{EffectParam, EffectParams, ParamType, ParamValue};
+pub use effect::effect_source::{EffectSource, PowerSaverPaint};
+pub use effect::error::{EffectError, EntryMismatch, ParamMismatch};
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;
 pub use gpu::device::gpu_wait::GpuWait;
@@ -274,6 +287,7 @@ pub use icons::icon_set::IconSet;
 pub use icons::icon_table::{IconDefinition, IconTable};
 pub use image_registry::error::ImageTooLarge;
 pub use image_registry::image_handle::ImageHandle;
+pub use palantir_derive::EffectParams;
 pub use primitives::geometry::corners::Corners;
 pub use primitives::geometry::rect::Rect;
 pub use primitives::geometry::size::Size;

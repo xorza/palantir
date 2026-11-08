@@ -30,8 +30,8 @@ power-saver mode", "Reduced power starts a frame at most at 30 Hz"), the docs of
   the capture `BackdropFilter` uses. Deferred: effects that read their own subtree (SwiftUI
   `layerEffect`), which need an offscreen pass per node; stateful effects, which `GpuPaint`
   already serves.
-- **Plain WGSL behind palantir's prelude.** Palantir puts its prelude and the effect contract in
-  front of the app's text. An app that wants modules runs WESL or naga_oil itself, as both emit
+- **Plain WGSL beside palantir's prelude.** Palantir puts its prelude and the effect contract
+  after the app's text, so a parse error's position reads in the app's text. An app that wants modules runs WESL or naga_oil itself, as both emit
   WGSL. Refused: WESL or naga_oil inside palantir, a public dependency every app pays for.
 - **The output is a color and a weight for what is under it.** The pipeline blends
   `src·One + dst·Src1` (dual-source blending), so one pipeline gives over, add, multiply and
@@ -42,24 +42,13 @@ power-saver mode", "Reduced power starts a frame at most at 30 Hz"), the docs of
 
 ### Identity and parameters
 
-- **The name is the identity.** `EffectName<U, K = Color>` holds its name inline, at most 63
-  bytes, and a phantom parameter type `U` and kind `K`, as `FontFamily` holds a name. It is
-  `Copy`, made by a `const fn`, and serializes as its name. Refused: an RAII handle beside a
-  string id, two routes to one effect.
-- **One method loads, replaces and reloads.** `Ui::load_effect(name, source)` validates the WGSL
-  with `wgpu::naga`, checks its parameter struct against `U`, and compiles. The same name again
-  replaces the effect; on an error the old one keeps painting and the error returns. An effect
-  stays loaded for the app's life, as a font does.
-- **Parameters are a `Pod` struct**, checked against the WGSL at load and by rustc at each
-  shape. They go into a per-instance storage buffer, so the instances of one effect share a draw.
-  At most 256 B an instance. Refused: values by name (Qt, Skia), a lookup and a check per value
-  per frame; a float array by index (Flutter, cranpose), with no check.
+Landed with batch 4: the decisions are in the docs of `EffectName`, `EffectParams`,
+`EffectSource`, `PowerSaverPaint`, `EffectError` and `Ui::load_effect`. The contract is a fixed
+`fn effect(input: EffectInput, params: Params) -> EffectOutput`, the prelude after the app's text.
+
 - **A name nothing loaded is a logic error.** A shape that names one panics with the name.
   Refused: painting nothing, which is quietly wrong; `FontFamily`'s fallback, which has no
   equivalent for an effect.
-- **Errors are cases.** `EffectError`: parse, validation, missing entry function, parameter
-  layout, parameters too large, image slots past the limit. A foreign naga error is the
-  `source`.
 
 ### Paint
 
@@ -125,13 +114,10 @@ the harness hold every frame to it.
 A `PowerSaverWatch` in each `host/winit/platform/` file, folded with `mundy`'s report by
 `SystemFollow`.
 
-### 4. The effect registry
+### 4. The effect registry — done
 
-- `EffectName<U, K>`, its kinds, the effect source with its image slot count and power-saver
-  alternative, `Ui::load_effect`, `EffectError`.
-- Validation through `wgpu::naga`, the parameter check against `U`, the 256 B limit, the run-time
-  check of `(U, K)` behind each name.
-- Tests: one per error case, a load that replaces, a failed reload that keeps the old effect.
+`EffectRegistry` in the shared resources, `#[derive(EffectParams)]` in `palantir-derive` (renamed
+from `palantir-anim-derive`), and `naga` 30 as a direct dependency. Pipelines compile in batch 5.
 
 ### 5. Color effects paint
 

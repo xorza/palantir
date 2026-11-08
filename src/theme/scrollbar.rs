@@ -11,8 +11,8 @@ use crate::theme::palette::Palette;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness in logical px; pill radius is `thickness / 2`.

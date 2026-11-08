@@ -2,7 +2,7 @@
 
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::text_style::TextStyle;
-use palantir_anim_derive::{Animatable, Lerp};
+use palantir_derive::{Animatable, Lerp};
 
 /// Resolved per-frame animated values for a [`WidgetLook`](crate::WidgetLook), built by [`WidgetLook::to_animated`](crate::WidgetLook::to_animated). `text.color` is animated; `text.font_size` and `text.line_height_factor` snap-carry the look's overrides.
 // Not `Copy`: `Chrome` isn't.

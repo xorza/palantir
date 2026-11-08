@@ -17,8 +17,8 @@ use glam::Vec2;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct DockTheme {
     /// The region a drop would occupy: its wash, outline and corners.

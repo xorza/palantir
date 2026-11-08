@@ -36,6 +36,11 @@ use crate::diagnostics::frame_stats::FrameStats;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
+use crate::effect::effect_kind::EffectKind;
+use crate::effect::effect_name::EffectName;
+use crate::effect::effect_params::EffectParams;
+use crate::effect::effect_source::EffectSource;
+use crate::effect::error::EffectError;
 use crate::gpu::gpu_paint::gpu_views::RecordedView;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
@@ -801,6 +806,42 @@ impl Ui {
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)
+    }
+
+    /// Load the effect `source` under `name`, for the app's life, as a font loads; the same name
+    /// again replaces it, so a reload is this call with the new source. The WGSL is parsed with
+    /// palantir's prelude and validated, `fn effect` is checked against the contract
+    /// ([`EffectSource`]), and its parameter struct against `U`, member for member. App-global.
+    /// Refused: a handle that unloads an effect when it drops, a second route to one effect beside
+    /// its name.
+    ///
+    /// # Errors
+    ///
+    /// An [`EffectError`] case; the effect loaded under `name` before, if any, stays.
+    ///
+    /// # Panics
+    ///
+    /// When `name`, or the power-saver alternative `source` names, was loaded before with another
+    /// parameter type or kind.
+    #[inline]
+    #[track_caller]
+    pub fn load_effect<U: EffectParams, K: EffectKind>(
+        &self,
+        name: EffectName<U, K>,
+        source: EffectSource<U, K>,
+    ) -> Result<(), EffectError> {
+        self.resources.effects().load(name, source)
+    }
+
+    /// Whether an effect is loaded under `name`. App-global.
+    ///
+    /// # Panics
+    ///
+    /// When it was loaded with another parameter type or kind.
+    #[inline]
+    #[track_caller]
+    pub fn has_effect<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) -> bool {
+        self.resources.effects().contains(name)
     }
 
     /// Whether a face answers to `family`. Without one, shaping falls back to

@@ -2,7 +2,7 @@
 //! [`Lerp`] and adds spring displacement arithmetic, and a squared distance in its
 //! own settle tolerance; value-dependent snap-only fields normalize first.
 //! Built-in impls cover `f32`, `Vec2`, arrays and `RgbaF32`; domain types opt in via
-//! `#[derive(Lerp, Animatable)]` (`palantir-anim-derive`, type-erased `AnimationMap`).
+//! `#[derive(Lerp, Animatable)]` (`palantir-derive`, type-erased `AnimationMap`).
 
 use crate::primitives::math::domain::EPS;
 

@@ -20,7 +20,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// filter's fallback stores: the filter's own fallback is not read, as a pane's fill made opaque
 /// would black out the window behind a half-clear tint. [`From<RgbaF32>`] makes a scrim that only dims.
 #[derive(
-    Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Lerp,
+    Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_derive::Lerp,
 )]
 #[must_use]
 pub struct Scrim {

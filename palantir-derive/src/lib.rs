@@ -1,8 +1,11 @@
-//! Derives for `palantir::widget::Lerp` and `palantir::widget::Animatable`. `Lerp` blends a struct
-//! fieldwise; `Animatable` adds the spring arithmetic, where animated fields forward to their own
-//! impls and `#[animate(snap)]` and `#[animate(lerp_only)]` fields take the target at once and are
-//! left out of it. A snap field switches halfway through a `lerp`; a `lerp_only` field blends
-//! there. A hidden `TextSlots` derive is palantir's own, for its theme parts' text walk.
+//! Palantir's derive macros. For `palantir::widget::Lerp` and `palantir::widget::Animatable`:
+//! `Lerp` blends a struct fieldwise; `Animatable` adds the spring arithmetic, where animated
+//! fields forward to their own impls and `#[animate(snap)]` and `#[animate(lerp_only)]` fields
+//! take the target at once and are left out of it. A snap field switches halfway through a
+//! `lerp`; a `lerp_only` field blends there. A hidden `TextSlots` derive is palantir's own, for
+//! its theme parts' text walk.
+
+mod effect_params;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -79,6 +82,18 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
 pub fn derive_text_slots(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand_text_slots(&input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// `#[derive(EffectParams)]` on a `#[repr(C)]` struct with named fields and no generics: each
+/// field's name, byte offset and WGSL type, which `palantir::Ui::load_effect` checks against the
+/// effect's parameter struct, member for member. Each field's type must be a
+/// `palantir::ParamValue`. The struct also derives `bytemuck::Pod`, which the trait requires.
+#[proc_macro_derive(EffectParams)]
+pub fn derive_effect_params(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    effect_params::expand(&input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

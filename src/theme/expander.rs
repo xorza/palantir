@@ -24,8 +24,8 @@ use std::f32::consts::FRAC_PI_2;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct ExpanderTheme {
     /// The header's four per-state looks; `flatten` keeps theme files flat (`[expander.normal]`).

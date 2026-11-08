@@ -11,7 +11,7 @@ use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use palantir_anim_derive::{Animatable, Lerp};
+use palantir_derive::{Animatable, Lerp};
 
 /// Paint data shared by container widgets (`Block`, `Panel`, `Grid`) and per-state
 /// widget visuals. [`Self::NONE`] is transparent fill, no border, square corners:

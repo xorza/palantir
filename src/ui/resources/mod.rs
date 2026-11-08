@@ -1,11 +1,12 @@
-//! The app-global resources of one host, shared by every window's recorder: shaper, image and icon
-//! registries, clipboard, window directory, and the settings every window shares, so recorders in
+//! The app-global resources of one host, shared by every window's recorder: shaper, image, icon
+//! and effect registries, clipboard, window directory, and the settings every window shares, so recorders in
 //! two windows resolve the same font, texture and scale.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use crate::clipboard::Clipboard;
+use crate::effect::effect_registry::EffectRegistry;
 use crate::icons::icon_registry::IconRegistry;
 use crate::image_registry::ImageRegistry;
 use crate::image_registry::error::ImageTooLarge;
@@ -38,6 +39,7 @@ struct SharedResources {
     text: TextShaper,
     images: ImageRegistry,
     icons: IconRegistry,
+    effects: EffectRegistry,
     /// The ceiling a registered image is measured against (`Ui::max_image_dimension`) and the
     /// attach epoch; no ceiling until a device attaches.
     device: SharedDevice,
@@ -54,6 +56,7 @@ impl UiResources {
             text,
             images,
             icons: IconRegistry::default(),
+            effects: EffectRegistry::default(),
             device: SharedDevice::default(),
             clipboard,
             settings: AppSettings::default(),
@@ -63,6 +66,10 @@ impl UiResources {
 
     pub(crate) fn text(&self) -> &TextShaper {
         &self.0.text
+    }
+
+    pub(crate) fn effects(&self) -> &EffectRegistry {
+        &self.0.effects
     }
 
     pub(crate) fn icons(&self) -> &IconRegistry {

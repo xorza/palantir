@@ -13,8 +13,8 @@ use glam::Vec2;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct ComboBoxTheme {
     /// Gutter between label and chevron; the trigger justifies its children apart, so this is the minimum gap.

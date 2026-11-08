@@ -13,8 +13,8 @@ use std::time::Duration;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct SpinnerTheme {
     /// Arc color at the comet's head; the tail fades to transparent.

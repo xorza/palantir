@@ -31,8 +31,8 @@ pub(crate) const ACCENT_PRESS: f32 = 0.24;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct ButtonTheme {
     /// The four per-state looks of a button that is not selected; `flatten` keeps theme files

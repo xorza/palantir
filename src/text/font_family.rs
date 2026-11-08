@@ -2,21 +2,18 @@
 
 use serde::de;
 use std::fmt;
-use std::str;
+
+use crate::primitives::identity::inline_name::InlineName;
 
 /// Which family to shape in, by name. `Copy`: the name sits inline, so a family needs no table
 /// to name it, and a deserialized style resolves wherever it is shaped. Each shaper keys the
 /// families it meets on its own. Serializes as its name.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FontFamily {
-    len: u8,
-    /// The name's bytes, zero past `len`, so equality and hashing read the whole array.
-    bytes: [u8; Self::MAX_NAME_LEN],
-}
+pub struct FontFamily(InlineName);
 
 impl FontFamily {
     /// The longest name a family holds, in bytes.
-    pub const MAX_NAME_LEN: usize = 63;
+    pub const MAX_NAME_LEN: usize = InlineName::MAX_LEN;
 
     /// Bundled Inter.
     pub const SANS: Self = Self::named("Inter").expect("the bundled name fits");
@@ -26,26 +23,15 @@ impl FontFamily {
     /// The family called `name`. `None` for an empty name or one longer than
     /// [`Self::MAX_NAME_LEN`] bytes.
     pub const fn named(name: &str) -> Option<Self> {
-        let name = name.as_bytes();
-        if name.is_empty() || name.len() > Self::MAX_NAME_LEN {
-            return None;
+        match InlineName::new(name) {
+            Some(name) => Some(Self(name)),
+            None => None,
         }
-        let mut bytes = [0; Self::MAX_NAME_LEN];
-        let mut i = 0;
-        while i < name.len() {
-            bytes[i] = name[i];
-            i += 1;
-        }
-        Some(Self {
-            len: name.len() as u8,
-            bytes,
-        })
     }
 
     /// This family's name.
     pub fn name(&self) -> &str {
-        str::from_utf8(&self.bytes[..usize::from(self.len)])
-            .expect("a family is built from a whole `str`")
+        self.0.as_str()
     }
 }
 

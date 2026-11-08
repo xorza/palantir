@@ -15,6 +15,7 @@ const ORDER: [&[&str]; 17] = [
         "clipboard",
         "image_registry",
         "diagnostics",
+        "effect",
     ],
     &["shape"],
     &["icons"],

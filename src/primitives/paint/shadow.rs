@@ -5,7 +5,7 @@ use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::{self, NanCheck};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
-use palantir_anim_derive::{Animatable, Lerp};
+use palantir_derive::{Animatable, Lerp};
 
 /// A single drop or inset shadow, embedded in `Shape::Shadow` or used as
 /// `Chrome::shadow`. `Shadow::NONE` (also `Default`) is the "no shadow"

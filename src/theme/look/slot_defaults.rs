@@ -13,8 +13,8 @@ use crate::primitives::geometry::spacing::Spacing;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none; explicit zero overrides it.

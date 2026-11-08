@@ -125,6 +125,9 @@ Axis
         X
         Y
 
+BackdropEffect
+    struct BackdropEffect: Clone, Copy, Debug, DockTab (blanket), EffectKind, Eq, Hash, PartialEq
+
 BackdropFilter
     struct BackdropFilter: Animatable, Clone, Copy, Debug, Default, Lerp, PartialEq, Serialize
         pub blur: f32
@@ -311,6 +314,9 @@ ColorCoords
         pub const fn with_hue(self, h: f32) -> Self
         pub const fn with_saturation(self, s: f32) -> Self
         pub const fn with_value(self, v: f32) -> Self
+
+ColorEffect
+    struct ColorEffect: Clone, Copy, Debug, DockTab (blanket), EffectKind, Eq, Hash, PartialEq
 
 ColorField
     struct ColorField<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -732,10 +738,66 @@ EditableLabelResponse
         pub committed_text: Option<String>
         pub ended: Option<EditEnd>
 
+EffectError
+    enum EffectError: Debug, Display, Error
+        Parse { source: Box<ParseError>, text: String }
+        Validation { source: Box<WithSpan<ValidationError>>, text: String }
+        MissingEntry
+        Entry(EntryMismatch)
+        ParamLayout(ParamMismatch)
+        ParamsTooLarge { size: usize }
+        TooManyImageSlots { slots: u8 }
+
+EffectKind
+    trait EffectKind: Kind
+
+EffectName
+    struct EffectName<U: EffectParams, K: EffectKind = ColorEffect>: DockTab (blanket)
+        impl<U: EffectParams, K: EffectKind> EffectName<U, K>
+            pub const MAX_NAME_LEN: usize
+            pub const fn named(name: &str) -> Option<Self>
+            pub fn name(&self) -> &str
+        impl<'de, U: EffectParams, K: EffectKind> Deserialize<'de> for EffectName<U, K>
+        impl<U: EffectParams, K: EffectKind> Clone for EffectName<U, K>
+        impl<U: EffectParams, K: EffectKind> Copy for EffectName<U, K>
+        impl<U: EffectParams, K: EffectKind> Debug for EffectName<U, K>
+        impl<U: EffectParams, K: EffectKind> Eq for EffectName<U, K>
+        impl<U: EffectParams, K: EffectKind> Hash for EffectName<U, K>
+        impl<U: EffectParams, K: EffectKind> PartialEq for EffectName<U, K>
+        impl<U: EffectParams, K: EffectKind> Serialize for EffectName<U, K>
+
+EffectParam
+    struct EffectParam: Clone, Copy, Debug, Eq, PartialEq
+        pub name: &'static str
+        pub offset: usize
+        pub ty: ParamType
+
+EffectParams
+    trait EffectParams: Pod
+        const FIELDS: &'static [EffectParam]
+
+EffectSource
+    struct EffectSource<U: EffectParams, K: EffectKind = ColorEffect>
+        impl<U: EffectParams, K: EffectKind> EffectSource<U, K>
+            pub const MAX_IMAGE_SLOTS: u8
+            pub const MAX_PARAMS_SIZE: usize
+            pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self
+            pub const fn image_slots(self, slots: u8) -> Self
+            pub const fn power_saver(self, paint: PowerSaverPaint<U, K>) -> Self
+        impl<U: EffectParams, K: EffectKind> Debug for EffectSource<U, K>
+
 Engagement
     enum Engagement: Clone, Copy, Debug, Eq, PartialEq
         Pressed
         Focused
+
+EntryMismatch
+    enum EntryMismatch: Clone, Copy, Debug, Display, Eq, PartialEq
+        ArgumentCount { want: usize, got: usize }
+        Stage
+        Input
+        Params
+        Output
 
 Expander
     struct Expander<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1624,6 +1686,34 @@ Panel
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
+ParamMismatch
+    enum ParamMismatch: Clone, Debug, Display, Eq, PartialEq
+        FieldCount { wgsl: usize, rust: usize }
+        Name { idx: usize, wgsl: String, rust: &'static str }
+        Offset { name: &'static str, wgsl: u32, rust: usize }
+        Type { name: &'static str, rust: ParamType }
+        Size { wgsl: u32, rust: usize }
+
+ParamType
+    enum ParamType: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+        F32
+        I32
+        U32
+        Vec2F32
+        Vec3F32
+        Vec4F32
+        Vec2I32
+        Vec3I32
+        Vec4I32
+        Vec2U32
+        Vec3U32
+        Vec4U32
+        pub const fn wgsl(self) -> &'static str
+
+ParamValue
+    trait ParamValue
+        const TYPE: ParamType
+
 ParseColorError
     enum ParseColorError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
         Length
@@ -1745,6 +1835,17 @@ PowerPreference
     enum PowerPreference: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<PowerPreference>, Hash, PartialEq
         LowPower
         HighPerformance
+
+PowerSaverPaint
+    enum PowerSaverPaint<U: EffectParams, K: EffectKind = ColorEffect>
+        Same
+        Effect(EffectName<U, K>)
+        Nothing
+        impl<U: EffectParams, K: EffectKind> Clone for PowerSaverPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> Copy for PowerSaverPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> Debug for PowerSaverPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> Eq for PowerSaverPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> PartialEq for PowerSaverPaint<U, K>
 
 Preference
     enum Preference<T>: Default, DockTab (blanket)
@@ -1892,7 +1993,7 @@ ResponseState
         pub fn press_fraction(&self, band: f32) -> Option<Vec2>
 
 RgbaF32
-    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
+    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, Lerp, ParamValue, PartialEq, Pod, Serialize, Zeroable
         pub r: f32
         pub g: f32
         pub b: f32
@@ -2749,6 +2850,8 @@ Ui
         pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
         pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge>
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
+        pub fn load_effect<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>, source: EffectSource<U, K>) -> Result<(), EffectError>
+        pub fn has_effect<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) -> bool
         pub fn has_font(&self, family: FontFamily) -> bool
         pub fn font_families(&self) -> Vec<FontFamily>
         pub fn max_image_dimension(&self) -> Option<NonZeroU32>
@@ -2971,6 +3074,9 @@ ZoomPivot
         Pointer
         Center
 
+bytemuck
+    pub use bytemuck as bytemuck
+
 fmt
     macro fmt!
 
@@ -3003,6 +3109,9 @@ golden::Tolerance  [features: golden]
         pub max_pixels: u32
         pub const EXACT: Self
         pub fn diff(self, actual: &Image, expected: &Image) -> DiffReport
+
+naga
+    pub use naga as naga
 
 wgpu
     pub use wgpu as wgpu

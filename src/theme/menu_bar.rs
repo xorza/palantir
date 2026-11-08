@@ -23,8 +23,8 @@ use crate::theme::palette::Palette;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct MenuBarTheme {
     /// A title whose menu is closed, in each state.

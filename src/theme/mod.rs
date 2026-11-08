@@ -101,12 +101,7 @@ use std::time::Duration;
 /// [`Self::text`] blends from that end's ambient value, so each step shows a blend of what the
 /// ends show.
 #[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    ::serde::Serialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    Clone, Debug, PartialEq, ::serde::Serialize, palantir_derive::Lerp, palantir_derive::TextSlots,
 )]
 #[animate(before_lerp = Self::share_text_axes)]
 pub struct Theme {

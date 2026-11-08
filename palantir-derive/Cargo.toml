@@ -1,13 +1,13 @@
 [package]
-name = "palantir-anim-derive"
+name = "palantir-derive"
 version = "0.8.3"
 edition = "2024"
 authors = ["xxorza <xxorza@gmail.com>"]
-description = "Derive macros for palantir's Lerp and Animatable traits"
+description = "Derive macros for palantir's traits"
 repository = "https://github.com/xorza/palantir"
-documentation = "https://docs.rs/palantir-anim-derive"
+documentation = "https://docs.rs/palantir-derive"
 readme = "README.md"
-keywords = ["palantir", "gui", "animation", "derive", "macro"]
+keywords = ["palantir", "gui", "derive", "macro"]
 categories = ["gui", "rust-patterns"]
 license = "MIT OR Apache-2.0"
 exclude = ["AGENTS.md", "CLAUDE.md"]

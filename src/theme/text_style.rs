@@ -31,8 +31,8 @@ pub(crate) const LINE_HEIGHT_FACTOR: f32 = 1.2;
     Debug,
     PartialEq,
     serde::Serialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::Animatable,
+    palantir_derive::Lerp,
+    palantir_derive::Animatable,
 )]
 #[must_use]
 pub struct TextStyle {

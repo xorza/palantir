@@ -28,8 +28,8 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Lerp,
-    palantir_anim_derive::TextSlots,
+    palantir_derive::Lerp,
+    palantir_derive::TextSlots,
 )]
 pub struct TabsTheme {
     /// Look pack for every other chip; a ghost by default, filled only under the pointer.

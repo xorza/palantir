@@ -2140,7 +2140,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "padding-struct",
  "palantir",
- "palantir-anim-derive",
+ "palantir-derive",
  "pollster",
  "resvg",
  "ron",
@@ -2163,7 +2163,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "palantir-anim-derive"
+name = "palantir-derive"
 version = "0.8.3"
 dependencies = [
  "proc-macro2",

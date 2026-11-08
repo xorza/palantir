@@ -4,7 +4,7 @@ use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
-use palantir_anim_derive::{Animatable, Lerp};
+use palantir_derive::{Animatable, Lerp};
 
 /// Two animated fields, a lerp-only field and two snap fields.
 #[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]

@@ -5,7 +5,7 @@ use crate::primitives::math::domain;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
-use palantir_anim_derive::{Animatable, Lerp};
+use palantir_derive::{Animatable, Lerp};
 
 /// One color and one width; where the width lies is the shape's rule. An area shape ([`Chrome`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centers it on the path.
 ///
