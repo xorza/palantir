@@ -28,23 +28,33 @@ struct StoreState {
     modules: Vec<EffectModule>,
     /// `None` until the first attach.
     attached: Option<AttachedEffects>,
-    /// Moves with every build, so a reader of [`AttachedEffects::pipelines`] knows to copy again.
+    /// Moves with every build, so a reader of [`AttachedEffects::for_format`] knows to copy again.
     revision: u64,
 }
 
-/// The store's side of one device: the layouts every effect builds over, the formats it draws
-/// to, and each effect's pipelines for each format.
+/// The store's side of one device: the layouts every effect builds over, and the pipelines of
+/// each format it draws to.
 #[derive(Debug)]
 pub(crate) struct AttachedEffects {
     gpu: Gpu,
     pub(crate) layouts: EffectLayouts,
     /// [`effect_pipeline::PANE_SHADER`]'s module, which every pane form builds from.
     pane_shader: wgpu::ShaderModule,
-    formats: Vec<wgpu::TextureFormat>,
-    /// At each effect's id, then in `formats` order.
-    pipelines: Vec<Vec<StencilVariant>>,
-    /// In `formats` order, then at each [`PaneForm`].
-    panes: Vec<Vec<StencilVariant>>,
+    /// One for each format, a few in all, in the order each was first drawn to: a frame reads
+    /// one format's pipelines whole, and an effect's load adds one to each. Refused: a table of each
+    /// effect's pipelines for each format, which a frame reads one entry a row of; one flat table,
+    /// which a new format reshapes.
+    formats: Vec<FormatEffects>,
+}
+
+/// Every pipeline one format draws effects with: the pane forms', and each loaded effect's.
+#[derive(Debug)]
+pub(crate) struct FormatEffects {
+    format: wgpu::TextureFormat,
+    /// At each [`PaneForm`].
+    pub(crate) panes: [StencilVariant; PaneForm::COUNT],
+    /// At each effect's id.
+    pub(crate) effects: Vec<StencilVariant>,
 }
 
 impl WgpuEffectStore {
@@ -53,14 +63,11 @@ impl WgpuEffectStore {
     /// ([`Self::ensure_format`]).
     pub(crate) fn attach(&self, gpu: &Gpu, binding: &TextureBinding) {
         let mut state = self.state.borrow_mut();
-        let pipelines = state.modules.iter().map(|_| Vec::new()).collect();
         state.attached = Some(AttachedEffects {
             gpu: gpu.clone(),
             layouts: EffectLayouts::new(gpu, binding),
             pane_shader: effect_pipeline::PANE_SHADER.module(gpu),
             formats: Vec::new(),
-            pipelines,
-            panes: Vec::new(),
         });
         state.revision += 1;
     }
@@ -74,27 +81,30 @@ impl WgpuEffectStore {
             revision,
         } = &mut *state;
         let attached = attached.as_mut().expect(ATTACHED);
-        if attached.formats.contains(&format) {
+        if attached.for_format(format).is_some() {
             return;
         }
-        attached.formats.push(format);
-        let panes = PaneForm::ALL
-            .map(|form| {
-                effect_pipeline::build_pane(
-                    &attached.gpu,
-                    &attached.layouts,
-                    &attached.pane_shader,
-                    form,
-                    format,
-                )
+        let panes = PaneForm::ALL.map(|form| {
+            effect_pipeline::build_pane(
+                &attached.gpu,
+                &attached.layouts,
+                &attached.pane_shader,
+                form,
+                format,
+            )
+        });
+        let effects = modules
+            .iter()
+            .enumerate()
+            .map(|(idx, module)| {
+                effect_pipeline::build(&attached.gpu, &attached.layouts, module, format, idx)
             })
-            .to_vec();
-        attached.panes.push(panes);
-        for (idx, module) in modules.iter().enumerate() {
-            let built =
-                effect_pipeline::build(&attached.gpu, &attached.layouts, module, format, idx);
-            attached.pipelines[idx].push(built);
-        }
+            .collect();
+        attached.formats.push(FormatEffects {
+            format,
+            panes,
+            effects,
+        });
         *revision += 1;
     }
 
@@ -126,23 +136,9 @@ pub(crate) struct EffectsRead<'a> {
 }
 
 impl AttachedEffects {
-    /// Every effect's pipelines for `format`, at each id; `None` where the format is not built.
-    pub(crate) fn for_format(
-        &self,
-        format: wgpu::TextureFormat,
-    ) -> Option<impl Iterator<Item = &StencilVariant>> {
-        let at = self.formats.iter().position(|&built| built == format)?;
-        Some(self.pipelines.iter().map(move |formats| &formats[at]))
-    }
-
-    /// The pane forms' pipelines for `format`, at each [`PaneForm`]; `None` where the format is
-    /// not built.
-    pub(crate) fn panes_for_format(
-        &self,
-        format: wgpu::TextureFormat,
-    ) -> Option<&[StencilVariant]> {
-        let at = self.formats.iter().position(|&built| built == format)?;
-        Some(&self.panes[at])
+    /// Every pipeline `format` draws effects with; `None` where the format is not built.
+    pub(crate) fn for_format(&self, format: wgpu::TextureFormat) -> Option<&FormatEffects> {
+        self.formats.iter().find(|built| built.format == format)
     }
 }
 
@@ -166,23 +162,24 @@ impl EffectStore for WgpuEffectStore {
             module.clone_into(&mut modules[id.idx()]);
         }
         if let Some(attached) = attached {
-            let built: Vec<StencilVariant> = attached
-                .formats
-                .iter()
-                .map(|&format| {
-                    effect_pipeline::build(
-                        &attached.gpu,
-                        &attached.layouts,
-                        module,
-                        format,
-                        id.idx(),
-                    )
-                })
-                .collect();
-            if id.idx() == attached.pipelines.len() {
-                attached.pipelines.push(built);
-            } else {
-                attached.pipelines[id.idx()] = built;
+            let AttachedEffects {
+                gpu,
+                layouts,
+                pane_shader: _,
+                formats,
+            } = attached;
+            for built in formats {
+                let pipeline = effect_pipeline::build(gpu, layouts, module, built.format, id.idx());
+                if id.idx() == built.effects.len() {
+                    built.effects.push(pipeline);
+                } else {
+                    built.effects[id.idx()] = pipeline;
+                }
+                debug_assert_eq!(
+                    built.effects.len(),
+                    modules.len(),
+                    "each format holds a pipeline for every loaded effect"
+                );
             }
         }
         *revision += 1;

@@ -248,7 +248,7 @@ pub(crate) struct EffectPipeline {
     /// Each effect's kind, at its id, copied with `pipelines`.
     kinds: Vec<KindId>,
     /// The pane forms' pipelines for the format, at each [`PaneForm`], copied with `pipelines`.
-    panes: Vec<StencilVariant>,
+    panes: [StencilVariant; PaneForm::COUNT],
 }
 
 /// The format and store revision an [`EffectPipeline`]'s pipelines were copied at.
@@ -291,7 +291,7 @@ impl EffectPipeline {
             copied: None,
             pipelines: Vec::new(),
             kinds: Vec::new(),
-            panes: Vec::new(),
+            panes: [StencilVariant::NONE; PaneForm::COUNT],
         }
     }
 
@@ -344,16 +344,16 @@ impl EffectPipeline {
         };
         if self.copied != Some(copy) {
             self.pipelines.clear();
-            if let Some(pipelines) = read.attached.for_format(upload.format) {
-                self.pipelines.extend(pipelines.cloned());
+            match read.attached.for_format(upload.format) {
+                Some(built) => {
+                    self.pipelines.extend_from_slice(&built.effects);
+                    self.panes.clone_from(&built.panes);
+                }
+                None => self.panes = [StencilVariant::NONE; PaneForm::COUNT],
             }
             self.kinds.clear();
             self.kinds
                 .extend(read.modules.iter().map(|module| module.kind));
-            self.panes.clear();
-            if let Some(panes) = read.attached.panes_for_format(upload.format) {
-                self.panes.extend_from_slice(panes);
-            }
             self.copied = Some(copy);
         }
     }
