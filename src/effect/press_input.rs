@@ -14,6 +14,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// ```wgsl
 /// struct Params {
 ///     color: vec4<f32>,
+///     highlight: vec4<f32>,
 ///     point: vec2<f32>,
 ///     released: f32,
 ///     enter: f32,
@@ -32,6 +33,9 @@ use crate::primitives::paint::color::RgbaF32;
 pub struct PressInput {
     /// The theme's color, linear and straight.
     pub color: RgbaF32,
+    /// The theme's second color, linear and straight
+    /// ([`PressEffect::highlight`](crate::PressEffect::highlight)).
+    pub highlight: RgbaF32,
     /// Where the press landed, logical px from the widget's top-left; its center for a press of a
     /// key.
     pub point: Vec2,

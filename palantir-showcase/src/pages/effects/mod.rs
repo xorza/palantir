@@ -107,12 +107,16 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                  corners. Press and hold: Material's flat ripple grows from the press toward the \
                  center, Android's sparkle ripple adds a ring of sparkles.",
             );
+            // The ink of the shown scheme, so each scheme's presses read on its ground; the
+            // sparkles at Android's α, 141/255.
             let color = k.t.ink.with_alpha(0.2);
+            let highlight = k.t.ink.with_alpha(141.0 / 255.0);
             let flat = pressing(
                 ui,
                 PressEffect {
                     effect: EffectName::RIPPLE,
                     color,
+                    highlight,
                     enter: Duration::from_millis(225),
                     exit: Duration::from_millis(150),
                 },
@@ -122,6 +126,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 PressEffect {
                     effect: EffectName::SPARKLE,
                     color,
+                    highlight,
                     enter: Duration::from_millis(450),
                     exit: Duration::from_millis(375),
                 },

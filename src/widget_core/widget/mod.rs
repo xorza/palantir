@@ -585,6 +585,7 @@ fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
             .map_or(press.enter, |end| end - live.pressed_at);
         let input = PressInput {
             color: press.color,
+            highlight: press.highlight,
             point: live.point,
             released,
             enter: press.enter.as_secs_f32(),

@@ -421,6 +421,7 @@ mod tests {
             theme.button.defaults.press = Some(PressEffect {
                 effect: EffectName::SPARKLE,
                 color: RgbaF32::WHITE,
+                highlight: RgbaF32::WHITE,
                 enter: Duration::ZERO,
                 exit: Duration::ZERO,
             });

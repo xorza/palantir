@@ -5,8 +5,9 @@ use crate::effect::effect_name::EffectName;
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::press_input::PressInput;
 
-/// The prefix of every name palantir loads itself, which [`Ui::load_effect`](crate::Ui::load_effect)
-/// refuses, so an app's effect never replaces a stock one a theme names.
+/// The prefix of every name palantir loads itself, which
+/// [`Ui::load_effect`](crate::Ui::load_effect) refuses, so an app's effect never replaces a stock
+/// one a theme names.
 pub(crate) const RESERVED_PREFIX: &str = "palantir.";
 
 impl EffectName<PressInput> {
@@ -16,9 +17,9 @@ impl EffectName<PressInput> {
     pub const RIPPLE: Self = reserved("palantir.ripple");
 
     /// Android's sparkle ripple, ported from AOSP's `RippleShader`: a soft disc of the press
-    /// color under a ring of white sparkles. Android's times are 0.45 s to enter and 0.375 s to
-    /// exit. Under the power saver it paints [`Self::RIPPLE`], whose disc costs a fraction of
-    /// the sparkles' noise.
+    /// color under a ring of sparkles of its highlight. Android's times are 0.45 s to enter and
+    /// 0.375 s to exit. Under the power saver it paints [`Self::RIPPLE`], whose disc costs a
+    /// fraction of the sparkles' noise.
     pub const SPARKLE: Self = reserved("palantir.sparkle");
 }
 

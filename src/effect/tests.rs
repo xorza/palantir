@@ -493,6 +493,7 @@ fn a_theme_names_only_loaded_press_effects() {
         theme.menu.item.defaults.press = Some(PressEffect {
             effect: EffectName::named(name).unwrap(),
             color: RgbaF32::WHITE,
+            highlight: RgbaF32::WHITE,
             enter: Duration::ZERO,
             exit: Duration::ZERO,
         });
@@ -706,6 +707,7 @@ fn the_ripples_paint_their_exact_values() {
                     effect,
                     PressInput {
                         color: RgbaF32::new(1.0, 1.0, 1.0, 0.5),
+                        highlight: RgbaF32::new(1.0, 1.0, 1.0, 141.0 / 255.0),
                         point: Vec2::new(20.0, 20.0),
                         released,
                         enter: 0.225,
@@ -760,6 +762,55 @@ fn the_ripples_paint_their_exact_values() {
             }
         }
     }
+}
+
+/// The sparkle ripple draws its sparkles in the press's highlight: 0.18 s into a held press of
+/// Android's 0.45 s enter, its ring of sparkles shows, and a highlight of opaque black darkens
+/// some pixels against a transparent one, which draws none, and lightens none.
+#[test]
+fn the_sparkles_take_the_highlight() {
+    let sparkle = |highlight: RgbaF32| {
+        move |ui: &mut Ui| {
+            ui.add_shape_animated(
+                Shape::effect(
+                    EffectName::SPARKLE,
+                    PressInput {
+                        color: RgbaF32::new(1.0, 1.0, 1.0, 0.25),
+                        highlight,
+                        point: Vec2::new(40.0, 20.0),
+                        released: -1.0,
+                        enter: 0.45,
+                        exit: 0.375,
+                        seed: 0.0,
+                        pad0: 0.0,
+                        pad1: 0.0,
+                    },
+                )
+                .at(Rect::new(0.0, 0.0, 160.0, 40.0)),
+                PaintAnimation::clock()
+                    .with_repeat(PaintRepeat::Held)
+                    .with_period(Duration::from_millis(180)),
+            );
+        }
+    };
+    let every: Vec<(u32, u32)> = (0..40)
+        .flat_map(|y| (0..160).map(move |x| (x, y)))
+        .collect();
+    let none = painted(sparkle(RgbaF32::new(0.0, 0.0, 0.0, 0.0)), &every);
+    let black = painted(sparkle(RgbaF32::new(0.0, 0.0, 0.0, 1.0)), &every);
+    let darker = |a: &[u8; 4], b: &[u8; 4]| (0..3).all(|lane| a[lane] < b[lane]);
+    let darkened = black
+        .iter()
+        .zip(&none)
+        .filter(|(b, n)| darker(b, n))
+        .count();
+    let lightened = black
+        .iter()
+        .zip(&none)
+        .filter(|(b, n)| darker(n, b))
+        .count();
+    assert!(darkened > 0, "the sparkles show in the highlight");
+    assert_eq!(lightened, 0, "a black highlight lightens nothing");
 }
 
 /// An effect reaches past its node, as a ring does, and a clipping ancestor cuts it. In a 160 × 40

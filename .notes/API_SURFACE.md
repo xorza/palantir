@@ -1867,6 +1867,7 @@ PressEffect
     struct PressEffect: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub effect: EffectName<PressInput>
         pub color: RgbaF32
+        pub highlight: RgbaF32
         pub enter: Duration
         pub exit: Duration
         pub const MAX_PRESSES: usize
@@ -1874,6 +1875,7 @@ PressEffect
 PressInput
     struct PressInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
         pub color: RgbaF32
+        pub highlight: RgbaF32
         pub point: Vec2
         pub released: f32
         pub enter: f32

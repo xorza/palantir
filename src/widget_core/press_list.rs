@@ -112,6 +112,7 @@ mod tests {
     const RIPPLE: PressEffect = PressEffect {
         effect: EffectName::RIPPLE,
         color: RgbaF32::WHITE,
+        highlight: RgbaF32::WHITE,
         enter: Duration::from_millis(225),
         exit: Duration::from_millis(150),
     };

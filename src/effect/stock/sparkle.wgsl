@@ -1,13 +1,11 @@
 // Android's sparkle ripple, ported from AOSP `RippleShader.java` and the timing of
-// `RippleAnimationSession.java` (Copyright (C) 2021 The Android Open Source Project, Apache
-// License 2.0): a soft disc of the theme's color under a ring of white sparkles, both from the
-// press toward the rect's center. Its progress runs to 0.5 over `enter` along FastOutSlowIn,
-// then linearly to 1 over `exit`. It works in physical px, as Android does, and the sparkles'
-// noise starts at the press's `seed` in place of Android's clock.
+// `RippleAnimationSession.java` (Copyright (C) 2021 The Android Open Source Project, Apache License
+// 2.0): a soft disc of the theme's color under a ring of sparkles of its highlight, both from the
+// press toward the rect's center. Its progress runs to 0.5 over `enter` along FastOutSlowIn, then
+// linearly to 1 over `exit`. It works in physical px, as Android does, and the sparkles' noise
+// starts at the press's `seed` in place of Android's clock.
 
 const SPARKLE_PI: f32 = 3.1415926535897932384626;
-// Android's `DEFAULT_EFFECT_COLOR`, 0x8dffffff, straight.
-const SPARKLE_COLOR: vec4<f32> = vec4<f32>(1.0, 1.0, 1.0, 141.0 / 255.0);
 
 fn sparkle_triangle_noise(m: vec2<f32>) -> f32 {
     var n = fract(m * vec2<f32>(5.3987, 5.4421));
@@ -20,7 +18,7 @@ fn sparkle_threshold(v: f32, l: f32, h: f32) -> f32 {
     return step(l, v) * (1.0 - step(h, v));
 }
 
-fn sparkle_sparkles(uv: vec2<f32>, t: f32) -> f32 {
+fn sparkle_sparkles(uv: vec2<f32>, t: f32, alpha: f32) -> f32 {
     let n = sparkle_triangle_noise(uv);
     var s = 0.0;
     for (var i = 0; i < 4; i++) {
@@ -29,7 +27,7 @@ fn sparkle_sparkles(uv: vec2<f32>, t: f32) -> f32 {
         let o = sin(SPARKLE_PI * (t + 0.35 * f32(i)));
         s += sparkle_threshold(n + o, l, h);
     }
-    return saturate(s) * SPARKLE_COLOR.a;
+    return saturate(s) * alpha;
 }
 
 fn sparkle_soft_circle(uv: vec2<f32>, xy: vec2<f32>, radius: f32, blur: f32) -> f32 {
@@ -124,11 +122,12 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
     let uv = p / size;
     let density_uv = uv - sparkle_mod(uv, vec2<f32>(2.1) / size);
     let turb = sparkle_turbulence(uv, phase);
-    let sparkle_alpha = sparkle_sparkles(density_uv, phase * 0.001) * ring * alpha * turb;
+    let sparkles = sparkle_sparkles(density_uv, phase * 0.001, params.highlight.a);
+    let sparkle_alpha = sparkles * ring * alpha * turb;
     let fade = min(fade_in, 1.0 - fade_out_ripple);
     let wave_alpha = sparkle_soft_circle(p, center, max_radius * scale_in, 1.0) * fade
         * params.color.a;
     let wave = vec4<f32>(params.color.rgb * wave_alpha, wave_alpha);
-    let sparkle = vec4<f32>(SPARKLE_COLOR.rgb * SPARKLE_COLOR.a, SPARKLE_COLOR.a);
+    let sparkle = vec4<f32>(params.highlight.rgb * params.highlight.a, params.highlight.a);
     return effect_over(mix(wave, sparkle, sparkle_alpha));
 }

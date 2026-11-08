@@ -339,6 +339,7 @@ mod press {
     const RIPPLE_ID: EffectId = EffectId(0);
     const SPARKLE_ID: EffectId = EffectId(1);
     const COLOR: RgbaF32 = RgbaF32::new(0.25, 0.5, 0.75, 0.125);
+    const HIGHLIGHT: RgbaF32 = RgbaF32::new(0.5, 0.25, 0.125, 0.75);
 
     /// One press effect draw: its effect, the time it reads, its rect and corners, and what it
     /// reads of the press.
@@ -383,6 +384,7 @@ mod press {
         theme.button.defaults.press = Some(PressEffect {
             effect,
             color: COLOR,
+            highlight: HIGHLIGHT,
             enter: ms(225),
             exit: ms(150),
         });
@@ -401,6 +403,7 @@ mod press {
     fn input(released: f32) -> PressInput {
         PressInput {
             color: COLOR,
+            highlight: HIGHLIGHT,
             point: Vec2::new(30.0, 10.0),
             released,
             enter: 0.225,

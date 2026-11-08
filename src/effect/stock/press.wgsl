@@ -2,6 +2,7 @@
 
 struct Params {
     color: vec4<f32>,
+    highlight: vec4<f32>,
     point: vec2<f32>,
     released: f32,
     enter: f32,
