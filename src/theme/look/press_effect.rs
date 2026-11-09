@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use crate::effect::effect_name::EffectName;
 use crate::effect::press_input::PressInput;
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::paint::color::RgbaF32;
 
 /// The effect a themed widget draws over its chrome and under its content for each press, as
@@ -51,7 +51,7 @@ mod tests {
 
     use ron::ser;
 
-    use crate::effect::effect_name::EffectName;
+    use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::paint::color::RgbaF32;
     use crate::theme::look::press_effect::PressEffect;
 

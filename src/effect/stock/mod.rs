@@ -1,9 +1,9 @@
 //! Palantir's stock effects: the two press ripples, which every registry holds from its start
 //! under names in palantir's reserved prefix, so a theme names them as it names an app's.
 
-use crate::effect::effect_name::EffectName;
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::press_input::PressInput;
+use crate::primitives::effect::effect_name::EffectName;
 
 /// The prefix of every name palantir loads itself, which
 /// [`Ui::load_effect`](crate::Ui::load_effect) refuses, so an app's effect never replaces a stock

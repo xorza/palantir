@@ -3,8 +3,8 @@
 use std::error;
 use std::fmt;
 
-use crate::effect::effect_name::EffectName;
 use crate::effect::press_input::PressInput;
+use crate::primitives::effect::effect_name::EffectName;
 
 /// Why a theme was not set: a press slot names an effect it cannot paint. A theme file names an
 /// effect by its string and deserializes with no `Ui`, so the set checks the names, as the one

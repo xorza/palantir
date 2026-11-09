@@ -3,10 +3,10 @@
 use std::borrow::Cow;
 use std::fmt;
 
-use crate::effect::effect_kind::{ColorEffect, EffectKind};
-use crate::effect::effect_name::EffectName;
-use crate::effect::effect_params::EffectParams;
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
+use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};
+use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_params::EffectParams;
 
 /// An effect's WGSL, the image slots its shapes bind, and what paints while transparency, motion
 /// or power use is reduced.

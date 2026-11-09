@@ -40,7 +40,7 @@ mod sealed {
         const ID: KindId;
     }
 
-    use crate::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
+    use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
 
     #[expect(
         private_interfaces,

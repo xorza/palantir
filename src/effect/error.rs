@@ -7,9 +7,9 @@ use naga::WithSpan;
 use naga::front::wgsl::ParseError;
 use naga::valid::ValidationError;
 
-use crate::effect::effect_params::ParamType;
 use crate::effect::stock::RESERVED_PREFIX;
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
+use crate::primitives::effect::effect_params::ParamType;
 
 /// Why an effect did not load. The effect loaded before under the name, if any, keeps painting.
 #[derive(Debug)]

@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 
-use crate::effect::effect_kind::KindId;
+use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::identity::effect_id::EffectId;
 
 /// A validated effect module: the complete WGSL palantir compiles, its kind and how many images

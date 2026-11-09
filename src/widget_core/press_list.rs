@@ -102,7 +102,7 @@ mod tests {
 
     use glam::Vec2;
 
-    use crate::effect::effect_name::EffectName;
+    use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::paint::color::RgbaF32;
     use crate::theme::look::press_edge::PressEdge;
     use crate::theme::look::press_effect::PressEffect;

@@ -325,12 +325,12 @@ mod tests {
     use glam::UVec2;
 
     use crate::animation::animation_spec::AnimationSpec;
-    use crate::effect::effect_name::EffectName;
     use crate::effect::effect_source::{EffectBuild, EffectSource};
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::offscreen::{OffscreenHost, OffscreenTime};
+    use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
     use crate::primitives::paint::color::RgbaF32;
     use crate::shape::Shape;

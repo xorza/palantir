@@ -7,11 +7,11 @@ use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 
-use crate::effect::effect_kind::KindId;
-use crate::effect::effect_params::{EffectParam, ParamType};
 use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
+use crate::primitives::effect::effect_kind::KindId;
+use crate::primitives::effect::effect_params::{EffectParam, ParamType};
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 
 /// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's

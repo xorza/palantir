@@ -25,10 +25,10 @@ pub(crate) mod style;
 pub(crate) mod text;
 pub(crate) mod triangle;
 
-use crate::effect::effect_kind::{BackdropEffect, ColorEffect};
-use crate::effect::effect_name::EffectName;
-use crate::effect::effect_params::EffectParams;
 use crate::image_registry::image_handle::ImageHandle;
+use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect};
+use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;

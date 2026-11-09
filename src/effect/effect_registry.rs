@@ -6,13 +6,13 @@ use std::rc::Rc;
 use rustc_hash::FxHashMap;
 
 use crate::effect::contract::{self, ParamsLayout};
-use crate::effect::effect_kind::{EffectKind, EffectTypes};
-use crate::effect::effect_name::EffectName;
-use crate::effect::effect_params::EffectParams;
 use crate::effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
 use crate::effect::stock;
+use crate::primitives::effect::effect_kind::{EffectKind, EffectTypes};
+use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
 use crate::primitives::reduction::Reductions;
@@ -360,10 +360,10 @@ fn assert_types(name: &str, loaded: EffectTypes, named: EffectTypes) {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::effect::effect_kind::EffectKind;
-    use crate::effect::effect_name::EffectName;
-    use crate::effect::effect_params::EffectParams;
     use crate::effect::effect_registry::{EffectRegistry, ReducedBy, ReducedName};
+    use crate::primitives::effect::effect_kind::EffectKind;
+    use crate::primitives::effect::effect_name::EffectName;
+    use crate::primitives::effect::effect_params::EffectParams;
 
     impl EffectRegistry {
         /// The power-saver alternative loaded under `name`; `None` when nothing is loaded.

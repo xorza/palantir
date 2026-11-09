@@ -761,13 +761,13 @@ EffectKind
 
 EffectName
     struct EffectName<U: EffectParams, K: EffectKind = ColorEffect>: DockTab (blanket)
+        impl EffectName<PressInput>
+            pub const RIPPLE: Self
+            pub const SPARKLE: Self
         impl<U: EffectParams, K: EffectKind> EffectName<U, K>
             pub const MAX_NAME_LEN: usize
             pub const fn named(name: &str) -> Option<Self>
             pub fn name(&self) -> &str
-        impl EffectName<PressInput>
-            pub const RIPPLE: Self
-            pub const SPARKLE: Self
         impl<'de, U: EffectParams, K: EffectKind> Deserialize<'de> for EffectName<U, K>
         impl<U: EffectParams, K: EffectKind> Clone for EffectName<U, K>
         impl<U: EffectParams, K: EffectKind> Copy for EffectName<U, K>
@@ -784,8 +784,7 @@ EffectParam
         pub ty: ParamType
 
 EffectParams
-    trait EffectParams: Pod
-        const FIELDS: &'static [EffectParam]
+    pub use palantir_derive::EffectParams as EffectParams
 
 EffectSource
     struct EffectSource<U: EffectParams, K: EffectKind = ColorEffect>

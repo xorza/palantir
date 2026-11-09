@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 
 use serde::de;
 
-use crate::effect::effect_kind::{ColorEffect, EffectKind};
-use crate::effect::effect_params::EffectParams;
+use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};
+use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::inline_name::InlineName;
 
 /// Which effect to paint, by name: the name is the effect's identity, as [`FontFamily`]'s is a
@@ -120,8 +120,8 @@ impl de::Visitor<'_> for NameVisitor {
 mod tests {
     use ron::ser;
 
-    use crate::effect::effect_kind::BackdropEffect;
-    use crate::effect::effect_name::EffectName;
+    use crate::primitives::effect::effect_kind::BackdropEffect;
+    use crate::primitives::effect::effect_name::EffectName;
 
     type Ripple = EffectName<()>;
 

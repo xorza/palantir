@@ -313,10 +313,10 @@ mod press {
     use glam::{UVec2, Vec2};
 
     use crate::animation::animation_spec::AnimationSpec;
-    use crate::effect::effect_name::EffectName;
     use crate::effect::press_input::PressInput;
     use crate::host::harness::Harness;
     use crate::internals::paint_capture::PaintCall;
+    use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::effect_id::EffectId;

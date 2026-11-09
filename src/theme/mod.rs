@@ -42,8 +42,8 @@ pub(crate) mod toggle_kind;
 pub(crate) mod tooltip;
 
 use crate::animation::animation_spec::AnimationSpec;
-use crate::effect::effect_name::EffectName;
 use crate::effect::press_input::PressInput;
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
