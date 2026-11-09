@@ -22,7 +22,7 @@ const PALANTIR_CORNERS = array<vec2<f32>, 4>(
 
 // `EffectInstance::flags`'s bits: a material's box, and one that covers outside its rounded rect.
 const PALANTIR_MATERIAL: u32 = /*{MATERIAL}*/;
-const PALANTIR_WINDOW: u32 = /*{WINDOW}*/;
+const PALANTIR_OUTSIDE: u32 = /*{OUTSIDE}*/;
 
 // One shape: its rect (`min`, `size`) and corner radii in physical px, its clock (`time`,
 // `opacity`, `scale`, and its turn about its center in radians), the word its parameters start
@@ -53,7 +53,7 @@ struct PalantirOut {
 
 // Every pixel center within the antialiasing reach of the rect, as a quad shades it: the rect's
 // pixels grown by it, or past each edge by it where a turn takes the edges off the pixel grid; a
-// window's rect is its edge exactly, as it lies over content of its own extent.
+// rect covering its outside is its edge exactly, as it lies over content of its own extent.
 @vertex
 fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> PalantirVarying {
     let pos = instance.rect.xy;
@@ -64,7 +64,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
     if (rotation != 0.0) {
         lo -= vec2<f32>(PALANTIR_AA_HALF_WIDTH);
         hi += vec2<f32>(PALANTIR_AA_HALF_WIDTH);
-    } else if ((instance.flags & PALANTIR_WINDOW) == 0u) {
+    } else if ((instance.flags & PALANTIR_OUTSIDE) == 0u) {
         lo = floor(lo - vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
         hi = ceil(hi + vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
     }

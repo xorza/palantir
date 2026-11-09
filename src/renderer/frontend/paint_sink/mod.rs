@@ -76,7 +76,7 @@ pub(crate) trait PaintSink {
 
     fn pop_transform(&mut self);
 
-    /// One quad-tier draw (rect, windowed rect, shadow or triangle), all
+    /// One quad-tier draw (rect, outside rect, shadow or triangle), all
     /// through one gate so they agree on what is invisible.
     fn quad(&mut self, payload: DrawQuadPayload);
 

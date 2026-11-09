@@ -8,10 +8,10 @@ fn a_quad_takes_its_tags_form() {
     for (kind, form) in [
         (FillKind::SOLID, QuadForm::Solid),
         (FillKind::SOLID.with_fast(), QuadForm::Solid),
-        (FillKind::SOLID.with_window(), QuadForm::Solid),
+        (FillKind::SOLID.with_outside(), QuadForm::Solid),
         (FillKind::linear(Spread::Pad), QuadForm::Gradient),
         (
-            FillKind::radial(Spread::Repeat).with_window(),
+            FillKind::radial(Spread::Repeat).with_outside(),
             QuadForm::Gradient,
         ),
         (FillKind::conic(Spread::Reflect), QuadForm::Gradient),

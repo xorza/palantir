@@ -17,17 +17,17 @@ use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use glam::Vec2;
 
-/// Every quad-tier constructor normalizes the stroke
+/// Every quad-tier constructor normalizes the border
 /// ([`LoweredBorder::normalized`]): a transparent, zero-width or NaN-width
-/// stroke becomes [`LoweredBorder::NONE`]; others pass verbatim.
+/// border becomes [`LoweredBorder::NONE`]; others pass verbatim.
 ///
 /// NaN normalizes away like any non-painting width: catching it loudly is
 /// the `has_nan` screen's job at `Shapes::push`, so here it fails safe,
 /// identically for every shape.
 ///
-/// Pins the exact normalized stroke per case, and that
+/// Pins the exact normalized border per case, and that
 /// [`DrawQuadPayload::rect`] and [`DrawQuadPayload::triangle`] produce
-/// bit-identical strokes.
+/// bit-identical borders.
 #[test]
 fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
     let fill = RgbaF32::srgb(1.0, 0.0, 0.0);
@@ -50,13 +50,13 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
         ),
         ("live", LoweredBorder::lower(Border::new(green, 3.0)), false),
     ];
-    for (label, stroke, expect_normalized) in cases {
+    for (label, border, expect_normalized) in cases {
         let rp = DrawQuadPayload::rect(RectQuad {
             coverage: Coverage::Inside,
             rect: Rect::new(0.0, 0.0, 10.0, 10.0),
             corners: Corners::ZERO,
             fill: BrushSource::Solid(fill.to_f16()),
-            stroke,
+            border,
         });
         assert!(
             matches!(rp.geometry, QuadGeometry::Rect { .. }),
@@ -71,7 +71,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
             ],
             radius: 0.0,
             fill: fill.to_f16(),
-            stroke,
+            border,
         });
         assert!(
             matches!(tp.geometry, QuadGeometry::Triangle { .. }),
@@ -79,17 +79,17 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
         );
         assert_eq!(tp.fill.kind, FillKind::TRIANGLE, "case {label}");
 
-        assert_eq!(tp.stroke.color, rp.stroke.color, "case {label}");
+        assert_eq!(tp.border.color, rp.border.color, "case {label}");
         assert_eq!(
-            tp.stroke.width.to_bits(),
-            rp.stroke.width.to_bits(),
+            tp.border.width.to_bits(),
+            rp.border.width.to_bits(),
             "case {label}",
         );
         if expect_normalized {
-            assert_eq!(tp.stroke.color, RgbaF16::TRANSPARENT, "case {label}");
-            assert_eq!(tp.stroke.width, 0.0, "case {label}");
+            assert_eq!(tp.border.color, RgbaF16::TRANSPARENT, "case {label}");
+            assert_eq!(tp.border.width, 0.0, "case {label}");
         } else {
-            assert_eq!(tp.stroke.color, green.to_f16(), "case {label}");
+            assert_eq!(tp.border.color, green.to_f16(), "case {label}");
         }
     }
 }
@@ -98,10 +98,10 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
 /// lane. A solid scales its real alpha (half of `0.8` is `0.4`); a
 /// gradient's lane multiplies the sample, starting white, so a half fade
 /// gives alpha `0.5` with RGB at one. Fading to zero makes either a no-op,
-/// the stroke scales either way, and `faded(1.0)` changes nothing.
+/// the border scales either way, and `faded(1.0)` changes nothing.
 #[test]
 fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
-    let stroke = LoweredBorder {
+    let border = LoweredBorder {
         width: 2.0,
         color: RgbaF16::new(1.0, 1.0, 1.0, 1.0),
     };
@@ -111,7 +111,7 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
             rect: Rect::new(0.0, 0.0, 8.0, 8.0),
             corners: Corners::ZERO,
             fill,
-            stroke,
+            border,
         })
     };
 
@@ -120,7 +120,7 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
     let faded = solid.faded(0.5);
     // 0.8 packs to f16 as 1638 steps of 2^-11, and halving it is exact.
     assert_eq!(RgbaF32::from(faded.fill.color).a, 1638.0 / 4096.0);
-    assert_eq!(RgbaF32::from(faded.stroke.color).a, 0.5);
+    assert_eq!(RgbaF32::from(faded.border.color).a, 0.5);
 
     let gradient = quad(BrushSource::Gradient(ResolvedGradient {
         axis: FillAxis::ZERO,

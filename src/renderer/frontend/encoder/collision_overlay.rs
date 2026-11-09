@@ -12,7 +12,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, Rec
 use crate::shape::paint::lowered_border::LoweredBorder;
 
 /// Magenta, distinct from the red damage-rect overlay. Painted unclipped after every layer.
-const STROKE: Border = Border::new(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
+const BORDER: Border = Border::new(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
 
 /// Final pass: a magenta outline per explicit-id collision recorded this frame, over everything. Emitted with no scissor or transform, so each outline is the node's unclipped screen rect. `NodeId`s are precomputed at recording time (`SeenIds.cur`).
 pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
@@ -27,7 +27,7 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
                     rect: screen,
                     corners: Corners::ZERO,
                     fill: BrushSource::Solid(RgbaF16::TRANSPARENT),
-                    stroke: LoweredBorder::lower(STROKE),
+                    border: LoweredBorder::lower(BORDER),
                 }),
                 1.0,
             );

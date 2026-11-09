@@ -76,8 +76,8 @@ pub(crate) struct MaterialLook {
     /// The gradient's geometry in the box's 0..1 frame; zero for a solid.
     pub(crate) fill_axis: FillAxis,
     /// Straight alpha, linear.
-    pub(crate) stroke_color: RgbaF16,
-    pub(crate) stroke_width: f32,
+    pub(crate) border_color: RgbaF16,
+    pub(crate) border_width: f32,
 }
 
 impl MaterialLook {
@@ -91,8 +91,8 @@ impl MaterialLook {
             lut_row: LutRow::FALLBACK,
         },
         fill_axis: FillAxis::ZERO,
-        stroke_color: RgbaF16::TRANSPARENT,
-        stroke_width: 0.0,
+        border_color: RgbaF16::TRANSPARENT,
+        border_width: 0.0,
     };
 }
 

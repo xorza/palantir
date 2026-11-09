@@ -16,8 +16,8 @@ struct PalantirBackdrop {
     reads: vec4<f32>,
     fill: vec4<f32>,
     fill_axis: vec4<f32>,
-    stroke_color: vec4<f32>,
-    stroke_width: f32,
+    border_color: vec4<f32>,
+    border_width: f32,
     fill_kind: u32,
     fill_lut_row: u32,
 }

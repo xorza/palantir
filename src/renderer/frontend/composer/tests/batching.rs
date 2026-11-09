@@ -539,7 +539,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
     }
 }
 
-/// Solid, sharp, stroke-less, pixel-aligned quads carry `FillKind::FAST_BIT`; alignment is on the physical rect, and translucency does not disqualify.
+/// Solid, sharp, borderless, pixel-aligned quads carry `FillKind::FAST_BIT`; alignment is on the physical rect, and translucency does not disqualify.
 #[test]
 fn quad_fast_path_flag_cases() {
     use crate::primitives::packed::fill_axis::FillAxis;
@@ -557,7 +557,7 @@ fn quad_fast_path_flag_cases() {
     });
     let cases: &[(&str, Rect, Corners, Border, BrushSource, f32, bool)] = &[
         (
-            "aligned sharp strokeless solid",
+            "aligned sharp borderless solid",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Border::NONE,
@@ -611,7 +611,7 @@ fn quad_fast_path_flag_cases() {
             false,
         ),
         (
-            "stroke disqualifies",
+            "border disqualifies",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Border::new(RgbaF32::WHITE, 1.0),
@@ -630,13 +630,13 @@ fn quad_fast_path_flag_cases() {
         ),
     ];
 
-    for (name, r, corners, stroke, brush, dpr, expect_fast) in cases {
+    for (name, r, corners, border, brush, dpr, expect_fast) in cases {
         let buf = run(
             |b, _arena| {
                 QuadBuilder::new(*r)
                     .corners(*corners)
                     .brush(*brush)
-                    .stroke(*stroke)
+                    .border(*border)
                     .draw(b);
             },
             &params_unsnapped(*dpr, UVec2::new(400, 400)),

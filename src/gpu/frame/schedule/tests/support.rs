@@ -129,8 +129,8 @@ fn dummy_quad() -> Quad {
         rect: Rect::new(0.0, 0.0, 10.0, 10.0),
         fill: RgbaF32::WHITE.to_f16(),
         corners: Corners::ZERO,
-        stroke_color: RgbaF16::TRANSPARENT,
-        stroke_width: 0.0,
+        border_color: RgbaF16::TRANSPARENT,
+        border_width: 0.0,
         ..Default::default()
     }
 }

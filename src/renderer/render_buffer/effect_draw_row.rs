@@ -45,14 +45,14 @@ pub(crate) struct EffectInstance {
     /// A backdrop effect's row in the frame's backdrops, the slot its result reads; 0 for a color
     /// effect, whose stages read none.
     pub(crate) backdrop_idx: u32,
-    /// [`Self::MATERIAL`] for a material's box, with [`Self::WINDOW`] where it covers outside its
+    /// [`Self::MATERIAL`] for a material's box, with [`Self::OUTSIDE`] where it covers outside its
     /// rounded rect; 0 for an app's draw.
     pub(crate) flags: u32,
 }
 
 impl EffectInstance {
     /// `flags`'s bit for a material's box that covers outside its rounded rect.
-    pub(crate) const WINDOW: u32 = contract::WINDOW_FLAG;
+    pub(crate) const OUTSIDE: u32 = contract::OUTSIDE_FLAG;
     /// `flags`'s bit for a material's box.
     pub(crate) const MATERIAL: u32 = contract::MATERIAL_FLAG;
 }

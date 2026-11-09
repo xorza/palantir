@@ -35,8 +35,8 @@ pub(crate) struct DrawBackdropPayload {
     pub(crate) fill: GpuFill,
     /// The fill's gradient geometry in the box's 0..1 frame; zero for a solid.
     pub(crate) fill_axis: FillAxis,
-    /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no stroke exactly.
-    pub(crate) stroke: LoweredBorder,
+    /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no border exactly.
+    pub(crate) border: LoweredBorder,
     pub(crate) material: LoweredMaterial,
     /// How much of the box shows, the fill and the material alike.
     pub(crate) opacity: f32,
@@ -45,11 +45,11 @@ pub(crate) struct DrawBackdropPayload {
 
 impl DrawBackdropPayload {
     /// The rect as a quad packs it, which the backdrop's effect instance takes its rect, corners,
-    /// turn and stroke width from, so it lies on the pixels a rect of it does.
+    /// turn and border width from, so it lies on the pixels a rect of it does.
     pub(crate) fn geometry(&self) -> DrawQuadPayload {
         let kind = match self.coverage {
             Coverage::Inside => FillKind::SOLID,
-            Coverage::Outside => FillKind::SOLID.with_window(),
+            Coverage::Outside => FillKind::SOLID.with_outside(),
         };
         DrawQuadPayload {
             geometry: QuadGeometry::Rect {
@@ -62,7 +62,7 @@ impl DrawBackdropPayload {
                 kind,
                 lut_row: LutRow::FALLBACK,
             },
-            stroke: self.stroke,
+            border: self.border,
             fill_axis: FillAxis::from_lanes([0.0, 0.0, 0.0, self.opacity]),
         }
     }
@@ -77,7 +77,7 @@ impl PaintPayload for DrawBackdropPayload {
         }
         Self {
             fill: self.fill.faded(by),
-            stroke: self.stroke.faded(by),
+            border: self.border.faded(by),
             opacity: self.opacity * by,
             ..self
         }

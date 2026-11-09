@@ -152,7 +152,7 @@ fn paint_backdrop(paint: RectPaint, look: BackdropLook, out: &mut impl PaintSink
             spin,
             fill: quad.fill.gpu_fill(),
             fill_axis: quad.fill.fill_axis(),
-            stroke: quad.stroke.normalized(),
+            border: quad.border.normalized(),
             material: look.material,
             opacity: 1.0,
             read: look.read,
@@ -196,7 +196,7 @@ impl PlaneCtx<'_, '_> {
         let RectPaint { quad, spin, alpha } = paint;
         if shadow.inset() {
             paint_fill(out);
-            let width = quad.stroke.width;
+            let width = quad.border.width;
             let padding_box = Rect {
                 min: Vec2::ZERO,
                 size: quad.rect.size,
@@ -265,7 +265,7 @@ impl PlaneCtx<'_, '_> {
                     rect: owner_rect.resolve_local(Some(rect)),
                     corners,
                     fill: BrushSource::Solid(color),
-                    stroke: LoweredBorder::NONE,
+                    border: LoweredBorder::NONE,
                 };
                 let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
                 paint_rect(
@@ -373,7 +373,7 @@ impl PlaneCtx<'_, '_> {
                         rect: owner_rect.resolve_local(Some(rect)),
                         corners,
                         fill: self.brush_source(*fill),
-                        stroke: *border,
+                        border: *border,
                     };
                     self.paint_box(
                         BoxPaint {
@@ -402,7 +402,7 @@ impl PlaneCtx<'_, '_> {
                         points: placed.centers.map(|q| owner_rect.min + q),
                         radius: placed.radius,
                         fill: *fill,
-                        stroke: *border,
+                        border: *border,
                     });
                     out.draw(triangle.turned(spin), alpha);
                 }
@@ -683,7 +683,7 @@ impl PlaneCtx<'_, '_> {
                 rect,
                 corners: chrome.corners,
                 fill: self.brush_source(chrome.fill),
-                stroke: chrome.border,
+                border: chrome.border,
             };
             // Alpha `1.0`: chrome isn't a shape, so no paint animation.
             self.paint_box(
@@ -709,7 +709,7 @@ impl PlaneCtx<'_, '_> {
                     rect,
                     corners: chrome.corners,
                     fill: self.brush_source(LoweredBrush::Solid(RgbaF16::TRANSPARENT)),
-                    stroke: self.tree.focus_ring,
+                    border: self.tree.focus_ring,
                 });
                 out.draw(ring, 1.0);
             }

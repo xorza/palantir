@@ -1,4 +1,4 @@
-//! The quad-tier draw: rounded rects, windowed rects, box-shadows and
+//! The quad-tier draw: rounded rects, outside rects, box-shadows and
 //! rounded triangles, which all lower to one `Quad` instance.
 
 use crate::primitives::geometry::corners::Corners;
@@ -16,7 +16,7 @@ use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeometry};
 use glam::Vec2;
 
-/// The geometry half of a [`DrawQuadPayload`]. Rects, windowed rects and
+/// The geometry half of a [`DrawQuadPayload`]. Rects, outside rects and
 /// shadows arrive as an already-resolved rect; a triangle's covering rect
 /// only exists after its points are transformed, so it carries the points.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -42,7 +42,7 @@ pub(crate) enum QuadGeometry {
     },
 }
 
-/// One quad-tier draw (rounded rect, windowed rect, box-shadow or rounded
+/// One quad-tier draw (rounded rect, outside rect, box-shadow or rounded
 /// triangle), all lowered to a single `Quad` instance; they differ in
 /// [`geometry`](Self::geometry) and the SDF `fill_kind` selects.
 ///
@@ -60,8 +60,8 @@ pub(crate) enum QuadGeometry {
 pub(crate) struct DrawQuadPayload {
     pub(crate) geometry: QuadGeometry,
     pub(crate) fill: GpuFill,
-    /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no stroke exactly.
-    pub(crate) stroke: LoweredBorder,
+    /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no border exactly.
+    pub(crate) border: LoweredBorder,
     /// The reused four-lane geometry slot: gradient axis, shadow `(offset, σ,
     /// spread)`, or unread for a triangle. Outside [`GpuFill`] because only
     /// this tier has one.
@@ -69,30 +69,30 @@ pub(crate) struct DrawQuadPayload {
 }
 
 /// What [`DrawQuadPayload::rect`] lowers: a rect covering `coverage` with its corner
-/// radii, fill brush and stroke.
+/// radii, fill brush and border.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RectQuad {
     pub(crate) coverage: Coverage,
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
     pub(crate) fill: BrushSource,
-    pub(crate) stroke: LoweredBorder,
+    pub(crate) border: LoweredBorder,
 }
 
 /// What [`DrawQuadPayload::triangle`] lowers: three logical-px corner centers
-/// in `points`, dilated by `radius`, with a solid fill and a stroke.
+/// in `points`, dilated by `radius`, with a solid fill and a border.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TriangleQuad {
     pub(crate) points: [Vec2; 3],
     pub(crate) radius: f32,
     pub(crate) fill: RgbaF16,
-    pub(crate) stroke: LoweredBorder,
+    pub(crate) border: LoweredBorder,
 }
 
 impl DrawQuadPayload {
-    /// A rect covering `q.coverage` with `q.fill` and `q.stroke`. The brush is lowered
+    /// A rect covering `q.coverage` with `q.fill` and `q.border`. The brush is lowered
     /// here because the GPU lanes it fills are this type's. A
-    /// [`Coverage::Outside`] rect's `FillKind` carries the window bit, so the
+    /// [`Coverage::Outside`] rect's `FillKind` carries the outside bit, so the
     /// shader inverts the fill coverage and the composer's opaque-cover checks
     /// (`fill_kind == FillKind::SOLID`) do not treat its hole as an occluder.
     pub(crate) fn rect(q: RectQuad) -> Self {
@@ -101,12 +101,12 @@ impl DrawQuadPayload {
             rect,
             corners,
             fill,
-            stroke,
+            border,
         } = q;
         // Border stays solid-only.
         let mut lanes = fill.gpu_fill();
         if coverage == Coverage::Outside {
-            lanes.kind = lanes.kind.with_window();
+            lanes.kind = lanes.kind.with_outside();
         }
         Self {
             geometry: QuadGeometry::Rect {
@@ -115,7 +115,7 @@ impl DrawQuadPayload {
                 spin: None,
             },
             fill: lanes,
-            stroke: stroke.normalized(),
+            border: border.normalized(),
             fill_axis: fill.fill_axis(),
         }
     }
@@ -153,21 +153,21 @@ impl DrawQuadPayload {
                 kind,
                 lut_row: LutRow::FALLBACK,
             },
-            // A shadow has no stroke; its edge is the blur.
-            stroke: LoweredBorder::NONE,
+            // A shadow has no border; its edge is the blur.
+            border: LoweredBorder::NONE,
             // The axis travels as the packed word; unpacking would round-trip identical bytes through f16.
             fill_axis: FillAxis::from(shadow.geometry_f16),
         })
     }
 
-    /// A rounded triangle from `q`'s three corner centers. Same tier and stroke
+    /// A rounded triangle from `q`'s three corner centers. Same tier and border
     /// normalization as [`Self::rect`].
     pub(crate) const fn triangle(q: TriangleQuad) -> Self {
         let TriangleQuad {
             points: [a, b, c],
             radius,
             fill,
-            stroke,
+            border,
         } = q;
         Self {
             geometry: QuadGeometry::Triangle {
@@ -183,7 +183,7 @@ impl DrawQuadPayload {
                 // The composer overwrites both reused lanes from the points.
                 lut_row: LutRow::FALLBACK,
             },
-            stroke: stroke.normalized(),
+            border: border.normalized(),
             fill_axis: FillAxis::ZERO,
         }
     }
@@ -214,13 +214,13 @@ impl PaintPayload for DrawQuadPayload {
         }
         Self {
             fill: self.fill.faded(by),
-            stroke: self.stroke.faded(by),
+            border: self.border.faded(by),
             ..self
         }
     }
 
     /// Paints nothing when the geometry covers no pixels, or neither fill nor
-    /// stroke can put down a texel.
+    /// border can put down a texel.
     ///
     /// Shadow parameters are not gated: a zero-σ drop shadow still paints a
     /// hard shifted rect, and the box's lowering drops a shadow that paints nothing.
@@ -230,7 +230,7 @@ impl PaintPayload for DrawQuadPayload {
     /// `Brush::is_noop` filters all-transparent stops before lowering.
     #[inline]
     fn is_noop(&self) -> bool {
-        self.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
+        self.is_paint_empty() || (self.fill.is_noop() && self.border.is_noop())
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

@@ -21,15 +21,15 @@ pub(super) struct PackedQuad {
     pub(super) rect: ScaledRect,
     pub(super) corners: Corners,
     pub(super) fill_axis: FillAxis,
-    pub(super) stroke_width: f32,
+    pub(super) border_width: f32,
     /// A paint animation's turn about the rect's center, in radians.
     pub(super) rotation: f32,
 }
 
 impl PackedQuad {
-    /// Unturned with neither a stroke nor a rounded corner: the edges are the rect's.
+    /// Unturned with neither a border nor a rounded corner: the edges are the rect's.
     pub(super) const fn is_sharp(&self) -> bool {
-        self.rotation == 0.0 && is_invisible(self.stroke_width) && self.corners.is_approx_zero()
+        self.rotation == 0.0 && is_invisible(self.border_width) && self.corners.is_approx_zero()
     }
 
     /// [`Self::is_sharp`] plus physical edges on whole pixels. Exactness makes the
@@ -90,7 +90,7 @@ impl PackedQuad {
                     rect,
                     corners,
                     fill_axis,
-                    stroke_width: p.stroke.width * scale_physical,
+                    border_width: p.border.width * scale_physical,
                     rotation,
                 }
             }
@@ -117,7 +117,7 @@ impl PackedQuad {
                 );
                 // Saturated as the f16 lane holds it, so the quad and the shader take one radius.
                 let radius_physical = F16x4::saturate_lane((radius * scale_physical).max(0.0));
-                // Covering AABB of the rounded shape; the stroke sits on the inner edge, so it adds
+                // Covering AABB of the rounded shape; the border sits on the inner edge, so it adds
                 // no outward reach.
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
@@ -135,7 +135,7 @@ impl PackedQuad {
                     rect: ScaledRect::from_physical(physical_rect, lowering.display.physical),
                     corners: Corners::from_bits([ax, ay, bx, by]),
                     fill_axis: FillAxis::from(F16x4::from_bits([cx, cy, radius_f16, 0])),
-                    stroke_width: (p.stroke.width * scale_physical).max(0.0),
+                    border_width: (p.border.width * scale_physical).max(0.0),
                     rotation: 0.0,
                 }
             }

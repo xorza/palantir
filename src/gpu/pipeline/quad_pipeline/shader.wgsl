@@ -120,18 +120,18 @@ const SPREAD_MASK: u32 = /*{SPREAD_MASK}*/;
 const BRUSH_KIND_LINEAR:       u32 = /*{BRUSH_KIND_LINEAR}*/;
 const BRUSH_KIND_RADIAL:       u32 = /*{BRUSH_KIND_RADIAL}*/;
 // Fragment fast path (`FillKind::FAST_BIT`). The composer sets it on a
-// solid, sharp, stroke-less quad whose rect is pixel-aligned — every
+// solid, sharp, borderless quad whose rect is pixel-aligned — every
 // rasterized fragment is interior (SDF coverage exactly 1.0), so `fs`
 // returns the premultiplied fill directly.
 const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
-// Windowed rect (`FillKind::WINDOW_BIT`) — inverted fill coverage. The fill
+// Outside rect (`FillKind::OUTSIDE_BIT`) — inverted fill coverage. The fill
 // paints *outside* the rounded boundary (the corner wedges, out to the
-// quad edge), the stroke keeps its usual inner-edge annulus, and the
-// window interior stays transparent. Cheap stand-in for rounded-corner
+// quad edge), the border keeps its usual inner-edge annulus, and the
+// interior stays transparent. Cheap stand-in for rounded-corner
 // scissor clipping: draw content as plain rects, then paint this over
 // it with the surrounding background as `fill`. Only meaningful for the
 // rect path (solid and the gradients).
-const FILL_FLAG_WINDOW: u32 = /*{FILL_FLAG_WINDOW}*/;
+const FILL_FLAG_OUTSIDE: u32 = /*{FILL_FLAG_OUTSIDE}*/;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
 // `fill` is the shadow color, `radius` is the source rect's corner
 // radii, `size` is the paint bbox, and
@@ -145,8 +145,8 @@ const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
 // ride the reused instance lanes — `radius.xy = a`, `radius.zw = b`,
 // `fill_axis.xy = c` — stored as unorm16 shares of the quad's size, which
 // `vs` turns into `local` (0..size) coords; `fill_axis.z` is the corner
-// radius, f16 like every other lane. Stroke uses the usual
-// `stroke_color`/`stroke_width`.
+// radius, f16 like every other lane. The border uses the usual
+// `border_color`/`border_width`.
 const BRUSH_KIND_TRIANGLE:     u32 = /*{BRUSH_KIND_TRIANGLE}*/;
 // Spread mode, only meaningful for gradients.
 // `Pad` is the fallback below rather than a constant of its own.
@@ -163,8 +163,8 @@ struct VertexOut {
     @location(1) @interpolate(flat) size:         vec2<f32>,
     @location(2) @interpolate(flat) fill:         vec4<f32>,
     @location(3) @interpolate(flat) radius:       vec4<f32>,
-    @location(4) @interpolate(flat) stroke_color: vec4<f32>,
-    @location(5) @interpolate(flat) stroke_width: f32,
+    @location(4) @interpolate(flat) border_color: vec4<f32>,
+    @location(5) @interpolate(flat) border_width: f32,
     @location(6) @interpolate(flat) fill_kind:    u32,
     @location(7) @interpolate(flat) fill_lut_row: u32,
     @location(8) @interpolate(flat) fill_axis:    vec4<f32>,
@@ -173,7 +173,7 @@ struct VertexOut {
     // shadow / triangle paths don't read it).
     @location(9) @interpolate(flat) inv_size:     vec2<f32>,
     // `(lo.x, lo.y, hi.x, hi.y)` in `local`: the rounded rect's interior,
-    // past every corner's arc and the stroke's inner edge by
+    // past every corner's arc and the border's inner edge by
     // `AA_HALF_WIDTH`, where `composite` is the fill (`fs`). Empty where the
     // shape has no such interior.
     @location(10) @interpolate(flat) core: vec4<f32>,
@@ -219,8 +219,8 @@ struct QuadIn {
     @location(1) size:         vec2<f32>,
     @location(2) fill_packed:  vec2<u32>,
     @location(3) radius_packed: vec2<u32>,
-    @location(4) stroke_color_packed: vec2<u32>,
-    @location(5) stroke_width: f32,
+    @location(4) border_color_packed: vec2<u32>,
+    @location(5) border_width: f32,
     @location(6) fill_kind:    u32,
     @location(7) fill_lut_row: u32,
     @location(8) fill_axis_packed: vec2<u32>,
@@ -347,7 +347,7 @@ fn vs_shadow(
 // grown to every pixel center within `AA_HALF_WIDTH` of it, out to whole
 // pixels, since its coverage reaches that far and the rasterizer only
 // shades a pixel whose center is inside what it draws. A rect on pixel
-// boundaries does not grow. A windowed rect is a mask over content of its
+// boundaries does not grow. A outside rect is a mask over content of its
 // own extent and paints its fill outside the shape, so it stays at its
 // rect. `Quad::shaded_rect` is the same extent on the CPU.
 struct Bounds {
@@ -364,16 +364,16 @@ fn unturned(p: vec2<f32>, turn: vec4<f32>) -> vec2<f32> {
     return turn.xy + vec2<f32>(turn.z * v.x + turn.w * v.y, turn.z * v.y - turn.w * v.x);
 }
 
-// Every pixel center within `AA_HALF_WIDTH` of the rect; a window's is a
+// Every pixel center within `AA_HALF_WIDTH` of the rect; an outside rect's is a
 // hard cut, drawn at its rect. A turned quad's frame is not the pixel grid,
 // so it reaches `AA_HALF_WIDTH` past each edge there instead, a distance the
-// rotation keeps, and a window's edge fades with it (`fs`).
+// rotation keeps, and an outside rect's edge fades with it (`fs`).
 fn shaded_bounds(pos: vec2<f32>, size: vec2<f32>, fill_kind: u32, rotation: f32) -> Bounds {
     var b = Bounds(pos, pos + size);
     if (rotation != 0.0) {
         b.lo -= vec2<f32>(AA_HALF_WIDTH);
         b.hi += vec2<f32>(AA_HALF_WIDTH);
-    } else if ((fill_kind & FILL_FLAG_WINDOW) == 0u) {
+    } else if ((fill_kind & FILL_FLAG_OUTSIDE) == 0u) {
         b.lo = floor(b.lo - vec2<f32>(AA_HALF_WIDTH - 0.5));
         b.hi = ceil(b.hi + vec2<f32>(AA_HALF_WIDTH - 0.5));
     }
@@ -415,8 +415,8 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     out.size         = size;
     out.fill         = unpack_f16x4(quad.fill_packed);
     out.radius       = corner_lanes;
-    out.stroke_color = unpack_f16x4(quad.stroke_color_packed);
-    out.stroke_width = quad.stroke_width;
+    out.border_color = unpack_f16x4(quad.border_color_packed);
+    out.border_width = quad.border_width;
     out.fill_kind    = fill_kind;
     out.fill_lut_row = quad.fill_lut_row;
     out.fill_axis    = axis_lanes;
@@ -424,11 +424,11 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     out.core         = vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN);
     out.turned       = u32(quad.rotation != 0.0);
     // Inside the quad by the largest radius, no corner's arc reaches; by the
-    // stroke and `AA_HALF_WIDTH`, its inner edge's coverage is 1. A window
-    // paints outside its shape, and a triangle's lanes are not radii.
-    let windowed = (fill_kind & FILL_FLAG_WINDOW) != 0u;
-    if (!windowed && (fill_kind & FILL_TAG_MASK) != BRUSH_KIND_TRIANGLE) {
-        let inset = max(max(max(radius.x, radius.y), max(radius.z, radius.w)), quad.stroke_width + AA_HALF_WIDTH);
+    // border and `AA_HALF_WIDTH`, its inner edge's coverage is 1. An outside
+    // rect paints outside its shape, and a triangle's lanes are not radii.
+    let outside = (fill_kind & FILL_FLAG_OUTSIDE) != 0u;
+    if (!outside && (fill_kind & FILL_TAG_MASK) != BRUSH_KIND_TRIANGLE) {
+        let inset = max(max(max(radius.x, radius.y), max(radius.z, radius.w)), quad.border_width + AA_HALF_WIDTH);
         out.core = vec4<f32>(vec2<f32>(inset), size - vec2<f32>(inset));
     }
     return out;
@@ -843,14 +843,14 @@ fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma:
     return clamp(right + left + corners, 0.0, 1.0);
 }
 
-// Composite an SDF shape's fill + inner-edge stroke into premultiplied linear
+// Composite an SDF shape's fill + inner-edge border into premultiplied linear
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     if (QUAD_FORM == QUAD_FORM_TRIANGLE) {
         // Three corner centers (in `local` 0..size coords) + corner radius ride
         // the reused instance lanes. `sdf_triangle - radius` gives the rounded
         // shape, whose edges lie on the sharp triangle's; `composite` applies
-        // the same coverage AA + inner stroke as the rounded-rect path, so a
+        // the same coverage AA + inner border as the rounded-rect path, so a
         // triangle gets crisp AA + rounded corners with no MSAA and no
         // tessellation. Solid fill only (no gradient lanes).
         let ta = in.radius.xy;
@@ -858,7 +858,7 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let tc = in.fill_axis.xy;
         let corner_r = in.fill_axis.z;
         let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
-        return composite(td, in.fill, in.stroke_color, in.stroke_width);
+        return composite(td, in.fill, in.border_color, in.border_width);
     }
     // Uniform per instance (`fill_kind` is flat), so whole wavefronts
     // inside one quad take a single side of this branch.
@@ -872,25 +872,25 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     return shade_rect(in, fill);
 }
 
-// A rounded rect of `fill` under the instance's stroke. A point past
-// `stroke_width + AA_HALF_WIDTH` inside the shape is the fill, without the
-// distance: both coverages are 1 and the stroke's share 0.
+// A rounded rect of `fill` under the instance's border. A point past
+// `border_width + AA_HALF_WIDTH` inside the shape is the fill, without the
+// distance: both coverages are 1 and the border's share 0.
 fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
     if (all(in.local > in.core.xy) && all(in.local < in.core.zw)) {
         return premultiply(fill.rgb, fill.a);
     }
     let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
-        var window = composite_window(d, fill, in.stroke_color, in.stroke_width);
+    if ((in.fill_kind & FILL_FLAG_OUTSIDE) != 0u) {
+        var cover = composite_outside(d, fill, in.border_color, in.border_width);
         if (in.turned != 0u) {
             // Turned, the quad edge no longer lies on content of its own
             // extent, so it is a visible edge and fades as any edge does.
             let e = abs(in.local - in.size * 0.5) - in.size * 0.5;
-            window *= edge_coverage(e.x) * edge_coverage(e.y);
+            cover *= edge_coverage(e.x) * edge_coverage(e.y);
         }
-        return window;
+        return cover;
     }
-    return composite(d, fill, in.stroke_color, in.stroke_width);
+    return composite(d, fill, in.border_color, in.border_width);
 }
 
 // The box whose blur a shadow paints, relative to its quad's center, with

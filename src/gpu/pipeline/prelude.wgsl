@@ -144,43 +144,43 @@ fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
 
 
 // RGBA, given the signed distance `d` (negative inside). `outer_aa =
-// edge_coverage(d)` is the coverage. With a stroke, the stroke covers the annulus
-// between the outer edge and the edge inset by `stroke_width`, and the fill
+// edge_coverage(d)` is the coverage. With a border, the border covers the annulus
+// between the outer edge and the edge inset by `border_width`, and the fill
 // covers the interior inside that inset. The two are *spatially disjoint*
-// within any pixel (stroke = `outer_aa - inner_aa`, fill = `inner_aa`), so they
+// within any pixel (border = `outer_aa - inner_aa`, fill = `inner_aa`), so they
 // sum additively in premultiplied space — the coverages partition and add back
-// to `outer_aa`. Compositing stroke OVER fill instead (`a = stroke_a +
-// fill_a*(1-stroke_a)`) dips total alpha to ~0.75 where the two AA bands cross
-// at ~0.5 each, showing a 1px seam of background bleeding between stroke and
+// to `outer_aa`. Compositing border OVER fill instead (`a = border_a +
+// fill_a*(1-border_a)`) dips total alpha to ~0.75 where the two AA bands cross
+// at ~0.5 each, showing a 1px seam of background bleeding between border and
 // fill at fractional zoom; summing keeps total coverage at `outer_aa`. Shared
 // by the rounded-rect and triangle paths so they can't drift.
-fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+fn composite(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
     let outer_aa = edge_coverage(d);
-    if (stroke_width > 0.0) {
-        let inner_aa = edge_coverage(d + stroke_width);
-        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
+    if (border_width > 0.0) {
+        let inner_aa = edge_coverage(d + border_width);
+        let border_a = (outer_aa - inner_aa) * border_color.a;
         let fill_a   = inner_aa * fill.a;
-        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
+        return premultiply(border_color.rgb, border_a) + premultiply(fill.rgb, fill_a);
     }
     return premultiply(fill.rgb, fill.a * outer_aa);
 }
 
-// Inverted-fill counterpart of `composite` for `FILL_FLAG_WINDOW`: the
-// stroke covers the same inner-edge annulus, but the fill paints the
+// Inverted-fill counterpart of `composite` for `FILL_FLAG_OUTSIDE`: the
+// border covers the same inner-edge annulus, but the fill paints the
 // complement of the rounded shape (`1 - outer_aa`) — the corner wedges
-// out to the quad edge — and the window interior is transparent. The
-// three coverages (fill, stroke, window) partition each pixel exactly,
-// so fill + stroke sum additively in premultiplied space with no seam,
+// out to the quad edge — and the interior is transparent. The
+// three coverages (fill, border, interior) partition each pixel exactly,
+// so fill + border sum additively in premultiplied space with no seam,
 // same rationale as `composite`. The quad edge itself is a hard cut
 // (no outward AA): the shape is a mask laid exactly over content of
 // the same extent, so its outer boundary is never a visible edge.
-fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+fn composite_outside(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
     let outer_aa = edge_coverage(d);
     let fill_a = (1.0 - outer_aa) * fill.a;
-    if (stroke_width > 0.0) {
-        let inner_aa = edge_coverage(d + stroke_width);
-        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
-        return premultiply(stroke_color.rgb, stroke_a) + premultiply(fill.rgb, fill_a);
+    if (border_width > 0.0) {
+        let inner_aa = edge_coverage(d + border_width);
+        let border_a = (outer_aa - inner_aa) * border_color.a;
+        return premultiply(border_color.rgb, border_a) + premultiply(fill.rgb, fill_a);
     }
     return premultiply(fill.rgb, fill_a);
 }

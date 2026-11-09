@@ -2,7 +2,7 @@
 // shows over what it reads, held within the material's luminance bounds, under the box's fill,
 // dithered where an 8-bit sRGB target stores it, over the whole box with the box's border laid
 // over it, as CSS's background and `backdrop-filter` cover the border box; over the rounded rect
-// a quad of the box would shade, turned and windowed as one. The backdrop's slot holds the bounds,
+// a quad of the box would shade, turned and outside as one. The backdrop's slot holds the bounds,
 // the fill and the border, faded by a paint animation.
 
 // Whether the target stores 8 bits a channel through the sRGB curve, which a material dithers its
@@ -110,34 +110,34 @@ fn palantir_gradient_lut(t: f32, row: u32) -> vec4<f32> {
 // past the largest radius, and past the border and the antialiasing reach, inside the shape is the
 // fill, without the distance.
 fn palantir_material_shade(v: PalantirVarying, local: vec2<f32>, backdrop: PalantirBackdrop, fill: vec4<f32>) -> vec4<f32> {
-    let windowed = (v.flags & PALANTIR_WINDOW) != 0u;
+    let outside = (v.flags & PALANTIR_OUTSIDE) != 0u;
     let size = v.rect.zw;
-    if (!windowed) {
+    if (!outside) {
         let inset = max(
             max(max(v.corners.x, v.corners.y), max(v.corners.z, v.corners.w)),
-            backdrop.stroke_width + PALANTIR_AA_HALF_WIDTH,
+            backdrop.border_width + PALANTIR_AA_HALF_WIDTH,
         );
         if (all(local > vec2<f32>(inset)) && all(local < size - vec2<f32>(inset))) {
             return vec4<f32>(fill.rgb * fill.a, fill.a);
         }
     }
     let d = palantir_sdf(local, size, v.corners);
-    if (windowed) {
-        var window = palantir_composite_window(
+    if (outside) {
+        var cover = palantir_composite_outside(
             d,
             fill,
-            backdrop.stroke_color,
-            backdrop.stroke_width,
+            backdrop.border_color,
+            backdrop.border_width,
         );
         if (v.clock.w != 0.0) {
             // Turned, the rect edge no longer lies on content of its own extent, so it is a
             // visible edge and fades as any edge does.
             let e = abs(local - size * 0.5) - size * 0.5;
-            window *= palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y);
+            cover *= palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y);
         }
-        return window;
+        return cover;
     }
-    return palantir_composite(d, fill, backdrop.stroke_color, backdrop.stroke_width);
+    return palantir_composite(d, fill, backdrop.border_color, backdrop.border_width);
 }
 
 // The prelude's `edge_coverage`: coverage, at a pixel centered `d` outside an edge, of the side
@@ -148,27 +148,27 @@ fn palantir_edge_coverage(d: f32) -> f32 {
 
 // The fill over the whole box, its border band included, and the border over it there: CSS's
 // border-box background, which shows no sharp content through a translucent border.
-fn palantir_composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+fn palantir_composite(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
     let outer_aa = palantir_edge_coverage(d);
     let fill_a = fill.a * outer_aa;
     let under = vec4<f32>(fill.rgb * fill_a, fill_a);
-    if (stroke_width > 0.0) {
-        let inner_aa = palantir_edge_coverage(d + stroke_width);
-        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
-        return vec4<f32>(stroke_color.rgb * stroke_a, stroke_a) + under * (1.0 - stroke_a);
+    if (border_width > 0.0) {
+        let inner_aa = palantir_edge_coverage(d + border_width);
+        let border_a = (outer_aa - inner_aa) * border_color.a;
+        return vec4<f32>(border_color.rgb * border_a, border_a) + under * (1.0 - border_a);
     }
     return under;
 }
 
-// The window's twin of `palantir_composite`: the fill outside the border's inner edge, the border
+// The outside twin of `palantir_composite`: the fill outside the border's inner edge, the border
 // over it in its band, and a transparent interior.
-fn palantir_composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+fn palantir_composite_outside(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
     let outer_aa = palantir_edge_coverage(d);
-    if (stroke_width > 0.0) {
-        let inner_aa = palantir_edge_coverage(d + stroke_width);
+    if (border_width > 0.0) {
+        let inner_aa = palantir_edge_coverage(d + border_width);
         let fill_a = (1.0 - inner_aa) * fill.a;
-        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
-        return vec4<f32>(stroke_color.rgb * stroke_a, stroke_a) + vec4<f32>(fill.rgb * fill_a, fill_a) * (1.0 - stroke_a);
+        let border_a = (outer_aa - inner_aa) * border_color.a;
+        return vec4<f32>(border_color.rgb * border_a, border_a) + vec4<f32>(fill.rgb * fill_a, fill_a) * (1.0 - border_a);
     }
     let fill_a = (1.0 - outer_aa) * fill.a;
     return vec4<f32>(fill.rgb * fill_a, fill_a);

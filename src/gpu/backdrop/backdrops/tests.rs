@@ -214,8 +214,8 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
         ("reads", offset_of!(BackdropSlot, reads)),
         ("fill", offset_of!(BackdropSlot, fill)),
         ("fill_axis", offset_of!(BackdropSlot, fill_axis)),
-        ("stroke_color", offset_of!(BackdropSlot, stroke_color)),
-        ("stroke_width", offset_of!(BackdropSlot, stroke_width)),
+        ("border_color", offset_of!(BackdropSlot, border_color)),
+        ("border_width", offset_of!(BackdropSlot, border_width)),
         ("fill_kind", offset_of!(BackdropSlot, fill_kind)),
         ("fill_lut_row", offset_of!(BackdropSlot, fill_lut_row)),
     ];

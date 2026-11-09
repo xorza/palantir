@@ -77,7 +77,7 @@ pub(crate) struct ParamsLayout {
 pub(crate) const IMAGES_GROUP: u32 = 1;
 
 /// An instance's flag for a material's box that covers outside its rounded rect.
-pub(crate) const WINDOW_FLAG: u32 = 1;
+pub(crate) const OUTSIDE_FLAG: u32 = 1;
 
 /// An instance's flag for a material's box, which a backdrop effect's stage draws through the
 /// material path.
@@ -225,7 +225,7 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
     WRAPPER
         .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
         .replace("/*{MATERIAL}*/", &format!("{MATERIAL_FLAG}u"))
-        .replace("/*{WINDOW}*/", &format!("{WINDOW_FLAG}u"))
+        .replace("/*{OUTSIDE}*/", &format!("{OUTSIDE_FLAG}u"))
         .replace("/*{PARAMS}*/", &read)
         .replace("/*{BACKDROP_SET}*/", set)
         .replace("/*{CALL}*/", call)

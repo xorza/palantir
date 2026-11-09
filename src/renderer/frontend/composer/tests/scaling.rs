@@ -94,27 +94,27 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
     }
 }
 
-/// A NaN stroke width normalizes away like any non-painting width, uniformly
+/// A NaN border width normalizes away like any non-painting width, uniformly
 /// for every quad shape. `Shapes::push` catches it loudly at authoring; this
 /// pins the release-side fallback end to end: no NaN reaches the GPU, on
 /// either geometry.
 #[test]
-fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
-    let nan_stroke = Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN);
+fn nan_border_width_normalizes_away_on_every_quad_geometry() {
+    let nan_border = Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN);
     let display = params(2.0, UVec2::new(400, 400));
 
-    // An opaque fill keeps the draw alive so the stroke lanes can be inspected.
+    // An opaque fill keeps the draw alive so the border lanes can be inspected.
     let buf = run(
         |b, _arena| {
             QuadBuilder::new(Rect::new(10.0, 20.0, 30.0, 40.0))
-                .stroke(nan_stroke)
+                .border(nan_border)
                 .draw(b);
         },
         &display,
     );
     assert_eq!(buf.quads.len(), 1, "the fill keeps the rect alive");
     assert_eq!(
-        buf.quads[0].stroke_width, 0.0,
+        buf.quads[0].border_width, 0.0,
         "a NaN width must not reach the instance",
     );
 
@@ -129,7 +129,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
                     ],
                     radius: 0.0,
                     fill: RgbaF32::WHITE.to_f16(),
-                    stroke: LoweredBorder::lower(nan_stroke),
+                    border: LoweredBorder::lower(nan_border),
                 }),
                 1.0,
             );
@@ -138,16 +138,16 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     );
     assert_eq!(buf.quads.len(), 1, "the fill keeps the triangle alive");
     assert_eq!(
-        buf.quads[0].stroke_width, 0.0,
+        buf.quads[0].border_width, 0.0,
         "the triangle arm must agree with the rect arm",
     );
 
-    // A NaN stroke on an otherwise unpainted shape is dropped.
+    // A NaN border on an otherwise unpainted shape is dropped.
     let buf = run(
         |b, _arena| {
             QuadBuilder::new(Rect::new(10.0, 20.0, 30.0, 40.0))
                 .solid(RgbaF32::TRANSPARENT)
-                .stroke(nan_stroke)
+                .border(nan_border)
                 .draw(b);
         },
         &display,
@@ -184,13 +184,13 @@ fn compose_translates_under_push_transform() {
 }
 
 #[test]
-fn compose_scales_radius_and_stroke_under_transform() {
+fn compose_scales_radius_and_border_under_transform() {
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
             QuadBuilder::new(Rect::new(0.0, 0.0, 50.0, 50.0))
                 .corners(Corners::all(8.0))
-                .stroke(Border::new(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5))
+                .border(Border::new(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5))
                 .draw(b);
             b.pop_transform();
         },
@@ -199,7 +199,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
     let q = &buf.quads[0];
     assert_eq!(q.rect.size, Size::new(100.0, 100.0));
     assert_eq!(q.corners.to_array()[0], 16.0);
-    assert_eq!(q.stroke_width, 3.0);
+    assert_eq!(q.border_width, 3.0);
 }
 
 /// Text-run scale snaps to the additive 0.5% ladder so continuous zoom gives
@@ -425,7 +425,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
                     points,
                     radius: 2.0,
                     fill: RgbaF32::WHITE.to_f16(),
-                    stroke: LoweredBorder::lower(Border::NONE),
+                    border: LoweredBorder::lower(Border::NONE),
                 }),
                 1.0,
             );
@@ -479,7 +479,7 @@ fn a_turned_triangle_turns_its_points_about_its_pivot() {
                         ],
                         radius: 1.0,
                         fill: RgbaF32::WHITE.to_f16(),
-                        stroke: LoweredBorder::lower(Border::NONE),
+                        border: LoweredBorder::lower(Border::NONE),
                     })
                     .turned(spin),
                     1.0,

@@ -16,12 +16,12 @@ use glam::Vec2;
 use std::ops::Range;
 use tinyvec::ArrayVec;
 
-/// Damage-rect outline stroke color: bright opaque red, not theme-driven.
+/// Damage-rect outline border color: bright opaque red, not theme-driven.
 const DAMAGE_OVERLAY_COLOR: RgbaF32 = RgbaF32::srgb(1.0, 0.0, 0.0);
 
-/// Damage-rect outline stroke width in logical px, scaled by
+/// Damage-rect outline border width in logical px, scaled by
 /// `Display::scale_factor()` at submit.
-const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
+const DAMAGE_OVERLAY_BORDER_WIDTH: f32 = 2.0;
 
 /// Gap between outline and damage edge in logical px. `Partial` rects outset by
 /// it so thin damage (a 1px caret) stays visible; the full-viewport outline
@@ -70,7 +70,7 @@ pub(crate) fn dim_quad(viewport: Vec2) -> Quad {
 /// ([`QuadExtras`](crate::gpu::pipeline::quad_pipeline::QuadExtras)).
 #[derive(Debug, Default)]
 pub(crate) struct DebugOverlay {
-    /// Damage-rect outline quads (transparent fill, red stroke), drawn on the
+    /// Damage-rect outline quads (transparent fill, red border), drawn on the
     /// swapchain texture after the backbuffer-to-surface copy, so no ghosts.
     /// Bounded by [`DAMAGE_RECT_CAP`], so steady-state frames are alloc-free.
     outlines: ArrayVec<[Quad; DAMAGE_RECT_CAP]>,
@@ -82,13 +82,13 @@ impl DebugOverlay {
     pub(crate) fn build_outlines(&mut self, damage: Damage, buffer: &RenderBuffer) {
         let scale = buffer.display.scale_factor();
         let gap_px = (DAMAGE_OVERLAY_GAP * scale).max(1.0);
-        let stroke_color = DAMAGE_OVERLAY_COLOR.to_f16();
-        let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * scale;
+        let border_color = DAMAGE_OVERLAY_COLOR.to_f16();
+        let border_width = DAMAGE_OVERLAY_BORDER_WIDTH * scale;
         let outline = |rect: Rect| Quad {
             rect,
             fill: RgbaF16::TRANSPARENT,
-            stroke_color,
-            stroke_width,
+            border_color,
+            border_width,
             ..Default::default()
         };
         self.outlines.clear();

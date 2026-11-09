@@ -8,7 +8,7 @@ use bytemuck::{Pod, Zeroable};
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching paint-payload
 /// fields: **bits 0..8** the family tag (one of the `TAG_*`, via
 /// [`Self::tag`]), **bits 8..16** the `Spread` discriminant (gradient tags only),
-/// **bit 16** [`Self::FAST_BIT`], **bit 17** [`Self::WINDOW_BIT`].
+/// **bit 16** [`Self::FAST_BIT`], **bit 17** [`Self::OUTSIDE_BIT`].
 /// `repr(transparent)` over `u32` so the wire layout is a plain vertex attribute.
 ///
 /// Every number here is substituted into `quad_pipeline/shader.wgsl` rather than
@@ -85,16 +85,16 @@ impl FillKind {
     pub(crate) const RAMP: Self = Self(Self::TAG_RAMP);
 
     /// Bit 16: fragment fast path, set by the composer on a solid, sharp,
-    /// stroke-less, pixel-aligned quad whose fragments are all interior, so the
+    /// borderless, pixel-aligned quad whose fragments are all interior, so the
     /// shader skips the SDF + composite path. Read as `FILL_FLAG_FAST`.
     pub(crate) const FAST_BIT: u32 = 1 << 16;
 
-    /// Bit 17: windowed rect. Fill coverage is inverted (painting outside the
-    /// rounded boundary, interior transparent); set at `draw_rect_window` time and
-    /// read as `FILL_FLAG_WINDOW`. It disqualifies the quad from opaque-cover
+    /// Bit 17: outside rect. Fill coverage is inverted (painting outside the
+    /// rounded boundary, interior transparent); set for a [`Coverage::Outside`](crate::widget::Coverage::Outside) rect and
+    /// read as `FILL_FLAG_OUTSIDE`. It disqualifies the quad from opaque-cover
     /// checks (clear fold, fast path, occlusion prune), which compare `fill_kind ==
     /// FillKind::SOLID` exactly, since its interior is a hole.
-    pub(crate) const WINDOW_BIT: u32 = 1 << 17;
+    pub(crate) const OUTSIDE_BIT: u32 = 1 << 17;
 
     #[inline]
     pub(crate) const fn with_fast(self) -> Self {
@@ -108,13 +108,13 @@ impl FillKind {
     }
 
     #[inline]
-    pub(crate) const fn with_window(self) -> Self {
-        Self(self.0 | Self::WINDOW_BIT)
+    pub(crate) const fn with_outside(self) -> Self {
+        Self(self.0 | Self::OUTSIDE_BIT)
     }
 
     #[inline]
-    pub(crate) const fn is_window(self) -> bool {
-        self.0 & Self::WINDOW_BIT != 0
+    pub(crate) const fn is_outside(self) -> bool {
+        self.0 & Self::OUTSIDE_BIT != 0
     }
 
     /// True iff this marks a shadow draw; blur extends past the stored rect, so
@@ -131,6 +131,6 @@ const _: () = {
     assert!(FillKind::TAG_RAMP <= FillKind::TAG_MASK);
     assert!(Spread::Reflect as u32 <= FillKind::SPREAD_MASK);
     let spread_bits = FillKind::SPREAD_MASK << FillKind::SPREAD_SHIFT;
-    assert!(spread_bits & (FillKind::FAST_BIT | FillKind::WINDOW_BIT) == 0);
-    assert!(FillKind::FAST_BIT & FillKind::WINDOW_BIT == 0);
+    assert!(spread_bits & (FillKind::FAST_BIT | FillKind::OUTSIDE_BIT) == 0);
+    assert!(FillKind::FAST_BIT & FillKind::OUTSIDE_BIT == 0);
 };

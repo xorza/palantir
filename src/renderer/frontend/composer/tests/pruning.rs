@@ -37,9 +37,9 @@ fn alone(quads: &[QuadBuilder]) -> Vec<u8> {
 
 /// An under quad goes when a later quad of its group covers it with opaque paint, and only then.
 /// A cover is the over quad's rect, inset by its corners' cutout, its anti-aliased edge and a
-/// translucent stroke: radius 10 and the 0.5 px edge inset ≈ 3.43 px a side, radius 20 ≈ 5.86 px.
-/// A stroke of width 4 at half alpha insets 4.5 px a side, one of width 60 leaves no cover, and an
-/// opaque stroke insets the edge alone. A pruned under leaves the over quad as it composes alone,
+/// translucent border: radius 10 and the 0.5 px edge inset ≈ 3.43 px a side, radius 20 ≈ 5.86 px.
+/// A border of width 4 at half alpha insets 4.5 px a side, one of width 60 leaves no cover, and an
+/// opaque border insets the edge alone. A pruned under leaves the over quad as it composes alone,
 /// and a kept one leaves both; neither folds into the clear.
 #[test]
 fn a_later_opaque_cover_drops_what_it_holds() {
@@ -57,7 +57,7 @@ fn a_later_opaque_cover_drops_what_it_holds() {
             "a border paints inside its rect",
             quad(full)
                 .solid(RgbaF32::srgb(1.0, 0.0, 0.0))
-                .stroke(opaque(2.0)),
+                .border(opaque(2.0)),
             quad(full),
             true,
         ),
@@ -92,40 +92,40 @@ fn a_later_opaque_cover_drops_what_it_holds() {
             false,
         ),
         (
-            "an opaque stroke covers inside its edge",
+            "an opaque border covers inside its edge",
             quad(inner),
-            quad(full).stroke(opaque(2.0)),
+            quad(full).border(opaque(2.0)),
             true,
         ),
         (
-            "an opaque stroke's edge is not covered",
+            "an opaque border's edge is not covered",
             quad(full),
-            quad(full).stroke(opaque(4.0)),
+            quad(full).border(opaque(4.0)),
             false,
         ),
         (
-            "a translucent stroke's ring is not covered",
+            "a translucent border's ring is not covered",
             quad(full),
-            quad(full).stroke(translucent(4.0)),
+            quad(full).border(translucent(4.0)),
             false,
         ),
         (
-            "a translucent stroke's interior is covered",
+            "a translucent border's interior is covered",
             quad(inner),
-            quad(full).stroke(translucent(4.0)),
+            quad(full).border(translucent(4.0)),
             true,
         ),
         (
-            "a stroke wider than half the rect covers nothing",
+            "a border wider than half the rect covers nothing",
             quad(inner),
-            quad(full).stroke(translucent(60.0)),
+            quad(full).border(translucent(60.0)),
             false,
         ),
         // Its interior is a hole, so even a viewport-wide one covers nothing.
         (
-            "a windowed rect covers nothing",
+            "a outside rect covers nothing",
             quad(inner),
-            quad(Rect::new(0.0, 0.0, 200.0, 200.0)).windowed(),
+            quad(Rect::new(0.0, 0.0, 200.0, 200.0)).outside(),
             false,
         ),
     ];
@@ -146,18 +146,18 @@ fn a_later_opaque_cover_drops_what_it_holds() {
         };
         assert_eq!(composed, expected, "{label}");
     }
-    let windowed = run(
+    let outside = run(
         |b, _| {
             QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
-                .windowed()
+                .outside()
                 .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(
-        windowed.quads[0].fill_kind,
-        FillKind::SOLID.with_window(),
-        "the window bit rides through to the quad, with no fast bit",
+        outside.quads[0].fill_kind,
+        FillKind::SOLID.with_outside(),
+        "the outside bit rides through to the quad, with no fast bit",
     );
 }
 
@@ -345,10 +345,10 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
             None,
         ),
         (
-            "stroke disqualifies",
+            "border disqualifies",
             |b| {
                 QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
-                    .stroke(Border::new(RgbaF32::WHITE, 2.0))
+                    .border(Border::new(RgbaF32::WHITE, 2.0))
                     .draw(b);
             },
             1,

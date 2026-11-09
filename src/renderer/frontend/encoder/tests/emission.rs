@@ -229,8 +229,8 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         .collect();
     assert_eq!(
         rect_kinds,
-        [FillKind::SOLID, FillKind::SOLID.with_window()],
-        "the rounded rect is plain solid, the windowed one window-tagged",
+        [FillKind::SOLID, FillKind::SOLID.with_outside()],
+        "the rounded rect is plain solid, the outside one outside-tagged",
     );
     // A Line rides the GPU curve pipeline as a degenerate cubic: a DrawCurve, never a DrawPolyline.
     assert_eq!(cmds.kinds(), ["Quad", "Quad", "Curve", "Curve"]);
@@ -305,8 +305,8 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
     assert_eq!(drop.fill_axis.lanes(), [2.0, 4.0, 8.0, -1.0]);
     assert_eq!(drop.fill.color, RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).to_f16());
     // A shadow's whole edge is its blur: the payload must carry no stroke, or the shared quad path would paint one.
-    assert_eq!(drop.stroke.color, RgbaF16::TRANSPARENT);
-    assert_eq!(drop.stroke.width, 0.0);
+    assert_eq!(drop.border.color, RgbaF16::TRANSPARENT);
+    assert_eq!(drop.border.width, 0.0);
 
     assert_eq!(inset.fill.kind, FillKind::SHADOW_INSET);
     assert_eq!(inset_rect.size, Size::new(30.0, 40.0));

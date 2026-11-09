@@ -16,7 +16,7 @@ use glam::Vec2;
 ///
 /// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], `fill_lut_row` indexes the gradient atlas row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the projection axis and range; `fill` is white, the shader's multiplier on the ramp, so its alpha carries a fade.
 ///
-/// **Border** is inline `stroke_color` + `stroke_width` so the user `Border` can carry non-`Pod` sources; gradient strokes are unsupported.
+/// **Border** is inline `border_color` + `border_width` so the user `Border` can carry non-`Pod` sources; gradient borders are unsupported.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {
@@ -24,8 +24,8 @@ pub(crate) struct Quad {
     /// Linear-RGB fill as four `f16` (8 B), straight-alpha; the shader premultiplies at output.
     pub(crate) fill: RgbaF16,
     pub(crate) corners: Corners,
-    pub(crate) stroke_color: RgbaF16,
-    pub(crate) stroke_width: f32,
+    pub(crate) border_color: RgbaF16,
+    pub(crate) border_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
     pub(crate) fill_kind: FillKind,
     /// Gradient atlas row when `fill_kind` is a gradient tag; `LutRow::FALLBACK` (0) is the magenta debug fallback, written by solid quads and ignored.
@@ -37,10 +37,10 @@ pub(crate) struct Quad {
 }
 
 impl Quad {
-    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/shader.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; a windowed rect is drawn at its rect. A turned quad, windowed or not, grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the whole pixels around that turned about the rect's center.
+    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/shader.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; an outside rect is drawn at its rect. A turned quad, outside or not, grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the whole pixels around that turned about the rect's center.
     pub(crate) fn shaded_rect(&self) -> Rect {
         if self.rotation == 0.0 {
-            if self.fill_kind.is_window() {
+            if self.fill_kind.is_outside() {
                 return self.rect;
             }
             let grow = Vec2::splat(AA_HALF_WIDTH - 0.5);
@@ -75,7 +75,7 @@ mod tests {
         let off_grid = Rect::new(10.25, 3.0, 10.25, 5.0);
         assert_eq!(shaded(aligned, FillKind::SOLID), aligned);
         assert_eq!(shaded(off_grid, FillKind::SOLID), aligned);
-        assert_eq!(shaded(off_grid, FillKind::SOLID.with_window()), off_grid);
+        assert_eq!(shaded(off_grid, FillKind::SOLID.with_outside()), off_grid);
     }
 
     /// A turned quad shades the whole pixels around its turned bound, grown by the AA half width in

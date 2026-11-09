@@ -178,7 +178,7 @@ impl ExtraSpans {
     }
 }
 
-/// The partial repaint's pre-clear: full-viewport, opaque `color`, no stroke or rounding, so AA
+/// The partial repaint's pre-clear: full-viewport, opaque `color`, no border or rounding, so AA
 /// fringes blend over the clear color.
 pub(crate) fn pre_clear(viewport: Vec2, color: RgbaF16) -> Quad {
     debug_assert!(
@@ -474,12 +474,12 @@ const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = [
     vertex_attr(
         4,
         wgpu::VertexFormat::Uint32x2,
-        offset_of!(Quad, stroke_color),
+        offset_of!(Quad, border_color),
     ),
     vertex_attr(
         5,
         wgpu::VertexFormat::Float32,
-        offset_of!(Quad, stroke_width),
+        offset_of!(Quad, border_width),
     ),
     vertex_attr(6, wgpu::VertexFormat::Uint32, offset_of!(Quad, fill_kind)),
     vertex_attr(
@@ -508,7 +508,7 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
     ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
     ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
-    ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
+    ShaderConstant::uint("FILL_FLAG_OUTSIDE", FillKind::OUTSIDE_BIT),
     ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
     ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
     ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),

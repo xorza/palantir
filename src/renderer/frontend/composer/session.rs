@@ -209,8 +209,8 @@ impl PaintSink for ComposeSession<'_> {
             min_luminance: material.min_luminance(),
             fill: p.fill,
             fill_axis: p.fill_axis,
-            stroke_color: p.stroke.color,
-            stroke_width: packed.stroke_width,
+            border_color: p.border.color,
+            border_width: packed.border_width,
         };
         // Listed before it is ordered, so its own paint is not among what it shares a break past.
         let backdrop_idx = match p.read {
@@ -246,7 +246,7 @@ impl PaintSink for ComposeSession<'_> {
                 backdrop_idx,
                 flags: match p.coverage {
                     Coverage::Inside => EffectInstance::MATERIAL,
-                    Coverage::Outside => EffectInstance::MATERIAL | EffectInstance::WINDOW,
+                    Coverage::Outside => EffectInstance::MATERIAL | EffectInstance::OUTSIDE,
                 },
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -646,7 +646,7 @@ impl PaintSink for ComposeSession<'_> {
 impl ComposeSession<'_> {
     /// Push `p`, packed as `packed`, with `lut_row` its gradient row or its backdrop's row.
     fn push_quad(&mut self, p: &DrawQuadPayload, packed: &PackedQuad, lut_row: LutRow) {
-        // Fragment fast path: a solid, sharp, stroke-less, pixel-aligned quad has
+        // Fragment fast path: a solid, sharp, borderless, pixel-aligned quad has
         // coverage exactly 1.0, so the shader returns the fill directly. `SOLID` excludes
         // shadows and triangles.
         let fast = p.fill.kind == FillKind::SOLID && packed.is_pixel_aligned();
@@ -659,8 +659,8 @@ impl ComposeSession<'_> {
             rect: packed.rect.physical,
             fill: p.fill.color,
             corners: packed.corners,
-            stroke_color: p.stroke.color,
-            stroke_width: packed.stroke_width,
+            border_color: p.border.color,
+            border_width: packed.border_width,
             fill_kind,
             fill_lut_row: lut_row,
             fill_axis: packed.fill_axis,
@@ -735,17 +735,17 @@ impl ComposeSession<'_> {
         }
         let quad = self.out.quads.last().expect("the quad just pushed");
         let inscribed = packed.rect.physical.inscribed_for_corners(packed.corners);
-        let stroke_inset = if is_invisible(packed.stroke_width) || p.stroke.color.is_opaque() {
+        let border_inset = if is_invisible(packed.border_width) || p.border.color.is_opaque() {
             0.0
         } else {
-            packed.stroke_width
+            packed.border_width
         };
         let aa_inset = if quad.fill_kind.is_fast() {
             0.0
         } else {
             AA_HALF_WIDTH
         };
-        let cover = inscribed.deflated_by(Spacing::saturating([stroke_inset + aa_inset; 4]));
+        let cover = inscribed.deflated_by(Spacing::saturating([border_inset + aa_inset; 4]));
         if !cover.is_paint_empty() {
             self.ordering().record_opaque(cover);
         }

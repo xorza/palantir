@@ -339,7 +339,7 @@ fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-            stroke: LoweredBorder::NONE,
+            border: LoweredBorder::NONE,
         }),
         1.0,
     );
@@ -357,7 +357,7 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
             spin: None,
             fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
             fill_axis: FillAxis::ZERO,
-            stroke: LoweredBorder::NONE,
+            border: LoweredBorder::NONE,
             material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
             read: BackdropDraw::Capture(BackdropTicket {

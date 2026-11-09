@@ -22,7 +22,7 @@ pub(super) struct QuadBuilder {
     rect: Rect,
     corners: Corners,
     fill: BrushSource,
-    stroke: Border,
+    border: Border,
     spin: Option<Spin>,
 }
 
@@ -33,13 +33,13 @@ impl QuadBuilder {
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-            stroke: Border::NONE,
+            border: Border::NONE,
             spin: None,
         }
     }
 
-    /// A windowed rect, whose interior is a hole.
-    pub(super) fn windowed(mut self) -> Self {
+    /// A rect covering its outside, whose interior is a hole.
+    pub(super) fn outside(mut self) -> Self {
         self.coverage = Coverage::Outside;
         self
     }
@@ -70,8 +70,8 @@ impl QuadBuilder {
         self
     }
 
-    pub(super) fn stroke(mut self, stroke: Border) -> Self {
-        self.stroke = stroke;
+    pub(super) fn border(mut self, border: Border) -> Self {
+        self.border = border;
         self
     }
 
@@ -82,7 +82,7 @@ impl QuadBuilder {
                 rect: self.rect,
                 corners: self.corners,
                 fill: self.fill,
-                stroke: LoweredBorder::lower(self.stroke),
+                border: LoweredBorder::lower(self.border),
             })
             .turned(self.spin),
             1.0,
