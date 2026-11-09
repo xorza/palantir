@@ -1,5 +1,5 @@
-//! The chrome a container paints behind its children: fill, border, corner radii,
-//! a shadow and a backdrop filter, as one value a theme hands over whole.
+//! The chrome of a painted box: fill, border, corner radii, a shadow and a material, as one value
+//! a theme hands over whole, for a node's box, a rect shape and a modal's scrim alike.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -7,16 +7,19 @@ use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use palantir_derive::{Animatable, Lerp};
 
-/// Paint data shared by container widgets (`Block`, `Panel`, `Grid`) and per-state
-/// widget visuals. [`Self::NONE`] is transparent fill, no border, square corners:
-/// nothing emitted. Pure data; paint emission goes through `Tree::chrome_table` and
-/// the encoder.
+/// A painted box: the one value of a node's box (`Block`, `Panel`, `Grid`, per-state widget
+/// visuals), a rect shape ([`Shape::rect`](crate::widget::Shape::rect)) and a modal's scrim, as
+/// Flutter's `BoxDecoration` serves `Container` and a standalone `DecoratedBox`.
+/// [`Self::NONE`] is transparent fill, no border, square corners: nothing emitted. Pure data;
+/// paint emission goes through `Tree::chrome_table` and the encoder.
 ///
 /// `Animatable` is derived: fill and border interpolate componentwise, `corners` is
 /// `#[animate(lerp_only)]`, so a look's fade takes its radii at once and a theme's lerp blends
@@ -28,9 +31,9 @@ use palantir_derive::{Animatable, Lerp};
 /// every color is a [color](crate::widget::domain::color), gradient angles are
 /// [angles](crate::widget::domain::angle), centers and the shadow's offset and spread
 /// [offsets](crate::widget::domain::offset), the border width, radial radii, each corner
-/// radius and the shadow's blur [lengths](crate::widget::domain::length), and the backdrop
-/// filter as [`BackdropFilter`] lists. Every value but the border width packs into an f16
-/// lane, so it is a [lane](crate::widget::domain::lane) too.
+/// radius and the shadow's blur [lengths](crate::widget::domain::length), and the material as
+/// [`Material`] lists. Every value but the border width packs into an f16 lane, so it is a
+/// [lane](crate::widget::domain::lane) too.
 // Intentionally **not `Copy`**: it is the largest of the three types
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.
@@ -60,15 +63,15 @@ pub struct Chrome {
     /// and an inset one over it, inside the border.
     #[serde(default, skip_serializing_if = "Shadow::is_noop")]
     pub shadow: Shadow,
-    /// What the chrome does to the pixels painted before it, under its fill, which tints
-    /// them: [`BackdropFilter::NONE`] (the `Default`) does nothing and is omitted from
-    /// serialized output. A gradient fill and the border paint over the pane.
-    #[serde(default, skip_serializing_if = "BackdropFilter::is_noop")]
-    pub backdrop_filter: BackdropFilter,
+    /// The backdrop effect the box wears under its fill, which tints what it shows; `None` (the
+    /// `Default`) wears none and is omitted from serialized output. A gradient fill and the
+    /// border paint over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<Material>,
 }
 
 impl Chrome {
-    /// Panics unless its fill, border, corners, shadow and backdrop filter each pass their own
+    /// Panics unless its fill, border, corners, shadow and material each pass their own
     /// check. One branch-free test of every part, the checks that name the broken rule only on
     /// the cold path: `Widget::record` runs it on every chromed widget each frame, where the part
     /// checks one by one took 4.4 % of a CPU frame (`.notes/PERF.md`, "The CPU frame").
@@ -87,7 +90,10 @@ impl Chrome {
             & self.border.is_valid()
             & self.corners.is_valid()
             & self.shadow.is_valid()
-            & self.backdrop_filter.is_valid()
+            & match &self.material {
+                Some(material) => material.is_valid(),
+                None => true,
+            }
     }
 
     /// [`Self::validate`]'s cold half: panics with the rule a part breaks.
@@ -99,7 +105,9 @@ impl Chrome {
         self.border.validate();
         self.corners.validate();
         self.shadow.validate();
-        self.backdrop_filter.validate();
+        if let Some(material) = &self.material {
+            material.validate();
+        }
         panic!("`Chrome::is_valid` refused a chrome whose parts each pass their check");
     }
 
@@ -110,7 +118,7 @@ impl Chrome {
         border: Stroke::NONE,
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
-        backdrop_filter: BackdropFilter::NONE,
+        material: None,
     };
 
     /// True when this paints nothing visible. The encoder skips no-op chrome; the
@@ -121,7 +129,7 @@ impl Chrome {
         self.fill.is_noop()
             && self.border.is_noop()
             && self.shadow.is_noop()
-            && self.backdrop_filter.is_noop()
+            && self.material.is_none()
     }
 
     /// `padding` grown by the border on every edge, as a node wearing this chrome lays out: **the
@@ -150,14 +158,14 @@ impl Chrome {
         }
     }
 
-    /// A plain fill: no border, corners or shadow.
+    /// A plain fill: no border, corners, shadow or material.
     pub fn fill(brush: impl Into<Brush>) -> Self {
         Self {
             fill: brush.into(),
             border: Stroke::NONE,
             corners: Corners::ZERO,
             shadow: Shadow::NONE,
-            backdrop_filter: BackdropFilter::NONE,
+            material: None,
         }
     }
 
@@ -190,9 +198,9 @@ impl Chrome {
         self
     }
 
-    /// Set the backdrop filter, keeping the rest: the fill tints the filtered pixels.
-    pub const fn with_backdrop_filter(mut self, filter: BackdropFilter) -> Self {
-        self.backdrop_filter = filter;
+    /// Set the material, keeping the rest: the fill tints what it shows.
+    pub const fn with_material(mut self, material: Material) -> Self {
+        self.material = Some(material);
         self
     }
 }
@@ -206,13 +214,38 @@ impl NanCheck for Chrome {
             || self.border.has_nan()
             || self.corners.has_nan()
             || self.shadow.has_nan()
-            || self.backdrop_filter.has_nan()
+            || self.material.as_ref().is_some_and(Material::has_nan)
     }
 }
 
 impl Default for Chrome {
     fn default() -> Self {
         Self::NONE
+    }
+}
+
+/// A plain fill of `brush`, as [`Chrome::fill`]: sugar for a box that only fills, as
+/// `Shape::rect(color)` and `Modal::scrim(color)` take one.
+impl From<Brush> for Chrome {
+    fn from(brush: Brush) -> Self {
+        Self::fill(brush)
+    }
+}
+
+/// A plain fill of `color`, as [`Chrome::fill`].
+impl From<RgbaF32> for Chrome {
+    fn from(color: RgbaF32) -> Self {
+        Self::fill(color)
+    }
+}
+
+/// A plain fill of `gradient`, as [`Chrome::fill`].
+impl<G: GradientGeometry> From<Gradient<G>> for Chrome
+where
+    Brush: From<Gradient<G>>,
+{
+    fn from(gradient: Gradient<G>) -> Self {
+        Self::fill(gradient)
     }
 }
 
@@ -296,11 +329,10 @@ impl Animatable for Option<Chrome> {
 #[cfg(test)]
 mod tests {
     use crate::internals::panic_probe;
-    use crate::primitives::paint::backdrop_filter::Lens;
     use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
-    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::material::lens::Lens;
     use glam::Vec2;
 
     use super::*;
@@ -349,8 +381,11 @@ mod tests {
                 (Brush::Conic(g), _) => &mut g.geometry.start_angle,
             }
         }
+        fn material(chrome: &mut Chrome) -> &mut Material {
+            chrome.material.as_mut().unwrap()
+        }
         fn lens(chrome: &mut Chrome) -> &mut Lens {
-            chrome.backdrop_filter.lens.as_mut().unwrap()
+            &mut material(chrome).input.lens
         }
         // How many of `values` each kind refuses. A lane (a color channel, an offset): ±65520,
         // f32::MAX, NaN, ±inf. A length that is a lane, or a factor: those and -1. An angle: NaN
@@ -369,17 +404,11 @@ mod tests {
             (|c, v| c.shadow.offset.y = v, LANE),
             (|c, v| c.shadow.blur = v, LENGTH_LANE),
             (|c, v| c.shadow.spread = v, LANE),
-            (|c, v| c.backdrop_filter.blur = v, LENGTH_LANE),
-            (|c, v| c.backdrop_filter.saturation = v, LENGTH_LANE),
-            (|c, v| c.backdrop_filter.noise = v, LENGTH_LANE),
-            (
-                |c, v| c.backdrop_filter.max_luminance = Some(v),
-                LENGTH_LANE,
-            ),
-            (
-                |c, v| c.backdrop_filter.min_luminance = Some(v),
-                LENGTH_LANE,
-            ),
+            (|c, v| material(c).blur = v, LENGTH_LANE),
+            (|c, v| material(c).input.saturation = v, LENGTH_LANE),
+            (|c, v| material(c).input.noise = v, LENGTH_LANE),
+            (|c, v| material(c).max_luminance = Some(v), LENGTH_LANE),
+            (|c, v| material(c).min_luminance = Some(v), LENGTH_LANE),
             (|c, v| lens(c).bezel = v, LENGTH_LANE),
             (|c, v| lens(c).thickness = v, LENGTH_LANE),
             (|c, v| lens(c).refractive_index = v, REFRACTIVE_INDEX),
@@ -424,7 +453,7 @@ mod tests {
                 .with_fill(brush)
                 .with_border(Stroke::new(RgbaF32::BLACK, 2.0))
                 .with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 4.0), 6.0))
-                .with_backdrop_filter(BackdropFilter::glass(Lens::WINDOW_GLASS));
+                .with_material(Material::glass(Lens::WINDOW_GLASS));
             assert_eq!(panic_probe::caught(|| held.validate()), Ok(()));
             let fill_sets: [(Set, usize); 2] = [
                 (|c, v| *fill(c, 0) = v, fill_refusals[0]),
@@ -440,7 +469,9 @@ mod tests {
                         chrome.border.validate();
                         chrome.corners.validate();
                         chrome.shadow.validate();
-                        chrome.backdrop_filter.validate();
+                        if let Some(material) = &chrome.material {
+                            material.validate();
+                        }
                     });
                     let whole = panic_probe::caught(|| chrome.validate());
                     assert_eq!(whole, parts, "{chrome:?}");
@@ -509,7 +540,7 @@ mod tests {
             border: Stroke::new(half(&RgbaF32::BLACK), 1.0),
             corners: Corners::all(4.0),
             shadow: Shadow::drop(half(&RgbaF32::BLACK), Vec2::new(0.0, 2.0), 3.0),
-            backdrop_filter: BackdropFilter::NONE,
+            material: None,
         };
         assert_eq!(half(&ink).a, 0.5);
         let some = Some(chrome.clone());

@@ -35,6 +35,7 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::domain::vec2;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
@@ -72,8 +73,8 @@ mod sealed {
         reason = "nothing outside the crate can name the sealed trait, so the crate-private types in its signature cannot leak"
     )]
     pub trait LowerShape: fmt::Debug {
-        /// Whether a shape of this kind can be a backdrop pane, which the record notes; only a rect
-        /// carries a backdrop filter, so every other kind skips the check.
+        /// Whether a shape of this kind can be a pane, which the record notes; only a rect's
+        /// material and a backdrop effect capture, so every other kind skips the check.
         const CAN_BE_PANE: bool = false;
 
         /// Whether the shape reads a paint animation's time, so an animation that drives no
@@ -129,16 +130,29 @@ impl Shape {
         EffectShape::new(name, params)
     }
 
-    /// A rounded rectangle over the owner's arranged rect, or [`RectShape::at`] a rect of its own;
-    /// starts transparent, borderless, sharp.
-    pub const fn rect() -> RectShape {
-        RectShape::new(RectKind::Rounded)
+    /// The box `chrome` paints over the owner's arranged rect, or [`RectShape::at`] a rect of its
+    /// own: its fill, border, corners, shadow and material, as a node's chrome paints them. A
+    /// color or a brush is a box that only fills.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `chrome` passes its checks, as a widget's `chrome` does; at
+    /// [`Ui::add_shape`](crate::Ui::add_shape), when no effect is loaded under its material's
+    /// name.
+    #[track_caller]
+    pub fn rect(chrome: impl Into<Chrome>) -> RectShape {
+        RectShape::new(RectKind::Rounded, chrome.into())
     }
 
-    /// An inverse-mask rectangle: it paints outside its rounded boundary. Placed and styled as
+    /// An inverse-mask box: `chrome` paints outside its rounded boundary. Placed as
     /// [`Self::rect`].
-    pub const fn windowed_rect() -> RectShape {
-        RectShape::new(RectKind::Windowed)
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::rect`].
+    #[track_caller]
+    pub fn windowed_rect(chrome: impl Into<Chrome>) -> RectShape {
+        RectShape::new(RectKind::Windowed, chrome.into())
     }
 
     /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp, transparent, borderless.
@@ -242,7 +256,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless the shadow holds the kinds [`Chrome`](crate::Chrome) lists for one.
+    /// Panics unless the shadow holds the kinds [`Chrome`] lists for one.
     #[track_caller]
     pub const fn shadow(shadow: Shadow) -> ShadowShape {
         shadow.validate();

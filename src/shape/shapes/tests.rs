@@ -4,6 +4,7 @@ use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::brush::gradient::stops::Stop;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{Image, ImageFit};
@@ -170,10 +171,11 @@ fn builders_refuse_what_they_check() {
     use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
-    use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
     use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::primitives::paint::material::Material;
+    use crate::primitives::paint::material::lens::Lens;
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
     use crate::shape::polyline::TINT_RULE;
@@ -184,13 +186,12 @@ fn builders_refuse_what_they_check() {
     let white = RgbaF32::WHITE;
     for radius in [N, -1.0, 1.0e5] {
         panic_probe::assert_panics_with(<Corners as LaneCodec>::LANE_RULE, || {
-            Shape::rect().at(ok_rect).fill(white).corners(radius)
+            Shape::rect(Chrome::rounded(white, radius)).at(ok_rect)
         });
     }
     panic_probe::assert_panics_with(domain::COLOR_RULE, || {
-        Shape::rect()
+        Shape::rect(Chrome::NONE.with_border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)))
             .at(ok_rect)
-            .border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0))
     });
     // 65520 is the least magnitude that packs to an infinite f16 lane; 65504 is the greatest
     // finite one. Every value below packs into such a lane, so its kind's rule refuses a NaN or a
@@ -206,9 +207,12 @@ fn builders_refuse_what_they_check() {
         });
     }
     panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
-        Shape::rect()
-            .at(ok_rect)
-            .fill(LinearGradient::two_stop(N, white, RgbaF32::BLACK))
+        Shape::rect(Chrome::fill(LinearGradient::two_stop(
+            N,
+            white,
+            RgbaF32::BLACK,
+        )))
+        .at(ok_rect)
     });
     let half = Vec2::splat(0.5);
     let radial = |center, radius| {
@@ -220,33 +224,33 @@ fn builders_refuse_what_they_check() {
     };
     for (center, radius) in [(Vec2::new(wide, 0.5), half), (half, Vec2::new(0.5, wide))] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
-            Shape::rect().at(ok_rect).fill(radial(center, radius))
+            Shape::rect(Chrome::fill(radial(center, radius))).at(ok_rect)
         });
     }
     panic_probe::assert_panics_with(domain::LANE_RULE, || {
-        Shape::rect().at(ok_rect).fill(ConicGradient::new(
+        Shape::rect(Chrome::fill(ConicGradient::new(
             Vec2::new(0.5, -wide),
             0.0,
             [Stop::new(0.0, white), Stop::new(1.0, RgbaF32::BLACK)],
-        ))
-    });
-    let _ = Shape::rect()
+        )))
         .at(ok_rect)
-        .fill(radial(Vec2::splat(-65504.0), Vec2::splat(65504.0)));
+    });
+    let _ = Shape::rect(Chrome::fill(radial(
+        Vec2::splat(-65504.0),
+        Vec2::splat(65504.0),
+    )))
+    .at(ok_rect);
     for filter in [
-        BackdropFilter::blur(wide),
-        BackdropFilter {
-            saturation: wide,
-            ..BackdropFilter::blur(1.0)
-        },
-        BackdropFilter::blur(1.0).with_max_luminance(wide),
-        BackdropFilter::blur(1.0).with_lens(Lens {
+        Material::blur(wide),
+        Material::blur(1.0).with_saturation(wide),
+        Material::blur(1.0).with_max_luminance(wide),
+        Material::blur(1.0).with_lens(Lens {
             thickness: wide,
             ..Lens::WINDOW_GLASS
         }),
     ] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
-            Shape::rect().at(ok_rect).backdrop_filter(filter)
+            Shape::rect(Chrome::NONE.with_material(filter)).at(ok_rect)
         });
     }
     for (rule, shadow) in [
@@ -373,9 +377,9 @@ fn builders_refuse_what_they_check() {
 
     // Geometry is checked as offsets at every door; a varying polyline color as a color.
     let geometry: [fn(); 10] = [
-        || drop(Shape::rect().at(Rect::new(0.0, N, 8.0, 8.0))),
+        || drop(Shape::rect(Chrome::NONE).at(Rect::new(0.0, N, 8.0, 8.0))),
         || {
-            drop(Shape::windowed_rect().at(Rect::new(f32::INFINITY, 0.0, 8.0, 8.0)));
+            drop(Shape::windowed_rect(Chrome::NONE).at(Rect::new(f32::INFINITY, 0.0, 8.0, 8.0)));
         },
         || drop(Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::new(N, 0.0))),
         || drop(Shape::line(Vec2::ZERO, Vec2::new(0.0, N), thin())),
@@ -423,7 +427,7 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(TINT_RULE, || {
         drop(Shape::polyline(&two, bright).per_segment(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]));
     });
-    let _ = Shape::rect().at(Rect::new(0.0, 0.0, -4.0, 8.0));
+    let _ = Shape::rect(Chrome::NONE).at(Rect::new(0.0, 0.0, -4.0, 8.0));
 
     // A tile's phase is an offset and each axis of its repeat count positive.
     let tile = |offset, scale| drop(Shape::image(handle(1)).fit(ImageFit::Tile { offset, scale }));

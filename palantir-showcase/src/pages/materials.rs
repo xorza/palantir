@@ -1,5 +1,5 @@
-//! Backdrop filters: the three looks over a page that keeps moving under them, and the same
-//! material on a popup's and a context menu's chrome.
+//! Materials: palantir's three stock materials over a page that keeps moving under them, and the
+//! same material on a popup's and a context menu's chrome.
 
 use crate::scaffold::api;
 use crate::support;
@@ -7,8 +7,8 @@ use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Align, BackdropFilter, Button, Chrome, Configure, Corners, Lens, Menu, MenuItem, MenuTheme,
-    Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Switch, Text, Ui, WidgetId, fmt,
+    Align, Button, Chrome, Configure, Corners, EffectName, Lens, Material, Menu, MenuItem,
+    MenuTheme, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Switch, Text, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -25,38 +25,39 @@ const PANE: Rect = Rect::new(30.0, 50.0, 160.0, 100.0);
 pub fn build(ui: &mut Ui, k: Kit) {
     Section::new("Looks")
         .apis(&[
-            api!(BackdropFilter::blur),
-            api!(BackdropFilter::frosted),
-            api!(BackdropFilter::glass),
+            api!(Material::blur),
+            api!(Material::frosted),
+            api!(Material::glass),
         ])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "Each pane shows the pixels painted before it, under its fill, which tints them. \
-                 The page under it turns, so each pane blurs again every frame; a pane over a \
-                 still page costs nothing.",
+                "Each pane wears a stock material, a backdrop effect that shows the pixels \
+                 painted before it under its fill, which tints them. The page under it turns, so \
+                 each pane blurs again every frame; a pane over a still page costs nothing. With \
+                 transparency reduced, each shows over the window's ground instead.",
             );
             support::tiles(ui, |ui| {
                 look(
                     ui,
                     k,
                     "blur — σ 8",
-                    BackdropFilter::blur(8.0),
+                    Material::blur(8.0),
                     RgbaF32::TRANSPARENT,
                 );
                 look(
                     ui,
                     k,
                     "frosted — σ 16, tinted",
-                    BackdropFilter::frosted(16.0),
+                    Material::frosted(16.0),
                     RgbaF32::new(1.0, 1.0, 1.0, 0.18),
                 );
                 look(
                     ui,
                     k,
                     "glass — a dense lens, σ 1, tinted",
-                    BackdropFilter::glass(Lens {
+                    Material::glass(Lens {
                         bezel: 32.0,
                         thickness: 28.0,
                         refractive_index: 1.6,
@@ -70,12 +71,12 @@ pub fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("On chrome")
-        .apis(&[api!(Chrome::with_backdrop_filter), api!(PopupTrigger::on)])
+        .apis(&[api!(Chrome::with_material), api!(PopupTrigger::on)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "A popup and a context menu whose chrome carries a frosted filter, over the \
+                "A popup and a context menu whose chrome wears a frosted material, over the \
                  turning page. Click the button for the popup; right-click the page for the \
                  menu.",
             );
@@ -108,7 +109,7 @@ impl Default for LivePane {
 /// 4.5:1 by the floor its ink and tint call for.
 fn live(ui: &mut Ui, k: Kit) {
     Section::new("Live pane")
-        .apis(&[api!(BackdropFilter::with_min_luminance_for)])
+        .apis(&[api!(Material::with_min_luminance_for)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -138,13 +139,13 @@ fn live(ui: &mut Ui, k: Kit) {
                 support::row(ui, |ui| {
                     Switch::new(&mut l.hold).label("Hold the ink").show(ui);
                 });
-                let frosted = BackdropFilter::frosted(l.blur);
-                let filter = if l.hold {
+                let frosted = Material::frosted(l.blur);
+                let material = if l.hold {
                     frosted.with_min_luminance_for(ink, tint)
                 } else {
                     frosted
                 };
-                let floor = match filter.min_luminance {
+                let floor = match material.min_luminance {
                     Some(floor) => fmt!(ui, "the backdrop shows at luminance {floor:.3} or more"),
                     None => ui.intern("no floor: a dark stripe behind the label shows as dark"),
                 };
@@ -157,11 +158,11 @@ fn live(ui: &mut Ui, k: Kit) {
                             .show(ui, |ui| {
                                 page(ui, k, Vec2::splat(CELL));
                                 ui.add_shape(
-                                    Shape::rect()
-                                        .at(PANE)
-                                        .corners(Corners::all(14.0))
-                                        .fill(tint)
-                                        .backdrop_filter(filter),
+                                    Shape::rect(
+                                        Chrome::rounded(tint, Corners::all(14.0))
+                                            .with_material(material),
+                                    )
+                                    .at(PANE),
                                 );
                                 let label = ui.intern("readable");
                                 ui.add_shape(
@@ -175,22 +176,26 @@ fn live(ui: &mut Ui, k: Kit) {
         });
 }
 
-/// A cell of `label` holding the turning page and one pane of `filter` and `tint` over it.
-fn look(ui: &mut Ui, k: Kit, label: &'static str, filter: BackdropFilter, tint: RgbaF32) {
+/// A cell of `label` holding the turning page and one pane of `material` and `tint` over it.
+fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, tint: RgbaF32) {
     DemoCell::new(label).size(CELL, CELL).show(ui, k, |ui| {
         Panel::canvas()
             .id_salt(label)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 page(ui, k, Vec2::splat(CELL));
-                let corners = if filter.lens.is_some() { 50.0 } else { 14.0 };
+                let corners = if material.effect == EffectName::GLASS {
+                    50.0
+                } else {
+                    14.0
+                };
                 ui.add_shape(
-                    Shape::rect()
-                        .at(PANE)
-                        .corners(Corners::all(corners))
-                        .fill(tint)
-                        .border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
-                        .backdrop_filter(filter),
+                    Shape::rect(
+                        Chrome::rounded(tint, Corners::all(corners))
+                            .with_border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
+                            .with_material(material),
+                    )
+                    .at(PANE),
                 );
             });
     });
@@ -201,11 +206,7 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, filter: BackdropFilter, tint: 
 fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     for (i, color) in (0..12).zip(k.swatch.all().iter().cycle()) {
         let x = i as f32 * size.x / 12.0;
-        ui.add_shape(
-            Shape::rect()
-                .at(Rect::new(x, 0.0, size.x / 24.0, size.y))
-                .fill(*color),
-        );
+        ui.add_shape(Shape::rect(*color).at(Rect::new(x, 0.0, size.x / 24.0, size.y)));
     }
     // Essential: the turning page is what each pane shows, so it turns under reduced motion too.
     let spin = PaintAnimation::turn(0.0, 1.0)
@@ -216,7 +217,7 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     let bar = size.min_element() * 0.12;
     for (w, h) in [(arm, bar), (bar, arm)] {
         let rect = Rect::new((size.x - w) / 2.0, (size.y - h) / 2.0, w, h);
-        ui.add_shape_animated(Shape::rect().at(rect).fill(RgbaF32::WHITE), spin);
+        ui.add_shape_animated(Shape::rect(RgbaF32::WHITE).at(rect), spin);
     }
 }
 
@@ -224,7 +225,7 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
 fn frosted_chrome() -> Chrome {
     Chrome::rounded(RgbaF32::new(0.08, 0.09, 0.11, 0.45), Corners::all(10.0))
         .with_border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
-        .with_backdrop_filter(BackdropFilter::frosted(18.0))
+        .with_material(Material::frosted(18.0))
 }
 
 /// A wide turning page with a button that opens a frosted popup, and a frosted context menu on

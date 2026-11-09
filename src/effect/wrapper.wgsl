@@ -33,13 +33,11 @@ struct PalantirInstance {
 
 struct PalantirVarying {
     @builtin(position) clip: vec4<f32>,
-    // The shape's own frame, unturned, from its rect's top-left, in physical px.
-    @location(0) local: vec2<f32>,
-    @location(1) @interpolate(flat) rect: vec4<f32>,
-    @location(2) @interpolate(flat) corners: vec4<f32>,
-    @location(3) @interpolate(flat) clock: vec4<f32>,
-    @location(4) @interpolate(flat) params: u32,
-    @location(5) @interpolate(flat) pane: u32,
+    @location(0) @interpolate(flat) rect: vec4<f32>,
+    @location(1) @interpolate(flat) corners: vec4<f32>,
+    @location(2) @interpolate(flat) clock: vec4<f32>,
+    @location(3) @interpolate(flat) params: u32,
+    @location(4) @interpolate(flat) pane: u32,
 }
 
 struct PalantirOut {
@@ -49,7 +47,6 @@ struct PalantirOut {
 
 // Every pixel center within the antialiasing reach of the rect, as a quad shades it: the rect's
 // pixels grown by it, or past each edge by it where a turn takes the edges off the pixel grid.
-// Only the drawn corners turn: `local` stays in the shape's own frame.
 @vertex
 fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> PalantirVarying {
     let pos = instance.rect.xy;
@@ -69,7 +66,6 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
     let ndc = px * (vec2<f32>(2.0, -2.0) / palantir_imm.viewport_size) + vec2<f32>(-1.0, 1.0);
     return PalantirVarying(
         vec4<f32>(ndc, 0.0, 1.0),
-        corner - pos,
         instance.rect,
         instance.corners,
         instance.clock,
@@ -89,9 +85,17 @@ fn palantir_sdf(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 /*{PARAMS}*/
+// The fragment's position in the shape's own frame, from its rect's top-left in physical px: the
+// surface pixel it shades turned back about the rect's center, exact where the shape is not
+// turned, so a read of `effect_backdrop` at its own position reads the pixel it covers.
+fn palantir_local(clip: vec4<f32>, rect: vec4<f32>, rotation: f32) -> vec2<f32> {
+    let frag = clip.xy + palantir_imm.frag_origin;
+    return palantir_turned(frag, rect.xy + rect.zw * 0.5, -rotation) - rect.xy;
+}
+
 @fragment
 fn palantir_fs(v: PalantirVarying) -> PalantirOut {
-    let local = v.local;
+    let local = palantir_local(v.clip, v.rect, v.clock.w);
     let d = palantir_sdf(local, v.rect.zw, v.corners);
     let coverage = clamp((PALANTIR_AA_HALF_WIDTH - d) / (2.0 * PALANTIR_AA_HALF_WIDTH), 0.0, 1.0)
         * v.clock.y;

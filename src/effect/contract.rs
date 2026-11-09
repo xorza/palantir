@@ -7,7 +7,7 @@ use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 
-use crate::effect::effect_store::EffectModule;
+use crate::effect::effect_store::{EffectModule, ModuleEntries};
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::KindId;
@@ -24,10 +24,11 @@ const CONTRACT: &str = include_str!("contract.wgsl");
 const BACKDROP: &str = include_str!("backdrop.wgsl");
 
 /// The bindings the backdrop contract declares, which an app's text names not.
-const BACKDROP_BINDINGS: [&str; 3] = [
+const BACKDROP_BINDINGS: [&str; 4] = [
     "palantir_results",
     "palantir_results_sampler",
     "palantir_panes",
+    "palantir_spectrum",
 ];
 
 /// What palantir's fragment stage sets before it calls a backdrop effect: the pane it draws, its
@@ -38,6 +39,10 @@ const BACKDROP_SET: &str = "palantir_pane = v.pane;\n    palantir_rect = v.rect;
 /// read and the call.
 const WRAPPER: &str = include_str!("wrapper.wgsl");
 
+/// Palantir's material stage around a backdrop effect over `MaterialInput`, after its shape stages,
+/// with a marker for the window bit.
+const MATERIAL: &str = include_str!("material.wgsl");
+
 /// What the module starts with: the enable for the wrapper's dual-source output, on the app's first
 /// line, so the app's line numbers hold.
 const ENABLE: &str = "enable dual_source_blending; ";
@@ -45,6 +50,16 @@ const ENABLE: &str = "enable dual_source_blending; ";
 const ENTRY: &str = "effect";
 const INPUT: &str = "EffectInput";
 const OUTPUT: &str = "EffectOutput";
+
+/// What an effect's module is checked against and holds: its kind, its parameters' layout, its
+/// image slots and its stages.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ContractSpec {
+    pub(crate) kind: KindId,
+    pub(crate) params: ParamsLayout,
+    pub(crate) image_slots: u8,
+    pub(crate) entries: ModuleEntries,
+}
 
 /// What an effect's parameter struct must match: `U`'s fields and size.
 #[derive(Clone, Copy, Debug)]
@@ -56,21 +71,28 @@ pub(crate) struct ParamsLayout {
 /// The group an effect's images bind at, past the parameter words at group 0.
 pub(crate) const IMAGES_GROUP: u32 = 1;
 
+/// An instance's flag for a material's box that fills outside its rounded rect, a windowed rect.
+pub(crate) const WINDOW_FLAG: u32 = 1;
+
 /// The group a backdrop effect reads its pane's result through, past its images.
 pub(crate) const PANES_GROUP: u32 = 2;
 
-/// The complete module palantir compiles for `wgsl`, an effect of `kind`: the app's text, the
-/// contract with its kind's reads and its `image_slots` images, and palantir's stages, once the
-/// app's text parses and validates with the contract, declares no binding of its own, its
-/// `effect` takes the contract's arguments, and its parameter struct matches `params`.
-pub(crate) fn check(
-    wgsl: &str,
-    kind: KindId,
-    params: ParamsLayout,
-    image_slots: u8,
-) -> Result<EffectModule, EffectError> {
+/// The complete module palantir compiles for `wgsl`, an effect of `spec`'s kind: the app's text,
+/// the contract with its kind's reads and its images, and palantir's stages, once the app's text
+/// parses and validates with the contract, declares no binding of its own, its `effect` takes the
+/// contract's arguments, and its parameter struct matches the spec's layout.
+pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, EffectError> {
+    let ContractSpec {
+        kind,
+        params,
+        image_slots,
+        entries,
+    } = spec;
     if image_slots > MAX_IMAGE_SLOTS {
         return Err(EffectError::TooManyImageSlots { slots: image_slots });
+    }
+    if entries == ModuleEntries::ShapeAndMaterial && image_slots > 0 {
+        return Err(EffectError::MaterialImageSlots { slots: image_slots });
     }
     if params.size > MAX_PARAMS_SIZE {
         return Err(EffectError::ParamsTooLarge { size: params.size });
@@ -83,8 +105,14 @@ pub(crate) fn check(
     let app = parse_and_validate(format!("{wgsl}\n{contract}"), Capabilities::default())?;
     check_bindings(&app.module, kind, image_slots)?;
     let params_struct = check_entry(&app.module, params)?;
+    let material = match entries {
+        ModuleEntries::Shape => String::new(),
+        ModuleEntries::ShapeAndMaterial => {
+            MATERIAL.replace("/*{WINDOW}*/", &format!("{WINDOW_FLAG}u"))
+        }
+    };
     let full = format!(
-        "{ENABLE}{wgsl}\n{contract}{}",
+        "{ENABLE}{wgsl}\n{contract}{}{material}",
         wrapper(kind, params_struct.as_deref(), params.fields)
     );
     let full = parse_and_validate(
@@ -95,6 +123,7 @@ pub(crate) fn check(
         text: full.text,
         kind,
         image_slots,
+        entries,
     })
 }
 

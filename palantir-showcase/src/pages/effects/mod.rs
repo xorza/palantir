@@ -4,6 +4,7 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Kit, Section};
+use palantir::Chrome;
 use palantir::glam::Vec2;
 use palantir::widget::{EffectShape, GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
@@ -271,12 +272,7 @@ fn ring(ui: &mut Ui, k: Kit) {
         )),
         looping(RING_LOOP_S),
     );
-    ui.add_shape(
-        Shape::rect()
-            .at(card)
-            .corners(Corners::all(radius))
-            .fill(k.t.raised),
-    );
+    ui.add_shape(Shape::rect(Chrome::rounded(k.t.raised, Corners::all(radius))).at(card));
     let label = ui.intern("ring");
     ui.add_shape(
         Shape::text(label, GlyphFont::new(18.0))
@@ -290,11 +286,7 @@ fn water(ui: &mut Ui, k: Kit) {
     let size = CELL - 2.0 * CELL_PADDING;
     for (i, color) in (0..10).zip(k.swatch.all().iter().cycle()) {
         let x = i as f32 * size / 10.0;
-        ui.add_shape(
-            Shape::rect()
-                .at(Rect::new(x, 0.0, size / 20.0, size))
-                .fill(*color),
-        );
+        ui.add_shape(Shape::rect(*color).at(Rect::new(x, 0.0, size / 20.0, size)));
     }
     let label = ui.intern("water");
     ui.add_shape(

@@ -7,7 +7,7 @@
 //!
 //! - **Two kinds, each with its own signature.** A color effect reads its position, size, corners,
 //!   time, parameters and images; a backdrop effect also reads what is painted under it, through
-//!   the capture a [`BackdropFilter`](crate::BackdropFilter) takes
+//!   the capture a [`Material`](crate::Material) takes
 //!   ([`EffectKind`](crate::EffectKind)). Deferred: an effect that reads its own subtree (SwiftUI's `layerEffect`), which needs an
 //!   offscreen pass per node; a stateful effect, which a [`GpuPaint`](crate::GpuPaint) serves.
 //! - **A name nothing loaded is a logic error.** A shape that names one panics with the name

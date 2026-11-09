@@ -56,11 +56,7 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
                 .chrome(Chrome::rounded(RgbaF32::hex(0x4cd3ff), Corners::all(9.0)))
                 .clip(ClipMode::Rounded)
                 .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 24.0, 12.0))
-                            .fill(RgbaF32::BLACK),
-                    );
+                    ui.add_shape(Shape::rect(RgbaF32::BLACK).at(Rect::new(0.0, 0.0, 24.0, 12.0)));
                 });
             Text::new("Canvas").at((22.0, 26.0)).show(ui);
             ui.add_shape(Shape::mesh(mesh));
@@ -69,11 +65,7 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
                 Vec2::new(70.1, 55.9),
                 Stroke::new(RgbaF32::hex(0xffa63d), 1.5),
             ));
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(20.0, 20.0, 60.0, 40.0))
-                    .fill(tile),
-            );
+            ui.add_shape(Shape::rect(tile).at(Rect::new(20.0, 20.0, 60.0, 40.0)));
         });
 }
 

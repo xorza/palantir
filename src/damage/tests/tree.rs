@@ -447,21 +447,16 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(0.0, 0.0, 20.0, 20.0))
-                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                    Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 20.0, 20.0)),
                 );
                 if include_middle {
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(60.0, 0.0, 20.0, 20.0))
-                            .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
+                        Shape::rect(RgbaF32::srgb(0.0, 1.0, 0.0))
+                            .at(Rect::new(60.0, 0.0, 20.0, 20.0)),
                     );
                 }
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(120.0, 0.0, 20.0, 20.0))
-                        .fill(RgbaF32::srgb(0.0, 0.0, 1.0)),
+                    Shape::rect(RgbaF32::srgb(0.0, 0.0, 1.0)).at(Rect::new(120.0, 0.0, 20.0, 20.0)),
                 );
             });
     };
@@ -515,23 +510,11 @@ fn shape_added_in_middle_damages_only_new() {
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::rect()
-                        .at(red_rect)
-                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                );
+                ui.add_shape(Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(red_rect));
                 if include_middle {
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(green_rect)
-                            .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
-                    );
+                    ui.add_shape(Shape::rect(RgbaF32::srgb(0.0, 1.0, 0.0)).at(green_rect));
                 }
-                ui.add_shape(
-                    Shape::rect()
-                        .at(blue_rect)
-                        .fill(RgbaF32::srgb(0.0, 0.0, 1.0)),
-                );
+                ui.add_shape(Shape::rect(RgbaF32::srgb(0.0, 0.0, 1.0)).at(blue_rect));
             });
     };
 

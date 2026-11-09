@@ -314,7 +314,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
                                 ),
                                 Kind::Mesh => ui.add_shape_animated(Shape::mesh(&mesh), turn),
                                 Kind::Rect => ui.add_shape_animated(
-                                    Shape::rect().at(Rect::from_min_max(lo, hi)).fill(RED),
+                                    Shape::rect(RED).at(Rect::from_min_max(lo, hi)),
                                     turn,
                                 ),
                                 Kind::Text => {
@@ -463,19 +463,14 @@ fn per_shape_damage_only_pushes_changed_shapes() {
             .chrome(Chrome::fill(BLUE))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(0.0, 0.0, 20.0, 10.0))
-                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                    Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 20.0, 10.0)),
                 );
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(60.0, 0.0, 20.0, 10.0))
-                        .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
+                    Shape::rect(RgbaF32::srgb(0.0, 1.0, 0.0)).at(Rect::new(60.0, 0.0, 20.0, 10.0)),
                 );
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(0.0, moving_y, 20.0, 10.0))
-                        .fill(RgbaF32::srgb(0.0, 0.0, 1.0)),
+                    Shape::rect(RgbaF32::srgb(0.0, 0.0, 1.0))
+                        .at(Rect::new(0.0, moving_y, 20.0, 10.0)),
                 );
             });
     };

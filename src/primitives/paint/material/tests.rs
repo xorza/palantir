@@ -1,114 +1,116 @@
+use crate::effect::effect_registry::EffectRegistry;
+use crate::internals::panic_probe::assert_panics_with;
+use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::libm_ext::Libm;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens, bend_root, ceiling_bend};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
+use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
+use crate::shape::record_store::RecordStore;
 
-/// The looks set exactly their own fields, each `with_*` its own, and only `NONE` is a no-op, so
-/// only `NONE` lowers to no pane: a gray pane, saturation 0 with no blur, lowers to one too.
+/// `material` lowered through effect 0, capturing, with its input staged in a store of its own.
+fn lowered(material: &Material) -> LoweredMaterial {
+    let mut store = RecordStore::default();
+    LoweredMaterial::lower(&mut store, material, MaterialRead::Capture(EffectId(0)))
+}
+
+/// The constructors name their stock effects and set exactly their own fields, each `with_*` its
+/// own.
 #[test]
-fn the_looks_and_setters_set_their_own_fields() {
+fn the_constructors_and_setters_set_their_own_fields() {
     assert_eq!(
-        BackdropFilter::blur(6.0),
-        BackdropFilter {
+        Material::blur(6.0),
+        Material {
+            effect: EffectName::BLUR,
             blur: 6.0,
-            saturation: 1.0,
-            noise: 0.0,
+            input: MaterialInput::IDENTITY,
             max_luminance: None,
             min_luminance: None,
-            lens: None,
-            fallback: None,
+            reduced_transparency: ReducedBackdrop::Ground,
         }
     );
     assert_eq!(
-        BackdropFilter::frosted(12.0),
-        BackdropFilter {
+        Material::frosted(12.0),
+        Material {
+            effect: EffectName::FROSTED,
             blur: 12.0,
-            saturation: 1.8,
-            noise: 0.04,
-            max_luminance: None,
-            min_luminance: None,
-            lens: None,
-            fallback: None,
+            input: MaterialInput {
+                saturation: 1.8,
+                noise: 0.04,
+                lens: Lens::NONE,
+            },
+            ..Material::blur(0.0)
         }
     );
     let lens = Lens::WINDOW_GLASS;
     assert_eq!(
-        BackdropFilter::glass(lens),
-        BackdropFilter {
-            lens: Some(lens),
-            ..BackdropFilter::NONE
+        Material::glass(lens),
+        Material {
+            effect: EffectName::GLASS,
+            input: MaterialInput {
+                lens,
+                ..MaterialInput::IDENTITY
+            },
+            ..Material::blur(0.0)
         }
     );
-    let set = BackdropFilter::NONE
+    let set = Material::blur(0.0)
         .with_blur(2.0)
         .with_saturation(0.5)
         .with_noise(0.1)
         .with_max_luminance(0.2)
+        .with_min_luminance(0.1)
         .with_lens(lens)
-        .with_fallback(RgbaF32::WHITE);
+        .with_reduced_transparency(ReducedBackdrop::Nothing);
     assert_eq!(
         set,
-        BackdropFilter {
+        Material {
+            effect: EffectName::BLUR,
             blur: 2.0,
-            saturation: 0.5,
-            noise: 0.1,
+            input: MaterialInput {
+                saturation: 0.5,
+                noise: 0.1,
+                lens,
+            },
             max_luminance: Some(0.2),
-            min_luminance: None,
-            lens: Some(lens),
-            fallback: Some(RgbaF32::WHITE.to_srgba8()),
+            min_luminance: Some(0.1),
+            reduced_transparency: ReducedBackdrop::Nothing,
         }
     );
-    assert_eq!(BackdropFilter::default(), BackdropFilter::NONE);
-    assert!(BackdropFilter::NONE.is_noop());
-    assert_eq!(LoweredBackdrop::of(BackdropFilter::NONE), None);
-    for filter in [
-        BackdropFilter::blur(0.5),
-        BackdropFilter::NONE.with_saturation(0.0),
-        BackdropFilter::NONE
-            .with_saturation(0.0)
-            .with_max_luminance(0.5),
-        BackdropFilter::NONE.with_noise(0.01),
-        BackdropFilter::NONE.with_max_luminance(1.0),
-        BackdropFilter::NONE.with_min_luminance(0.0),
-        BackdropFilter::glass(lens),
-    ] {
-        assert!(!filter.is_noop(), "{filter:?}");
-        assert!(LoweredBackdrop::of(filter).is_some(), "{filter:?}");
-    }
+    assert_eq!(
+        Material::new(EffectName::GLASS, MaterialInput::IDENTITY),
+        Material::glass(Lens::NONE)
+    );
 }
 
 /// A rect and a chrome take the same checks: each case panics with its kind's rule.
 #[test]
-fn a_filter_out_of_its_kinds_panics_where_it_enters() {
+fn a_material_out_of_its_kinds_panics_where_it_enters() {
     let lens = Lens::WINDOW_GLASS;
-    for (filter, rule) in [
-        (BackdropFilter::blur(-1.0), "a length must"),
+    let base = Material::blur(1.0);
+    for (material, rule) in [
+        (Material::blur(-1.0), "a length must"),
+        (base.with_saturation(f32::NAN), "a factor must"),
+        (base.with_noise(-0.5), "a factor must"),
+        (base.with_max_luminance(-0.1), "a factor must"),
+        (base.with_min_luminance(f32::INFINITY), "a factor must"),
         (
-            BackdropFilter::NONE.with_saturation(f32::NAN),
-            "a factor must",
-        ),
-        (BackdropFilter::NONE.with_noise(-0.5), "a factor must"),
-        (
-            BackdropFilter::NONE.with_max_luminance(-0.1),
-            "a factor must",
-        ),
-        (
-            BackdropFilter::NONE.with_min_luminance(f32::INFINITY),
-            "a factor must",
-        ),
-        (
-            BackdropFilter::glass(Lens {
+            Material::glass(Lens {
                 thickness: f32::INFINITY,
                 ..lens
             }),
             "a length must",
         ),
         (
-            BackdropFilter::glass(Lens {
+            Material::glass(Lens {
                 refractive_index: 0.9,
                 ..lens
             }),
@@ -117,8 +119,8 @@ fn a_filter_out_of_its_kinds_panics_where_it_enters() {
     ] {
         for entry in ["rect", "chrome"] {
             let panic = std::panic::catch_unwind(|| match entry {
-                "rect" => drop(Shape::rect().at(crate::Rect::ZERO).backdrop_filter(filter)),
-                _ => Chrome::NONE.with_backdrop_filter(filter).validate(),
+                "rect" => drop(Shape::rect(Chrome::NONE.with_material(material))),
+                _ => Chrome::NONE.with_material(material).validate(),
             })
             .expect_err(entry);
             let message = panic
@@ -126,51 +128,76 @@ fn a_filter_out_of_its_kinds_panics_where_it_enters() {
                 .map(String::as_str)
                 .or_else(|| panic.downcast_ref::<&str>().copied())
                 .unwrap_or_default();
-            assert!(message.contains(rule), "{entry} {filter:?}: {message}");
+            assert!(message.contains(rule), "{entry} {material:?}: {message}");
         }
     }
 }
 
-/// A luminance floor lowers to the f16 at or above it, so a pane never shows darker than its
+/// What a material reads follows the reductions: what is under it while transparency runs whole,
+/// the ground while it is reduced, and nothing where its use asks for none then. Its effect
+/// resolves through the registry, so the stock blur is effect 2, past the two ripples.
+#[test]
+fn a_material_reads_the_ground_or_nothing_while_transparency_is_reduced() {
+    let effects = EffectRegistry::default();
+    let reduced = Reductions {
+        transparency: Reduction::Reduced,
+        ..Reductions::FULL
+    };
+    let blur = Material::blur(4.0);
+    let id = effects
+        .resolve(EffectName::BLUR, Reductions::FULL)
+        .expect("the stock blur paints")
+        .id;
+    assert_eq!(id.0, 2);
+    assert_eq!(
+        MaterialRead::resolve(&blur, &effects, Reductions::FULL),
+        Some(MaterialRead::Capture(id))
+    );
+    assert_eq!(
+        MaterialRead::resolve(&blur, &effects, reduced),
+        Some(MaterialRead::Ground(id))
+    );
+    let dim = blur.with_reduced_transparency(ReducedBackdrop::Nothing);
+    assert_eq!(
+        MaterialRead::resolve(&dim, &effects, Reductions::FULL),
+        Some(MaterialRead::Capture(id))
+    );
+    assert_eq!(MaterialRead::resolve(&dim, &effects, reduced), None);
+    // A name nothing loaded panics in every mode, a use that paints nothing included.
+    let gone = Material::new(EffectName::named("gone").unwrap(), MaterialInput::IDENTITY)
+        .with_reduced_transparency(ReducedBackdrop::Nothing);
+    assert_panics_with("no effect is loaded under `gone`", || {
+        MaterialRead::resolve(&gone, &effects, reduced)
+    });
+}
+
+/// A luminance floor lowers to the f16 at or above it, so a material never shows darker than its
 /// author allowed: 0.3's nearest f16, 0.300048828125 = 1229/4096, is above it and stays; 0.1's
 /// nearest, 0.0999755859375 = 819/8192, is below it, so it lowers one step up, to
-/// 0.10003662109375 = 1639/16384; 0.5 is exact. A filter with no floor lowers to 0.
+/// 0.10003662109375 = 1639/16384; 0.5 is exact. A material with no floor lowers to 0.
 #[test]
 fn a_luminance_floor_rounds_up_where_it_lowers() {
-    let lowered = |floor: Option<f32>| {
-        LoweredBackdrop::of(BackdropFilter {
-            min_luminance: floor,
-            ..BackdropFilter::blur(1.0)
-        })
-        .unwrap()
-        .min_luminance()
-    };
     for (floor, want) in [
         (Some(0.3), 1229.0 / 4096.0),
         (Some(0.1), 1639.0 / 16384.0),
         (Some(0.5), 0.5),
         (None, 0.0),
     ] {
-        assert_eq!(lowered(floor), want, "{floor:?}");
+        let material = Material {
+            min_luminance: floor,
+            ..Material::blur(1.0)
+        };
+        assert_eq!(lowered(&material).min_luminance(), want, "{floor:?}");
     }
 }
 
-/// A luminance ceiling lowers to the f16 at or below it, so a pane never shows brighter than
+/// A luminance ceiling lowers to the f16 at or below it, so a material never shows brighter than
 /// its author allowed: 0.3's nearest f16 is 0.300048828125 = 1229/4096, above it, so it lowers
 /// one step down, to 0.2998046875 = 307/1024; 0.1's nearest, 0.0999755859375 = 819/8192, is
-/// below it and stays; 0.5 is exact. A filter with no ceiling lowers to 65504, the lane's top,
+/// below it and stays; 0.5 is exact. A material with no ceiling lowers to 65504, the lane's top,
 /// and 1e6, which a tween may carry past the lane, saturates there.
 #[test]
 fn a_luminance_ceiling_rounds_down_where_it_lowers() {
-    let lowered = |ceiling: Option<f32>| {
-        LoweredBackdrop::of(BackdropFilter {
-            max_luminance: ceiling,
-            min_luminance: None,
-            ..BackdropFilter::blur(1.0)
-        })
-        .unwrap()
-        .max_luminance()
-    };
     for (ceiling, want) in [
         (Some(0.3), 307.0 / 1024.0),
         (Some(0.1), 819.0 / 8192.0),
@@ -179,87 +206,81 @@ fn a_luminance_ceiling_rounds_down_where_it_lowers() {
         (Some(1.0e6), 65504.0),
         (None, 65504.0),
     ] {
-        assert_eq!(lowered(ceiling), want, "{ceiling:?}");
+        let material = Material {
+            max_luminance: ceiling,
+            ..Material::blur(1.0)
+        };
+        assert_eq!(lowered(&material).max_luminance(), want, "{ceiling:?}");
     }
 }
 
-/// A lens's dispersion and highlight clamp into `0..=1` where they lower to paint: 2 paints as 1,
-/// −1 as 0, and NaN as 0. A tween that overshoots a fade to none, as `OutBack` does, carries the
-/// rest past their kinds, and they coerce there too: a negative blur, saturation, noise, floor,
-/// bezel and thickness paint as 0, and an index under 1 as 1.
+/// A tween that overshoots a fade to none, as `OutBack` does, carries a material past its kinds,
+/// and it coerces where it paints: a negative blur, floor, saturation, noise, bezel and thickness
+/// paint as 0, an index under 1 as 1, and a dispersion and highlight clamp into `0..=1`, 2 as 1,
+/// −1 as 0. The input staged for the effect holds the coerced values.
 #[test]
-fn a_filter_coerces_into_its_kinds_where_it_paints() {
-    let lowered = |dispersion, highlight| {
-        LoweredBackdrop::of(BackdropFilter::glass(Lens {
-            dispersion,
-            highlight,
-            ..Lens::WINDOW_GLASS
-        }))
-        .unwrap()
-        .lens()
-        .expect("a glass pane has a lens")
-    };
-    for (dispersion, highlight, want) in [
-        (2.0, -1.0, (1.0, 0.0)),
-        (f32::NAN, 0.5, (0.0, 0.5)),
-        (0.25, 1.0, (0.25, 1.0)),
-    ] {
-        let lens = lowered(dispersion, highlight);
-        assert_eq!(
-            (lens.dispersion, lens.highlight),
-            want,
-            "{dispersion}, {highlight}"
-        );
-    }
-    let past = LoweredBackdrop::of(BackdropFilter {
+fn a_material_coerces_into_its_kinds_where_it_paints() {
+    let past = Material {
+        effect: EffectName::GLASS,
         blur: -0.4,
-        saturation: -0.1,
-        noise: -0.01,
+        input: MaterialInput {
+            saturation: -0.1,
+            noise: -0.01,
+            lens: Lens {
+                bezel: -2.4,
+                thickness: -1.6,
+                refractive_index: 0.95,
+                dispersion: 2.0,
+                highlight: -1.0,
+            },
+        },
         max_luminance: None,
         min_luminance: Some(-0.04),
-        lens: Some(Lens {
-            bezel: -2.4,
-            thickness: -1.6,
-            refractive_index: 0.95,
-            dispersion: 0.0,
-            highlight: 0.0,
-        }),
-        fallback: None,
-    })
-    .unwrap();
-    assert_eq!(past.sigma(), 0.0);
-    assert_eq!(past.fill_axis(1.0).lanes(), [0.0, 0.0, 0.0, 1.0]);
-    assert_eq!(past.min_luminance(), 0.0);
-    let lens = past.lens().expect("a glass pane has a lens");
-    assert_eq!(
-        (lens.bezel, lens.thickness, lens.refractive_index),
-        (0.0, 0.0, 1.0)
-    );
+        reduced_transparency: ReducedBackdrop::Ground,
+    };
+    let mut store = RecordStore::default();
+    let lowered = LoweredMaterial::lower(&mut store, &past, MaterialRead::Capture(EffectId(0)));
+    assert_eq!(lowered.sigma(), 0.0);
+    assert_eq!(lowered.min_luminance(), 0.0);
+    let start = lowered.params as usize;
+    let words: Vec<f32> = store.effect_params[start..start + 7]
+        .iter()
+        .map(|&w| f32::from_bits(w))
+        .collect();
+    assert_eq!(words, [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0]);
 }
 
-/// An absent floor blends through 0 and an absent lens through flat glass, so a theme's glass
-/// fades in, while the ceiling switches at `t = 0.5`. Halfway from a floor of 0.4 to none is
-/// `0.4 · 0.5 = 0.2`. A quarter of the way from no lens to the default one is a bezel of
-/// `24 · ¼ = 6`, a thickness of `16 · ¼ = 4`, an index of `1 + 0.5 · ¼ = 1.125`, a dispersion of
-/// `0.06 · ¼ = 0.015` and a highlight of `0.6 · ¼ = 0.15`. The ends stay exact, and two filters
-/// with neither keep none.
+/// The blur, the input and an absent floor blend, the floor through 0, while the effect, the
+/// ceiling and `reduced_transparency` switch at `t = 0.5`. Halfway from a floor of 0.4 to none is
+/// `0.4 · 0.5 = 0.2`; halfway from frosted at σ 4 to blur at σ 2 is σ 3, saturation
+/// `(1.8 + 1) / 2 = 1.4` and grain `0.04 / 2 = 0.02`. An absent material blends through the other
+/// end at rest: a quarter of the way to the default glass is a bezel of `24 · ¼ = 6`, a thickness
+/// of `16 · ¼ = 4`, an index of `1 + 0.5 · ¼ = 1.125`, a dispersion of `0.06 · ¼ = 0.015` and a
+/// highlight of `0.6 · ¼ = 0.15`. The ends stay exact.
 #[test]
-fn an_absent_floor_or_lens_blends_through_its_neutral() {
-    let plain = BackdropFilter::blur(4.0);
+fn a_material_blends_its_numbers_and_snaps_its_effect() {
+    let plain = Material::blur(4.0);
     let floored = plain.with_min_luminance(0.4);
     assert_eq!(
-        BackdropFilter::lerp(&floored, &plain, 0.5).min_luminance,
+        Material::lerp(&floored, &plain, 0.5).min_luminance,
         Some(0.2)
     );
-    assert_eq!(BackdropFilter::lerp(&floored, &plain, 0.0), floored);
-    assert_eq!(BackdropFilter::lerp(&floored, &plain, 1.0), plain);
+    assert_eq!(Material::lerp(&floored, &plain, 0.0), floored);
+    assert_eq!(Material::lerp(&floored, &plain, 1.0), plain);
+    let frosted = Material::frosted(4.0);
+    let blur = Material::blur(2.0);
+    let half = Material::lerp(&frosted, &blur, 0.5);
+    assert_eq!(half.effect, EffectName::BLUR);
     assert_eq!(
-        BackdropFilter::lerp(
-            &BackdropFilter::NONE,
-            &BackdropFilter::glass(Lens::WINDOW_GLASS),
-            0.25
-        )
-        .lens,
+        Material::lerp(&frosted, &blur, 0.49).effect,
+        EffectName::FROSTED
+    );
+    assert_eq!(half.blur, 3.0);
+    assert_eq!(half.input.saturation, 1.4);
+    assert_eq!(half.input.noise, 0.02);
+    let glass = Material::glass(Lens::WINDOW_GLASS);
+    assert_eq!(
+        Option::<Material>::lerp(&None, &Some(glass), 0.25).map(|m| m.input.lens),
         Some(Lens {
             bezel: 6.0,
             thickness: 4.0,
@@ -268,34 +289,34 @@ fn an_absent_floor_or_lens_blends_through_its_neutral() {
             highlight: 0.15,
         })
     );
+    assert_eq!(
+        Option::<Material>::lerp(&None, &Some(glass), 1.0),
+        Some(glass)
+    );
+    assert_eq!(Option::<Material>::lerp(&None, &None, 0.5), None);
     let ceiling = plain.with_max_luminance(0.5);
     assert_eq!(
-        BackdropFilter::lerp(&ceiling, &plain, 0.49).max_luminance,
+        Material::lerp(&ceiling, &plain, 0.49).max_luminance,
         Some(0.5)
     );
-    assert_eq!(
-        BackdropFilter::lerp(&ceiling, &plain, 0.5).max_luminance,
-        None
-    );
-    let neither = BackdropFilter::lerp(&BackdropFilter::blur(2.0), &plain, 0.5);
-    assert_eq!(neither, BackdropFilter::blur(3.0));
+    assert_eq!(Material::lerp(&ceiling, &plain, 0.5).max_luminance, None);
 }
 
-/// `with_backdrop_filter` sets the filter alone, and a chrome whose only paint is a filter is not
-/// a no-op: it makes a pane.
+/// `with_material` sets the material alone, and a chrome whose only paint is a material is not a
+/// no-op: it makes a pane.
 #[test]
-fn a_chrome_with_only_a_filter_paints() {
+fn a_chrome_with_only_a_material_paints() {
     let base = Chrome::fill(RgbaF32::WHITE);
-    let filter = BackdropFilter::frosted(8.0);
-    let with = base.clone().with_backdrop_filter(filter);
+    let material = Material::frosted(8.0);
+    let with = base.clone().with_material(material);
     assert_eq!(
         with,
         Chrome {
-            backdrop_filter: filter,
+            material: Some(material),
             ..base
         }
     );
-    assert!(!Chrome::NONE.with_backdrop_filter(filter).is_noop());
+    assert!(!Chrome::NONE.with_material(material).is_noop());
 }
 
 /// The ceiling holds the muted ink at WCAG's 4.5:1 over the brightest backdrop as an 8-bit target
@@ -316,12 +337,9 @@ fn a_ceiling_for_an_ink_holds_it_at_the_text_contrast() {
     );
     for (tint, want) in [(0x383838, 0.04443538), (0x1f1f1f, 0.11089178)] {
         let tint = RgbaF32::hex(tint).with_alpha(0.72);
-        let filter = BackdropFilter::frosted(20.0).with_max_luminance_for(ink, tint);
+        let filter = Material::frosted(20.0).with_max_luminance_for(ink, tint);
         let ceiling = filter.max_luminance.expect("a ceiling");
-        assert_eq!(
-            filter,
-            BackdropFilter::frosted(20.0).with_max_luminance(ceiling)
-        );
+        assert_eq!(filter, Material::frosted(20.0).with_max_luminance(ceiling));
         // The hand value's eighth digit, and the derivation's f32 rounding, a few ulps of 1e-8.
         assert!((ceiling - want).abs() < 1e-7, "{ceiling}");
         let ground = 0.28 * ceiling + 0.72 * tint.luminance();
@@ -345,17 +363,14 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
         "byte 173 is the lowest"
     );
     let tint = RgbaF32::hex(0xe4e6e8).with_alpha(0.3);
-    let filter = BackdropFilter::frosted(20.0).with_min_luminance_for(ink, tint);
+    let filter = Material::frosted(20.0).with_min_luminance_for(ink, tint);
     let floor = filter.min_luminance.expect("a floor");
-    assert_eq!(
-        filter,
-        BackdropFilter::frosted(20.0).with_min_luminance(floor)
-    );
+    assert_eq!(filter, Material::frosted(20.0).with_min_luminance(floor));
     assert!((floor - 0.266_466_08).abs() < 1e-7, "{floor}");
     let ground = 0.7 * floor + 0.3 * tint.luminance();
     assert!((ground - level(174).r).abs() < 2e-8, "{ground}");
     let thick = RgbaF32::hex(0xe4e6e8).with_alpha(0.72);
-    let clear = BackdropFilter::frosted(20.0).with_min_luminance_for(ink, thick);
+    let clear = Material::frosted(20.0).with_min_luminance_for(ink, thick);
     assert_eq!(clear.min_luminance, Some(0.0));
 }
 
@@ -366,8 +381,8 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
 /// needs about 0.183, which a white tint's 1 exceeds.
 #[test]
 fn each_refused_bound_returns_its_case() {
-    use crate::primitives::paint::backdrop_filter::InkBound;
-    let filter = BackdropFilter::frosted(20.0);
+    use crate::primitives::paint::material::InkBound;
+    let filter = Material::frosted(20.0);
     let half = |hex: u32| RgbaF32::hex(hex).with_alpha(0.5);
     let floors = [
         (0x808080, half(0xffffff), InkBound::InkFailsOnTint),
@@ -464,7 +479,7 @@ fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
     let light_y = f64::from(light.luminance());
     for tint in [0x800000, 0x005000, 0x000080] {
         let tint = RgbaF32::hex(tint).with_alpha(0.6);
-        let ceiling = BackdropFilter::frosted(20.0)
+        let ceiling = Material::frosted(20.0)
             .with_max_luminance_for(light, tint)
             .max_luminance
             .expect("a ceiling");
@@ -484,7 +499,7 @@ fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
     let dark_y = f64::from(dark.luminance());
     for tint in [0xffff00, 0x00ffff, 0x00ff00] {
         let tint = RgbaF32::hex(tint).with_alpha(0.3);
-        let floor = BackdropFilter::frosted(20.0)
+        let floor = Material::frosted(20.0)
             .with_min_luminance_for(dark, tint)
             .min_luminance
             .expect("a floor");
@@ -509,8 +524,7 @@ fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
 #[test]
 fn a_ceiling_refuses_an_ink_too_dark_for_an_exact_bound() {
     let tint = RgbaF32::hex(0x000000).with_alpha(0.5);
-    let ceiling =
-        |ink| BackdropFilter::frosted(20.0).with_max_luminance_for(RgbaF32::hex(ink), tint);
+    let ceiling = |ink| Material::frosted(20.0).with_max_luminance_for(RgbaF32::hex(ink), tint);
     assert!(ceiling(0x868686).max_luminance.is_some());
     assert!(RgbaF32::hex(0x747474).luminance() < 0.175);
     assert!(RgbaF32::hex(0x757575).luminance() > 0.175);

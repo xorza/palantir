@@ -8,7 +8,6 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
-use crate::theme::scrim::Scrim;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configurator::Configurator;
@@ -43,7 +42,7 @@ use std::rc::Rc;
 pub struct Modal<'a> {
     widget: Widget,
     chrome: Option<Chrome>,
-    scrim: Option<Scrim>,
+    scrim: Option<Chrome>,
     click_outside: ClickOutside,
     style: Option<&'a ModalTheme>,
 }
@@ -67,15 +66,14 @@ impl<'a> Modal<'a> {
         self
     }
 
-    /// What the modal lays over the window behind its panel, defaulting to
-    /// [`crate::Theme::modal`]'s; a color makes a scrim that only dims.
+    /// The box the modal lays over the window behind its panel, defaulting to
+    /// [`crate::Theme::modal`]'s ([`ModalTheme::scrim`]); a color makes a scrim that only dims.
     ///
     /// # Panics
     ///
-    /// Panics unless the scrim's tint is a [color](crate::widget::domain::color) and its filter
-    /// passes [`BackdropFilter`](crate::BackdropFilter)'s checks.
+    /// Panics unless `scrim` passes its checks, as a widget's `chrome` does.
     #[track_caller]
-    pub fn scrim(mut self, scrim: impl Into<Scrim>) -> Self {
+    pub fn scrim(mut self, scrim: impl Into<Chrome>) -> Self {
         let scrim = scrim.into();
         scrim.validate();
         self.scrim = Some(scrim);
@@ -99,7 +97,7 @@ impl<'a> Modal<'a> {
         // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let mt = self.style.unwrap_or(&ui_theme.modal);
-        let dim = self.scrim.unwrap_or(mt.scrim).chrome();
+        let dim = self.scrim.as_ref().unwrap_or(&mt.scrim);
         let panel_chrome = self.chrome.as_ref().unwrap_or(&mt.panel);
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
@@ -126,7 +124,7 @@ impl<'a> Modal<'a> {
             ui.overlays().arm_cancel(root_id);
         }
         let response = scope.record(ui, |ui| {
-            root.record(ui, Some(&dim), |ui| {
+            root.record(ui, Some(dim), |ui| {
                 panel.record(ui, Some(panel_chrome), body)
             })
         });

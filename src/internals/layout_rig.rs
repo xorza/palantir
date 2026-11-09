@@ -14,7 +14,6 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::stroke::Stroke;
-use crate::primitives::reduction::Reduction;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::forest::Forest;
 use crate::scene::node::Node;
@@ -70,7 +69,7 @@ impl LayoutRig {
     /// Record `body` under the viewport root a frame opens, and lay it out on a surface of
     /// `surface` logical px.
     pub(crate) fn run(&mut self, surface: Size, body: impl FnOnce(&mut NodeRecorder<'_>)) {
-        self.forest.pre_record(Reduction::Full);
+        self.forest.pre_record();
         let mut rec = NodeRecorder {
             forest: &mut self.forest,
         };
@@ -230,6 +229,7 @@ impl NodeRecorder<'_> {
             NodeChrome {
                 chrome: None,
                 ring: Stroke::NONE,
+                material: None,
             },
         );
     }

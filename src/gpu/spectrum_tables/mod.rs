@@ -1,14 +1,10 @@
 //! The spectrum a dispersive lens spreads, as the composite sums it back to color: the tables
-//! only the GPU reads, over the ends [`LensOptics`](crate::shape::paint::lens_optics) names.
+//! only the GPU reads, over the ends [`LensOptics`](crate::primitives::paint::material::lens_optics) names.
 
 use crate::primitives::math::libm_ext::Libm;
-use crate::shape::paint::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
-
-/// The cells the spectrum's weight is held flat across: even in `1 / λ²`, as the reads step,
-/// 3 nm wide at the violet end and 14 nm at the red. Each lobe of the observer's response spans
-/// several: 3.7 nm cells under the narrowest (σ 11.8 nm, z̄ at 437 nm), 14 nm under x̄'s red one
-/// (σ 31 nm).
-pub(crate) const SPECTRUM_SAMPLES: usize = 48;
+use crate::primitives::paint::material::lens_optics::{
+    SPECTRUM_RED, SPECTRUM_SAMPLES, SPECTRUM_VIOLET,
+};
 
 /// The CIE 1931 2° observer at `nm`, by Wyman, Sloan and Shirley's multi-lobe fit ("Simple
 /// Analytic Approximations to the CIE XYZ Color Matching Functions", JCGT 2013), as Filament's

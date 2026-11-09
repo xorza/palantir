@@ -2,27 +2,33 @@
 // The backdrop contract: what a backdrop effect reads besides a color effect's.
 
 // One pane's result as `Backdrops` writes its slot (`BackdropSlot`): the result's texel coordinate
-// of the lattice's first texel, the physical px of a texel or 0 for a pane that shows `clear`, and
-// the physical rect the shape reads, its rect grown by its reach. The rest is a backdrop filter's
-// look, which an app's effect does not read.
+// of the lattice's first texel, the physical px of a texel or 0 for a pane that shows `clear`, the
+// physical rect the shape reads, `(min, max)`, its rect grown by its reach; and a material's
+// luminance bounds, fill and border, which palantir's material stage reads and an app's effect does
+// not.
 struct PalantirPane {
     offset: vec2<f32>,
     lattice: f32,
-    highlight: f32,
-    lens: vec4<f32>,
-    clear: vec3<f32>,
     max_luminance: f32,
+    clear: vec3<f32>,
     min_luminance: f32,
-    saturation: f32,
-    noise: f32,
-    stroke_width: f32,
     reads: vec4<f32>,
     tint: vec4<f32>,
     stroke_color: vec4<f32>,
+    stroke_width: f32,
 }
 @group(2) @binding(0) var palantir_results: texture_2d<f32>;
 @group(2) @binding(1) var palantir_results_sampler: sampler;
 @group(2) @binding(2) var<storage, read> palantir_panes: array<PalantirPane>;
+
+// The spectrum a dispersive lens spreads, cell by cell (`spectrum_tables::SpectrumTables`), which
+// the stock glass sums back to color.
+struct PalantirSpectrumCell {
+    weight: vec3<f32>,
+    cumulative: vec3<f32>,
+    moment: vec3<f32>,
+}
+@group(2) @binding(3) var<storage, read> palantir_spectrum: array<PalantirSpectrumCell>;
 
 // The pane this fragment draws, its rect `(min, size)` in physical px, its turn about the rect's
 // center and the physical px per logical px, which palantir's fragment stage sets before it calls
@@ -44,10 +50,9 @@ fn effect_backdrop(pos: vec2<f32>) -> vec4<f32> {
 }
 
 // The pane's result at screen position `p`: the cubic B-spline over the slot's texels through four
-// bilinear fetches (Sigg and Hadwiger), whose weights add the same variance at every phase; the
-// bilinear read at full resolution, where an effect reads between pixels; or the clear the slot
-// holds. `effect_pipeline/pane.wgsl`'s `backdrop_result` reads the same, a texel for texel at full
-// resolution where no lens bends it.
+// bilinear fetches (Sigg and Hadwiger), whose weights add the same variance at every phase; at full
+// resolution the texel itself, or the bilinear read where an effect reads between pixels; or the
+// clear the slot holds.
 fn palantir_result(p: vec2<f32>, pane: PalantirPane) -> vec3<f32> {
     if (pane.lattice == 0.0) {
         return pane.clear;
@@ -55,6 +60,11 @@ fn palantir_result(p: vec2<f32>, pane: PalantirPane) -> vec3<f32> {
     let size = vec2<f32>(textureDimensions(palantir_results));
     let x = p / pane.lattice - vec2<f32>(0.5) + pane.offset;
     if (pane.lattice == 1.0) {
+        // A read at a pixel center lands on a texel's center, which a load returns whole, with no
+        // filter weights to round; a read between pixels, as a lens bends it, filters.
+        if (all(fract(x) == vec2<f32>(0.0))) {
+            return textureLoad(palantir_results, vec2<i32>(x), 0).rgb;
+        }
         return textureSampleLevel(palantir_results, palantir_results_sampler, (x + vec2<f32>(0.5)) / size, 0.0).rgb;
     }
     let base = floor(x);

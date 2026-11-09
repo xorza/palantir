@@ -70,7 +70,8 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// `#[derive(ThemeWalk)]`, palantir's own, on a theme part: its walks over text and press slots
+/// `#[derive(ThemeWalk)]`, palantir's own, on a theme part: its walks over text, press and material
+/// slots
 /// visit every field in field order, each through the field type's own `ThemeWalk`, so a field
 /// whose type has no walk fails to compile until it gets one, as serde's and `gc`'s derives ask of
 /// each field.
@@ -266,6 +267,16 @@ fn expand_theme_walk(input: &DeriveInput) -> syn::Result<TokenStream2> {
             {
                 #(
                     crate::theme::ThemeWalk::each_press(&self.#fields, f);
+                )*
+            }
+
+            #[inline]
+            fn each_material<F>(&self, f: &mut F)
+            where
+                F: FnMut(&crate::primitives::paint::material::Material),
+            {
+                #(
+                    crate::theme::ThemeWalk::each_material(&self.#fields, f);
                 )*
             }
         }

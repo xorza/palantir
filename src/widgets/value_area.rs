@@ -98,7 +98,7 @@ impl ValueArea<'_> {
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             value.marker(ui, theme, size);
             if response.disabled {
-                ui.add_shape(Shape::rect().fill(theme.disabled_veil));
+                ui.add_shape(Shape::rect(theme.disabled_veil));
             }
         });
         ValueResponse {

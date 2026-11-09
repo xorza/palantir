@@ -24,7 +24,7 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
 use crate::gpu::resource::texture_binding::{self, TextureBinding};
-use crate::gpu::spectrum_tables::{SPECTRUM_SAMPLES, SpectrumTables};
+use crate::gpu::spectrum_tables::SpectrumTables;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::primitives::geometry::urect::URect;
@@ -32,57 +32,49 @@ use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::material::lens_optics::SPECTRUM_SAMPLES;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRow, FilterLook, PaneSource};
+use crate::renderer::render_buffer::backdrop_row::{
+    BackdropRead, BackdropRow, MaterialLook, PaneSource,
+};
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
 use std::cmp::Reverse;
 use std::ops::Range;
 
-/// How a pane's composite finds its result and, for a backdrop filter, shows it, as
-/// `effect/backdrop.wgsl` declares `PalantirPane` and `effect_pipeline/pane.wgsl` reads it: the
-/// result's texel coordinate of the lattice's first texel, the physical px of a texel, or 0 for a
-/// pane that shows `clear`; the rect it reads, `(min, max)`; and the filter's look
-/// ([`FilterLook`]), its lens `(bezel, thickness, refractive_index, dispersion)` with its
-/// highlight, zero for a pane of no glass.
+/// How a backdrop's composite finds its result and, for a material, holds and covers it, as
+/// `effect/backdrop.wgsl` declares `PalantirPane`: the result's texel coordinate of the lattice's
+/// first texel, the physical px of a texel, or 0 for a backdrop that shows `clear`; the rect it
+/// reads, `(min, max)`; and the material's look ([`MaterialLook`]).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct BackdropSlot {
     offset: Vec2,
     lattice: f32,
-    highlight: f32,
-    lens: [f32; 4],
-    clear: [f32; 3],
     max_luminance: f32,
+    clear: [f32; 3],
     min_luminance: f32,
-    saturation: f32,
-    noise: f32,
-    stroke_width: f32,
     reads: [f32; 4],
     tint: [f32; 4],
     stroke_color: [f32; 4],
+    stroke_width: f32,
+    /// WGSL rounds the struct's size up to its 16-byte alignment.
+    pad: [f32; 3],
 }
 
 impl BackdropSlot {
-    /// How `row`'s composite finds `kept`, its result.
+    /// How `row`'s composite finds `kept`, its result: a slot of the atlas, for a pane alone.
     fn of(row: &BackdropRow, kept: Kept) -> Self {
         let (offset, lattice, clear) = match kept {
             Kept::Slot(slot) => {
-                let apron = UVec2::splat(row.capture.plan.apron());
-                let offset = (slot.min + apron).as_vec2() - row.capture.region.min.as_vec2();
-                (offset, row.capture.plan.lattice() as f32, [0.0; 3])
+                let capture = row.capture().expect("a result in the atlas is a pane's");
+                let apron = UVec2::splat(capture.plan.apron());
+                let offset = (slot.min + apron).as_vec2() - capture.region.min.as_vec2();
+                (offset, capture.plan.lattice() as f32, [0.0; 3])
             }
             Kept::Clear(clear) => (Vec2::ZERO, 0.0, clear),
         };
-        let look = row.look.unwrap_or(FilterLook::PLAIN);
-        let lens = look.lens.map_or([0.0; 4], |lens| {
-            [
-                lens.bezel,
-                lens.thickness,
-                lens.refractive_index,
-                lens.dispersion,
-            ]
-        });
+        let look = row.look.unwrap_or(MaterialLook::PLAIN);
         let lanes = |color: RgbaF16| {
             let color = RgbaF32::from(color);
             [color.r, color.g, color.b, color.a]
@@ -90,14 +82,9 @@ impl BackdropSlot {
         Self {
             offset,
             lattice,
-            highlight: look.lens.map_or(0.0, |lens| lens.highlight),
-            lens,
-            clear,
             max_luminance: look.max_luminance,
+            clear,
             min_luminance: look.min_luminance,
-            saturation: look.saturation,
-            noise: look.noise,
-            stroke_width: look.stroke_width,
             reads: [
                 row.reads.min.x,
                 row.reads.min.y,
@@ -106,11 +93,13 @@ impl BackdropSlot {
             ],
             tint: lanes(look.tint),
             stroke_color: lanes(look.stroke_color),
+            stroke_width: look.stroke_width,
+            pad: [0.0; 3],
         }
     }
 }
 
-/// One cell of [`SpectrumTables`] as `quad_pipeline/shader.wgsl` declares `SpectrumCell`: each
+/// One cell of [`SpectrumTables`] as `effect/backdrop.wgsl` declares `PalantirSpectrumCell`: each
 /// `vec3` padded to WGSL's 16-byte alignment.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -233,12 +222,13 @@ pub(crate) struct Backdrops {
     resources: Option<PaneResources>,
 }
 
-/// What [`Backdrops`] holds on the device once a frame has a pane: the blur, the results atlas, the
-/// slot table, and the group their quads read them through with its sampler and the spectrum a
-/// lens spreads ([`SpectrumCell`]), written once.
+/// What [`Backdrops`] holds on the device once a frame has a backdrop: the results atlas, the slot
+/// table, and the group their quads read them through with its sampler and the spectrum a lens
+/// spreads ([`SpectrumCell`]), written once; and the blur, made at the first frame that blurs, as a
+/// frame of backdrops over the ground and of held results blurs nothing.
 #[derive(Debug)]
 struct PaneResources {
-    blur: BackdropBlur,
+    blur: Option<BackdropBlur>,
     atlas: PackedAtlas,
     slot_buffer: DynamicBuffer<BackdropSlot>,
     sampler: wgpu::Sampler,
@@ -273,7 +263,7 @@ impl PaneResources {
             },
         );
         Self {
-            blur: BackdropBlur::new(gpu),
+            blur: None,
             atlas,
             group_capacity: slot_buffer.capacity(),
             slot_buffer,
@@ -412,17 +402,29 @@ impl Backdrops {
         let shrank = self.shrink_atlas(ctx);
         // Every result the frame reads is stamped first, so making room for one never evicts
         // another.
-        for row in &buffer.backdrops {
-            if let Some(cached) = self.cache.get_mut(&(owner, row.capture.key)) {
+        for capture in buffer.backdrops.iter().filter_map(BackdropRow::capture) {
+            if let Some(cached) = self.cache.get_mut(&(owner, capture.key)) {
                 cached.used = self.prepared;
             }
         }
         let surface = buffer.display.physical;
         for row in &buffer.backdrops {
-            let at = (owner, row.capture.key);
-            let kept = match row.source {
+            let (capture, source) = match row.read {
+                BackdropRead::Pane { capture, source } => (capture, source),
+                // The ground is the clear, as a pane with nothing painted before it shows, and it
+                // holds no result.
+                BackdropRead::Ground => {
+                    self.slots.push(BackdropSlot::of(
+                        row,
+                        Kept::Clear(held_clear(clear, format)),
+                    ));
+                    continue;
+                }
+            };
+            let at = (owner, capture.key);
+            let kept = match source {
                 PaneSource::Capture { barrier } => {
-                    let size = row.capture.region.size + UVec2::splat(2 * row.capture.plan.apron());
+                    let size = capture.region.size + UVec2::splat(2 * capture.plan.apron());
                     let Some(slot) = self.slot_for(at, size) else {
                         self.evicted.push(at);
                         self.slots.push(BackdropSlot::of(
@@ -446,11 +448,11 @@ impl Backdrops {
                         }
                     }
                     self.jobs.push(BlurJob {
-                        plan: row.capture.plan,
+                        plan: capture.plan,
                         surface,
                         format,
-                        footprint: row.capture.footprint,
-                        region: row.capture.region,
+                        footprint: capture.footprint,
+                        region: capture.region,
                         dest_origin: slot.min,
                         layout: JobLayout::default(),
                     });
@@ -484,23 +486,35 @@ impl Backdrops {
             };
             self.slots.push(BackdropSlot::of(row, kept));
         }
-        let blur = &self.resources.as_ref().expect("made above").blur;
-        let target = backbuffer.filter(|_| !self.jobs.is_empty()).map(
-            |FrameBackbuffer { backbuffer, source }| {
-                source
-                    .get_or_insert_with(|| {
-                        blur.target_source(ctx.gpu, backbuffer.view(), format, backbuffer.size())
-                    })
-                    .clone()
-            },
-        );
         let resources = self.resources.as_mut().expect("made above");
-        resources.blur.prepare(
-            ctx,
-            &mut self.jobs,
-            self.breaks.iter().map(|at| at.jobs.clone()),
-            target,
-        );
+        if !self.jobs.is_empty() {
+            resources
+                .blur
+                .get_or_insert_with(|| BackdropBlur::new(ctx.gpu));
+        }
+        // A blur made before keeps preparing on a frame with no job, so its scratch decays.
+        if let Some(blur) = &mut resources.blur {
+            let target = backbuffer.filter(|_| !self.jobs.is_empty()).map(
+                |FrameBackbuffer { backbuffer, source }| {
+                    source
+                        .get_or_insert_with(|| {
+                            blur.target_source(
+                                ctx.gpu,
+                                backbuffer.view(),
+                                format,
+                                backbuffer.size(),
+                            )
+                        })
+                        .clone()
+                },
+            );
+            blur.prepare(
+                ctx,
+                &mut self.jobs,
+                self.breaks.iter().map(|at| at.jobs.clone()),
+                target,
+            );
+        }
         resources.slot_buffer.upload_instances(ctx, &self.slots);
         let grew = resources.atlas.commit(ctx.gpu, ctx.encoder);
         if shrank || grew || resources.slot_buffer.capacity() != resources.group_capacity {
@@ -682,7 +696,7 @@ impl Backdrops {
         at: &BlurBreak,
         color: &wgpu::Texture,
     ) {
-        let blur = &self.resources.as_ref().expect("a frame that blurs").blur;
+        let blur = self.blur();
         for job in &self.jobs[at.jobs.clone()] {
             blur.copy_capture(encoder, job, color);
         }
@@ -691,9 +705,16 @@ impl Backdrops {
     /// Record the blurs of break `at` from their capture into their slots of the atlas.
     pub(crate) fn blur_break(&self, encoder: &mut wgpu::CommandEncoder, at: &BlurBreak) {
         let resources = self.resources.as_ref().expect("a frame that blurs");
-        resources
-            .blur
+        self.blur()
             .encode(encoder, &self.jobs[at.jobs.clone()], resources.atlas.view());
+    }
+
+    /// The blur of a frame that blurs, which its prepare made.
+    fn blur(&self) -> &BackdropBlur {
+        self.resources
+            .as_ref()
+            .and_then(|resources| resources.blur.as_ref())
+            .expect("a frame that blurs made its blur")
     }
 }
 

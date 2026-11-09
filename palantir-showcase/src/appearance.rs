@@ -300,7 +300,7 @@ mod tests {
         assert_eq!(*look.palette(scheme), *Palette::for_scheme(scheme));
 
         let stock = Theme::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT);
-        assert!(!stock.menu.panel.backdrop_filter.is_noop());
+        assert!(stock.menu.panel.material.is_some());
         assert_eq!(h.ui().theme().menu.panel, stock.menu.panel);
 
         // Past the window's second frame an edit blends in, a pick and a drag alike.

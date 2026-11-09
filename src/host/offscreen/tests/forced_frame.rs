@@ -7,9 +7,10 @@ use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
+use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::shape::Shape;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -41,10 +42,11 @@ fn scene(ui: &mut Ui, pane: bool) {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect()
-                                .at(PANE)
-                                .fill(RgbaF32::TRANSPARENT)
-                                .backdrop_filter(BackdropFilter::blur(2.0)),
+                            Shape::rect(
+                                Chrome::fill(RgbaF32::TRANSPARENT)
+                                    .with_material(Material::blur(2.0)),
+                            )
+                            .at(PANE),
                         );
                     });
             }
@@ -122,7 +124,7 @@ fn a_forced_frame_stales_the_panes_its_change_touches() {
         host.last_render_buffer()
             .backdrops
             .iter()
-            .filter(|row| row.source.is_new())
+            .filter(|row| row.source().is_some_and(PaneSource::is_new))
             .count()
     };
     // The first partial frame after a direct one repaints whole, as the backbuffer is stale, and

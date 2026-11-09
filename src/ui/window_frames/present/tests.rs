@@ -1340,8 +1340,9 @@ mod escalation_tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::layout::sizing::Sizing;
-    use crate::primitives::paint::backdrop_filter::BackdropFilter;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::material::Material;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_buffer::backdrop_row::PaneSource;
     use crate::renderer::render_plan::RenderPlan;
@@ -1399,9 +1400,12 @@ mod escalation_tests {
             .show(ui, |ui| {
                 for i in 0..count {
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(20.0 + 40.0 * i as f32, 0.0, 8.0, SIDE))
-                            .backdrop_filter(BackdropFilter::blur(2.0)),
+                        Shape::rect(Chrome::NONE.with_material(Material::blur(2.0))).at(Rect::new(
+                            20.0 + 40.0 * i as f32,
+                            0.0,
+                            8.0,
+                            SIDE,
+                        )),
                     );
                 }
             });
@@ -1491,7 +1495,7 @@ mod escalation_tests {
             .buffer
             .backdrops
             .iter()
-            .filter(|row| row.source == PaneSource::Held)
+            .filter(|row| row.source() == Some(PaneSource::Held))
             .count();
         assert_eq!(frontend.buffer.backdrops.len(), 10);
         assert_eq!(held, 0);
@@ -1654,8 +1658,9 @@ mod capture_path_tests {
     use crate::gpu::frame::submission::Route;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
-    use crate::primitives::paint::backdrop_filter::BackdropFilter;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::material::Material;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
     use crate::ui::Ui;
@@ -1694,15 +1699,9 @@ mod capture_path_tests {
                 .id_salt("panes")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
+                    ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 4.0, 4.0)));
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 4.0, 4.0))
-                            .fill(RgbaF32::WHITE),
-                    );
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(pane)
-                            .backdrop_filter(BackdropFilter::blur(2.0)),
+                        Shape::rect(Chrome::NONE.with_material(Material::blur(2.0))).at(pane),
                     );
                 });
         };

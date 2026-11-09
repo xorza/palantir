@@ -10,10 +10,12 @@ use crate::primitives::math::domain::vec2;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::lower;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
@@ -171,7 +173,8 @@ impl sealed::LowerShape for CurveShape {
                 corners,
                 fill: lower::brush(store, &Brush::Solid(color)),
                 border: ShapeStroke::lower(Stroke::NONE),
-                backdrop: None,
+                shadow: LoweredShadow::lower(Shadow::NONE),
+                material: None,
             });
         }
         let basis = geometry.basis();

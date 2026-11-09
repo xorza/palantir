@@ -43,20 +43,26 @@
 //!   frames. Refused: an explicit group, as Flutter's `BackdropGroup` and SwiftUI's
 //!   `GlassEffectContainer` ask for, which lets a pane miss what another painted under it; one
 //!   capture for the union of the footprints, which copies and blurs the gap between them.
-//! - **The pane is palantir's own backdrop effect** (`effect_pipeline/pane.wgsl`), drawn through
-//!   the effect pipeline an app's backdrop effect takes, on one capture, ledger and atlas: one
-//!   backdrop path. It shades the rect a quad of it would, packed as one, so the SDF, corners,
-//!   stroke, AA, turn, window, rounded clips and scissors hold as for any quad, and the pixels
-//!   match the quad forms it replaced. A per-frame slot table carries each pane's atlas origin,
-//!   lattice and the filter's look (`FilterLook`); the solid tint and the stroke draw in the
-//!   pane's own stage, as two draws would cross their antialiased bands, and a gradient tint draws
-//!   as its own quad above. Frost, glass of one index and glass that spreads the spectrum draw
-//!   through forms of their own (`PaneForm`): one shader with the lens behind a branch held its
-//!   registers for every pane, and V3D spilled it, so a blurred pane's composite took the Pi 2.2
-//!   times as long. Refused: the quad forms beside an app's effects, two composite paths to keep.
-//!   Cost: an opaque quad over a pane no longer prunes it, as the occlusion pruner reads quads, so
-//!   a covered pane captures and blurs. Not yet measured against the quad forms on the
-//!   `gpu/backdrop` benches, as the owner decided on 2026-11-08.
+//! - **A material draws through its effect's material stages.** A box's material and an app's
+//!   backdrop effect draw through the effect pipeline, on one capture, ledger and atlas: one
+//!   backdrop path. A backdrop effect over `MaterialInput` compiles a second pair of stages
+//!   (`effect/material.wgsl`) beside its shape's: it calls the effect, holds what it shows within
+//!   the luminance bounds, lays the box's solid fill and border over it, dithers, and shades the
+//!   rect a quad of the box would, so the SDF, corners, border, AA, turn, window, rounded clips and
+//!   scissors hold as for any quad. A per-frame slot table carries each backdrop's atlas origin,
+//!   lattice, the bounds, the fill and the border (`MaterialLook`); a gradient fill draws as its
+//!   own quad above. Refused: a stage of palantir's own per look, a second form of one thing.
+//!   Cost: an opaque quad over a material no longer prunes it, as the occlusion pruner reads quads,
+//!   so a covered material captures and blurs.
+//! - **One glass, with its spectrum behind a branch.** The stock glass reads the spectrum only
+//!   where its lens disperses. Cost, not yet measured: before, glass of one index and glass that
+//!   spreads the spectrum drew through pipelines of their own, as one shader for every look held
+//!   the lens's registers for every pane and V3D spilled it, a blurred pane's composite 2.2 times
+//!   as long on the Pi; the frost is its own effect now, and glass of one index may still spill
+//!   there. If it does, the spectrum becomes a stock effect of its own.
+//! - **The ground is the clear.** While transparency is reduced, a backdrop reads the window's
+//!   clear, as a pane with nothing painted before it does: no capture, no blur, no pane in the
+//!   ledger, and a row of its own (`BackdropRead::Ground`).
 //! - **Glass refracts by a closed form.** The bezel's height is a squircle
 //!   `(1 − (1 − x)⁴)^¼` of the inward distance; its slope along the SDF gradient is the normal,
 //!   Snell's law gives the bent ray, and thickness times its tangent the displacement (kube.io
@@ -71,7 +77,7 @@
 //!   glint reaches 0 where the bezel meets it. Refused: facing by the screen normal alone, which
 //!   lit the flat face's Fresnel across the inner bezel and stepped at its edge, 5 sRGB levels
 //!   over the reel's grey pane.
-//! - **Dispersion spreads the whole spectrum** (`lens_spectrum` in `quad_pipeline/shader.wgsl`).
+//! - **Dispersion spreads the whole spectrum** (`glass_spectrum` in `effect/stock/glass.wgsl`).
 //!   Each wavelength refracts at its index by Cauchy's model through `n_D`, and the reads sum back
 //!   to color in CIE XYZ under the 1931 observer, normalized so a field of one color keeps it, as
 //!   Filament's specgen builds its matrices; the weight between reads is integrated in closed form
@@ -83,9 +89,11 @@
 //!   every entry, 2.6 times the glass composite's time at 512².
 //! - **No banding.** The levels are `Rgba16Float`; before an 8-bit target writes, the composite
 //!   adds interleaved gradient noise of one encoded step, scaled to linear by the sRGB curve's
-//!   slope. Grain (`noise`) is separate and fixed to the pane, so it moves and turns with it.
-//! - **A still pane costs nothing, and an app with none pays for nothing.** The blur's pipelines
-//!   and the atlas are made on the first frame with a pane. The capture and the levels hold one
+//!   slope. Grain (the frost's `noise`) is separate and fixed to the box, so it moves and turns
+//!   with it.
+//! - **A still pane costs nothing, and an app with none pays for nothing.** The atlas and the slot
+//!   table are made on the first frame with a backdrop, and the blur's pipelines on the first that
+//!   blurs, so a material over the ground compiles no blur. The capture and the levels hold one
 //!   break's footprints from the first texel the break reads, and grow by 256-texel steps to the
 //!   largest break seen, so a resize drag makes them again only now and then; the atlas grows with
 //!   the largest result. No allocation after warmup. Refused: a capture and levels of the whole

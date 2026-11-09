@@ -110,12 +110,12 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()` under `cfg(test)`. One value for both profiles: the scene's
 /// `cfg(debug_assertions)` check fields sit on each plane's `Tree`, which `Forest` keeps on the
 /// heap.
-const UI_SIZE: usize = 3008;
+const UI_SIZE: usize = 3000;
 
 /// Expected `size_of::<WindowFrames>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const WINDOW_FRAMES_SIZE: usize = 7216;
+const WINDOW_FRAMES_SIZE: usize = 7208;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)
@@ -139,16 +139,17 @@ const PINS: &[Pin] = &[
     pin::<BoundsExtras>("scene::BoundsExtras", 36, 4),
     pin::<PanelExtras>("scene::PanelExtras", 20, 4),
     pin::<Node>("scene::Node", 104, 4),
-    pin::<ShapeRecord>("shape::ShapeRecord", 88, 8),
+    // A rect's shadow and material, 18 and 40 of them, set the row's size.
+    pin::<ShapeRecord>("shape::ShapeRecord", 128, 8),
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
-    // 18 of them the backdrop filter, two f16 words and its ceiling, which tips the row past 80.
-    pin::<ChromeRow>("scene::ChromeRow", 88, 8),
+    // 40 of them the material: its effect, its input's words and their hash, its σ, lens and bounds.
+    pin::<ChromeRow>("scene::ChromeRow", 104, 8),
     pin::<ShapeStroke>("shape::ShapeStroke", 12, 4),
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    // 52 of them the backdrop filter, its ceiling, lens and fallback optional.
-    pin::<Chrome>("primitives::Chrome", 184, 4),
+    // 116 of them the material, 64 of those its effect's inline name.
+    pin::<Chrome>("primitives::Chrome", 240, 4),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
@@ -176,23 +177,23 @@ const PINS: &[Pin] = &[
     pin::<Slider<'static>>("widgets::Slider", 192, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 144, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 160, 8),
-    // 40 of them the chrome's backdrop filter.
-    pin::<Panel>("widgets::Panel", 312, 8),
-    pin::<Block>("widgets::Block", 312, 8),
-    pin::<Grid>("widgets::Grid", 312, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 368, 8),
+    // 116 of them the chrome's material.
+    pin::<Panel>("widgets::Panel", 368, 8),
+    pin::<Block>("widgets::Block", 368, 8),
+    pin::<Grid>("widgets::Grid", 368, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 424, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
-    pin::<Popup<'static>>("widgets::Popup", 352, 8),
-    pin::<Modal<'static>>("widgets::Modal", 400, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 528, 8),
+    pin::<Popup<'static>>("widgets::Popup", 408, 8),
+    pin::<Modal<'static>>("widgets::Modal", 624, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 584, 8),
     pin::<GpuView>("widgets::GpuView", 152, 8),
-    pin::<Menu<'static>>("widgets::Menu", 432, 8),
+    pin::<Menu<'static>>("widgets::Menu", 488, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 176, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 392, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 312, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 368, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

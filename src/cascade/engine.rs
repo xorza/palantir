@@ -619,8 +619,9 @@ impl TreeSource<'_> {
             let read = match entry.origin {
                 PaneOrigin::Chrome => tree
                     .chrome(entry.node)
-                    .and_then(|row| row.backdrop)
-                    .map(PaneRead::Filter),
+                    .and_then(|row| row.material)
+                    .filter(|material| material.captures())
+                    .map(PaneRead::Material),
                 PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].pane(),
             }
             .expect("a listed pane reads under it");

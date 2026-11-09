@@ -45,7 +45,7 @@ use crate::display::Display;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::PaneCapture;
+use crate::renderer::render_buffer::backdrop_row::{BackdropRead, PaneCapture};
 use crate::renderer::render_plan::RenderPlan;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
@@ -115,7 +115,7 @@ pub(crate) enum Settled {
 
 /// One window's pane ledger: the captures its panes hold, and this frame's [`PaneTicket`]s. The
 /// backend keeps the results and follows each row's
-/// [`source`](crate::renderer::render_buffer::backdrop_row::BackdropRow::source).
+/// [`read`](crate::renderer::render_buffer::backdrop_row::BackdropRow::read).
 #[derive(Debug, Default)]
 pub(crate) struct PaneCaptures {
     held: FxHashMap<PaneKey, Held>,
@@ -215,10 +215,14 @@ impl PaneCaptures {
         }
         let surface = buffer.display.physical;
         for row in &buffer.backdrops {
-            if row.source.is_new() {
-                let PaneCapture {
+            if let BackdropRead::Pane {
+                capture: PaneCapture {
                     key, plan, region, ..
-                } = row.capture;
+                },
+                source,
+            } = row.read
+                && source.is_new()
+            {
                 self.held.insert(
                     key,
                     Held {

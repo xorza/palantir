@@ -52,9 +52,9 @@ pub(super) struct RecordBaseline {
     /// `SharedDevice::epoch`, which a new device moves: the app uploads its images again in the
     /// record, as `ImageHandle::is_resident` reads false.
     pub(super) device_epoch: u32,
-    /// What the system asks to reduce: backdrop filters lower as solid fills under reduced
-    /// transparency, an animation snaps under reduced motion, an app's record reads the power to
-    /// pick its paint, and an effect's alternative follows all three.
+    /// What the system asks to reduce: a material reads the ground under reduced transparency, an
+    /// animation snaps under reduced motion, an app's record reads the power to pick its paint, and
+    /// an effect's alternative follows motion and power.
     pub(super) reductions: Reductions,
 }
 

@@ -189,9 +189,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                             .size(20.0)
                             .show(ui, |ui| {
                                 ui.add_shape_animated(
-                                    Shape::rect()
-                                        .at(Rect::new(0.0, 0.0, 20.0, 20.0))
-                                        .fill(RgbaF32::WHITE),
+                                    Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 20.0, 20.0)),
                                     PaintAnimation::alpha(0.0, 1.0)
                                         .with_started_at(started_at)
                                         .with_period(HALF * 2)

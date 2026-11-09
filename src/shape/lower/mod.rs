@@ -6,19 +6,18 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
-use crate::primitives::reduction::Reduction;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -26,26 +25,6 @@ use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use std::hash;
 use std::hash::{Hash as _, Hasher as _};
-
-/// What a pane of fill `fill` paints for its `filter` under `transparency`.
-#[derive(Debug)]
-pub(crate) enum PaneFill {
-    /// The pixels behind, shown through `filter` under the fill; `None` for a filter that changes
-    /// nothing, which makes no pane.
-    Through(Option<LoweredBackdrop>),
-    /// The solid infill the fill becomes, with no filter.
-    Solid(Brush),
-}
-
-/// The one statement of the reduced-transparency rule, for a chrome and a rect alike: a pane under
-/// reduced transparency paints its solid infill and no filter.
-pub(crate) fn pane_fill(filter: BackdropFilter, fill: &Brush, transparency: Reduction) -> PaneFill {
-    if transparency.is_reduced() && !filter.is_noop() {
-        PaneFill::Solid(filter.solid_infill(fill))
-    } else {
-        PaneFill::Through(LoweredBackdrop::of(filter))
-    }
-}
 
 /// Stable content hash for a gradient kind or curve ramp: the fill kind's word, which tells the kinds apart, then the value's `Hash`, captured at lowering so downstream cache keys stay context-free.
 #[inline]
@@ -99,29 +78,66 @@ pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
     CurveRamp::Interned { id, hash }
 }
 
-/// Lower a `Chrome` to a `ChromeRow`, sharing gradient lowering with shapes so chrome and shapes share one pool. Takes `chrome` by reference: [`Chrome`] is deliberately not `Copy`.
-pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> ChromeRow {
+/// A [`Chrome`] lowered for a box, a node's or a rect shape's: its fill interned, its border at
+/// its inset, its shadow and its material.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LoweredBox {
+    pub(crate) fill: ShapeBrush,
+    pub(crate) border: ShapeStroke,
+    pub(crate) corners: Corners,
+    pub(crate) shadow: LoweredShadow,
+    pub(crate) material: Option<LoweredMaterial>,
+}
+
+/// Lower `chrome`, whose material reads `material` this record (`None` where it paints none), as
+/// one box: the one lowering a node's chrome and a rect shape share, sharing gradient lowering
+/// with every shape, so all share one pool. Takes `chrome` by reference: [`Chrome`] is
+/// deliberately not `Copy`.
+pub(crate) fn lower_box(
+    store: &mut RecordStore,
+    chrome: &Chrome,
+    material: Option<MaterialRead>,
+) -> LoweredBox {
     debug_assert!(
         !chrome.has_nan(),
-        "a Chrome reaches lowering validated, by `Widget::record`: {chrome:?}",
+        "a Chrome reaches lowering validated, by `Widget::record` or `Shape::rect`: {chrome:?}",
     );
-    let pane = pane_fill(chrome.backdrop_filter, &chrome.fill, store.transparency);
-    let (fill_brush, backdrop) = match &pane {
-        PaneFill::Through(backdrop) => (&chrome.fill, *backdrop),
-        PaneFill::Solid(solid) => (solid, None),
-    };
-    let fill_brush = if chrome.is_noop() {
-        &Brush::TRANSPARENT
+    let material = chrome
+        .material
+        .as_ref()
+        .zip(material)
+        .map(|(authored, read)| LoweredMaterial::lower(store, authored, read));
+    let fill = if chrome.is_noop() {
+        brush(store, &Brush::TRANSPARENT)
     } else {
-        fill_brush
+        brush(store, &chrome.fill)
     };
-    let fill = brush(store, fill_brush);
-    let border = ShapeStroke {
-        width: chrome.border_inset(),
-        ..ShapeStroke::lower(chrome.border)
-    };
-    let corners = chrome.corners;
-    let shadow = LoweredShadow::lower(chrome.shadow);
+    LoweredBox {
+        fill,
+        border: ShapeStroke {
+            width: chrome.border_inset(),
+            ..ShapeStroke::lower(chrome.border)
+        },
+        corners: chrome.corners,
+        shadow: LoweredShadow::lower(chrome.shadow),
+        material,
+    }
+}
+
+/// Lower a node's `Chrome` to its `ChromeRow`, with the focus `ring` over it.
+pub(crate) fn chrome(
+    store: &mut RecordStore,
+    chrome: &Chrome,
+    ring: Stroke,
+    material: Option<MaterialRead>,
+) -> ChromeRow {
+    let LoweredBox {
+        fill,
+        border,
+        corners,
+        shadow,
+        material,
+    } = lower_box(store, chrome, material);
     let ring = ShapeStroke::lower(ring);
     let has_ring = !ring.is_noop();
     // Fed as whole words from registers: a struct packed for one `write` is stored field by field and read back wider, a load the CPU can't forward.
@@ -132,7 +148,7 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
     border.hash_into(&mut h);
     ring.hash_into(&mut h);
     shadow.hash(&mut h);
-    backdrop.hash(&mut h);
+    material.hash(&mut h);
     h.write_u8(brush.tag);
     let hash = ContentHash::finish(&h);
     ChromeRow {
@@ -140,7 +156,7 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
         border,
         corners,
         shadow,
-        backdrop,
+        material,
         hash,
         ring: has_ring,
     }

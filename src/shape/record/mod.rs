@@ -21,7 +21,7 @@ use crate::primitives::text::recorded_text::RecordedText;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::{BrushHash, ShapeBrush};
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -42,7 +42,15 @@ pub(crate) enum ColorMode {
     PerSegment = 2,
 }
 
-/// What a backdrop effect reads under it, in logical px: the σ of its blur and how far past its
+/// What a backdrop effect's shape reads under it: what is painted there, captured, or the window's
+/// ground while transparency is reduced, which takes no capture and makes no pane.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum EffectBackdrop {
+    Capture(EffectPane),
+    Ground,
+}
+
+/// What a backdrop effect captures under it, in logical px: the σ of its blur and how far past its
 /// rect it reads.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct EffectPane {
@@ -58,11 +66,10 @@ impl EffectPane {
     };
 }
 
-/// What a pane reads, as the cascade plans its capture: a rect's backdrop filter or a backdrop
-/// effect.
+/// What a pane reads, as the cascade plans its capture: a box's material or a backdrop effect.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum PaneRead {
-    Filter(LoweredBackdrop),
+    Material(LoweredMaterial),
     Effect(EffectPane),
 }
 
@@ -70,13 +77,13 @@ impl PaneRead {
     /// The blur's σ in logical px.
     pub(crate) fn sigma(self) -> f32 {
         match self {
-            Self::Filter(backdrop) => backdrop.sigma(),
+            Self::Material(material) => material.sigma(),
             Self::Effect(pane) => pane.sigma,
         }
     }
 
     /// How far past the pane, in physical px under `scale` physical px per logical px, its
-    /// composite reads: a lens's margin ([`LoweredBackdrop::lens_margin`], `narrowest` its pane's
+    /// composite reads: a lens's margin ([`LoweredMaterial::lens_margin`], `narrowest` its pane's
     /// narrowest side), or an effect's reach rounded out.
     #[expect(
         clippy::cast_sign_loss,
@@ -84,7 +91,7 @@ impl PaneRead {
     )]
     pub(crate) fn margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
         match self {
-            Self::Filter(backdrop) => backdrop.lens_margin(scale, narrowest),
+            Self::Material(material) => material.lens_margin(scale, narrowest),
             Self::Effect(pane) => (pane.reach * scale).ceil() as u32,
         }
     }
@@ -157,7 +164,7 @@ pub(crate) enum ShapeRecord {
     /// and its pane.
     Effect {
         /// What a backdrop effect reads under it; `None` for a color effect.
-        pane: Option<EffectPane>,
+        backdrop: Option<EffectBackdrop>,
         local_rect: Option<Rect>,
         corners: Corners,
         effect: EffectId,
@@ -221,16 +228,17 @@ impl TextAnchor {
 }
 
 impl ShapeRecord {
-    /// What the record reads as a pane over the pixels before it: a rect's backdrop or a backdrop
-    /// effect's; `None` for every other record.
+    /// What the record reads as a pane over the pixels before it: a rect's material or a backdrop
+    /// effect's, each where it captures; `None` for every other record.
     pub(crate) const fn pane(&self) -> Option<PaneRead> {
         match self {
             Self::Quad(QuadShape::Rect {
-                backdrop: Some(backdrop),
+                material: Some(material),
                 ..
-            }) => Some(PaneRead::Filter(*backdrop)),
+            }) if material.captures() => Some(PaneRead::Material(*material)),
             Self::Effect {
-                pane: Some(pane), ..
+                backdrop: Some(EffectBackdrop::Capture(pane)),
+                ..
             } => Some(PaneRead::Effect(*pane)),
             _ => None,
         }
@@ -259,14 +267,16 @@ impl ShapeRecord {
                         corners,
                         fill,
                         border,
-                        backdrop,
+                        shadow,
+                        material,
                     } => {
                         h.write_u8(*kind as u8);
                         hash_optional_rect(*local_rect, &mut h);
                         corners.hash(&mut h);
                         hash_brush(*fill, &mut h);
                         border.hash_into(&mut h);
-                        backdrop.hash(&mut h);
+                        shadow.hash(&mut h);
+                        material.hash(&mut h);
                     }
                     QuadShape::Shadow {
                         local_rect,
@@ -412,7 +422,7 @@ impl ShapeRecord {
                 local_rect,
                 corners,
                 content_hash,
-                pane: _,
+                backdrop: _,
                 effect: _,
                 params: _,
                 images: _,

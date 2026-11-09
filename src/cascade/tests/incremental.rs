@@ -298,17 +298,9 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
             .id(WidgetId::from_hash("host"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
-                ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(0.0, 0.0, 10.0, 10.0))
-                        .fill(RgbaF32::WHITE),
-                );
+                ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 10.0, 10.0)));
                 if extra_shape {
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(20.0, 0.0, 10.0, 10.0))
-                            .fill(RgbaF32::WHITE),
-                    );
+                    ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(20.0, 0.0, 10.0, 10.0)));
                 }
             });
     }

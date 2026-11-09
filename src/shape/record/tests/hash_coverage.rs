@@ -2,7 +2,6 @@
 //! hash or is listed as deliberately excluded.
 
 use crate::primitives::identity::texture_id::TextureId;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -49,7 +48,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             corners,
             fill,
             border: stroke,
-            backdrop: None,
+            shadow: LoweredShadow::lower(Shadow::NONE),
+            material: None,
         })
     };
     let base = quad_rect(
@@ -115,7 +115,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         unreachable!()
     };
     moves(
-        "Quad/Rect.backdrop",
+        "Quad/Rect.shadow",
         &base,
         &ShapeRecord::Quad(QuadShape::Rect {
             kind,
@@ -123,7 +123,21 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             corners,
             fill,
             border,
-            backdrop: LoweredBackdrop::of(BackdropFilter::blur(8.0)),
+            shadow: LoweredShadow::lower(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0)),
+            material: None,
+        }),
+    );
+    moves(
+        "Quad/Rect.material",
+        &base,
+        &ShapeRecord::Quad(QuadShape::Rect {
+            kind,
+            local_rect,
+            corners,
+            fill,
+            border,
+            shadow: LoweredShadow::lower(Shadow::NONE),
+            material: Some(LoweredMaterial::fixture(8.0)),
         }),
     );
     moves(

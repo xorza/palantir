@@ -1,5 +1,6 @@
 //! A turn paint animation on each shape kind that turns, held at 30°.
 
+use palantir::Chrome;
 use palantir::IconFit;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::LineCap;
@@ -71,21 +72,22 @@ fn turned_quads_match_golden() {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "rounded", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect()
-                        .at(source)
-                        .corners(Corners::all(10.0))
-                        .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
-                        .border(Stroke::new(RgbaF32::WHITE, 3.0)),
+                    Shape::rect(
+                        Chrome::rounded(RgbaF32::srgb(0.2, 0.5, 1.0), Corners::all(10.0))
+                            .with_border(Stroke::new(RgbaF32::WHITE, 3.0)),
+                    )
+                    .at(source),
                     thirty_degrees(),
                 );
             });
             owner(ui, "gradient", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect().at(source).fill(LinearGradient::two_stop(
+                    Shape::rect(LinearGradient::two_stop(
                         0.0,
                         RgbaF32::hex(0xff5e44),
                         RgbaF32::hex(0xfacc15),
-                    )),
+                    ))
+                    .at(source),
                     thirty_degrees(),
                 );
             });
@@ -97,19 +99,21 @@ fn turned_quads_match_golden() {
                     thirty_degrees(),
                 );
                 ui.add_shape_animated(
-                    Shape::rect()
-                        .at(source)
-                        .corners(Corners::all(6.0))
-                        .fill(RgbaF32::srgb(0.85, 0.85, 0.85)),
+                    Shape::rect(Chrome::rounded(
+                        RgbaF32::srgb(0.85, 0.85, 0.85),
+                        Corners::all(6.0),
+                    ))
+                    .at(source),
                     thirty_degrees(),
                 );
             });
             owner(ui, "inset", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect()
-                        .at(source)
-                        .corners(Corners::all(6.0))
-                        .fill(RgbaF32::srgb(0.85, 0.85, 0.85)),
+                    Shape::rect(Chrome::rounded(
+                        RgbaF32::srgb(0.85, 0.85, 0.85),
+                        Corners::all(6.0),
+                    ))
+                    .at(source),
                     thirty_degrees(),
                 );
                 ui.add_shape_animated(
@@ -129,11 +133,11 @@ fn turned_quads_match_golden() {
             });
             owner(ui, "window", |ui| {
                 ui.add_shape_animated(
-                    Shape::windowed_rect()
-                        .at(source)
-                        .corners(Corners::all(14.0))
-                        .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
-                        .border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                    Shape::windowed_rect(
+                        Chrome::rounded(RgbaF32::srgb(0.2, 0.5, 1.0), Corners::all(14.0))
+                            .with_border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                    )
+                    .at(source),
                     thirty_degrees(),
                 );
             });

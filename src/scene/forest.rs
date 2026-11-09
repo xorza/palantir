@@ -7,7 +7,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
 use crate::primitives::layout::track::Track;
-use crate::primitives::reduction::Reduction;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -109,10 +108,9 @@ impl Forest {
         }
     }
 
-    /// Open a record pass whose backdrop filters lower under `transparency`.
-    pub(crate) fn pre_record(&mut self, transparency: Reduction) {
+    /// Open a record pass.
+    pub(crate) fn pre_record(&mut self) {
         self.record_store.clear();
-        self.record_store.transparency = transparency;
         self.plane_stack.clear();
         self.ids.pre_record();
         self.collisions.clear();

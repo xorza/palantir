@@ -125,10 +125,8 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 30.0, 30.0))
-                            .corners(0.0)
-                            .fill(shape_color),
+                        Shape::rect(Chrome::rounded(shape_color, 0.0))
+                            .at(Rect::new(0.0, 0.0, 30.0, 30.0)),
                     );
                     Block::new()
                         .id(WidgetId::from_hash("child"))

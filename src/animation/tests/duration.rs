@@ -413,8 +413,8 @@ fn an_easing_curve_is_its_tween() {
 #[test]
 fn an_overshoot_below_a_floor_paints_the_floor() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::backdrop_filter::BackdropFilter;
     use crate::primitives::paint::chrome::Chrome;
+    use crate::primitives::paint::material::Material;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
 
@@ -423,7 +423,7 @@ fn an_overshoot_below_a_floor_paints_the_floor() {
         Chrome::rounded(ink, radius)
             .with_border(Stroke::new(ink, width))
             .with_shadow(Shadow::drop(ink, Vec2::new(0.0, 2.0), blur))
-            .with_backdrop_filter(BackdropFilter::frosted(frost))
+            .with_material(Material::frosted(frost))
     };
     let mut map = AnimationMapTyped::<Chrome>::default();
     let id = support::widget_id("overshoot");
@@ -454,7 +454,7 @@ fn an_overshoot_below_a_floor_paints_the_floor() {
             assert_eq!(r.value.corners, Corners::ZERO);
             assert_eq!(r.value.border.width, 0.0);
             assert_eq!(r.value.shadow.blur, 0.0);
-            assert_eq!(r.value.backdrop_filter.blur, 0.0);
+            assert_eq!(r.value.material.map(|m| m.blur), Some(0.0));
         }
     }
 }

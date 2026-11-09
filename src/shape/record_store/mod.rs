@@ -19,7 +19,6 @@ use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::reduction::Reduction;
 use crate::shape::record_store::recorded_gradients::RecordedGradients;
 use crate::shape::record_store::text_store::TextStore;
 use crate::text::family_keys::FamilyKeys;
@@ -55,9 +54,6 @@ pub(crate) struct RecordStore {
     /// Image storage for `ShapeRecord::Effect`, indexed by the record's `images`: each instance's
     /// bound images, in slot order.
     pub(crate) effect_images: Vec<TextureId>,
-    /// Whether a backdrop filter lowers as a solid fill this pass
-    /// ([`crate::Ui::is_transparency_reduced`]).
-    pub(crate) transparency: Reduction,
 }
 
 /// Where [`RecordStore::stage_mesh`] put one mesh's geometry.
@@ -122,7 +118,6 @@ impl RecordStore {
             effect_params,
             effect_images,
             families: _,
-            transparency: _,
         } = self;
         mesh_vertices.clear();
         mesh_idxs.clear();

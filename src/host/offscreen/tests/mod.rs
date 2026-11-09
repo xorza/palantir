@@ -12,9 +12,9 @@ use crate::host::headless_window::record_window_commands;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::shape::Shape;
 use crate::ui::resources::UiResources;
 use crate::ui::window_frames::WindowFrames;
@@ -269,20 +269,11 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
                 .id_salt("uncopied")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
+                    ui.add_shape(Shape::rect(color(under)).at(Rect::new(8.0, 8.0, 4.0, 4.0)));
+                    ui.add_shape(Shape::rect(color(away)).at(Rect::new(50.0, 20.0, 4.0, 4.0)));
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(8.0, 8.0, 4.0, 4.0))
-                            .fill(color(under)),
-                    );
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(50.0, 20.0, 4.0, 4.0))
-                            .fill(color(away)),
-                    );
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(4.0, 4.0, 16.0, 12.0))
-                            .backdrop_filter(BackdropFilter::blur(1.0)),
+                        Shape::rect(Chrome::NONE.with_material(Material::blur(1.0)))
+                            .at(Rect::new(4.0, 4.0, 16.0, 12.0)),
                     );
                 });
         }

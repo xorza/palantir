@@ -1,7 +1,8 @@
 //! Glass at its rim: the spectrum it spreads, read back in linear `f16` with no dither, and the
 //! shader's lens functions probed against their closed forms.
 
-use crate::gpu::pipeline::effect_pipeline::PANE_SHADER;
+use crate::effect::stock;
+use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
@@ -9,11 +10,13 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::lens_optics::{LINE_D, LensOptics};
+use crate::primitives::paint::material::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
 use crate::shape::Shape;
-use crate::shape::paint::lens_optics::{LINE_D, LensOptics};
-use crate::shape::paint::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -51,13 +54,15 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for &(rect, color) in under {
-                    ui.add_shape(Shape::rect().at(rect).fill(color));
+                    ui.add_shape(Shape::rect(color).at(rect));
                 }
                 ui.add_shape(
-                    Shape::rect()
-                        .at(PANE)
-                        .corners(Corners::all(16.0))
-                        .backdrop_filter(BackdropFilter::glass(lens).with_blur(blur)),
+                    Shape::rect(
+                        Chrome::NONE
+                            .with_corners(Corners::all(16.0))
+                            .with_material(Material::glass(lens).with_blur(blur)),
+                    )
+                    .at(PANE),
                 );
             });
     };
@@ -135,13 +140,26 @@ fn a_white_edge_fringes_warm_outward_and_cool_inward() {
     );
 }
 
+/// The stock glass's WGSL over the backdrop contract, which its functions run on as they draw.
+fn glass_shader() -> ShaderBody {
+    ShaderBody {
+        label: "palantir.effect.glass",
+        wgsl: Box::leak(stock::glass_wgsl().into_boxed_str()),
+        includes: &[
+            include_str!("../../../effect/contract.wgsl"),
+            include_str!("../../../effect/backdrop.wgsl"),
+        ],
+        constants: &[],
+    }
+}
+
 const LENS_INDEX_PROBE: &str = "
 @group(0) @binding(14) var<storage, read> probe_in: array<vec4<f32>>;
 @group(0) @binding(15) var<storage, read_write> probe_out: array<f32>;
 @compute @workgroup_size(1)
 fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
     let q = probe_in[id.x];
-    probe_out[id.x] = lens_index(vec4<f32>(16.0, 12.0, q.x, q.y), q.z);
+    probe_out[id.x] = glass_index(vec4<f32>(16.0, 12.0, q.x, q.y), q.z);
 }
 ";
 
@@ -162,7 +180,7 @@ fn the_index_runs_along_the_spectrum_and_never_below_one() {
         ([1.0, 1.0, 1.0, 0.0], LensOptics::violet_index(1.0, 1.0)),
     ];
     let inputs: Vec<[f32; 4]> = cases.iter().map(|(input, _)| *input).collect();
-    let got: Vec<f32> = PANE_SHADER.probe(LENS_INDEX_PROBE, &inputs);
+    let got: Vec<f32> = glass_shader().probe(LENS_INDEX_PROBE, &inputs);
     for ((input, want), got) in cases.iter().zip(got) {
         assert!(
             (got - want).abs() <= 8.0 * f32::EPSILON * want,
@@ -177,7 +195,7 @@ const LENS_GLINT_PROBE: &str = "
 @compute @workgroup_size(1)
 fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
     let q = probe_in[id.x];
-    probe_out[id.x] = lens_glint(vec4<f32>(16.0, 12.0, 1.5, 0.0), q.x, q.yz);
+    probe_out[id.x] = glass_glint(vec4<f32>(16.0, 12.0, 1.5, 0.0), q.x, q.yz);
 }
 ";
 
@@ -214,7 +232,7 @@ fn the_glint_fades_to_nothing_where_the_bezel_meets_the_flat_top() {
         .iter()
         .map(|&(inward, [x, y], _)| [inward, x, y, 0.0])
         .collect();
-    let got: Vec<f32> = PANE_SHADER.probe(LENS_GLINT_PROBE, &inputs);
+    let got: Vec<f32> = glass_shader().probe(LENS_GLINT_PROBE, &inputs);
     for (&(inward, outward, want), got) in cases.iter().zip(got) {
         assert!(
             (f64::from(got) - want).abs() <= 1e-6,

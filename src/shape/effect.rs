@@ -15,8 +15,9 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::domain;
+use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::reduction::Reductions;
-use crate::shape::record::{EffectPane, ShapeRecord};
+use crate::shape::record::{EffectBackdrop, EffectPane, ShapeRecord};
 use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
 
@@ -25,17 +26,19 @@ use crate::shape::sealed;
 /// ([`Shape::backdrop_effect`](crate::widget::Shape::backdrop_effect)), which also reads what is
 /// painted under it. Paints in record order, as any shape does, and its rect may exceed its node,
 /// as a ring does; clipping ancestors clip it. Refused: a `Brush` variant, which every brush family
-/// would have to draw; a `Chrome` field, which no ring past the rect fits.
+/// would have to draw; a `Chrome` field, which no ring past the rect fits: a box's backdrop effect
+/// is its [`Material`](crate::Material).
 ///
 /// A backdrop effect is a pane: what is painted under it is copied out of the frame at its place
 /// in paint order, blurred by its [σ](Self::blur), and kept across frames until something under
-/// its [reach](Self::reach) changes, as a [`BackdropFilter`](crate::BackdropFilter)'s is.
+/// its [reach](Self::reach) changes, as a material's is.
 ///
 /// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
 /// [`Ui::add_shape_animated`](crate::Ui::add_shape_animated), [`PaintAnimation::clock`] when only
-/// the time moves; a turn turns it about its owner's center, as a quad turns. While
-/// transparency, motion or power use is reduced it paints the alternative its source names for it
-/// ([`ReducedPaint`](crate::ReducedPaint)).
+/// the time moves; a turn turns it about its owner's center, as a quad turns. While motion or
+/// power use is reduced it paints the alternative its source names for it
+/// ([`ReducedPaint`](crate::ReducedPaint)); while transparency is reduced, a backdrop effect does
+/// what its [`reduced_transparency`](Self::reduced_transparency) says.
 ///
 /// [`PaintAnimation::clock`]: crate::widget::PaintAnimation::clock
 #[must_use]
@@ -46,6 +49,8 @@ pub struct EffectShape<U: EffectParams, K: EffectKind = ColorEffect> {
     corners: Corners,
     /// What a backdrop effect reads under it; zero for a color effect, which reads none.
     pane: EffectPane,
+    /// What a backdrop effect paints while transparency is reduced; a color effect reads none.
+    reduced_transparency: ReducedBackdrop,
     /// The images bound, in slot order, each slot past the last `None`.
     images: [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
     /// What `Ui::add_shape` finds the name paints.
@@ -56,9 +61,18 @@ pub struct EffectShape<U: EffectParams, K: EffectKind = ColorEffect> {
 #[derive(Clone, Copy, Debug)]
 enum EffectPaint {
     Unresolved,
-    Effect(EffectId),
+    Effect(EffectId, Reads),
     /// The alternative it paints for what is reduced is nothing.
     Nothing,
+}
+
+/// What a backdrop effect reads this record; a color effect reads neither.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reads {
+    /// What is painted under it, captured.
+    Capture,
+    /// The window's ground, while transparency is reduced.
+    Ground,
 }
 
 impl<U: EffectParams, K: EffectKind> EffectShape<U, K> {
@@ -69,6 +83,7 @@ impl<U: EffectParams, K: EffectKind> EffectShape<U, K> {
             local_rect: None,
             corners: Corners::ZERO,
             pane: EffectPane::ZERO,
+            reduced_transparency: ReducedBackdrop::Ground,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
             paint: EffectPaint::Unresolved,
         }
@@ -146,6 +161,14 @@ impl<U: EffectParams> EffectShape<U, BackdropEffect> {
         self.pane.reach = domain::length(px);
         self
     }
+
+    /// What the effect paints while transparency is reduced: by default it reads the window's
+    /// ground in place of what is painted under it ([`ReducedBackdrop::Ground`]), or it paints
+    /// nothing ([`ReducedBackdrop::Nothing`]). Neither captures or blurs.
+    pub const fn reduced_transparency(mut self, backdrop: ReducedBackdrop) -> Self {
+        self.reduced_transparency = backdrop;
+        self
+    }
 }
 
 impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectShape<U, K> {
@@ -155,6 +178,7 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectShape<U, K> {
             .field("local_rect", &self.local_rect)
             .field("corners", &self.corners)
             .field("pane", &self.pane)
+            .field("reduced_transparency", &self.reduced_transparency)
             .field("images", &self.images)
             .finish_non_exhaustive()
     }
@@ -171,6 +195,13 @@ impl<U: EffectParams, K: EffectKind> sealed::LowerShape for EffectShape<U, K> {
 
     #[track_caller]
     fn resolve(&mut self, effects: &EffectRegistry, reductions: Reductions) {
+        let reduced = matches!(K::ID, KindId::Backdrop) && reductions.transparency.is_reduced();
+        let reads = if reduced {
+            Reads::Ground
+        } else {
+            Reads::Capture
+        };
+        // Resolved and checked in every mode, so a logic error panics whatever is reduced.
         self.paint = match effects.resolve(self.name, reductions) {
             Some(resolved) => {
                 let bound = self.images.iter().flatten().count();
@@ -180,7 +211,11 @@ impl<U: EffectParams, K: EffectKind> sealed::LowerShape for EffectShape<U, K> {
                     self.name.name(),
                     resolved.image_slots,
                 );
-                EffectPaint::Effect(resolved.id)
+                if reduced && self.reduced_transparency == ReducedBackdrop::Nothing {
+                    EffectPaint::Nothing
+                } else {
+                    EffectPaint::Effect(resolved.id, reads)
+                }
             }
             None => EffectPaint::Nothing,
         };
@@ -193,10 +228,11 @@ impl<U: EffectParams, K: EffectKind> sealed::LowerShape for EffectShape<U, K> {
             local_rect,
             corners,
             pane,
+            reduced_transparency: _,
             images,
             paint,
         } = self;
-        let EffectPaint::Effect(effect) = paint else {
+        let EffectPaint::Effect(effect, reads) = paint else {
             unreachable!(
                 "`Ui::add_shape` resolves an effect's name before it lowers, and nothing is a noop: {paint:?}"
             );
@@ -210,13 +246,21 @@ impl<U: EffectParams, K: EffectKind> sealed::LowerShape for EffectShape<U, K> {
             h.write_u64(image.id().0);
             h.write_u32(image.generation());
         }
-        let pane = matches!(K::ID, KindId::Backdrop).then_some(pane);
-        if let Some(pane) = pane {
-            h.write_u32(pane.sigma.to_bits());
-            h.write_u32(pane.reach.to_bits());
+        let backdrop = matches!(K::ID, KindId::Backdrop).then_some(match reads {
+            Reads::Capture => EffectBackdrop::Capture(pane),
+            Reads::Ground => EffectBackdrop::Ground,
+        });
+        match backdrop {
+            Some(EffectBackdrop::Capture(pane)) => {
+                h.write_u8(1);
+                h.write_u32(pane.sigma.to_bits());
+                h.write_u32(pane.reach.to_bits());
+            }
+            Some(EffectBackdrop::Ground) => h.write_u8(2),
+            None => {}
         }
         ShapeRecord::Effect {
-            pane,
+            backdrop,
             local_rect,
             corners,
             effect,

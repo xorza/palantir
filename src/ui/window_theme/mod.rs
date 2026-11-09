@@ -29,7 +29,8 @@ pub(crate) struct WindowTheme {
     /// The scheme this frame shows, resolved once at its start so a frame never mixes two.
     scheme: ColorScheme,
     epoch: u32,
-    /// Whether a set replaced a theme since [`Self::take_replaced`] last handed the pair out.
+    /// Whether the pair is new since [`Self::take_replaced`] last handed it out: the stock pair at
+    /// the start, whose floats wear the stock frost, or a set that replaced either theme.
     replaced: bool,
 }
 
@@ -41,7 +42,7 @@ impl WindowTheme {
             transition: ThemeTransition::default(),
             scheme,
             epoch: 0,
-            replaced: false,
+            replaced: true,
         }
     }
 
@@ -89,9 +90,9 @@ impl WindowTheme {
         true
     }
 
-    /// Both themes, once after a set replaced either: what the next frame wants the press effects
-    /// of ([`Ui::set_theme`](crate::Ui::set_theme)). A theme a later set replaced before that
-    /// frame is never handed out, so its effects build nothing.
+    /// Both themes, once at the start and once after a set replaced either: what the next frame
+    /// wants the press and material effects of ([`Ui::set_theme`](crate::Ui::set_theme)). A theme
+    /// a later set replaced before that frame is never handed out, so its effects build nothing.
     pub(crate) fn take_replaced(&mut self) -> Option<[&Rc<Theme>; 2]> {
         if !mem::take(&mut self.replaced) {
             return None;

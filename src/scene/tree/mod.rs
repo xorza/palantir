@@ -54,6 +54,7 @@ use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::scene::tree::tree_fingerprint::TreeFingerprint;
 use crate::shape::lower;
 use crate::shape::paint::chrome_row::ChromeRow;
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record_store::RecordStore;
 use crate::shape::shapes::Shapes;
@@ -111,6 +112,8 @@ pub(crate) struct NodeChrome<'a> {
     pub(crate) chrome: Option<&'a Chrome>,
     /// `Stroke::NONE` unless the node shows keyboard focus.
     pub(crate) ring: Stroke,
+    /// What the chrome's material reads this record; `None` where it paints none.
+    pub(crate) material: Option<MaterialRead>,
 }
 
 impl Tree {
@@ -441,7 +444,11 @@ impl Tree {
         node_chrome: NodeChrome<'_>,
         store: &mut RecordStore,
     ) -> NodeId {
-        let NodeChrome { chrome, ring } = node_chrome;
+        let NodeChrome {
+            chrome,
+            ring,
+            material,
+        } = node_chrome;
         // A ring with no chrome rides an empty one.
         let chrome = chrome.or_else(|| (!ring.is_noop()).then_some(&Chrome::NONE));
         // Overflow is guarded in `SubtreeEnd::new_open` (31-bit arena ceiling).
@@ -502,7 +509,7 @@ impl Tree {
                 || !ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::chrome(store, chrome, ring);
+                let row = lower::chrome(store, chrome, ring, material);
                 if row.ring {
                     self.focus_ring = ShapeStroke::lower(ring);
                 }
@@ -524,11 +531,13 @@ impl Tree {
         let inherited = parent_frame
             .map_or(Inherited::ROOT, |f| f.inherited)
             .child(cols.attrs, cols.layout.meta.visibility());
-        // A chrome with a backdrop filter is a pane at the node's first row.
+        // A chrome whose material captures is a pane at the node's first row.
         if !inherited.invisible
-            && ex
-                .chrome
-                .is_some_and(|row| self.chrome_table[row.idx()].backdrop.is_some())
+            && ex.chrome.is_some_and(|row| {
+                self.chrome_table[row.idx()]
+                    .material
+                    .is_some_and(LoweredMaterial::captures)
+            })
         {
             self.panes.push(PaneEntry {
                 node: new_id,

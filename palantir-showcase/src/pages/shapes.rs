@@ -9,8 +9,9 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
+use palantir::Chrome;
 use palantir::glam::Vec2;
-use palantir::widget::{Mesh, Shape};
+use palantir::widget::{Mesh, RectShape, Shape};
 use palantir::{LinearGradient, RgbaF32, Stroke, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
@@ -51,7 +52,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Windowed rect")
-        .apis(&[api!(Shape::windowed_rect)])
+        .apis(&[api!(Shape::windowed_rect as fn(Chrome) -> RectShape)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -178,27 +179,22 @@ fn gradient_quad(ui: &mut Ui, k: Kit) {
 /// The headline use: rounded-corner clipping without a stencil pass; the windowed rect fills the corner wedges
 /// with the tile background and strokes the boundary over a plain unclipped gradient.
 fn window_mask(ui: &mut Ui, k: Kit) {
-    ui.add_shape(Shape::rect().fill(LinearGradient::two_stop(
+    ui.add_shape(Shape::rect(LinearGradient::two_stop(
         FRAC_PI_2,
         RgbaF32::hex(0x1a1a2e),
         RgbaF32::hex(0x4c5cdb),
     )));
-    ui.add_shape(
-        Shape::windowed_rect()
-            .corners(18.0)
-            .fill(k.t.ground)
-            .border(Stroke::new(k.swatch.teal, 2.0)),
-    );
+    ui.add_shape(Shape::windowed_rect(
+        Chrome::rounded(k.t.ground, 18.0).with_border(Stroke::new(k.swatch.teal, 2.0)),
+    ));
 }
 
 /// A translucent fill exposes the geometry: only the corner wedges outside the rounded boundary are covered.
 fn window_anatomy(ui: &mut Ui, k: Kit) {
-    ui.add_shape(
-        Shape::windowed_rect()
-            .corners(28.0)
-            .fill(k.swatch.orange.with_alpha(0.75))
-            .border(Stroke::new(k.swatch.lime, 4.0)),
-    );
+    ui.add_shape(Shape::windowed_rect(
+        Chrome::rounded(k.swatch.orange.with_alpha(0.75), 28.0)
+            .with_border(Stroke::new(k.swatch.lime, 4.0)),
+    ));
 }
 
 /// The live triangle's knobs.

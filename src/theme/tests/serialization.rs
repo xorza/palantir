@@ -1,9 +1,11 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::domain;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::text::font_family::FontFamily;
@@ -29,14 +31,14 @@ fn default_theme_roundtrips_through_ron() {
     assert!(!serialized.contains("color("), "an off-grid default color");
     // A backdrop costs a capture and a blur each frame its pane repaints, so only what floats
     // over content wears one: the menu, popup, picker popup, tooltip and modal panels, and no
-    // slot at all without a float material. A file omits a no-op filter.
-    assert_eq!(serialized.matches("backdrop_filter:").count(), 5);
+    // slot at all without a float material. A file omits a chrome's absent material.
+    assert_eq!(serialized.matches("material:").count(), 5);
     let opaque = Metrics {
         float_material: None,
         ..Metrics::DEFAULT
     };
     let opaque = pretty(&Theme::from_parts(&Palette::DARK, &opaque));
-    assert_eq!(opaque.matches("backdrop_filter:").count(), 0);
+    assert_eq!(opaque.matches("material:").count(), 0);
 
     // A theme's transition is its own value in the file, a duration or a spring.
     for transition in [AnimationSpec::SNAP, AnimationSpec::spring(300.0, 10.0)] {
@@ -53,46 +55,45 @@ fn default_theme_roundtrips_through_ron() {
 
 #[test]
 fn widget_look_serde_roundtrip() {
-    let cases = [
-        WidgetLook::default(),
-        WidgetLook {
-            chrome: Chrome {
-                fill: RgbaF32::hex(0x336699).into(),
-                border: Stroke::new(RgbaF32::hex(0xffffff), 1.5),
-                corners: Corners::all(6.0),
-                shadow: Shadow::NONE,
-                backdrop_filter: BackdropFilter::NONE,
+    let cases =
+        [
+            WidgetLook::default(),
+            WidgetLook {
+                chrome: Chrome {
+                    fill: RgbaF32::hex(0x336699).into(),
+                    border: Stroke::new(RgbaF32::hex(0xffffff), 1.5),
+                    corners: Corners::all(6.0),
+                    shadow: Shadow::NONE,
+                    material: None,
+                },
+                text: TextStyleOverrides::NONE.with_font_size(20.0),
             },
-            text: TextStyleOverrides::NONE.with_font_size(20.0),
-        },
-        WidgetLook {
-            chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
-                .with_backdrop_filter(
-                    BackdropFilter::frosted(12.0)
-                        .with_max_luminance(0.05)
-                        .with_lens(Lens {
+            WidgetLook {
+                chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
+                    .with_material(Material::frosted(12.0).with_max_luminance(0.05).with_lens(
+                        Lens {
                             dispersion: 0.0,
                             ..Lens::WINDOW_GLASS
-                        }),
-                ),
-            text: TextStyleOverrides::NONE,
-        },
-        WidgetLook {
-            chrome: Chrome::NONE,
-            text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0x808080)),
-        },
-        WidgetLook {
-            chrome: Chrome::NONE,
-            text: TextStyleOverrides {
-                family: Some(FontFamily::MONO),
-                weight: Some(FontWeight::BOLD),
-                slant: Some(FontSlant::Italic),
-                ..TextStyleOverrides::NONE
-                    .with_font_size(13.0)
-                    .with_line_height_factor(1.5)
+                        },
+                    )),
+                text: TextStyleOverrides::NONE,
             },
-        },
-    ];
+            WidgetLook {
+                chrome: Chrome::NONE,
+                text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0x808080)),
+            },
+            WidgetLook {
+                chrome: Chrome::NONE,
+                text: TextStyleOverrides {
+                    family: Some(FontFamily::MONO),
+                    weight: Some(FontWeight::BOLD),
+                    slant: Some(FontSlant::Italic),
+                    ..TextStyleOverrides::NONE
+                        .with_font_size(13.0)
+                        .with_line_height_factor(1.5)
+                },
+            },
+        ];
     for look in cases {
         let serialized = pretty(&look);
         let parsed: WidgetLook = ron::from_str(&serialized).expect("parse");
@@ -107,47 +108,63 @@ fn widget_look_serde_roundtrip() {
     }
 }
 
-/// A backdrop filter in a file names only what differs from `BackdropFilter::NONE`, and each
-/// field is checked by its kind: a blur a length, saturation, noise and a luminance ceiling
-/// factors, a lens's index at least 1 and its dispersion and highlight fractions.
+/// A material in a file names its effect and only what differs from its defaults, and each field
+/// is checked by its kind: a blur a length, saturation, noise and a luminance ceiling factors, a
+/// lens's index at least 1 and its dispersion and highlight fractions. An effect is a name a file
+/// cannot leave out, which the theme's set checks against the loaded effects.
 #[test]
-fn backdrop_filters_load_by_their_kinds() {
+fn materials_load_by_their_kinds() {
+    let blur = |rest: &str| format!("(effect: \"palantir.blur\"{rest})");
     for (label, ron, want) in [
-        ("blur alone", "(blur: 8.0)", Some(BackdropFilter::blur(8.0))),
+        ("blur alone", blur(", blur: 8.0"), Some(Material::blur(8.0))),
         (
             "gray",
-            "(saturation: 0.0)",
-            Some(BackdropFilter::NONE.with_saturation(0.0)),
+            blur(", input: (saturation: 0.0)"),
+            Some(Material::blur(0.0).with_saturation(0.0)),
         ),
         (
             "default lens",
-            "(lens: Some(()))",
-            Some(BackdropFilter::glass(Lens::WINDOW_GLASS)),
+            "(effect: \"palantir.glass\", input: (lens: ()))".to_owned(),
+            Some(Material::glass(Lens::WINDOW_GLASS)),
         ),
-        ("negative blur", "(blur: -1.0)", None),
-        ("NaN saturation", "(saturation: NaN)", None),
-        ("negative noise", "(noise: -0.1)", None),
+        (
+            "keeps its dim",
+            blur(", reduced_transparency: Nothing"),
+            Some(Material::blur(0.0).with_reduced_transparency(ReducedBackdrop::Nothing)),
+        ),
+        ("no effect", "(blur: 8.0)".to_owned(), None),
+        ("negative blur", blur(", blur: -1.0"), None),
+        ("NaN saturation", blur(", input: (saturation: NaN)"), None),
+        ("negative noise", blur(", input: (noise: -0.1)"), None),
         (
             "ceiling",
-            "(max_luminance: Some(0.05))",
-            Some(BackdropFilter::NONE.with_max_luminance(0.05)),
+            blur(", max_luminance: Some(0.05)"),
+            Some(Material::blur(0.0).with_max_luminance(0.05)),
         ),
         (
             "no ceiling",
-            "(max_luminance: None)",
-            Some(BackdropFilter::NONE),
+            blur(", max_luminance: None"),
+            Some(Material::blur(0.0)),
         ),
-        ("negative ceiling", "(max_luminance: Some(-0.1))", None),
-        ("NaN ceiling", "(max_luminance: Some(NaN))", None),
-        ("infinite ceiling", "(max_luminance: Some(inf))", None),
         (
-            "index below 1",
-            "(lens: Some((refractive_index: 0.9)))",
+            "negative ceiling",
+            blur(", max_luminance: Some(-0.1)"),
             None,
         ),
-        ("dispersion past 1", "(lens: Some((dispersion: 1.5)))", None),
+        ("NaN ceiling", blur(", max_luminance: Some(NaN)"), None),
+        ("infinite ceiling", blur(", max_luminance: Some(inf)"), None),
+        (
+            "index below 1",
+            blur(", input: (lens: (refractive_index: 0.9))"),
+            None,
+        ),
+        (
+            "dispersion past 1",
+            blur(", input: (lens: (dispersion: 1.5))"),
+            None,
+        ),
     ] {
-        let got = ron::from_str::<BackdropFilter>(ron).ok();
+        let got = ron::from_str::<Material>(&ron).ok();
         assert_eq!(got, want, "{label}");
     }
 }

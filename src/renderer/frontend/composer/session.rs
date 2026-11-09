@@ -11,7 +11,6 @@ use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::math::num::Vec2Ext;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
-use crate::primitives::paint::backdrop_filter::Lens;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
@@ -28,7 +27,7 @@ use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
+use crate::renderer::frontend::payload::draw_pane_payload::{BackdropDraw, DrawPanePayload};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
@@ -36,7 +35,9 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRow, FilterLook, PaneSource};
+use crate::renderer::render_buffer::backdrop_row::{
+    BackdropRead, BackdropRow, MaterialLook, PaneSource,
+};
 use crate::renderer::render_buffer::effect_draw_row::{
     EffectDrawRow, EffectInstance, EffectProgram,
 };
@@ -190,42 +191,48 @@ impl PaintSink for ComposeSession<'_> {
         self.record_opaque_cover(&p, &packed);
     }
 
-    /// A pane draws as palantir's own backdrop effect in its lens's form, over the rect a quad
-    /// of it would shade, packed as one: it neither folds into the clear nor covers anything
-    /// opaquely, as the backdrop shows through it.
+    /// A material draws through its effect's material stage, over the rect a quad of it would
+    /// shade, packed as one: it neither folds into the clear nor covers anything opaquely, as what
+    /// it reads shows through it.
     fn pane(&mut self, p: DrawPanePayload) {
-        let packed = PackedQuad::pack(&p.geometry(), &self.lowering());
+        let geometry = p.geometry();
+        let packed = PackedQuad::pack(&geometry, &self.lowering());
         let Some(visible) = self.ordering().cull(packed.rect.urect) else {
             return;
         };
         let scale = self.composer.transform.physical_scale();
-        let backdrop = p.backdrop;
-        // The lanes a quad held, f16 as it held them.
-        let [_, saturation, noise, opacity] = backdrop.fill_axis(p.opacity).lanes();
+        // The opacity f16 as a quad holds it.
+        let opacity = geometry.fill_axis.lanes()[3];
+        let material = p.material;
+        let look = MaterialLook {
+            max_luminance: material.max_luminance(),
+            min_luminance: material.min_luminance(),
+            tint: p.tint,
+            stroke_color: p.stroke.color,
+            stroke_width: packed.stroke_width,
+        };
         // Listed before it is ordered, so its own paint is not among what it shares a break past.
-        let pane = self.list_pane(visible, p.ticket, |source| BackdropRow {
-            capture: p.ticket.capture,
-            reads: p.ticket.capture.footprint.into(),
-            look: Some(FilterLook {
-                lens: backdrop.lens().map(|lens| Lens {
-                    bezel: lens.bezel * scale,
-                    thickness: lens.thickness * scale,
-                    ..lens
-                }),
-                saturation,
-                noise,
-                max_luminance: backdrop.max_luminance(),
-                min_luminance: backdrop.min_luminance(),
-                tint: p.tint,
-                stroke_color: p.stroke.color,
-                stroke_width: packed.stroke_width,
+        let pane = match p.read {
+            BackdropDraw::Capture(ticket) => {
+                self.list_pane(visible, ticket, |source| BackdropRow {
+                    reads: ticket.capture.footprint.into(),
+                    look: Some(look),
+                    read: BackdropRead::Pane {
+                        capture: ticket.capture,
+                        source,
+                    },
+                })
+            }
+            BackdropDraw::Ground => self.list_ground(BackdropRow {
+                reads: packed.rect.physical,
+                look: Some(look),
+                read: BackdropRead::Ground,
             }),
-            source,
-        });
+        };
         self.ordering()
             .order(Lane::Tier(PaintTier::Effect), visible);
         self.out.effects.push(EffectDrawRow {
-            program: EffectProgram::Pane(p.form()),
+            program: EffectProgram::Material(material.effect()),
             images: Span::default(),
             instance: EffectInstance {
                 rect: packed.rect.physical,
@@ -234,7 +241,7 @@ impl PaintSink for ComposeSession<'_> {
                 opacity,
                 scale,
                 rotation: packed.rotation,
-                params: 0,
+                params: material.params,
                 pane,
                 flags: if p.kind == RectKind::Windowed {
                     EffectInstance::WINDOW
@@ -462,21 +469,33 @@ impl PaintSink for ComposeSession<'_> {
         // break past.
         let pane = match p.pane {
             Some(pane) => {
-                // The rect, or its turn's cover, grown by its reach; inside the capture by half a
-                // pixel, so a read at the window's edge blends no texel past it.
+                // The rect, or its turn's cover, grown by its reach.
                 let cover = match p.spin {
                     None => physical,
                     Some(spin) => physical.turned_cover(physical.center(), spin.angle),
                 };
-                let reads = cover
-                    .inflated(pane.reach * scale)
-                    .clamp_to(Rect::from(pane.ticket.capture.footprint).deflated(0.5));
-                self.list_pane(visible, pane.ticket, |source| BackdropRow {
-                    capture: pane.ticket.capture,
-                    reads,
-                    look: None,
-                    source,
-                })
+                match pane.read {
+                    // Inside the capture by half a pixel, so a read at the window's edge blends no
+                    // texel past it.
+                    BackdropDraw::Capture(ticket) => {
+                        let reads = cover
+                            .inflated(pane.reach * scale)
+                            .clamp_to(Rect::from(ticket.capture.footprint).deflated(0.5));
+                        self.list_pane(visible, ticket, |source| BackdropRow {
+                            reads,
+                            look: None,
+                            read: BackdropRead::Pane {
+                                capture: ticket.capture,
+                                source,
+                            },
+                        })
+                    }
+                    BackdropDraw::Ground => self.list_ground(BackdropRow {
+                        reads: cover,
+                        look: None,
+                        read: BackdropRead::Ground,
+                    }),
+                }
             }
             None => 0,
         };
@@ -655,6 +674,18 @@ impl ComposeSession<'_> {
         });
     }
 
+    /// List `row`, a backdrop over the window's ground, which takes no capture and breaks no
+    /// pass; its index is its effect instance's `pane`.
+    fn list_ground(&mut self, row: BackdropRow) -> u32 {
+        debug_assert!(
+            row.read == BackdropRead::Ground,
+            "a ground row reads the ground"
+        );
+        let idx = self.out.backdrops.len() as u32;
+        self.out.backdrops.push(row);
+        idx
+    }
+
     /// List the pane of `ticket`, seen at `visible`, as `row` makes it from the source paint
     /// order gives it ([`Ordering::pane_source`]); its index is its effect instance's `pane`.
     fn list_pane(
@@ -745,7 +776,9 @@ impl ComposeSession<'_> {
     /// still be ahead.
     fn discard_composed(&mut self) {
         for row in &mut self.out.backdrops {
-            row.source = PaneSource::Hidden;
+            if let BackdropRead::Pane { source, .. } = &mut row.read {
+                *source = PaneSource::Hidden;
+            }
         }
         self.out.discard_scene();
         self.composer.order.start_frame(self.out.display.physical);

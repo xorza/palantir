@@ -4,7 +4,6 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
@@ -64,7 +63,7 @@ fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
                     border: Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
                     corners: Corners::all(8.0),
                     shadow: Shadow::NONE,
-                    backdrop_filter: BackdropFilter::NONE,
+                    material: None,
                 })
                 .clip_rounded()
                 .show(ui, |ui| {

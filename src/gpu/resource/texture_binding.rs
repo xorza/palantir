@@ -26,7 +26,7 @@ pub(crate) struct TextureBinding {
     /// practices"), so a draw binds them at once and an effect needs two groups of the four the
     /// baseline grants. Refused: a group per image, which needs five.
     images: [wgpu::BindGroupLayout; MAX_IMAGE_SLOTS as usize],
-    /// The group a pane's composite reads its result through, a backdrop filter's and an app's
+    /// The group a backdrop's composite reads its result through, a material's and an app's
     /// backdrop effect's alike: the results atlas, its sampler, the slot table and the spectrum a
     /// lens spreads.
     panes: wgpu::BindGroupLayout,

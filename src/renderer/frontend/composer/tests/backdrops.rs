@@ -5,23 +5,24 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::composer::tests::support::{
     draw, draw_marked, params, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
+use crate::renderer::frontend::payload::draw_pane_payload::{BackdropDraw, DrawPanePayload};
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::PaneCapture;
-use crate::renderer::render_buffer::backdrop_row::PaneSource;
-use crate::renderer::render_buffer::effect_draw_row::{EffectProgram, PaneForm};
+use crate::renderer::render_buffer::backdrop_row::{
+    BackdropRead, BackdropRow, PaneCapture, PaneSource,
+};
+use crate::renderer::render_buffer::effect_draw_row::EffectProgram;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::UVec2;
@@ -58,12 +59,20 @@ fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: PaneTicket, alpha: f32) 
             spin: None,
             tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
             stroke: ShapeStroke::NONE,
-            backdrop: LoweredBackdrop::of(BackdropFilter::blur(4.0)).unwrap(),
+            material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
-            ticket,
+            read: BackdropDraw::Capture(ticket),
         },
         alpha,
     );
+}
+
+/// The source of `row`, a pane's.
+fn source(row: &BackdropRow) -> PaneSource {
+    match row.read {
+        BackdropRead::Pane { source, .. } => source,
+        BackdropRead::Ground => panic!("a pane, not the ground"),
+    }
 }
 
 /// A capturing pane at `rect` and σ `sigma`, faded by `alpha`.
@@ -76,7 +85,7 @@ fn pane(buf: &mut PaintCapture, rect: Rect, sigma: f32, alpha: f32) {
 fn barriers(buf: &RenderBuffer) -> Vec<u32> {
     buf.backdrops
         .iter()
-        .map(|row| match row.source {
+        .map(|row| match source(row) {
             PaneSource::Capture { barrier } => barrier,
             PaneSource::Clear => 0,
             source => panic!("a capturing pane, not {source:?}"),
@@ -87,8 +96,8 @@ fn barriers(buf: &RenderBuffer) -> Vec<u32> {
 /// A capturing pane closes the group and the text batch before it, so its barrier is the first
 /// group after them and its effect row opens that group, and the quad over it after it closes that
 /// group in turn, as it paints over a draw that replays after quads; its row takes its ticket's
-/// footprint, plan and region, and its effect row reads that row as frost, at its whole opacity,
-/// unsaturated and ungrained.
+/// footprint, plan and region, and its effect row reads that row through its material's effect,
+/// at its whole opacity, with no luminance bound.
 #[test]
 fn a_pane_cuts_the_frame_at_its_barrier() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
@@ -110,16 +119,16 @@ fn a_pane_cuts_the_frame_at_its_barrier() {
     assert_eq!(buf.text_batches[0].last_group, 0);
     assert_eq!(buf.backdrops.len(), 1);
     let row = buf.backdrops[0];
-    assert_eq!(row.source, PaneSource::Capture { barrier: 1 });
-    assert_eq!(row.capture, ticket.capture);
-    let look = row.look.expect("a filter's pane has a look");
-    assert_eq!((look.saturation, look.noise), (1.0, 0.0));
+    assert_eq!(source(&row), PaneSource::Capture { barrier: 1 });
+    assert_eq!(row.capture(), Some(&ticket.capture));
+    let look = row.look.expect("a material's pane has a look");
+    assert_eq!((look.max_luminance, look.min_luminance), (65504.0, 0.0));
     let effects = buf.batches(PaintTier::Effect);
     assert_eq!(effects.len(), 1);
     assert_eq!(effects[0].last_group, 1);
     assert_eq!(
         buf.effects.program()[0],
-        EffectProgram::Pane(PaneForm::Frost)
+        EffectProgram::Material(EffectId(0))
     );
     let instance = buf.effects.instance()[0];
     assert_eq!((instance.pane, instance.opacity), (0, 1.0));
@@ -146,8 +155,8 @@ fn a_held_pane_breaks_nothing() {
     assert_eq!(buf.batches(PaintTier::Effect)[0].last_group, 0);
     assert_eq!(buf.groups[1].quads.range(), 1..2);
     let row = buf.backdrops[0];
-    assert_eq!(row.source, PaneSource::Held);
-    assert_eq!(row.capture.region, ticket.capture.region);
+    assert_eq!(source(&row), PaneSource::Held);
+    assert_eq!(row.capture().map(|c| c.region), Some(ticket.capture.region));
 }
 
 /// A quad after a pane covering one before it leaves it alone: the pane's capture copies what it
@@ -182,7 +191,7 @@ fn a_fade_scales_the_panes_opacity() {
     assert_eq!(buf.backdrops.len(), 1);
     assert_eq!(buf.effects.len(), 1);
     assert_eq!(buf.effects.instance()[0].opacity, 0.5);
-    let look = buf.backdrops[0].look.expect("a filter's pane has a look");
+    let look = buf.backdrops[0].look.expect("a material's pane has a look");
     assert_eq!(
         RgbaF32::from(look.tint).a,
         0.125,
@@ -202,7 +211,7 @@ fn the_clear_fold_hides_the_panes_before_it() {
         },
         &params(1.0, UVec2::new(100, 100)),
     );
-    let sources: Vec<PaneSource> = buf.backdrops.iter().map(|row| row.source).collect();
+    let sources: Vec<PaneSource> = buf.backdrops.iter().map(source).collect();
     assert_eq!(sources, [PaneSource::Hidden]);
     assert!(buf.quads.is_empty());
     assert!(buf.effects.is_empty());
@@ -250,31 +259,41 @@ fn a_pane_shares_the_last_break_when_nothing_since_touches_it() {
     );
 }
 
-/// A pane draws through the form of its glass: frost with none, one index, or a spectrum spread by
-/// its dispersion, each a pipeline of its own.
+/// A material over the ground, while transparency is reduced, lists a row of the ground over its
+/// own rect: it holds no capture, breaks no group, and its effect row reads that row through its
+/// material's effect, between the quads around it in one group.
 #[test]
-fn a_pane_names_the_form_of_its_glass() {
+fn a_material_over_the_ground_breaks_nothing() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
-    let lens = |dispersion| Lens {
-        dispersion,
-        ..Lens::WINDOW_GLASS
-    };
-    for (filter, form) in [
-        (BackdropFilter::blur(4.0), PaneForm::Frost),
-        (BackdropFilter::glass(lens(0.0)), PaneForm::Lens),
-        (BackdropFilter::glass(lens(0.06)), PaneForm::Spectrum),
-    ] {
-        let pane = DrawPanePayload {
-            kind: RectKind::Rounded,
-            rect,
-            corners: Corners::ZERO,
-            spin: None,
-            tint: RgbaF32::TRANSPARENT.to_f16(),
-            stroke: ShapeStroke::NONE,
-            backdrop: LoweredBackdrop::of(filter).unwrap(),
-            opacity: 1.0,
-            ticket: ticket(0, rect, 4.0, true),
-        };
-        assert_eq!(pane.form(), form, "{filter:?}");
-    }
+    let buf = run(
+        |b, _| {
+            draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
+            b.draw(
+                DrawPanePayload {
+                    kind: RectKind::Rounded,
+                    rect,
+                    corners: Corners::ZERO,
+                    spin: None,
+                    tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
+                    stroke: ShapeStroke::NONE,
+                    material: LoweredMaterial::fixture(4.0),
+                    opacity: 1.0,
+                    read: BackdropDraw::Ground,
+                },
+                1.0,
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(buf.backdrops.len(), 1);
+    let row = buf.backdrops[0];
+    assert_eq!(row.read, BackdropRead::Ground);
+    assert_eq!(row.capture(), None);
+    assert_eq!(row.reads, rect);
+    assert_eq!(
+        buf.effects.program()[0],
+        EffectProgram::Material(EffectId(0))
+    );
+    assert_eq!(buf.effects.instance()[0].pane, 0);
 }

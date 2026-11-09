@@ -768,12 +768,12 @@ impl GlyphButton {
         for step in [-1.0, 0.0, 1.0] {
             let x = side * 0.5 + step * pitch;
             let y = side * 0.5;
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(x - radius, y - radius, diameter, diameter))
-                    .corners(radius)
-                    .fill(self.ink),
-            );
+            ui.add_shape(Shape::rect(Chrome::rounded(self.ink, radius)).at(Rect::new(
+                x - radius,
+                y - radius,
+                diameter,
+                diameter,
+            )));
         }
     }
 }

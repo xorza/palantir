@@ -202,9 +202,17 @@ driver serves that command alone; the drive table's `version` names it
 - **Fixed short forms.** `idx`, `pos`, `ctx`/`Ctx`, `dir`, `bg`, `col`, `exec`, `desc`, `cur`,
   `prev`, plurals with `s`; prose, strings and test names keep whole words. A foreign name and a
   term of another meaning keep theirs (`GradientIndex`, `WindowDirectory`, `Menu`).
-- **`Chrome` is what a node paints behind its content**: fill, border, radii, shadow. `bg` is a
-  background color alone. Refused: `bg` or `background` for a `Chrome`, which holds more than a
-  fill; "chrome" for a widget's scaffolding.
+- **`Chrome` is a painted box**: fill, border, radii, shadow and material, the one value of a
+  node's box, a rect shape (`Shape::rect`) and a modal's scrim, as Flutter's `BoxDecoration`
+  serves `Container` and `DecoratedBox`. `bg` is a background color alone. Refused: `bg` or
+  `background` for a `Chrome`, which holds more than a fill; "chrome" for a widget's scaffolding;
+  a rect's own paint setters or a scrim type beside it, more routes to one box.
+- **One word, one meaning for what is behind.** *Backdrop* is the pixels painted under a shape,
+  which a backdrop effect reads; *material* a backdrop effect a box wears under its fill; *barrier*
+  what stands between an overlay and the layers below (`Barrier`, as Flutter's `ModalBarrier`).
+  Refused: CSS's two senses, `::backdrop` behind a dialog and `backdrop-filter` behind an element;
+  "pane" for any of them, the dock's and the splitter's word. Not yet done inside the renderer,
+  whose names still say "pane" (`.notes/TODO.md`).
 - **Constructors.** `new` first; a named one names the kind or arrangement (`Panel::hstack`);
   `from_*` converts; `on(&snapshot)` attaches an overlay, `for_id(id)` by id. No widget
   constructor takes `ui`.
@@ -268,9 +276,9 @@ driver serves that command alone; the drive table's `version` names it
   overrides it. The four are one `UiPreferences`, which `Ui::preferences` and `Ui::set_preferences`
   read and write whole, as egui's `Context::options_mut` holds its options. One theme holds every
   transition and every frost; reduced motion snaps them and stops decorative paint motion, an
-  animation its author marks essential (`MotionRole`) running on, and reduced transparency paints
-  every backdrop filter as its `fallback` or its fill made opaque, with no capture or blur, as
-  WinUI's acrylic falls back to its `FallbackColor`
+  animation its author marks essential (`MotionRole`) running on, and reduced transparency shows
+  every material over the window's ground, or drops it where its use asks
+  (`ReducedBackdrop`), with no capture or blur, as WinUI's acrylic turns solid
   ([acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)). Refused: two switches
   in the `Theme`, a person's or a system's choice in a theme file that a transition would blend.
 - **Reduced power follows the OS power-saver mode**: macOS Low Power Mode, Windows' Energy saver
@@ -294,12 +302,16 @@ driver serves that command alone; the drive table's `version` names it
   every cause of a frame to it, and an offscreen host's caller paces by it. Refused: decorative
   motion alone, which saves nothing on a frame that input asks for; no limit, which saves nothing
   for an app with no cheaper paint.
-- **The stock themes frost their floats** in `Metrics::float_material`: any `BackdropFilter`
-  look under the float's tint, its luminance bound derived from each float's ink. Refused:
-  opaque defaults, which made an app build its themes again to frost them and again to stop; a
-  token per look (blur, frost, glass), three spellings of a choice one filter holds.
+- **The stock themes frost their floats** in `Metrics::float_material`: any `Material` under the
+  float's tint, its luminance bound derived from each float's ink. Refused: opaque defaults, which
+  made an app build its themes again to frost them and again to stop; a token per look (blur,
+  frost, glass), three spellings of a choice one material holds.
+- **Blur, frosted and glass are stock effects.** A `Material` names a backdrop effect over
+  `MaterialInput`, palantir's own (`EffectName::BLUR`, `FROSTED`, `GLASS`) or an app's, loaded and
+  checked as any effect is, as Flutter's `BackdropFilter` takes `ImageFilter.blur` or
+  `ImageFilter.shader`. Refused: a built-in filter type beside app effects, two forms of one thing.
 - **Frosted glass holds its ink at WCAG 4.5:1**; palantir owns the math, as it depends on its
-  dither. Refused: `Chrome::with_frost` and a `Chrome` setter per `BackdropFilter` constructor
+  dither. Refused: `Chrome::with_frost` and a `Chrome` setter per stock material
   ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).
 - **One chord table**, Cmd standing in for Ctrl on macOS: Redo is Ctrl+Shift+Z; Ctrl or Alt acts
   on a word; Ctrl with Home, End, Up or Down goes to the document's ends. Refused: Ctrl+Y, a second

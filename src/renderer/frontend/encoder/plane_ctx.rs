@@ -22,6 +22,7 @@ use crate::renderer::frontend::payload::draw_effect_payload::{DrawEffectPayload,
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_pane_payload::BackdropDraw;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{
@@ -41,11 +42,12 @@ use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::scene::tree::pane_entry::PaneOrigin;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::LoweredMaterial;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::paint::shape_stroke::ShapeStroke;
-use crate::shape::record::{ShapeRecord, TextAnchor};
+use crate::shape::record::{EffectBackdrop, ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -90,11 +92,22 @@ struct RectPaint {
     alpha: f32,
 }
 
-/// What makes a rect a pane: its backdrop filter, and the ticket the pane ledger wrote for it.
+/// What makes a rect a material's box: its material, and what it reads, the ticket the pane
+/// ledger wrote for it or the ground.
 #[derive(Clone, Copy, Debug)]
 struct PaneLook {
-    backdrop: LoweredBackdrop,
-    ticket: PaneTicket,
+    material: LoweredMaterial,
+    read: BackdropDraw,
+}
+
+/// A box as one paint call draws it: its rect, its shadow, its material, and where its pane is
+/// recorded.
+#[derive(Clone, Copy, Debug)]
+struct BoxPaint {
+    paint: RectPaint,
+    shadow: LoweredShadow,
+    material: Option<LoweredMaterial>,
+    site: PaneSite,
 }
 
 /// Where a pane is recorded: by its owner, as its chrome or its shape at `shape_idx`.
@@ -111,8 +124,8 @@ fn paint_rect(paint: RectPaint, out: &mut impl PaintSink) {
     out.draw(DrawQuadPayload::rect(quad).turned(spin), alpha);
 }
 
-/// Paint `paint` as a pane over the pixels painted before it, through `look`. A pane's tint is
-/// solid: a gradient fill and the border over it draw as the rect above the pane.
+/// Paint `paint` as a material's box over what it reads, through `look`. Its fill is solid: a
+/// gradient fill and the border over it draw as the rect above the material.
 fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
     let RectPaint { quad, spin, alpha } = paint;
     let tint = match quad.fill {
@@ -131,9 +144,9 @@ fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
             } else {
                 ShapeStroke::NONE
             },
-            backdrop: look.backdrop,
+            material: look.material,
             opacity: 1.0,
-            ticket: look.ticket,
+            read: look.read,
         },
         alpha,
     );
@@ -143,12 +156,56 @@ fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
 }
 
 impl PlaneCtx<'_, '_> {
-    /// What makes the rect recorded at `site` a pane: `backdrop` and its ticket; `None` for a
-    /// rect of no backdrop, or a pane the cascade lists not.
-    fn pane_look(&mut self, site: PaneSite, backdrop: Option<LoweredBackdrop>) -> Option<PaneLook> {
-        let backdrop = backdrop?;
-        let ticket = self.pane_ticket(site)?;
-        Some(PaneLook { backdrop, ticket })
+    /// What makes the rect recorded at `site` a material's box: `material` and what it reads;
+    /// `None` for a rect of no material, or a pane the cascade lists not.
+    fn pane_look(&mut self, site: PaneSite, material: Option<LoweredMaterial>) -> Option<PaneLook> {
+        let material = material?;
+        let read = if material.captures() {
+            BackdropDraw::Capture(self.pane_ticket(site)?)
+        } else {
+            BackdropDraw::Ground
+        };
+        Some(PaneLook { material, read })
+    }
+
+    /// Paint a box, a node's chrome or a rect shape: its drop shadow under its fill, its fill or
+    /// its material, and its inset shadow over the fill inside its border, as CSS Backgrounds 3
+    /// §7.1 orders them.
+    fn paint_box(&mut self, item: BoxPaint, out: &mut impl PaintSink) {
+        let BoxPaint {
+            paint,
+            shadow,
+            material,
+            site,
+        } = item;
+        let pane = self.pane_look(site, material);
+        let paint_fill = |out: &mut _| match pane {
+            Some(look) => paint_pane(paint, look, out),
+            None => paint_rect(paint, out),
+        };
+        let RectPaint { quad, spin, alpha } = paint;
+        if shadow.inset() {
+            paint_fill(out);
+            let width = quad.stroke.width;
+            let padding_box = Rect {
+                min: Vec2::ZERO,
+                size: quad.rect.size,
+            }
+            .deflated(width);
+            let source = quad.rect.resolve_local(Some(padding_box));
+            let corners = quad
+                .corners
+                .inner(quad.rect.size, Spacing::saturating([width; 4]));
+            if let Some(shadow) = DrawQuadPayload::shadow(source, corners, shadow) {
+                out.draw(shadow.turned(spin), alpha);
+            }
+        } else {
+            // The box's rect, as `compute_paint_rect` and `QuadShape::bbox_local` mirror.
+            if let Some(shadow) = DrawQuadPayload::shadow(quad.rect, quad.corners, shadow) {
+                out.draw(shadow.turned(spin), alpha);
+            }
+            paint_fill(out);
+        }
     }
 
     /// The ticket of the pane recorded at `site`, as the tree lists it; `None` for a pane the
@@ -236,7 +293,8 @@ impl PlaneCtx<'_, '_> {
                     corners,
                     fill,
                     border,
-                    backdrop,
+                    shadow,
+                    material,
                 } => {
                     let rect = owner_rect.resolve_local(*local_rect);
                     let quad = RectQuad {
@@ -246,16 +304,19 @@ impl PlaneCtx<'_, '_> {
                         fill: self.brush_source(*fill),
                         stroke: *border,
                     };
-                    let paint = RectPaint { quad, spin, alpha };
-                    let site = PaneSite {
-                        owner: id,
-                        origin: PaneOrigin::Shape,
-                        shape_idx,
-                    };
-                    match self.pane_look(site, *backdrop) {
-                        Some(look) => paint_pane(paint, look, out),
-                        None => paint_rect(paint, out),
-                    }
+                    self.paint_box(
+                        BoxPaint {
+                            paint: RectPaint { quad, spin, alpha },
+                            shadow: *shadow,
+                            material: *material,
+                            site: PaneSite {
+                                owner: id,
+                                origin: PaneOrigin::Shape,
+                                shape_idx,
+                            },
+                        },
+                        out,
+                    );
                 }
                 QuadShape::Shadow {
                     local_rect,
@@ -394,7 +455,7 @@ impl PlaneCtx<'_, '_> {
             // An effect fades, turns and reads its time with its paint animation. A backdrop effect
             // the cascade lists not lies outside every clip.
             ShapeRecord::Effect {
-                pane,
+                backdrop,
                 local_rect,
                 corners,
                 effect,
@@ -402,8 +463,8 @@ impl PlaneCtx<'_, '_> {
                 images,
                 content_hash: _,
             } => {
-                let pane = match pane {
-                    Some(read) => {
+                let pane = match backdrop {
+                    Some(EffectBackdrop::Capture(read)) => {
                         let site = PaneSite {
                             owner: id,
                             origin: PaneOrigin::Shape,
@@ -413,10 +474,14 @@ impl PlaneCtx<'_, '_> {
                             return;
                         };
                         Some(EffectPaneDraw {
-                            ticket,
+                            read: BackdropDraw::Capture(ticket),
                             reach: read.reach,
                         })
                     }
+                    Some(EffectBackdrop::Ground) => Some(EffectPaneDraw {
+                        read: BackdropDraw::Ground,
+                        reach: 0.0,
+                    }),
                     None => None,
                 };
                 out.draw(
@@ -542,51 +607,31 @@ impl PlaneCtx<'_, '_> {
         let chrome = self.tree.chrome(id);
 
         if let Some(chrome) = chrome {
-            // Alpha `1.0`: chrome isn't a shape, so no paint animation. CSS Backgrounds 3 §7.1 order: drop shadow under the fill, inset over it.
-            let fill = RectQuad {
+            let quad = RectQuad {
                 kind: RectKind::Rounded,
                 rect,
                 corners: chrome.corners,
                 fill: self.brush_source(chrome.fill),
                 stroke: chrome.border,
             };
-            let site = PaneSite {
-                owner: id,
-                origin: PaneOrigin::Chrome,
-                shape_idx: self.tree.records.shape_span()[id.idx()].start,
-            };
-            let pane = self.pane_look(site, chrome.backdrop);
-            let paint = RectPaint {
-                quad: fill,
-                spin: None,
-                alpha: 1.0,
-            };
-            let paint_fill = |out: &mut _| match pane {
-                Some(look) => paint_pane(paint, look, out),
-                None => paint_rect(paint, out),
-            };
-            if chrome.shadow.inset() {
-                paint_fill(out);
-                let width = chrome.border.width;
-                let padding_box = Rect {
-                    min: Vec2::ZERO,
-                    size: rect.size,
-                }
-                .deflated(width);
-                let source = rect.resolve_local(Some(padding_box));
-                let corners = chrome
-                    .corners
-                    .inner(rect.size, Spacing::saturating([width; 4]));
-                if let Some(shadow) = DrawQuadPayload::shadow(source, corners, chrome.shadow) {
-                    out.draw(shadow, 1.0);
-                }
-            } else {
-                // The owner's rect, as `compute_paint_rect` mirrors.
-                if let Some(shadow) = DrawQuadPayload::shadow(rect, chrome.corners, chrome.shadow) {
-                    out.draw(shadow, 1.0);
-                }
-                paint_fill(out);
-            }
+            // Alpha `1.0`: chrome isn't a shape, so no paint animation.
+            self.paint_box(
+                BoxPaint {
+                    paint: RectPaint {
+                        quad,
+                        spin: None,
+                        alpha: 1.0,
+                    },
+                    shadow: chrome.shadow,
+                    material: chrome.material,
+                    site: PaneSite {
+                        owner: id,
+                        origin: PaneOrigin::Chrome,
+                        shape_idx: self.tree.records.shape_span()[id.idx()].start,
+                    },
+                },
+                out,
+            );
             if chrome.ring {
                 let ring = DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Rounded,

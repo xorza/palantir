@@ -38,9 +38,7 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
     use crate::shape::paint_animation::curves;
 
     ui.add_shape_animated(
-        Shape::rect()
-            .at(Rect::new(0.0, 0.0, 4.0, 12.0))
-            .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 4.0, 12.0)),
         PaintAnimation::alpha(0.0, 1.0)
             .with_started_at(Duration::ZERO)
             .with_period(half * 2)

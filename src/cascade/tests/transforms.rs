@@ -39,9 +39,8 @@ fn shape_rect_composes_self_transform() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 30.0, 30.0))
-                            .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
+                        Shape::rect(RgbaF32::srgb(0.5, 0.5, 0.5))
+                            .at(Rect::new(0.0, 0.0, 30.0, 30.0)),
                     );
                 });
         });
@@ -152,9 +151,8 @@ fn self_transform_anchors_scale_at_panel_origin() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 10.0, 10.0))
-                            .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
+                        Shape::rect(RgbaF32::srgb(0.5, 0.5, 0.5))
+                            .at(Rect::new(0.0, 0.0, 10.0, 10.0)),
                     );
                 });
         });
@@ -187,9 +185,8 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 20.0, 20.0))
-                            .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
+                        Shape::rect(RgbaF32::srgb(0.5, 0.5, 0.5))
+                            .at(Rect::new(0.0, 0.0, 20.0, 20.0)),
                     );
                 });
         });

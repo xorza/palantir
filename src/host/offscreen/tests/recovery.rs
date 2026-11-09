@@ -25,12 +25,12 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
+use crate::primitives::paint::material::Material;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
@@ -158,14 +158,15 @@ impl App for Scene {
             .id_salt("scene")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
+                ui.add_shape(Shape::rect(self.tile).at(Rect::new(4.0, 4.0, 12.0, 12.0)));
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(4.0, 4.0, 12.0, 12.0))
-                        .fill(self.tile),
+                    Shape::rect(LinearGradient::two_stop(
+                        0.0,
+                        RgbaF32::hex(0xff0000),
+                        RgbaF32::hex(0x0000ff),
+                    ))
+                    .at(Rect::new(20.0, 4.0, 40.0, 12.0)),
                 );
-                ui.add_shape(Shape::rect().at(Rect::new(20.0, 4.0, 40.0, 12.0)).fill(
-                    LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
-                ));
                 for i in 0..4 {
                     Block::new()
                         .id_salt(("shadowed", i))
@@ -191,9 +192,7 @@ impl App for Scene {
                     .clip(ClipMode::Rounded)
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect()
-                                .at(Rect::new(0.0, 0.0, 28.0, 14.0))
-                                .fill(RgbaF32::BLACK),
+                            Shape::rect(RgbaF32::BLACK).at(Rect::new(0.0, 0.0, 28.0, 14.0)),
                         );
                     });
                 Text::new("Recover").at((4.0, 48.0)).show(ui);
@@ -220,9 +219,8 @@ impl App for Scene {
                     .size(20.0)
                     .show(ui);
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(96.0, 60.0, 40.0, 30.0))
-                        .backdrop_filter(BackdropFilter::blur(2.0)),
+                    Shape::rect(Chrome::NONE.with_material(Material::blur(2.0)))
+                        .at(Rect::new(96.0, 60.0, 40.0, 30.0)),
                 );
             });
     }

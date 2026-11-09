@@ -121,7 +121,12 @@ to 9 did not.
 
 - Step 1 is on master as `449ad9f83`. That commit also holds this file. Step 10 deletes it, as a
   proposal goes when its work lands.
-- Step 2 is staged on master and not committed. The full gate and `cargo drive surface` pass on
-  it. It also renames the overlay "backdrop" that `89b0c79dd` left in `modal/tests.rs`,
-  `widget_core/configure.rs` and the overlays page. Steps 3 to 10 keep these fixes, so the end
-  tree is `89b0c79dd` with them.
+- Step 2 is on master as `eb0cec486`. It also renames the overlay "backdrop" that `89b0c79dd`
+  left in `modal/tests.rs`, `widget_core/configure.rs` and the overlays page. Steps 3 to 10
+  keep these fixes, so the end tree is `89b0c79dd` with them.
+- Step 3 is staged on master and not committed: the tree of `ebf25775c`, with the TODO edits of
+  `a20e6f20f` and `2d7f4a42d`, without the proposal file, and with the step 2 fixes. The full
+  gate passes. A review of it moved three names of step 9 into it: `EffectError::MaterialImageSlots`,
+  the `backdrop` argument of the two `reduced_transparency` setters, and "`reduced_transparency`"
+  for "the reduced paint" in the material docs. One of these, in `material/tests.rs`, is also
+  missing from `89b0c79dd`, so the end tree keeps it as a fix too.

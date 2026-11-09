@@ -26,8 +26,10 @@ use crate::host::harness::harness_builder::Depth;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::lens::Lens;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::rect::RectShape;
@@ -67,9 +69,9 @@ impl<S: Scene> State<S> {
                             .id_salt("backdrop-capture-bench-pane")
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                ui.add_shape(
-                                    Shape::rect().backdrop_filter(BackdropFilter::blur(SIGMA)),
-                                );
+                                ui.add_shape(Shape::rect(
+                                    Chrome::NONE.with_material(Material::blur(SIGMA)),
+                                ));
                             });
                         Panel::canvas()
                             .id_salt("backdrop-capture-bench-rest")
@@ -174,41 +176,23 @@ impl Look {
     }
 
     /// The look's backdrop at σ `sigma` logical px, and its tint.
-    fn backdrop(self, sigma: f32) -> (BackdropFilter, RgbaF32) {
-        let lens = |dispersion| {
-            Some(Lens {
-                bezel: 24.0,
-                thickness: 16.0,
-                refractive_index: 1.5,
-                dispersion,
-                highlight: 0.6,
-            })
+    fn backdrop(self, sigma: f32) -> (Material, RgbaF32) {
+        let lens = |dispersion| Lens {
+            bezel: 24.0,
+            thickness: 16.0,
+            refractive_index: 1.5,
+            dispersion,
+            highlight: 0.6,
         };
-        let backdrop = BackdropFilter::blur(sigma);
         match self {
-            Self::Blur => (backdrop, RgbaF32::TRANSPARENT),
-            Self::Frosted => (
-                BackdropFilter {
-                    saturation: 1.8,
-                    noise: 0.04,
-                    ..backdrop
-                },
-                RgbaF32::new(1.0, 1.0, 1.0, 0.2),
-            ),
+            Self::Blur => (Material::blur(sigma), RgbaF32::TRANSPARENT),
+            Self::Frosted => (Material::frosted(sigma), RgbaF32::new(1.0, 1.0, 1.0, 0.2)),
             Self::Glass => (
-                BackdropFilter {
-                    blur: 2.0,
-                    lens: lens(0.06),
-                    ..backdrop
-                },
+                Material::glass(lens(0.06)).with_blur(2.0),
                 RgbaF32::TRANSPARENT,
             ),
             Self::GlassPlain => (
-                BackdropFilter {
-                    blur: 2.0,
-                    lens: lens(0.0),
-                    ..backdrop
-                },
+                Material::glass(lens(0.0)).with_blur(2.0),
                 RgbaF32::TRANSPARENT,
             ),
         }
@@ -216,7 +200,7 @@ impl Look {
 
     fn pane(self) -> RectShape {
         let (backdrop, tint) = self.backdrop(SIGMA);
-        Shape::rect().fill(tint).backdrop_filter(backdrop)
+        Shape::rect(Chrome::fill(tint).with_material(backdrop))
     }
 }
 
@@ -237,9 +221,8 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 ui.add_shape(
-                                    Shape::rect()
-                                        .at(Rect::new(10.0, 10.0, 100.0, 100.0))
-                                        .fill(RgbaF32::WHITE),
+                                    Shape::rect(RgbaF32::WHITE)
+                                        .at(Rect::new(10.0, 10.0, 100.0, 100.0)),
                                 );
                                 ui.add_shape(look.pane());
                             });
@@ -368,17 +351,15 @@ impl<S: Scene> PaneFrame<S> {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect()
-                                .at(Rect::new(300.0, 20.0, 12.0, 12.0))
-                                .fill(flip(arm == Arm::Under)),
+                            Shape::rect(flip(arm == Arm::Under))
+                                .at(Rect::new(300.0, 20.0, 12.0, 12.0)),
                         );
                         for rect in [TOOLBAR, SIDEBAR, popup] {
                             ui.add_shape(look.pane_at(rect));
                         }
                         ui.add_shape(
-                            Shape::rect()
-                                .at(Rect::new(400.0, 20.0, 12.0, 12.0))
-                                .fill(flip(arm == Arm::Hover)),
+                            Shape::rect(flip(arm == Arm::Hover))
+                                .at(Rect::new(400.0, 20.0, 12.0, 12.0)),
                         );
                     });
             });
@@ -388,7 +369,7 @@ impl<S: Scene> PaneFrame<S> {
 impl Look {
     fn pane_at(self, rect: Rect) -> RectShape {
         let (backdrop, tint) = self.backdrop(FRAME_SIGMA);
-        Shape::rect().at(rect).fill(tint).backdrop_filter(backdrop)
+        Shape::rect(Chrome::fill(tint).with_material(backdrop)).at(rect)
     }
 }
 
@@ -576,11 +557,7 @@ impl<S: Scene> SceneCase<S> {
                         RgbaF32::srgb(0.1, 0.3, 1.0)
                     };
                     for y in [150.0, 400.0] {
-                        ui.add_shape(
-                            Shape::rect()
-                                .at(Rect::new(40.0, y, 1200.0, 12.0))
-                                .fill(color),
-                        );
+                        ui.add_shape(Shape::rect(color).at(Rect::new(40.0, y, 1200.0, 12.0)));
                     }
                     for i in 0..12 {
                         let at = Vec2::new(
@@ -641,7 +618,7 @@ fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
                 .id_salt("backdrop-first-background")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect().fill(RgbaF32::srgb(0.12, 0.13, 0.16)));
+                    ui.add_shape(Shape::rect(RgbaF32::srgb(0.12, 0.13, 0.16)));
                 });
             Panel::hstack()
                 .id_salt("backdrop-first-row")

@@ -167,11 +167,7 @@ impl Scene<'_> {
                     };
                     cell.show(ui, |ui| match workload {
                         Workload::GroupPerItem | Workload::SingleGroup => {
-                            ui.add_shape(
-                                Shape::rect()
-                                    .at(Rect::new(0.0, 0.0, CELL, CELL))
-                                    .fill(color),
-                            );
+                            ui.add_shape(Shape::rect(color).at(Rect::new(0.0, 0.0, CELL, CELL)));
                         }
                         Workload::ImagesDistinct | Workload::ImagesShared => {
                             ui.add_shape(

@@ -1,9 +1,9 @@
-//! A backdrop pane's draw: a rect over the pixels painted before it, and what the frame does
-//! with it.
+//! A material's draw: a box over what it reads, and what the frame does with it.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::is_invisible;
+use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
@@ -12,13 +12,20 @@ use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, Qua
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::pane_captures::PaneTicket;
-use crate::renderer::render_buffer::effect_draw_row::PaneForm;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 
-/// A pane of `kind` at `rect`, showing the pixels painted before it through `backdrop` under a
-/// solid `tint` and a stroke, faded to `opacity`, and the ticket the pane ledger wrote for it.
+/// What a backdrop reads: what is painted under it, by the ticket the pane ledger wrote for it, or
+/// the window's ground, while transparency is reduced, with no ticket.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum BackdropDraw {
+    Capture(PaneTicket),
+    Ground,
+}
+
+/// A material's box of `kind` at `rect`, showing what it reads through `material` under a solid
+/// `tint` and a stroke, faded to `opacity`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawPanePayload {
     pub(crate) kind: RectKind,
@@ -29,23 +36,13 @@ pub(crate) struct DrawPanePayload {
     pub(crate) tint: RgbaF16,
     /// Normalized by [`ShapeStroke::normalized`], so `NONE` means no stroke exactly.
     pub(crate) stroke: ShapeStroke,
-    pub(crate) backdrop: LoweredBackdrop,
-    /// How much of the pane shows, the tint and the backdrop alike.
+    pub(crate) material: LoweredMaterial,
+    /// How much of the box shows, the tint and the material alike.
     pub(crate) opacity: f32,
-    pub(crate) ticket: PaneTicket,
+    pub(crate) read: BackdropDraw,
 }
 
 impl DrawPanePayload {
-    /// The form the pane draws in: frost with no lens, glass of one index with no dispersion,
-    /// else glass that spreads the spectrum.
-    pub(crate) fn form(&self) -> PaneForm {
-        match self.backdrop.lens() {
-            None => PaneForm::Frost,
-            Some(lens) if lens.dispersion == 0.0 => PaneForm::Lens,
-            Some(_) => PaneForm::Spectrum,
-        }
-    }
-
     /// The rect as a quad packs it, which the pane's effect instance takes its rect, corners,
     /// turn and stroke width from, so it lies on the pixels a rect of it does.
     pub(crate) fn geometry(&self) -> DrawQuadPayload {
@@ -65,7 +62,7 @@ impl DrawPanePayload {
                 lut_row: LutRow::FALLBACK,
             },
             stroke: self.stroke,
-            fill_axis: self.backdrop.fill_axis(self.opacity),
+            fill_axis: FillAxis::from_lanes([0.0, 0.0, 0.0, self.opacity]),
         }
     }
 }

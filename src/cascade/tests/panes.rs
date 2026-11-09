@@ -6,7 +6,9 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
+use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::lens::Lens;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
@@ -22,12 +24,12 @@ struct Listed {
 }
 
 /// The one pane a frame of `filter` at `rect` lists, on a surface of 200² physical px at `scale`.
-fn listed(scale: f32, rect: Rect, filter: BackdropFilter) -> Listed {
+fn listed(scale: f32, rect: Rect, filter: Material) -> Listed {
     listed_under(scale, None, rect, filter)
 }
 
 /// [`listed`] with the pane inside a canvas that clips to `clip` logical px square when some.
-fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: BackdropFilter) -> Listed {
+fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: Material) -> Listed {
     let mut h = Harness::builder(UVec2::splat(200))
         .mono()
         .system_scale(SystemScale::new(scale).unwrap())
@@ -41,7 +43,7 @@ fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: BackdropFilte
             None => canvas.size((Sizing::FILL, Sizing::FILL)),
         };
         canvas.show(ui, |ui| {
-            ui.add_shape(Shape::rect().at(rect).backdrop_filter(filter));
+            ui.add_shape(Shape::rect(Chrome::NONE.with_material(filter)).at(rect));
         });
     });
     let scene = h.frames().ui().frame_scene();
@@ -58,11 +60,8 @@ fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: BackdropFilte
 /// reads (40, 40)..(120, 80) physical grown by the reach and the pixel.
 #[test]
 fn a_pane_lists_its_plan_and_footprint() {
-    let Listed { pane, physical } = listed(
-        2.0,
-        Rect::new(20.0, 20.0, 40.0, 20.0),
-        BackdropFilter::blur(5.0),
-    );
+    let Listed { pane, physical } =
+        listed(2.0, Rect::new(20.0, 20.0, 40.0, 20.0), Material::blur(5.0));
     let plan = BlurPlan::new(10.0);
     assert_eq!(plan.levels(), 2);
     assert_eq!(pane.plan, plan);
@@ -89,7 +88,7 @@ fn a_panes_plan_takes_its_sigma_unrounded() {
     let Listed { pane, .. } = listed(
         1.25,
         Rect::new(20.0, 20.0, 20.0, 20.0),
-        BackdropFilter::blur(sigma),
+        Material::blur(sigma),
     );
     assert_eq!(pane.plan, BlurPlan::new(physical));
 }
@@ -102,7 +101,7 @@ fn a_pane_past_every_plan_coerces_to_the_widest() {
     let Listed { pane, physical } = listed(
         2.0,
         Rect::new(20.0, 20.0, 40.0, 20.0),
-        BackdropFilter::blur(65504.0).with_lens(Lens {
+        Material::blur(65504.0).with_lens(Lens {
             thickness: 65504.0,
             refractive_index: 65504.0,
             ..Lens::WINDOW_GLASS
@@ -129,7 +128,7 @@ fn a_glass_panes_footprint_holds_what_its_lens_reads() {
         dispersion: 0.0,
         highlight: 0.0,
     };
-    let glass = BackdropFilter::glass(lens).with_blur(0.0);
+    let glass = Material::glass(lens).with_blur(0.0);
     let reach = BlurPlan::new(0.0).reach() + 1;
     let grown = |rect: URect, by: u32| {
         URect::from_min_max(rect.min - UVec2::splat(by), rect.max() + UVec2::splat(by))

@@ -128,31 +128,6 @@ Axis
 BackdropEffect
     struct BackdropEffect: Clone, Copy, Debug, DockTab (blanket), EffectKind, Eq, Hash, PartialEq
 
-BackdropFilter
-    struct BackdropFilter: Animatable, Clone, Copy, Debug, Default, Lerp, PartialEq, Serialize
-        pub blur: f32
-        pub saturation: f32
-        pub noise: f32
-        pub max_luminance: Option<f32>
-        pub min_luminance: Option<f32>
-        pub lens: Option<Lens>
-        pub fallback: Option<SrgbaU8>
-        pub const NONE: Self
-        pub const fn blur(sigma: f32) -> Self
-        pub const fn frosted(sigma: f32) -> Self
-        pub const fn glass(lens: Lens) -> Self
-        pub const fn with_blur(self, sigma: f32) -> Self
-        pub const fn with_saturation(self, saturation: f32) -> Self
-        pub const fn with_noise(self, noise: f32) -> Self
-        pub const fn with_max_luminance(self, luminance: f32) -> Self
-        pub fn with_max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self
-        pub const fn with_min_luminance(self, luminance: f32) -> Self
-        pub fn with_min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self
-        pub const fn with_lens(self, lens: Lens) -> Self
-        pub const fn with_fallback(self, color: RgbaF32) -> Self
-        pub const fn is_noop(&self) -> bool
-        impl<'de> Deserialize<'de> where BackdropFilter: Default
-
 BarMode
     enum BarMode: Clone, Copy, Debug, Default, Eq, PartialEq
         Reserved
@@ -198,6 +173,7 @@ Brush
         pub const TRANSPARENT: Self
         pub const fn is_noop(&self) -> bool
         pub const fn as_solid(&self) -> Option<RgbaF32>
+        impl From<Brush> for Chrome
 
 Button
     struct Button<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -250,12 +226,12 @@ Checkbox
         pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 Chrome
-    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
+    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<RgbaF32>, Lerp, PartialEq, Serialize
         pub fill: Brush
         pub border: Stroke
         pub corners: Corners
         pub shadow: Shadow
-        pub backdrop_filter: BackdropFilter
+        pub material: Option<Material>
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
         pub fn fill(brush: impl Into<Brush>) -> Self
@@ -264,7 +240,8 @@ Chrome
         pub fn with_corners(self, corners: impl Into<Corners>) -> Self
         pub const fn with_border(self, border: Stroke) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
-        pub const fn with_backdrop_filter(self, filter: BackdropFilter) -> Self
+        pub const fn with_material(self, material: Material) -> Self
+        impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>
 
 ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
@@ -753,6 +730,7 @@ EffectError
         ParamLayout(ParamMismatch)
         ParamsTooLarge { size: usize }
         TooManyImageSlots { slots: u8 }
+        MaterialImageSlots { slots: u8 }
         Binding { name: String }
         ReservedName
 
@@ -764,6 +742,10 @@ EffectName
         impl EffectName<PressInput>
             pub const RIPPLE: Self
             pub const SPARKLE: Self
+        impl EffectName<MaterialInput, BackdropEffect>
+            pub const BLUR: Self
+            pub const FROSTED: Self
+            pub const GLASS: Self
         impl<U: EffectParams, K: EffectKind> EffectName<U, K>
             pub const MAX_NAME_LEN: usize
             pub const fn named(name: &str) -> Option<Self>
@@ -794,7 +776,6 @@ EffectSource
             pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self
             pub const fn build(self, build: EffectBuild) -> Self
             pub const fn image_slots(self, slots: u8) -> Self
-            pub const fn reduced_transparency(self, paint: ReducedPaint<U, K>) -> Self
             pub const fn reduced_motion(self, paint: ReducedPaint<U, K>) -> Self
             pub const fn power_saver(self, paint: ReducedPaint<U, K>) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectSource<U, K>
@@ -849,7 +830,7 @@ ExpanderTheme
 
 FloatMaterial
     struct FloatMaterial: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
-        pub filter: BackdropFilter
+        pub material: Material
         pub tint_alpha: f32
         pub fn dress(self, panel: &Chrome, ink: RgbaF32) -> Chrome
 
@@ -1008,6 +989,7 @@ Gradient
         impl<'de, G> Deserialize<'de> where G: Deserialize<'de>
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
+        impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>
         impl<G: GradientGeometry> Hash for Gradient<G>
         impl<G: PartialEq> PartialEq for Gradient<G>
         impl<G> Serialize where G: Serialize
@@ -1412,12 +1394,13 @@ LayerScope
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
 
 Lens
-    struct Lens: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+    struct Lens: Clone, Copy, Debug, Deserialize<'de>, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub bezel: f32
         pub thickness: f32
         pub refractive_index: f32
         pub dispersion: f32
         pub highlight: f32
+        pub const NONE: Self
         pub const WINDOW_GLASS: Self
 
 LinearGeometry
@@ -1460,6 +1443,36 @@ Locator
         impl<X> From<String> for Locator<X>
         impl<X> From<Vec2> for Locator<X>
         impl<X> From<WidgetId> for Locator<X>
+
+Material
+    struct Material: Clone, Copy, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
+        pub effect: EffectName<MaterialInput, BackdropEffect>
+        pub blur: f32
+        pub input: MaterialInput
+        pub max_luminance: Option<f32>
+        pub min_luminance: Option<f32>
+        pub reduced_transparency: ReducedBackdrop
+        pub const fn new(effect: EffectName<MaterialInput, BackdropEffect>, input: MaterialInput) -> Self
+        pub const fn blur(sigma: f32) -> Self
+        pub const fn frosted(sigma: f32) -> Self
+        pub const fn glass(lens: Lens) -> Self
+        pub const fn with_blur(self, sigma: f32) -> Self
+        pub const fn with_saturation(self, saturation: f32) -> Self
+        pub const fn with_noise(self, noise: f32) -> Self
+        pub const fn with_lens(self, lens: Lens) -> Self
+        pub const fn with_reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
+        pub const fn with_max_luminance(self, luminance: f32) -> Self
+        pub fn with_max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self
+        pub const fn with_min_luminance(self, luminance: f32) -> Self
+        pub fn with_min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self
+        pub const fn at_rest(self) -> Self
+
+MaterialInput
+    struct MaterialInput: Clone, Copy, Debug, Default, Deserialize<'de>, EffectParams, Lerp, PartialEq, Pod, Serialize, Zeroable
+        pub saturation: f32
+        pub noise: f32
+        pub lens: Lens
+        pub const IDENTITY: Self
 
 Menu
     struct Menu<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1562,7 +1575,7 @@ Modal
     struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
-        pub fn scrim(self, scrim: impl Into<Scrim>) -> Self
+        pub fn scrim(self, scrim: impl Into<Chrome>) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R>
         pub fn close(ui: &mut Ui, id: WidgetId)
@@ -1572,7 +1585,7 @@ Modal
 ModalTheme
     struct ModalTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
-        pub scrim: Scrim
+        pub scrim: Chrome
         pub padding: Spacing
         pub min_width: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
@@ -1969,6 +1982,11 @@ Rect
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
 
+ReducedBackdrop
+    enum ReducedBackdrop: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        Ground
+        Nothing
+
 ReducedPaint
     enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect>
         Same
@@ -2047,7 +2065,7 @@ RgbaF32
         pub const fn hexa(rgba: u32) -> Self
         pub const fn to_srgba8(self) -> SrgbaU8
         impl From<RgbaF32> for Brush
-        impl From<RgbaF32> for Scrim
+        impl From<RgbaF32> for Chrome
 
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
@@ -2058,12 +2076,6 @@ Screenshot
 
 ScreenshotId
     struct ScreenshotId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
-
-Scrim
-    struct Scrim: Clone, Copy, Debug, Deserialize<'de>, From<RgbaF32>, Lerp, PartialEq, Serialize
-        pub tint: RgbaF32
-        pub filter: BackdropFilter
-        pub const fn with_filter(self, filter: BackdropFilter) -> Self
 
 Scroll
     struct Scroll<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2764,8 +2776,10 @@ Theme
 
 ThemeEffectError
     enum ThemeEffectError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
-        Unloaded(EffectName<PressInput>)
+        UnloadedPress(EffectName<PressInput>)
         NotPress(EffectName<PressInput>)
+        UnloadedMaterial(EffectName<MaterialInput, BackdropEffect>)
+        NotMaterial(EffectName<MaterialInput, BackdropEffect>)
 
 ToggleKind
     enum ToggleKind: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -3316,6 +3330,7 @@ widget::EffectShape
         impl<U: EffectParams> EffectShape<U, BackdropEffect>
             pub const fn blur(self, sigma: f32) -> Self
             pub const fn reach(self, px: f32) -> Self
+            pub const fn reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectShape<U, K>
 
 widget::GlyphFont
@@ -3490,10 +3505,6 @@ widget::RasterImage
 widget::RectShape
     struct RectShape: Clone, Debug, Lower (blanket)
         pub const fn at(self, rect: Rect) -> Self
-        pub fn fill(self, fill: impl Into<Brush>) -> Self
-        pub const fn border(self, border: Stroke) -> Self
-        pub fn corners(self, corners: impl Into<Corners>) -> Self
-        pub const fn backdrop_filter(self, filter: BackdropFilter) -> Self
 
 widget::ShadowShape
     struct ShadowShape: Clone, Debug, Lower (blanket)
@@ -3504,8 +3515,8 @@ widget::Shape
     struct Shape: Clone, Copy, Debug
         pub const fn effect<U: EffectParams>(name: EffectName<U, ColorEffect>, params: U) -> EffectShape<U>
         pub const fn backdrop_effect<U: EffectParams>(name: EffectName<U, BackdropEffect>, params: U) -> EffectShape<U, BackdropEffect>
-        pub const fn rect() -> RectShape
-        pub const fn windowed_rect() -> RectShape
+        pub fn rect(chrome: impl Into<Chrome>) -> RectShape
+        pub fn windowed_rect(chrome: impl Into<Chrome>) -> RectShape
         pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape
         pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape
         pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_>

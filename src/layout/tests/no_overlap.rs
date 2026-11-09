@@ -9,7 +9,6 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
@@ -51,7 +50,7 @@ fn chrome_section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) 
             border: Stroke::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
             corners: Corners::all(4.0),
             shadow: Shadow::NONE,
-            backdrop_filter: BackdropFilter::NONE,
+            material: None,
         })
         .show(ui, |ui| {
             Text::new("title")

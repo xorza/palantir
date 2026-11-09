@@ -20,6 +20,11 @@ fn theme() -> Rc<Theme> {
 #[test]
 fn a_snapped_set_moves_the_epoch_only_for_the_shown_scheme() {
     let mut window = WindowTheme::new(Dark);
+    assert!(
+        window.take_replaced().is_some(),
+        "the stock pair is new at the start"
+    );
+    assert!(window.take_replaced().is_none(), "handed out once");
     let held = Rc::clone(window.get(Dark));
     assert!(
         !window.set(Dark, held, Motion::Snap),

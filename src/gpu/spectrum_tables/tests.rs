@@ -1,4 +1,5 @@
-use crate::gpu::spectrum_tables::{SPECTRUM_SAMPLES, SpectrumTables, cie_xyz};
+use crate::gpu::spectrum_tables::{SpectrumTables, cie_xyz};
+use crate::primitives::paint::material::lens_optics::SPECTRUM_SAMPLES;
 
 /// Wyman's fit holds the CIE 1931 table's peaks within its stated error: ȳ at 555 nm is 1.000
 /// in the table, x̄ at 600 nm 1.0622 and z̄ at 445 nm 1.7826. The weights sum to 1 in each

@@ -309,7 +309,7 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
                     .show(ui, |_| {});
             } else {
                 ui.add_shape(Shape::shadow(shadow).at(source).corners(radius));
-                ui.add_shape(Shape::rect().at(source).fill(fill).corners(radius));
+                ui.add_shape(Shape::rect(Chrome::rounded(fill, radius)).at(source));
             }
         })
     };
@@ -495,7 +495,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
 fn an_inset_shadow_shares_its_source_edge_ramp() {
     let source = Rect::new(40.5, 40.25, 100.0, 80.0);
     let filled = render(CLEAR, |ui| {
-        ui.add_shape(Shape::rect().at(source).fill(INK).corners(14.0));
+        ui.add_shape(Shape::rect(Chrome::rounded(INK, 14.0)).at(source));
     });
     goldens::assert_same(
         "shadow_inset_edge",

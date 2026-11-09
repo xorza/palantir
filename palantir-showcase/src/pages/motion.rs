@@ -180,11 +180,11 @@ fn turn(ui: &mut Ui, k: Kit) {
                 };
                 cell(ui, "rect", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::rect()
-                            .at(source)
-                            .corners(Corners::all(10.0))
-                            .fill(k.swatch.teal)
-                            .border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                        Shape::rect(
+                            Chrome::rounded(k.swatch.teal, Corners::all(10.0))
+                                .with_border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                        )
+                        .at(source),
                         spin,
                     );
                 });
@@ -196,10 +196,7 @@ fn turn(ui: &mut Ui, k: Kit) {
                         spin,
                     );
                     ui.add_shape_animated(
-                        Shape::rect()
-                            .at(source)
-                            .corners(Corners::all(6.0))
-                            .fill(k.swatch.orange),
+                        Shape::rect(Chrome::rounded(k.swatch.orange, Corners::all(6.0))).at(source),
                         spin,
                     );
                 });
@@ -494,10 +491,12 @@ fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
     ui.add_shape(Shape::polyline(&points, Stroke::new(k.t.ink_dim, 1.5)).join(LineJoin::Round));
     let dot = at(t);
     ui.add_shape(
-        Shape::rect()
-            .at(Rect::new(dot.x - 5.0, dot.y - 5.0, 10.0, 10.0))
-            .corners(Corners::all(5.0))
-            .fill(k.swatch.orange),
+        Shape::rect(Chrome::rounded(k.swatch.orange, Corners::all(5.0))).at(Rect::new(
+            dot.x - 5.0,
+            dot.y - 5.0,
+            10.0,
+            10.0,
+        )),
     );
 }
 

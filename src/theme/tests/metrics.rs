@@ -4,8 +4,8 @@ use crate::animation::animation_spec::AnimationSpec;
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::{
@@ -74,7 +74,7 @@ const DISTINCT: Metrics = Metrics {
         blur: 23.0,
     },
     float_material: Some(FloatMaterial {
-        filter: BackdropFilter::blur(31.0),
+        material: Material::blur(31.0),
         tint_alpha: 0.5,
     }),
     transition: AnimationSpec::MEDIUM,
@@ -192,7 +192,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("tooltip", &t.tooltip.panel),
         ("modal", &t.modal.panel),
     ] {
-        assert_eq!(panel.backdrop_filter.blur, 31.0, "{slot} blur");
+        assert_eq!(panel.material.map(|m| m.blur), Some(31.0), "{slot} blur");
         let fill = panel.fill.as_solid().expect(slot);
         assert_eq!(fill.a, 0.5, "{slot} tint");
     }

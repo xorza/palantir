@@ -9,7 +9,6 @@ use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
@@ -162,7 +161,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         border: Stroke::new(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
         shadow: Shadow::NONE,
-        backdrop_filter: BackdropFilter::NONE,
+        material: None,
     };
     let look = WidgetLook {
         chrome: chrome.clone(),

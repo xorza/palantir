@@ -23,7 +23,6 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -31,7 +30,7 @@ use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
+use crate::renderer::frontend::payload::draw_pane_payload::{BackdropDraw, DrawPanePayload};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
@@ -43,7 +42,7 @@ use crate::renderer::render_buffer::backdrop_row::PaneCapture;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ColorMode;
 use crate::shape::rect::RectKind;
@@ -353,9 +352,9 @@ fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
             spin: None,
             tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
             stroke: ShapeStroke::NONE,
-            backdrop: LoweredBackdrop::of(BackdropFilter::blur(4.0)).unwrap(),
+            material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
-            ticket: PaneTicket {
+            read: BackdropDraw::Capture(PaneTicket {
                 capture: PaneCapture {
                     key: PaneKey {
                         owner: WidgetId::from_hash("bench.pane"),
@@ -368,7 +367,7 @@ fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
                         .expect("a bench pane paints"),
                 },
                 captures: false,
-            },
+            }),
         },
         1.0,
     );

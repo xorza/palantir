@@ -7,7 +7,7 @@ use crate::primitives::identity::pane_keys::PaneKeys;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, PaneSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::effect_draw_row::EffectDrawRow;
@@ -155,8 +155,13 @@ impl RenderBuffer {
     pub(crate) fn captured_area(&self) -> u64 {
         self.backdrops
             .iter()
-            .filter(|row| matches!(row.source, PaneSource::Capture { .. }))
-            .map(|row| row.capture.footprint.area())
+            .filter_map(|row| match row.read {
+                BackdropRead::Pane {
+                    capture,
+                    source: PaneSource::Capture { .. },
+                } => Some(capture.footprint.area()),
+                _ => None,
+            })
             .sum()
     }
 

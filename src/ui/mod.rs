@@ -47,7 +47,9 @@ use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::input::Input;
 use crate::input::key_reader::KeyReader;
-use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind, EffectTypes};
+use crate::primitives::effect::effect_kind::{
+    BackdropEffect, ColorEffect, EffectKind, EffectTypes,
+};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::geometry::rect::Rect;
@@ -72,6 +74,7 @@ use crate::primitives::math::domain;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
+use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
@@ -84,6 +87,7 @@ use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
 use crate::scene::tree::NodeChrome;
 use crate::shape::Lower;
+use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
@@ -260,7 +264,8 @@ impl Ui {
     /// # Errors
     ///
     /// A [`ThemeEffectError`] when a press slot names an effect not loaded, or not one over
-    /// [`PressInput`]; the theme held before stays.
+    /// [`PressInput`], or a chrome's material one not loaded, or not a backdrop effect over
+    /// [`MaterialInput`]; the theme held before stays.
     pub fn set_theme(
         &mut self,
         scheme: ColorScheme,
@@ -273,8 +278,18 @@ impl Ui {
         theme.press_effects(|name| {
             if checked.is_ok() {
                 checked = match effects.types_of(name.inline()) {
-                    None => Err(ThemeEffectError::Unloaded(name)),
+                    None => Err(ThemeEffectError::UnloadedPress(name)),
                     Some(types) if types != press => Err(ThemeEffectError::NotPress(name)),
+                    Some(_) => Ok(()),
+                };
+            }
+        });
+        let material = EffectTypes::of::<MaterialInput, BackdropEffect>();
+        theme.material_effects(|name| {
+            if checked.is_ok() {
+                checked = match effects.types_of(name.inline()) {
+                    None => Err(ThemeEffectError::UnloadedMaterial(name)),
+                    Some(types) if types != material => Err(ThemeEffectError::NotMaterial(name)),
                     Some(_) => Ok(()),
                 };
             }
@@ -367,7 +382,7 @@ impl Ui {
     /// Whether this frame paints with transparency reduced: [`UiPreferences::transparency`]
     /// resolved against
     /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then
-    /// every [`BackdropFilter`](crate::BackdropFilter) paints as a solid fill, as CSS
+    /// every [`Material`](crate::Material) paints as a solid fill, as CSS
     /// `prefers-reduced-transparency` asks and as WinUI's acrylic falls back to its
     /// `FallbackColor`: no capture and no blur run. Under [reduced power](Self::is_power_reduced)
     /// the system's answer reads as reduced, as Windows' Energy saver turns transparency effects
@@ -999,7 +1014,7 @@ impl Ui {
     /// # use std::time::Duration;
     /// # fn demo(ui: &mut Ui) {
     /// ui.add_shape_animated(
-    ///     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
+    ///     Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 8.0, 8.0)),
     ///     PaintAnimation::alpha(0.4, 1.0)
     ///         .with_period(Duration::from_secs(2))
     ///         .with_repeat(PaintRepeat::Forever)
@@ -1085,8 +1100,24 @@ impl Ui {
         } else {
             Stroke::NONE
         };
-        self.forest
-            .open_node(resolved, node, NodeChrome { chrome, ring });
+        let material = chrome
+            .and_then(|chrome| chrome.material.as_ref())
+            .and_then(|material| {
+                MaterialRead::resolve(
+                    material,
+                    self.resources.effects(),
+                    self.frame_runtime.reductions,
+                )
+            });
+        self.forest.open_node(
+            resolved,
+            node,
+            NodeChrome {
+                chrome,
+                ring,
+                material,
+            },
+        );
     }
 
     #[inline]

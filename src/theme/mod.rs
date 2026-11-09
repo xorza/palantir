@@ -24,7 +24,6 @@ pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod popup;
 pub(crate) mod progress_bar;
-pub(crate) mod scrim;
 pub(crate) mod scrollbar;
 pub(crate) mod segmented;
 pub(crate) mod selection;
@@ -43,12 +42,15 @@ pub(crate) mod tooltip;
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::effect::press_input::PressInput;
+use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::theme::button::ButtonTheme;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::color_picker::ColorPickerTheme;
@@ -66,7 +68,6 @@ use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
 use crate::theme::popup::PopupTheme;
 use crate::theme::progress_bar::ProgressBarTheme;
-use crate::theme::scrim::Scrim;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::theme::segmented::SegmentedTheme;
 use crate::theme::separator::SeparatorTheme;
@@ -217,6 +218,15 @@ pub(crate) trait ThemeWalk {
         F: FnMut(&PressEffect),
     {
     }
+
+    /// Each material a chrome wears, in field order, to read ([`Theme::material_effects`]); a
+    /// value that holds no chrome visits nothing.
+    #[inline]
+    fn each_material<F>(&self, _: &mut F)
+    where
+        F: FnMut(&Material),
+    {
+    }
 }
 
 /// A walk that visits nothing, for each value type that holds no text or press slot.
@@ -248,12 +258,9 @@ no_theme_walk!(
     Spacing,
     Duration,
     RgbaF32,
-    Chrome,
-    Option<Chrome>,
     AnimationSpec,
     ClipMode,
     CloseShown,
-    Scrim,
 );
 
 /// A whole style.
@@ -270,6 +277,60 @@ impl ThemeWalk for TextStyle {
         F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
     {
         f(ThemeText::Style(self), other.map(ThemeText::Style));
+    }
+}
+
+/// A box, which holds no text and wears its material.
+impl ThemeWalk for Chrome {
+    #[inline]
+    fn each_text<F>(&self, _: &mut F)
+    where
+        F: FnMut(ThemeTextRef<'_>),
+    {
+    }
+
+    #[inline]
+    fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+    {
+    }
+
+    #[inline]
+    fn each_material<F>(&self, f: &mut F)
+    where
+        F: FnMut(&Material),
+    {
+        if let Some(material) = &self.material {
+            f(material);
+        }
+    }
+}
+
+/// A box a slot may leave out.
+impl ThemeWalk for Option<Chrome> {
+    #[inline]
+    fn each_text<F>(&self, _: &mut F)
+    where
+        F: FnMut(ThemeTextRef<'_>),
+    {
+    }
+
+    #[inline]
+    fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+    {
+    }
+
+    #[inline]
+    fn each_material<F>(&self, f: &mut F)
+    where
+        F: FnMut(&Material),
+    {
+        if let Some(chrome) = self {
+            chrome.each_material(f);
+        }
     }
 }
 
@@ -353,7 +414,7 @@ impl Theme {
 
     /// Dress every floating surface in `material`: the panels of menus and combo lists, the color
     /// picker's popup, a bare popup's panel, tooltips and the modal's panel. Each keeps its
-    /// fill's color at the material's tint over its filter, blurred, frosted or glass, held so the
+    /// fill's color at the material's tint over its material, blurred, frosted or glass, held so the
     /// weakest ink its recipe paints reads at WCAG 4.5:1 over any backdrop, read from this theme:
     /// a menu row's shortcut ink on a menu and on a bare popup, which an app fills with rows like
     /// a menu's, the picker's channel-name ink, the tooltip's text, and the ambient text on the
@@ -366,11 +427,11 @@ impl Theme {
     ///
     /// # Panics
     ///
-    /// Unless the filter holds its kinds, as a [`BackdropFilter`](crate::BackdropFilter) checks
-    /// where it enters, and each float takes the material, as [`FloatMaterial::dress`] requires.
+    /// Unless the material holds its kinds, as a [`Material`] checks where it
+    /// enters, and each float takes the material, as [`FloatMaterial::dress`] requires.
     #[track_caller]
     pub fn dress_floats(&mut self, material: FloatMaterial) {
-        material.filter.validate();
+        material.material.validate();
         let shortcut = self.menu.item.shortcut;
         let channel = self.color_picker.label.apply(&self.text).color;
         let tooltip_ink = self.tooltip.text.apply(&self.text).color;
@@ -421,6 +482,14 @@ impl Theme {
     /// The effect each press slot names, in field order, a name once for each slot that names it.
     pub(crate) fn press_effects(&self, mut f: impl FnMut(EffectName<PressInput>)) {
         self.each_press(&mut |press: &PressEffect| f(press.effect));
+    }
+
+    /// The effect each chrome's material names, in field order, a name once for each material.
+    pub(crate) fn material_effects(
+        &self,
+        mut f: impl FnMut(EffectName<MaterialInput, BackdropEffect>),
+    ) {
+        self.each_material(&mut |material: &Material| f(material.effect));
     }
 
     /// Whether every text slot, its font sizes scaled by `factor`, makes a face the shaper accepts:

@@ -9,7 +9,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::chrome::Chrome;
@@ -184,16 +183,14 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            ui.add_shape(
-                Shape::rect()
-                    .corners(4.0)
-                    .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
-            );
-            ui.add_shape(
-                Shape::windowed_rect()
-                    .corners(6.0)
-                    .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
-            );
+            ui.add_shape(Shape::rect(Chrome::rounded(
+                RgbaF32::srgb(1.0, 0.0, 0.0),
+                4.0,
+            )));
+            ui.add_shape(Shape::windowed_rect(Chrome::rounded(
+                RgbaF32::srgb(0.0, 1.0, 0.0),
+                6.0,
+            )));
             ui.add_shape(Shape::line(
                 Vec2::new(0.0, 0.0),
                 Vec2::new(20.0, 0.0),
@@ -327,11 +324,13 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
 /// Chrome paints shadows in CSS Backgrounds 3 §7.1 order: drop under the fill, inset over it. An inset
 /// shadow's source is the padding box on the padding edge's radii: fitted to the rect (§5.5), then each
 /// `max(r − w, 0)` (§5.2); the width is the layout fold's, so a transparent border still moves it in.
+/// A rect shape of the same chrome over the same rect paints the same two quads in the same order.
 #[test]
 fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
+    use crate::shape::Shape;
 
     struct Case {
         label: &'static str,
@@ -393,51 +392,60 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             border: case.border,
             corners: case.corners,
             shadow: if case.inset { shadow.inset() } else { shadow },
-            backdrop_filter: BackdropFilter::NONE,
+            material: None,
         };
-        let mut h = Harness::mono(UVec2::new(200, 200));
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("chrome"))
-                    .size((100.0, 60.0))
-                    .chrome(chrome.clone())
-                    .show(ui);
+        for entry in ["chrome", "rect shape"] {
+            let mut h = Harness::mono(UVec2::new(200, 200));
+            h.frame(|ui| {
+                Panel::hstack().auto_id().show(ui, |ui| {
+                    if entry == "chrome" {
+                        Block::new()
+                            .id(WidgetId::from_hash("chrome"))
+                            .size((100.0, 60.0))
+                            .chrome(chrome.clone())
+                            .show(ui);
+                    } else {
+                        Panel::canvas()
+                            .id(WidgetId::from_hash("chrome"))
+                            .size((100.0, 60.0))
+                            .show(ui, |ui| ui.add_shape(Shape::rect(chrome.clone())));
+                    }
+                });
             });
-        });
-        let cmds = h.encode_paint();
-        let quads: Vec<_> = cmds
-            .calls
-            .iter()
-            .filter(|c| as_rect(c).is_some() || as_shadow(c).is_some())
-            .collect();
-        let label = case.label;
-        assert_eq!(quads.len(), 2, "{label}: one fill and one shadow");
-        let (fill, shadow) = if case.inset {
-            (as_rect(quads[0]), as_shadow(quads[1]))
-        } else {
-            (as_rect(quads[1]), as_shadow(quads[0]))
-        };
-        let fill = fill.unwrap_or_else(|| panic!("{label}: fill out of order"));
-        let shadow = shadow.unwrap_or_else(|| panic!("{label}: shadow out of order"));
-        let node = quad_rect(fill);
-        assert_eq!(node.size, Size::new(100.0, 60.0), "{label}");
-        let expected_kind = if case.inset {
-            FillKind::SHADOW_INSET
-        } else {
-            FillKind::SHADOW_DROP
-        };
-        assert_eq!(shadow.fill.kind, expected_kind, "{label}");
-        let QuadGeometry::Rect { rect, corners, .. } = shadow.geometry else {
-            panic!("{label}: a shadow has rect geometry");
-        };
-        let expected = Rect {
-            min: node.min + case.shadow_rect.min,
-            size: case.shadow_rect.size,
-        };
-        assert_eq!(rect, expected, "{label}");
-        assert_eq!(corners, case.shadow_corners, "{label}");
-        assert_eq!(shadow.fill_axis.lanes(), [0.0, 2.0, 6.0, 0.0], "{label}");
+            let cmds = h.encode_paint();
+            let quads: Vec<_> = cmds
+                .calls
+                .iter()
+                .filter(|c| as_rect(c).is_some() || as_shadow(c).is_some())
+                .collect();
+            let label = format!("{entry}: {}", case.label);
+            assert_eq!(quads.len(), 2, "{label}: one fill and one shadow");
+            let (fill, shadow) = if case.inset {
+                (as_rect(quads[0]), as_shadow(quads[1]))
+            } else {
+                (as_rect(quads[1]), as_shadow(quads[0]))
+            };
+            let fill = fill.unwrap_or_else(|| panic!("{label}: fill out of order"));
+            let shadow = shadow.unwrap_or_else(|| panic!("{label}: shadow out of order"));
+            let node = quad_rect(fill);
+            assert_eq!(node.size, Size::new(100.0, 60.0), "{label}");
+            let expected_kind = if case.inset {
+                FillKind::SHADOW_INSET
+            } else {
+                FillKind::SHADOW_DROP
+            };
+            assert_eq!(shadow.fill.kind, expected_kind, "{label}");
+            let QuadGeometry::Rect { rect, corners, .. } = shadow.geometry else {
+                panic!("{label}: a shadow has rect geometry");
+            };
+            let expected = Rect {
+                min: node.min + case.shadow_rect.min,
+                size: case.shadow_rect.size,
+            };
+            assert_eq!(rect, expected, "{label}");
+            assert_eq!(corners, case.shadow_corners, "{label}");
+            assert_eq!(shadow.fill_axis.lanes(), [0.0, 2.0, 6.0, 0.0], "{label}");
+        }
     }
 }
 

@@ -5,16 +5,21 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use crate::effect::contract::{self, ParamsLayout};
+use std::any::TypeId;
+
+use crate::effect::contract::{self, ContractSpec, ParamsLayout};
 use crate::effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectStore;
+use crate::effect::effect_store::ModuleEntries;
 use crate::effect::error::EffectError;
 use crate::effect::stock;
+use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::effect::effect_kind::{EffectKind, EffectTypes};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
+use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::reduction::Reductions;
 
 /// Every effect loaded under a name, for the app's life, as a font is: loading the same name again
@@ -52,22 +57,19 @@ struct LoadedEffect {
 }
 
 /// A preference an effect's source names an alternative for, in the order one wins over the
-/// next where several reduce: what a person needs to read, then to bear, before what a device
-/// saves.
+/// next where both reduce: what a person needs to bear before what a device saves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ReducedBy {
-    Transparency,
     Motion,
     Power,
 }
 
 impl ReducedBy {
-    const COUNT: usize = 3;
-    const ALL: [Self; Self::COUNT] = [Self::Transparency, Self::Motion, Self::Power];
+    const COUNT: usize = 2;
+    const ALL: [Self; Self::COUNT] = [Self::Motion, Self::Power];
 
     const fn name(self) -> &'static str {
         match self {
-            Self::Transparency => "reduced-transparency",
             Self::Motion => "reduced-motion",
             Self::Power => "power-saver",
         }
@@ -76,7 +78,6 @@ impl ReducedBy {
     /// Whether `reductions` reduces this preference.
     const fn is_reduced_in(self, reductions: Reductions) -> bool {
         match self {
-            Self::Transparency => reductions.transparency.is_reduced(),
             Self::Motion => reductions.motion.is_reduced(),
             Self::Power => reductions.power.is_reduced(),
         }
@@ -128,7 +129,13 @@ impl EffectRegistry {
             effects: RefCell::default(),
             epoch: Cell::default(),
         };
-        for (name, source) in stock::sources() {
+        let stock = stock::sources();
+        for (name, source) in stock.press {
+            registry
+                .insert(name, source)
+                .expect("a stock effect meets the contract");
+        }
+        for (name, source) in stock.materials {
             registry
                 .insert(name, source)
                 .expect("a stock effect meets the contract");
@@ -195,7 +202,21 @@ impl EffectRegistry {
             build,
             ..
         } = source;
-        let module = contract::check(&wgsl, K::ID, params, image_slots)?;
+        let entries =
+            if K::ID == KindId::Backdrop && TypeId::of::<U>() == TypeId::of::<MaterialInput>() {
+                ModuleEntries::ShapeAndMaterial
+            } else {
+                ModuleEntries::Shape
+            };
+        let module = contract::check(
+            &wgsl,
+            ContractSpec {
+                kind: K::ID,
+                params,
+                image_slots,
+                entries,
+            },
+        )?;
         let id = self.effects.borrow_mut().insert(
             name.inline(),
             LoadedEffect {

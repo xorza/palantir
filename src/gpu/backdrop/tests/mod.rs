@@ -10,9 +10,9 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
@@ -51,17 +51,11 @@ fn scene(ui: &mut Ui, sigma: Option<f32>) {
                     1 => RgbaF32::srgb(1.0, 0.2, 0.0),
                     _ => RgbaF32::srgb(0.0, 0.3, 1.0),
                 };
-                ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(x, 0.0, 1.0 + (i % 3) as f32, 48.0))
-                        .fill(color),
-                );
+                ui.add_shape(Shape::rect(color).at(Rect::new(x, 0.0, 1.0 + (i % 3) as f32, 48.0)));
             }
             if let Some(sigma) = sigma {
                 ui.add_shape(
-                    Shape::rect()
-                        .at(PANE)
-                        .backdrop_filter(BackdropFilter::blur(sigma)),
+                    Shape::rect(Chrome::NONE.with_material(Material::blur(sigma))).at(PANE),
                 );
             }
         });
@@ -202,20 +196,16 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
                 .id_salt("backdrop-ceiling")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 32.0, 48.0))
-                            .fill(RgbaF32::WHITE),
-                    );
-                    let filter = BackdropFilter {
+                    ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 32.0, 48.0)));
+                    let filter = Material {
                         max_luminance: ceiling,
-                        ..BackdropFilter::blur(1.0)
+                        ..Material::blur(1.0)
                     };
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 64.0, 48.0))
-                            .fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5))
-                            .backdrop_filter(filter),
+                        Shape::rect(
+                            Chrome::fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5)).with_material(filter),
+                        )
+                        .at(Rect::new(0.0, 0.0, 64.0, 48.0)),
                     );
                 });
         })
@@ -256,20 +246,16 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
                 .id_salt("backdrop-floor")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 32.0, 48.0))
-                            .fill(RgbaF32::WHITE),
-                    );
-                    let filter = BackdropFilter {
+                    ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 32.0, 48.0)));
+                    let filter = Material {
                         min_luminance: floor,
-                        ..BackdropFilter::blur(1.0)
+                        ..Material::blur(1.0)
                     };
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(0.0, 0.0, 64.0, 48.0))
-                            .fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5))
-                            .backdrop_filter(filter),
+                        Shape::rect(
+                            Chrome::fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5)).with_material(filter),
+                        )
+                        .at(Rect::new(0.0, 0.0, 64.0, 48.0)),
                     );
                 });
         })
@@ -301,24 +287,17 @@ fn layered(ui: &mut Ui, under: RgbaF32, pane: Rect, sigma: f32, over: RgbaF32) {
         .id_salt("backdrop-layered")
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(6.0, 10.0, 14.0, 14.0))
-                    .fill(under),
-            );
+            ui.add_shape(Shape::rect(under).at(Rect::new(6.0, 10.0, 14.0, 14.0)));
             for i in 0..8 {
-                ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(4.0 + 8.0 * i as f32, 30.0, 3.0, 12.0))
-                        .fill(RgbaF32::WHITE),
-                );
+                ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(
+                    4.0 + 8.0 * i as f32,
+                    30.0,
+                    3.0,
+                    12.0,
+                )));
             }
-            ui.add_shape(
-                Shape::rect()
-                    .at(pane)
-                    .backdrop_filter(BackdropFilter::blur(sigma)),
-            );
-            ui.add_shape(Shape::rect().at(Rect::new(30.0, 20.0, 6.0, 6.0)).fill(over));
+            ui.add_shape(Shape::rect(Chrome::NONE.with_material(Material::blur(sigma))).at(pane));
+            ui.add_shape(Shape::rect(over).at(Rect::new(30.0, 20.0, 6.0, 6.0)));
         });
 }
 
@@ -425,29 +404,27 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for i in 0..8 {
-                        ui.add_shape(
-                            Shape::rect()
-                                .at(Rect::new(4.0 + 8.0 * i as f32, 2.0, 3.0, 44.0))
-                                .fill(RgbaF32::WHITE),
-                        );
+                        ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(
+                            4.0 + 8.0 * i as f32,
+                            2.0,
+                            3.0,
+                            44.0,
+                        )));
                     }
-                    ui.add_shape(Shape::rect().at(Rect::new(8.0, 8.0, 6.0, 6.0)).fill(under));
+                    ui.add_shape(Shape::rect(under).at(Rect::new(8.0, 8.0, 6.0, 6.0)));
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(4.0, 4.0, 30.0, 30.0))
-                            .backdrop_filter(BackdropFilter::blur(3.0)),
+                        Shape::rect(Chrome::NONE.with_material(Material::blur(3.0)))
+                            .at(Rect::new(4.0, 4.0, 30.0, 30.0)),
                     );
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(26.0, 6.0, 8.0, 8.0))
-                            .fill(RgbaF32::srgb(1.0, 0.2, 0.1)),
+                        Shape::rect(RgbaF32::srgb(1.0, 0.2, 0.1))
+                            .at(Rect::new(26.0, 6.0, 8.0, 8.0)),
                     );
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new(20.0, 14.0, 36.0, 28.0))
-                            .backdrop_filter(BackdropFilter::blur(6.0)),
+                        Shape::rect(Chrome::NONE.with_material(Material::blur(6.0)))
+                            .at(Rect::new(20.0, 14.0, 36.0, 28.0)),
                     );
-                    ui.add_shape(Shape::rect().at(Rect::new(40.0, 30.0, 6.0, 6.0)).fill(over));
+                    ui.add_shape(Shape::rect(over).at(Rect::new(40.0, 30.0, 6.0, 6.0)));
                 });
         }
     };
@@ -476,12 +453,12 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
     }
 }
 
-/// A chrome with a backdrop filter paints the pane a rect shape with the same rect, corners, fill
-/// and filter paints, bit for bit: both lower to one pane quad, keyed by the owner's first row.
+/// A chrome with a material paints the pane a rect shape of the same chrome paints, bit for bit:
+/// both lower to one material draw, keyed by the owner's first row.
 #[test]
 fn a_chrome_pane_paints_as_a_rect_pane() {
     let tint = RgbaF32::new(1.0, 1.0, 1.0, 0.25);
-    let filter = BackdropFilter::frosted(4.0);
+    let filter = Material::frosted(4.0);
     let stripes = |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("backdrop-chrome-stripes")
@@ -499,7 +476,7 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
                 Panel::canvas()
                     .id_salt("backdrop-chrome-pane")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .chrome(Chrome::rounded(tint, Corners::all(8.0)).with_backdrop_filter(filter))
+                    .chrome(Chrome::rounded(tint, Corners::all(8.0)).with_material(filter))
                     .show(ui, |_| {});
             });
     });
@@ -513,12 +490,9 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
                     .id_salt("backdrop-chrome-pane")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        ui.add_shape(
-                            Shape::rect()
-                                .corners(8.0)
-                                .fill(tint)
-                                .backdrop_filter(filter),
-                        );
+                        ui.add_shape(Shape::rect(
+                            Chrome::rounded(tint, 8.0).with_material(filter),
+                        ));
                     });
             });
     });
@@ -552,7 +526,7 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
                                 Vec2::new(0.0, 8.0),
                                 16.0,
                             ))
-                            .with_backdrop_filter(BackdropFilter::frosted(8.0));
+                            .with_material(Material::frosted(8.0));
                     Popup::new()
                         .anchor(Anchor::at_point(Vec2::new(30.0, 20.0)))
                         .id_salt("backdrop-grow-pane")

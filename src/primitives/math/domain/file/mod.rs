@@ -111,7 +111,7 @@ pub(crate) fn positive<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32
 }
 
 /// A [length](domain::length) a file may hold that packs into an f16
-/// [lane](domain::lane), as a backdrop filter's blur does.
+/// [lane](domain::lane), as a material's blur does.
 pub(crate) fn lane_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
     read(deserializer, &[FILE_LENGTH, LANE])
 }
@@ -122,23 +122,27 @@ pub(crate) fn lane_factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<
     read(deserializer, &[FACTOR, LANE])
 }
 
-/// An optional [`lane_factor`], as a backdrop filter's luminance bounds.
+/// An optional [`lane_factor`], as a material's luminance bounds.
 pub(crate) fn optional_lane_factor<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<f32>, D::Error> {
     read_optional(deserializer, &[FACTOR, LANE])
 }
 
-/// A [refractive index](domain::refractive_index): finite and at least 1.
-pub(crate) fn refractive_index<'de, D: Deserializer<'de>>(
+/// A [refractive index](domain::refractive_index) that packs into an f16 lane: finite, at least 1
+/// and a [lane](domain::lane), as a lens's index.
+pub(crate) fn lane_refractive_index<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<f32, D::Error> {
     read(
         deserializer,
-        &[Rule {
-            valid: domain::is_refractive_index,
-            text: domain::REFRACTIVE_INDEX_RULE,
-        }],
+        &[
+            Rule {
+                valid: domain::is_refractive_index,
+                text: domain::REFRACTIVE_INDEX_RULE,
+            },
+            LANE,
+        ],
     )
 }
 

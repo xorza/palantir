@@ -1,15 +1,20 @@
+use crate::effect::effect_registry::EffectRegistry;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
@@ -210,16 +215,13 @@ fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
     let gradient = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
     let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
-    let rect_shape = Shape::windowed_rect()
-        .at(rect)
-        .fill(gradient.clone())
-        .border(stroke)
-        .corners(6.0);
+    let rect_shape =
+        Shape::windowed_rect(Chrome::rounded(gradient.clone(), 6.0).with_border(stroke)).at(rect);
     assert!(matches!(rect_shape.kind, RectKind::Windowed));
     assert_eq!(rect_shape.local_rect, Some(rect));
-    assert_eq!(rect_shape.fill, Brush::Linear(gradient));
-    assert_eq!(rect_shape.border, stroke);
-    assert_eq!(rect_shape.corners.to_array(), [6.0; 4]);
+    assert_eq!(rect_shape.chrome.fill, Brush::Linear(gradient));
+    assert_eq!(rect_shape.chrome.border, stroke);
+    assert_eq!(rect_shape.chrome.corners.to_array(), [6.0; 4]);
 
     let mesh = Mesh::new();
     let tint = RgbaF32::srgb(0.1, 0.2, 0.3);
@@ -555,4 +557,24 @@ fn text_font_axes_override_their_own_field() {
             ..font
         }
     );
+}
+
+/// A rect shape's paint bbox takes in its drop shadow's halo, as a node's chrome's does, and stays
+/// its rect under an inset one or none: a blur of 4 reaches `4 · 4 = 16` px past its source, moved
+/// 2 px down, so over a 100 × 60 owner the bbox runs from (−16, −14) to (116, 78).
+#[test]
+fn a_rect_shapes_bbox_takes_in_its_drop_shadow() {
+    let owner = Size::new(100.0, 60.0);
+    let bbox = |shadow: Shadow| {
+        let mut shape = Shape::rect(Chrome::fill(RgbaF32::WHITE).with_shadow(shadow));
+        shape.resolve(&EffectRegistry::default(), Reductions::FULL);
+        let ShapeRecord::Quad(quad) = shape.lower(&mut RecordStore::default()) else {
+            panic!("a rect lowers to a quad");
+        };
+        quad.bbox_local(owner)
+    };
+    let drop = Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0);
+    assert_eq!(bbox(drop), Rect::new(-16.0, -14.0, 132.0, 92.0));
+    assert_eq!(bbox(drop.inset()), Rect::new(0.0, 0.0, 100.0, 60.0));
+    assert_eq!(bbox(Shadow::NONE), Rect::new(0.0, 0.0, 100.0, 60.0));
 }

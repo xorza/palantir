@@ -3,7 +3,6 @@ use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Kept, SpectrumCell, held_clear,
 };
 use crate::gpu::backdrop::tests::CLEAR;
-use crate::gpu::pipeline::effect_pipeline::PANE_SHADER;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
@@ -16,7 +15,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, PaneSource};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 use std::mem::offset_of;
@@ -32,10 +31,8 @@ fn key(i: u32) -> PaneKey {
 
 /// Pane `i` over x `10 + 40 i ..`, at σ 2, taking its result from `source`.
 fn row(i: u32, source: PaneSource) -> BackdropRow {
-    BackdropRow {
-        source,
-        ..BackdropRow::fixture(i, URect::new(10 + 40 * i, 10, 30, 30), BlurPlan::new(2.0))
-    }
+    BackdropRow::fixture(i, URect::new(10 + 40 * i, 10, 30, 30), BlurPlan::new(2.0))
+        .with_source(source)
 }
 
 /// [`row`] capturing after `i + 1` groups.
@@ -48,9 +45,11 @@ fn prepare(backdrops: &mut Backdrops, gpu: &TestGpu, owner: RenderOwnerId, rows:
     let mut buffer = RenderBuffer::new();
     buffer.display = Display::from_physical(SURFACE, 1.0);
     buffer.backdrops.extend_from_slice(rows);
-    buffer
-        .live_panes
-        .refill(rows.iter().map(|row| row.capture.key));
+    buffer.live_panes.refill(
+        rows.iter()
+            .filter_map(BackdropRow::capture)
+            .map(|capture| capture.key),
+    );
     gpu.frame(|ctx| {
         backdrops.prepare(
             ctx,
@@ -75,7 +74,9 @@ fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
 
 /// Two windows' panes under one key keep a result each, in slots apart: a frame of one leaves the
 /// other's, its panes leaving drops only its own, and retiring a window drops the rest of its.
-/// Frames with no pane make no resources; the first with one makes it, and it stays.
+/// Frames with no backdrop make no resources; a frame of a backdrop over the ground makes the
+/// composite's, shows the clear as the target holds it, and makes no blur; the first that captures
+/// makes the blur, and both stay.
 #[test]
 fn each_window_keeps_its_own_results() {
     let gpu = headless_test_gpu();
@@ -83,9 +84,28 @@ fn each_window_keeps_its_own_results() {
     let (a, b) = (owners.reserve(), owners.reserve());
     let mut backdrops = Backdrops::new(&gpu, &TextureBinding::new(&gpu));
     prepare(&mut backdrops, &gpu, a, &[]);
-    assert!(backdrops.resources.is_none(), "no pane, no resources");
+    assert!(backdrops.resources.is_none(), "no backdrop, no resources");
+    let ground = BackdropRow {
+        reads: URect::new(0, 0, 30, 30).into(),
+        look: None,
+        read: BackdropRead::Ground,
+    };
+    prepare(&mut backdrops, &gpu, a, &[ground]);
+    let resources = backdrops.resources.as_ref().expect("the composite's");
+    assert!(resources.blur.is_none(), "the ground blurs nothing");
+    assert_eq!(backdrops.slots[0].lattice, 0.0);
+    assert_eq!(
+        backdrops.slots[0].clear,
+        held_clear(CLEAR.to_f16(), TargetFormat::RGBA8_SRGB)
+    );
+    assert!(backdrops.cache.is_empty(), "the ground holds no result");
     prepare(&mut backdrops, &gpu, a, &[captured(0)]);
-    assert!(backdrops.resources.is_some());
+    assert!(
+        backdrops
+            .resources
+            .as_ref()
+            .is_some_and(|r| r.blur.is_some())
+    );
     prepare(&mut backdrops, &gpu, b, &[captured(0)]);
     let (at_a, at_b) = (
         slot(&backdrops, a, 0).unwrap(),
@@ -102,7 +122,13 @@ fn each_window_keeps_its_own_results() {
     assert_eq!(slot(&backdrops, b, 0), Some(at_b), "the other window's");
     backdrops.retire(b);
     assert!(backdrops.cache.is_empty(), "retired");
-    assert!(backdrops.resources.is_some(), "kept for the next pane");
+    assert!(
+        backdrops
+            .resources
+            .as_ref()
+            .is_some_and(|r| r.blur.is_some()),
+        "kept for the next pane"
+    );
 }
 
 /// A pane that shows the clear holds the clear as the target holds it and frees its slot, which
@@ -152,15 +178,20 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
     );
 }
 
-/// `BackdropSlot` lies as the pane shader declares it and as the backdrop effect contract declares
-/// `PalantirPane`, and `SpectrumCell` as the pane shader declares it, which storage bindings read
-/// unchecked: the slot's clear, a `vec3` the shader aligns to 16 bytes, starts after the lens at
-/// 32, and `reads` at 64 after the filter's scalars; each of a cell's three `vec3`s takes 16
-/// bytes, 48 in all.
+/// `BackdropSlot` lies as the backdrop effect contract declares `PalantirPane`, and `SpectrumCell`
+/// as it declares `PalantirSpectrumCell`, which storage bindings read unchecked: the slot's clear,
+/// a `vec3` the shader aligns to 16 bytes, starts at 16 after the lattice and the ceiling, and
+/// `reads` at 32 after the floor; each of a cell's three `vec3`s takes 16 bytes, 48 in all.
 #[test]
 fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
-    PANE_SHADER.assert_struct_layout(
-        "SpectrumCell",
+    let contract = ShaderBody {
+        label: "palantir.effect.backdrop",
+        wgsl: include_str!("../../../effect/backdrop.wgsl"),
+        includes: &[include_str!("../../../effect/contract.wgsl")],
+        constants: &[],
+    };
+    contract.assert_struct_layout(
+        "PalantirSpectrumCell",
         size_of::<SpectrumCell>(),
         &[
             ("weight", offset_of!(SpectrumCell, weight)),
@@ -171,27 +202,17 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
     let members = [
         ("offset", offset_of!(BackdropSlot, offset)),
         ("lattice", offset_of!(BackdropSlot, lattice)),
-        ("highlight", offset_of!(BackdropSlot, highlight)),
-        ("lens", offset_of!(BackdropSlot, lens)),
-        ("clear", offset_of!(BackdropSlot, clear)),
         ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
+        ("clear", offset_of!(BackdropSlot, clear)),
         ("min_luminance", offset_of!(BackdropSlot, min_luminance)),
-        ("saturation", offset_of!(BackdropSlot, saturation)),
-        ("noise", offset_of!(BackdropSlot, noise)),
-        ("stroke_width", offset_of!(BackdropSlot, stroke_width)),
         ("reads", offset_of!(BackdropSlot, reads)),
         ("tint", offset_of!(BackdropSlot, tint)),
         ("stroke_color", offset_of!(BackdropSlot, stroke_color)),
+        ("stroke_width", offset_of!(BackdropSlot, stroke_width)),
     ];
-    assert_eq!(offset_of!(BackdropSlot, clear), 32);
-    assert_eq!(offset_of!(BackdropSlot, reads), 64);
-    PANE_SHADER.assert_struct_layout("BackdropSlot", size_of::<BackdropSlot>(), &members);
-    let contract = ShaderBody {
-        label: "palantir.effect.backdrop",
-        wgsl: include_str!("../../../effect/backdrop.wgsl"),
-        includes: &[include_str!("../../../effect/contract.wgsl")],
-        constants: &[],
-    };
+    assert_eq!(offset_of!(BackdropSlot, clear), 16);
+    assert_eq!(offset_of!(BackdropSlot, reads), 32);
+    assert_eq!(size_of::<BackdropSlot>(), 96);
     contract.assert_struct_layout("PalantirPane", size_of::<BackdropSlot>(), &members);
 }
 
@@ -224,10 +245,8 @@ fn a_full_atlas_evicts_the_least_recently_used_result() {
     backdrops.forget_evicted(a);
     assert_eq!(backdrops.evicted(a).count(), 0);
 
-    let huge = BackdropRow {
-        source: PaneSource::Capture { barrier: 1 },
-        ..BackdropRow::fixture(9, URect::new(0, 0, 100, 100), BlurPlan::new(2.0))
-    };
+    let huge = BackdropRow::fixture(9, URect::new(0, 0, 100, 100), BlurPlan::new(2.0))
+        .with_source(PaneSource::Capture { barrier: 1 });
     prepare(&mut backdrops, &gpu, b, &[huge]);
     assert_eq!(backdrops.blurs(), 0);
     assert_eq!(backdrops.slots[0].lattice, 0.0, "it shows the clear");

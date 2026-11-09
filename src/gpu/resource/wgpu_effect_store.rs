@@ -6,11 +6,10 @@ use fixedbitset::FixedBitSet;
 
 use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts};
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
+use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts, EffectPipelines};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::effect_id::EffectId;
-use crate::renderer::render_buffer::effect_draw_row::{EffectProgram, PaneForm};
+use crate::renderer::render_buffer::effect_draw_row::EffectProgram;
 
 /// The [`EffectStore`] a host's registry loads through and its backend draws from. It keeps each
 /// effect's module, and builds the pipelines of the effects some use wants at one place, the
@@ -36,8 +35,6 @@ struct StoreState {
     modules: Vec<EffectModule>,
     /// The effects some use wanted, at each id: built for every format of every device.
     wanted: FixedBitSet,
-    /// The pane forms a frame drew, at each [`PaneForm`]: built as [`Self::wanted`]'s effects.
-    wanted_panes: [bool; PaneForm::COUNT],
     /// The wanted effects the attached device builds at the next [`WgpuEffectStore::prepare`]: a
     /// new want, or a want reloaded with a new module.
     pending: Vec<EffectId>,
@@ -53,8 +50,6 @@ struct StoreState {
 pub(crate) struct AttachedEffects {
     gpu: Gpu,
     pub(crate) layouts: EffectLayouts,
-    /// [`effect_pipeline::PANE_SHADER`]'s module, which every pane form builds from.
-    pane_shader: wgpu::ShaderModule,
     /// One for each format, a few in all, in the order each was first drawn to: a frame reads
     /// one format's pipelines whole, and a build adds one to each. Refused: a table of each
     /// effect's pipelines for each format, which a frame reads one entry a row of; one flat table,
@@ -62,15 +57,13 @@ pub(crate) struct AttachedEffects {
     formats: Vec<FormatEffects>,
 }
 
-/// Every pipeline one format draws effects with: the pane forms', and each loaded effect's,
-/// [`StencilVariant::NONE`] where none is built.
+/// Every pipeline one format draws effects with: each loaded effect's, [`EffectPipelines::NONE`]
+/// where none is built.
 #[derive(Debug)]
 pub(crate) struct FormatEffects {
     format: wgpu::TextureFormat,
-    /// At each [`PaneForm`].
-    pub(crate) panes: [StencilVariant; PaneForm::COUNT],
     /// At each effect's id.
-    pub(crate) effects: Vec<StencilVariant>,
+    pub(crate) effects: Vec<EffectPipelines>,
 }
 
 impl WgpuEffectStore {
@@ -81,7 +74,6 @@ impl WgpuEffectStore {
         state.attached = Some(AttachedEffects {
             gpu: gpu.clone(),
             layouts: EffectLayouts::new(gpu, binding),
-            pane_shader: effect_pipeline::PANE_SHADER.module(gpu),
             formats: Vec::new(),
         });
         // A new format builds every wanted effect, so nothing is pending on a fresh device.
@@ -89,14 +81,12 @@ impl WgpuEffectStore {
         state.revision += 1;
     }
 
-    /// Build every wanted effect and pane form for `format`, where it is new: before the frame
-    /// that paints it.
+    /// Build every wanted effect for `format`, where it is new: before the frame that paints it.
     pub(crate) fn ensure_format(&self, format: wgpu::TextureFormat) {
         let mut state = self.state.borrow_mut();
         let StoreState {
             modules,
             wanted,
-            wanted_panes,
             attached,
             revision,
             pending: _,
@@ -107,15 +97,8 @@ impl WgpuEffectStore {
         }
         let mut built = FormatEffects {
             format,
-            panes: [StencilVariant::NONE; PaneForm::COUNT],
-            effects: vec![StencilVariant::NONE; modules.len()],
+            effects: vec![EffectPipelines::NONE; modules.len()],
         };
-        for form in PaneForm::ALL
-            .into_iter()
-            .filter(|form| wanted_panes[form.idx()])
-        {
-            built.panes[form.idx()] = attached.build_pane(form, format);
-        }
         for idx in wanted.ones() {
             built.effects[idx] = attached.build(&modules[idx], format, idx);
         }
@@ -123,14 +106,13 @@ impl WgpuEffectStore {
         *revision += 1;
     }
 
-    /// The start of a frame's GPU phase: want each effect and pane form `programs`, the frame's
-    /// draws, name, and build every wanted one not built yet for each format, before any pass.
+    /// The start of a frame's GPU phase: want each effect `programs`, the frame's draws, name,
+    /// and build every wanted one not built yet for each format, before any pass.
     pub(crate) fn prepare(&self, programs: &[EffectProgram]) {
         let mut state = self.state.borrow_mut();
         for &program in programs {
             match program {
-                EffectProgram::App(id) => state.want(id),
-                EffectProgram::Pane(form) => state.want_pane(form),
+                EffectProgram::App(id) | EffectProgram::Material(id) => state.want(id),
             }
         }
         let StoreState {
@@ -150,7 +132,6 @@ impl WgpuEffectStore {
             gpu,
             layouts,
             formats,
-            ..
         } = attached;
         for id in pending.drain(..) {
             for built in formats.iter_mut() {
@@ -192,22 +173,6 @@ impl StoreState {
             self.pending.push(id);
         }
     }
-
-    /// Want the pane form `form`, built at once for each format, as the frame that wants it
-    /// draws it.
-    fn want_pane(&mut self, form: PaneForm) {
-        if self.wanted_panes[form.idx()] {
-            return;
-        }
-        self.wanted_panes[form.idx()] = true;
-        if let Some(attached) = &mut self.attached {
-            for idx in 0..attached.formats.len() {
-                let format = attached.formats[idx].format;
-                attached.formats[idx].panes[form.idx()] = attached.build_pane(form, format);
-            }
-            self.revision += 1;
-        }
-    }
 }
 
 /// [`WgpuEffectStore::read`]'s borrow.
@@ -230,12 +195,8 @@ impl AttachedEffects {
         module: &EffectModule,
         format: wgpu::TextureFormat,
         idx: usize,
-    ) -> StencilVariant {
+    ) -> EffectPipelines {
         effect_pipeline::build(&self.gpu, &self.layouts, module, format, idx)
-    }
-
-    fn build_pane(&self, form: PaneForm, format: wgpu::TextureFormat) -> StencilVariant {
-        effect_pipeline::build_pane(&self.gpu, &self.layouts, &self.pane_shader, form, format)
     }
 }
 
@@ -260,7 +221,7 @@ impl EffectStore for WgpuEffectStore {
             wanted.grow(modules.len());
             if let Some(attached) = attached {
                 for built in &mut attached.formats {
-                    built.effects.push(StencilVariant::NONE);
+                    built.effects.push(EffectPipelines::NONE);
                 }
             }
         } else {
@@ -281,20 +242,24 @@ impl EffectStore for WgpuEffectStore {
 pub(crate) mod internals {
     use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
     use crate::gpu::resource::wgpu_effect_store::{ATTACHED, FormatEffects, WgpuEffectStore};
-    use crate::renderer::render_buffer::effect_draw_row::PaneForm;
 
     impl WgpuEffectStore {
-        /// Whether each loaded effect, at its id, is built, the same for every format drawn to.
+        /// Whether each loaded effect's shape stages, at its id, are built, the same for every
+        /// format drawn to.
         pub(crate) fn built_effects(&self) -> Vec<bool> {
             let state = self.state.borrow();
             (0..state.modules.len())
-                .map(|idx| self.built_alike(|format| &format.effects[idx]))
+                .map(|idx| self.built_alike(|format| &format.effects[idx].shape))
                 .collect()
         }
 
-        /// Whether each [`PaneForm`] is built, the same for every format drawn to.
-        pub(crate) fn built_panes(&self) -> [bool; PaneForm::COUNT] {
-            PaneForm::ALL.map(|form| self.built_alike(|format| &format.panes[form.idx()]))
+        /// Whether each loaded effect's material stages, at its id, are built, the same for every
+        /// format drawn to: never for a module that holds none.
+        pub(crate) fn built_materials(&self) -> Vec<bool> {
+            let state = self.state.borrow();
+            (0..state.modules.len())
+                .map(|idx| self.built_alike(|format| &format.effects[idx].material))
+                .collect()
         }
 
         /// Whether the pipeline `of` picks is built, which every format drawn to agrees on.
@@ -331,8 +296,9 @@ mod tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::offscreen::{OffscreenHost, OffscreenTime};
     use crate::primitives::effect::effect_name::EffectName;
-    use crate::primitives::paint::backdrop_filter::BackdropFilter;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::material::Material;
     use crate::shape::Shape;
     use crate::text::shaper::TextShaper;
     use crate::theme::Theme;
@@ -367,10 +333,12 @@ mod tests {
     }
 
     /// An effect builds where a use first wants it, and stays built: the stock ripples (ids 0
-    /// and 1) and `OnUse` blue (2) build nothing over a frame that draws none of them, `Now` red
-    /// (3) builds at that frame; blue builds at the frame that draws it, red staying built. A
-    /// reload of blue as green builds again, so the next frame paints green. A pane form builds
-    /// at the frame that draws it, frost alone for a blur.
+    /// and 1), the blur and the glass (2 and 4) and `OnUse` blue (5) build nothing over a frame
+    /// that draws none of them, `Now` red (6) builds at that frame, and so does the frost (3), which
+    /// the stock themes' floats wear; blue builds at the frame that draws it, red staying built. A
+    /// reload of blue as green builds again, so the next frame paints green. A material builds at
+    /// the frame that draws it, its shape and material stages both, the blur for a blurred box; a
+    /// color effect holds no material stages.
     #[test]
     fn an_effect_builds_where_a_use_wants_it() {
         let (mut host, target) = host();
@@ -384,15 +352,22 @@ mod tests {
             )
             .unwrap();
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
-            ui.add_shape(Shape::rect().fill(RgbaF32::WHITE));
+            ui.add_shape(Shape::rect(RgbaF32::WHITE));
         });
         let store = |host: &OffscreenHost| host.effect_store().built_effects();
-        assert_eq!(store(&host), [false, false, false, true]);
-        assert_eq!(host.effect_store().built_panes(), [false; 3]);
+        let materials = |host: &OffscreenHost| host.effect_store().built_materials();
+        assert_eq!(
+            store(&host),
+            [false, false, false, true, false, false, true]
+        );
+        assert_eq!(
+            materials(&host),
+            [false, false, false, true, false, false, false]
+        );
 
         let mut blue = |ui: &mut Ui| ui.add_shape(Shape::effect(BLUE, ()));
         host.frame(target.as_target(), &mut blue);
-        assert_eq!(store(&host), [false, false, true, true]);
+        assert_eq!(store(&host), [false, false, false, true, false, true, true]);
         assert_eq!(target.read_back().get_pixel(4, 4).0, [0, 0, 255, 255]);
 
         host.ui()
@@ -402,11 +377,14 @@ mod tests {
         assert_eq!(target.read_back().get_pixel(4, 4).0, [0, 255, 0, 255]);
 
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
-            ui.add_shape(Shape::rect().fill(RgbaF32::WHITE));
-            ui.add_shape(Shape::rect().backdrop_filter(BackdropFilter::blur(3.0)));
+            ui.add_shape(Shape::rect(RgbaF32::WHITE));
+            ui.add_shape(Shape::rect(Chrome::NONE.with_material(Material::blur(3.0))));
         });
-        assert_eq!(host.effect_store().built_panes(), [true, false, false]);
-        assert_eq!(store(&host), [false, false, true, true]);
+        assert_eq!(
+            materials(&host),
+            [false, false, true, true, false, false, false]
+        );
+        assert_eq!(store(&host), [false, false, true, true, false, true, true]);
     }
 
     /// The press effects of a window's themes build at the next frame that draws, for both
@@ -428,7 +406,7 @@ mod tests {
             theme
         };
         let mut nothing = |_: &mut Ui| {};
-        let mut fill = |ui: &mut Ui| ui.add_shape(Shape::rect().fill(RgbaF32::WHITE));
+        let mut fill = |ui: &mut Ui| ui.add_shape(Shape::rect(RgbaF32::WHITE));
 
         let (mut host, target) = host();
         host.ui_mut()
@@ -437,8 +415,9 @@ mod tests {
         host.ui_mut()
             .set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
             .unwrap();
+        let ripples = |host: &OffscreenHost| host.effect_store().built_effects()[..2].to_vec();
         host.frame(target.as_target(), &mut nothing);
-        assert_eq!(host.effect_store().built_effects(), [false, false]);
+        assert_eq!(ripples(&host), [false, false]);
 
         let shown = host.ui().color_scheme();
         let hidden = match shown {
@@ -446,9 +425,9 @@ mod tests {
             ColorScheme::Dark => ColorScheme::Light,
         };
         host.ui_mut().set_theme(hidden, sparkle()).unwrap();
-        assert_eq!(host.effect_store().built_effects(), [false, false]);
+        assert_eq!(ripples(&host), [false, false]);
         host.frame(target.as_target(), &mut fill);
-        assert_eq!(host.effect_store().built_effects(), [true, true]);
+        assert_eq!(ripples(&host), [true, true]);
     }
 
     /// A target of a new format builds every loaded effect for it before its frame: the same
@@ -467,7 +446,7 @@ mod tests {
             .load_effect(BLUE, EffectSource::new(wgsl))
             .unwrap();
         let mut app = |ui: &mut Ui| {
-            ui.add_shape(Shape::rect().fill(RgbaF32::new(0.2, 0.4, 0.6, 1.0)));
+            ui.add_shape(Shape::rect(RgbaF32::new(0.2, 0.4, 0.6, 1.0)));
             ui.add_shape(Shape::effect(BLUE, ()));
         };
         for format in [

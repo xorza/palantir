@@ -15,7 +15,7 @@ pub trait EffectKind: sealed::Kind {}
 pub struct ColorEffect;
 
 /// An effect that also reads the pixels painted below it, through the capture
-/// [`BackdropFilter`](crate::BackdropFilter) uses.
+/// [`Material`](crate::Material) uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BackdropEffect;
 

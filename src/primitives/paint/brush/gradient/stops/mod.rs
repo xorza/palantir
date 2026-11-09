@@ -120,15 +120,6 @@ impl GradientStops {
         builder.build()
     }
 
-    /// Make every stop's color opaque, its offset and its color kept.
-    pub(crate) const fn make_opaque(&mut self) {
-        let mut i = 0;
-        while i < self.len as usize {
-            self.stops[i].color.a = u8::MAX;
-            i += 1;
-        }
-    }
-
     pub(crate) const fn as_slice(&self) -> &[Stop] {
         self.stops.split_at(self.len as usize).0
     }

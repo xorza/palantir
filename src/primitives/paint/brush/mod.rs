@@ -32,19 +32,6 @@ pub enum Brush {
 }
 
 impl Brush {
-    /// This brush with every color made opaque, its colors and geometry kept: the solid fill a
-    /// translucent tint over a backdrop filter paints as while transparency is reduced.
-    pub(crate) fn opaque(&self) -> Self {
-        let mut brush = self.clone();
-        match &mut brush {
-            Self::Solid(color) => *color = color.with_alpha(1.0),
-            Self::Linear(g) => g.ramp.stops.make_opaque(),
-            Self::Radial(g) => g.ramp.stops.make_opaque(),
-            Self::Conic(g) => g.ramp.stops.make_opaque(),
-        }
-        brush
-    }
-
     /// Whether the color or gradient geometry holds its kinds: [`Self::validate`]'s test.
     #[inline]
     pub(crate) const fn is_valid(&self) -> bool {

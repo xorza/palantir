@@ -1,6 +1,8 @@
 use crate::primitives::math::libm_ext::Libm;
-use crate::shape::paint::lens_optics::SPECTRUM_VIOLET;
-use crate::shape::paint::lens_optics::{LINE_C, LINE_D, LINE_F, LensOptics, cauchy_offset};
+use crate::primitives::paint::material::lens_optics::SPECTRUM_VIOLET;
+use crate::primitives::paint::material::lens_optics::{
+    LINE_C, LINE_D, LINE_F, LensOptics, cauchy_offset,
+};
 
 const LENS: LensOptics = LensOptics {
     bezel: 24.0,

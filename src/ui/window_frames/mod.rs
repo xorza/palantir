@@ -260,6 +260,7 @@ impl WindowFrames {
             let effects = self.ui.resources.effects();
             for theme in themes {
                 theme.press_effects(|name| effects.want(name));
+                theme.material_effects(|name| effects.want(name));
             }
         }
         self.ui.frame_runtime.take_power_slot();
@@ -457,9 +458,7 @@ impl WindowFrames {
         if pass == RecordPass::First {
             self.ui.input.clear_watches();
         }
-        self.ui
-            .forest
-            .pre_record(self.ui.frame_runtime.reductions.transparency);
+        self.ui.forest.pre_record();
         self.ui.input.pre_record();
         self.ui.host.window_requests.begin_pass();
         self.ui.overlays.begin_pass();

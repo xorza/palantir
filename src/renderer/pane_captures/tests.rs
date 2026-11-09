@@ -8,14 +8,15 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::renderer::pane_captures::{PaneCaptures, PaneDamage, PaneTicket, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::BackdropRow;
 use crate::renderer::render_buffer::backdrop_row::PaneSource::{
     self, Capture, Clear, Held, Hidden,
 };
+use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow};
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
@@ -92,10 +93,12 @@ fn frame(
                 (true, Drawn::Covered) => Hidden,
             };
             BackdropRow {
-                capture: ticket.capture,
                 reads: ticket.capture.footprint.into(),
                 look: None,
-                source,
+                read: BackdropRead::Pane {
+                    capture: ticket.capture,
+                    source,
+                },
             }
         }));
     captures.settle(&buffer);
@@ -349,9 +352,8 @@ fn more_captures_than_a_partial_frame_holds_overflow() {
 fn the_captured_area_sums_the_capturing_footprints() {
     let at = |x: u32| URect::new(x, 20, 98, 80);
     let plan = BlurPlan::new(10.0);
-    let row = |i: u32, x: u32, source: PaneSource| BackdropRow {
-        source,
-        ..BackdropRow::fixture(i, at(x), plan)
+    let row = |i: u32, x: u32, source: PaneSource| {
+        BackdropRow::fixture(i, at(x), plan).with_source(source)
     };
     let mut buffer = RenderBuffer::new();
     buffer.backdrops.extend([
@@ -380,7 +382,7 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             let square = Rect::new(42.0, 42.0, 4.0, 4.0);
-                            ui.add_shape(Shape::rect().at(square).fill(RgbaF32::WHITE));
+                            ui.add_shape(Shape::rect(RgbaF32::WHITE).at(square));
                         });
                     Panel::canvas()
                         .id(WidgetId::from_hash("moved"))
@@ -388,16 +390,15 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
                         .show(ui, |ui| {
                             if lead {
                                 let lead = Rect::new(0.0, 0.0, 4.0, 4.0);
-                                ui.add_shape(Shape::rect().at(lead).fill(RgbaF32::WHITE));
+                                ui.add_shape(Shape::rect(RgbaF32::WHITE).at(lead));
                             }
                             let pane = Rect::new(40.0, 40.0, 40.0, 40.0);
                             ui.add_shape(
-                                Shape::rect()
-                                    .at(pane)
-                                    .backdrop_filter(BackdropFilter::blur(4.0)),
+                                Shape::rect(Chrome::NONE.with_material(Material::blur(4.0)))
+                                    .at(pane),
                             );
                             let square = Rect::new(60.0, 60.0, 10.0, 10.0);
-                            ui.add_shape(Shape::rect().at(square).fill(over));
+                            ui.add_shape(Shape::rect(over).at(square));
                         });
                 });
         }
@@ -412,7 +413,10 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
         h.render_buffer()
             .backdrops
             .iter()
-            .map(|row| (row.capture.key.shape, row.source))
+            .map(|row| match row.read {
+                BackdropRead::Pane { capture, source } => (capture.key.shape, source),
+                BackdropRead::Ground => panic!("a pane, not the ground"),
+            })
             .collect()
     };
     let captured = Capture { barrier: 1 };

@@ -330,7 +330,7 @@ const PAGES: &[Page] = &[
     Page {
         group: Group::Paint,
         label: "Materials",
-        blurb: "Backdrop filters: blur, frosted glass and glass, as shapes and as chrome.",
+        blurb: "Materials: blur, frosted glass and glass, palantir's stock backdrop effects, on shapes and chrome.",
         keys: &[],
         flow: Flow::Scroll,
         source: source!(materials),

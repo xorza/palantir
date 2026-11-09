@@ -2,9 +2,9 @@
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, InkBound};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::{InkBound, Material};
 use glam::Vec2;
 
 /// The type, spacing, rounding, line, shadow, float material and transition steps of a theme, as
@@ -122,22 +122,22 @@ pub struct ShadowGeometry {
     pub blur: f32,
 }
 
-/// A float's material without its ink: [`Self::filter`], any look a [`BackdropFilter`] makes,
-/// under the surface's own fill at [`Self::tint_alpha`], its luminance bound derived from the
-/// dimmest ink the surface paints.
+/// A float's material without its ink: [`Self::material`], any [`Material`], under the surface's
+/// own fill at [`Self::tint_alpha`], its luminance bound derived from the dimmest ink the surface
+/// paints.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FloatMaterial {
-    /// The look, as [`BackdropFilter::blur`], [`BackdropFilter::frosted`] or
-    /// [`BackdropFilter::glass`] makes it, with its fallback for reduced transparency. Its
-    /// luminance bounds are replaced by the one each float's ink needs.
-    pub filter: BackdropFilter,
-    /// The alpha of the surface's fill over the filter; a fraction, and 1 shows nothing through.
+    /// The material, as [`Material::blur`], [`Material::frosted`] or [`Material::glass`] makes
+    /// it, or an app's effect. Its luminance bounds are replaced by the one each float's ink
+    /// needs.
+    pub material: Material,
+    /// The alpha of the surface's fill over the material; a fraction, and 1 shows nothing through.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
     pub tint_alpha: f32,
 }
 
 impl FloatMaterial {
-    /// `panel` in this material: its solid fill at [`Self::tint_alpha`] over [`Self::filter`],
+    /// `panel` in this material: its solid fill at [`Self::tint_alpha`] over [`Self::material`],
     /// bound so `ink`, the dimmest ink the surface paints, reads at 4.5:1 over any backdrop: a
     /// ceiling for ink lighter than the tint, a floor for ink darker.
     ///
@@ -145,7 +145,7 @@ impl FloatMaterial {
     ///
     /// Unless `panel`'s fill is a solid color, the tint is a fraction under 1, `ink` holds 4.5:1
     /// on the fill made opaque, and an ink lighter than the fill is light enough for a ceiling,
-    /// as [`BackdropFilter::with_max_luminance_for`] and its floor twin require.
+    /// as [`Material::with_max_luminance_for`] and its floor twin require.
     #[track_caller]
     pub fn dress(self, panel: &Chrome, ink: RgbaF32) -> Chrome {
         self.try_dress(panel, ink)
@@ -156,17 +156,17 @@ impl FloatMaterial {
     pub(crate) fn try_dress(self, panel: &Chrome, ink: RgbaF32) -> Result<Chrome, MaterialRefusal> {
         let fill = panel.fill.as_solid().ok_or(MaterialRefusal::FillNotSolid)?;
         let tint = fill.with_alpha(self.tint_alpha);
-        let unbound = BackdropFilter {
+        let unbound = Material {
             max_luminance: None,
             min_luminance: None,
-            ..self.filter
+            ..self.material
         };
-        let filter = unbound.holding(ink, tint).map_err(MaterialRefusal::Ink)?;
+        let material = unbound.holding(ink, tint).map_err(MaterialRefusal::Ink)?;
         Ok(Chrome {
             fill: tint.into(),
             ..panel.clone()
         }
-        .with_backdrop_filter(filter))
+        .with_material(material))
     }
 }
 
@@ -245,7 +245,7 @@ impl Metrics {
         // text, as Fluent puts acrylic under its flyouts
         // (https://learn.microsoft.com/windows/apps/develop/ui/in-app-acrylic).
         float_material: Some(FloatMaterial {
-            filter: BackdropFilter::frosted(20.0),
+            material: Material::frosted(20.0),
             tint_alpha: 184.0 / 255.0,
         }),
         // Fluent's button transitions its fill, border and ink over `durationFaster`, 100 ms:

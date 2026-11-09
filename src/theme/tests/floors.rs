@@ -1,7 +1,9 @@
 use std::fmt::Write as _;
 
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
 use crate::theme::color_scheme::ColorScheme;
@@ -192,7 +194,11 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
             ("tooltip", &t.tooltip.panel),
             ("modal", &t.modal.panel),
         ] {
-            assert_eq!(panel.backdrop_filter.blur, 20.0, "{float} {scheme:?}");
+            assert_eq!(
+                panel.material.map(|m| m.blur),
+                Some(20.0),
+                "{float} {scheme:?}"
+            );
             assert_eq!(
                 panel.fill.as_solid().map(|fill| fill.a),
                 Some(184.0 / 255.0),
@@ -207,7 +213,7 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
 }
 
 /// `dress_floats` dresses exactly the five floating surfaces: each keeps its fill's color at the
-/// tint's alpha, over the material's filter whose bound holds its weakest ink (muted on a menu,
+/// tint's alpha, over the material whose bound holds its weakest ink (muted on a menu,
 /// the picker and a bare popup, full on a tooltip and the modal), a ceiling under the dark
 /// palette's light inks and a floor under the light palette's dark ones; every other slot is as
 /// `from_parts` built it. A bound the material names is replaced, and its look is kept: a glass
@@ -236,12 +242,12 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
                 .expect("a solid fill")
                 .with_alpha(0.6);
             assert_eq!(after.fill.as_solid(), Some(tint), "{scheme:?}");
-            let filter = BackdropFilter::frosted(20.0);
+            let material = Material::frosted(20.0);
             let want = match scheme {
-                ColorScheme::Dark => filter.with_max_luminance_for(ink, tint),
-                ColorScheme::Light => filter.with_min_luminance_for(ink, tint),
+                ColorScheme::Dark => material.with_max_luminance_for(ink, tint),
+                ColorScheme::Light => material.with_min_luminance_for(ink, tint),
             };
-            assert_eq!(after.backdrop_filter, want, "{scheme:?}");
+            assert_eq!(after.material, Some(want), "{scheme:?}");
             assert_eq!(after.border, before.border);
             assert_eq!(after.shadow, before.shadow);
         }
@@ -266,39 +272,40 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
         .expect("solid")
         .with_alpha(0.6);
     theme.dress_floats(FROSTED);
-    let frosted = BackdropFilter::frosted(20.0);
+    let frosted = Material::frosted(20.0);
     assert_eq!(
-        theme.menu.panel.backdrop_filter,
-        frosted.with_max_luminance_for(ink, tint)
+        theme.menu.panel.material,
+        Some(frosted.with_max_luminance_for(ink, tint))
     );
     assert_ne!(
-        theme.menu.panel.backdrop_filter,
-        frosted.with_max_luminance_for(Palette::DARK.text_muted, tint)
+        theme.menu.panel.material,
+        Some(frosted.with_max_luminance_for(Palette::DARK.text_muted, tint))
     );
 
-    // Any look: glass with a fallback, and a floor it names that the ink's ceiling replaces.
-    let glass = BackdropFilter::glass(Lens::WINDOW_GLASS)
-        .with_fallback(RgbaF32::hex(0x202020))
+    // Any material: glass that keeps its dim while transparency is reduced, and a floor it names
+    // that the ink's ceiling replaces.
+    let glass = Material::glass(Lens::WINDOW_GLASS)
+        .with_reduced_transparency(ReducedBackdrop::Nothing)
         .with_min_luminance(0.5);
     let mut theme = Theme::stock(ColorScheme::Dark);
     theme.dress_floats(FloatMaterial {
-        filter: glass,
+        material: glass,
         tint_alpha: 0.6,
     });
     let tint = theme.tooltip.panel.fill.as_solid().expect("solid");
-    let unbound = BackdropFilter {
+    let unbound = Material {
         min_luminance: None,
         ..glass
     };
     assert_eq!(
-        theme.tooltip.panel.backdrop_filter,
-        unbound.with_max_luminance_for(Palette::DARK.text, tint)
+        theme.tooltip.panel.material,
+        Some(unbound.with_max_luminance_for(Palette::DARK.text, tint))
     );
 }
 
 /// The frosted material the tests dress floats in: σ 20 under a 0.6 tint.
 const FROSTED: FloatMaterial = FloatMaterial {
-    filter: BackdropFilter::frosted(20.0),
+    material: Material::frosted(20.0),
     tint_alpha: 0.6,
 };
 
@@ -312,7 +319,7 @@ fn dress_floats_refuses_a_bad_blur_or_tint() {
     ] {
         let panic = std::panic::catch_unwind(|| {
             Theme::from_parts(p, &Metrics::DEFAULT).dress_floats(FloatMaterial {
-                filter: BackdropFilter::frosted(sigma),
+                material: Material::frosted(sigma),
                 tint_alpha: alpha,
             });
         })

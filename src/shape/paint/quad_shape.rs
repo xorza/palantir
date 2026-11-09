@@ -5,7 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -19,18 +19,19 @@ use glam::Vec2;
 /// All are owner-local.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum QuadShape {
-    /// Filled or bordered rounded rectangle, or inverse window, by `kind`.
-    /// `local_rect = None` covers the owner's arranged rect; `Some(r)` paints
-    /// in owner-relative coords, in the slot it was pushed in, under the
-    /// owner's clip but outside its pan transform. A `backdrop` makes it a
-    /// pane over the pixels painted before it.
+    /// A rect shape's chrome: a filled or bordered rounded rectangle, or inverse window, by
+    /// `kind`, with its shadow and its material. `local_rect = None` covers the owner's arranged
+    /// rect; `Some(r)` paints in owner-relative coords, in the slot it was pushed in, under the
+    /// owner's clip but outside its pan transform. A material that captures makes it a pane over
+    /// the pixels painted before it.
     Rect {
         kind: RectKind,
         local_rect: Option<Rect>,
         corners: Corners,
         fill: ShapeBrush,
         border: ShapeStroke,
-        backdrop: Option<LoweredBackdrop>,
+        shadow: LoweredShadow,
+        material: Option<LoweredMaterial>,
     },
     /// Gaussian-blurred rounded rect (drop or inset shadow). `local_rect =
     /// None` shadows the owner's arranged rect; the composer shifts a drop
@@ -62,10 +63,19 @@ impl QuadShape {
     #[inline]
     pub(crate) fn bbox_local(&self, owner_size: Size) -> Rect {
         match self {
-            Self::Rect { local_rect, .. } => local_rect.unwrap_or(Rect {
-                min: Vec2::ZERO,
-                size: owner_size,
-            }),
+            Self::Rect {
+                local_rect, shadow, ..
+            } => {
+                let rect = local_rect.unwrap_or(Rect {
+                    min: Vec2::ZERO,
+                    size: owner_size,
+                });
+                if shadow.is_noop() {
+                    rect
+                } else {
+                    rect.union(shadow.paint_rect_local(*local_rect, owner_size))
+                }
+            }
             Self::Shadow {
                 local_rect, shadow, ..
             } => shadow.paint_rect_local(*local_rect, owner_size),
@@ -84,14 +94,16 @@ impl NanCheck for QuadShape {
                 corners,
                 fill,
                 border,
-                backdrop,
+                shadow,
+                material,
                 ..
             } => {
                 local_rect.has_nan()
                     || corners.has_nan()
                     || fill.has_nan()
                     || border.has_nan()
-                    || backdrop.has_nan()
+                    || shadow.has_nan()
+                    || material.has_nan()
             }
             Self::Shadow {
                 local_rect,

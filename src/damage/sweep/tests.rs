@@ -20,9 +20,9 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -697,10 +697,11 @@ fn a_scene_reads_the_share_its_panes_hold() {
                 .show(ui, |ui| {
                     for _ in 0..pane_count {
                         ui.add_shape(
-                            Shape::rect()
-                                .at(Rect::new(0.0, 0.0, 100.0, 100.0))
-                                .fill(RgbaF32::TRANSPARENT)
-                                .backdrop_filter(BackdropFilter::blur(2.0)),
+                            Shape::rect(
+                                Chrome::fill(RgbaF32::TRANSPARENT)
+                                    .with_material(Material::blur(2.0)),
+                            )
+                            .at(Rect::new(0.0, 0.0, 100.0, 100.0)),
                         );
                     }
                 });

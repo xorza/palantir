@@ -7,9 +7,9 @@ use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::shape::Shape;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -60,10 +60,10 @@ fn record(ui: &mut Ui, screen: Screen, big: RgbaF32, tiny: RgbaF32) {
             }
             if screen.pane {
                 ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(220.0, 0.0, 180.0, 200.0))
-                        .fill(RgbaF32::TRANSPARENT)
-                        .backdrop_filter(BackdropFilter::blur(2.0)),
+                    Shape::rect(
+                        Chrome::fill(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
+                    )
+                    .at(Rect::new(220.0, 0.0, 180.0, 200.0)),
                 );
             }
         });

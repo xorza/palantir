@@ -8,24 +8,21 @@ use std::mem::offset_of;
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
 use crate::effect::contract::{IMAGES_GROUP, PANES_GROUP};
-use crate::effect::effect_store::EffectModule;
+use crate::effect::effect_store::{EffectModule, ModuleEntries};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
-use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
-use crate::gpu::spectrum_tables;
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectProgram, PaneForm};
-use crate::shape::paint::lens_optics;
+use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectProgram};
 
 /// The layouts every effect's pipeline builds over: the parameter words at group 0, the images
 /// at [`IMAGES_GROUP`] for an effect that binds any, a backdrop effect's pane results at
@@ -143,72 +140,39 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = [
     ),
 ];
 
-/// Palantir's own backdrop effect, which a backdrop filter's pane draws through, one pipeline per
-/// [`PaneForm`].
-pub(crate) const PANE_SHADER: ShaderBody = ShaderBody {
-    label: "palantir.effect.pane",
-    wgsl: include_str!("pane.wgsl"),
-    includes: &[],
-    constants: PANE_CONSTANTS,
-};
-
-/// The numbers [`PANE_SHADER`] takes from the Rust types that own them.
-const PANE_CONSTANTS: &[ShaderConstant] = &[
-    ShaderConstant::uint("PANE_FORM_LENS", PaneForm::Lens as u32),
-    ShaderConstant::uint("PANE_FORM_SPECTRUM", PaneForm::Spectrum as u32),
-    ShaderConstant::uint("PANE_FLAG_WINDOW", EffectInstance::WINDOW),
-    ShaderConstant::float("LINE_D", lens_optics::LINE_D),
-    ShaderConstant::float("LINE_F", lens_optics::LINE_F),
-    ShaderConstant::float("LINE_C", lens_optics::LINE_C),
-    ShaderConstant::float("SPECTRUM_RED", lens_optics::SPECTRUM_RED),
-    ShaderConstant::float("SPECTRUM_VIOLET", lens_optics::SPECTRUM_VIOLET),
-    ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
-];
-
-/// The pane form `form` from `shader`, [`PANE_SHADER`]'s module, against `format`, with its
-/// rounded-clip twin. It dithers its result before an 8-bit sRGB target stores it.
-pub(crate) fn build_pane(
-    gpu: &Gpu,
-    layouts: &EffectLayouts,
-    shader: &wgpu::ShaderModule,
-    form: PaneForm,
-    format: wgpu::TextureFormat,
-) -> StencilVariant {
-    let dither = f64::from(u8::from(
-        format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
-    ));
-    let label = format!("palantir.effect.pane.{}", form as u32);
-    let recipe = PipelineRecipe {
-        constants: &[
-            ("DITHER_SRGB8", dither),
-            ("PANE_FORM", f64::from(form as u32)),
-        ],
-        vertex_buffers: &[Some(INSTANCE_LAYOUT)],
-        topology: wgpu::PrimitiveTopology::TriangleStrip,
-        blend: Some(BLEND),
-        ..PipelineRecipe::color(&label, shader, &layouts.backdrop[0], format)
-    };
-    let mut variant = StencilVariant::NONE;
-    variant.ensure(gpu, StencilMode::Off, &recipe);
-    variant.ensure(gpu, StencilMode::Test, &recipe);
-    variant
-}
-
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
     size_of::<EffectInstance>(),
     wgpu::VertexStepMode::Instance,
     &INSTANCE_ATTRS,
 );
 
+/// The pipelines of one effect against one format, each with its rounded-clip twin: its shape
+/// stages', and its material stages' for a module that holds them, [`StencilVariant::NONE`]
+/// otherwise, as for an effect no use built.
+#[derive(Clone, Debug)]
+pub(crate) struct EffectPipelines {
+    pub(crate) shape: StencilVariant,
+    pub(crate) material: StencilVariant,
+}
+
+impl EffectPipelines {
+    /// No pipeline built.
+    pub(crate) const NONE: Self = Self {
+        shape: StencilVariant::NONE,
+        material: StencilVariant::NONE,
+    };
+}
+
 /// The effect at `idx`, from `module`, over the layout of its kind and image slots, against
-/// `format`, with its rounded-clip twin.
+/// `format`: its shape stages, and its material stages where the module holds them, which dither
+/// their result before an 8-bit sRGB target stores it.
 pub(crate) fn build(
     gpu: &Gpu,
     layouts: &EffectLayouts,
     module: &EffectModule,
     format: wgpu::TextureFormat,
     idx: usize,
-) -> StencilVariant {
+) -> EffectPipelines {
     let label = format!("palantir.effect.{idx}");
     let shader = gpu
         .device
@@ -224,10 +188,26 @@ pub(crate) fn build(
         blend: Some(BLEND),
         ..PipelineRecipe::color(&label, &shader, layouts.pipeline(module), format)
     };
-    let mut variant = StencilVariant::NONE;
-    variant.ensure(gpu, StencilMode::Off, &recipe);
-    variant.ensure(gpu, StencilMode::Test, &recipe);
-    variant
+    let mut shape = StencilVariant::NONE;
+    shape.ensure(gpu, StencilMode::Off, &recipe);
+    shape.ensure(gpu, StencilMode::Test, &recipe);
+    let mut material = StencilVariant::NONE;
+    if module.entries == ModuleEntries::ShapeAndMaterial {
+        let dither = f64::from(u8::from(
+            format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
+        ));
+        let label = format!("palantir.effect.{idx}.material");
+        let recipe = PipelineRecipe {
+            label: &label,
+            vertex_entry: "palantir_material_vs",
+            fragment_entry: "palantir_material_fs",
+            constants: &[("PALANTIR_DITHER_SRGB8", dither)],
+            ..recipe
+        };
+        material.ensure(gpu, StencilMode::Off, &recipe);
+        material.ensure(gpu, StencilMode::Test, &recipe);
+    }
+    EffectPipelines { shape, material }
 }
 
 /// One frame's effects: their instances, their parameter words, the group the words bind
@@ -244,11 +224,9 @@ pub(crate) struct EffectPipeline {
     group_capacity: usize,
     /// What `pipelines` were copied at; `None` before the first upload.
     copied: Option<PipelinesCopy>,
-    pipelines: Vec<StencilVariant>,
+    pipelines: Vec<EffectPipelines>,
     /// Each effect's kind, at its id, copied with `pipelines`.
     kinds: Vec<KindId>,
-    /// The pane forms' pipelines for the format, at each [`PaneForm`], copied with `pipelines`.
-    panes: [StencilVariant; PaneForm::COUNT],
 }
 
 /// The format and store revision an [`EffectPipeline`]'s pipelines were copied at.
@@ -291,7 +269,6 @@ impl EffectPipeline {
             copied: None,
             pipelines: Vec::new(),
             kinds: Vec::new(),
-            panes: [StencilVariant::NONE; PaneForm::COUNT],
         }
     }
 
@@ -344,12 +321,8 @@ impl EffectPipeline {
         };
         if self.copied != Some(copy) {
             self.pipelines.clear();
-            match read.attached.for_format(upload.format) {
-                Some(built) => {
-                    self.pipelines.extend_from_slice(&built.effects);
-                    self.panes.clone_from(&built.panes);
-                }
-                None => self.panes = [StencilVariant::NONE; PaneForm::COUNT],
+            if let Some(built) = read.attached.for_format(upload.format) {
+                self.pipelines.extend_from_slice(&built.effects);
             }
             self.kinds.clear();
             self.kinds
@@ -387,10 +360,13 @@ impl EffectPipeline {
                 Some(images_group)
             };
             let (pipeline, kind) = match program {
-                EffectProgram::App(effect) => {
-                    (&self.pipelines[effect.idx()], self.kinds[effect.idx()])
+                EffectProgram::App(effect) => (
+                    &self.pipelines[effect.idx()].shape,
+                    self.kinds[effect.idx()],
+                ),
+                EffectProgram::Material(effect) => {
+                    (&self.pipelines[effect.idx()].material, KindId::Backdrop)
                 }
-                EffectProgram::Pane(form) => (&self.panes[form.idx()], KindId::Backdrop),
             };
             rec.pipeline(pipeline.select(stencil));
             rec.group(0, group);

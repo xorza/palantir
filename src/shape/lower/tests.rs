@@ -1,10 +1,11 @@
+use crate::effect::effect_registry::EffectRegistry;
 use crate::host::harness::Harness;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::packed::serde::LaneCodec;
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
@@ -14,12 +15,15 @@ use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::primitives::reduction::Reduction;
+use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
-use crate::shape::lower::{PaneFill, brush, chrome, pane_fill, ramp};
+use crate::shape::lower::{brush, chrome, ramp};
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
@@ -82,14 +86,14 @@ fn nan_chromes() -> [(&'static str, Chrome, &'static str); 6] {
             domain::LENGTH_RULE,
         ),
         (
-            "backdrop filter",
-            Chrome::fill(RgbaF32::WHITE).with_backdrop_filter(BackdropFilter::blur(f32::NAN)),
+            "material",
+            Chrome::fill(RgbaF32::WHITE).with_material(Material::blur(f32::NAN)),
             domain::LENGTH_RULE,
         ),
         (
             "luminance ceiling",
             Chrome::fill(RgbaF32::WHITE)
-                .with_backdrop_filter(BackdropFilter::blur(1.0).with_max_luminance(f32::NAN)),
+                .with_material(Material::blur(1.0).with_max_luminance(f32::NAN)),
             domain::FACTOR_RULE,
         ),
     ]
@@ -130,72 +134,71 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
 }
 
 /// A sane chrome reaches the row unchanged and every field reaches the hash.
-/// Under reduced transparency a pane lowers as a solid fill with no filter: its fill made opaque,
-/// or its fallback; a chrome with no filter, and a pane under full transparency, lower as they
-/// are. A rect shape lowers the same way.
+/// A chrome's material lowers as it reads this record, its fill as authored either way: through
+/// its effect over what is under it, a pane; over the ground, while transparency is reduced, no
+/// pane; or not at all, where its use paints nothing then, leaving the translucent fill. A rect
+/// shape lowers the same way, its read resolved in the registry, where the stock frost is effect 3.
 #[test]
-fn reduced_transparency_lowers_a_pane_as_a_solid_fill() {
+fn a_material_lowers_as_it_reads() {
     let tint = RgbaF32::hex(0x204060).with_alpha8(184);
-    let frosted = Chrome::fill(tint).with_backdrop_filter(BackdropFilter::frosted(20.0));
-    let fallback = RgbaF32::hex(0x808080);
-    let glass = Chrome::fill(RgbaF32::TRANSPARENT)
-        .with_backdrop_filter(BackdropFilter::frosted(20.0).with_fallback(fallback));
-    let plain = Chrome::fill(tint);
+    let frosted = Chrome::fill(tint).with_material(Material::frosted(20.0));
     let solid = |brush: ShapeBrush| match brush {
         ShapeBrush::Solid(color) => color,
-        ShapeBrush::Gradient { .. } => panic!("a solid pane lowers to a solid brush"),
+        ShapeBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
     };
-
-    let mut full = RecordStore::default();
-    let row = chrome(&mut full, &frosted, Stroke::NONE);
-    assert!(row.backdrop.is_some(), "full transparency keeps the filter");
-    assert_eq!(solid(row.fill), tint.to_f16());
-
-    let mut reduced = RecordStore::default();
-    reduced.transparency = Reduction::Reduced;
-    for (label, pane, want) in [
-        ("tinted", &frosted, RgbaF32::hex(0x204060)),
-        ("fallback", &glass, fallback),
-        ("no filter", &plain, tint),
+    let id = EffectId(3);
+    let mut store = RecordStore::default();
+    for (read, captures) in [
+        (Some(MaterialRead::Capture(id)), Some(true)),
+        (Some(MaterialRead::Ground(id)), Some(false)),
+        (None, None),
     ] {
-        let row = chrome(&mut reduced, pane, Stroke::NONE);
-        assert!(
-            row.backdrop.is_none(),
-            "{label}: no filter under reduced transparency"
+        let row = chrome(&mut store, &frosted, Stroke::NONE, read);
+        assert_eq!(
+            row.material.map(LoweredMaterial::captures),
+            captures,
+            "{read:?}"
         );
-        assert_eq!(solid(row.fill), want.to_f16(), "{label}");
+        assert_eq!(row.material.map(LoweredMaterial::effect), read.map(|_| id));
+        assert_eq!(solid(row.fill), tint.to_f16(), "{read:?}");
     }
 
-    let rect = |store: &mut RecordStore| {
-        Shape::rect()
-            .fill(tint)
-            .backdrop_filter(BackdropFilter::frosted(20.0))
-            .lower(store)
+    let effects = EffectRegistry::default();
+    let reduced = Reductions {
+        transparency: Reduction::Reduced,
+        ..Reductions::FULL
     };
-    let ShapeRecord::Quad(QuadShape::Rect { fill, backdrop, .. }) = rect(&mut reduced) else {
-        panic!("a rect lowers to a rect quad");
+    let rect = |store: &mut RecordStore, reductions| {
+        let mut shape = Shape::rect(frosted.clone());
+        shape.resolve(&effects, reductions);
+        shape.lower(store)
     };
-    assert!(backdrop.is_none());
-    assert_eq!(solid(fill), RgbaF32::hex(0x204060).to_f16());
-    let ShapeRecord::Quad(QuadShape::Rect { backdrop, .. }) = rect(&mut full) else {
-        panic!("a rect lowers to a rect quad");
-    };
-    assert!(backdrop.is_some());
+    for (reductions, captures) in [(Reductions::FULL, true), (reduced, false)] {
+        let ShapeRecord::Quad(QuadShape::Rect { fill, material, .. }) =
+            rect(&mut store, reductions)
+        else {
+            panic!("a rect lowers to a rect quad");
+        };
+        let material = material.expect("a frosted rect wears its material");
+        assert_eq!(material.captures(), captures);
+        assert_eq!(material.effect(), id);
+        assert_eq!(solid(fill), tint.to_f16());
+    }
 }
 
 #[test]
 fn chrome_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();
     let sane = Corners::all(6.0);
-    let kept = chrome(&mut store, &with_corners(sane), Stroke::NONE);
+    let kept = chrome(&mut store, &with_corners(sane), Stroke::NONE, None);
     assert_eq!(kept.corners, sane);
     assert_ne!(
         kept.hash,
-        chrome(&mut store, &with_corners(Corners::ZERO), Stroke::NONE).hash,
+        chrome(&mut store, &with_corners(Corners::ZERO), Stroke::NONE, None).hash,
         "corners must still reach the chrome hash",
     );
     let ring = Stroke::new(RgbaF32::WHITE, 2.0);
-    let ringed = chrome(&mut store, &with_corners(sane), ring);
+    let ringed = chrome(&mut store, &with_corners(sane), ring, None);
     assert!(ringed.ring, "a ring is flagged on the row");
     assert!(!kept.ring, "no ring unless one is passed");
     assert_ne!(
@@ -207,7 +210,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         border: Stroke::new(RgbaF32::TRANSPARENT, 4.0),
         ..with_corners(sane)
     };
-    let clear = chrome(&mut store, &clear_border, Stroke::NONE);
+    let clear = chrome(&mut store, &clear_border, Stroke::NONE, None);
     assert_eq!(clear.border.width, 4.0);
     assert!(clear.border.is_noop(), "it still paints no stroke");
     assert_ne!(
@@ -298,27 +301,34 @@ fn chrome_lowering_keeps_an_authored_field() {
         ),
         (
             "backdrop blur",
-            base.clone().with_backdrop_filter(BackdropFilter::blur(4.0)),
+            base.clone().with_material(Material::blur(4.0)),
         ),
         (
             "backdrop frosted",
-            base.clone()
-                .with_backdrop_filter(BackdropFilter::frosted(4.0)),
+            base.clone().with_material(Material::frosted(4.0)),
         ),
         (
             "backdrop ceiling",
             base.clone()
-                .with_backdrop_filter(BackdropFilter::blur(4.0).with_max_luminance(0.1)),
+                .with_material(Material::blur(4.0).with_max_luminance(0.1)),
         ),
         (
             "backdrop lens",
             base.clone()
-                .with_backdrop_filter(BackdropFilter::glass(Lens::WINDOW_GLASS)),
+                .with_material(Material::glass(Lens::WINDOW_GLASS)),
         ),
     ];
     let hashes: Vec<_> = variants
         .iter()
-        .map(|(label, authored)| (*label, chrome(&mut store, authored, Stroke::NONE).hash))
+        .map(|(label, authored)| {
+            let read = authored
+                .material
+                .map(|_| MaterialRead::Capture(EffectId(2)));
+            (
+                *label,
+                chrome(&mut store, authored, Stroke::NONE, read).hash,
+            )
+        })
         .collect();
     for (i, (a, ha)) in hashes.iter().enumerate() {
         for (b, hb) in &hashes[i + 1..] {
@@ -396,27 +406,4 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
     assert!(!mode_ids.contains(&conic));
     assert_ne!(radial, conic);
     assert_eq!(store.gradients.records.len(), 9);
-}
-
-/// The reduced-transparency rule, for a chrome and a rect alike: under reduced transparency a
-/// pane paints its fill made opaque and no filter; at full transparency it shows through its
-/// filter; a filter that changes nothing makes no pane either way.
-#[test]
-fn a_pane_under_reduced_transparency_paints_its_solid_infill() {
-    let fill = Brush::Solid(RgbaF32::new(0.2, 0.4, 0.6, 0.5));
-    let blur = BackdropFilter::blur(8.0);
-    match pane_fill(blur, &fill, Reduction::Reduced) {
-        PaneFill::Solid(solid) => assert_eq!(solid, Brush::Solid(RgbaF32::new(0.2, 0.4, 0.6, 1.0))),
-        PaneFill::Through(backdrop) => panic!("a reduced pane shows nothing through: {backdrop:?}"),
-    }
-    assert!(matches!(
-        pane_fill(blur, &fill, Reduction::Full),
-        PaneFill::Through(Some(_))
-    ));
-    for transparency in [Reduction::Full, Reduction::Reduced] {
-        assert!(matches!(
-            pane_fill(BackdropFilter::NONE, &fill, transparency),
-            PaneFill::Through(None)
-        ));
-    }
 }

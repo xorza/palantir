@@ -1,9 +1,16 @@
-//! Palantir's stock effects: the two press ripples, which every registry holds from its start
-//! under names in palantir's reserved prefix, so a theme names them as it names an app's.
+//! Palantir's stock effects: the two press ripples and the three materials, which every registry
+//! holds from its start under names in palantir's reserved prefix, so a theme names them as it
+//! names an app's.
 
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::press_input::PressInput;
+use crate::primitives::effect::effect_kind::{BackdropEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_params::EffectParams;
+use crate::primitives::paint::material::lens_optics::{
+    LINE_C, LINE_D, LINE_F, SPECTRUM_RED, SPECTRUM_SAMPLES, SPECTRUM_VIOLET,
+};
+use crate::primitives::paint::material::material_input::MaterialInput;
 
 /// The prefix of every name palantir loads itself, which
 /// [`Ui::load_effect`](crate::Ui::load_effect) refuses, so an app's effect never replaces a stock
@@ -23,33 +30,90 @@ impl EffectName<PressInput> {
     pub const SPARKLE: Self = reserved("palantir.sparkle");
 }
 
-const fn reserved(name: &str) -> EffectName<PressInput> {
+impl EffectName<MaterialInput, BackdropEffect> {
+    /// What the material reads, blurred by its capture's σ, as it is, as CSS
+    /// `backdrop-filter: blur()` shows it. It reads none of its input.
+    pub const BLUR: Self = reserved("palantir.blur");
+
+    /// Frosted glass: what the material reads, its color saturated as CSS `saturate()` scales it
+    /// and grained, so a fill over it reads as a material, as Apple's materials deepen theirs. It
+    /// reads the input's saturation and grain.
+    pub const FROSTED: Self = reserved("palantir.frosted");
+
+    /// Glass: what the material reads, bent through the input's lens across a rounded bezel at
+    /// its edge, every wavelength at its own index where the lens disperses, with the lamp's glint,
+    /// then saturated and grained as [`Self::FROSTED`] is.
+    pub const GLASS: Self = reserved("palantir.glass");
+}
+
+const fn reserved<U: EffectParams, K: EffectKind>(name: &str) -> EffectName<U, K> {
     match EffectName::named(name) {
         Some(name) => name,
         None => panic!("a stock name fits an inline name"),
     }
 }
 
-/// How many stock effects a registry holds from its start, at the first ids.
-pub(crate) const COUNT: usize = 2;
-
 /// Each stock effect, with its source, in load order: an alternative before what names it.
-pub(crate) fn sources() -> [(EffectName<PressInput>, EffectSource<PressInput>); COUNT] {
-    [
-        (
-            EffectName::RIPPLE,
-            EffectSource::new(concat!(
-                include_str!("press.wgsl"),
-                include_str!("ripple.wgsl")
-            )),
-        ),
-        (
-            EffectName::SPARKLE,
-            EffectSource::new(concat!(
-                include_str!("press.wgsl"),
-                include_str!("sparkle.wgsl")
-            ))
-            .power_saver(ReducedPaint::Effect(EffectName::RIPPLE)),
-        ),
-    ]
+pub(crate) fn sources() -> StockSources {
+    StockSources {
+        press: [
+            (
+                EffectName::RIPPLE,
+                EffectSource::new(concat!(
+                    include_str!("press.wgsl"),
+                    include_str!("ripple.wgsl")
+                )),
+            ),
+            (
+                EffectName::SPARKLE,
+                EffectSource::new(concat!(
+                    include_str!("press.wgsl"),
+                    include_str!("sparkle.wgsl")
+                ))
+                .power_saver(ReducedPaint::Effect(EffectName::RIPPLE)),
+            ),
+        ],
+        materials: [
+            (
+                EffectName::BLUR,
+                EffectSource::new(concat!(
+                    include_str!("material.wgsl"),
+                    include_str!("blur.wgsl")
+                )),
+            ),
+            (
+                EffectName::FROSTED,
+                EffectSource::new(concat!(
+                    include_str!("material.wgsl"),
+                    include_str!("frosted.wgsl")
+                )),
+            ),
+            (EffectName::GLASS, EffectSource::new(glass_wgsl())),
+        ],
+    }
+}
+
+/// The stock effects by their parameter types, as [`sources`] gives them.
+#[derive(Debug)]
+pub(crate) struct StockSources {
+    pub(crate) press: [(EffectName<PressInput>, EffectSource<PressInput>); 2],
+    pub(crate) materials: [(
+        EffectName<MaterialInput, BackdropEffect>,
+        EffectSource<MaterialInput, BackdropEffect>,
+    ); 3],
+}
+
+/// The glass's WGSL, with the optics' constants the Rust types own.
+pub(crate) fn glass_wgsl() -> String {
+    format!(
+        "{}{}",
+        include_str!("material.wgsl"),
+        include_str!("glass.wgsl")
+    )
+    .replace("/*{LINE_D}*/", &format!("{LINE_D:?}"))
+    .replace("/*{LINE_F}*/", &format!("{LINE_F:?}"))
+    .replace("/*{LINE_C}*/", &format!("{LINE_C:?}"))
+    .replace("/*{SPECTRUM_RED}*/", &format!("{SPECTRUM_RED:?}"))
+    .replace("/*{SPECTRUM_VIOLET}*/", &format!("{SPECTRUM_VIOLET:?}"))
+    .replace("/*{SPECTRUM_SAMPLES}*/", &format!("{SPECTRUM_SAMPLES}u"))
 }

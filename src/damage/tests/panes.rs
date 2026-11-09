@@ -6,9 +6,9 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -55,7 +55,7 @@ impl Scene {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         if let Some((rect, color)) = self.under {
-                            ui.add_shape(Shape::rect().at(rect).fill(color));
+                            ui.add_shape(Shape::rect(color).at(rect));
                         }
                     });
                 for (i, &rect) in self.panes.iter().enumerate() {
@@ -64,12 +64,11 @@ impl Scene {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             ui.add_shape(
-                                Shape::rect()
-                                    .at(rect)
-                                    .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                                Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA)))
+                                    .at(rect),
                             );
                             if i == 0 {
-                                ui.add_shape(Shape::rect().at(OVER).fill(self.over));
+                                ui.add_shape(Shape::rect(self.over).at(OVER));
                                 if self.blink {
                                     ui.add_shape_animated(blink_shape(), blink());
                                 }
@@ -82,9 +81,7 @@ impl Scene {
 
 /// A caret-like square inside [`PANE`]'s footprint, which [`blink`] turns on and off.
 fn blink_shape() -> RectShape {
-    Shape::rect()
-        .at(Rect::new(60.0, 60.0, 2.0, 10.0))
-        .fill(RgbaF32::WHITE)
+    Shape::rect(RgbaF32::WHITE).at(Rect::new(60.0, 60.0, 2.0, 10.0))
 }
 
 /// A square-wave alpha that flips every 500 ms.
@@ -218,9 +215,7 @@ fn a_clipped_blink_before_a_pane_leaves_it() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect()
-                                .at(PANE)
-                                .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                            Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(PANE),
                         );
                     });
             });
@@ -234,7 +229,7 @@ fn a_clipped_blink_before_a_pane_leaves_it() {
     assert!(!h.frames().damage().dirty_panes().contains(key(0)));
 }
 
-/// A chrome with a backdrop filter is a pane too, keyed by its node's first row: a change under it,
+/// A chrome with a material is a pane too, keyed by its node's first row: a change under it,
 /// inside its footprint, makes it stale, and its rect joins the damage.
 #[test]
 fn a_chrome_pane_goes_stale_as_a_shape_pane() {
@@ -244,12 +239,12 @@ fn a_chrome_pane_goes_stale_as_a_shape_pane() {
                 .id(WidgetId::from_hash("chrome-scene"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect().at(UNDER).fill(under));
+                    ui.add_shape(Shape::rect(under).at(UNDER));
                     Panel::canvas()
                         .id(WidgetId::from_hash("chrome-pane"))
                         .at(PANE.min)
                         .size((Sizing::fixed(PANE.size.w), Sizing::fixed(PANE.size.h)))
-                        .chrome(Chrome::NONE.with_backdrop_filter(BackdropFilter::blur(SIGMA)))
+                        .chrome(Chrome::NONE.with_material(Material::blur(SIGMA)))
                         .show(ui, |_| {});
                 });
         }
@@ -281,12 +276,10 @@ fn a_pane_whose_row_moves_is_stale() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     if lead {
-                        ui.add_shape(Shape::rect().at(far).fill(BLUE));
+                        ui.add_shape(Shape::rect(BLUE).at(far));
                     }
                     ui.add_shape(
-                        Shape::rect()
-                            .at(PANE)
-                            .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                        Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(PANE),
                     );
                 });
         }
@@ -323,16 +316,13 @@ fn a_child_canvas_change_under_a_later_ancestor_pane_stales_it() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             ui.add_shape(
-                                Shape::rect()
-                                    .at(INNER)
-                                    .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                                Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA)))
+                                    .at(INNER),
                             );
-                            ui.add_shape(Shape::rect().at(SQUARE).fill(fill));
+                            ui.add_shape(Shape::rect(fill).at(SQUARE));
                         });
                     ui.add_shape(
-                        Shape::rect()
-                            .at(OUTER)
-                            .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                        Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(OUTER),
                     );
                 });
         }
@@ -372,16 +362,13 @@ fn panes_out_of_row_order_walk_quietly() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect()
-                                .at(INNER)
-                                .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                            Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA)))
+                                .at(INNER),
                         );
-                        ui.add_shape(Shape::rect().at(SQUARE).fill(BLUE));
+                        ui.add_shape(Shape::rect(BLUE).at(SQUARE));
                     });
                 ui.add_shape(
-                    Shape::rect()
-                        .at(OUTER)
-                        .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                    Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(OUTER),
                 );
             });
     };

@@ -10,11 +10,11 @@ use std::time::Duration;
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
-    Align, App, BackdropFilter, Block, Brush, Button, Checkbox, Chrome, ClipMode, ColorScheme,
-    ComboBox, Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify,
-    Layer, Lens, LinearGradient, Metrics, Palette, Panel, Preference, RgbaF32, Scroll,
-    ScrollbarTheme, Shadow, Sizing, Slider, Stroke, Switch, Text, TextEdit, TextSteps, Theme, Ui,
-    UiPreferences, WidgetId, WindowToken, ZoomConfig, fmt,
+    Align, App, Block, Brush, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox, Configure,
+    Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify, Layer, Lens,
+    LinearGradient, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll, ScrollbarTheme,
+    Shadow, Sizing, Slider, Stroke, Switch, Text, TextEdit, TextSteps, Theme, Ui, UiPreferences,
+    WidgetId, WindowToken, ZoomConfig, fmt,
 };
 
 use crate::cube::{Cube, CubeHandle};
@@ -411,7 +411,7 @@ impl Deck {
                                 .show(ui);
                         }
                         let filter = if glass {
-                            BackdropFilter::glass(Lens {
+                            Material::glass(Lens {
                                 bezel: 28.0,
                                 thickness: 40.0,
                                 refractive_index: 1.5,
@@ -419,7 +419,7 @@ impl Deck {
                                 highlight: 0.6,
                             })
                         } else {
-                            BackdropFilter::frosted(18.0)
+                            Material::frosted(18.0)
                         };
                         Block::new()
                             .id(id(5, "pane"))
@@ -430,7 +430,7 @@ impl Deck {
                                 border: Stroke::new(RgbaF32::WHITE.with_alpha(0.35), 1.0),
                                 corners: Corners::all(32.0),
                                 shadow: Shadow::NONE,
-                                backdrop_filter: filter,
+                                material: Some(filter),
                             })
                             .show(ui);
                     });
@@ -471,7 +471,7 @@ impl Deck {
                                     Vec2::new(0.0, 12.0),
                                     18.0,
                                 ),
-                                backdrop_filter: BackdropFilter::NONE,
+                                material: None,
                             })
                             .show(ui);
                         ui.add_shape(Shape::circle(
@@ -679,7 +679,7 @@ fn window_chrome(ui: &Ui) -> Chrome {
         border: Stroke::new(theme.text.color.with_alpha(0.12), 1.0),
         corners: Corners::all(14.0),
         shadow: Shadow::drop(RgbaF32::BLACK.with_alpha(0.35), Vec2::new(0.0, 10.0), 16.0),
-        backdrop_filter: BackdropFilter::NONE,
+        material: None,
     }
 }
 

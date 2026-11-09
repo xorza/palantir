@@ -6,12 +6,21 @@ use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::identity::effect_id::EffectId;
 
 /// A validated effect module: the complete WGSL palantir compiles, its kind and how many images
-/// each draw binds, which pick its pipeline layout.
+/// each draw binds, which pick its pipeline layout, and the stages it holds.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct EffectModule {
     pub(crate) text: String,
     pub(crate) kind: KindId,
     pub(crate) image_slots: u8,
+    pub(crate) entries: ModuleEntries,
+}
+
+/// The stages a module holds: a shape's alone, or also a material's, for a backdrop effect over
+/// [`MaterialInput`](crate::MaterialInput), which a [`Material`](crate::Material) names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ModuleEntries {
+    Shape,
+    ShapeAndMaterial,
 }
 
 /// Where a loaded effect's pipelines are built. The backend implements it over wgpu and keeps

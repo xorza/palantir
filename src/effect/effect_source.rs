@@ -8,8 +8,9 @@ use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
 
-/// An effect's WGSL, the image slots its shapes bind, and what paints while transparency, motion
-/// or power use is reduced.
+/// An effect's WGSL, the image slots its shapes bind, and what paints while motion or power use is
+/// reduced. What a backdrop effect paints while transparency is reduced is each use's
+/// ([`ReducedBackdrop`](crate::ReducedBackdrop)).
 /// Consumed by [`Ui::load_effect`](crate::Ui::load_effect).
 ///
 /// The WGSL declares `fn effect(input: EffectInput, params: Params) -> EffectOutput`, where
@@ -50,7 +51,6 @@ use crate::primitives::effect::effect_params::EffectParams;
 pub struct EffectSource<U: EffectParams, K: EffectKind = ColorEffect> {
     pub(crate) wgsl: Cow<'static, str>,
     pub(crate) image_slots: u8,
-    pub(crate) reduced_transparency: ReducedPaint<U, K>,
     pub(crate) reduced_motion: ReducedPaint<U, K>,
     pub(crate) power_saver: ReducedPaint<U, K>,
     pub(crate) build: EffectBuild,
@@ -84,7 +84,6 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
         Self {
             wgsl: wgsl.into(),
             image_slots: 0,
-            reduced_transparency: ReducedPaint::Same,
             reduced_motion: ReducedPaint::Same,
             power_saver: ReducedPaint::Same,
             build: EffectBuild::OnUse,
@@ -106,20 +105,11 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
         self
     }
 
-    /// What paints in place of the effect while transparency is reduced
-    /// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)), as a
-    /// [`BackdropFilter`](crate::BackdropFilter) paints a solid fill then; [`ReducedPaint::Same`]
-    /// by default. It wins over [`Self::reduced_motion`] and [`Self::power_saver`] where several
-    /// reduce, as what a person needs to read comes first.
-    pub const fn reduced_transparency(mut self, paint: ReducedPaint<U, K>) -> Self {
-        self.reduced_transparency = paint;
-        self
-    }
-
     /// What paints in place of the effect while motion is reduced
     /// ([`Ui::is_motion_reduced`](crate::Ui::is_motion_reduced)); [`ReducedPaint::Same`] by
     /// default, where the effect's paint animation alone holds still, as
-    /// [`MotionRole`](crate::widget::MotionRole) says. It wins over [`Self::power_saver`].
+    /// [`MotionRole`](crate::widget::MotionRole) says. It wins over [`Self::power_saver`], as what
+    /// a person needs to bear comes before what a device saves.
     pub const fn reduced_motion(mut self, paint: ReducedPaint<U, K>) -> Self {
         self.reduced_motion = paint;
         self
@@ -133,22 +123,19 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
         self
     }
 
-    /// Each alternative, in the order one wins over the next: transparency, motion, power.
-    pub(crate) const fn alternatives(&self) -> [ReducedPaint<U, K>; 3] {
-        [
-            self.reduced_transparency,
-            self.reduced_motion,
-            self.power_saver,
-        ]
+    /// Each alternative, in the order one wins over the next: motion, power.
+    pub(crate) const fn alternatives(&self) -> [ReducedPaint<U, K>; 2] {
+        [self.reduced_motion, self.power_saver]
     }
 }
 
-/// What paints in place of an effect while the system asks to reduce power use or transparency,
-/// carried by its source ([`EffectSource::power_saver`], [`EffectSource::reduced_transparency`]),
-/// as a [`BackdropFilter`](crate::BackdropFilter) carries its own fallback. A shape resolves it as
-/// it is added, and a move of either preference records every window again. An alternative paints
-/// as itself: its own alternatives do not apply. Refused: a theme slot for each mode, which
-/// doubles every slot; a branch at each call site.
+/// What paints in place of an effect while the system asks to reduce motion or power use, carried
+/// by its source ([`EffectSource::reduced_motion`], [`EffectSource::power_saver`]): each swaps the
+/// effect for a cheaper or stiller one, which the effect itself knows of. A shape resolves it as it
+/// is added, and a move of either preference records every window again. An alternative paints as
+/// itself: its own alternatives do not apply. Refused: a theme slot for each mode, which doubles
+/// every slot; a branch at each call site; transparency among them, as what a backdrop shows while
+/// it is reduced depends on each use's role ([`ReducedBackdrop`](crate::ReducedBackdrop)).
 pub enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     /// The effect itself, as cheap enough already.
     Same,
@@ -193,7 +180,6 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectSource<U, K> {
         f.debug_struct("EffectSource")
             .field("wgsl", &self.wgsl)
             .field("image_slots", &self.image_slots)
-            .field("reduced_transparency", &self.reduced_transparency)
             .field("reduced_motion", &self.reduced_motion)
             .field("power_saver", &self.power_saver)
             .field("build", &self.build)

@@ -9,9 +9,10 @@ use glam::{UVec2, Vec2};
 use std::time::Duration;
 
 use crate::animation::motion_role::MotionRole;
-use crate::effect::contract::{self, ParamsLayout};
+use crate::effect::contract::{self, ContractSpec, ParamsLayout};
 use crate::effect::effect_registry::{EffectRegistry, ReducedName};
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
+use crate::effect::effect_store::ModuleEntries;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::press_input::PressInput;
 use crate::effect::stock;
@@ -32,13 +33,16 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
+use crate::renderer::frontend::payload::draw_pane_payload::BackdropDraw;
 use crate::shape::Shape;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::theme::Theme;
@@ -50,9 +54,22 @@ use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 
+/// The contract an effect of `kind` over `params` with `image_slots` images is checked against, its
+/// shape stages alone.
+fn spec(kind: KindId, params: ParamsLayout, image_slots: u8) -> ContractSpec {
+    ContractSpec {
+        kind,
+        params,
+        image_slots,
+        entries: ModuleEntries::Shape,
+    }
+}
+
 /// The id of the app's load `n`, from 0, past the stock effects every registry holds first.
 fn app(n: u32) -> EffectId {
-    EffectId(u32::try_from(stock::COUNT).unwrap() + n)
+    let stock = stock::sources();
+    let count = stock.press.len() + stock.materials.len();
+    EffectId(u32::try_from(count).unwrap() + n)
 }
 
 /// A ring's parameters: a vec4 and four f32s, 32 B in Rust and in WGSL.
@@ -278,7 +295,8 @@ fn image_slots_declare_their_images() {
             ),
         )
     };
-    let module = contract::check(&sampling("effect_image1"), KindId::Color, params, 2).unwrap();
+    let module =
+        contract::check(&sampling("effect_image1"), spec(KindId::Color, params, 2)).unwrap();
     assert_eq!(module.image_slots, 2);
     for line in [
         "@group(1) @binding(0) var effect_sampler: sampler;",
@@ -289,11 +307,11 @@ fn image_slots_declare_their_images() {
     }
     assert!(!module.text.contains("effect_image2:"));
     assert!(matches!(
-        contract::check(&sampling("effect_image2"), KindId::Color, params, 2),
+        contract::check(&sampling("effect_image2"), spec(KindId::Color, params, 2)),
         Err(EffectError::Parse { .. })
     ));
     assert!(matches!(
-        contract::check(&sampling("effect_image0"), KindId::Color, params, 0),
+        contract::check(&sampling("effect_image0"), spec(KindId::Color, params, 0)),
         Err(EffectError::Parse { .. })
     ));
 }
@@ -470,7 +488,7 @@ fn the_stock_ripples_hold_their_reserved_names() {
         registry.load(ripple, EffectSource::new("fn effect(")),
         Err(EffectError::ReservedName)
     ));
-    assert_eq!(registry.epoch(), 2, "the two stock loads alone");
+    assert_eq!(registry.epoch(), 5, "the five stock loads alone");
 }
 
 /// An app's press effect: its press color, over.
@@ -481,11 +499,12 @@ const RIPPLE_WGSL: &str = concat!(
     }"
 );
 
-/// A theme's press slots name only effects over `PressInput` that are loaded: one nothing loaded
-/// and one of other parameters are each refused with the name, and the theme held before stays;
-/// a stock ripple and an app's press effect are taken.
+/// A theme's press slots name only effects over `PressInput` that are loaded, and its chromes'
+/// materials only backdrop effects over `MaterialInput`: one nothing loaded and one of other
+/// parameters are each refused with the name, and the theme held before stays; a stock ripple, a
+/// stock material and an app's press effect are taken.
 #[test]
-fn a_theme_names_only_loaded_press_effects() {
+fn a_theme_names_only_loaded_effects() {
     let mut h = Harness::mono(UVec2::new(16, 16));
     h.ui()
         .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
@@ -506,10 +525,10 @@ fn a_theme_names_only_loaded_press_effects() {
     let missing = EffectName::named("missing").unwrap();
     assert_eq!(
         h.ui_mut().set_theme(scheme, naming("missing")),
-        Err(ThemeEffectError::Unloaded(missing))
+        Err(ThemeEffectError::UnloadedPress(missing))
     );
     assert_eq!(
-        ThemeEffectError::Unloaded(missing).to_string(),
+        ThemeEffectError::UnloadedPress(missing).to_string(),
         "the theme's press effect `missing` is not loaded"
     );
     let blend = EffectName::named(BLEND.name()).unwrap();
@@ -521,10 +540,43 @@ fn a_theme_names_only_loaded_press_effects() {
         ThemeEffectError::NotPress(blend).to_string(),
         "the theme's press effect `blend` is not a color effect over `PressInput`"
     );
+    // A chrome's material is checked as a press slot is: a name nothing loaded, and one loaded as
+    // a color effect, are refused; the stock glass is a material.
+    let wearing = |name: &str| {
+        let mut theme = Theme::stock(scheme);
+        let material = EffectName::named(name).unwrap();
+        theme.tooltip.panel = theme
+            .tooltip
+            .panel
+            .clone()
+            .with_material(Material::new(material, MaterialInput::IDENTITY));
+        theme
+    };
+    let missing_material = EffectName::named("missing").unwrap();
+    assert_eq!(
+        h.ui_mut().set_theme(scheme, wearing("missing")),
+        Err(ThemeEffectError::UnloadedMaterial(missing_material))
+    );
+    assert_eq!(
+        ThemeEffectError::UnloadedMaterial(missing_material).to_string(),
+        "the theme's material effect `missing` is not loaded"
+    );
+    let blend_material = EffectName::named(BLEND.name()).unwrap();
+    assert_eq!(
+        h.ui_mut().set_theme(scheme, wearing(BLEND.name())),
+        Err(ThemeEffectError::NotMaterial(blend_material))
+    );
+    assert_eq!(
+        ThemeEffectError::NotMaterial(blend_material).to_string(),
+        "the theme's material effect `blend` is not a backdrop effect over `MaterialInput`"
+    );
     assert!(
         Rc::ptr_eq(h.ui().scheme_theme(scheme), &held),
         "the theme before stays"
     );
+    h.ui_mut()
+        .set_theme(scheme, wearing("palantir.glass"))
+        .unwrap();
 
     h.ui_mut()
         .set_theme(scheme, naming("palantir.sparkle"))
@@ -628,7 +680,7 @@ fn painted(paint: impl Fn(&mut Ui), at: &[(u32, u32)]) -> Vec<[u8; 4]> {
         .unwrap();
     let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
     h.prime(2, |ui| {
-        ui.add_shape(Shape::rect().fill(ground));
+        ui.add_shape(Shape::rect(ground));
         paint(ui);
     });
     let image = h.read_back();
@@ -882,7 +934,7 @@ fn a_recovered_device_paints_the_loaded_effects() {
         .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
         .unwrap();
     let paint = |ui: &mut Ui| {
-        ui.add_shape(Shape::rect().fill(RgbaF32::new(0.2, 0.4, 0.6, 1.0)));
+        ui.add_shape(Shape::rect(RgbaF32::new(0.2, 0.4, 0.6, 1.0)));
         ui.add_shape(Shape::effect(
             BLEND,
             Blend {
@@ -1115,7 +1167,7 @@ fn an_effect_that_cannot_paint_panics() {
     let mut h = blend_window();
     assert_panics_with("drives no channel", || {
         h.frame(|ui| {
-            ui.add_shape_animated(Shape::rect().fill(RgbaF32::WHITE), PaintAnimation::clock());
+            ui.add_shape_animated(Shape::rect(RgbaF32::WHITE), PaintAnimation::clock());
         })
     });
 }
@@ -1268,7 +1320,7 @@ fn an_image_lost_with_its_device_paints_nothing_until_written_again() {
     let red = h.ui().load_image(&solid(0xff0000)).unwrap();
     let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
     let paint = |ui: &mut Ui| {
-        ui.add_shape(Shape::rect().fill(ground));
+        ui.add_shape(Shape::rect(ground));
         ui.add_shape(Shape::effect(PAIR, ()).images([red.clone(), red.clone()]));
     };
     h.prime(2, paint);
@@ -1416,17 +1468,9 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
     let green = RgbaF32::new(0.0, 1.0, 0.0, 1.0);
     let paint = |middle: RgbaF32, dx: f32| {
         move |ui: &mut Ui| {
-            ui.add_shape(Shape::rect().at(Rect::new(0.0, 0.0, 16.0, 16.0)).fill(red));
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(16.0, 0.0, 10.0, 16.0))
-                    .fill(middle),
-            );
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(26.0, 0.0, 6.0, 16.0))
-                    .fill(green),
-            );
+            ui.add_shape(Shape::rect(red).at(Rect::new(0.0, 0.0, 16.0, 16.0)));
+            ui.add_shape(Shape::rect(middle).at(Rect::new(16.0, 0.0, 10.0, 16.0)));
+            ui.add_shape(Shape::rect(green).at(Rect::new(26.0, 0.0, 6.0, 16.0)));
             ui.add_shape(
                 Shape::backdrop_effect(SHIFT, Shift { dx })
                     .at(Rect::new(4.0, 0.0, 12.0, 16.0))
@@ -1458,12 +1502,76 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
 
 const SHARP: Shift = Shift { dx: 0.0 };
 
-/// A backdrop effect blurs what it reads by its σ through the capture and blur a backdrop filter
-/// takes, and reads the result as a filter's pane does: over a black and white edge at x 16 in a
-/// 32 × 16 window, an effect that shows what it reads, blurred by σ 3, paints row 8 exactly as a
-/// rect of `BackdropFilter::blur(3.0)` over the same edge, and unlike the sharp edge.
+/// While transparency is reduced a backdrop effect's shape reads the window's ground, which takes
+/// no ticket and lists no pane, or paints nothing where it asks for nothing then. At full
+/// transparency it captures what is under it.
 #[test]
-fn a_backdrop_effect_blurs_as_a_backdrop_filter() {
+fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced() {
+    let mut h = Harness::mono(UVec2::new(16, 16));
+    h.ui()
+        .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
+        .unwrap();
+    let reads = |h: &Harness| -> Vec<Option<BackdropDraw>> {
+        h.encode_paint()
+            .calls
+            .iter()
+            .filter_map(|call| match call {
+                PaintCall::Effect(p) => Some(p.pane.map(|pane| pane.read)),
+                _ => None,
+            })
+            .collect()
+    };
+    let shape = || Shape::backdrop_effect(SHIFT, SHARP).blur(2.0);
+    h.frame(|ui| ui.add_shape(shape()));
+    assert!(matches!(
+        reads(&h).as_slice(),
+        [Some(BackdropDraw::Capture(_))]
+    ));
+    h.set_system_transparency_reduced(true);
+    h.frame(|ui| ui.add_shape(shape()));
+    assert_eq!(reads(&h), [Some(BackdropDraw::Ground)]);
+    h.frame(|ui| ui.add_shape(shape().reduced_transparency(ReducedBackdrop::Nothing)));
+    assert_eq!(reads(&h), []);
+    // A name nothing loaded is a logic error in every mode, a use that paints nothing included.
+    let gone = EffectName::<Shift, BackdropEffect>::named("gone").unwrap();
+    assert_panics_with("no effect is loaded under `gone`", || {
+        h.frame(|ui| {
+            ui.add_shape(
+                Shape::backdrop_effect(gone, SHARP).reduced_transparency(ReducedBackdrop::Nothing),
+            );
+        });
+    });
+}
+
+/// A backdrop effect over `MaterialInput` is a material, which binds no image, so its load
+/// refuses image slots and keeps nothing under the name.
+#[test]
+fn a_material_effect_binds_no_image() {
+    let registry = EffectRegistry::default();
+    let name = EffectName::<MaterialInput, BackdropEffect>::named("pictured").unwrap();
+    let source = EffectSource::new(concat!(
+        include_str!("stock/material.wgsl"),
+        include_str!("stock/blur.wgsl")
+    ))
+    .image_slots(1);
+    let refused = registry.load(name, source);
+    assert!(
+        matches!(refused, Err(EffectError::MaterialImageSlots { slots: 1 })),
+        "{refused:?}"
+    );
+    assert_eq!(
+        refused.unwrap_err().to_string(),
+        "the material effect asks for 1 image slots, where a material binds none"
+    );
+    assert!(!registry.contains(name));
+}
+
+/// A backdrop effect blurs what it reads by its σ through the capture and blur a material
+/// takes, and reads the result as the stock blur does: over a black and white edge at x 16 in a
+/// 32 × 16 window, an effect that shows what it reads, blurred by σ 3, paints row 8 exactly as a
+/// rect of `Material::blur(3.0)` over the same edge, and unlike the sharp edge.
+#[test]
+fn a_backdrop_effect_blurs_as_a_material() {
     let gpu = headless_test_gpu();
     let row = |pane: &dyn Fn(&mut Ui)| {
         let mut h = Harness::builder(UVec2::new(32, 16))
@@ -1474,16 +1582,8 @@ fn a_backdrop_effect_blurs_as_a_backdrop_filter() {
             .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
             .unwrap();
         h.prime(2, |ui| {
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(0.0, 0.0, 16.0, 16.0))
-                    .fill(RgbaF32::BLACK),
-            );
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(16.0, 0.0, 16.0, 16.0))
-                    .fill(RgbaF32::WHITE),
-            );
+            ui.add_shape(Shape::rect(RgbaF32::BLACK).at(Rect::new(0.0, 0.0, 16.0, 16.0)));
+            ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(16.0, 0.0, 16.0, 16.0)));
             pane(ui);
         });
         let image = h.read_back();
@@ -1493,34 +1593,32 @@ fn a_backdrop_effect_blurs_as_a_backdrop_filter() {
         ui.add_shape(Shape::backdrop_effect(SHIFT, SHARP).blur(3.0));
     });
     let filter = row(&|ui| {
-        ui.add_shape(Shape::rect().backdrop_filter(BackdropFilter::blur(3.0)));
+        ui.add_shape(Shape::rect(Chrome::NONE.with_material(Material::blur(3.0))));
     });
     let sharp = row(&|_| {});
     assert_eq!(effect, filter);
     assert_ne!(effect, sharp, "σ 3 blurs the edge");
 }
 
-/// Each preference picks its own alternative, transparency's over motion's over power's: an
-/// effect whose source names one for each paints itself with nothing reduced, power's with power
-/// reduced and transparency held full by hand, motion's with motion and power, and transparency's
-/// with all three, reduced power reducing a transparency that follows the system. An alternative
-/// nothing loaded panics with the preference that named it.
+/// Each preference picks its own alternative, motion's over power's: an effect whose source names
+/// one for each paints itself with nothing reduced, power's with power reduced, and motion's with
+/// motion and power. Transparency names none: a color effect paints itself while it is reduced. An
+/// alternative nothing loaded panics with the preference that named it.
 #[test]
 fn each_reduction_paints_its_alternative_in_order() {
-    let names = ["base", "clear", "still", "saver"]
+    let names = ["base", "still", "saver"]
         .map(|name| -> EffectName<Blend> { EffectName::named(name).unwrap() });
-    let [base, clear, still, saver] = names;
+    let [base, still, saver] = names;
     let mut h = Harness::mono(UVec2::new(16, 16));
     h.ui()
         .load_effect(
             base,
             EffectSource::new(BLEND_WGSL)
-                .reduced_transparency(ReducedPaint::Effect(clear))
                 .reduced_motion(ReducedPaint::Effect(still))
                 .power_saver(ReducedPaint::Effect(saver)),
         )
         .unwrap();
-    for name in [clear, still, saver] {
+    for name in [still, saver] {
         h.ui()
             .load_effect(name, EffectSource::new(BLEND_WGSL))
             .unwrap();
@@ -1531,15 +1629,15 @@ fn each_reduction_paints_its_alternative_in_order() {
     };
     assert_eq!(painted(&mut h), app(0));
     h.ui_mut().set_preferences(UiPreferences {
-        transparency: Preference::Fixed(Reduction::Full),
+        transparency: Preference::Fixed(Reduction::Reduced),
         ..UiPreferences::default()
     });
-    h.set_system_power_reduced(true);
-    assert_eq!(painted(&mut h), app(3), "power");
-    h.set_system_motion_reduced(true);
-    assert_eq!(painted(&mut h), app(2), "motion over power");
+    assert_eq!(painted(&mut h), app(0), "transparency names none");
     h.ui_mut().set_preferences(UiPreferences::default());
-    assert_eq!(painted(&mut h), app(1), "transparency over both");
+    h.set_system_power_reduced(true);
+    assert_eq!(painted(&mut h), app(2), "power");
+    h.set_system_motion_reduced(true);
+    assert_eq!(painted(&mut h), app(1), "motion over power");
 
     let gone: EffectName<Blend> = EffectName::named("gone").unwrap();
     h.ui()
@@ -1562,10 +1660,10 @@ fn only_a_backdrop_effect_reads_what_is_under_it() {
         fields: Shift::FIELDS,
         size: size_of::<Shift>(),
     };
-    let module = contract::check(SHIFT_WGSL, KindId::Backdrop, params, 0).unwrap();
+    let module = contract::check(SHIFT_WGSL, spec(KindId::Backdrop, params, 0)).unwrap();
     assert_eq!(module.kind, KindId::Backdrop);
     assert!(matches!(
-        contract::check(SHIFT_WGSL, KindId::Color, params, 0),
+        contract::check(SHIFT_WGSL, spec(KindId::Color, params, 0)),
         Err(EffectError::Parse { .. })
     ));
 }
@@ -1587,15 +1685,9 @@ fn a_reach_past_the_window_reads_its_edge() {
     let green = RgbaF32::new(0.0, 1.0, 0.0, 1.0);
     h.prime(2, |ui: &mut Ui| {
         ui.add_shape(
-            Shape::rect()
-                .at(Rect::new(0.0, 0.0, 26.0, 16.0))
-                .fill(RgbaF32::new(1.0, 0.0, 0.0, 1.0)),
+            Shape::rect(RgbaF32::new(1.0, 0.0, 0.0, 1.0)).at(Rect::new(0.0, 0.0, 26.0, 16.0)),
         );
-        ui.add_shape(
-            Shape::rect()
-                .at(Rect::new(26.0, 0.0, 6.0, 16.0))
-                .fill(green),
-        );
+        ui.add_shape(Shape::rect(green).at(Rect::new(26.0, 0.0, 6.0, 16.0)));
         ui.add_shape(
             Shape::backdrop_effect(SHIFT, Shift { dx: 12.0 })
                 .at(Rect::new(16.0, 0.0, 16.0, 16.0))
@@ -1620,7 +1712,7 @@ fn a_turn_turns_an_effect_as_a_quad() {
         .unwrap();
     let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
     h.prime(2, |ui: &mut Ui| {
-        ui.add_shape(Shape::rect().fill(ground));
+        ui.add_shape(Shape::rect(ground));
         ui.add_shape_animated(
             Shape::effect(BLEND, BLUE).at(Rect::new(0.0, 14.0, 32.0, 4.0)),
             PaintAnimation::turn(0.25, 0.25),
@@ -1652,15 +1744,11 @@ fn the_reach_runs_from_the_exact_rect() {
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
     h.prime(2, |ui: &mut Ui| {
         ui.add_shape(
-            Shape::rect()
-                .at(Rect::new(0.0, 0.0, 16.0, 16.0))
-                .fill(RgbaF32::new(1.0, 0.0, 0.0, 1.0)),
+            Shape::rect(RgbaF32::new(1.0, 0.0, 0.0, 1.0)).at(Rect::new(0.0, 0.0, 16.0, 16.0)),
         );
-        ui.add_shape(Shape::rect().at(Rect::new(16.0, 0.0, 8.0, 16.0)).fill(blue));
+        ui.add_shape(Shape::rect(blue).at(Rect::new(16.0, 0.0, 8.0, 16.0)));
         ui.add_shape(
-            Shape::rect()
-                .at(Rect::new(24.0, 0.0, 8.0, 16.0))
-                .fill(RgbaF32::new(0.0, 1.0, 0.0, 1.0)),
+            Shape::rect(RgbaF32::new(0.0, 1.0, 0.0, 1.0)).at(Rect::new(24.0, 0.0, 8.0, 16.0)),
         );
         ui.add_shape(
             Shape::backdrop_effect(SHIFT, Shift { dx: 12.0 })
@@ -1687,11 +1775,9 @@ fn a_turned_backdrop_effect_reads_through_its_turn() {
         .unwrap();
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     h.prime(2, |ui: &mut Ui| {
-        ui.add_shape(Shape::rect().at(Rect::new(0.0, 0.0, 32.0, 16.0)).fill(red));
+        ui.add_shape(Shape::rect(red).at(Rect::new(0.0, 0.0, 32.0, 16.0)));
         ui.add_shape(
-            Shape::rect()
-                .at(Rect::new(0.0, 16.0, 32.0, 16.0))
-                .fill(RgbaF32::new(0.0, 0.0, 1.0, 1.0)),
+            Shape::rect(RgbaF32::new(0.0, 0.0, 1.0, 1.0)).at(Rect::new(0.0, 16.0, 32.0, 16.0)),
         );
         ui.add_shape_animated(
             Shape::backdrop_effect(SHIFT, SHARP).at(Rect::new(0.0, 14.0, 32.0, 4.0)),

@@ -263,10 +263,11 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             .show(ui, |ui| {
                 for s in 0..count {
                     ui.add_shape(
-                        Shape::rect()
-                            .at(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0))
-                            .corners(1.0)
-                            .fill(RgbaF32::srgb(0.3 + (s as f32) * 0.05, 0.4, 0.6)),
+                        Shape::rect(Chrome::rounded(
+                            RgbaF32::srgb(0.3 + (s as f32) * 0.05, 0.4, 0.6),
+                            1.0,
+                        ))
+                        .at(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0)),
                     );
                 }
             });

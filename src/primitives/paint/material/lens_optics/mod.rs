@@ -11,6 +11,12 @@ pub(crate) struct LensOptics {
     pub(crate) index: f32,
 }
 
+/// The cells the spectrum's weight is held flat across: even in `1 / λ²`, as the reads step,
+/// 3 nm wide at the violet end and 14 nm at the red. Each lobe of the observer's response spans
+/// several: 3.7 nm cells under the narrowest (σ 11.8 nm, z̄ at 437 nm), 14 nm under x̄'s red one
+/// (σ 31 nm).
+pub(crate) const SPECTRUM_SAMPLES: usize = 48;
+
 /// The ends of the spectrum the composite spreads, µm: all but a sliver of the CIE 1931
 /// observer's response lies between them. The index peaks at the violet end.
 pub(crate) const SPECTRUM_RED: f32 = 0.7;
@@ -82,7 +88,7 @@ impl LensOptics {
 #[cfg(test)]
 mod internals {
     use crate::primitives::math::libm_ext::Libm;
-    use crate::shape::paint::lens_optics::LensOptics;
+    use crate::primitives::paint::material::lens_optics::LensOptics;
 
     impl LensOptics {
         /// The glass's height `inward` px in from the edge: the squircle, flat at `thickness` past

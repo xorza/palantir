@@ -7,9 +7,9 @@ use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::bench::settle_look;
@@ -251,14 +251,11 @@ impl Stage {
                             .show(ui, |ui| {
                                 for pane in panes {
                                     ui.add_shape(
-                                        Shape::rect()
-                                            .at(scaled(*pane, surface))
-                                            .fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
-                                            .backdrop_filter(BackdropFilter {
-                                                saturation: 1.8,
-                                                noise: 0.04,
-                                                ..BackdropFilter::blur(16.0)
-                                            }),
+                                        Shape::rect(
+                                            Chrome::fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
+                                                .with_material(Material::frosted(16.0)),
+                                        )
+                                        .at(scaled(*pane, surface)),
                                     );
                                 }
                             });

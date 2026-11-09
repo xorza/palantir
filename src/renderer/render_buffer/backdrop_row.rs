@@ -3,7 +3,6 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
-use crate::primitives::paint::backdrop_filter::Lens;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::shape::paint::blur_plan::BlurPlan;
 
@@ -22,33 +21,51 @@ pub(crate) struct PaneCapture {
     pub(crate) region: URect,
 }
 
-/// A backdrop pane the composer met. Its effect instance's `pane` is its index in
+/// A backdrop the composer met: a pane, or a backdrop over the window's ground. Its effect
+/// instance's `pane` is its index in
 /// [`RenderBuffer::backdrops`](crate::renderer::render_buffer::RenderBuffer::backdrops).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BackdropRow {
-    pub(crate) capture: PaneCapture,
-    /// The physical rect the pane's composite reads, a read past it reading its edge: a backdrop
-    /// effect's rect grown by its reach, a filter pane's footprint.
+    /// The physical rect the composite reads, a read past it reading its edge: a backdrop
+    /// effect's rect grown by its reach, a material's footprint, or the rect over the ground.
     pub(crate) reads: Rect,
-    /// How a backdrop filter's built-in look shows the result; `None` for an app's backdrop
-    /// effect, which reads it as it likes.
-    pub(crate) look: Option<FilterLook>,
-    /// Where the pane's result comes from this frame.
-    pub(crate) source: PaneSource,
+    /// What a material's stage holds its result to and lays over it; `None` for an app's backdrop
+    /// effect's shape, which reads it as it likes.
+    pub(crate) look: Option<MaterialLook>,
+    /// What it reads.
+    pub(crate) read: BackdropRead,
 }
 
-/// What a backdrop filter's look does to its result, as the composer hands it on, lengths in
-/// physical px: the lens it bends it through, the saturation and grain it adds, the luminance it
-/// holds it within, and the solid tint and the stroke over it, each faded by a paint animation.
+/// What a backdrop reads: a pane's result, by the capture the pane ledger decided and where it
+/// comes from this frame, or the window's ground, the clear, while transparency is reduced, which
+/// captures nothing and holds no result.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct FilterLook {
-    /// `None` for a pane of no glass.
-    pub(crate) lens: Option<Lens>,
-    pub(crate) saturation: f32,
-    pub(crate) noise: f32,
-    /// The highest relative luminance the pane shows under its tint.
+pub(crate) enum BackdropRead {
+    Pane {
+        capture: PaneCapture,
+        source: PaneSource,
+    },
+    Ground,
+}
+
+impl BackdropRow {
+    /// The pane's capture; `None` over the ground.
+    pub(crate) const fn capture(&self) -> Option<&PaneCapture> {
+        match &self.read {
+            BackdropRead::Pane { capture, .. } => Some(capture),
+            BackdropRead::Ground => None,
+        }
+    }
+}
+
+/// What a material's stage does to what its effect shows, as the composer hands it on, lengths in
+/// physical px: the luminance it holds it within, and the solid fill and the border over it, each
+/// faded by a paint animation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MaterialLook {
+    /// The highest relative luminance the material shows under its fill.
     pub(crate) max_luminance: f32,
-    /// The lowest relative luminance the pane shows under its tint; 0 for none.
+    /// The lowest relative luminance the material shows under its fill; 0 for none.
     pub(crate) min_luminance: f32,
     /// Straight alpha, linear.
     pub(crate) tint: RgbaF16,
@@ -57,13 +74,9 @@ pub(crate) struct FilterLook {
     pub(crate) stroke_width: f32,
 }
 
-impl FilterLook {
-    /// A look that leaves the result as it is: no lens, no saturation change, grain or bound, no
-    /// tint or stroke.
+impl MaterialLook {
+    /// A look that leaves the result as it is: no bound, no fill or border.
     pub(crate) const PLAIN: Self = Self {
-        lens: None,
-        saturation: 1.0,
-        noise: 0.0,
         max_luminance: 65504.0,
         min_luminance: 0.0,
         tint: RgbaF16::TRANSPARENT,
@@ -103,30 +116,49 @@ pub(crate) mod internals {
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::render_buffer::backdrop_row::{
-        BackdropRow, FilterLook, PaneCapture, PaneSource,
+        BackdropRead, BackdropRow, MaterialLook, PaneCapture, PaneSource,
     };
     use crate::shape::paint::blur_plan::BlurPlan;
 
     impl BackdropRow {
         /// Pane `i` of the owner `"pane"`, reading `footprint` blurred by `plan`, which holds its
-        /// result: no lens and no luminance ceiling. Its region is `footprint` on the lattice.
+        /// result: no luminance bound, fill or border. Its region is `footprint` on the lattice.
         pub(crate) fn fixture(i: u32, footprint: URect, plan: BlurPlan) -> Self {
             Self {
                 reads: footprint.into(),
-                capture: PaneCapture {
-                    key: PaneKey {
-                        owner: WidgetId::from_hash("pane"),
-                        shape: i,
+                look: Some(MaterialLook::PLAIN),
+                read: BackdropRead::Pane {
+                    capture: PaneCapture {
+                        key: PaneKey {
+                            owner: WidgetId::from_hash("pane"),
+                            shape: i,
+                        },
+                        footprint,
+                        plan,
+                        region: plan
+                            .region(footprint, footprint.max())
+                            .expect("a fixture's footprint paints"),
                     },
-                    footprint,
-                    plan,
-                    region: plan
-                        .region(footprint, footprint.max())
-                        .expect("a fixture's footprint paints"),
+                    source: PaneSource::Held,
                 },
-                look: Some(FilterLook::PLAIN),
-                source: PaneSource::Held,
             }
+        }
+
+        /// Where the pane's result comes from; `None` over the ground.
+        pub(crate) const fn source(&self) -> Option<PaneSource> {
+            match self.read {
+                BackdropRead::Pane { source, .. } => Some(source),
+                BackdropRead::Ground => None,
+            }
+        }
+
+        /// This pane taking its result from `source`.
+        pub(crate) fn with_source(mut self, source: PaneSource) -> Self {
+            let BackdropRead::Pane { source: held, .. } = &mut self.read else {
+                panic!("a pane fixture reads a pane");
+            };
+            *held = source;
+            self
         }
     }
 }
