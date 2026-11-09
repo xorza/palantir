@@ -157,6 +157,14 @@ Block
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
+Border
+    struct Border: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
+        pub color: RgbaF32
+        pub width: f32
+        pub const NONE: Self
+        pub const fn is_noop(&self) -> bool
+        pub const fn new(color: RgbaF32, width: f32) -> Self
+
 BoundNum
     enum BoundNum<'a>: Debug, From<&'a mut f32>, From<&'a mut f64>, From<&'a mut i32>, From<&'a mut i64>
         I32(&'a mut i32)
@@ -228,7 +236,7 @@ Checkbox
 Chrome
     struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<RgbaF32>, Lerp, PartialEq, Serialize
         pub fill: Brush
-        pub border: Stroke
+        pub border: Border
         pub corners: Corners
         pub shadow: Shadow
         pub material: Option<Material>
@@ -238,7 +246,7 @@ Chrome
         pub fn rounded(brush: impl Into<Brush>, corners: impl Into<Corners>) -> Self
         pub fn with_fill(self, brush: impl Into<Brush>) -> Self
         pub fn with_corners(self, corners: impl Into<Corners>) -> Self
-        pub const fn with_border(self, border: Stroke) -> Self
+        pub const fn with_border(self, border: Border) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
         pub const fn with_material(self, material: Material) -> Self
         impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>
@@ -2411,14 +2419,6 @@ Stop
         pub const fn offset(self) -> f32
         pub const fn color(self) -> RgbaF32
 
-Stroke
-    struct Stroke: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
-        pub color: RgbaF32
-        pub width: f32
-        pub const NONE: Self
-        pub const fn is_noop(&self) -> bool
-        pub const fn new(color: RgbaF32, width: f32) -> Self
-
 StrokeSteps
     struct StrokeSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub hairline: f32
@@ -3518,12 +3518,12 @@ widget::Shape
         pub fn rect(chrome: impl Into<Chrome>) -> RectShape
         pub fn windowed_rect(chrome: impl Into<Chrome>) -> RectShape
         pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape
-        pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape
-        pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_>
-        pub const fn cubic_bezier(bezier: CubicBezier, stroke: Stroke) -> CurveShape
-        pub const fn quadratic_bezier(bezier: QuadraticBezier, stroke: Stroke) -> CurveShape
-        pub const fn arc(arc: CircularArc, stroke: Stroke) -> CurveShape
-        pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape
+        pub const fn line(a: Vec2, b: Vec2, stroke: Border) -> CurveShape
+        pub fn polyline(points: &[Vec2], stroke: Border) -> PolylineShape<'_>
+        pub const fn cubic_bezier(bezier: CubicBezier, stroke: Border) -> CurveShape
+        pub const fn quadratic_bezier(bezier: QuadraticBezier, stroke: Border) -> CurveShape
+        pub const fn arc(arc: CircularArc, stroke: Border) -> CurveShape
+        pub const fn circle(center: Vec2, radius: f32, stroke: Border) -> CurveShape
         pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape
         pub const fn shadow(shadow: Shadow) -> ShadowShape
         pub fn image(handle: ImageHandle) -> ImageShape
@@ -3587,7 +3587,7 @@ widget::ThemeSlot
 widget::TriangleShape
     struct TriangleShape: Clone, Debug, Lower (blanket)
         pub const fn fill(self, fill: RgbaF32) -> Self
-        pub const fn border(self, border: Stroke) -> Self
+        pub const fn border(self, border: Border) -> Self
         pub const fn radius(self, radius: f32) -> Self
 
 widget::Widget

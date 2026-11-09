@@ -2,7 +2,7 @@
 
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
-use palantir::{RgbaF32, Stroke, Ui};
+use palantir::{Border, RgbaF32, Ui};
 
 /// The arrow's outline from its tip, in logical px: a 12 × 19 px pointer, the size of a
 /// desktop's.
@@ -29,6 +29,6 @@ pub(crate) fn draw(ui: &mut Ui, at: Vec2) {
     let rim: [Vec2; 8] = std::array::from_fn(|i| at + OUTLINE[i % OUTLINE.len()]);
     ui.add_shape(Shape::polyline(
         &rim,
-        Stroke::new(RgbaF32::hex(0x111111), 1.4),
+        Border::new(RgbaF32::hex(0x111111), 1.4),
     ));
 }

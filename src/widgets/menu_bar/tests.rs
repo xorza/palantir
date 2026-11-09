@@ -3,7 +3,7 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::palette::Palette;
 use crate::widgets::menu::menu_item::MenuItem;
@@ -335,7 +335,7 @@ fn the_bar_spans_its_parent_on_the_band() {
         .tree(Layer::Main)
         .chrome(h.node_for_widget_id(bar()))
         .expect("the bar paints its band");
-    let ShapeBrush::Solid(fill) = chrome.fill else {
+    let LoweredBrush::Solid(fill) = chrome.fill else {
         panic!("the band is a solid fill");
     };
     assert_eq!(fill, Palette::DARK.surround.to_f16());
@@ -412,8 +412,8 @@ fn an_opening_modal_closes_the_menu_and_its_open_look_in_its_frame() {
             .tree(Layer::Main)
             .chrome(h.node_for_widget_id(title(1)))
             .map(|chrome| match chrome.fill {
-                ShapeBrush::Solid(fill) => fill,
-                other @ ShapeBrush::Gradient { .. } => panic!("a title fills solid: {other:?}"),
+                LoweredBrush::Solid(fill) => fill,
+                other @ LoweredBrush::Gradient { .. } => panic!("a title fills solid: {other:?}"),
             })
     };
     for (modal_first, want_passes) in [(false, 2), (true, 1)] {

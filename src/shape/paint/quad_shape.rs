@@ -5,10 +5,10 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::shape::paint::lowered_border::LoweredBorder;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::shape_brush::ShapeBrush;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
@@ -28,8 +28,8 @@ pub(crate) enum QuadShape {
         kind: RectKind,
         local_rect: Option<Rect>,
         corners: Corners,
-        fill: ShapeBrush,
-        border: ShapeStroke,
+        fill: LoweredBrush,
+        border: LoweredBorder,
         shadow: LoweredShadow,
         material: Option<LoweredMaterial>,
     },
@@ -53,7 +53,7 @@ pub(crate) enum QuadShape {
         radius: f32,
         /// Solid linear-RGB fill, straight alpha.
         fill: RgbaF16,
-        border: ShapeStroke,
+        border: LoweredBorder,
         bbox: Rect,
     },
 }

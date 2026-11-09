@@ -14,8 +14,8 @@ use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
 use crate::shape::style::LineCap;
 use crate::theme::Theme;
@@ -341,7 +341,7 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
             .tree(Layer::Main)
             .chrome(h.node_for_widget_id(id))
             .expect("chrome recorded");
-        let ShapeBrush::Solid(fill) = chrome.fill else {
+        let LoweredBrush::Solid(fill) = chrome.fill else {
             panic!("a solid fill");
         };
         fill

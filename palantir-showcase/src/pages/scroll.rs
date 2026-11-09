@@ -7,8 +7,8 @@ use crate::support;
 use crate::support::Kit;
 use palantir::glam::Vec2;
 use palantir::{
-    Button, Chrome, Configure, Corners, DragValue, Panel, Scroll, Sizing, SplitHalf, Splitter,
-    Stroke, Text, Ui, WidgetId, fmt,
+    Border, Button, Chrome, Configure, Corners, DragValue, Panel, Scroll, Sizing, SplitHalf,
+    Splitter, Text, Ui, WidgetId, fmt,
 };
 
 /// Items in the vertical list and the horizontal strip, enough to overflow either pane.
@@ -184,7 +184,7 @@ impl Item {
             .padding((M.space.md, M.space.xs))
             .chrome(
                 Chrome::rounded(k.t.raised, Corners::all(M.radius.control))
-                    .with_border(Stroke::new(k.t.hairline, M.stroke.hairline)),
+                    .with_border(Border::new(k.t.hairline, M.stroke.hairline)),
             )
             .show(ui, |ui| {
                 Text::new(fmt!(ui, "{number:02}"))

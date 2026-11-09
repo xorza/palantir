@@ -9,8 +9,8 @@ use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, Sizing,
-    Stroke, Text, Ui, VAlign, WidgetId, fmt,
+    Align, Border, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense,
+    Sizing, Text, Ui, VAlign, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;
@@ -350,7 +350,7 @@ impl StepButton {
 
 fn paint_bar(ui: &mut Ui, ink: RgbaF32, points: &[Vec2]) {
     ui.add_shape(
-        Shape::polyline(points, Stroke::new(ink, 2.0))
+        Shape::polyline(points, Border::new(ink, 2.0))
             .cap(LineCap::Round)
             .join(LineJoin::Round),
     );

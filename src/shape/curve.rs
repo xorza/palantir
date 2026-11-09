@@ -8,16 +8,16 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::math::libm_ext::LibmVec2;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::lower;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::rect::RectKind;
@@ -93,7 +93,7 @@ impl CurveGeometry {
 /// The stroke properties every geometry carries into lowering, so only the geometry varies between entry points.
 #[derive(Clone, Copy, Debug)]
 struct CurveStyle {
-    stroke: Stroke,
+    stroke: Border,
     ramp: Option<ColorRamp>,
     cap: LineCap,
 }
@@ -107,7 +107,7 @@ pub struct CurveShape {
 }
 
 impl CurveShape {
-    pub(super) const fn new(geometry: CurveGeometry, stroke: Stroke) -> Self {
+    pub(super) const fn new(geometry: CurveGeometry, stroke: Border) -> Self {
         Self {
             geometry,
             style: CurveStyle {
@@ -172,7 +172,7 @@ impl sealed::LowerShape for CurveShape {
                 )),
                 corners,
                 fill: lower::brush(store, &Brush::Solid(color)),
-                border: ShapeStroke::lower(Stroke::NONE),
+                border: LoweredBorder::lower(Border::NONE),
                 shadow: LoweredShadow::lower(Shadow::NONE),
                 material: None,
             });
@@ -181,7 +181,7 @@ impl sealed::LowerShape for CurveShape {
         ShapeRecord::Curve {
             cap,
             basis,
-            stroke: ShapeStroke::lower(stroke),
+            stroke: LoweredBorder::lower(stroke),
             bbox: basis.bbox(),
             ramp: ramp.map_or(CurveRamp::None, |ramp| lower::ramp(store, &ramp)),
         }

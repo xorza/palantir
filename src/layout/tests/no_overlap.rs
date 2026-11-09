@@ -9,10 +9,10 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -47,7 +47,7 @@ fn chrome_section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) 
         .padding(8.0)
         .chrome(Chrome {
             fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
-            border: Stroke::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
+            border: Border::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
             corners: Corners::all(4.0),
             shadow: Shadow::NONE,
             material: None,

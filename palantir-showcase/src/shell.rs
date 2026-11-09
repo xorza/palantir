@@ -3,10 +3,10 @@
 //! group, blurb, key hints, scrolling and builder.
 
 use palantir::{
-    Align, App, Block, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
+    Align, App, Block, Border, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
     FocusPolicy, FontFamily, Justify, Key, Palette, Panel, PopupTrigger, Preference, Reduction,
-    Scroll, Sense, Separator, Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, TextWrap,
-    Tooltip, Ui, UiPreferences, UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
+    Scroll, Sense, Separator, Shortcut, ShortcutMods, Sizing, Text, TextEdit, TextWrap, Tooltip,
+    Ui, UiPreferences, UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
 };
 
 use crate::app_state::AppState;
@@ -689,9 +689,9 @@ fn accent_row(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                 .map(|(&seed, &accent)| (Some(seed), accent));
             for (idx, (seed, accent)) in [stock].into_iter().chain(seeds).enumerate() {
                 let ring = if seed == current {
-                    Stroke::new(k.t.ink, M.stroke.line)
+                    Border::new(k.t.ink, M.stroke.line)
                 } else {
-                    Stroke::NONE
+                    Border::NONE
                 };
                 let clicked = Block::new()
                     .id(accent_id(idx))

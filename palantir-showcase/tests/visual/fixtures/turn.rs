@@ -6,8 +6,8 @@ use palantir::glam::{UVec2, Vec2};
 use palantir::widget::LineCap;
 use palantir::widget::{GlyphFont, Mesh, PaintAnimation, Shape};
 use palantir::{
-    Configure, Corners, Image, ImageFit, LinearGradient, Panel, Rect, RgbaF32, Shadow, Sizing,
-    Stroke, Ui, WidgetId,
+    Border, Configure, Corners, Image, ImageFit, LinearGradient, Panel, Rect, RgbaF32, Shadow,
+    Sizing, Ui, WidgetId,
 };
 
 use std::rc::Rc;
@@ -49,7 +49,7 @@ fn a_turned_triangle_and_mesh_match_golden() {
                     )
                     .radius(8.0_f32)
                     .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
-                    .border(Stroke::new(RgbaF32::WHITE, 3.0)),
+                    .border(Border::new(RgbaF32::WHITE, 3.0)),
                     thirty_degrees(),
                 );
             });
@@ -74,7 +74,7 @@ fn turned_quads_match_golden() {
                 ui.add_shape_animated(
                     Shape::rect(
                         Chrome::rounded(RgbaF32::srgb(0.2, 0.5, 1.0), Corners::all(10.0))
-                            .with_border(Stroke::new(RgbaF32::WHITE, 3.0)),
+                            .with_border(Border::new(RgbaF32::WHITE, 3.0)),
                     )
                     .at(source),
                     thirty_degrees(),
@@ -124,7 +124,7 @@ fn turned_quads_match_golden() {
                 );
             });
             owner(ui, "dot", |ui| {
-                let stroke = Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 30.0);
+                let stroke = Border::new(RgbaF32::srgb(1.0, 0.85, 0.2), 30.0);
                 ui.add_shape_animated(
                     Shape::line(Vec2::new(50.0, 50.0), Vec2::new(50.0, 50.0), stroke)
                         .cap(LineCap::Square),
@@ -135,7 +135,7 @@ fn turned_quads_match_golden() {
                 ui.add_shape_animated(
                     Shape::windowed_rect(
                         Chrome::rounded(RgbaF32::srgb(0.2, 0.5, 1.0), Corners::all(14.0))
-                            .with_border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                            .with_border(Border::new(RgbaF32::WHITE, 2.0)),
                     )
                     .at(source),
                     thirty_degrees(),

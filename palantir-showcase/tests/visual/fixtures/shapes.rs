@@ -4,7 +4,7 @@
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
 use palantir::{
-    Block, Chrome, ColorRamp, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stroke,
+    Block, Border, Chrome, ColorRamp, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing,
 };
 
 use crate::fixtures;
@@ -33,7 +33,7 @@ fn windowed_rect_masks_corners_matches_golden() {
                 ui.add_shape(
                     Shape::windowed_rect(
                         Chrome::rounded(DARK_BG, 20.0)
-                            .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                            .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
                     )
                     .at(card),
                 );
@@ -85,14 +85,14 @@ fn line_diagonal_aa_matches_golden() {
             ui.add_shape(Shape::line(
                 Vec2::new(10.0, 10.0),
                 Vec2::new(150.0, 110.0),
-                Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
+                Border::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
             ));
             // Sub-pixel hairlines must appear dim, not vanish. On a pixel boundary (y = 80) a 0.4 px line splits 0.2 + 0.2 over two rows; through a center (y = 40.5) it lands 0.4 on one. Equal energy, so brightness does not pulse.
             for y in [80.0, 40.5] {
                 ui.add_shape(Shape::line(
                     Vec2::new(10.0, y),
                     Vec2::new(150.0, y),
-                    Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 0.4),
+                    Border::new(RgbaF32::srgb(1.0, 1.0, 1.0), 0.4),
                 ));
             }
         });
@@ -116,7 +116,7 @@ fn polyline_gradient_matches_golden() {
                 RgbaF32::srgb(0.2, 1.0, 0.4),
                 RgbaF32::srgb(0.2, 0.6, 1.0),
             ];
-            ui.add_shape(Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 5.0)).per_point(&cols));
+            ui.add_shape(Shape::polyline(&pts, Border::new(RgbaF32::WHITE, 5.0)).per_point(&cols));
         });
     });
 }
@@ -132,13 +132,13 @@ fn polyline_bevel_join_matches_golden() {
                 Vec2::new(60.0, 60.0),
                 Vec2::new(105.0, 30.0),
             ];
-            ui.add_shape(Shape::polyline(&shallow, Stroke::new(cyan, 5.0)));
+            ui.add_shape(Shape::polyline(&shallow, Border::new(cyan, 5.0)));
             let sharp = [
                 Vec2::new(15.0, 100.0),
                 Vec2::new(80.0, 115.0),
                 Vec2::new(20.0, 130.0),
             ];
-            ui.add_shape(Shape::polyline(&sharp, Stroke::new(cyan, 5.0)));
+            ui.add_shape(Shape::polyline(&sharp, Border::new(cyan, 5.0)));
         });
     });
 }
@@ -157,7 +157,7 @@ fn polyline_round_caps_match_golden() {
                     Shape::line(
                         Vec2::new(40.0, y),
                         Vec2::new(140.0, y),
-                        Stroke::new(color, 10.0),
+                        Border::new(color, 10.0),
                     )
                     .cap(cap),
                 );
@@ -182,7 +182,7 @@ fn polyline_round_join_matches_golden() {
                     Vec2::new(90.0, y),
                     Vec2::new(160.0, y + 40.0),
                 ];
-                ui.add_shape(Shape::polyline(&pts, Stroke::new(cyan, 8.0)).join(join));
+                ui.add_shape(Shape::polyline(&pts, Border::new(cyan, 8.0)).join(join));
             }
         });
     });
@@ -210,7 +210,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
                     ui.add_shape(
                         Shape::polyline(
                             &pts,
-                            Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 14.0),
+                            Border::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 14.0),
                         )
                         .join(*join),
                     );
@@ -246,7 +246,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
                 let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
                 ui.add_shape(Shape::polyline(
                     &pts,
-                    Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 24.0),
+                    Border::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 24.0),
                 ));
             });
         })
@@ -281,7 +281,7 @@ fn curve_caps_match_golden() {
                             p2: Vec2::new(140.0, dy - 10.0),
                             p3: Vec2::new(170.0, dy + 40.0),
                         },
-                        Stroke::new(*color, 8.0),
+                        Border::new(*color, 8.0),
                     )
                     .cap(*cap),
                 );
@@ -293,7 +293,7 @@ fn curve_caps_match_golden() {
                         p1: Vec2::new(100.0, 170.0),
                         p2: Vec2::new(170.0, 215.0),
                     },
-                    Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 4.0),
+                    Border::new(RgbaF32::srgb(1.0, 0.85, 0.2), 4.0),
                 )
                 .cap(LineCap::Round),
             );
@@ -331,7 +331,7 @@ fn triangle_matches_golden() {
                 )
                 .radius(8.0_f32)
                 .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
-                .border(Stroke::new(RgbaF32::WHITE, 3.0)),
+                .border(Border::new(RgbaF32::WHITE, 3.0)),
             );
             ui.add_shape(
                 Shape::triangle(
@@ -341,7 +341,7 @@ fn triangle_matches_golden() {
                 )
                 .radius(6.0_f32)
                 .fill(RgbaF32::TRANSPARENT)
-                .border(Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 3.0)),
+                .border(Border::new(RgbaF32::srgb(1.0, 0.85, 0.2), 3.0)),
             );
         });
     });
@@ -356,7 +356,7 @@ fn arc_shapes_match_golden() {
             ui.add_shape(Shape::circle(
                 Vec2::new(45.0, 70.0),
                 30.0,
-                Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
+                Border::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
             ));
             let comet = ColorRamp::two_stop(
                 RgbaF32::srgb(1.0, 0.85, 0.2).with_alpha(0.0),
@@ -370,7 +370,7 @@ fn arc_shapes_match_golden() {
                         start_angle: -FRAC_PI_2,
                         sweep: 1.5 * PI,
                     },
-                    Stroke::new(RgbaF32::WHITE, 8.0),
+                    Border::new(RgbaF32::WHITE, 8.0),
                 )
                 .ramp(comet)
                 .cap(LineCap::Round),

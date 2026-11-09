@@ -23,9 +23,9 @@ use crate::internals::cache_fixture::{BroadChange, build_broad, build_broad_vari
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::text::wrap::TextWrap;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
@@ -48,7 +48,7 @@ const GRID_ROWS: usize = 128;
 /// measure is shaping-bound rather than mono-fallback.
 fn build_list(ui: &mut Ui) {
     let group_chrome = Chrome::rounded(RgbaF32::hex(0x1a1a1a), Corners::all(12.0))
-        .with_border(Stroke::new(RgbaF32::hex(0x4d5663), 1.5));
+        .with_border(Border::new(RgbaF32::hex(0x4d5663), 1.5));
     let row_bg = Chrome::rounded(RgbaF32::hex(0x252525), Corners::all(6.0));
     let avatar_chrome = Chrome::rounded(RgbaF32::hex(0x3a4a5c), Corners::all(10.0));
     Panel::vstack()

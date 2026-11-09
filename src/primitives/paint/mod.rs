@@ -1,6 +1,7 @@
 //! What a shape is painted with: color, brushes, strokes, shadows, chrome and images.
 
 pub(crate) mod antialias;
+pub(crate) mod border;
 pub(crate) mod brush;
 pub(crate) mod chrome;
 pub(crate) mod color;
@@ -10,4 +11,3 @@ pub(crate) mod lut_row;
 pub(crate) mod material;
 pub(crate) mod raster_image;
 pub(crate) mod shadow;
-pub(crate) mod stroke;

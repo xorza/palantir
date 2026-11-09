@@ -42,8 +42,8 @@ use crate::renderer::render_buffer::backdrop_row::PaneCapture;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ColorMode;
 use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
@@ -334,7 +334,7 @@ fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-            stroke: ShapeStroke::NONE,
+            stroke: LoweredBorder::NONE,
         }),
         1.0,
     );
@@ -351,7 +351,7 @@ fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
             corners: Corners::ZERO,
             spin: None,
             tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
-            stroke: ShapeStroke::NONE,
+            stroke: LoweredBorder::NONE,
             material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
             read: BackdropDraw::Capture(PaneTicket {

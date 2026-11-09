@@ -17,9 +17,9 @@ use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::math::domain::{self, MAX_GAP};
 use crate::primitives::packed::serde::LaneCodec;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
@@ -436,7 +436,7 @@ fn a_border_past_an_f16_lane_draws() {
         Panel::vstack()
             .chrome(
                 Chrome::rounded(RgbaF32::WHITE, Corners::all(4.0))
-                    .with_border(Stroke::new(RgbaF32::BLACK, 70000.0)),
+                    .with_border(Border::new(RgbaF32::BLACK, 70000.0)),
             )
             .show(ui, |_| {});
     });

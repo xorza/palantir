@@ -5,7 +5,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::combo_box::ComboBoxTheme;
@@ -265,7 +265,7 @@ fn trigger_chrome_follows_button_style() {
             .fill;
         let want = want.to_f16();
         assert!(
-            matches!(fill, ShapeBrush::Solid(got) if got == want),
+            matches!(fill, LoweredBrush::Solid(got) if got == want),
             "styled {}: {fill:?}, want {want:?}",
             style.is_some(),
         );

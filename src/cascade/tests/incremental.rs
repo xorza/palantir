@@ -11,7 +11,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 
 use crate::host::harness::Harness;
-use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::paint::border::Border;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -106,7 +106,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
                         Shape::line(
                             Vec2::splat(offset),
                             Vec2::splat(offset + 20.0),
-                            Stroke::new(RgbaF32::WHITE, 2.0),
+                            Border::new(RgbaF32::WHITE, 2.0),
                         )
                         .cap(LineCap::Round),
                     );

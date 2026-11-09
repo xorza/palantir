@@ -2,18 +2,18 @@
 
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::stroke::Stroke;
 use std::hash::Hasher;
 
 /// Lowered stroke: a straight-alpha color and a logical-px width.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct ShapeStroke {
+pub(crate) struct LoweredBorder {
     pub(crate) width: f32,
     pub(crate) color: RgbaF16,
 }
 
-impl ShapeStroke {
+impl LoweredBorder {
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         Self {
@@ -47,12 +47,12 @@ impl ShapeStroke {
     }
 }
 
-impl ShapeStroke {
+impl LoweredBorder {
     /// `stroke` lowered: its color quantized to f16, and normalized on the way in, as a record's
     /// raw bytes are a hash key, and `-0.0`, a sub-`EPS` hair or invisible ink would each hash
     /// apart while painting nothing. A named method, not `From`, as it loses both.
     #[inline]
-    pub(crate) fn lower(stroke: Stroke) -> Self {
+    pub(crate) fn lower(stroke: Border) -> Self {
         Self {
             width: stroke.width,
             color: stroke.color.to_f16(),
@@ -61,7 +61,7 @@ impl ShapeStroke {
     }
 }
 
-impl NanCheck for ShapeStroke {
+impl NanCheck for LoweredBorder {
     #[inline]
     fn has_nan(&self) -> bool {
         self.width.is_nan() || self.color.has_nan()
@@ -70,30 +70,30 @@ impl NanCheck for ShapeStroke {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::stroke::Stroke;
-    use crate::shape::paint::shape_stroke::ShapeStroke;
+    use crate::shape::paint::lowered_border::LoweredBorder;
 
     /// Every stroke that paints nothing (`-0.0` width, a hair below `EPS`, transparent ink) lowers to one value.
     #[test]
     fn every_invisible_stroke_lowers_to_one_value() {
         let cases = [
-            Stroke::new(RgbaF32::WHITE, -0.0),
-            Stroke::new(RgbaF32::WHITE, 0.0),
-            Stroke::new(RgbaF32::WHITE, 1e-9),
-            Stroke::new(RgbaF32::TRANSPARENT, 4.0),
+            Border::new(RgbaF32::WHITE, -0.0),
+            Border::new(RgbaF32::WHITE, 0.0),
+            Border::new(RgbaF32::WHITE, 1e-9),
+            Border::new(RgbaF32::TRANSPARENT, 4.0),
         ];
         for stroke in cases {
             assert_eq!(
-                ShapeStroke::lower(stroke),
-                ShapeStroke::NONE,
+                LoweredBorder::lower(stroke),
+                LoweredBorder::NONE,
                 "{stroke:?} paints nothing",
             );
         }
-        let visible = Stroke::new(RgbaF32::WHITE, 2.0);
+        let visible = Border::new(RgbaF32::WHITE, 2.0);
         assert_eq!(
-            ShapeStroke::lower(visible),
-            ShapeStroke {
+            LoweredBorder::lower(visible),
+            LoweredBorder {
                 width: 2.0,
                 color: RgbaF32::WHITE.to_f16(),
             },

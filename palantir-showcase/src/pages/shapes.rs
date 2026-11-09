@@ -12,7 +12,7 @@ use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::Chrome;
 use palantir::glam::Vec2;
 use palantir::widget::{Mesh, RectShape, Shape};
-use palantir::{LinearGradient, RgbaF32, Stroke, Ui, WidgetId};
+use palantir::{Border, LinearGradient, RgbaF32, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
@@ -88,7 +88,7 @@ fn stroked(ui: &mut Ui, k: Kit) {
     ui.add_shape(
         Shape::triangle(A, B, C)
             .fill(k.swatch.violet)
-            .border(Stroke::new(RgbaF32::WHITE, 3.0))
+            .border(Border::new(RgbaF32::WHITE, 3.0))
             .radius(10.0_f32),
     );
 }
@@ -96,7 +96,7 @@ fn stroked(ui: &mut Ui, k: Kit) {
 fn outline(ui: &mut Ui, k: Kit) {
     ui.add_shape(
         Shape::triangle(A, B, C)
-            .border(Stroke::new(k.swatch.orange, 3.0))
+            .border(Border::new(k.swatch.orange, 3.0))
             .radius(8.0_f32),
     );
 }
@@ -185,7 +185,7 @@ fn window_mask(ui: &mut Ui, k: Kit) {
         RgbaF32::hex(0x4c5cdb),
     )));
     ui.add_shape(Shape::windowed_rect(
-        Chrome::rounded(k.t.ground, 18.0).with_border(Stroke::new(k.swatch.teal, 2.0)),
+        Chrome::rounded(k.t.ground, 18.0).with_border(Border::new(k.swatch.teal, 2.0)),
     ));
 }
 
@@ -193,7 +193,7 @@ fn window_mask(ui: &mut Ui, k: Kit) {
 fn window_anatomy(ui: &mut Ui, k: Kit) {
     ui.add_shape(Shape::windowed_rect(
         Chrome::rounded(k.swatch.orange.with_alpha(0.75), 28.0)
-            .with_border(Stroke::new(k.swatch.lime, 4.0)),
+            .with_border(Border::new(k.swatch.lime, 4.0)),
     ));
 }
 
@@ -245,7 +245,7 @@ fn live(ui: &mut Ui, k: Kit) {
                     ui.add_shape(
                         Shape::triangle(A, B, C)
                             .fill(k.swatch.violet)
-                            .border(Stroke::new(k.t.ink, stroke))
+                            .border(Border::new(k.t.ink, stroke))
                             .radius(radius),
                     );
                 });

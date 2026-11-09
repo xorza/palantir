@@ -144,9 +144,9 @@ fn animate_some_then_none_drops_stale_row() {
 #[test]
 fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
     use crate::theme::look::WidgetLook;
     use crate::theme::look::animated_look::AnimatedLook;
     use crate::theme::text_style::TextStyle;
@@ -158,7 +158,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
 
     let chrome = Chrome {
         fill: RgbaF32::hex(0x336699).into(),
-        border: Stroke::new(RgbaF32::hex(0xffffff), 2.0),
+        border: Border::new(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
         shadow: Shadow::NONE,
         material: None,

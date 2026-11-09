@@ -7,8 +7,8 @@ use std::time::Duration;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Block, Chrome, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
-    RgbaF32, Shadow, Sizing, SrgbaU8, Stroke, Text, Ui,
+    Block, Border, Chrome, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient,
+    Rect, RgbaF32, Shadow, Sizing, SrgbaU8, Text, Ui,
 };
 
 use crate::goldens;
@@ -83,7 +83,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     let line = Shape::line(
                         Vec2::new(10.0, 15.0),
                         Vec2::new(70.0, 15.0),
-                        Stroke::new(RgbaF32::WHITE, 2.0),
+                        Border::new(RgbaF32::WHITE, 2.0),
                     );
                     if k.spin {
                         ui.add_shape_animated(

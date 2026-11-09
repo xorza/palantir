@@ -3,9 +3,9 @@
 use crate::common::hash;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::EPS;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
 use crate::shape::rect::RectKind;
@@ -16,8 +16,8 @@ use crate::text::font_weight::FontWeight;
 /// Same rectangle payload, different paint kind (a windowed rect inverts the painted region), and all three quad shapes share [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own must separate them and each shape's fields must reach the hasher. A collision makes damage diff skip a repaint.
 #[test]
 fn quad_shapes_hash_apart() {
-    let fill = ShapeBrush::Solid(RgbaF32::WHITE.to_f16());
-    let stroke = ShapeStroke::lower(Stroke::new(RgbaF32::BLACK, 2.0));
+    let fill = LoweredBrush::Solid(RgbaF32::WHITE.to_f16());
+    let stroke = LoweredBorder::lower(Border::new(RgbaF32::BLACK, 2.0));
     let corners = Corners::all(8.0);
     let rect = |kind| {
         ShapeRecord::Quad(QuadShape::Rect {
@@ -71,7 +71,7 @@ fn quad_shapes_hash_apart() {
 /// Cubics and arcs share [`ShapeRecord::Curve`]'s discriminant, so [`CurveBasis`]'s own must separate them and the arc's fields must reach the hasher.
 #[test]
 fn curve_and_arc_bases_hash_apart() {
-    let stroke = ShapeStroke::lower(Stroke::new(RgbaF32::WHITE, 2.0));
+    let stroke = LoweredBorder::lower(Border::new(RgbaF32::WHITE, 2.0));
     let curve = |basis| ShapeRecord::Curve {
         cap: LineCap::Butt,
         basis,

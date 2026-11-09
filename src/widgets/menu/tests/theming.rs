@@ -8,7 +8,7 @@ use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record::ShapeRecord;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
@@ -162,7 +162,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
         .tree(Layer::Menu)
         .chrome(sep.node)
         .expect("separator chrome");
-    let ShapeBrush::Solid(fill) = chrome.fill else {
+    let LoweredBrush::Solid(fill) = chrome.fill else {
         panic!("the menu rule paints a solid fill");
     };
     assert_eq!(fill, rule.to_f16(), "rule color comes off the menu");

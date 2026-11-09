@@ -7,8 +7,8 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::icon_ref::IconRef;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -20,8 +20,8 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::TriangleQuad;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
@@ -99,7 +99,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
 /// either geometry.
 #[test]
 fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
-    let nan_stroke = Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN);
+    let nan_stroke = Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN);
     let display = params(2.0, UVec2::new(400, 400));
 
     // An opaque fill keeps the draw alive so the stroke lanes can be inspected.
@@ -128,7 +128,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
                     ],
                     radius: 0.0,
                     fill: RgbaF32::WHITE.to_f16(),
-                    stroke: ShapeStroke::lower(nan_stroke),
+                    stroke: LoweredBorder::lower(nan_stroke),
                 }),
                 1.0,
             );
@@ -189,7 +189,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
             b.push_transform(TranslateScale::from_scale(2.0));
             QuadBuilder::new(Rect::new(0.0, 0.0, 50.0, 50.0))
                 .corners(Corners::all(8.0))
-                .stroke(Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5))
+                .stroke(Border::new(RgbaF32::srgb(0.0, 0.0, 0.0), 1.5))
                 .draw(b);
             b.pop_transform();
         },
@@ -424,7 +424,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
                     points,
                     radius: 2.0,
                     fill: RgbaF32::WHITE.to_f16(),
-                    stroke: ShapeStroke::lower(Stroke::NONE),
+                    stroke: LoweredBorder::lower(Border::NONE),
                 }),
                 1.0,
             );
@@ -478,7 +478,7 @@ fn a_turned_triangle_turns_its_points_about_its_pivot() {
                         ],
                         radius: 1.0,
                         fill: RgbaF32::WHITE.to_f16(),
-                        stroke: ShapeStroke::lower(Stroke::NONE),
+                        stroke: LoweredBorder::lower(Border::NONE),
                     })
                     .turned(spin),
                     1.0,

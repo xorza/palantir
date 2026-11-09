@@ -7,12 +7,12 @@ use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use palantir_derive::{Animatable, Lerp};
 
 /// A painted box: the one value of a node's box (`Block`, `Panel`, `Grid`, per-state widget
@@ -23,7 +23,7 @@ use palantir_derive::{Animatable, Lerp};
 ///
 /// `Animatable` is derived: fill and border interpolate componentwise, `corners` is
 /// `#[animate(lerp_only)]`, so a look's fade takes its radii at once and a theme's lerp blends
-/// them. "No border" is `Stroke::NONE`, not an `Option`; paint-time `is_noop` filtering catches
+/// them. "No border" is `Border::NONE`, not an `Option`; paint-time `is_noop` filtering catches
 /// authored and animation-decayed no-ops.
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's
@@ -43,10 +43,10 @@ pub struct Chrome {
     /// Interior paint. [`Brush::TRANSPARENT`] fills nothing.
     pub fill: Brush,
     /// The edge ring, painted inside the rect. Layout adds its width to the
-    /// padding, so children sit inside the border. `Stroke::NONE` (the `Default`)
+    /// padding, so children sit inside the border. `Border::NONE` (the `Default`)
     /// is omitted from serialized output.
-    #[serde(default, skip_serializing_if = "Stroke::is_noop")]
-    pub border: Stroke,
+    #[serde(default, skip_serializing_if = "Border::is_noop")]
+    pub border: Border,
     /// Zero (or sub-`EPS`) radii, the `Default`, are omitted from serialized
     /// output.
     #[serde(
@@ -115,7 +115,7 @@ impl Chrome {
     /// theme chrome.
     pub const NONE: Self = Self {
         fill: Brush::TRANSPARENT,
-        border: Stroke::NONE,
+        border: Border::NONE,
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
         material: None,
@@ -147,7 +147,7 @@ impl Chrome {
     }
 
     /// How far the border reaches in from the edge: its width, or zero when the
-    /// width paints nothing. On the width alone, not [`Stroke::is_noop`]: a border an invisible
+    /// width paints nothing. On the width alone, not [`Border::is_noop`]: a border an invisible
     /// color makes still gets room.
     #[inline]
     pub(crate) const fn border_inset(&self) -> f32 {
@@ -162,7 +162,7 @@ impl Chrome {
     pub fn fill(brush: impl Into<Brush>) -> Self {
         Self {
             fill: brush.into(),
-            border: Stroke::NONE,
+            border: Border::NONE,
             corners: Corners::ZERO,
             shadow: Shadow::NONE,
             material: None,
@@ -187,7 +187,7 @@ impl Chrome {
     }
 
     /// Set the border, keeping fill/corners/shadow.
-    pub const fn with_border(mut self, border: Stroke) -> Self {
+    pub const fn with_border(mut self, border: Border) -> Self {
         self.border = border;
         self
     }
@@ -340,13 +340,13 @@ mod tests {
     // `with_border`/`with_shadow` chained in a const context fail to compile if
     // they stop being const.
     const _CONST_BUILDER: Chrome = Chrome::NONE
-        .with_border(Stroke::NONE)
+        .with_border(Border::NONE)
         .with_shadow(Shadow::NONE);
 
     #[test]
     fn with_border_and_with_shadow_set_the_named_field_only() {
         let base = Chrome::rounded(RgbaF32::WHITE, Corners::all(4.0));
-        let border = Stroke::new(RgbaF32::BLACK, 2.0);
+        let border = Border::new(RgbaF32::BLACK, 2.0);
         let shadow = Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 4.0);
 
         let with_border = base.clone().with_border(border);
@@ -451,7 +451,7 @@ mod tests {
         for (brush, fill_refusals) in fills {
             let held = Chrome::rounded(ink, Corners::all(4.0))
                 .with_fill(brush)
-                .with_border(Stroke::new(RgbaF32::BLACK, 2.0))
+                .with_border(Border::new(RgbaF32::BLACK, 2.0))
                 .with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 4.0), 6.0))
                 .with_material(Material::glass(Lens::WINDOW_GLASS));
             assert_eq!(panic_probe::caught(|| held.validate()), Ok(()));
@@ -502,7 +502,7 @@ mod tests {
         assert_eq!(rounded, Chrome::fill(ink).with_corners(Corners::all(6.0)));
         assert_eq!(rounded.corners, Corners::all(6.0));
 
-        let bordered = rounded.with_border(Stroke::new(RgbaF32::BLACK, 2.0));
+        let bordered = rounded.with_border(Border::new(RgbaF32::BLACK, 2.0));
         let gradient = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
         let refilled = bordered.clone().with_fill(gradient.clone());
         assert_eq!(refilled.fill, Brush::Linear(gradient));
@@ -532,12 +532,12 @@ mod tests {
     fn an_absent_chrome_blends_through_none() {
         let ink = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
         let chrome = Chrome::rounded(ink, Corners::all(8.0))
-            .with_border(Stroke::new(RgbaF32::BLACK, 2.0))
+            .with_border(Border::new(RgbaF32::BLACK, 2.0))
             .with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 4.0), 6.0));
         let half = |color| RgbaF32::lerp(&RgbaF32::TRANSPARENT, color, 0.5);
         let mid = Chrome {
             fill: half(&ink).into(),
-            border: Stroke::new(half(&RgbaF32::BLACK), 1.0),
+            border: Border::new(half(&RgbaF32::BLACK), 1.0),
             corners: Corners::all(4.0),
             shadow: Shadow::drop(half(&RgbaF32::BLACK), Vec2::new(0.0, 2.0), 3.0),
             material: None,

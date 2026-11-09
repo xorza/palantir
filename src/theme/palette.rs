@@ -1,10 +1,10 @@
 //! The color roster every theme recipe draws from. [`Palette`] is the color input to [`crate::Theme::from_parts`]; [`Palette::DARK`] and [`Palette::LIGHT`] are the built-in looks, [`Palette::for_scheme`] picks one by [`ColorScheme`].
 
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 
@@ -129,7 +129,7 @@ impl Palette {
     /// Chrome for a body a [`crate::Popup`] drops from a trigger and for a [`crate::Modal`]'s panel, one recipe so context menu, combo list, picker and dialog read as one system. It rounds and casts as every floating surface does; the shadow separates it from what it opened over, since its fill matches the panels beneath.
     pub fn popup_panel(&self, m: &Metrics) -> Chrome {
         Chrome::rounded(self.element, Corners::all(m.radius.float))
-            .with_border(Stroke::new(self.border_mid(), m.stroke.hairline))
+            .with_border(Border::new(self.border_mid(), m.stroke.hairline))
             .with_shadow(self.float_shadow(m))
     }
 }

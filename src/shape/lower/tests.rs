@@ -6,6 +6,7 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::packed::serde::LaneCodec;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
@@ -18,14 +19,13 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
 use crate::shape::lower::{brush, chrome, ramp};
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradients::GradientId;
@@ -37,8 +37,8 @@ use std::collections::HashSet;
 
 fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
     match brush(store, value) {
-        ShapeBrush::Gradient { id, .. } => id,
-        ShapeBrush::Solid(_) => panic!("test gradient lowered to a solid brush"),
+        LoweredBrush::Gradient { id, .. } => id,
+        LoweredBrush::Solid(_) => panic!("test gradient lowered to a solid brush"),
     }
 }
 
@@ -68,7 +68,7 @@ fn nan_chromes() -> [(&'static str, Chrome, &'static str); 6] {
         (
             "stroke",
             Chrome {
-                border: Stroke::new(RgbaF32::WHITE, f32::NAN),
+                border: Border::new(RgbaF32::WHITE, f32::NAN),
                 ..Chrome::fill(RgbaF32::WHITE)
             },
             domain::LENGTH_RULE,
@@ -142,9 +142,9 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
 fn a_material_lowers_as_it_reads() {
     let tint = RgbaF32::hex(0x204060).with_alpha8(184);
     let frosted = Chrome::fill(tint).with_material(Material::frosted(20.0));
-    let solid = |brush: ShapeBrush| match brush {
-        ShapeBrush::Solid(color) => color,
-        ShapeBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
+    let solid = |brush: LoweredBrush| match brush {
+        LoweredBrush::Solid(color) => color,
+        LoweredBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
     };
     let id = EffectId(3);
     let mut store = RecordStore::default();
@@ -153,7 +153,7 @@ fn a_material_lowers_as_it_reads() {
         (Some(MaterialRead::Ground(id)), Some(false)),
         (None, None),
     ] {
-        let row = chrome(&mut store, &frosted, Stroke::NONE, read);
+        let row = chrome(&mut store, &frosted, Border::NONE, read);
         assert_eq!(
             row.material.map(LoweredMaterial::captures),
             captures,
@@ -190,14 +190,14 @@ fn a_material_lowers_as_it_reads() {
 fn chrome_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();
     let sane = Corners::all(6.0);
-    let kept = chrome(&mut store, &with_corners(sane), Stroke::NONE, None);
+    let kept = chrome(&mut store, &with_corners(sane), Border::NONE, None);
     assert_eq!(kept.corners, sane);
     assert_ne!(
         kept.hash,
-        chrome(&mut store, &with_corners(Corners::ZERO), Stroke::NONE, None).hash,
+        chrome(&mut store, &with_corners(Corners::ZERO), Border::NONE, None).hash,
         "corners must still reach the chrome hash",
     );
-    let ring = Stroke::new(RgbaF32::WHITE, 2.0);
+    let ring = Border::new(RgbaF32::WHITE, 2.0);
     let ringed = chrome(&mut store, &with_corners(sane), ring, None);
     assert!(ringed.ring, "a ring is flagged on the row");
     assert!(!kept.ring, "no ring unless one is passed");
@@ -207,10 +207,10 @@ fn chrome_lowering_keeps_an_authored_field() {
     );
     // A transparent border paints nothing, but its width is the inset shadow's padding edge, so it is kept.
     let clear_border = Chrome {
-        border: Stroke::new(RgbaF32::TRANSPARENT, 4.0),
+        border: Border::new(RgbaF32::TRANSPARENT, 4.0),
         ..with_corners(sane)
     };
-    let clear = chrome(&mut store, &clear_border, Stroke::NONE, None);
+    let clear = chrome(&mut store, &clear_border, Border::NONE, None);
     assert_eq!(clear.border.width, 4.0);
     assert!(clear.border.is_noop(), "it still paints no stroke");
     assert_ne!(
@@ -226,7 +226,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         inset: false,
     };
     let base = Chrome {
-        border: Stroke::new(RgbaF32::WHITE, 1.0),
+        border: Border::new(RgbaF32::WHITE, 1.0),
         shadow,
         ..with_corners(sane)
     };
@@ -246,7 +246,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         (
             "border color",
             Chrome {
-                border: Stroke::new(RgbaF32::BLACK, 1.0),
+                border: Border::new(RgbaF32::BLACK, 1.0),
                 ..base.clone()
             },
         ),
@@ -326,7 +326,7 @@ fn chrome_lowering_keeps_an_authored_field() {
                 .map(|_| MaterialRead::Capture(EffectId(2)));
             (
                 *label,
-                chrome(&mut store, authored, Stroke::NONE, read).hash,
+                chrome(&mut store, authored, Border::NONE, read).hash,
             )
         })
         .collect();

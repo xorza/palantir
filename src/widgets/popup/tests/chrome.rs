@@ -7,7 +7,7 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::theme::popup::PopupTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::popup::Popup;
@@ -85,7 +85,7 @@ fn the_theme_popup_slot_is_the_last_resort() {
             Some(want) => {
                 let want = want.to_f16();
                 assert!(
-                    matches!(fill, Some(ShapeBrush::Solid(got)) if got == want),
+                    matches!(fill, Some(LoweredBrush::Solid(got)) if got == want),
                     "{label}: {fill:?}, want {want:?}",
                 );
             }

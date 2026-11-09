@@ -3,9 +3,9 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
@@ -162,7 +162,7 @@ impl TabsTheme {
                 },
                 active: WidgetLook {
                     chrome: Chrome::rounded(p.element_strong, Corners::all(m.radius.control))
-                        .with_border(Stroke::new(p.border_focused, m.stroke.hairline)),
+                        .with_border(Border::new(p.border_focused, m.stroke.hairline)),
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {

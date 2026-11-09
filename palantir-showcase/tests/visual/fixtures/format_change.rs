@@ -12,7 +12,7 @@ use palantir::glam::UVec2;
 use palantir::wgpu::TextureFormat;
 use palantir::widget::Shape;
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Image, ImageHandle, Panel, RgbaF32, Sizing, Stroke,
+    Block, Border, Button, Chrome, Configure, Corners, Image, ImageHandle, Panel, RgbaF32, Sizing,
     TargetFormat, Ui,
 };
 
@@ -31,7 +31,7 @@ fn scene(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(12.0))
-                        .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                        .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
                 )
                 .show(ui);
             Button::new()

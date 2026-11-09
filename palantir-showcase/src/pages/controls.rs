@@ -7,10 +7,10 @@ use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
-    Animated, AnimationSpec, Axis, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure,
-    Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup, RgbaF32,
-    Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit,
-    TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
+    Animated, AnimationSpec, Axis, Border, Button, ButtonTheme, Checkbox, Chrome, ComboBox,
+    Configure, Corners, DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioGroup,
+    RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Switch, Text,
+    TextEdit, TextStyleOverrides, Tooltip, Ui, WidgetId, WidgetLook, fmt,
 };
 
 static REGIONS: [&str; 5] = [
@@ -393,7 +393,7 @@ fn group(ui: &mut Ui, k: Kit, label: &'static str) {
 /// Transparent fill, accent stroke: reads as a "selectable surface".
 fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     let accent = k.t.accent;
-    let stroke = Stroke::new(accent, 1.5);
+    let stroke = Border::new(accent, 1.5);
     let chrome = |fill: RgbaF32, stroke| {
         Chrome::rounded(fill, Corners::all(M.radius.control)).with_border(stroke)
     };
@@ -414,7 +414,7 @@ fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
             disabled: WidgetLook {
                 chrome: chrome(
                     RgbaF32::TRANSPARENT,
-                    Stroke::new(accent.with_alpha(0.35), 1.5),
+                    Border::new(accent.with_alpha(0.35), 1.5),
                 ),
                 text: TextStyleOverrides::NONE.with_color(k.t.ink_faint),
             },

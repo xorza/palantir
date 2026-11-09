@@ -5,7 +5,7 @@ use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::{
-    Align, Block, Chrome, ComboBox, Configure, Corners, Panel, Sizing, Stroke, Text,
+    Align, Block, Border, Chrome, ComboBox, Configure, Corners, Panel, Sizing, Text,
     TranslateScale, Ui, WidgetId,
 };
 
@@ -154,7 +154,7 @@ enum Mode {
 
 /// Card with a large corner radius so the rect scissor and rounded stencil differ clearly.
 fn card_chrome(k: Kit) -> Chrome {
-    Chrome::rounded(k.t.ground, Corners::all(28.0)).with_border(Stroke::new(k.t.border, 1.5))
+    Chrome::rounded(k.t.ground, Corners::all(28.0)).with_border(Border::new(k.t.border, 1.5))
 }
 
 /// A card under one clip mode, its child overflowing on every side.

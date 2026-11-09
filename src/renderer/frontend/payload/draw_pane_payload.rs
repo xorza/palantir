@@ -12,8 +12,8 @@ use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, Qua
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::pane_captures::PaneTicket;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 
 /// What a backdrop reads: what is painted under it, by the ticket the pane ledger wrote for it, or
@@ -34,8 +34,8 @@ pub(crate) struct DrawPanePayload {
     /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
     pub(crate) tint: RgbaF16,
-    /// Normalized by [`ShapeStroke::normalized`], so `NONE` means no stroke exactly.
-    pub(crate) stroke: ShapeStroke,
+    /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no stroke exactly.
+    pub(crate) stroke: LoweredBorder,
     pub(crate) material: LoweredMaterial,
     /// How much of the box shows, the tint and the material alike.
     pub(crate) opacity: f32,

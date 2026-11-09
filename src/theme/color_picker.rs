@@ -2,9 +2,9 @@
 //! behind translucent colors.
 
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::text::font_family::FontFamily;
 use crate::theme::button::ButtonTheme;
 use crate::theme::drag_value::DragValueTheme;
@@ -119,7 +119,7 @@ fn value_padding(m: &Metrics) -> Spacing {
 /// packs are one.
 fn chip(p: &Palette, m: &Metrics) -> ButtonTheme {
     let ring = |color: RgbaF32| WidgetLook {
-        chrome: Chrome::NONE.with_border(Stroke::new(color, m.stroke.hairline)),
+        chrome: Chrome::NONE.with_border(Border::new(color, m.stroke.hairline)),
         text: TextStyleOverrides::NONE,
     };
     let looks = StatefulLook {

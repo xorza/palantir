@@ -12,12 +12,12 @@ use glam::Vec2;
 #[test]
 fn every_paint_noop_predicate_treats_nan_as_invisible() {
     use crate::primitives::geometry::size::Size;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
+    use crate::shape::paint::lowered_border::LoweredBorder;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
-    use crate::shape::paint::shape_stroke::ShapeStroke;
     use glam::Vec2;
 
     const N: f32 = f32::NAN;
@@ -38,20 +38,20 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         ("RgbaF32::is_noop", nan_color.is_noop()),
         ("RgbaF16::is_noop", nan_color.to_f16().is_noop()),
         (
-            "Stroke::is_noop/width",
-            Stroke::new(RgbaF32::WHITE, N).is_noop(),
+            "Border::is_noop/width",
+            Border::new(RgbaF32::WHITE, N).is_noop(),
         ),
         (
-            "Stroke::is_noop/color",
-            Stroke::new(nan_color, 2.0).is_noop(),
+            "Border::is_noop/color",
+            Border::new(nan_color, 2.0).is_noop(),
         ),
         (
-            "ShapeStroke::is_noop/width",
-            ShapeStroke::lower(Stroke::new(RgbaF32::WHITE, N)).is_noop(),
+            "LoweredBorder::is_noop/width",
+            LoweredBorder::lower(Border::new(RgbaF32::WHITE, N)).is_noop(),
         ),
         (
-            "ShapeStroke::is_noop/color",
-            ShapeStroke::lower(Stroke::new(nan_color, 2.0)).is_noop(),
+            "LoweredBorder::is_noop/color",
+            LoweredBorder::lower(Border::new(nan_color, 2.0)).is_noop(),
         ),
         ("Brush::is_noop", Brush::Solid(nan_color).is_noop()),
         (

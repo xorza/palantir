@@ -13,7 +13,7 @@ use crate::renderer::frontend::{BuildPlan, Frontend};
 use crate::renderer::render_plan::RenderPlan;
 
 use crate::host::harness::Harness;
-use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::paint::border::Border;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -118,7 +118,7 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
                         p2: Vec2::new(30.0, 20.0),
                         p3: Vec2::new(40.0, 20.0),
                     },
-                    Stroke::new(RgbaF32::WHITE, 4.0),
+                    Border::new(RgbaF32::WHITE, 4.0),
                 ));
             });
         });

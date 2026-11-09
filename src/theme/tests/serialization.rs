@@ -1,13 +1,13 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::domain;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -61,7 +61,7 @@ fn widget_look_serde_roundtrip() {
             WidgetLook {
                 chrome: Chrome {
                     fill: RgbaF32::hex(0x336699).into(),
-                    border: Stroke::new(RgbaF32::hex(0xffffff), 1.5),
+                    border: Border::new(RgbaF32::hex(0xffffff), 1.5),
                     corners: Corners::all(6.0),
                     shadow: Shadow::NONE,
                     material: None,

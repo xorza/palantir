@@ -72,10 +72,10 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::vec2;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::material::material_input::MaterialInput;
-use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::frontend::FrameScene;
@@ -1096,9 +1096,9 @@ impl Ui {
     pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: Option<&Chrome>) {
         let ring = if self.input.focus() == Some(resolved.id()) && self.input.focus_visible() {
             let theme = &self.theme().focus_ring;
-            Stroke::new(domain::color(theme.color), domain::length(theme.width))
+            Border::new(domain::color(theme.color), domain::length(theme.width))
         } else {
-            Stroke::NONE
+            Border::NONE
         };
         let material = chrome
             .and_then(|chrome| chrome.material.as_ref())

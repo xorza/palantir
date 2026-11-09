@@ -8,7 +8,7 @@ use crate::shape::record_store::recorded_gradients::GradientId;
 /// No `Hash` derive: a `Gradient`'s [`GradientId`] is a per-frame index, so a derived hash would change every
 /// frame; [`Self::hash_parts`] folds a fill into a key.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum ShapeBrush {
+pub(crate) enum LoweredBrush {
     Solid(RgbaF16),
     /// An interned gradient: `id` is where the content is this frame, `hash` what it is (computed at lowering).
     Gradient {
@@ -24,7 +24,7 @@ pub(crate) struct BrushHash {
     pub(crate) payload: u64,
 }
 
-impl ShapeBrush {
+impl LoweredBrush {
     /// Hash identity: a `Gradient` contributes its content hash, never its frame-local id.
     #[inline]
     pub(crate) const fn hash_parts(self) -> BrushHash {
@@ -42,7 +42,7 @@ impl ShapeBrush {
 }
 
 /// Gradient geometry is screened at intern time, so only the solid variant needs testing.
-impl NanCheck for ShapeBrush {
+impl NanCheck for LoweredBrush {
     #[inline]
     fn has_nan(&self) -> bool {
         match self {
@@ -56,7 +56,7 @@ impl NanCheck for ShapeBrush {
 mod tests {
     use crate::common::content_hash::ContentHash;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::shape::paint::shape_brush::ShapeBrush;
+    use crate::shape::paint::lowered_brush::LoweredBrush;
     use crate::shape::record_store::recorded_gradients::GradientId;
 
     /// A gradient's hash payload is its lowering-time content hash, not its frame-local id: equal
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn a_gradient_hashes_by_its_stops_and_not_its_frame_local_id() {
         let gradient = |id, hash| {
-            ShapeBrush::Gradient {
+            LoweredBrush::Gradient {
                 id: GradientId(id),
                 hash: ContentHash::from_u64(hash),
             }
@@ -76,7 +76,7 @@ mod tests {
         assert_eq!(a, b, "the id is frame-local and excluded");
         assert_ne!(a, c, "the stops decide");
 
-        let solid = ShapeBrush::Solid(RgbaF32::WHITE.to_f16()).hash_parts();
+        let solid = LoweredBrush::Solid(RgbaF32::WHITE.to_f16()).hash_parts();
         assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
         assert_eq!(solid.payload, RgbaF32::WHITE.to_f16().as_u64());
     }

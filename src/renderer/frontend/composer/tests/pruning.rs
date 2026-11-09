@@ -6,9 +6,9 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     clip, draw, draw_marked, params, params_unsnapped, run, survivor_calls, survivors, text,
@@ -45,8 +45,8 @@ fn alone(quads: &[QuadBuilder]) -> Vec<u8> {
 fn a_later_opaque_cover_drops_what_it_holds() {
     let full = Rect::new(0.0, 0.0, 100.0, 100.0);
     let inner = Rect::new(10.0, 10.0, 50.0, 50.0);
-    let opaque = |width| Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), width);
-    let translucent = |width| Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), width);
+    let opaque = |width| Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), width);
+    let translucent = |width| Border::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), width);
     let quad = QuadBuilder::new;
     let cases = [
         // `contains_rect` is inclusive, so a cover of the under's own extent drops it.
@@ -348,7 +348,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
             "stroke disqualifies",
             |b| {
                 QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
-                    .stroke(Stroke::new(RgbaF32::WHITE, 2.0))
+                    .stroke(Border::new(RgbaF32::WHITE, 2.0))
                     .draw(b);
             },
             1,

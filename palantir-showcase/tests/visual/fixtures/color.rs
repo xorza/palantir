@@ -15,7 +15,7 @@ use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Tex
 use crate::fixtures;
 use crate::fixtures::icon;
 use crate::visual_rig::VisualRig;
-use palantir::Stroke;
+use palantir::Border;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
 const COL: f32 = 20.0;
@@ -52,7 +52,7 @@ fn ramp(ui: &mut Ui) {
             ui.add_shape(Shape::line(
                 Vec2::new(x + 2.0, LINE_Y),
                 Vec2::new(x + COL - 2.0, LINE_Y),
-                Stroke::new(gray(v), 6.0),
+                Border::new(gray(v), 6.0),
             ));
             let (left, right) = (x + 2.0, x + COL - 2.0);
             let quad = [

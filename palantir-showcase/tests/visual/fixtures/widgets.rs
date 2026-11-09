@@ -4,10 +4,10 @@ use image::Rgba;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::Shape;
 use palantir::{
-    AnimationSpec, Axis, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel,
-    ColorPicker, ColorScheme, ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key,
-    KeyText, Modal, Panel, ProgressBar, RadioGroup, RadioLook, Rect, RgbaF32, Sizing, Slider,
-    Spinner, SrgbaU8, Stroke, SwatchRow, Switch, Text, TextEdit, Ui,
+    AnimationSpec, Axis, Block, Border, Button, Checkbox, Chrome, ColorCoords, ColorField,
+    ColorModel, ColorPicker, ColorScheme, ColorStrip, ComboBox, Configure, Corners, DragValue,
+    InputEvent, Key, KeyText, Modal, Panel, ProgressBar, RadioGroup, RadioLook, Rect, RgbaF32,
+    Sizing, Slider, Spinner, SrgbaU8, SwatchRow, Switch, Text, TextEdit, Ui,
 };
 
 use crate::fixtures;
@@ -28,7 +28,7 @@ fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
 
 /// A transparent fill rounded by `corners` under a green border `width` wide.
 fn green_rim(width: f32, corners: Corners) -> Chrome {
-    Chrome::rounded(RgbaF32::TRANSPARENT, corners).with_border(Stroke::new(
+    Chrome::rounded(RgbaF32::TRANSPARENT, corners).with_border(Border::new(
         RgbaF32::from_srgba8(SrgbaU8::rgb(0, 255, 0)),
         width,
     ))
@@ -66,7 +66,7 @@ fn frame_filled_with_border_matches_golden() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(16.0))
-                        .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                        .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
                 )
                 .show(ui);
         });
@@ -85,7 +85,7 @@ fn a_border_paints_inside_the_rect() {
                 ui.add_shape(
                     Shape::rect(
                         Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0))
-                            .with_border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                            .with_border(Border::new(RgbaF32::WHITE, 2.0)),
                     )
                     .at(Rect::new(4.0, 4.0, 12.0, 12.0)),
                 );
@@ -452,7 +452,7 @@ fn focus_ring_matches_golden() {
                     .focusable(true)
                     .chrome(
                         Chrome::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(10.0))
-                            .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 1.0)),
+                            .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 1.0)),
                     )
                     .show(ui);
                 Block::new()

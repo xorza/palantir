@@ -16,7 +16,7 @@ use glam::Vec2;
 ///
 /// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], `fill_lut_row` indexes the gradient atlas row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the projection axis and range; `fill` is white, the shader's multiplier on the ramp, so its alpha carries a fade.
 ///
-/// **Stroke** is inline `stroke_color` + `stroke_width` so the user `Stroke` can carry non-`Pod` sources; gradient strokes are unsupported.
+/// **Border** is inline `stroke_color` + `stroke_width` so the user `Border` can carry non-`Pod` sources; gradient strokes are unsupported.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {

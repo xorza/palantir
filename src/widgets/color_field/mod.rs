@@ -3,10 +3,10 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::math::domain;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::{ColorModel, HUE_BLOCK};
 use crate::primitives::paint::image::Image;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
@@ -155,12 +155,12 @@ impl AreaValue for Field<'_> {
         ui.add_shape(Shape::circle(
             at,
             radius,
-            Stroke::new(theme.handle_outer, width),
+            Border::new(theme.handle_outer, width),
         ));
         ui.add_shape(Shape::circle(
             at,
             domain::length_at_least(radius - width, 0.0),
-            Stroke::new(theme.handle_inner, width),
+            Border::new(theme.handle_inner, width),
         ));
     }
 }

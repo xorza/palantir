@@ -14,7 +14,7 @@ use palantir_derive::{Animatable, Lerp};
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable,
 )]
 #[animate(coerce = Self::coerce)]
-pub struct Stroke {
+pub struct Border {
     /// Ink color.
     pub color: RgbaF32,
     /// Width in logical pixels.
@@ -23,7 +23,7 @@ pub struct Stroke {
     pub width: f32,
 }
 
-impl Stroke {
+impl Border {
     /// Whether the width is a length and the color a color: [`Self::validate`]'s test.
     #[inline]
     pub(crate) const fn is_valid(&self) -> bool {
@@ -44,13 +44,13 @@ impl Stroke {
         self.width = domain::raised_to(self.width, 0.0);
     }
 
-    /// The "no stroke" sentinel: width 0, transparent; `Stroke::default()` but `const`.
+    /// The "no stroke" sentinel: width 0, transparent; `Border::default()` but `const`.
     pub const NONE: Self = Self {
         color: RgbaF32::TRANSPARENT,
         width: 0.0,
     };
 
-    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Stroke::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Chrome`'s `skip_serializing_if` needs `fn(&T) -> bool`.
+    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Border::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Chrome`'s `skip_serializing_if` needs `fn(&T) -> bool`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         is_invisible(self.width) || self.color.is_noop()
@@ -63,7 +63,7 @@ impl Stroke {
     }
 }
 
-impl NanCheck for Stroke {
+impl NanCheck for Border {
     #[inline]
     fn has_nan(&self) -> bool {
         self.color.has_nan() || self.width.is_nan()

@@ -9,9 +9,9 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     TestPolyline, clip, clip_rounded, curve, draw, effect, gpu_view_payload, icon, image,
@@ -555,12 +555,12 @@ fn quad_fast_path_flag_cases() {
         lut_row: LutRow::FALLBACK,
         kind: FillKind::linear(Spread::Pad),
     });
-    let cases: &[(&str, Rect, Corners, Stroke, BrushSource, f32, bool)] = &[
+    let cases: &[(&str, Rect, Corners, Border, BrushSource, f32, bool)] = &[
         (
             "aligned sharp strokeless solid",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::NONE,
+            Border::NONE,
             solid(opaque),
             1.0,
             true,
@@ -569,7 +569,7 @@ fn quad_fast_path_flag_cases() {
             "translucent still qualifies",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::NONE,
+            Border::NONE,
             solid(RgbaF32::srgba(0.5, 0.5, 0.5, 0.5)),
             1.0,
             true,
@@ -578,7 +578,7 @@ fn quad_fast_path_flag_cases() {
             "fractional logical rect aligned at DPR 2",
             Rect::new(10.5, 10.5, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::NONE,
+            Border::NONE,
             solid(opaque),
             2.0,
             true,
@@ -587,7 +587,7 @@ fn quad_fast_path_flag_cases() {
             "fractional rect disqualifies",
             Rect::new(10.25, 10.0, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::NONE,
+            Border::NONE,
             solid(opaque),
             1.0,
             false,
@@ -596,7 +596,7 @@ fn quad_fast_path_flag_cases() {
             "fractional size disqualifies",
             Rect::new(10.0, 10.0, 20.5, 20.0),
             Corners::ZERO,
-            Stroke::NONE,
+            Border::NONE,
             solid(opaque),
             1.0,
             false,
@@ -605,7 +605,7 @@ fn quad_fast_path_flag_cases() {
             "corners disqualify",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::all(4.0),
-            Stroke::NONE,
+            Border::NONE,
             solid(opaque),
             1.0,
             false,
@@ -614,7 +614,7 @@ fn quad_fast_path_flag_cases() {
             "stroke disqualifies",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::new(RgbaF32::WHITE, 1.0),
+            Border::new(RgbaF32::WHITE, 1.0),
             solid(opaque),
             1.0,
             false,
@@ -623,7 +623,7 @@ fn quad_fast_path_flag_cases() {
             "gradient disqualifies",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
-            Stroke::NONE,
+            Border::NONE,
             gradient,
             1.0,
             false,

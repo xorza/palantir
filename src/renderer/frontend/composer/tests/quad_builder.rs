@@ -3,14 +3,14 @@
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::RectQuad;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::shape::paint::shape_stroke::ShapeStroke;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
@@ -22,7 +22,7 @@ pub(super) struct QuadBuilder {
     rect: Rect,
     corners: Corners,
     fill: BrushSource,
-    stroke: Stroke,
+    stroke: Border,
     spin: Option<Spin>,
 }
 
@@ -33,7 +33,7 @@ impl QuadBuilder {
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-            stroke: Stroke::NONE,
+            stroke: Border::NONE,
             spin: None,
         }
     }
@@ -70,7 +70,7 @@ impl QuadBuilder {
         self
     }
 
-    pub(super) fn stroke(mut self, stroke: Stroke) -> Self {
+    pub(super) fn stroke(mut self, stroke: Border) -> Self {
         self.stroke = stroke;
         self
     }
@@ -82,7 +82,7 @@ impl QuadBuilder {
                 rect: self.rect,
                 corners: self.corners,
                 fill: self.fill,
-                stroke: ShapeStroke::lower(self.stroke),
+                stroke: LoweredBorder::lower(self.stroke),
             })
             .turned(self.spin),
             1.0,

@@ -12,9 +12,9 @@ use palantir::widget::{
     RectShape, Shape,
 };
 use palantir::{
-    Align, Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconFit,
-    IconHandle, IconSet, IconTable, Image, ImageFit, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
-    Spinner, Stroke, Text, TranslateScale, Ui, VAlign, WidgetId,
+    Align, Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing,
+    IconFit, IconHandle, IconSet, IconTable, Image, ImageFit, Panel, Rect, RgbaF32, Sense, Shadow,
+    Sizing, Spinner, Text, TranslateScale, Ui, VAlign, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
@@ -182,7 +182,7 @@ fn turn(ui: &mut Ui, k: Kit) {
                     ui.add_shape_animated(
                         Shape::rect(
                             Chrome::rounded(k.swatch.teal, Corners::all(10.0))
-                                .with_border(Stroke::new(RgbaF32::WHITE, 2.0)),
+                                .with_border(Border::new(RgbaF32::WHITE, 2.0)),
                         )
                         .at(source),
                         spin,
@@ -220,7 +220,7 @@ fn turn(ui: &mut Ui, k: Kit) {
                         Shape::line(
                             Vec2::splat(50.0),
                             Vec2::splat(50.0),
-                            Stroke::new(k.swatch.teal, 30.0),
+                            Border::new(k.swatch.teal, 30.0),
                         )
                         .cap(LineCap::Square),
                         spin,
@@ -458,7 +458,7 @@ impl Card {
                 .sense(Sense::DRAG)
                 .chrome(
                     Chrome::rounded((self.accent)(&k.swatch), Corners::all(6.0))
-                        .with_border(Stroke::new(k.t.border, 1.0)),
+                        .with_border(Border::new(k.t.border, 1.0)),
                 )
                 .show(ui);
             if r.left.drag.started() {
@@ -488,7 +488,7 @@ fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
         )
     };
     let points: [Vec2; PLOT_POINTS] = array::from_fn(|i| at(i as f32 / (PLOT_POINTS - 1) as f32));
-    ui.add_shape(Shape::polyline(&points, Stroke::new(k.t.ink_dim, 1.5)).join(LineJoin::Round));
+    ui.add_shape(Shape::polyline(&points, Border::new(k.t.ink_dim, 1.5)).join(LineJoin::Round));
     let dot = at(t);
     ui.add_shape(
         Shape::rect(Chrome::rounded(k.swatch.orange, Corners::all(5.0))).at(Rect::new(

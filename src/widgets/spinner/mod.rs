@@ -5,9 +5,9 @@ use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
@@ -106,7 +106,7 @@ impl<'a> Spinner<'a> {
                         start_angle: 0.0,
                         sweep,
                     },
-                    Stroke::new(color, width),
+                    Border::new(color, width),
                 )
                 .ramp(comet())
                 .cap(LineCap::Round);

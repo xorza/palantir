@@ -1,7 +1,7 @@
 //! The box-and-label boolean toggle and its pair of click responses.
 
 use crate::primitives::math::domain;
-use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::paint::border::Border;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
@@ -79,7 +79,7 @@ impl ToggleFace for Check<'_> {
         if checked {
             let width = domain::length_at_least(slot.indicator_width, 0.0);
             ui.add_shape(
-                Shape::polyline(&slot.check_polyline(), Stroke::new(slot.indicator, width))
+                Shape::polyline(&slot.check_polyline(), Border::new(slot.indicator, width))
                     .cap(LineCap::Round)
                     .join(LineJoin::Round),
             );

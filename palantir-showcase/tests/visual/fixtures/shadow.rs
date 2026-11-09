@@ -8,7 +8,7 @@ use image::{Rgba, RgbaImage};
 use palantir::glam::{IVec2, UVec2, Vec2};
 use palantir::widget::{ShadowShape, Shape};
 use palantir::{
-    Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke, Ui,
+    Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui,
 };
 use std::f64::consts::SQRT_2;
 
@@ -267,7 +267,7 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
                 .size((Sizing::fixed(140.0), Sizing::fixed(100.0)))
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.9, 0.9, 0.9), Corners::all(16.0))
-                        .with_border(Stroke::new(RgbaF32::srgb(0.1, 0.2, 0.6), 4.0))
+                        .with_border(Border::new(RgbaF32::srgb(0.1, 0.2, 0.6), 4.0))
                         .with_shadow(if on_chrome { shadow } else { Shadow::NONE }),
                 )
                 .show(ui, |ui| {

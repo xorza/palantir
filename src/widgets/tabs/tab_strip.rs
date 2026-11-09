@@ -15,9 +15,9 @@ use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
@@ -754,7 +754,7 @@ impl GlyphButton {
                 center + Vec2::new(-half, half),
             ),
         ] {
-            ui.add_shape(Shape::line(from, to, Stroke::new(self.ink, stroke)).cap(LineCap::Round));
+            ui.add_shape(Shape::line(from, to, Border::new(self.ink, stroke)).cap(LineCap::Round));
         }
     }
 

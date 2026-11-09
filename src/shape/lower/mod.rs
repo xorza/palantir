@@ -10,17 +10,17 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_border::LoweredBorder;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::shape_brush::ShapeBrush;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use std::hash;
@@ -36,7 +36,7 @@ fn gradient_brush<G: GradientGeometry>(
     store: &mut RecordStore,
     kind: FillKind,
     gradient: &Gradient<G>,
-) -> ShapeBrush {
+) -> LoweredBrush {
     let hash = gradient_hash(kind, gradient);
     let id = store.gradients.intern(
         hash,
@@ -46,18 +46,18 @@ fn gradient_brush<G: GradientGeometry>(
             ramp: gradient.ramp,
         },
     );
-    ShapeBrush::Gradient { id, hash }
+    LoweredBrush::Gradient { id, hash }
 }
 
-/// Lower a `Brush`: `Solid` stays inline; gradients go into the store and return a `ShapeBrush::Gradient` with index and content hash.
-pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
+/// Lower a `Brush`: `Solid` stays inline; gradients go into the store and return a `LoweredBrush::Gradient` with index and content hash.
+pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> LoweredBrush {
     // A gradient's geometry vanishes behind a `GradientId`, so the no-op decision is made before interning, by both callers.
     debug_assert!(
         !b.has_nan(),
         "NaN gradient geometry reached lowering: {b:?}"
     );
     match b {
-        Brush::Solid(color) => ShapeBrush::Solid(color.to_f16()),
+        Brush::Solid(color) => LoweredBrush::Solid(color.to_f16()),
         Brush::Linear(g) => gradient_brush(store, FillKind::linear(g.spread), g),
         Brush::Radial(g) => gradient_brush(store, FillKind::radial(g.spread), g),
         Brush::Conic(g) => gradient_brush(store, FillKind::conic(g.spread), g),
@@ -82,8 +82,8 @@ pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
 /// its inset, its shadow and its material.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LoweredBox {
-    pub(crate) fill: ShapeBrush,
-    pub(crate) border: ShapeStroke,
+    pub(crate) fill: LoweredBrush,
+    pub(crate) border: LoweredBorder,
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,
     pub(crate) material: Option<LoweredMaterial>,
@@ -114,9 +114,9 @@ pub(crate) fn lower_box(
     };
     LoweredBox {
         fill,
-        border: ShapeStroke {
+        border: LoweredBorder {
             width: chrome.border_inset(),
-            ..ShapeStroke::lower(chrome.border)
+            ..LoweredBorder::lower(chrome.border)
         },
         corners: chrome.corners,
         shadow: LoweredShadow::lower(chrome.shadow),
@@ -128,7 +128,7 @@ pub(crate) fn lower_box(
 pub(crate) fn chrome(
     store: &mut RecordStore,
     chrome: &Chrome,
-    ring: Stroke,
+    ring: Border,
     material: Option<MaterialRead>,
 ) -> ChromeRow {
     let LoweredBox {
@@ -138,7 +138,7 @@ pub(crate) fn chrome(
         shadow,
         material,
     } = lower_box(store, chrome, material);
-    let ring = ShapeStroke::lower(ring);
+    let ring = LoweredBorder::lower(ring);
     let has_ring = !ring.is_noop();
     // Fed as whole words from registers: a struct packed for one `write` is stored field by field and read back wider, a load the CPU can't forward.
     let brush = fill.hash_parts();

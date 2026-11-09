@@ -22,8 +22,8 @@ use crate::renderer::render_buffer::backdrop_row::{
 use crate::renderer::render_buffer::effect_draw_row::EffectProgram;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::blur_plan::BlurPlan;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::UVec2;
 
@@ -58,7 +58,7 @@ fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: PaneTicket, alpha: f32) 
             corners: Corners::ZERO,
             spin: None,
             tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
-            stroke: ShapeStroke::NONE,
+            stroke: LoweredBorder::NONE,
             material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
             read: BackdropDraw::Capture(ticket),
@@ -275,7 +275,7 @@ fn a_material_over_the_ground_breaks_nothing() {
                     corners: Corners::ZERO,
                     spin: None,
                     tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
-                    stroke: ShapeStroke::NONE,
+                    stroke: LoweredBorder::NONE,
                     material: LoweredMaterial::fixture(4.0),
                     opacity: 1.0,
                     read: BackdropDraw::Ground,

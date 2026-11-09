@@ -413,15 +413,15 @@ fn an_easing_curve_is_its_tween() {
 #[test]
 fn an_overshoot_below_a_floor_paints_the_floor() {
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::material::Material;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
 
     let ink = RgbaF32::srgb(0.2, 0.4, 0.8);
     let chrome = |radius: f32, width: f32, blur: f32, frost: f32| {
         Chrome::rounded(ink, radius)
-            .with_border(Stroke::new(ink, width))
+            .with_border(Border::new(ink, width))
             .with_shadow(Shadow::drop(ink, Vec2::new(0.0, 2.0), blur))
             .with_material(Material::frosted(frost))
     };

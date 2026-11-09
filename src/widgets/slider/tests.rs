@@ -367,7 +367,7 @@ fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
 #[test]
 fn a_disabled_slider_wears_the_disabled_colors() {
     use crate::scene::layer::Layer;
-    use crate::shape::paint::shape_brush::ShapeBrush;
+    use crate::shape::paint::lowered_brush::LoweredBrush;
 
     let id = WidgetId::from_hash("slider-colors");
     for disabled in [false, true] {
@@ -400,7 +400,7 @@ fn a_disabled_slider_wears_the_disabled_colors() {
                 .fill;
             let color = color.to_f16();
             assert!(
-                matches!(fill, ShapeBrush::Solid(got) if got == color),
+                matches!(fill, LoweredBrush::Solid(got) if got == color),
                 "disabled {disabled}, {part}: {fill:?}, want {color:?}",
             );
         }

@@ -5,8 +5,8 @@ use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::{
-    Align, Block, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
-    Stroke, Text, Track, Ui, WidgetId,
+    Align, Block, Border, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32,
+    Sizing, Text, Track, Ui, WidgetId,
 };
 use std::hash::Hash;
 
@@ -259,7 +259,7 @@ fn chip<H: Hash>(ui: &mut Ui, k: Kit, key: H, label: &'static str) {
         .padding((10.0, 4.0))
         .chrome(
             Chrome::rounded(a.with_alpha(0.20), Corners::all(10.0))
-                .with_border(Stroke::new(a.with_alpha(0.45), 1.0)),
+                .with_border(Border::new(a.with_alpha(0.45), 1.0)),
         )
         .show(ui, |ui| {
             Text::new(label)

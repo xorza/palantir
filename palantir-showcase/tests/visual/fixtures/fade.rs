@@ -2,7 +2,7 @@
 
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{Mesh, Shape};
-use palantir::{LinearGradient, Rect, RgbaF32, Stroke};
+use palantir::{Border, LinearGradient, Rect, RgbaF32};
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
@@ -30,7 +30,7 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(Shape::mesh(&mesh));
                 ui.add_shape(
-                    Shape::polyline(&line, Stroke::new(white, 20.0)).per_point(&[white, clear]),
+                    Shape::polyline(&line, Border::new(white, 20.0)).per_point(&[white, clear]),
                 );
                 ui.add_shape(
                     Shape::rect(LinearGradient::two_stop(0.0, white, clear))

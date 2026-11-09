@@ -3,8 +3,8 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
@@ -49,7 +49,7 @@ impl TooltipTheme {
     /// held for its text's ink.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let panel = Chrome::rounded(p.element, Corners::all(m.radius.control))
-            .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
+            .with_border(Border::new(p.border_mid(), m.stroke.hairline))
             .with_shadow(p.float_shadow(m));
         Self {
             panel: m.dress_float(panel, p.text),

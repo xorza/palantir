@@ -9,9 +9,9 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
@@ -207,7 +207,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
             );
             ui.add_shape(
                 Shape::rect(
-                    Chrome::rounded(RgbaF32::WHITE, Corners::ZERO).with_border(Stroke::NONE),
+                    Chrome::rounded(RgbaF32::WHITE, Corners::ZERO).with_border(Border::NONE),
                 )
                 .at(Rect::new(0.0, 20.0, 4.0, 2.0)),
             );

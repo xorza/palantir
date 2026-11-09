@@ -2,8 +2,8 @@
 
 use palantir::glam::UVec2;
 use palantir::{
-    Align, Block, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel, RgbaF32,
-    Sizing, Stroke, Text, TextStyle, TextWrap, Track,
+    Align, Block, Border, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel,
+    RgbaF32, Sizing, Text, TextStyle, TextWrap, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -98,7 +98,7 @@ fn zstack_centered_button_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .chrome(
                 Chrome::rounded(RgbaF32::srgb(0.16, 0.20, 0.28), Corners::all(10.0))
-                    .with_border(Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
+                    .with_border(Border::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
             )
             .show(ui, |ui| {
                 Button::new()

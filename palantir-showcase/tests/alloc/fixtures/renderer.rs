@@ -20,7 +20,7 @@ use crate::harness::Audit;
 use palantir::glam::Vec2;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Stroke, Track,
+    Block, Border, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Track,
     TranslateScale, Ui,
 };
 
@@ -99,7 +99,7 @@ fn polyline_static_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::polyline(&points, Stroke::new(RgbaF32::WHITE, 2.0)));
+                ui.add_shape(Shape::polyline(&points, Border::new(RgbaF32::WHITE, 2.0)));
             });
     });
 }

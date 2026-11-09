@@ -18,7 +18,7 @@ pub(crate) struct RecordedGradients {
 
 impl RecordedGradients {
     /// Intern one gradient payload under its content `hash`, returning the id a
-    /// `ShapeBrush::Gradient` carries.
+    /// `LoweredBrush::Gradient` carries.
     pub(crate) fn intern(&mut self, hash: ContentHash, gradient: RecordedGradient) -> GradientId {
         self.index.widen_for(self.records.len() + 1);
         if let Some(id) = self.index.get(hash)

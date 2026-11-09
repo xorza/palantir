@@ -51,8 +51,8 @@ use crate::scene::seen_ids::IdEntry;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::node_record::NodeRecord;
 use crate::shape::paint::chrome_row::ChromeRow;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::text::key::TextShapeKey;
@@ -144,7 +144,7 @@ const PINS: &[Pin] = &[
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
     // 40 of them the material: its effect, its input's words and their hash, its σ, lens and bounds.
     pin::<ChromeRow>("scene::ChromeRow", 104, 8),
-    pin::<ShapeStroke>("shape::ShapeStroke", 12, 4),
+    pin::<LoweredBorder>("shape::LoweredBorder", 12, 4),
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),

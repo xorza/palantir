@@ -3,10 +3,10 @@
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::is_invisible;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
@@ -21,7 +21,7 @@ pub struct TriangleShape {
     pub(crate) c: Vec2,
     pub(crate) radius: f32,
     pub(crate) fill: RgbaF32,
-    pub(crate) border: Stroke,
+    pub(crate) border: Border,
 }
 
 impl TriangleShape {
@@ -32,7 +32,7 @@ impl TriangleShape {
             c,
             radius: 0.0,
             fill: RgbaF32::TRANSPARENT,
-            border: Stroke::NONE,
+            border: Border::NONE,
         }
     }
 
@@ -54,7 +54,7 @@ impl TriangleShape {
     /// Panics unless the width is a [length](crate::widget::domain::length) and
     /// the color a [color](crate::widget::domain::color).
     #[track_caller]
-    pub const fn border(mut self, border: Stroke) -> Self {
+    pub const fn border(mut self, border: Border) -> Self {
         border.validate();
         self.border = border;
         self
@@ -116,7 +116,7 @@ impl sealed::LowerShape for TriangleShape {
             c,
             radius,
             fill: fill.to_f16(),
-            border: ShapeStroke::lower(border),
+            border: LoweredBorder::lower(border),
             bbox,
         })
     }

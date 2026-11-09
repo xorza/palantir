@@ -3,7 +3,7 @@
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::gradient_atlas::CpuGradientAtlas;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::GradientId;
 
@@ -40,10 +40,10 @@ pub(super) struct GradientPass<'a> {
 }
 
 impl GradientPass<'_> {
-    pub(super) fn source(&mut self, brush: ShapeBrush) -> BrushSource {
+    pub(super) fn source(&mut self, brush: LoweredBrush) -> BrushSource {
         match brush {
-            ShapeBrush::Solid(color) => BrushSource::Solid(color),
-            ShapeBrush::Gradient { id, .. } => BrushSource::Gradient(self.resolve(id)),
+            LoweredBrush::Solid(color) => BrushSource::Solid(color),
+            LoweredBrush::Gradient { id, .. } => BrushSource::Gradient(self.resolve(id)),
         }
     }
 

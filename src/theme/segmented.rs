@@ -2,9 +2,9 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -54,7 +54,7 @@ impl SegmentedTheme {
         };
         let pill = WidgetLook {
             chrome: Chrome::rounded(p.window_bg, corners)
-                .with_border(Stroke::new(p.border_soft(), m.stroke.hairline)),
+                .with_border(Border::new(p.border_soft(), m.stroke.hairline)),
             ..look(p.window_bg, p.text)
         };
         let rest = look(RgbaF32::TRANSPARENT, p.text_muted);

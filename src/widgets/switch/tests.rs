@@ -8,7 +8,7 @@ use crate::theme::Theme;
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::palette::Palette;
 use crate::ui::Ui;
@@ -140,7 +140,7 @@ fn the_knob_wears_the_ink_of_its_state() {
             .tree(Layer::Main)
             .chrome(h.node_for_widget_id(id.with("knob")))
             .expect("the knob paints a fill");
-        let ShapeBrush::Solid(fill) = chrome.fill else {
+        let LoweredBrush::Solid(fill) = chrome.fill else {
             panic!("the knob is a solid fill");
         };
         fill
@@ -193,7 +193,7 @@ fn one_share_places_the_knob_and_blends_its_ink() {
         .tree(Layer::Main)
         .chrome(h.node_for_widget_id(id.with("knob")))
         .expect("the knob paints a fill");
-    let ShapeBrush::Solid(fill) = chrome.fill else {
+    let LoweredBrush::Solid(fill) = chrome.fill else {
         panic!("the knob is a solid fill");
     };
     let ink = Lerp::lerp(&Palette::DARK.text, &Palette::DARK.on_accent, 0.16);

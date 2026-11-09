@@ -9,12 +9,12 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
@@ -24,7 +24,7 @@ use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::gradient_atlas::tests::support::{distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::ui::Ui;
@@ -43,7 +43,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let gradients = [gradient];
     let mut atlas = CpuGradientAtlas::default();
     let mut resolver = GradientResolver::default();
-    let brush = ShapeBrush::Gradient {
+    let brush = LoweredBrush::Gradient {
         id: GradientId(0),
         hash: ContentHash::default(),
     };
@@ -154,7 +154,7 @@ fn baseline_draw_rect_count_cases() {
                         .size(50.0)
                         .chrome(Chrome {
                             fill: RgbaF32::TRANSPARENT.into(),
-                            border: Stroke::NONE,
+                            border: Border::NONE,
                             ..Default::default()
                         })
                         .show(ui);
@@ -194,13 +194,13 @@ fn manually_pushed_shapes_emit_expected_cmds() {
             ui.add_shape(Shape::line(
                 Vec2::new(0.0, 0.0),
                 Vec2::new(20.0, 0.0),
-                Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 2.0),
+                Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 2.0),
             ));
             ui.add_shape(
                 Shape::line(
                     Vec2::new(0.0, 5.0),
                     Vec2::new(20.0, 5.0),
-                    Stroke::new(tint, 2.0),
+                    Border::new(tint, 2.0),
                 )
                 .ramp(ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
             );
@@ -208,7 +208,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 Shape::line(
                     Vec2::new(0.0, 0.0),
                     Vec2::new(10.0, 10.0),
-                    Stroke::new(tint, 2.0),
+                    Border::new(tint, 2.0),
                 )
                 .ramp(ColorRamp::two_stop(
                     RgbaF32::TRANSPARENT,
@@ -218,12 +218,12 @@ fn manually_pushed_shapes_emit_expected_cmds() {
             ui.add_shape(Shape::line(
                 Vec2::new(0.0, 0.0),
                 Vec2::new(10.0, 10.0),
-                Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 0.0),
+                Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 0.0),
             ));
             ui.add_shape(Shape::line(
                 Vec2::new(0.0, 0.0),
                 Vec2::new(10.0, 10.0),
-                Stroke::new(RgbaF32::TRANSPARENT, 2.0),
+                Border::new(RgbaF32::TRANSPARENT, 2.0),
             ));
             Block::new()
                 .id(WidgetId::from_hash("host"))
@@ -335,7 +335,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     struct Case {
         label: &'static str,
         inset: bool,
-        border: Stroke,
+        border: Border,
         corners: Corners,
         shadow_rect: Rect,
         shadow_corners: Corners,
@@ -345,7 +345,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         Case {
             label: "drop",
             inset: false,
-            border: Stroke::new(red, 2.0),
+            border: Border::new(red, 2.0),
             corners: Corners::all(8.0),
             shadow_rect: Rect::new(0.0, 0.0, 100.0, 60.0),
             shadow_corners: Corners::all(8.0),
@@ -353,7 +353,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         Case {
             label: "inset under a 2 px border",
             inset: true,
-            border: Stroke::new(red, 2.0),
+            border: Border::new(red, 2.0),
             // 8 − 2 = 6; 1 − 2 and 0 − 2 floor at 0; 3 − 2 = 1.
             corners: Corners::new(8.0, 1.0, 0.0, 3.0),
             shadow_rect: Rect::new(2.0, 2.0, 96.0, 56.0),
@@ -362,7 +362,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         Case {
             label: "inset under radii that overlap",
             inset: true,
-            border: Stroke::new(red, 2.0),
+            border: Border::new(red, 2.0),
             // The left side's 100 + 100 fit its 60 px at f = 0.3 before the border comes off: 30 − 2 = 28, 20·0.3 − 2 = 4.
             corners: Corners::new(100.0, 20.0, 20.0, 100.0),
             shadow_rect: Rect::new(2.0, 2.0, 96.0, 56.0),
@@ -371,7 +371,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         Case {
             label: "inset under a transparent 4 px border",
             inset: true,
-            border: Stroke::new(RgbaF32::TRANSPARENT, 4.0),
+            border: Border::new(RgbaF32::TRANSPARENT, 4.0),
             corners: Corners::all(8.0),
             shadow_rect: Rect::new(4.0, 4.0, 92.0, 52.0),
             shadow_corners: Corners::all(4.0),
@@ -379,7 +379,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         Case {
             label: "inset with no border",
             inset: true,
-            border: Stroke::NONE,
+            border: Border::NONE,
             corners: Corners::all(8.0),
             shadow_rect: Rect::new(0.0, 0.0, 100.0, 60.0),
             shadow_corners: Corners::all(8.0),

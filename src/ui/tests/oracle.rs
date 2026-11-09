@@ -5,10 +5,10 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::oracle::Oracle;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
@@ -88,7 +88,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     let line = Shape::line(
                         Vec2::new(10.0, 20.0),
                         Vec2::new(70.0, 20.0),
-                        Stroke::new(RgbaF32::WHITE, 2.0),
+                        Border::new(RgbaF32::WHITE, 2.0),
                     );
                     if k.spin {
                         ui.add_shape_animated(

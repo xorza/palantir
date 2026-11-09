@@ -9,9 +9,9 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -305,7 +305,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
                                 .with_repeat(PaintRepeat::Forever);
                             match kind {
                                 Kind::Line => ui.add_shape_animated(
-                                    Shape::polyline(&[lo, hi], Stroke::new(RED, 1.0)),
+                                    Shape::polyline(&[lo, hi], Border::new(RED, 1.0)),
                                     turn,
                                 ),
                                 Kind::Triangle => ui.add_shape_animated(
@@ -367,12 +367,12 @@ fn node_snapshot_decomposition_matches_cascade() {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
                     Vec2::new(10.0, 10.0),
-                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                 ));
                 ui.add_shape(Shape::line(
                     Vec2::new(20.0, 20.0),
                     Vec2::new(30.0, 30.0),
-                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                    Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
                 ));
             });
     });
@@ -416,12 +416,12 @@ fn node_snapshot_decomposition_matches_cascade() {
         ui.add_shape(Shape::line(
             Vec2::new(0.0, 0.0),
             Vec2::new(10.0, 10.0),
-            Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+            Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
         ));
         ui.add_shape(Shape::line(
             Vec2::new(20.0, 20.0),
             Vec2::new(30.0, 30.0),
-            Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+            Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
         ));
     };
     frame(&mut h, |ui| {
@@ -783,7 +783,7 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
                 Shape::line(
                     Vec2::new(5.0, 10.0),
                     Vec2::new(20.0, 10.0),
-                    Stroke::new(color, 2.0),
+                    Border::new(color, 2.0),
                 )
                 .cap(LineCap::Round),
             );

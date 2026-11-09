@@ -8,7 +8,7 @@ use crate::primitives::input::sense::Sense;
 use crate::primitives::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::justify::Justify;
-use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::paint::border::Border;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::theme::button::ButtonTheme;
@@ -188,7 +188,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
             arrow.record(ui, None, |ui| {
                 let pts = geometry.chevron_points();
                 ui.add_shape(
-                    Shape::polyline(&pts, Stroke::new(arrow_color, geometry.arrow_width))
+                    Shape::polyline(&pts, Border::new(arrow_color, geometry.arrow_width))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );

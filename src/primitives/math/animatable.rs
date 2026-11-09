@@ -25,7 +25,7 @@ use glam::Vec2;
 /// `PartialEq` lets `tick` skip the sub + magnitude pair when the target is
 /// unchanged.
 ///
-/// `Clone`, not `Copy`: heavy types (`Chrome`, `Brush`, `Stroke`) ride the
+/// `Clone`, not `Copy`: heavy types (`Chrome`, `Brush`, `Border`) ride the
 /// recording chain once per chromed widget per frame, where auto-`Copy` was
 /// measurably costly. A `Copy` supertrait would bring that back, so copies
 /// spell `.clone()`; small `Copy` types still cost nothing. Sizes are pinned
@@ -220,7 +220,7 @@ impl<T: Animatable, const N: usize> Animatable for [T; N] {
 // No `Option<T>` blanket: what an absent value blends through is each type's own answer. A
 // chrome that is absent paints as `Chrome::NONE`, so `Option<Chrome>` blends through it; an
 // absent text override is the ambient style, which only the theme holds. Elsewhere "absent or
-// value" is a sentinel (`Stroke::NONE`) that the paint-time `is_noop` filter drops.
+// value" is a sentinel (`Border::NONE`) that the paint-time `is_noop` filter drops.
 
 #[cfg(test)]
 mod tests {

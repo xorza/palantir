@@ -653,9 +653,9 @@ mod record_store_tests {
     use crate::display::frame_stamp::FrameStamp;
     use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::Frontend;
     use crate::ui::window_frames::WindowFrames;
     use crate::ui::window_frames::present::PresentStrategy;
@@ -723,7 +723,7 @@ mod record_store_tests {
                 .show(ui, |ui| {
                     ui.add_shape(Shape::mesh(self.mesh));
                     ui.add_shape(
-                        Shape::polyline(self.points, Stroke::new(RgbaF32::WHITE, 3.0))
+                        Shape::polyline(self.points, Border::new(RgbaF32::WHITE, 3.0))
                             .per_point(self.colors),
                     );
                     let label = ui.intern(self.label);

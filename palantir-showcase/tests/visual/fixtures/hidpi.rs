@@ -2,8 +2,8 @@
 
 use palantir::glam::UVec2;
 use palantir::{
-    Block, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing,
-    Stroke, SystemScale, Text, TextStyle, Track,
+    Block, Border, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel, RgbaF32,
+    Sizing, SystemScale, Text, TextStyle, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -35,7 +35,7 @@ fn dashboard_matches_golden() {
                         .gap(8.0)
                         .chrome(
                             Chrome::rounded(RgbaF32::srgb(0.18, 0.22, 0.32), Corners::all(6.0))
-                                .with_border(Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
+                                .with_border(Border::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
                         )
                         .show(ui, |ui| {
                             Text::new("Palantir")
@@ -104,7 +104,7 @@ fn dashboard_matches_golden() {
                                     .padding(12.0)
                                     .gap(6.0)
                                     .chrome(Chrome::rounded(*c, Corners::all(8.0)).with_border(
-                                        Stroke::new(RgbaF32::srgba(1.0, 1.0, 1.0, 0.18), 1.0),
+                                        Border::new(RgbaF32::srgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                     ))
                                     .show(ui, |ui| {
                                         Text::new("Card")

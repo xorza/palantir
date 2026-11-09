@@ -11,8 +11,8 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::scene::layer::Layer;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
@@ -111,7 +111,7 @@ fn the_barrier_root_covers_the_whole_surface_in_the_scrim() {
             .expect("the barrier paints a scrim");
         let want = fill.as_solid().expect("a solid scrim").to_f16();
         assert!(
-            matches!(row.fill, ShapeBrush::Solid(fill) if fill == want),
+            matches!(row.fill, LoweredBrush::Solid(fill) if fill == want),
             "{label}: scrim {:?}, want {want:?}",
             row.fill,
         );

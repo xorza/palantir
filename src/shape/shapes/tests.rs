@@ -3,12 +3,12 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{Image, ImageFit};
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::polyline::PolylineShape;
@@ -85,7 +85,7 @@ fn polyline_color_cardinality_is_enforced_at_the_setter() {
             for &colors_len in color_lengths {
                 let shape = catch_unwind(AssertUnwindSafe(|| {
                     source.apply(
-                        Shape::polyline(&points[..points_len], Stroke::new(tint, 1.0)),
+                        Shape::polyline(&points[..points_len], Border::new(tint, 1.0)),
                         &colors[..colors_len],
                     )
                 }));
@@ -190,7 +190,7 @@ fn builders_refuse_what_they_check() {
         });
     }
     panic_probe::assert_panics_with(domain::COLOR_RULE, || {
-        Shape::rect(Chrome::NONE.with_border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)))
+        Shape::rect(Chrome::NONE.with_border(Border::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)))
             .at(ok_rect)
     });
     // 65520 is the least magnitude that packs to an infinite f16 lane; 65504 is the greatest
@@ -372,7 +372,7 @@ fn builders_refuse_what_they_check() {
         panic_probe::assert_panics_with(domain::OFFSET_RULE, || Shape::cubic_bezier(bad, thin()));
     }
     panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
-        Shape::line(Vec2::ZERO, Vec2::X, Stroke::new(white, -1.0))
+        Shape::line(Vec2::ZERO, Vec2::X, Border::new(white, -1.0))
     });
 
     // Geometry is checked as offsets at every door; a varying polyline color as a color.
@@ -417,7 +417,7 @@ fn builders_refuse_what_they_check() {
     });
     // Each color multiplies the stroke color into one f16 lane: 255 · 256 = 65280 fits under
     // 65504, and 256 · 256 = 65536 does not, though each factor is a color.
-    let bright = Stroke::new(RgbaF32::new(256.0, 1.0, 1.0, 1.0), 1.0);
+    let bright = Border::new(RgbaF32::new(256.0, 1.0, 1.0, 1.0), 1.0);
     let two = [Vec2::ZERO, Vec2::X];
     let _ = Shape::polyline(&two, bright).per_segment(&[RgbaF32::new(255.0, 1.0, 1.0, 1.0)]);
     panic_probe::assert_panics_with(TINT_RULE, || {
@@ -451,8 +451,8 @@ fn handle(width: u32) -> ImageHandle {
     )
 }
 
-fn thin() -> Stroke {
-    Stroke::new(RgbaF32::WHITE, 1.0)
+fn thin() -> Border {
+    Border::new(RgbaF32::WHITE, 1.0)
 }
 
 /// A shadow the crate derives past the lanes, as an animated chrome's tween overshoots, saturates

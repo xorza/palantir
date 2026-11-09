@@ -20,15 +20,15 @@ use std::time::Duration;
 #[test]
 fn spring_snap_fields_carry_target_immediately() {
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
 
     let mut map = AnimationMapTyped::<Chrome>::default();
     let id = support::widget_id("snap-carry");
     let start = Chrome {
         fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
-        border: Stroke::NONE,
+        border: Border::NONE,
         corners: Corners::all(2.0),
         shadow: Shadow::NONE,
         material: None,
@@ -42,7 +42,7 @@ fn spring_snap_fields_carry_target_immediately() {
     // Retarget fill (animated) and radius (snap): from rest the change's frame steps nothing and shows the start.
     let target = Chrome {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
-        border: Stroke::NONE,
+        border: Border::NONE,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
         material: None,
@@ -76,24 +76,24 @@ fn spring_snap_fields_carry_target_immediately() {
 #[test]
 fn gradient_snap_clears_only_its_chrome_velocity() {
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
 
     let mut map = AnimationMapTyped::<Chrome>::default();
     let id = support::widget_id("gradient-background-velocity");
     let start = Chrome {
         fill: Brush::Solid(RgbaF32::BLACK),
-        border: Stroke::new(RgbaF32::BLACK, 0.0),
+        border: Border::new(RgbaF32::BLACK, 0.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
         material: None,
     };
     let moving = Chrome {
         fill: Brush::Solid(RgbaF32::WHITE),
-        border: Stroke::new(RgbaF32::BLACK, 10.0),
+        border: Border::new(RgbaF32::BLACK, 10.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
         material: None,
@@ -125,7 +125,7 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
     ));
     let target = Chrome {
         fill: gradient.clone(),
-        border: Stroke::new(RgbaF32::BLACK, 20.0),
+        border: Border::new(RgbaF32::BLACK, 20.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
         material: None,

@@ -2,9 +2,9 @@
 //! hash or is listed as deliberately excluded.
 
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
 use crate::shape::record_store::recorded_gradients::GradientId;
@@ -35,9 +35,9 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
 
     let white = RgbaF32::WHITE.to_f16();
     let red = RgbaF32::srgba(1.0, 0.0, 0.0, 1.0).to_f16();
-    let solid = ShapeBrush::Solid(white);
-    let stroke = ShapeStroke::lower(Stroke::new(RgbaF32::BLACK, 1.0));
-    let stroke2 = ShapeStroke::lower(Stroke::new(RgbaF32::BLACK, 2.0));
+    let solid = LoweredBrush::Solid(white);
+    let stroke = LoweredBorder::lower(Border::new(RgbaF32::BLACK, 1.0));
+    let stroke2 = LoweredBorder::lower(Border::new(RgbaF32::BLACK, 2.0));
     let rect = |r| Some(Rect::new(r, 0.0, 4.0, 4.0));
     let pt = |x| Vec2::new(x, 0.0);
 
@@ -99,7 +99,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             RectKind::Rounded,
             rect(0.0),
             Corners::all(2.0),
-            ShapeBrush::Solid(red),
+            LoweredBrush::Solid(red),
             stroke,
         ),
     );
@@ -152,7 +152,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     // A gradient's content hash rides in its brush; its frame-local id does not move the hash.
-    let grad = |id, hash| ShapeBrush::Gradient {
+    let grad = |id, hash| LoweredBrush::Gradient {
         id: GradientId(id),
         hash: ContentHash::from_u64(hash),
     };
@@ -845,7 +845,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         id: GradientId(id),
         hash: ContentHash::from_u64(hash),
     };
-    let red_stroke = ShapeStroke::lower(Stroke::new(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0));
+    let red_stroke = LoweredBorder::lower(Border::new(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0));
     let base = curve(LineCap::Butt, cubic, stroke, Rect::ZERO, none);
     moves(
         "Curve.basis",

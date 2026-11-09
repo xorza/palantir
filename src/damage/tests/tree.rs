@@ -8,9 +8,9 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -35,7 +35,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                     Shape::line(
                         Vec2::new(120.0, 120.0),
                         Vec2::new(180.0, 180.0),
-                        Stroke::new(BLUE, 2.0),
+                        Border::new(BLUE, 2.0),
                     )
                     .cap(LineCap::Round),
                 );
@@ -258,7 +258,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
             Shape::line(
                 Vec2::new(10.0, 40.0),
                 Vec2::new(70.0, 40.0),
-                Stroke::new(BLUE, 4.0),
+                Border::new(BLUE, 4.0),
             )
             .cap(LineCap::Round),
         );
@@ -316,7 +316,7 @@ fn overlapping_direct_shape_swap_is_redamaged() {
             Shape::line(
                 Vec2::new(10.0, 30.0),
                 Vec2::new(70.0, 30.0),
-                Stroke::new(color, 8.0),
+                Border::new(color, 8.0),
             )
             .cap(LineCap::Round),
         );
@@ -370,7 +370,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                     Shape::line(
                         Vec2::new(10.0, 100.0),
                         Vec2::new(70.0, 100.0),
-                        Stroke::new(RED, 4.0),
+                        Border::new(RED, 4.0),
                     )
                     .cap(LineCap::Round),
                 );
@@ -413,7 +413,7 @@ fn rekeying_a_child_damages_only_the_child() {
                     Shape::line(
                         Vec2::new(10.0, 100.0),
                         Vec2::new(70.0, 100.0),
-                        Stroke::new(RED, 4.0),
+                        Border::new(RED, 4.0),
                     )
                     .cap(LineCap::Round),
                 );
@@ -677,7 +677,7 @@ fn front_insert_damages_only_the_new_shape() {
             Shape::line(
                 Vec2::new(10.0, y),
                 Vec2::new(70.0, y),
-                Stroke::new(BLUE, 2.0),
+                Border::new(BLUE, 2.0),
             )
             .cap(LineCap::Round),
         );
@@ -692,7 +692,7 @@ fn front_insert_damages_only_the_new_shape() {
                         Shape::line(
                             Vec2::new(140.0, 150.0),
                             Vec2::new(170.0, 150.0),
-                            Stroke::new(RED, 2.0),
+                            Border::new(RED, 2.0),
                         )
                         .cap(LineCap::Round),
                     );

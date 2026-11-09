@@ -35,9 +35,9 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::domain::vec2;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::shape::curve::{CurveGeometry, CurveShape};
 use crate::shape::effect::EffectShape;
@@ -171,7 +171,7 @@ impl Shape {
     ///
     /// Panics unless every point is an *offset*, the stroke width a *length* and its color a *color*.
     #[track_caller]
-    pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
+    pub const fn line(a: Vec2, b: Vec2, stroke: Border) -> CurveShape {
         stroke.validate();
         let (a, b) = (vec2::offset(a), vec2::offset(b));
         CurveShape::new(CurveGeometry::Line { a, b }, stroke)
@@ -183,7 +183,7 @@ impl Shape {
     ///
     /// As [`Self::line`].
     #[track_caller]
-    pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_> {
+    pub fn polyline(points: &[Vec2], stroke: Border) -> PolylineShape<'_> {
         stroke.validate();
         let shape = PolylineShape::new(points, stroke);
         // One check of the folded box covers every point.
@@ -197,7 +197,7 @@ impl Shape {
     ///
     /// As [`Self::line`].
     #[track_caller]
-    pub const fn cubic_bezier(bezier: CubicBezier, stroke: Stroke) -> CurveShape {
+    pub const fn cubic_bezier(bezier: CubicBezier, stroke: Border) -> CurveShape {
         stroke.validate();
         bezier.validate();
         CurveShape::new(CurveGeometry::CubicBezier(bezier), stroke)
@@ -209,7 +209,7 @@ impl Shape {
     ///
     /// As [`Self::line`].
     #[track_caller]
-    pub const fn quadratic_bezier(bezier: QuadraticBezier, stroke: Stroke) -> CurveShape {
+    pub const fn quadratic_bezier(bezier: QuadraticBezier, stroke: Border) -> CurveShape {
         stroke.validate();
         bezier.validate();
         CurveShape::new(CurveGeometry::QuadraticBezier(bezier), stroke)
@@ -221,7 +221,7 @@ impl Shape {
     ///
     /// Panics unless the stroke holds its kinds as in [`Self::line`], and the arc's center is an *offset*, its radius a *length* and its angles *angles*.
     #[track_caller]
-    pub const fn arc(arc: CircularArc, stroke: Stroke) -> CurveShape {
+    pub const fn arc(arc: CircularArc, stroke: Border) -> CurveShape {
         stroke.validate();
         arc.validate();
         CurveShape::new(CurveGeometry::Arc(arc.coerced()), stroke)
@@ -233,7 +233,7 @@ impl Shape {
     ///
     /// As [`Self::arc`].
     #[track_caller]
-    pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
+    pub const fn circle(center: Vec2, radius: f32, stroke: Border) -> CurveShape {
         Self::arc(
             CircularArc {
                 center,

@@ -1,7 +1,7 @@
 //! The scaffold's colors and type ramp.
 
 use palantir::{
-    Chrome, ColorScheme, Corners, FontFamily, FontWeight, Metrics, Palette, RgbaF32, Stroke,
+    Border, Chrome, ColorScheme, Corners, FontFamily, FontWeight, Metrics, Palette, RgbaF32,
     TextStyle,
 };
 
@@ -87,6 +87,6 @@ impl Tokens {
     /// A card's frame: the ground, the default edge, the card radius.
     pub(crate) fn card(self) -> Chrome {
         Chrome::rounded(self.ground, Corners::all(M.radius.card))
-            .with_border(Stroke::new(self.border, M.stroke.hairline))
+            .with_border(Border::new(self.border, M.stroke.hairline))
     }
 }

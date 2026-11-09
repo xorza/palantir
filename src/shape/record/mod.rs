@@ -21,10 +21,10 @@ use crate::primitives::text::recorded_text::RecordedText;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
+use crate::shape::paint::lowered_border::LoweredBorder;
+use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_brush::{BrushHash, ShapeBrush};
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
@@ -180,7 +180,7 @@ pub(crate) enum ShapeRecord {
         /// End-cap style; `Round`/`Square` extend the strip by `width/2` past each endpoint.
         cap: LineCap,
         basis: CurveBasis,
-        stroke: ShapeStroke,
+        stroke: LoweredBorder,
         bbox: Rect,
         /// The ramp the stroke color multiplies, sampled along `t` (p0 to p3 for a cubic, a0 to a1 for an arc).
         ramp: CurveRamp,
@@ -511,9 +511,9 @@ fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
     }
 }
 
-/// Fold a lowered fill into the shape hash via [`ShapeBrush::hash_parts`], which
+/// Fold a lowered fill into the shape hash via [`LoweredBrush::hash_parts`], which
 /// the chrome hash reads too.
-fn hash_brush(fill: ShapeBrush, h: &mut Hasher) {
+fn hash_brush(fill: LoweredBrush, h: &mut Hasher) {
     let BrushHash { tag, payload } = fill.hash_parts();
     h.write_u8(tag);
     h.write_u64(payload);

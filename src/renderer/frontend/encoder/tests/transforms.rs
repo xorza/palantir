@@ -7,9 +7,9 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::widget_core::configure::Configure;
@@ -62,12 +62,12 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
                             Spun::Polyline => ui.add_shape_animated(
                                 Shape::polyline(
                                     &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
-                                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                                 ),
                                 turn,
                             ),
                             Spun::Arc => ui.add_shape_animated(
-                                Shape::arc(arc, Stroke::new(RgbaF32::WHITE, 2.0)),
+                                Shape::arc(arc, Border::new(RgbaF32::WHITE, 2.0)),
                                 turn,
                             ),
                         }

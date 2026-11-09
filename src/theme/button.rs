@@ -3,10 +3,10 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -52,11 +52,11 @@ impl ButtonTheme {
         let corners = Corners::all(m.radius.control);
         let chrome = |fill: RgbaF32| {
             Chrome::rounded(fill, corners)
-                .with_border(Stroke::new(p.border_soft(), m.stroke.hairline))
+                .with_border(Border::new(p.border_soft(), m.stroke.hairline))
         };
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
         let pressed_chrome = Chrome::rounded(p.element_strong, corners)
-            .with_border(Stroke::new(p.border_focused, m.stroke.hairline));
+            .with_border(Border::new(p.border_focused, m.stroke.hairline));
         let pressed = WidgetLook {
             chrome: pressed_chrome,
             text: TextStyleOverrides::NONE,
@@ -108,7 +108,7 @@ impl ButtonTheme {
         let corners = Corners::all(m.radius.control);
         let filled = |fill: RgbaF32| WidgetLook {
             chrome: Chrome::rounded(fill, corners)
-                .with_border(Stroke::new(fill, m.stroke.hairline)),
+                .with_border(Border::new(fill, m.stroke.hairline)),
             text: TextStyleOverrides::NONE.with_color(p.on_accent),
         };
         let away = if p.on_accent.luminance() < p.accent.luminance() {

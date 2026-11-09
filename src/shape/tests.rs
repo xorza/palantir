@@ -7,19 +7,19 @@ use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::rect::RectKind;
@@ -214,7 +214,7 @@ fn triangle_rounding_keeps_the_edges() {
 fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
     let gradient = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
-    let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
+    let stroke = Border::new(RgbaF32::WHITE, 2.0);
     let rect_shape =
         Shape::windowed_rect(Chrome::rounded(gradient.clone(), 6.0).with_border(stroke)).at(rect);
     assert!(matches!(rect_shape.kind, RectKind::Windowed));
@@ -333,7 +333,7 @@ fn curve_noop_follows_the_stroke_and_the_ramp() {
         ),
     ];
     for (label, color, width, ramp, expected_noop) in cases {
-        let mut shape = Shape::line(Vec2::ZERO, Vec2::X, Stroke::new(color, width));
+        let mut shape = Shape::line(Vec2::ZERO, Vec2::X, Border::new(color, width));
         if let Some(ramp) = ramp {
             shape = shape.ramp(ramp);
         }
@@ -344,7 +344,7 @@ fn curve_noop_follows_the_stroke_and_the_ramp() {
 /// Every curve lowers onto one of the pipeline's two bases with its tight centerline bbox. A line from (0, 0) to (9, 3) puts its inner points on the thirds, (3, 1) and (6, 2), and is bounded by its ends. The quadratic (0, 0), (6, 6), (12, 0) promotes to inner points `2/3` of the way to its control, (4, 4) and (8, 4), and peaks at `t = ½`, `0.25·0 + 0.5·6 + 0.25·0 = 3`. A cubic passes through as authored; the arch (0, 0), (3, 4), (6, 4), (9, 0) has `y(t) = 12·t(1 − t)`, peaking at 3. A quarter arc of radius 5 about (10, 20) from 0 to π/2 runs from (15, 20) to (10, 25); the same arc swept 3π lowers as the full circle, a 2π sweep bounded by (5, 15) and (15, 25).
 #[test]
 fn curves_lower_to_their_basis_and_tight_bbox() {
-    let stroke = Stroke::new(RgbaF32::WHITE, 1.0);
+    let stroke = Border::new(RgbaF32::WHITE, 1.0);
     let arch = CubicBezier {
         p0: Vec2::ZERO,
         p1: Vec2::new(3.0, 4.0),
@@ -437,8 +437,8 @@ fn curves_lower_to_their_basis_and_tight_bbox() {
 /// +x at (15, 20).
 #[test]
 fn a_curve_of_no_length_paints_its_cap_alone() {
-    let wide = Stroke::new(RgbaF32::WHITE, 4.0);
-    let thin = Stroke::new(RgbaF32::WHITE, 2.0);
+    let wide = Border::new(RgbaF32::WHITE, 4.0);
+    let thin = Border::new(RgbaF32::WHITE, 2.0);
     let at = Vec2::new(3.0, 4.0);
     let arc = CircularArc {
         center: Vec2::new(10.0, 20.0),
@@ -508,7 +508,7 @@ fn a_curve_of_no_length_paints_its_cap_alone() {
             kind: RectKind::Rounded,
             local_rect: Some(rect),
             corners,
-            fill: ShapeBrush::Solid(color),
+            fill: LoweredBrush::Solid(color),
             ..
         }) = shape.lower(&mut RecordStore::default())
         else {

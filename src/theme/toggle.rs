@@ -5,9 +5,9 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::math::domain;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::check_state::CheckState;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
@@ -128,42 +128,42 @@ impl ToggleGeometry {
         let edge = p.border_strong();
         let hairline = m.stroke.hairline;
         let chrome =
-            |fill: RgbaF32, stroke: Stroke| Chrome::rounded(fill, radius).with_border(stroke);
+            |fill: RgbaF32, stroke: Border| Chrome::rounded(fill, radius).with_border(stroke);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                chrome: chrome(p.element_mid, Stroke::new(edge, hairline)),
+                chrome: chrome(p.element_mid, Border::new(edge, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                chrome: chrome(p.element_strong, Stroke::new(edge, hairline)),
+                chrome: chrome(p.element_strong, Border::new(edge, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                chrome: chrome(p.element_strong, Stroke::new(p.border_focused, hairline)),
+                chrome: chrome(p.element_strong, Border::new(p.border_focused, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                chrome: chrome(p.element, Stroke::new(p.border_soft(), hairline)),
+                chrome: chrome(p.element, Border::new(p.border_soft(), hairline)),
                 text: disabled_text,
             },
         };
         let acc = p.accent;
         let checked = StatefulLook {
             normal: WidgetLook {
-                chrome: chrome(acc, Stroke::NONE),
+                chrome: chrome(acc, Border::NONE),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                chrome: chrome(acc, Stroke::NONE),
+                chrome: chrome(acc, Border::NONE),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                chrome: chrome(acc, Stroke::new(p.border_focused, hairline)),
+                chrome: chrome(acc, Border::new(p.border_focused, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                chrome: chrome(acc.with_alpha8(115), Stroke::NONE),
+                chrome: chrome(acc.with_alpha8(115), Border::NONE),
                 text: disabled_text,
             },
         };

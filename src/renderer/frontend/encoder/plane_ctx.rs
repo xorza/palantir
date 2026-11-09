@@ -42,11 +42,11 @@ use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::scene::tree::pane_entry::PaneOrigin;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
+use crate::shape::paint::lowered_border::LoweredBorder;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_brush::ShapeBrush;
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::{EffectBackdrop, ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::shape::rect::RectKind;
@@ -142,7 +142,7 @@ fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
             stroke: if tint.is_some() {
                 quad.stroke.normalized()
             } else {
-                ShapeStroke::NONE
+                LoweredBorder::NONE
             },
             material: look.material,
             opacity: 1.0,
@@ -248,7 +248,7 @@ impl PlaneCtx<'_, '_> {
     }
 
     #[inline]
-    fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
+    fn brush_source(&mut self, brush: LoweredBrush) -> BrushSource {
         self.gradients.source(brush)
     }
 
@@ -637,7 +637,7 @@ impl PlaneCtx<'_, '_> {
                     kind: RectKind::Rounded,
                     rect,
                     corners: chrome.corners,
-                    fill: self.brush_source(ShapeBrush::Solid(RgbaF16::TRANSPARENT)),
+                    fill: self.brush_source(LoweredBrush::Solid(RgbaF16::TRANSPARENT)),
                     stroke: self.tree.focus_ring,
                 });
                 out.draw(ring, 1.0);

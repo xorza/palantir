@@ -28,7 +28,7 @@ commits on master. The last commit makes the tree identical to `89b0c79dd`.
 | 1 | Move effect name, kind and params into `primitives::effect` | move | script on master | 25 files |
 | 2 | Rename the overlay `Backdrop` to `Barrier` | rename, public API | script on 1 | ~16 files |
 | 3 | Replace backdrop filters with materials | semantic, public API | tree of `ebf25775c` | ~160 files |
-| 4 | Rename `Stroke` to `Border` | rename, public API | script on 3 | ~104 files |
+| 4 | Rename `Stroke` to `Border`, and the lowered paints to `Lowered*` | rename, public API | script on 3 | ~110 files |
 | 5 | Split a shape's geometry from its paint | semantic, public API | tree of `f410241e4` | ~250 files |
 | 6 | Rename the renderer's pane to backdrop | rename | tree of `fbfb89b1f` | 141 files |
 | 7 | Name a box's edge a border, and an outside rect "outside", in the renderer | rename | script on 6 | ~35 files |
@@ -124,9 +124,12 @@ to 9 did not.
 - Step 2 is on master as `eb0cec486`. It also renames the overlay "backdrop" that `89b0c79dd`
   left in `modal/tests.rs`, `widget_core/configure.rs` and the overlays page. Steps 3 to 10
   keep these fixes, so the end tree is `89b0c79dd` with them.
-- Step 3 is staged on master and not committed: the tree of `ebf25775c`, with the TODO edits of
+- Step 3 is on master as `f7d901ea8`: the tree of `ebf25775c`, with the TODO edits of
   `a20e6f20f` and `2d7f4a42d`, without the proposal file, and with the step 2 fixes. The full
   gate passes. A review of it moved three names of step 9 into it: `EffectError::MaterialImageSlots`,
   the `backdrop` argument of the two `reduced_transparency` setters, and "`reduced_transparency`"
   for "the reduced paint" in the material docs. One of these, in `material/tests.rs`, is also
   missing from `89b0c79dd`, so the end tree keeps it as a fix too.
+- Step 4 is staged on master and not committed. It also renames `ShapeStroke` to `LoweredBorder`
+  and `ShapeBrush` to `LoweredBrush`, with their files, as `f410241e4` does, so step 5 holds
+  less. Docs that call a line's paint "stroke" keep the word. The full gate passes.

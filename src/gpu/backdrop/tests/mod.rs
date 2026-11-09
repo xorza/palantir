@@ -10,11 +10,11 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -520,7 +520,7 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
                         .show(ui, |ui| scene(ui, None));
                     let chrome =
                         Chrome::rounded(RgbaF32::new(0.04, 0.04, 0.04, 0.72), Corners::all(8.0))
-                            .with_border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
+                            .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
                             .with_shadow(Shadow::drop(
                                 RgbaF32::new(0.0, 0.0, 0.0, 0.5),
                                 Vec2::new(0.0, 8.0),

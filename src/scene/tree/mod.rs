@@ -30,8 +30,8 @@ use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::inherited::Inherited;
 use crate::scene::node::node_cols::NodeCols;
@@ -54,8 +54,8 @@ use crate::scene::tree::subtree_rollups::SubtreeRollups;
 use crate::scene::tree::tree_fingerprint::TreeFingerprint;
 use crate::shape::lower;
 use crate::shape::paint::chrome_row::ChromeRow;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record_store::RecordStore;
 use crate::shape::shapes::Shapes;
 use fixedbitset::FixedBitSet;
@@ -78,7 +78,7 @@ pub(crate) struct Tree {
     /// row even for a noop paint so the encoder can read `chrome.radius`.
     pub(crate) chrome_table: Vec<ChromeRow>,
     /// The focus ring's stroke for the one chrome row that flags it ([`ChromeRow::ring`]).
-    pub(crate) focus_ring: ShapeStroke,
+    pub(crate) focus_ring: LoweredBorder,
 
     pub(crate) shapes: Shapes,
 
@@ -110,8 +110,8 @@ pub(crate) struct Tree {
 pub(crate) struct NodeChrome<'a> {
     /// `None` for a chrome-less node.
     pub(crate) chrome: Option<&'a Chrome>,
-    /// `Stroke::NONE` unless the node shows keyboard focus.
-    pub(crate) ring: Stroke,
+    /// `Border::NONE` unless the node shows keyboard focus.
+    pub(crate) ring: Border,
     /// What the chrome's material reads this record; `None` where it paints none.
     pub(crate) material: Option<MaterialRead>,
 }
@@ -180,7 +180,7 @@ impl Tree {
             grid_defs,
             scrollbar_defs,
         });
-        *focus_ring = ShapeStroke::default();
+        *focus_ring = LoweredBorder::default();
         shape_records.clear();
         paint_animations.clear();
         panes.clear();
@@ -511,7 +511,7 @@ impl Tree {
             if needs_chrome_row {
                 let row = lower::chrome(store, chrome, ring, material);
                 if row.ring {
-                    self.focus_ring = ShapeStroke::lower(ring);
+                    self.focus_ring = LoweredBorder::lower(ring);
                 }
                 ex.chrome = Some(NonMaxU32::index(self.chrome_table.len()));
                 self.chrome_table.push(row);

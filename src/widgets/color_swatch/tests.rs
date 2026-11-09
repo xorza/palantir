@@ -110,8 +110,8 @@ fn a_chip_is_a_tab_stop_while_the_caller_keeps_it_one() {
 #[test]
 fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
     use crate::primitives::input::pointer::PointerButton;
-    use crate::primitives::paint::stroke::Stroke;
-    use crate::shape::paint::shape_stroke::ShapeStroke;
+    use crate::primitives::paint::border::Border;
+    use crate::shape::paint::lowered_border::LoweredBorder;
 
     let id = WidgetId::from_hash("chip-states");
     let mut style = Theme::stock(ColorScheme::Dark).color_picker;
@@ -143,7 +143,7 @@ fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
         let ring = tree.chrome(node).expect("the chip wears a ring").border;
         (ring, tree.shapes_of(node).count())
     };
-    let want = |ring: Stroke, shapes: usize| (ShapeStroke::lower(ring), shapes);
+    let want = |ring: Border, shapes: usize| (LoweredBorder::lower(ring), shapes);
     assert_eq!(frame(&mut h, false), want(rings[0], 1), "at rest");
     h.hover(id);
     assert_eq!(frame(&mut h, false), want(rings[1], 1), "hovered");

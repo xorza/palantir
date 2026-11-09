@@ -265,10 +265,10 @@ fn a_scope_that_takes_focus_keeps_tab() {
 #[test]
 fn the_focus_ring_shows_only_for_keyboard_focus() {
     use crate::primitives::input::sense::Sense;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::stroke::Stroke;
-    use crate::shape::paint::shape_stroke::ShapeStroke;
+    use crate::shape::paint::lowered_border::LoweredBorder;
 
     let mut record = |ui: &mut Ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -311,7 +311,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
     let theme = &h.ui().theme().focus_ring;
     assert_eq!(
         h.ui().tree(Layer::Main).focus_ring,
-        ShapeStroke::lower(Stroke::new(theme.color, theme.width)),
+        LoweredBorder::lower(Border::new(theme.color, theme.width)),
     );
     assert_eq!(padding(&h), unringed, "the ring moves no layout");
 

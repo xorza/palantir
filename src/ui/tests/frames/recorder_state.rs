@@ -14,7 +14,7 @@ use glam::Vec2;
 /// `response_for`'s interaction half routes against the one-frame-stale cascade, so on the frame a subtree becomes disabled a widget could see `hovered`/`clicked` with `disabled == true`, which steady state never produces (disabled entries carry `Sense::NONE`).
 #[test]
 fn freshly_disabled_subtree_masks_stale_interactions() {
-    use crate::shape::paint::shape_brush::ShapeBrush;
+    use crate::shape::paint::lowered_brush::LoweredBrush;
 
     let target = WidgetId::from_hash("target");
     let mut h = Harness::mono(SURFACE);
@@ -65,7 +65,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     let chrome = h.ui().forest.trees[endpoint.plane]
         .chrome(endpoint.node)
         .expect("disabled button chrome");
-    let ShapeBrush::Solid(actual_fill) = chrome.fill else {
+    let LoweredBrush::Solid(actual_fill) = chrome.fill else {
         panic!("disabled button must retain its solid test fill");
     };
     assert_eq!(

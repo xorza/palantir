@@ -1,6 +1,6 @@
 //! The chips a page's header and a section's title row wear.
 
-use palantir::{Chrome, Configure, Corners, Panel, RgbaF32, Stroke, Text, Ui};
+use palantir::{Border, Chrome, Configure, Corners, Panel, RgbaF32, Text, Ui};
 
 use crate::scaffold::tokens::M;
 use crate::scaffold::tokens::Tokens;
@@ -21,12 +21,12 @@ impl Chip {
         let (chrome, ink) = match self {
             Self::Key => (
                 Chrome::rounded(t.raised, corners)
-                    .with_border(Stroke::new(t.border, M.stroke.hairline)),
+                    .with_border(Border::new(t.border, M.stroke.hairline)),
                 t.ink,
             ),
             Self::Tag => (
                 Chrome::rounded(RgbaF32::TRANSPARENT, corners)
-                    .with_border(Stroke::new(t.hairline, M.stroke.hairline)),
+                    .with_border(Border::new(t.hairline, M.stroke.hairline)),
                 t.ink_dim,
             ),
         };

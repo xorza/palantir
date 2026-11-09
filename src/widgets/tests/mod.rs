@@ -15,7 +15,7 @@ use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -232,7 +232,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
                 .fill;
             let want = case.want().to_f16();
             assert!(
-                matches!(fill, ShapeBrush::Solid(got) if got == want),
+                matches!(fill, LoweredBrush::Solid(got) if got == want),
                 "{} {case:?}: {fill:?}, want {want:?}",
                 kind.name,
             );
@@ -250,8 +250,8 @@ fn chrome_setters_check_the_chrome() {
     use crate::primitives::math::animatable::Animatable;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
+    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::primitives::paint::stroke::Stroke;
 
     let bad: [(&str, Chrome); 6] = [
         (
@@ -260,7 +260,7 @@ fn chrome_setters_check_the_chrome() {
         ),
         (
             domain::LENGTH_RULE,
-            Chrome::fill(RgbaF32::WHITE).with_border(Stroke::new(RgbaF32::WHITE, -1.0)),
+            Chrome::fill(RgbaF32::WHITE).with_border(Border::new(RgbaF32::WHITE, -1.0)),
         ),
         (
             <Corners as LaneCodec>::LANE_RULE,

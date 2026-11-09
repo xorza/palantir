@@ -16,10 +16,10 @@ use std::ops::RangeInclusive;
 use std::panic::Location;
 
 use palantir::{
-    Align, Axis, Block, Checkbox, Chrome, ColorCoords, ColorModel, ColorScheme, Configure, Corners,
-    Expander, FontWeight, Justify, Modal, OverlayResponse, Palette, Panel, RadioGroup,
-    RadioOptions, RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui,
-    VAlign, WidgetId, fmt,
+    Align, Axis, Block, Border, Checkbox, Chrome, ColorCoords, ColorModel, ColorScheme, Configure,
+    Corners, Expander, FontWeight, Justify, Modal, OverlayResponse, Palette, Panel, RadioGroup,
+    RadioOptions, RgbaF32, Sizing, Slider, Text, TextInput, TextStyle, TextWrap, Ui, VAlign,
+    WidgetId, fmt,
 };
 
 use crate::scaffold::chip::Chip;
@@ -195,7 +195,7 @@ fn light_well_chrome() -> Chrome {
 /// Raised chrome: popup bodies, right-click targets, menu surfaces.
 pub(crate) fn raised_chrome(k: Kit) -> Chrome {
     Chrome::rounded(k.t.raised, Corners::all(RADIUS))
-        .with_border(Stroke::new(k.t.border, M.stroke.hairline))
+        .with_border(Border::new(k.t.border, M.stroke.hairline))
 }
 
 /// A titled block of demo content: a title, a chip per demonstrated API, then the body. A [`note`]

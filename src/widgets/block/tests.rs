@@ -6,7 +6,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
@@ -46,7 +46,7 @@ fn frame_paints_a_single_rounded_rect() {
         .expect("frame chrome recorded in chrome table");
     let want = RgbaF32::srgb(0.2, 0.4, 0.8).to_f16();
     assert!(
-        matches!(chrome.fill, ShapeBrush::Solid(fill) if fill == want),
+        matches!(chrome.fill, LoweredBrush::Solid(fill) if fill == want),
         "the fill it was given, got {:?}",
         chrome.fill,
     );

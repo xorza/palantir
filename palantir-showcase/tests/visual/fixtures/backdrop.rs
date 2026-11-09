@@ -4,8 +4,8 @@ use palantir::Chrome;
 use palantir::glam::UVec2;
 use palantir::widget::{PaintAnimation, Shape};
 use palantir::{
-    ColorScheme, Configure, Corners, Lens, Material, Panel, PopupTrigger, Rect, RgbaF32, Sizing,
-    Stroke, Text, Ui, WidgetId,
+    Border, ColorScheme, Configure, Corners, Lens, Material, Panel, PopupTrigger, Rect, RgbaF32,
+    Sizing, Text, Ui, WidgetId,
 };
 use palantir_showcase::pages::materials;
 use palantir_showcase::support;
@@ -57,7 +57,7 @@ fn backdrop_panes_match_golden() {
                     Shape::rect(
                         Chrome::NONE
                             .with_corners(Corners::all(16.0))
-                            .with_border(Stroke::new(RgbaF32::WHITE, 2.0))
+                            .with_border(Border::new(RgbaF32::WHITE, 2.0))
                             .with_material(Material::blur(8.0)),
                     )
                     .at(Rect::new(210.0, 20.0, 90.0, 80.0)),
@@ -103,7 +103,7 @@ fn a_turned_pane_matches_golden() {
                 ui.add_shape_animated(
                     Shape::rect(
                         Chrome::rounded(RgbaF32::new(1.0, 1.0, 1.0, 0.15), Corners::all(12.0))
-                            .with_border(Stroke::new(RgbaF32::WHITE, 2.0))
+                            .with_border(Border::new(RgbaF32::WHITE, 2.0))
                             .with_material(Material::blur(8.0)),
                     )
                     .at(Rect::new(40.0, 40.0, 120.0, 80.0)),

@@ -7,8 +7,8 @@ use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Align, Button, Chrome, Configure, Corners, EffectName, Lens, Material, Menu, MenuItem,
-    MenuTheme, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Switch, Text, Ui, WidgetId, fmt,
+    Align, Border, Button, Chrome, Configure, Corners, EffectName, Lens, Material, Menu, MenuItem,
+    MenuTheme, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Switch, Text, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -192,7 +192,7 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, tint: Rgba
                 ui.add_shape(
                     Shape::rect(
                         Chrome::rounded(tint, Corners::all(corners))
-                            .with_border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
+                            .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
                             .with_material(material),
                     )
                     .at(PANE),
@@ -224,7 +224,7 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
 /// The frosted chrome the popup and the menu share: a dark tint, rounded, with a hairline.
 fn frosted_chrome() -> Chrome {
     Chrome::rounded(RgbaF32::new(0.08, 0.09, 0.11, 0.45), Corners::all(10.0))
-        .with_border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
+        .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
         .with_material(Material::frosted(18.0))
 }
 

@@ -6,9 +6,9 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::input::interaction::response_state::ResponseState;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -90,11 +90,11 @@ impl TextEditTheme {
         // share one height, and the edge lands on whole pixels at 1x.
         let stroke_w = m.stroke.hairline;
         let normal_chrome = Chrome::rounded(p.element_mid, radius)
-            .with_border(Stroke::new(p.border_soft(), stroke_w));
+            .with_border(Border::new(p.border_soft(), stroke_w));
         let focused_chrome = Chrome::rounded(p.element_mid, radius)
-            .with_border(Stroke::new(p.border_focused, stroke_w));
+            .with_border(Border::new(p.border_focused, stroke_w));
         let disabled_chrome =
-            Chrome::rounded(p.element, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
+            Chrome::rounded(p.element, radius).with_border(Border::new(p.border_soft(), stroke_w));
         let selection = selection_wash(p);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
         let normal = WidgetLook {

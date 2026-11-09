@@ -6,8 +6,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::record::{ColorMode, ShapeRecord};
 use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
@@ -21,7 +21,7 @@ use std::slice;
 #[must_use]
 pub struct PolylineShape<'a> {
     pub(crate) points: &'a [Vec2],
-    pub(crate) stroke: Stroke,
+    pub(crate) stroke: Border,
     pub(crate) colors: PolylineColors<'a>,
     pub(crate) cap: LineCap,
     pub(crate) join: LineJoin,
@@ -30,7 +30,7 @@ pub struct PolylineShape<'a> {
 }
 
 impl<'a> PolylineShape<'a> {
-    pub(super) fn new(points: &'a [Vec2], stroke: Stroke) -> Self {
+    pub(super) fn new(points: &'a [Vec2], stroke: Border) -> Self {
         Self {
             points,
             stroke,

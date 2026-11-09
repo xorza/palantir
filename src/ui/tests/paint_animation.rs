@@ -4,8 +4,8 @@ use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
@@ -52,7 +52,7 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
 #[test]
 fn a_turn_records_on_every_kind() {
     let quarter = PaintAnimation::turn(0.25, 0.25);
-    let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
+    let stroke = Border::new(RgbaF32::WHITE, 2.0);
     let mut h = Harness::new(SURFACE);
     let _ = h.frame(|ui| {
         Block::new()

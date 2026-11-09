@@ -10,11 +10,11 @@ use std::time::Duration;
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
-    Align, App, Block, Brush, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox, Configure,
-    Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify, Layer, Lens,
-    LinearGradient, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll, ScrollbarTheme,
-    Shadow, Sizing, Slider, Stroke, Switch, Text, TextEdit, TextSteps, Theme, Ui, UiPreferences,
-    WidgetId, WindowToken, ZoomConfig, fmt,
+    Align, App, Block, Border, Brush, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox,
+    Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify, Layer,
+    Lens, LinearGradient, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll,
+    ScrollbarTheme, Shadow, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui,
+    UiPreferences, WidgetId, WindowToken, ZoomConfig, fmt,
 };
 
 use crate::cube::{Cube, CubeHandle};
@@ -427,7 +427,7 @@ impl Deck {
                             .size((Sizing::fixed(360.0), Sizing::fixed(220.0)))
                             .chrome(Chrome {
                                 fill: RgbaF32::WHITE.with_alpha(0.12).into(),
-                                border: Stroke::new(RgbaF32::WHITE.with_alpha(0.35), 1.0),
+                                border: Border::new(RgbaF32::WHITE.with_alpha(0.35), 1.0),
                                 corners: Corners::all(32.0),
                                 shadow: Shadow::NONE,
                                 material: Some(filter),
@@ -464,7 +464,7 @@ impl Deck {
                                     RgbaF32::hex(0x6d8cff),
                                     RgbaF32::hex(0xec4899),
                                 )),
-                                border: Stroke::NONE,
+                                border: Border::NONE,
                                 corners: Corners::all(28.0),
                                 shadow: Shadow::drop(
                                     RgbaF32::BLACK.with_alpha(0.5),
@@ -477,7 +477,7 @@ impl Deck {
                         ui.add_shape(Shape::circle(
                             Vec2::new(520.0, 120.0),
                             70.0,
-                            Stroke::new(RgbaF32::hex(0xfacc15), 6.0),
+                            Border::new(RgbaF32::hex(0xfacc15), 6.0),
                         ));
                         Text::new("Aa")
                             .at((440.0, 220.0))
@@ -651,7 +651,7 @@ impl Deck {
                         ui.add_shape(Shape::circle(
                             place,
                             6.0 + 20.0 * grown,
-                            Stroke::new(ACCENT.with_alpha(0.7 * (1.0 - t)), 2.5),
+                            Border::new(ACCENT.with_alpha(0.7 * (1.0 - t)), 2.5),
                         ));
                     }
                     cursor::draw(ui, at);
@@ -676,7 +676,7 @@ fn window_chrome(ui: &Ui) -> Chrome {
     let theme = ui.theme();
     Chrome {
         fill: theme.button.unselected.normal.chrome.fill.clone(),
-        border: Stroke::new(theme.text.color.with_alpha(0.12), 1.0),
+        border: Border::new(theme.text.color.with_alpha(0.12), 1.0),
         corners: Corners::all(14.0),
         shadow: Shadow::drop(RgbaF32::BLACK.with_alpha(0.35), Vec2::new(0.0, 10.0), 16.0),
         material: None,

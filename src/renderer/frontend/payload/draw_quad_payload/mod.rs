@@ -11,8 +11,8 @@ use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeometry};
-use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
@@ -60,8 +60,8 @@ pub(crate) enum QuadGeometry {
 pub(crate) struct DrawQuadPayload {
     pub(crate) geometry: QuadGeometry,
     pub(crate) fill: GpuFill,
-    /// Normalized by [`ShapeStroke::normalized`], so `NONE` means no stroke exactly.
-    pub(crate) stroke: ShapeStroke,
+    /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no stroke exactly.
+    pub(crate) stroke: LoweredBorder,
     /// The reused four-lane geometry slot: gradient axis, shadow `(offset, σ,
     /// spread)`, or unread for a triangle. Outside [`GpuFill`] because only
     /// this tier has one.
@@ -76,7 +76,7 @@ pub(crate) struct RectQuad {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
     pub(crate) fill: BrushSource,
-    pub(crate) stroke: ShapeStroke,
+    pub(crate) stroke: LoweredBorder,
 }
 
 /// What [`DrawQuadPayload::triangle`] lowers: three logical-px corner centers
@@ -86,7 +86,7 @@ pub(crate) struct TriangleQuad {
     pub(crate) points: [Vec2; 3],
     pub(crate) radius: f32,
     pub(crate) fill: RgbaF16,
-    pub(crate) stroke: ShapeStroke,
+    pub(crate) stroke: LoweredBorder,
 }
 
 impl DrawQuadPayload {
@@ -103,7 +103,7 @@ impl DrawQuadPayload {
             fill,
             stroke,
         } = q;
-        // Stroke stays solid-only.
+        // Border stays solid-only.
         let mut lanes = fill.gpu_fill();
         if kind == RectKind::Windowed {
             lanes.kind = lanes.kind.with_window();
@@ -154,7 +154,7 @@ impl DrawQuadPayload {
                 lut_row: LutRow::FALLBACK,
             },
             // A shadow has no stroke; its edge is the blur.
-            stroke: ShapeStroke::NONE,
+            stroke: LoweredBorder::NONE,
             // The axis travels as the packed word; unpacking would round-trip identical bytes through f16.
             fill_axis: FillAxis::from(shadow.geometry_f16),
         })

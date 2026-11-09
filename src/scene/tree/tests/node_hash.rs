@@ -6,9 +6,9 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::EPS;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{self, SURFACE};
@@ -70,7 +70,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
         Panel::canvas()
             .id(WidgetId::from_hash("polyline"))
             .show(ui, |ui| {
-                ui.add_shape(Shape::polyline(points, Stroke::new(color, 2.0)));
+                ui.add_shape(Shape::polyline(points, Border::new(color, 2.0)));
             })
             .response
             .node(ui)
@@ -374,12 +374,12 @@ fn shape_hashes_column_sized_to_shape_records() {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
                     Vec2::new(10.0, 10.0),
-                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                 ));
                 ui.add_shape(Shape::line(
                     Vec2::new(10.0, 10.0),
                     Vec2::new(20.0, 20.0),
-                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                    Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
                 ));
             });
     });
@@ -416,7 +416,7 @@ fn shape_hash_stable_across_frames() {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
                     Vec2::new(10.0, 10.0),
-                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                 ));
             });
     };
@@ -443,12 +443,12 @@ fn one_shape_change_only_flips_its_own_hash() {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
                     Vec2::new(10.0, 10.0),
-                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                 ));
                 ui.add_shape(Shape::line(
                     Vec2::new(5.0, 5.0),
                     b_endpoint,
-                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                    Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
                 ));
             });
     };
@@ -518,7 +518,7 @@ fn a_paint_animation_moves_the_node_hash() {
                 let line = Shape::line(
                     Vec2::new(0.0, 10.0),
                     Vec2::new(40.0, 10.0),
-                    Stroke::new(RgbaF32::WHITE, 2.0),
+                    Border::new(RgbaF32::WHITE, 2.0),
                 );
                 match animation {
                     Some(animation) => ui.add_shape_animated(line, animation),

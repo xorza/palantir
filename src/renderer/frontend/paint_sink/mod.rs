@@ -31,7 +31,7 @@
 //! The canonical statement of the pipeline's tier policy; other tiers point
 //! here and document only which values they consider invisible.
 //!
-//! 1. **Primitives** (`RgbaF32`, `Stroke`, `Shadow`, `Brush`, ...) answer
+//! 1. **Primitives** (`RgbaF32`, `Border`, `Shadow`, `Brush`, ...) answer
 //!    whether a value is invisible.
 //! 2. **Authoring shapes** (`Shape::is_noop` at `Shapes::add`;
 //!    `Chrome::is_noop` at `Tree::open_node`) skip lowering work, which a

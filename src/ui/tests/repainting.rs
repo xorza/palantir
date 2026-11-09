@@ -325,7 +325,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
         h.ui().forest.record_store.gradients.records.len(),
         1,
         "PaintOnly must preserve gradient payloads so retained \
-         ShapeBrush::Gradient indices remain valid",
+         LoweredBrush::Gradient indices remain valid",
     );
     {
         let store = &h.ui().forest.record_store;

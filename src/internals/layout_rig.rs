@@ -13,7 +13,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::paint::border::Border;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::forest::Forest;
 use crate::scene::node::Node;
@@ -228,7 +228,7 @@ impl NodeRecorder<'_> {
             node,
             NodeChrome {
                 chrome: None,
-                ring: Stroke::NONE,
+                ring: Border::NONE,
                 material: None,
             },
         );

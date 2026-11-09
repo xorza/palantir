@@ -11,10 +11,10 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -63,7 +63,7 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
             ui.add_shape(Shape::line(
                 Vec2::new(22.5, 22.25),
                 Vec2::new(70.1, 55.9),
-                Stroke::new(RgbaF32::hex(0xffa63d), 1.5),
+                Border::new(RgbaF32::hex(0xffa63d), 1.5),
             ));
             ui.add_shape(Shape::rect(tile).at(Rect::new(20.0, 20.0, 60.0, 40.0)));
         });

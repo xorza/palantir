@@ -2,8 +2,8 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::stroke::Stroke;
 use crate::theme::look::WidgetLook;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -38,10 +38,10 @@ impl DockTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             preview: Chrome::rounded(p.accent.with_alpha8(46), m.radius.mark)
-                .with_border(Stroke::new(p.accent, m.stroke.fine)),
+                .with_border(Border::new(p.accent, m.stroke.fine)),
             ghost: WidgetLook {
                 chrome: Chrome::rounded(p.surround, Corners::all(m.radius.card))
-                    .with_border(Stroke::new(p.accent, m.stroke.hairline)),
+                    .with_border(Border::new(p.accent, m.stroke.hairline)),
                 text: TextStyleOverrides::NONE,
             },
             ghost_padding: m.row_padding(),

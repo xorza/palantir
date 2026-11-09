@@ -2,24 +2,24 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::{
     DrawQuadPayload, QuadGeometry, RectQuad, TriangleQuad,
 };
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::shape::paint::shape_stroke::ShapeStroke;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
 /// Every quad-tier constructor normalizes the stroke
-/// ([`ShapeStroke::normalized`]): a transparent, zero-width or NaN-width
-/// stroke becomes [`ShapeStroke::NONE`]; others pass verbatim.
+/// ([`LoweredBorder::normalized`]): a transparent, zero-width or NaN-width
+/// stroke becomes [`LoweredBorder::NONE`]; others pass verbatim.
 ///
 /// NaN normalizes away like any non-painting width: catching it loudly is
 /// the `has_nan` screen's job at `Shapes::add`, so here it fails safe,
@@ -32,23 +32,23 @@ use glam::Vec2;
 fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
     let fill = RgbaF32::srgb(1.0, 0.0, 0.0);
     let green = RgbaF32::srgb(0.0, 1.0, 0.0);
-    let cases: [(&str, ShapeStroke, bool); 4] = [
+    let cases: [(&str, LoweredBorder, bool); 4] = [
         (
             "transparent_color",
-            ShapeStroke::lower(Stroke::new(RgbaF32::TRANSPARENT, 3.0)),
+            LoweredBorder::lower(Border::new(RgbaF32::TRANSPARENT, 3.0)),
             true,
         ),
         (
             "zero_width",
-            ShapeStroke::lower(Stroke::new(green, 0.0)),
+            LoweredBorder::lower(Border::new(green, 0.0)),
             true,
         ),
         (
             "nan_width",
-            ShapeStroke::lower(Stroke::new(green, f32::NAN)),
+            LoweredBorder::lower(Border::new(green, f32::NAN)),
             true,
         ),
-        ("live", ShapeStroke::lower(Stroke::new(green, 3.0)), false),
+        ("live", LoweredBorder::lower(Border::new(green, 3.0)), false),
     ];
     for (label, stroke, expect_normalized) in cases {
         let rp = DrawQuadPayload::rect(RectQuad {
@@ -101,7 +101,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
 /// the stroke scales either way, and `faded(1.0)` changes nothing.
 #[test]
 fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
-    let stroke = ShapeStroke {
+    let stroke = LoweredBorder {
         width: 2.0,
         color: RgbaF16::new(1.0, 1.0, 1.0, 1.0),
     };
