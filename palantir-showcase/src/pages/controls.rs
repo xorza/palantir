@@ -390,25 +390,25 @@ fn group(ui: &mut Ui, k: Kit, label: &'static str) {
         .show(ui);
 }
 
-/// Transparent fill, accent stroke: reads as a "selectable surface".
+/// Transparent fill, accent border: reads as a "selectable surface".
 fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     let accent = k.t.accent;
-    let stroke = Border::new(accent, 1.5);
-    let chrome = |fill: RgbaF32, stroke| {
-        Chrome::rounded(fill, Corners::all(M.radius.control)).with_border(stroke)
+    let border = Border::new(accent, 1.5);
+    let chrome = |fill: RgbaF32, border| {
+        Chrome::rounded(fill, Corners::all(M.radius.control)).with_border(border)
     };
     ButtonTheme {
         unselected: StatefulLook {
             normal: WidgetLook {
-                chrome: chrome(RgbaF32::TRANSPARENT, stroke),
+                chrome: chrome(RgbaF32::TRANSPARENT, border),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                chrome: chrome(accent.with_alpha(0.18), stroke),
+                chrome: chrome(accent.with_alpha(0.18), border),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                chrome: chrome(accent.with_alpha(0.35), stroke),
+                chrome: chrome(accent.with_alpha(0.35), border),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {

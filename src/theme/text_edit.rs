@@ -61,7 +61,7 @@ impl TextEditTheme {
     ///
     /// Keeps a value from jumping when it becomes editable: a field is a box
     /// *around* the run, so placing it at the run's corner offsets the glyphs by
-    /// padding and stroke.
+    /// padding and border.
     ///
     /// Valid for a field that **hugs its content, centers it, and holds one line**,
     /// as an in-place edit does; wider fields spend alignment the theme can't know.
@@ -81,20 +81,20 @@ impl TextEditTheme {
         at - Vec2::new(text.w, text.h) * 0.5 - Vec2::new(left + self.caret_width, top)
     }
 
-    /// A field whose stroke changes color on focus but never width.
+    /// A field whose border changes color on focus but never width.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let radius = Corners::all(m.radius.control);
-        // Constant stroke width across states: `Tree::open_node` folds it into
+        // Constant border width across states: `Tree::open_node` folds it into
         // padding, so a change would shift the inner rect and jitter the text on
         // focus. The hairline a button wears, so a field and a button beside it
         // share one height, and the edge lands on whole pixels at 1x.
-        let stroke_w = m.stroke.hairline;
+        let border_width = m.stroke.hairline;
         let normal_chrome = Chrome::rounded(p.element_mid, radius)
-            .with_border(Border::new(p.border_soft(), stroke_w));
+            .with_border(Border::new(p.border_soft(), border_width));
         let focused_chrome = Chrome::rounded(p.element_mid, radius)
-            .with_border(Border::new(p.border_focused, stroke_w));
-        let disabled_chrome =
-            Chrome::rounded(p.element, radius).with_border(Border::new(p.border_soft(), stroke_w));
+            .with_border(Border::new(p.border_focused, border_width));
+        let disabled_chrome = Chrome::rounded(p.element, radius)
+            .with_border(Border::new(p.border_soft(), border_width));
         let selection = selection_wash(p);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
         let normal = WidgetLook {

@@ -161,5 +161,7 @@ diff with `git apply -3` and resolves where 5b moved the code.
 - Step 7 is on master as `1451d3957`: the review's renderer renames replayed by script
   on the current tree, with the final tree's prose for the files only they touch, and "an outside
   rect" where `89b0c79dd` writes "a outside rect". The full gate passes.
-- Step 8 is staged on master and not committed: the geometry move replayed by script. The moved
+- Step 8 is on master as `8a289b262`: the geometry move replayed by script. The moved
   files equal `89b0c79dd`'s. The full gate passes.
+- Step 9 is on master: the rest of the review's names, taken from `89b0c79dd` file by file where
+  only they differ, and by script where step 5b changed the file.

@@ -119,13 +119,13 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
             0.016,
         );
     }
-    let stroke_velocity = support::spring_velocity(&map.rows[&(id, SLOT)])
+    let border_velocity = support::spring_velocity(&map.rows[&(id, SLOT)])
         .paint
         .border
         .width;
     assert!(
-        stroke_velocity > 0.0,
-        "test setup must carry positive stroke velocity",
+        border_velocity > 0.0,
+        "test setup must carry positive border velocity",
     );
 
     let gradient = Brush::Linear(LinearGradient::two_stop(
@@ -151,10 +151,10 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
     let velocity = support::spring_velocity(row);
     assert_eq!(result.value.paint.fill, gradient);
     assert_eq!(velocity.paint.fill, Brush::TRANSPARENT);
-    assert_eq!(velocity.paint.border.width, stroke_velocity);
+    assert_eq!(velocity.paint.border.width, border_velocity);
     assert!(
         !result.settled,
-        "the independently animated stroke still has real displacement",
+        "the independently animated border still has real displacement",
     );
 }
 

@@ -49,7 +49,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
                 ..
             }),
         ),
-        "records exactly one view-sourced image shape",
+        "records exactly one view-sourced image paint",
     );
     assert!(shapes.next().is_none());
     let r = h.ui().arranged_rect(Layer::Main, node);

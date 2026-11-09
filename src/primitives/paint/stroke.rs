@@ -66,10 +66,13 @@ impl Stroke {
     }
 
     /// True when this stroke paints nothing: an invisible width or color, or a ramp of nothing.
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         domain::is_invisible(self.width)
             || self.color.is_noop()
-            || self.ramp.is_some_and(|ramp| ramp.is_noop())
+            || match &self.ramp {
+                Some(ramp) => ramp.is_noop(),
+                None => false,
+            }
     }
 
     /// Panics unless the width is a [length](domain::length) and the color a

@@ -194,7 +194,7 @@ fn builders_refuse_what_they_check() {
     use crate::primitives::paint::material::lens::Lens;
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
-    use crate::shape::polyline::TINT_RULE;
+    use crate::shape::polyline::COLOR_PRODUCT_RULE;
     use crate::text::glyph_font::GlyphFont;
 
     const N: f32 = f32::NAN;
@@ -433,11 +433,11 @@ fn builders_refuse_what_they_check() {
         Shape::polyline(&two).per_segment(&[RgbaF32::new(255.0, 1.0, 1.0, 1.0)]),
         bright,
     ));
-    panic_probe::assert_panics_with(TINT_RULE, || {
+    panic_probe::assert_panics_with(COLOR_PRODUCT_RULE, || {
         let colors = [white, RgbaF32::new(256.0, 1.0, 1.0, 1.0)];
         check(&(Shape::polyline(&two).per_point(&colors), bright));
     });
-    panic_probe::assert_panics_with(TINT_RULE, || {
+    panic_probe::assert_panics_with(COLOR_PRODUCT_RULE, || {
         check(&(
             Shape::polyline(&two).per_segment(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]),
             bright,

@@ -126,10 +126,9 @@ fn turned_quads_match_golden() {
                 }
             });
             owner(ui, "dot", |ui| {
-                let stroke = Border::new(RgbaF32::srgb(1.0, 0.85, 0.2), 30.0);
                 if let Some(shape) = ui.add_shape(
                     Shape::line(Vec2::new(50.0, 50.0), Vec2::new(50.0, 50.0)),
-                    Stroke::new(stroke.color, stroke.width).with_cap(LineCap::Square),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 30.0).with_cap(LineCap::Square),
                 ) {
                     shape.animate(thirty_degrees());
                 }

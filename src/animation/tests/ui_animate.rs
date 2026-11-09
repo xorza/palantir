@@ -191,7 +191,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     );
     assert_eq!(
         snap.chrome.paint.border.width, 2.0,
-        "None: stroke width snaps"
+        "None: border width snaps"
     );
     assert_eq!(snap.chrome.paint.border.color, chrome.paint.border.color);
     assert_eq!(snap.chrome.corners, chrome.corners);

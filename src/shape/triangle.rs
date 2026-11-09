@@ -31,19 +31,6 @@ impl TriangleShape {
         }
     }
 
-    /// Round all three corners by this radius. The edges stay on the sharp triangle's, so the
-    /// shape only loses its corners; a radius past the inradius paints the incircle.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `radius` is a [length](crate::widget::domain::length) and a
-    /// [lane](crate::widget::domain::lane), as it packs into an f16 lane.
-    #[track_caller]
-    pub const fn radius(mut self, radius: f32) -> Self {
-        self.radius = domain::lane(domain::length(radius));
-        self
-    }
-
     /// Lay out in `rect`, in owner-relative coords, instead of the owner's arranged rect.
     ///
     /// # Panics
@@ -59,6 +46,19 @@ impl TriangleShape {
     /// Fit the corners into the rect by `fit`; [`Fit::Natural`], as given, by default.
     pub const fn fit(mut self, fit: Fit) -> Self {
         self.placement.fit = fit;
+        self
+    }
+
+    /// Round all three corners by this radius. The edges stay on the sharp triangle's, so the
+    /// shape only loses its corners; a radius past the inradius paints the incircle.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `radius` is a [length](crate::widget::domain::length) and a
+    /// [lane](crate::widget::domain::lane), as it packs into an f16 lane.
+    #[track_caller]
+    pub const fn radius(mut self, radius: f32) -> Self {
+        self.radius = domain::lane(domain::length(radius));
         self
     }
 }

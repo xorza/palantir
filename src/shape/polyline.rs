@@ -103,12 +103,11 @@ pub(crate) enum PolylineColors<'a> {
     PerSegment(&'a [RgbaF32]),
 }
 
-pub(crate) const TINT_RULE: &str =
+pub(crate) const COLOR_PRODUCT_RULE: &str =
     "a polyline color times its stroke color must have channels that round to within ±65504 in f16";
 
-/// Each of `colors` a color, and its product with `stroke`, which lowering packs into f16 lanes,
-/// one too: two colors each in range can multiply past the largest f16. Refused rather than
-/// saturated, as the drawn color would then differ from the product asked for.
+/// Panic unless each of `colors` is a color. Its product with the stroke's color is checked apart
+/// ([`check_color_products`]), where `Ui::add_shape` joins the two.
 #[track_caller]
 const fn check_colors(colors: &[RgbaF32]) {
     let mut i = 0;
@@ -118,12 +117,18 @@ const fn check_colors(colors: &[RgbaF32]) {
     }
 }
 
-/// Panic unless each of `colors` times `stroke` is a color, as the record stores the product.
+/// Panic unless each of `colors` times `stroke` is a color, as the record stores the product in
+/// f16 lanes: two colors each in range can multiply past the largest f16. Refused rather than
+/// saturated, as the drawn color would then differ from the product asked for.
 #[track_caller]
-const fn check_tints(colors: &[RgbaF32], stroke: RgbaF32) {
+const fn check_color_products(colors: &[RgbaF32], stroke: RgbaF32) {
     let mut i = 0;
     while i < colors.len() {
-        assert!(domain::is_color(colors[i].tinted(stroke)), "{}", TINT_RULE);
+        assert!(
+            domain::is_color(colors[i].tinted(stroke)),
+            "{}",
+            COLOR_PRODUCT_RULE
+        );
         i += 1;
     }
 }
@@ -155,7 +160,7 @@ impl sealed::DrawWith<Stroke> for PolylineShape<'_> {
         match self.colors {
             PolylineColors::Single => {}
             PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
-                check_tints(colors, stroke.color);
+                check_color_products(colors, stroke.color);
             }
         }
     }

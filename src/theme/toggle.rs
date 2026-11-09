@@ -128,7 +128,7 @@ impl ToggleGeometry {
         let edge = p.border_strong();
         let hairline = m.stroke.hairline;
         let chrome =
-            |fill: RgbaF32, stroke: Border| Chrome::rounded(fill, radius).with_border(stroke);
+            |fill: RgbaF32, border: Border| Chrome::rounded(fill, radius).with_border(border);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
             normal: WidgetLook {

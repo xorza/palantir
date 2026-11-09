@@ -70,11 +70,10 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// `#[derive(ThemeWalk)]`, palantir's own, on a theme part: its walks over text, press and material
-/// slots
-/// visit every field in field order, each through the field type's own `ThemeWalk`, so a field
-/// whose type has no walk fails to compile until it gets one, as serde's and `gc`'s derives ask of
-/// each field.
+/// `#[derive(ThemeWalk)]`, palantir's own, on a theme part: its walks over text, press and
+/// material slots visit every field in field order, each through the field type's own
+/// `ThemeWalk`, so a field whose type has no walk fails to compile until it gets one, as serde's
+/// and `gc`'s derives ask of each field.
 ///
 /// Hidden: its expansion names palantir's crate-private `crate::theme::ThemeWalk`, so it compiles
 /// inside palantir alone, and a proc-macro crate can export nothing but its macros. Refused: a

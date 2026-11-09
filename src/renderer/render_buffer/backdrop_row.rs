@@ -34,7 +34,7 @@ pub(crate) struct BackdropRow {
     /// effect's rect grown by its reach, a material's footprint, or the rect over the ground.
     pub(crate) reads: Rect,
     /// What a material's stage holds its result to and lays over it; `None` for an app's backdrop
-    /// effect's shape, which reads it as it likes.
+    /// effect's paint, which reads it as it likes.
     pub(crate) look: Option<MaterialLook>,
     /// What it reads.
     pub(crate) read: BackdropRead,

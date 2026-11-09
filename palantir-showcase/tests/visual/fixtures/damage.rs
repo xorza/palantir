@@ -43,9 +43,9 @@ fn magenta_pixels(img: &RgbaImage) -> usize {
     img.pixels().filter(|p| is_magenta(**p)).count()
 }
 
-/// Physical px of the damage overlay's stroke at scale 1
+/// Physical px of the damage overlay's border at scale 1
 /// (`DAMAGE_OVERLAY_STROKE_WIDTH`).
-const STROKE: i32 = 2;
+const BORDER: i32 = 2;
 const GAP: i32 = 1;
 
 /// A damage rect in physical pixels, `max` exclusive.
@@ -67,7 +67,7 @@ impl PxRect {
         let outer_min = self.min - GAP;
         let outer_max = self.max + GAP;
         let inside = p.cmpge(outer_min).all() && p.cmplt(outer_max).all();
-        let interior = p.cmpge(outer_min + STROKE).all() && p.cmplt(outer_max - STROKE).all();
+        let interior = p.cmpge(outer_min + BORDER).all() && p.cmplt(outer_max - BORDER).all();
         inside && !interior
     }
 }
@@ -188,7 +188,7 @@ fn single_button_change_repaints_partially() {
     );
 }
 
-/// Smoke pin: `DebugOverlayConfig::damage_rect` puts red stroke pixels on the
+/// Smoke pin: `DebugOverlayConfig::damage_rect` puts red border pixels on the
 /// swapchain; no other test exercises the post-copy pass.
 #[test]
 fn damage_rect_overlay_strokes_dirty_region() {

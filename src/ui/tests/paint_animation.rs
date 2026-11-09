@@ -4,7 +4,6 @@ use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::stroke::Stroke;
@@ -88,22 +87,19 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
 #[test]
 fn a_turn_records_on_every_kind() {
     let quarter = PaintAnimation::turn(0.25, 0.25);
-    let stroke = Border::new(RgbaF32::WHITE, 2.0);
+    let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
     let mut h = Harness::new(SURFACE);
     let _ = h.frame(|ui| {
         Block::new()
             .id(WidgetId::from_hash("spun"))
             .size(20.0)
             .show(ui);
-        if let Some(shape) = ui.add_shape(
-            Shape::line(Vec2::ZERO, Vec2::X * 8.0),
-            Stroke::new(stroke.color, stroke.width),
-        ) {
+        if let Some(shape) = ui.add_shape(Shape::line(Vec2::ZERO, Vec2::X * 8.0), stroke) {
             shape.animate(quarter);
         }
         if let Some(shape) = ui.add_shape(
             Shape::line(Vec2::ONE, Vec2::ONE),
-            Stroke::new(stroke.color, stroke.width).with_cap(LineCap::Round),
+            stroke.with_cap(LineCap::Round),
         ) {
             shape.animate(quarter);
         }

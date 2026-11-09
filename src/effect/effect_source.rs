@@ -28,12 +28,12 @@ use crate::primitives::effect::effect_params::EffectParams;
 /// - `effect_over`, `effect_add`, `effect_multiply` and `effect_screen`, each an
 ///   `EffectOutput` from a premultiplied color;
 /// - with [image slots](Self::image_slots), `effect_image0` and on, each a `texture_2d<f32>` of
-///   the image a shape binds in that slot ([`EffectPaint::images`](crate::widget::EffectPaint::images)),
+///   the image its paint binds in that slot ([`EffectPaint::images`](crate::widget::EffectPaint::images)),
 ///   whose sample is linear and premultiplied, and `effect_sampler`, linear and clamped to the
 ///   edge, as `textureSample(effect_image0, effect_sampler, uv)` reads them;
 /// - for a [`BackdropEffect`](crate::BackdropEffect), `effect_backdrop(pos)`: what is painted
 ///   under the shape at `pos`, logical px from its rect's top-left, linear and opaque, blurred by
-///   the shape's [σ](crate::widget::EffectPaint::blur), and read within its
+///   its paint's [σ](crate::widget::EffectPaint::blur), and read within its
 ///   [reach](crate::widget::EffectPaint::reach), a read past it reading its edge. A sample
 ///   that needs no uniform control flow, so a loop or a branch may read it.
 ///
@@ -96,9 +96,9 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
         self
     }
 
-    /// How many images each shape of the effect binds, at most [`Self::MAX_IMAGE_SLOTS`]; a load
+    /// How many images each paint of the effect binds, at most [`Self::MAX_IMAGE_SLOTS`]; a load
     /// past it returns [`EffectError::TooManyImageSlots`](crate::EffectError::TooManyImageSlots).
-    /// Each shape binds exactly this many, so a draw binds one group of them, which splits a run
+    /// Each paint binds exactly this many, so a draw binds one group of them, which splits a run
     /// of draws only where neighbors bind other images.
     pub const fn image_slots(mut self, slots: u8) -> Self {
         self.image_slots = slots;
@@ -131,7 +131,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
 
 /// What paints in place of an effect while the system asks to reduce motion or power use, carried
 /// by its source ([`EffectSource::reduced_motion`], [`EffectSource::power_saver`]): each swaps the
-/// effect for a cheaper or stiller one, which the effect itself knows of. A shape resolves it as it
+/// effect for a cheaper or stiller one, which the effect itself knows of. A paint resolves it as it
 /// is added, and a move of either preference records every window again. An alternative paints as
 /// itself: its own alternatives do not apply. Refused: a theme slot for each mode, which doubles
 /// every slot; a branch at each call site; transparency among them, as what a backdrop shows while
@@ -141,7 +141,7 @@ pub enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     Same,
     /// Another effect with the same parameters and kind, loaded by the time it paints.
     Effect(EffectName<U, K>),
-    /// Nothing: the shape paints nothing.
+    /// Nothing paints in its place.
     Nothing,
 }
 

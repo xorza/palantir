@@ -24,13 +24,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             support::note(
                 ui,
                 k,
-                "One instanced quad each: coverage, rounded corners and the stroke \
+                "One instanced quad each: coverage, rounded corners and the border \
                  all come from the signed distance field.",
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("sharp fill").show(ui, k, |ui| sharp(ui, k));
                 DemoCell::new("rounded 12 px").show(ui, k, |ui| rounded(ui, k));
-                DemoCell::new("fill + inner stroke").show(ui, k, |ui| stroked(ui, k));
+                DemoCell::new("fill + border").show(ui, k, |ui| bordered(ui, k));
                 DemoCell::new("outline only").show(ui, k, |ui| outline(ui, k));
                 DemoCell::new("play glyph — radii 0 / 4 / 10").show(ui, k, |ui| radii(ui, k));
             });
@@ -81,7 +81,7 @@ fn rounded(ui: &mut Ui, k: Kit) {
     ui.add_shape(Shape::triangle(A, B, C).radius(12.0_f32), k.swatch.lime);
 }
 
-fn stroked(ui: &mut Ui, k: Kit) {
+fn bordered(ui: &mut Ui, k: Kit) {
     ui.add_shape(
         Shape::triangle(A, B, C).radius(10.0_f32),
         Paint::from(k.swatch.violet).with_border(Border::new(RgbaF32::WHITE, 3.0)),
@@ -195,14 +195,14 @@ fn window_anatomy(ui: &mut Ui, k: Kit) {
 #[derive(Debug)]
 struct LiveTriangle {
     radius: f32,
-    stroke: f32,
+    border: f32,
 }
 
 impl Default for LiveTriangle {
     fn default() -> Self {
         Self {
             radius: 12.0,
-            stroke: 3.0,
+            border: 3.0,
         }
     }
 }
@@ -233,12 +233,12 @@ fn live(ui: &mut Ui, k: Kit) {
                     step: 0.5,
                     unit: " px",
                 }
-                .show(ui, k, &mut l.stroke);
-                let (radius, stroke) = (l.radius, l.stroke);
+                .show(ui, k, &mut l.border);
+                let (radius, border) = (l.radius, l.border);
                 DemoCell::new("the knobs' triangle").show(ui, k, |ui| {
                     ui.add_shape(
                         Shape::triangle(A, B, C).radius(radius),
-                        Paint::from(k.swatch.violet).with_border(Border::new(k.t.ink, stroke)),
+                        Paint::from(k.swatch.violet).with_border(Border::new(k.t.ink, border)),
                     );
                 });
             });

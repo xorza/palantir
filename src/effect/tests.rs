@@ -1444,7 +1444,7 @@ fn an_effect_paint_binds_as_many_images_as_its_effect_declares() {
     );
 }
 
-/// An image update repaints each effect that binds it, as it repaints an image shape: the effect
+/// An image update repaints each effect that binds it, as it repaints an image's paint: the effect
 /// over `(2, 2, 6, 6)` binds the image that changes, and the one over `(10, 10, 4, 4)` another,
 /// so the update damages `(1.5, 1.5, 7, 7)`, the first rect grown by the 0.5 px reach, alone.
 #[test]
@@ -1553,7 +1553,7 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
 
 const SHARP: Shift = Shift { dx: 0.0 };
 
-/// While transparency is reduced a backdrop effect's shape reads the window's ground, which takes
+/// While transparency is reduced a backdrop effect's paint reads the window's ground, which takes
 /// no ticket and lists no backdrop, or paints nothing where it asks for nothing then. At full
 /// transparency it captures what is under it.
 #[test]

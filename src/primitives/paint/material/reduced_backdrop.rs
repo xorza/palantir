@@ -1,7 +1,7 @@
 //! [`ReducedBackdrop`]: what a use of a backdrop paints while transparency is reduced.
 
-/// What a [`Material`](crate::Material) or a backdrop effect's shape
-/// ([`EffectPaint::reduced_transparency`](crate::widget::EffectPaint::reduced_transparency))
+/// What a [`Material`](crate::Material) or an [`EffectPaint`](crate::widget::EffectPaint) of a
+/// backdrop effect ([`EffectPaint::reduced_transparency`](crate::widget::EffectPaint::reduced_transparency))
 /// paints while transparency is reduced
 /// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)). A choice of each use,
 /// as the role decides it: a float's material reads the ground, and a scrim keeps its dim, as iOS
@@ -15,8 +15,8 @@ pub enum ReducedBackdrop {
     /// glint included.
     #[default]
     Ground,
-    /// No effect: a material leaves its fill, translucent, over what is painted under it, and a
-    /// backdrop effect's shape paints nothing.
+    /// No effect: a material leaves its fill, translucent, over what is painted under it, and an
+    /// `EffectPaint` of a backdrop effect paints nothing.
     Nothing,
 }
 

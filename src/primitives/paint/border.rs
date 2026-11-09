@@ -50,7 +50,10 @@ impl Border {
         width: 0.0,
     };
 
-    /// True when this border paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Border::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Chrome`'s `skip_serializing_if` needs `fn(&T) -> bool`.
+    /// True when this border paints nothing: width within tolerance of zero (negative counts as
+    /// zero) or fully transparent color. Animation lerps through `Border::NONE`, so a
+    /// bordered-to-borderless transition settles here. Takes `&self` because `Paint`'s
+    /// `skip_serializing_if` needs `fn(&T) -> bool`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         is_invisible(self.width) || self.color.is_noop()

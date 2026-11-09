@@ -32,7 +32,7 @@ impl IconPaint {
         }
     }
 
-    /// How the glyph is placed inside its box.
+    /// Fit the icon's artwork into the rect by `fit`; [`Fit::Contain`] by default.
     pub const fn fit(mut self, fit: Fit) -> Self {
         self.fit = fit;
         self

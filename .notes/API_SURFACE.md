@@ -2462,7 +2462,7 @@ Stroke
         pub const fn with_ramp(self, ramp: ColorRamp) -> Self
         pub const fn with_cap(self, cap: LineCap) -> Self
         pub const fn with_join(self, join: LineJoin) -> Self
-        pub fn is_noop(&self) -> bool
+        pub const fn is_noop(&self) -> bool
         impl PaintedBy<Stroke> for ArcShape
         impl PaintedBy<Stroke> for CircleShape
         impl PaintedBy<Stroke> for CurveShape
@@ -3629,9 +3629,9 @@ widget::ThemeSlot
 
 widget::TriangleShape
     struct TriangleShape: Clone, Debug
-        pub const fn radius(self, radius: f32) -> Self
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
+        pub const fn radius(self, radius: f32) -> Self
         impl<P: IntoPaint> PaintedBy<P> for TriangleShape
 
 widget::Widget

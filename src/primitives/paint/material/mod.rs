@@ -91,7 +91,7 @@ use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 /// [length](crate::widget::domain::length), each luminance bound a
 /// [factor](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
 /// packs into one, and the input holds its own checks. The effect must be loaded where the box
-/// records, as a shape's effect must.
+/// records, as an [`EffectPaint`](crate::widget::EffectPaint)'s effect must.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct Material {
