@@ -25,7 +25,7 @@ fn collision_outlines(frames: &WindowFrames) -> Vec<Rect> {
     let mut frontend = Frontend::for_test();
     frontend.build(
         frames.ui().frame_scene(),
-        BuildPlan::without_panes(RenderPlan {
+        BuildPlan::without_backdrops(RenderPlan {
             clear: frames.ui().theme().window_bg,
             damage: Damage::Full,
         }),

@@ -243,7 +243,7 @@ impl Material {
     pub(crate) fn max_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
         let alpha = fill.a;
         if !(0.0..1.0).contains(&alpha) {
-            return Err(InkBound::TintNotTranslucent { alpha });
+            return Err(InkBound::FillNotTranslucent { alpha });
         }
         let wanted = (ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05;
         let Some(ground) = before_storing(wanted).filter(|&ground| ground >= ceiling_bend()) else {
@@ -289,7 +289,7 @@ impl Material {
     pub(crate) fn min_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
         let alpha = fill.a;
         if !(0.0..1.0).contains(&alpha) {
-            return Err(InkBound::TintNotTranslucent { alpha });
+            return Err(InkBound::FillNotTranslucent { alpha });
         }
         let Some(ground) = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05) else {
             return Err(InkBound::InkFailsOnFill);
@@ -373,7 +373,7 @@ impl Material {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InkBound {
     /// The fill is opaque or not a fraction: nothing shows through it to bound.
-    TintNotTranslucent { alpha: f32 },
+    FillNotTranslucent { alpha: f32 },
     /// The ground the ink needs lies where a colored pixel can store brighter than a neutral one.
     InkTooDark { ground: f32 },
     /// The ink misses its contrast on the fill made opaque, so no bound reaches it.
@@ -385,7 +385,7 @@ impl InkBound {
     #[track_caller]
     pub(crate) fn refuse(self) -> ! {
         match self {
-            Self::TintNotTranslucent { alpha } => {
+            Self::FillNotTranslucent { alpha } => {
                 panic!("a fill's alpha is a fraction under 1: {alpha}")
             }
             Self::InkTooDark { ground } => panic!(

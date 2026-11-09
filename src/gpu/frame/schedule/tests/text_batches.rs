@@ -101,7 +101,7 @@ fn text_batches_emit_once_after_their_last_group() {
     }
 }
 
-/// A main pass broken at a pane's barrier walks the groups before it and their text batches,
+/// A main pass broken at a backdrop's barrier walks the groups before it and their text batches,
 /// which the composer closed there, then resumes past them: the two walks draw what the whole
 /// walk draws, in its order, and only a walk from the first group clears. A barrier at 0 leaves the
 /// first walk only the clear, and the second, from the first group too, is the whole walk; one

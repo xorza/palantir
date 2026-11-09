@@ -13,6 +13,7 @@ use crate::primitives::math::num::Vec2Ext;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
@@ -23,21 +24,22 @@ use crate::renderer::frontend::composer::paint_order::{Lane, Ordering, TextClip}
 use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::draw_backdrop_payload::{
+    BackdropDraw, DrawBackdropPayload,
+};
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_pane_payload::{BackdropDraw, DrawPanePayload};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::backdrop_row::{
-    BackdropRead, BackdropRow, MaterialLook, PaneSource,
+    BackdropRead, BackdropRow, BackdropSource, MaterialLook,
 };
 use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInstance};
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
@@ -192,7 +194,7 @@ impl PaintSink for ComposeSession<'_> {
     /// A material draws through its effect's material stage, over the rect a quad of it would
     /// shade, packed as one: it neither folds into the clear nor covers anything opaquely, as what
     /// it reads shows through it.
-    fn pane(&mut self, p: DrawPanePayload) {
+    fn backdrop(&mut self, p: DrawBackdropPayload) {
         let geometry = p.geometry();
         let packed = PackedQuad::pack(&geometry, &self.lowering());
         let Some(visible) = self.ordering().cull(packed.rect.urect) else {
@@ -211,12 +213,12 @@ impl PaintSink for ComposeSession<'_> {
             stroke_width: packed.stroke_width,
         };
         // Listed before it is ordered, so its own paint is not among what it shares a break past.
-        let pane = match p.read {
+        let backdrop_idx = match p.read {
             BackdropDraw::Capture(ticket) => {
-                self.list_pane(visible, ticket, |source| BackdropRow {
+                self.list_backdrop(visible, ticket, |source| BackdropRow {
                     reads: ticket.capture.footprint.into(),
                     look: Some(look),
-                    read: BackdropRead::Pane {
+                    read: BackdropRead::Capture {
                         capture: ticket.capture,
                         source,
                     },
@@ -241,7 +243,7 @@ impl PaintSink for ComposeSession<'_> {
                 scale,
                 rotation: packed.rotation,
                 params: material.params,
-                pane,
+                backdrop_idx,
                 flags: match p.coverage {
                     Coverage::Inside => EffectInstance::MATERIAL,
                     Coverage::Outside => EffectInstance::MATERIAL | EffectInstance::WINDOW,
@@ -458,26 +460,26 @@ impl PaintSink for ComposeSession<'_> {
             return;
         };
         let scale = self.composer.transform.physical_scale();
-        // A pane is listed before it is ordered, so its own paint is not among what it shares a
+        // A backdrop is listed before it is ordered, so its own paint is not among what it shares a
         // break past.
-        let pane = match p.pane {
-            Some(pane) => {
+        let backdrop_idx = match p.backdrop {
+            Some(backdrop) => {
                 // The rect, or its turn's cover, grown by its reach.
                 let cover = match p.spin {
                     None => physical,
                     Some(spin) => physical.turned_cover(physical.center(), spin.angle),
                 };
-                match pane.read {
+                match backdrop.read {
                     // Inside the capture by half a pixel, so a read at the window's edge blends no
                     // texel past it.
                     BackdropDraw::Capture(ticket) => {
                         let reads = cover
-                            .inflated(pane.reach * scale)
+                            .inflated(backdrop.reach * scale)
                             .clamp_to(Rect::from(ticket.capture.footprint).deflated(0.5));
-                        self.list_pane(visible, ticket, |source| BackdropRow {
+                        self.list_backdrop(visible, ticket, |source| BackdropRow {
                             reads,
                             look: None,
-                            read: BackdropRead::Pane {
+                            read: BackdropRead::Capture {
                                 capture: ticket.capture,
                                 source,
                             },
@@ -505,7 +507,7 @@ impl PaintSink for ComposeSession<'_> {
                 scale,
                 rotation: p.spin.map_or(0.0, |spin| spin.angle),
                 params: p.params.start,
-                pane,
+                backdrop_idx,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -642,7 +644,7 @@ impl PaintSink for ComposeSession<'_> {
 }
 
 impl ComposeSession<'_> {
-    /// Push `p`, packed as `packed`, with `lut_row` its gradient row or its pane's row.
+    /// Push `p`, packed as `packed`, with `lut_row` its gradient row or its backdrop's row.
     fn push_quad(&mut self, p: &DrawQuadPayload, packed: &PackedQuad, lut_row: LutRow) {
         // Fragment fast path: a solid, sharp, stroke-less, pixel-aligned quad has
         // coverage exactly 1.0, so the shader returns the fill directly. `SOLID` excludes
@@ -667,7 +669,7 @@ impl ComposeSession<'_> {
     }
 
     /// List `row`, a backdrop over the window's ground, which takes no capture and breaks no
-    /// pass; its index is its effect instance's `pane`.
+    /// pass; its index is its effect instance's `backdrop`.
     fn list_ground(&mut self, row: BackdropRow) -> u32 {
         debug_assert!(
             row.read == BackdropRead::Ground,
@@ -678,19 +680,20 @@ impl ComposeSession<'_> {
         idx
     }
 
-    /// List the pane of `ticket`, seen at `visible`, as `row` makes it from the source paint
-    /// order gives it ([`Ordering::pane_source`]); its index is its effect instance's `pane`.
-    fn list_pane(
+    /// List the backdrop of `ticket`, seen at `visible`, as `row` makes it from the source paint
+    /// order gives it ([`Ordering::backdrop_source`]); its index is its effect instance's
+    /// `backdrop`.
+    fn list_backdrop(
         &mut self,
         visible: URect,
-        ticket: PaneTicket,
-        row: impl FnOnce(PaneSource) -> BackdropRow,
+        ticket: BackdropTicket,
+        row: impl FnOnce(BackdropSource) -> BackdropRow,
     ) -> u32 {
         debug_assert!(
             ticket.capture.footprint.union(visible) == ticket.capture.footprint,
-            "a pane's footprint holds what it shows"
+            "a backdrop's footprint holds what it shows"
         );
-        let source = self.ordering().pane_source(ticket);
+        let source = self.ordering().backdrop_source(ticket);
         let idx = self.out.backdrops.len() as u32;
         self.out.backdrops.push(row(source));
         idx
@@ -763,13 +766,13 @@ impl ComposeSession<'_> {
         self.composer.clip.pop();
     }
 
-    /// Clear-fold discard: drop the scene output and its scratch, and hide the panes before the
+    /// Clear-fold discard: drop the scene output and its scratch, and hide the backdrops before the
     /// cover. Walk state survives: the clip stack is empty by precondition and transform pops may
     /// still be ahead.
     fn discard_composed(&mut self) {
         for row in &mut self.out.backdrops {
-            if let BackdropRead::Pane { source, .. } = &mut row.read {
-                *source = PaneSource::Hidden;
+            if let BackdropRead::Capture { source, .. } = &mut row.read {
+                *source = BackdropSource::Hidden;
             }
         }
         self.out.discard_scene();

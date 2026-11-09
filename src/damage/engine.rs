@@ -4,12 +4,12 @@ use crate::cascade::Cascade;
 use crate::cascade::paint::PaintBlocks;
 use crate::cascade::paint::PaintRows;
 use crate::common::tracy;
+use crate::damage::backdrop_walk::BackdropWalk;
 use crate::damage::counters::DamageCounters;
-use crate::damage::dirty_panes::DirtyPanes;
+use crate::damage::dirty_backdrops::DirtyBackdrops;
 use crate::damage::frame_baseline::FrameBaseline;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
 use crate::damage::node_snapshot::NodeSnapshot;
-use crate::damage::pane_walk::PaneWalk;
 use crate::damage::plane_frame::PlaneFrame;
 use crate::damage::plane_walk::PlaneWalk;
 use crate::damage::region::{DamageRegion, MergePolicy};
@@ -40,9 +40,9 @@ pub(crate) struct DamageEngine {
 
     root_order: RootOrder,
 
-    /// Where the raw rects stand in paint order, the walk over the panes they reach, and the
-    /// panes it left stale.
-    panes: PaneWalk,
+    /// Where the raw rects stand in paint order, the walk over the backdrops they reach, and the
+    /// backdrops it left stale.
+    backdrops: BackdropWalk,
 
     pub(super) counters: DamageCounters,
 }
@@ -100,7 +100,7 @@ impl DamageEngine {
 
         // Pass 1: every source (structural diff, order inversions, predamaged anim rects, removed eviction tail) pushes into `raw_rects` unmerged.
         self.raw_rects.clear();
-        self.panes.start_frame(cascade);
+        self.backdrops.start_frame(cascade);
 
         for (ord, (plane, tree)) in forest.trees.iter_paint_order().enumerate() {
             let frame = PlaneFrame {
@@ -113,7 +113,7 @@ impl DamageEngine {
                 paints: &mut self.paints,
                 matcher: &mut self.matcher,
                 raw_rects: &mut self.raw_rects,
-                panes: &mut self.panes,
+                backdrops: &mut self.backdrops,
                 ord,
                 order_extents: &mut self.order_extents,
                 inversions: &mut self.inversions,
@@ -127,8 +127,8 @@ impl DamageEngine {
                 self.root_order.remember(frame);
             } else {
                 // A root's move reaches the whole plane.
-                self.panes
-                    .mark(self.raw_rects.len(), PaneWalk::position(ord, 0));
+                self.backdrops
+                    .mark(self.raw_rects.len(), BackdropWalk::position(ord, 0));
                 self.root_order.diff(frame, &mut self.raw_rects);
             }
         }
@@ -141,8 +141,8 @@ impl DamageEngine {
         // Predamaged anim rects: the structural diff is content-only and misses phase flips (bumping `node_hash` would invalidate MeasureCache for no layout change); the encoder's `PaintAnimationCursor::sample` decides per rect.
         self.extend_predamaged(&input);
 
-        // Removed-widget eviction tail: every remaining `prev` entry painted last frame. Pushed decomposed (chrome plus per-shape) so a multi-shape owner doesn't push the gaps. Its rows have no place this frame, so they stand before every pane.
-        self.panes.mark(self.raw_rects.len(), 0);
+        // Removed-widget eviction tail: every remaining `prev` entry painted last frame. Pushed decomposed (chrome plus per-shape) so a multi-shape owner doesn't push the gaps. Its rows have no place this frame, so they stand before every backdrop.
+        self.backdrops.mark(self.raw_rects.len(), 0);
         #[expect(
             clippy::iter_over_hash_type,
             reason = "a fixed hasher, so the eviction rects repeat from run to run"
@@ -155,16 +155,16 @@ impl DamageEngine {
             }
         }
 
-        if !self.panes.walk(cascade, forest, &mut self.raw_rects) {
+        if !self.backdrops.walk(cascade, forest, &mut self.raw_rects) {
             return self.note_presented(baseline, Some(Damage::Full));
         }
         let damage = self.finish_region(surface);
         self.note_presented(baseline, damage)
     }
 
-    /// The panes the last frame's damage left stale.
-    pub(crate) const fn dirty_panes(&self) -> &DirtyPanes {
-        self.panes.dirty()
+    /// The backdrops the last frame's damage left stale.
+    pub(crate) const fn dirty_backdrops(&self) -> &DirtyBackdrops {
+        self.backdrops.dirty()
     }
 
     /// Stamps the baseline a frame presents under and hands its damage back. Only a painted frame presents; stamping a skipped one would adopt a clear color no pixel was painted under.
@@ -197,10 +197,10 @@ impl DamageEngine {
             "a paint-only frame under a moved baseline: the frame plan must have recorded",
         );
         self.raw_rects.clear();
-        self.panes.start_frame(input.cascade);
+        self.backdrops.start_frame(input.cascade);
         self.extend_predamaged(&input);
         if !self
-            .panes
+            .backdrops
             .walk(input.cascade, input.forest, &mut self.raw_rects)
         {
             return self.note_presented(input.baseline, Some(Damage::Full));
@@ -229,8 +229,8 @@ impl DamageEngine {
                 let Some(row) = arena.shown_animation_row(e, surface) else {
                     continue;
                 };
-                self.panes
-                    .mark(self.raw_rects.len(), PaneWalk::position(ord, row));
+                self.backdrops
+                    .mark(self.raw_rects.len(), BackdropWalk::position(ord, row));
                 self.raw_rects.push(arena.rows[row as usize].screen);
             }
         }
@@ -244,13 +244,16 @@ impl DamageEngine {
         &self.raw_rects
     }
 
-    /// Mark pane `key` stale in this frame, as damage under it would.
+    /// Mark backdrop `key` stale in this frame, as damage under it would.
     #[expect(
         clippy::absolute_paths,
         reason = "a gated impl, whose type a gated import could not name"
     )]
-    pub(crate) fn force_stale_pane(&mut self, key: crate::primitives::identity::pane_key::PaneKey) {
-        self.panes.force_stale(key);
+    pub(crate) fn force_stale_backdrop(
+        &mut self,
+        key: crate::primitives::identity::backdrop_key::BackdropKey,
+    ) {
+        self.backdrops.force_stale(key);
     }
 }
 
@@ -287,11 +290,11 @@ pub(crate) mod internals {
                 order_extents,
                 inversions,
                 root_order,
-                panes,
+                backdrops,
                 counters: _,
             } = self;
             matcher.scratch_bytes()
-                + panes.scratch_bytes()
+                + backdrops.scratch_bytes()
                 + scratch_report::vec_bytes(raw_rects)
                 + scratch_report::vec_bytes(order_extents)
                 + inversions.scratch_bytes()

@@ -1,8 +1,8 @@
-//! One pane of a frame: what its capture reads and where its result comes from.
+//! One backdrop of a frame: what its capture reads and where its result comes from.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -10,23 +10,23 @@ use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::shape::paint::blur_plan::BlurPlan;
 
-/// What a pane's result is: the pane, the screen its capture reads, its blur, and the texels the
-/// result covers. The pane ledger decides it before a frame encodes, and the composer's row
-/// carries it to the backend.
+/// What a backdrop's result is: the backdrop, the screen its capture reads, its blur, and the
+/// texels the result covers. The backdrop ledger decides it before a frame encodes, and the
+/// composer's row carries it to the backend.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct PaneCapture {
-    /// The pane across frames, which its cached blur keys on.
-    pub(crate) key: PaneKey,
-    /// The physical px the pane's capture reads, inside the surface.
+pub(crate) struct BackdropCapture {
+    /// The backdrop across frames, which its cached blur keys on.
+    pub(crate) key: BackdropKey,
+    /// The physical px the backdrop's capture reads, inside the surface.
     pub(crate) footprint: URect,
     pub(crate) plan: BlurPlan,
-    /// The texels of the plan's last level the pane's result covers: its held capture's, or this
-    /// frame's where it takes a new one.
+    /// The texels of the plan's last level the backdrop's result covers: its held capture's, or
+    /// this frame's where it takes a new one.
     pub(crate) region: URect,
 }
 
-/// A backdrop the composer met: a pane, or a backdrop over the window's ground. Its effect
-/// instance's `pane` is its index in
+/// A backdrop the composer met: a captured one, or one over the window's ground. Its effect
+/// instance's `backdrop` is its index in
 /// [`RenderBuffer::backdrops`](crate::renderer::render_buffer::RenderBuffer::backdrops).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BackdropRow {
@@ -40,23 +40,23 @@ pub(crate) struct BackdropRow {
     pub(crate) read: BackdropRead,
 }
 
-/// What a backdrop reads: a pane's result, by the capture the pane ledger decided and where it
-/// comes from this frame, or the window's ground, the clear, while transparency is reduced, which
-/// captures nothing and holds no result.
+/// What a backdrop reads: its captured result, by the capture the backdrop ledger decided and where
+/// it comes from this frame, or the window's ground, the clear, while transparency is reduced,
+/// which captures nothing and holds no result.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum BackdropRead {
-    Pane {
-        capture: PaneCapture,
-        source: PaneSource,
+    Capture {
+        capture: BackdropCapture,
+        source: BackdropSource,
     },
     Ground,
 }
 
 impl BackdropRow {
-    /// The pane's capture; `None` over the ground.
-    pub(crate) const fn capture(&self) -> Option<&PaneCapture> {
+    /// The backdrop's capture; `None` over the ground.
+    pub(crate) const fn capture(&self) -> Option<&BackdropCapture> {
         match &self.read {
-            BackdropRead::Pane { capture, .. } => Some(capture),
+            BackdropRead::Capture { capture, .. } => Some(capture),
             BackdropRead::Ground => None,
         }
     }
@@ -96,10 +96,10 @@ impl MaterialLook {
     };
 }
 
-/// Where a pane's result comes from on one frame, as the composer sets it from the pane's
-/// [`PaneTicket`](crate::renderer::pane_captures::PaneTicket).
+/// Where a backdrop's result comes from on one frame, as the composer sets it from the backdrop's
+/// [`BackdropTicket`](crate::renderer::backdrop_captures::BackdropTicket).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PaneSource {
+pub(crate) enum BackdropSource {
     /// Its held result serves.
     Held,
     /// It captures the pixels painted before it out of the target and blurs them, which repaints
@@ -109,13 +109,13 @@ pub(crate) enum PaneSource {
     /// Nothing is painted before it, so its backdrop is the clear, which a blur leaves as it is:
     /// it shows the clear and neither captures nor blurs.
     Clear,
-    /// A later opaque quad over the whole surface folded into the clear and dropped the pane's
+    /// A later opaque quad over the whole surface folded into the clear and dropped the backdrop's
     /// draw. It shows nothing and neither captures nor blurs.
     Hidden,
 }
 
-impl PaneSource {
-    /// Whether the pane takes a new result this frame, from a capture or the clear.
+impl BackdropSource {
+    /// Whether the backdrop takes a new result this frame, from a capture or the clear.
     pub(crate) const fn is_new(self) -> bool {
         matches!(self, Self::Capture { .. } | Self::Clear)
     }
@@ -124,24 +124,25 @@ impl PaneSource {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::primitives::geometry::urect::URect;
-    use crate::primitives::identity::pane_key::PaneKey;
+    use crate::primitives::identity::backdrop_key::BackdropKey;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::render_buffer::backdrop_row::{
-        BackdropRead, BackdropRow, MaterialLook, PaneCapture, PaneSource,
+        BackdropCapture, BackdropRead, BackdropRow, BackdropSource, MaterialLook,
     };
     use crate::shape::paint::blur_plan::BlurPlan;
 
     impl BackdropRow {
-        /// Pane `i` of the owner `"pane"`, reading `footprint` blurred by `plan`, which holds its
-        /// result: no luminance bound, fill or border. Its region is `footprint` on the lattice.
+        /// Backdrop `i` of the owner `"backdrop"`, reading `footprint` blurred by `plan`, which
+        /// holds its result: no luminance bound, fill or border. Its region is `footprint` on the
+        /// lattice.
         pub(crate) fn fixture(i: u32, footprint: URect, plan: BlurPlan) -> Self {
             Self {
                 reads: footprint.into(),
                 look: Some(MaterialLook::PLAIN),
-                read: BackdropRead::Pane {
-                    capture: PaneCapture {
-                        key: PaneKey {
-                            owner: WidgetId::from_hash("pane"),
+                read: BackdropRead::Capture {
+                    capture: BackdropCapture {
+                        key: BackdropKey {
+                            owner: WidgetId::from_hash("backdrop"),
                             shape: i,
                         },
                         footprint,
@@ -150,23 +151,23 @@ pub(crate) mod internals {
                             .region(footprint, footprint.max())
                             .expect("a fixture's footprint paints"),
                     },
-                    source: PaneSource::Held,
+                    source: BackdropSource::Held,
                 },
             }
         }
 
-        /// Where the pane's result comes from; `None` over the ground.
-        pub(crate) const fn source(&self) -> Option<PaneSource> {
+        /// Where the backdrop's result comes from; `None` over the ground.
+        pub(crate) const fn source(&self) -> Option<BackdropSource> {
             match self.read {
-                BackdropRead::Pane { source, .. } => Some(source),
+                BackdropRead::Capture { source, .. } => Some(source),
                 BackdropRead::Ground => None,
             }
         }
 
-        /// This pane taking its result from `source`.
-        pub(crate) fn with_source(mut self, source: PaneSource) -> Self {
-            let BackdropRead::Pane { source: held, .. } = &mut self.read else {
-                panic!("a pane fixture reads a pane");
+        /// This backdrop taking its result from `source`.
+        pub(crate) fn with_source(mut self, source: BackdropSource) -> Self {
+            let BackdropRead::Capture { source: held, .. } = &mut self.read else {
+                panic!("a backdrop fixture reads a backdrop");
             };
             *held = source;
             self

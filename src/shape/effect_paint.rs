@@ -12,7 +12,7 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::shape::PaintedBy;
 use crate::shape::draw::Draw;
-use crate::shape::record::EffectPane;
+use crate::shape::record::EffectCapture;
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 
@@ -40,7 +40,7 @@ pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     name: EffectName<U, K>,
     params: U,
     /// What a backdrop effect reads under it; zero for a color effect, which reads none.
-    pane: EffectPane,
+    capture: EffectCapture,
     /// What a backdrop effect paints while transparency is reduced; a color effect reads none.
     reduced_transparency: ReducedBackdrop,
     /// The images bound, in slot order, each slot past the last `None`.
@@ -53,7 +53,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         Self {
             name,
             params,
-            pane: EffectPane::ZERO,
+            capture: EffectCapture::ZERO,
             reduced_transparency: ReducedBackdrop::Ground,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
         }
@@ -87,7 +87,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     /// Panics unless `sigma` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub const fn blur(mut self, sigma: f32) -> Self {
-        self.pane.sigma = domain::length(sigma);
+        self.capture.sigma = domain::length(sigma);
         self
     }
 
@@ -102,7 +102,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub const fn reach(mut self, px: f32) -> Self {
-        self.pane.reach = domain::length(px);
+        self.capture.reach = domain::length(px);
         self
     }
 
@@ -119,7 +119,7 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectPaint<U, K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EffectPaint")
             .field("name", &self.name)
-            .field("pane", &self.pane)
+            .field("capture", &self.capture)
             .field("reduced_transparency", &self.reduced_transparency)
             .field("images", &self.images)
             .finish_non_exhaustive()
@@ -155,7 +155,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         let Self {
             name,
             params,
-            pane,
+            capture,
             reduced_transparency,
             images,
         } = self;
@@ -163,7 +163,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
             name: name.typed(),
             kind: K::ID,
             params: bytemuck::bytes_of(params),
-            pane: *pane,
+            capture: *capture,
             reduced_transparency: *reduced_transparency,
             images,
         }
@@ -177,7 +177,7 @@ pub(crate) struct ErasedEffectPaint<'a> {
     pub(crate) name: TypedName,
     pub(crate) kind: KindId,
     pub(crate) params: &'a [u8],
-    pub(crate) pane: EffectPane,
+    pub(crate) capture: EffectCapture,
     pub(crate) reduced_transparency: ReducedBackdrop,
     pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
 }

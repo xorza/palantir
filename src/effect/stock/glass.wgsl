@@ -140,7 +140,7 @@ fn glass_spectrum(pos: vec2<f32>, outward: vec2<f32>, inward: f32, lens: vec4<f3
         glass_displacement(lens, inward, glass_index(lens, 1.0))
             - glass_displacement(lens, inward, glass_index(lens, 0.0)),
     );
-    let lattice = palantir_panes[palantir_pane].lattice;
+    let lattice = palantir_backdrops[palantir_backdrop_idx].lattice;
     if (lattice == 0.0 || spread * scale < 1e-3) {
         return effect_backdrop(pos - outward * glass_displacement(lens, inward, lens.z)).rgb;
     }

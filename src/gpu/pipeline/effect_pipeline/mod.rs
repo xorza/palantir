@@ -7,7 +7,7 @@ use std::mem::offset_of;
 
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
-use crate::effect::contract::{GRADIENTS_GROUP, IMAGES_GROUP, PANES_GROUP};
+use crate::effect::contract::{BACKDROPS_GROUP, GRADIENTS_GROUP, IMAGES_GROUP};
 use crate::effect::effect_store::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
@@ -25,10 +25,10 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 
-/// The layouts every effect's pipeline builds over: the parameter words at group 0, the images
-/// at [`IMAGES_GROUP`] for an effect that binds any, a backdrop effect's pane results at
-/// [`PANES_GROUP`] and the gradient atlas its material path reads at [`GRADIENTS_GROUP`], and the
-/// immediates every pipeline declares.
+/// The layouts every effect's pipeline builds over: the parameter words at group 0, the images at
+/// [`IMAGES_GROUP`] for an effect that binds any, a backdrop effect's backdrop results at
+/// [`BACKDROPS_GROUP`] and the gradient atlas its material path reads at [`GRADIENTS_GROUP`], and
+/// the immediates every pipeline declares.
 #[derive(Debug)]
 pub(crate) struct EffectLayouts {
     group: wgpu::BindGroupLayout,
@@ -73,7 +73,7 @@ impl EffectLayouts {
                 &[
                     Some(&group),
                     images(slots),
-                    Some(binding.panes()),
+                    Some(binding.backdrops()),
                     Some(binding.layout()),
                 ],
             )
@@ -138,7 +138,7 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = [
     vertex_attr(
         4,
         wgpu::VertexFormat::Uint32,
-        offset_of!(EffectInstance, pane),
+        offset_of!(EffectInstance, backdrop_idx),
     ),
     vertex_attr(
         5,
@@ -222,14 +222,14 @@ struct PipelinesCopy {
 }
 
 /// One batch of effect draws: the frame's per-draw effect column, this batch's slice of it, the
-/// groups the draws bind their images through, the group a backdrop effect reads its pane's result
-/// through, `None` before the first frame with a pane, and the gradient atlas's group.
+/// groups the draws bind their images through, the group a backdrop effect reads its backdrop's
+/// result through, `None` before the first frame with a backdrop, and the gradient atlas's group.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
     pub(crate) effects: &'a [EffectId],
     pub(crate) items: Span,
     pub(crate) groups: &'a EffectImageGroups,
-    pub(crate) panes: Option<&'a wgpu::BindGroup>,
+    pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
     pub(crate) gradients: &'a wgpu::BindGroup,
 }
 
@@ -327,7 +327,7 @@ impl EffectPipeline {
             effects,
             items,
             groups,
-            panes,
+            backdrops,
             gradients,
         }: EffectBatch<'_>,
     ) {
@@ -353,8 +353,9 @@ impl EffectPipeline {
                 rec.group_once(IMAGES_GROUP, images_group);
             }
             if kind == KindId::Backdrop {
-                let panes = panes.expect("a frame with a backdrop effect prepares its panes");
-                rec.group_once(PANES_GROUP, panes);
+                let backdrops =
+                    backdrops.expect("a frame with a backdrop effect prepares its backdrops");
+                rec.group_once(BACKDROPS_GROUP, backdrops);
                 rec.group_once(GRADIENTS_GROUP, gradients);
             }
             rec.draw(0..4, run.instances.u32_range());

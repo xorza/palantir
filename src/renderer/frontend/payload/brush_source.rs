@@ -10,7 +10,7 @@ use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 /// Lowered brush input: `Solid` (an `RgbaF16`) or `Gradient` (atlas row, axis, kind). An enum, so a
 /// solid holds no gradient axis; the lanes are derived from it once, as the payload is built.
 /// Refused: the resolver handing out the GPU lanes, `GpuFill` and `FillAxis`, where a solid
-/// carries a zeroed axis and a pane asks a kind tag whether its tint is solid.
+/// carries a zeroed axis and a backdrop asks a kind tag whether its fill is solid.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum BrushSource {
     Solid(RgbaF16),

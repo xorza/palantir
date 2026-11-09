@@ -3,7 +3,7 @@
 //! | gate | covers | budget |
 //! |---|---|---|
 //! | [`full_tree_cpu_frame_alloc_free`] | record through compose over each of the showcase's pages, real cosmic shaping, deviceless | strict zero |
-//! | [`backdrop::backdrop_cpu_frames_alloc_free`] | the same with three panes over it, plain, frosted and glass, still and with a pane going stale every frame | strict zero |
+//! | [`backdrop::backdrop_cpu_frames_alloc_free`] | the same with three materials over it, plain, frosted and glass, still and with a material going stale every frame | strict zero |
 //! | [`on_gpu::still_tree_frame_costs_the_empty_floor`] | a whole frame through `OffscreenHost::frame` over a still tree | an empty scene's cost through the same target |
 //! | [`on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | a frame under continuous zoom: full damage, glyph and icon rasterization | the measured miss cost |
 //!

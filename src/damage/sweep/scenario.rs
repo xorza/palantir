@@ -171,7 +171,8 @@ const INSPECTOR: Rect = Rect::new(1000.0, 0.0, 280.0, 720.0);
 const ONE_RECT_PCTS: [u32; 8] = [1, 5, 15, 25, 35, 45, 55, 75];
 
 fn single_rects(out: &mut Vec<Scenario>) {
-    // A small change under the toolbar of a stage with panes, which stales it and what it reaches.
+    // A small change under the toolbar of a stage with backdrops, which stales it and what it
+    // reaches.
     out.push(Scenario::still(
         "one/under_toolbar",
         Scope::Core,

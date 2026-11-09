@@ -132,7 +132,7 @@ mod present_mode_tests {
     }
 
     /// `d / (d + 400)`: 400 rows on a million pixels read one half, 1,200 three quarters, none
-    /// nothing. Twice the rows on twice the pixels is the same density. Panes over all of the
+    /// nothing. Twice the rows on twice the pixels is the same density. Backdrops over all of the
     /// surface count for 300 rows on a million pixels: 300 / 700 alone, 700 / 1,100 beside 400
     /// rows, and half the surface half of that.
     #[test]
@@ -180,12 +180,13 @@ mod present_mode_tests {
     fn the_sweeps_production_policy_is_the_frame_paths() {
         let stage = Stage::SCENE;
         let surface = stage.surface();
-        for (row_count, pane_share) in [(40_usize, 0.0), (400, 0.0), (400, 0.6), (40_000, 0.0)] {
-            let promote_share = promote_share(row_count, pane_share, stage.physical);
+        for (row_count, backdrop_share) in [(40_usize, 0.0), (400, 0.0), (400, 0.6), (40_000, 0.0)]
+        {
+            let promote_share = promote_share(row_count, backdrop_share, stage.physical);
             let facts = FrameFacts {
                 surface,
                 rows_per_mpx: rows_per_mpx(row_count, stage.physical),
-                pane_share,
+                backdrop_share,
             };
             for scenario in catalog() {
                 for raw in stage.raw_frames(&scenario) {
@@ -1340,13 +1341,13 @@ mod escalation_tests {
     use crate::gpu::frame::submission::Route;
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::identity::pane_key::PaneKey;
+    use crate::primitives::identity::backdrop_key::BackdropKey;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
     use crate::primitives::paint::paint::Paint;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::render_buffer::backdrop_row::PaneSource;
+    use crate::renderer::render_buffer::backdrop_row::BackdropSource;
     use crate::renderer::render_plan::RenderPlan;
     use crate::shape::Shape;
     use crate::ui::Ui;
@@ -1365,14 +1366,14 @@ mod escalation_tests {
     const SIDE: f32 = 400.0;
     const PHYSICAL: UVec2 = UVec2::splat(400);
 
-    /// One frame's facts. Panes are bars the full height of the surface, 8 wide and 40 apart.
+    /// One frame's facts. Backdrops are bars the full height of the surface, 8 wide and 40 apart.
     #[derive(Clone, Copy, Debug)]
     struct Row {
         what: &'static str,
         strategy: PresentStrategy,
         /// Bands the full width of the surface, 10 high and 80 apart.
         bands: u32,
-        panes: u32,
+        backdrops: u32,
         outlined: bool,
         gives_copy: bool,
         fresh: bool,
@@ -1386,7 +1387,7 @@ mod escalation_tests {
         what: "",
         strategy: Retained,
         bands: 1,
-        panes: 0,
+        backdrops: 0,
         outlined: false,
         gives_copy: true,
         fresh: false,
@@ -1394,10 +1395,10 @@ mod escalation_tests {
         whole: false,
     };
 
-    /// `count` panes, each a bar as [`Row`] says.
+    /// `count` backdrops, each a bar as [`Row`] says.
     fn bars(ui: &mut Ui, count: u32) {
         Panel::canvas()
-            .id_salt("panes")
+            .id_salt("backdrops")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for i in 0..count {
@@ -1439,7 +1440,7 @@ mod escalation_tests {
         };
         frames.note_target(&spec);
         frames.target_outlined = row.outlined;
-        let mut app = |ui: &mut Ui| bars(ui, row.panes);
+        let mut app = |ui: &mut Ui| bars(ui, row.backdrops);
         let stamp = frames.stamp(&spec);
         let _ = frames.frame(stamp, &mut app);
         let plan = bands(row.bands);
@@ -1463,11 +1464,11 @@ mod escalation_tests {
         job.fitted.path
     }
 
-    /// A composed frame past the capture cap builds whole under a whole frame's tickets, so a pane
-    /// whose capture would still serve captures too: 9 panes lost theirs, and the tenth holds its
-    /// own until the frame overflows.
+    /// A composed frame past the capture cap builds whole under a whole frame's tickets, so a
+    /// backdrop whose capture would still serve captures too: 9 backdrops lost theirs, and the
+    /// tenth holds its own until the frame overflows.
     #[test]
-    fn a_composed_frame_past_the_cap_captures_every_pane() {
+    fn a_composed_frame_past_the_cap_captures_every_backdrop() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
         let mut frames = new_frames(WindowToken(1), &shared, config(Retained, true));
@@ -1476,15 +1477,15 @@ mod escalation_tests {
         let stamp = frames.stamp(&spec(PHYSICAL, 1.0));
         let report = frames.frame(stamp, &mut app);
         frames.compose(&mut frontend, report.plan.expect("a first frame paints"));
-        let keys: Vec<PaneKey> = frames
+        let keys: Vec<BackdropKey> = frames
             .ui
             .frame_scene()
-            .panes()
-            .map(|pane| pane.key)
+            .backdrops()
+            .map(|backdrop| backdrop.key)
             .collect();
         assert_eq!(keys.len(), 10);
         for &key in &keys[..9] {
-            frames.pane_captures.forget(key);
+            frames.backdrop_captures.forget(key);
         }
 
         frames.compose(&mut frontend, bands(1));
@@ -1493,14 +1494,14 @@ mod escalation_tests {
             .buffer
             .backdrops
             .iter()
-            .filter(|row| row.source() == Some(PaneSource::Held))
+            .filter(|row| row.source() == Some(BackdropSource::Held))
             .count();
         assert_eq!(frontend.buffer.backdrops.len(), 10);
         assert_eq!(held, 0);
     }
 
-    /// 8 panes fill the capture cap; a ninth paints whole. Under 8 bars, each band splits into 9
-    /// pieces, so 3 bands hold 8 + 27 = 35 scissors of the 40 the cap holds, and 4 hold 44. A
+    /// 8 backdrops fill the capture cap; a ninth paints whole. Under 8 bars, each band splits into
+    /// 9 pieces, so 3 bands hold 8 + 27 = 35 scissors of the 40 the cap holds, and 4 hold 44. A
     /// target that loses its kept pixels goes through the backbuffer: partial when that holds the
     /// last frame, else whole. A whole frame after a refusal takes the strategy's own path.
     #[test]
@@ -1537,20 +1538,20 @@ mod escalation_tests {
                 ..desktop
             },
             Row {
-                what: "desktop: 8 panes fit",
-                panes: 8,
+                what: "desktop: 8 backdrops fit",
+                backdrops: 8,
                 ..desktop
             },
             Row {
-                what: "desktop: 9 panes, whole direct",
-                panes: 9,
+                what: "desktop: 9 backdrops, whole direct",
+                backdrops: 9,
                 through_backbuffer: false,
                 whole: true,
                 ..desktop
             },
             Row {
                 what: "desktop: 44 scissors, whole direct",
-                panes: 8,
+                backdrops: 8,
                 bands: 4,
                 through_backbuffer: false,
                 whole: true,
@@ -1565,43 +1566,43 @@ mod escalation_tests {
                 ..copy
             },
             Row {
-                what: "a pane that copies out stays direct",
-                panes: 1,
+                what: "a backdrop that copies out stays direct",
+                backdrops: 1,
                 ..KEPT
             },
             Row {
-                what: "8 panes fit",
-                panes: 8,
+                what: "8 backdrops fit",
+                backdrops: 8,
                 ..KEPT
             },
             Row {
-                what: "9 panes: kept, whole direct",
-                panes: 9,
+                what: "9 backdrops: kept, whole direct",
+                backdrops: 9,
                 whole: true,
                 ..KEPT
             },
             Row {
-                what: "9 panes: copy, whole",
-                panes: 9,
+                what: "9 backdrops: copy, whole",
+                backdrops: 9,
                 whole: true,
                 ..copy
             },
             Row {
                 what: "35 scissors fit",
-                panes: 8,
+                backdrops: 8,
                 bands: 3,
                 ..KEPT
             },
             Row {
                 what: "44 scissors: kept, whole direct",
-                panes: 8,
+                backdrops: 8,
                 bands: 4,
                 whole: true,
                 ..KEPT
             },
             Row {
                 what: "44 scissors: copy, whole",
-                panes: 8,
+                backdrops: 8,
                 bands: 4,
                 whole: true,
                 ..copy
@@ -1619,21 +1620,21 @@ mod escalation_tests {
                 ..through
             },
             Row {
-                what: "no copy, no pane",
+                what: "no copy, no backdrop",
                 gives_copy: false,
                 ..KEPT
             },
             Row {
-                what: "no copy, a pane, fresh",
+                what: "no copy, a backdrop, fresh",
                 gives_copy: false,
-                panes: 1,
+                backdrops: 1,
                 fresh: true,
                 ..through
             },
             Row {
-                what: "no copy, a pane, stale",
+                what: "no copy, a backdrop, stale",
                 gives_copy: false,
-                panes: 1,
+                backdrops: 1,
                 whole: true,
                 ..through
             },
@@ -1673,9 +1674,9 @@ mod capture_path_tests {
     use crate::window::window_token::WindowToken;
     use glam::UVec2;
 
-    /// The present path of a fresh window's first frame, whole, under one pane at `pane` on a
-    /// 100 × 80 target that gives a copy when `gives_copy` is.
-    fn first_frame(pane: Rect, gives_copy: bool) -> PaintPath {
+    /// The present path of a fresh window's first frame, whole, under one backdrop at `backdrop` on
+    /// a 100 × 80 target that gives a copy when `gives_copy` is.
+    fn first_frame(backdrop: Rect, gives_copy: bool) -> PaintPath {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::for_test();
         let mut frames = new_frames(
@@ -1694,7 +1695,7 @@ mod capture_path_tests {
         frames.note_target(&spec);
         let mut app = |ui: &mut Ui| {
             Panel::canvas()
-                .id_salt("panes")
+                .id_salt("backdrops")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     ui.add_shape(
@@ -1702,7 +1703,7 @@ mod capture_path_tests {
                         RgbaF32::WHITE,
                     );
                     ui.add_shape(
-                        Shape::rect().at(pane),
+                        Shape::rect().at(backdrop),
                         Paint::NONE.with_material(Material::blur(2.0)),
                     );
                 });
@@ -1722,12 +1723,12 @@ mod capture_path_tests {
     fn a_capturing_frame_paints_through_the_backbuffer_where_its_captures_outweigh_it() {
         let small = Rect::new(4.0, 4.0, 20.0, 20.0);
         let whole = Rect::new(0.0, 0.0, 100.0, 80.0);
-        for (pane, gives_copy, through, what) in [
+        for (backdrop, gives_copy, through, what) in [
             (small, true, false, "a small capture"),
             (small, false, true, "a target that gives no copy"),
             (whole, true, true, "a capture of the whole surface"),
         ] {
-            let path = first_frame(pane, gives_copy);
+            let path = first_frame(backdrop, gives_copy);
             assert_eq!(
                 path.route == Route::ViaBackbuffer,
                 through,

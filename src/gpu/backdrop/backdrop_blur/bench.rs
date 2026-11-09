@@ -4,7 +4,7 @@
 //!   from its capture into its result. Each σ names its levels: 1 and 4 px stay at full
 //!   resolution, 16 px halves twice, 48 px four times and 160 px six.
 //! - `atomic/backdrop_blur/gpu/jobs/<n>`: `n` blurs of 8 × 8 texels at σ 32 px, three halvings,
-//!   apart on a 2048² surface, in one set of passes, as panes that share a break blur: the cost
+//!   apart on a 2048² surface, in one set of passes, as backdrops that share a break blur: the cost
 //!   a set of passes pays whatever it blurs.
 
 use crate::bench::backends::Backends;

@@ -40,7 +40,7 @@ const SURFACE: Rect = Rect::new(0.0, 0.0, 1280.0, 720.0);
 const FACTS: FrameFacts = FrameFacts {
     surface: SURFACE,
     rows_per_mpx: 400.0,
-    pane_share: 0.0,
+    backdrop_share: 0.0,
 };
 
 /// What production decides for the one frame of `name`.
@@ -190,26 +190,26 @@ fn each_knob_moves_a_decision() {
         rows_per_mpx: 40.0,
         ..FACTS
     };
-    // Panes on half the surface count for 150 rows per Mpx under production: a thin screen's share
-    // of 0.09 rises to 190 / 590 = 0.32, which holds 25 % as partial, and does not under a rule that
-    // counts no pane.
-    let under_panes = FrameFacts {
-        pane_share: 0.5,
+    // Backdrops on half the surface count for 150 rows per Mpx under production: a thin screen's
+    // share of 0.09 rises to 190 / 590 = 0.32, which holds 25 % as partial, and does not under a
+    // rule that counts no backdrop.
+    let under_backdrops = FrameFacts {
+        backdrop_share: 0.5,
         ..thin
     };
-    let no_panes = Policy {
+    let no_backdrops = Policy {
         promote: Promote::Density {
             half_rows_per_mpx: 400.0,
-            pane_rows_per_mpx: 0.0,
+            backdrop_rows_per_mpx: 0.0,
         },
         ..Policy::PRODUCTION
     };
     assert!(matches!(
-        decide("one/block_25", Policy::PRODUCTION, &under_panes),
+        decide("one/block_25", Policy::PRODUCTION, &under_backdrops),
         Decision::Partial(_)
     ));
     assert_eq!(
-        decide("one/block_25", no_panes, &under_panes),
+        decide("one/block_25", no_backdrops, &under_backdrops),
         Decision::Full
     );
     assert_eq!(
@@ -219,7 +219,7 @@ fn each_knob_moves_a_decision() {
     let wider_half = Policy {
         promote: Promote::Density {
             half_rows_per_mpx: 8.0,
-            pane_rows_per_mpx: 0.0,
+            backdrop_rows_per_mpx: 0.0,
         },
         ..Policy::PRODUCTION
     };
@@ -619,10 +619,10 @@ fn order_outcomes_finds_a_fold_that_depends_on_its_order() {
 }
 
 /// The dense stage at 4K holds the reference window at 1.5×, the 1× one at 1×. A glass frame's rect
-/// that touches a pane adds the pane's rect after it, as a stale pane's joins a real frame's damage;
+/// that touches a backdrop adds the backdrop's rect after it, as a stale backdrop's joins a real frame's damage;
 /// rects far from both add none.
 #[test]
-fn a_stage_scales_rects_and_adds_the_panes_they_touch() {
+fn a_stage_scales_rects_and_adds_the_backdrops_they_touch() {
     let stage = |name: &str| Stage::ALL.into_iter().find(|s| s.name == name).unwrap();
     let sidebar = named("pair/bars_left_right");
     assert_eq!(stage("dense_1x").surface(), SURFACE);
@@ -638,10 +638,10 @@ fn a_stage_scales_rects_and_adds_the_panes_they_touch() {
         stage("glass").raw_frames(&named("pair/corners"))[0].len(),
         2
     );
-    // The middle block reaches the middle pane, (500, 200) + 320 × 220, and not the one at
+    // The middle block reaches the middle backdrop, (500, 200) + 320 × 220, and not the one at
     // (40, 400) + 240 × 240.
     // A square under the toolbar reaches it, and its rect reaches the sidebar's footprint, as a
-    // walk stales the panes above a stale one; the popup stays out of both.
+    // walk stales the backdrops above a stale one; the popup stays out of both.
     assert_eq!(
         stage("scene_glass").raw_frames(&named("one/under_toolbar"))[0],
         [
@@ -686,17 +686,17 @@ fn a_scene_counts_the_rows_that_draw_on_the_surface() {
     assert_eq!(count(3), 1);
 }
 
-/// Two panes over a whole window read a share of 2, each counted alone, and none reads 0.
+/// Two backdrops over a whole window read a share of 2, each counted alone, and none reads 0.
 #[test]
-fn a_scene_reads_the_share_its_panes_hold() {
-    let share = |pane_count| {
+fn a_scene_reads_the_share_its_backdrops_hold() {
+    let share = |backdrop_count| {
         let mut h = Harness::builder(glam::UVec2::new(100, 100)).mono().build();
         let record = |ui: &mut Ui| {
             Panel::canvas()
-                .id_salt("share-panes")
+                .id_salt("share-backdrops")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    for _ in 0..pane_count {
+                    for _ in 0..backdrop_count {
                         ui.add_shape(
                             Shape::rect().at(Rect::new(0.0, 0.0, 100.0, 100.0)),
                             Paint::from(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
@@ -705,7 +705,7 @@ fn a_scene_reads_the_share_its_panes_hold() {
                 });
         };
         h.frame(record);
-        h.frames().ui().frame_scene().pane_share()
+        h.frames().ui().frame_scene().backdrop_share()
     };
     assert_eq!(share(0), 0.0);
     assert_eq!(share(1), 1.0);

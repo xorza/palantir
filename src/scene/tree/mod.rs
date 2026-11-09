@@ -6,12 +6,12 @@
 //! [`paint_sink`](crate::renderer::frontend::paint_sink)). Partial-noop chrome is
 //! dropped per emit downstream.
 
+pub(crate) mod backdrop_entry;
 pub(crate) mod extras_idx;
 pub(crate) mod iter;
 pub(crate) mod node_id;
 pub(crate) mod node_record;
 pub(crate) mod paint_animations;
-pub(crate) mod pane_entry;
 pub(crate) mod recording_scratch;
 mod rollup_inputs;
 pub(crate) mod root_slot;
@@ -38,12 +38,12 @@ use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::scrollbars_def::ResolvedScrollbarsDef;
+use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::node_record::NodeRecord;
 use crate::scene::tree::paint_animations::PaintAnimations;
-use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
 #[cfg(debug_assertions)]
 use crate::scene::tree::rollup_inputs::RollupCheck;
@@ -93,8 +93,8 @@ pub(crate) struct Tree {
     /// Sparse shape-keyed paint animations, cleared in `pre_record`. Sampling is a
     /// pure function of `now`, so no timestamps are stored.
     pub(crate) paint_animations: PaintAnimations,
-    /// The backdrop panes recorded this frame, in shape order; cleared in `pre_record`.
-    pub(crate) panes: Vec<PaneEntry>,
+    /// The backdrops recorded this frame, in shape order; cleared in `pre_record`.
+    pub(crate) backdrops: Vec<BackdropEntry>,
 
     pub(crate) rollups: SubtreeRollups,
     pub(crate) fingerprint: TreeFingerprint,
@@ -118,16 +118,16 @@ pub(crate) struct NodeChrome<'a> {
 }
 
 impl Tree {
-    /// Push `record`, recorded in `frame`, into the shape buffer, and list it among the panes when
-    /// it reads a backdrop and its node paints, returning its index.
+    /// Push `record`, recorded in `frame`, into the shape buffer, and list it among the backdrop
+    /// readers when it reads one and its node paints, returning its index.
     pub(crate) fn push_shape(&mut self, record: ShapeRecord, frame: &OpenFrame) -> u32 {
-        let is_pane = record.is_pane();
+        let reads_backdrop = record.reads_backdrop();
         let shape_idx = self.shapes.push(record);
-        if is_pane && !frame.inherited.invisible {
-            self.panes.push(PaneEntry {
+        if reads_backdrop && !frame.inherited.invisible {
+            self.backdrops.push(BackdropEntry {
                 node: frame.node,
                 shape_idx,
-                origin: PaneOrigin::Shape,
+                origin: BackdropOrigin::Shape,
                 row: frame.paint_rows,
             });
         }
@@ -179,7 +179,7 @@ impl Tree {
             scrollbar_defs,
             roots,
             paint_animations,
-            panes,
+            backdrops,
             rollups: _,
             fingerprint: _,
             container_text: _,
@@ -200,7 +200,7 @@ impl Tree {
         *focus_ring = LoweredBorder::default();
         shape_records.clear();
         paint_animations.clear();
-        panes.clear();
+        backdrops.clear();
         roots.clear();
     }
 
@@ -548,7 +548,7 @@ impl Tree {
         let inherited = parent_frame
             .map_or(Inherited::ROOT, |f| f.inherited)
             .child(cols.attrs, cols.layout.meta.visibility());
-        // A chrome whose material captures is a pane at the node's first row.
+        // A chrome whose material captures reads a backdrop at the node's first row.
         if !inherited.invisible
             && ex.chrome.is_some_and(|row| {
                 self.chrome_table[row.idx()]
@@ -556,10 +556,10 @@ impl Tree {
                     .is_some_and(LoweredMaterial::captures)
             })
         {
-            self.panes.push(PaneEntry {
+            self.backdrops.push(BackdropEntry {
                 node: new_id,
                 shape_idx: self.shapes.records.len() as u32,
-                origin: PaneOrigin::Chrome,
+                origin: BackdropOrigin::Chrome,
                 row: 0,
             });
         }

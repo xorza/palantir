@@ -1,18 +1,19 @@
-//! A frame's panes on the device: their blurs, cached across frames, and the results their quads
-//! composite.
+//! A frame's backdrops on the device: their blurs, cached across frames, and the results their
+//! quads composite.
 //!
 //! # Decisions
 //!
-//! - **What a large pane grows expires after idle.** The results atlas packs its results back
-//!   into a texture of its budget [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames after it last grew past it, and every
-//!   as many after, once they fit; the blur's capture, levels and scratch step down at the end of
-//!   each such window to what its frames read. One full-window 4K glass pane otherwise holds about
-//!   240 MiB for the session, and two take the atlas to 8192², 512 MiB. Chromium's
-//!   `cc::ResourcePool` expires resources unused for `kDefaultExpirationDelay`, and Flutter's
-//!   `RasterCache::EvictUnusedCacheEntries` drops what a frame did not meet. Refused: the
-//!   high-water mark kept for the session; results capped at the budget, which blurs a large pane
-//!   again every frame. Cost: the frame that shrinks the atlas copies its results, up to the 32 MiB
-//!   budget, and a pane that comes back grows it again.
+//! - **What a large backdrop grows expires after idle.** The results atlas packs its results back
+//!   into a texture of its budget
+//!   [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames after it
+//!   last grew past it, and every as many after, once they fit; the blur's capture, levels and
+//!   scratch step down at the end of each such window to what its frames read. One full-window 4K
+//!   glass backdrop otherwise holds about 240 MiB for the session, and two take the atlas to 8192²,
+//!   512 MiB. Chromium's `cc::ResourcePool` expires resources unused for `kDefaultExpirationDelay`,
+//!   and Flutter's `RasterCache::EvictUnusedCacheEntries` drops what a frame did not meet. Refused:
+//!   the high-water mark kept for the session; results capped at the budget, which blurs a large
+//!   backdrop again every frame. Cost: the frame that shrinks the atlas copies its results, up to
+//!   the 32 MiB budget, and a backdrop that comes back grows it again.
 
 use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, TargetSource,
@@ -28,14 +29,14 @@ use crate::gpu::spectrum_tables::SpectrumTables;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::identity::pane_key::PaneKey;
-use crate::primitives::identity::pane_keys::PaneKeys;
+use crate::primitives::identity::backdrop_key::BackdropKey;
+use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::material::lens_optics::SPECTRUM_SAMPLES;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{
-    BackdropRead, BackdropRow, MaterialLook, PaneSource,
+    BackdropRead, BackdropRow, BackdropSource, MaterialLook,
 };
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
@@ -43,9 +44,9 @@ use std::cmp::Reverse;
 use std::ops::Range;
 
 /// How a backdrop's composite finds its result and, for a material, holds and covers it, as
-/// `effect/backdrop.wgsl` declares `PalantirPane`: the result's texel coordinate of the lattice's
-/// first texel, the physical px of a texel, or 0 for a backdrop that shows `clear`; the rect it
-/// reads, `(min, max)`; and the material's look ([`MaterialLook`]).
+/// `effect/backdrop.wgsl` declares `PalantirBackdrop`: the result's texel coordinate of the
+/// lattice's first texel, the physical px of a texel, or 0 for a backdrop that shows `clear`; the
+/// rect it reads, `(min, max)`; and the material's look ([`MaterialLook`]).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct BackdropSlot {
@@ -66,11 +67,13 @@ struct BackdropSlot {
 }
 
 impl BackdropSlot {
-    /// How `row`'s composite finds `kept`, its result: a slot of the atlas, for a pane alone.
+    /// How `row`'s composite finds `kept`, its result: a slot of the atlas, for a backdrop alone.
     fn of(row: &BackdropRow, kept: Kept) -> Self {
         let (offset, lattice, clear) = match kept {
             Kept::Slot(slot) => {
-                let capture = row.capture().expect("a result in the atlas is a pane's");
+                let capture = row
+                    .capture()
+                    .expect("a result in the atlas is a backdrop's");
                 let apron = UVec2::splat(capture.plan.apron());
                 let offset = (slot.min + apron).as_vec2() - capture.region.min.as_vec2();
                 (offset, capture.plan.lattice() as f32, [0.0; 3])
@@ -128,32 +131,32 @@ impl SpectrumCell {
     }
 }
 
-/// A new slot's edges round up to this many texels, so a pane that grows a few px a frame keeps
+/// A new slot's edges round up to this many texels, so a backdrop that grows a few px a frame keeps
 /// its slot rather than taking a new one each frame.
 const SLOT_GRANULE: u32 = 16;
 
 /// The side the results atlas starts at; it doubles when a result finds no room.
 const FIRST_SIDE: u32 = 1024;
 
-/// The bytes the results atlas grows to before it evicts results no pane of the frame reads:
-/// 2048² of `Rgba16Float`, which holds a 1920 × 1080 pane at full resolution, or a 3840 × 2160 one
-/// halved. Past it the atlas grows only for the frame's own results, up to the device's edge.
+/// The bytes the results atlas grows to before it evicts results no backdrop of the frame reads:
+/// 2048² of `Rgba16Float`, which holds a 1920 × 1080 backdrop at full resolution, or a 3840 × 2160
+/// one halved. Past it the atlas grows only for the frame's own results, up to the device's edge.
 const RESULTS_BUDGET: u64 = 32 << 20;
 
-/// A pane's result kept across frames, and the [`Backdrops::prepare`] call that last used it.
+/// A backdrop's result kept across frames, and the [`Backdrops::prepare`] call that last used it.
 #[derive(Clone, Copy, Debug)]
 struct Cached {
     kept: Kept,
     used: u64,
 }
 
-/// What a kept result holds, under the plan and region its row names: the pane ledger says what
+/// What a kept result holds, under the plan and region its row names: the backdrop ledger says what
 /// it blurred.
 #[derive(Clone, Copy, Debug)]
 enum Kept {
     /// The atlas texels the result and its apron hold.
     Slot(URect),
-    /// The linear clear the pane shows, as the target holds it.
+    /// The linear clear the backdrop shows, as the target holds it.
     Clear([f32; 3]),
 }
 
@@ -179,7 +182,7 @@ pub(crate) struct FrameBackbuffer<'a> {
     pub(crate) source: &'a mut Option<TargetSource>,
 }
 
-/// The panes that capture at one break of the main pass: the barrier it breaks at, and their
+/// The backdrops that capture at one break of the main pass: the barrier it breaks at, and their
 /// blurs, which run in one set of passes.
 #[derive(Clone, Debug)]
 pub(crate) struct BlurBreak {
@@ -187,45 +190,45 @@ pub(crate) struct BlurBreak {
     pub(crate) jobs: Range<usize>,
 }
 
-/// Every window's panes blurred into one atlas, a slot each, kept while a pane's backdrop holds,
-/// and the group their quads read it through. What the panes hold on the device is made on the
-/// first frame with a pane, so an app with none pays for no pipeline and no atlas; its buffers
-/// grow to the largest frame seen and are kept, and its textures expire after idle, as the
+/// Every window's backdrops blurred into one atlas, a slot each, kept while what lies under each
+/// holds, and the group their quads read it through. What the backdrops hold on the device is made
+/// on the first frame with a backdrop, so an app with none pays for no pipeline and no atlas; its
+/// buffers grow to the largest frame seen and are kept, and its textures expire after idle, as the
 /// module's decisions say.
 ///
-/// At its byte budget the atlas evicts the least recently used results no pane of the frame reads,
-/// from any window, and lists them ([`Self::evicted`]) for each window's pane ledger to drop. With
-/// none left to evict it grows past the budget, to the device's edge; a result that finds no room
-/// even then shows its tint over the clear and captures again.
+/// At its byte budget the atlas evicts the least recently used results no backdrop of the frame
+/// reads, from any window, and lists them ([`Self::evicted`]) for each window's backdrop ledger to
+/// drop. With none left to evict it grows past the budget, to the device's edge; a result that
+/// finds no room even then shows its fill over the clear and captures again.
 ///
 /// Refused: a texture of its own for a result wider than half the atlas, which would keep a full
-/// screen pane from doubling the atlas, as every pane's composite reads its result through the
-/// one group the effect pipeline binds, and a second texture would split their draws.
+/// screen backdrop from doubling the atlas, as every backdrop's composite reads its result through
+/// the one group the effect pipeline binds, and a second texture would split their draws.
 #[derive(Debug)]
 pub(crate) struct Backdrops {
-    cache: FxHashMap<(RenderOwnerId, PaneKey), Cached>,
+    cache: FxHashMap<(RenderOwnerId, BackdropKey), Cached>,
     /// How many times [`Self::prepare`] ran, the stamp of the results its frame reads.
     prepared: u64,
-    /// The results evicted from a window's panes, until its pane ledger drops them.
-    evicted: Vec<(RenderOwnerId, PaneKey)>,
+    /// The results evicted from a window's backdrops, until its backdrop ledger drops them.
+    evicted: Vec<(RenderOwnerId, BackdropKey)>,
     /// This frame's blurs and the breaks they run at, in paint order.
     jobs: Vec<BlurJob>,
     breaks: Vec<BlurBreak>,
     slots: Vec<BackdropSlot>,
-    /// The layout of the group a pane's composite reads its result through
-    /// ([`TextureBinding::panes`]); the group itself waits for a pane.
+    /// The layout of the group a backdrop's composite reads its result through
+    /// ([`TextureBinding::backdrops`]); the group itself waits for a backdrop.
     layout: wgpu::BindGroupLayout,
-    /// The results atlas the first frame with a pane makes, which takes it.
+    /// The results atlas the first frame with a backdrop makes, which takes it.
     atlas_spec: Option<AtlasSpec>,
     /// The expiry window since the results atlas last grew past its budget or last tried to
     /// shrink back.
     past_budget: ExpiryWindow,
     /// The results a shrink moves with their slots, tallest first, and the slots alone, which
     /// the shrink rewrites.
-    moving: Vec<((RenderOwnerId, PaneKey), URect)>,
+    moving: Vec<((RenderOwnerId, BackdropKey), URect)>,
     moving_slots: Vec<URect>,
-    /// What the panes hold on the device, from the first frame with a pane.
-    resources: Option<PaneResources>,
+    /// What the backdrops hold on the device, from the first frame with a backdrop.
+    resources: Option<BackdropResources>,
 }
 
 /// What [`Backdrops`] holds on the device once a frame has a backdrop: the results atlas, the slot
@@ -233,7 +236,7 @@ pub(crate) struct Backdrops {
 /// spreads ([`SpectrumCell`]), written once; and the blur, made at the first frame that blurs, as a
 /// frame of backdrops over the ground and of held results blurs nothing.
 #[derive(Debug)]
-struct PaneResources {
+struct BackdropResources {
     blur: Option<BackdropBlur>,
     atlas: PackedAtlas,
     slot_buffer: DynamicBuffer<BackdropSlot>,
@@ -244,7 +247,7 @@ struct PaneResources {
     group_capacity: usize,
 }
 
-impl PaneResources {
+impl BackdropResources {
     fn new(gpu: &Gpu, layout: &wgpu::BindGroupLayout, atlas: AtlasSpec) -> Self {
         let slot_buffer = DynamicBuffer::storage(gpu, "palantir.backdrop.slots", 4);
         let atlas = PackedAtlas::new(gpu, atlas, FIRST_SIDE);
@@ -295,7 +298,7 @@ impl PaneResources {
     }
 }
 
-/// What the group a pane's composite reads its result through binds.
+/// What the group a backdrop's composite reads its result through binds.
 #[derive(Clone, Copy, Debug)]
 struct CompositeParts<'a> {
     atlas: &'a PackedAtlas,
@@ -341,7 +344,7 @@ fn composite_group(
 }
 
 impl Backdrops {
-    /// Panes whose composites read their results through `binding`'s pane group.
+    /// Backdrops whose composites read their results through `binding`'s backdrop group.
     pub(crate) fn new(gpu: &Gpu, binding: &TextureBinding) -> Self {
         Self::with_limits(binding, gpu.max_texture_dim().get(), RESULTS_BUDGET)
     }
@@ -356,7 +359,7 @@ impl Backdrops {
             jobs: Vec::new(),
             breaks: Vec::new(),
             slots: Vec::new(),
-            layout: binding.panes().clone(),
+            layout: binding.backdrops().clone(),
             atlas_spec: Some(AtlasSpec {
                 label: "palantir.backdrop.results".to_owned(),
                 format: LEVEL_FORMAT,
@@ -373,15 +376,15 @@ impl Backdrops {
         }
     }
 
-    /// The group the last prepared frame's panes read their results through; `None` before the
-    /// first frame with a pane.
+    /// The group the last prepared frame's backdrops read their results through; `None` before the
+    /// first frame with a backdrop.
     pub(crate) fn group(&self) -> Option<&wgpu::BindGroup> {
         self.resources.as_ref().map(|resources| &resources.group)
     }
 
-    /// Give each of the frame's panes its result: a blur into a slot of the atlas for one that
+    /// Give each of the frame's backdrops its result: a blur into a slot of the atlas for one that
     /// captures, as its row says, else the result it holds. Drops the results of the owner's
-    /// panes that left, and writes what the blurs and the quads read.
+    /// backdrops that left, and writes what the blurs and the quads read.
     pub(crate) fn prepare(&mut self, ctx: &mut GpuCtx<'_>, frame: BackdropFrame<'_>) {
         let BackdropFrame {
             buffer,
@@ -390,7 +393,7 @@ impl Backdrops {
             clear,
             backbuffer,
         } = frame;
-        self.evict(owner, &buffer.live_panes);
+        self.evict(owner, &buffer.live_backdrops);
         self.prepared += 1;
         self.jobs.clear();
         self.breaks.clear();
@@ -403,7 +406,7 @@ impl Backdrops {
                 .atlas_spec
                 .take()
                 .expect("the results atlas is made once");
-            PaneResources::new(ctx.gpu, &self.layout, spec)
+            BackdropResources::new(ctx.gpu, &self.layout, spec)
         });
         let shrank = self.shrink_atlas(ctx);
         // Every result the frame reads is stamped first, so making room for one never evicts
@@ -416,9 +419,9 @@ impl Backdrops {
         let surface = buffer.display.physical;
         for row in &buffer.backdrops {
             let (capture, source) = match row.read {
-                BackdropRead::Pane { capture, source } => (capture, source),
-                // The ground is the clear, as a pane with nothing painted before it shows, and it
-                // holds no result.
+                BackdropRead::Capture { capture, source } => (capture, source),
+                // The ground is the clear, as a backdrop with nothing painted before it shows, and
+                // it holds no result.
                 BackdropRead::Ground => {
                     self.slots.push(BackdropSlot::of(
                         row,
@@ -429,7 +432,7 @@ impl Backdrops {
             };
             let at = (owner, capture.key);
             let kept = match source {
-                PaneSource::Capture { barrier } => {
+                BackdropSource::Capture { barrier } => {
                     let size = capture.region.size + UVec2::splat(2 * capture.plan.apron());
                     let Some(slot) = self.slot_for(at, size) else {
                         self.evicted.push(at);
@@ -445,7 +448,7 @@ impl Backdrops {
                         last => {
                             debug_assert!(
                                 last.is_none_or(|last| last.barrier < barrier),
-                                "panes stand in paint order"
+                                "backdrops stand in paint order"
                             );
                             self.breaks.push(BlurBreak {
                                 barrier,
@@ -464,23 +467,23 @@ impl Backdrops {
                     });
                     self.keep(at, Kept::Slot(slot))
                 }
-                PaneSource::Clear => {
+                BackdropSource::Clear => {
                     self.drop_result(at);
                     self.keep(at, Kept::Clear(held_clear(clear, format)))
                 }
-                PaneSource::Hidden => {
+                BackdropSource::Hidden => {
                     // Its quad was pruned, so no fragment reads its slot.
                     self.slots.push(BackdropSlot::default());
                     continue;
                 }
-                PaneSource::Held => {
+                BackdropSource::Held => {
                     if let Some(cached) = self.cache.get(&at) {
                         cached.kept
                     } else {
                         // Another window's frame evicted it after this one decided.
                         debug_assert!(
                             self.evicted.contains(&at),
-                            "a pane that keeps its capture holds a result"
+                            "a backdrop that keeps its capture holds a result"
                         );
                         self.slots.push(BackdropSlot::of(
                             row,
@@ -535,7 +538,7 @@ impl Backdrops {
         let resources = self
             .resources
             .as_mut()
-            .expect("made before a frame's panes");
+            .expect("made before a frame's backdrops");
         if !resources.atlas.is_past_budget() {
             self.past_budget = ExpiryWindow::default();
             return false;
@@ -575,8 +578,9 @@ impl Backdrops {
         true
     }
 
-    /// Drop the results of `owner`'s panes not in `live`, the panes its frame painted or kept.
-    fn evict(&mut self, owner: RenderOwnerId, live: &PaneKeys) {
+    /// Drop the results of `owner`'s backdrops not in `live`, the backdrops its frame painted or
+    /// kept.
+    fn evict(&mut self, owner: RenderOwnerId, live: &BackdropKeys) {
         let resources = &mut self.resources;
         self.cache.retain(|&(at, key), cached| {
             let keep = at != owner || live.contains(key);
@@ -589,15 +593,15 @@ impl Backdrops {
 
     /// Drop every result of `owner`, whose window closed.
     pub(crate) fn retire(&mut self, owner: RenderOwnerId) {
-        self.evict(owner, &PaneKeys::default());
+        self.evict(owner, &BackdropKeys::default());
         self.forget_evicted(owner);
     }
 
-    /// A slot of `size` for pane `at`: its cached one when that holds it, else a new one rounded
-    /// up to [`SLOT_GRANULE`]. The atlas grows to its budget for room, then evicts the least
-    /// recently used results no pane of this frame reads, then grows past its budget; `None` when
-    /// it is at the device's edge with nothing more to evict.
-    fn slot_for(&mut self, at: (RenderOwnerId, PaneKey), size: UVec2) -> Option<URect> {
+    /// A slot of `size` for backdrop `at`: its cached one when that holds it, else a new one
+    /// rounded up to [`SLOT_GRANULE`]. The atlas grows to its budget for room, then evicts the
+    /// least recently used results no backdrop of this frame reads, then grows past its budget;
+    /// `None` when it is at the device's edge with nothing more to evict.
+    fn slot_for(&mut self, at: (RenderOwnerId, BackdropKey), size: UVec2) -> Option<URect> {
         if let Some(Cached {
             kept: Kept::Slot(slot),
             ..
@@ -631,8 +635,8 @@ impl Backdrops {
         }
     }
 
-    /// Keep `kept` as pane `at`'s result, read by this frame.
-    fn keep(&mut self, at: (RenderOwnerId, PaneKey), kept: Kept) -> Kept {
+    /// Keep `kept` as backdrop `at`'s result, read by this frame.
+    fn keep(&mut self, at: (RenderOwnerId, BackdropKey), kept: Kept) -> Kept {
         self.cache.insert(
             at,
             Cached {
@@ -643,8 +647,8 @@ impl Backdrops {
         kept
     }
 
-    /// Evict the least recently used result in a slot that no pane of this frame reads, and list
-    /// it for its window's ledger; `false` when there is none.
+    /// Evict the least recently used result in a slot that no backdrop of this frame reads, and
+    /// list it for its window's ledger; `false` when there is none.
     fn evict_lru(&mut self) -> bool {
         let prepared = self.prepared;
         let Some((&at, _)) = self
@@ -660,8 +664,8 @@ impl Backdrops {
         true
     }
 
-    /// The panes of `owner` whose results went, which its pane ledger must stop holding.
-    pub(crate) fn evicted(&self, owner: RenderOwnerId) -> impl Iterator<Item = PaneKey> {
+    /// The backdrops of `owner` whose results went, which its backdrop ledger must stop holding.
+    pub(crate) fn evicted(&self, owner: RenderOwnerId) -> impl Iterator<Item = BackdropKey> {
         self.evicted
             .iter()
             .filter(move |(at, _)| *at == owner)
@@ -673,8 +677,8 @@ impl Backdrops {
         self.evicted.retain(|(at, _)| *at != owner);
     }
 
-    /// Drop pane `at`'s cached result, freeing its slot of the atlas if it holds one.
-    fn drop_result(&mut self, at: (RenderOwnerId, PaneKey)) {
+    /// Drop backdrop `at`'s cached result, freeing its slot of the atlas if it holds one.
+    fn drop_result(&mut self, at: (RenderOwnerId, BackdropKey)) {
         if let Some(Cached {
             kept: Kept::Slot(slot),
             ..
@@ -686,7 +690,11 @@ impl Backdrops {
 
     /// The results atlas, made with the resources before any slot is asked of it.
     const fn atlas(&mut self) -> &mut PackedAtlas {
-        &mut self.resources.as_mut().expect("a frame with a pane").atlas
+        &mut self
+            .resources
+            .as_mut()
+            .expect("a frame with a backdrop")
+            .atlas
     }
 
     /// The breaks of the main pass this frame's blurs run at, in paint order.
@@ -694,7 +702,7 @@ impl Backdrops {
         &self.breaks
     }
 
-    /// Copy the footprints of break `at`'s panes out of `color`, the main pass's target, into
+    /// Copy the footprints of break `at`'s backdrops out of `color`, the main pass's target, into
     /// their capture; nothing where the blurs read the target itself.
     pub(crate) fn copy_break(
         &self,
@@ -725,7 +733,7 @@ impl Backdrops {
 }
 
 /// Free `slot` of the results atlas, which holds it.
-fn release(resources: &mut Option<PaneResources>, slot: URect) {
+fn release(resources: &mut Option<BackdropResources>, slot: URect) {
     resources
         .as_mut()
         .expect("a slot lives in the atlas")
@@ -733,10 +741,10 @@ fn release(resources: &mut Option<PaneResources>, slot: URect) {
         .deallocate(slot_origin(slot), slot.size.x as u16);
 }
 
-/// The linear color a target of `format` holds where it is cleared to `clear`, as a pane's capture
-/// reads it back, and rounded to `f16` as its blur stores it: an 8-bit sRGB target rounds to its
-/// byte, so the pane matches the clear around it. A float target keeps the `f16` clear; one
-/// narrower, `Rg11b10Ufloat`, rounds again where the pane writes.
+/// The linear color a target of `format` holds where it is cleared to `clear`, as a backdrop's
+/// capture reads it back, and rounded to `f16` as its blur stores it: an 8-bit sRGB target rounds
+/// to its byte, so the backdrop matches the clear around it. A float target keeps the `f16` clear;
+/// one narrower, `Rg11b10Ufloat`, rounds again where the backdrop writes.
 fn held_clear(clear: RgbaF16, format: TargetFormat) -> [f32; 3] {
     let clear = RgbaF32::from(clear);
     let held = if format.get().is_srgb() {

@@ -1024,12 +1024,12 @@ pub(crate) mod internals {
             &self.window.cpu.frontend.buffer
         }
 
-        /// Build the draw list of the last frame's scene by `plan`, its panes left out, and read
-        /// it: the encode and compose alone, as a bench times them.
+        /// Build the draw list of the last frame's scene by `plan`, its backdrops left out, and
+        /// read it: the encode and compose alone, as a bench times them.
         pub(crate) fn rebuild(&mut self, plan: RenderPlan) -> &RenderBuffer {
             self.window.cpu.frontend.build(
                 self.window.frames.ui().frame_scene(),
-                BuildPlan::without_panes(plan),
+                BuildPlan::without_backdrops(plan),
             );
             &self.window.cpu.frontend.buffer
         }
@@ -1128,7 +1128,7 @@ pub(crate) mod internals {
             &self.window.cpu.frontend
         }
 
-        /// The blurs the last frame ran, one per pane whose cached result went stale.
+        /// The blurs the last frame ran, one per backdrop whose cached result went stale.
         pub(crate) const fn backdrop_blurs(&self) -> usize {
             match &self.paint {
                 HarnessPaint::Gpu { device, .. } => device.backend().backdrop_blurs(),

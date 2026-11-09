@@ -44,7 +44,7 @@ pub(crate) struct EffectInstance {
     pub(crate) params: u32,
     /// A backdrop effect's row in the frame's backdrops, the slot its result reads; 0 for a color
     /// effect, whose stages read none.
-    pub(crate) pane: u32,
+    pub(crate) backdrop_idx: u32,
     /// [`Self::MATERIAL`] for a material's box, with [`Self::WINDOW`] where it covers outside its
     /// rounded rect; 0 for an app's draw.
     pub(crate) flags: u32,

@@ -5,7 +5,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 use crate::damage;
-use crate::damage::pane_walk::PaneWalk;
+use crate::damage::backdrop_walk::BackdropWalk;
 use crate::primitives::geometry::rect::Rect;
 use std::cmp::Ordering;
 
@@ -19,21 +19,21 @@ pub(super) struct NodeRows {
 
 impl NodeRows {
     const fn row(self, row: u32) -> u64 {
-        PaneWalk::position(self.ord, self.span.start + row)
+        BackdropWalk::position(self.ord, self.span.start + row)
     }
 
     const fn gone(self) -> u64 {
-        PaneWalk::gone_position(self.ord, self.span)
+        BackdropWalk::gone_position(self.ord, self.span)
     }
 }
 
-/// The panes' walk the matcher marks into, the node it diffs, and the plane's panes.
+/// The backdrops' walk the matcher marks into, the node it diffs, and the plane's backdrops.
 #[derive(Debug)]
 pub(super) struct RowPlaces<'a> {
-    pub(super) panes: &'a mut PaneWalk,
+    pub(super) backdrops: &'a mut BackdropWalk,
     pub(super) of: NodeRows,
-    /// The rows of the plane's panes, sorted.
-    pub(super) pane_rows: &'a [u32],
+    /// The rows of the plane's backdrops, sorted.
+    pub(super) backdrop_rows: &'a [u32],
 }
 
 /// Result of [`RowMatcher::diff_changed_leg`].
@@ -56,7 +56,7 @@ pub(super) struct RowMatcher {
     prev_keyed: Vec<(PaintKey, u32)>,
     cur_keyed: Vec<(PaintKey, u32)>,
     /// For each prev row `t`, and one past the last, the last curr row matched exactly to a prev
-    /// row before `t`: [`Self::gone_place`]'s answer, built once per node while panes are on.
+    /// row before `t`: [`Self::gone_place`]'s answer, built once per node while backdrops are on.
     last_matched_before: Vec<Option<NonMaxU32>>,
 }
 
@@ -105,7 +105,7 @@ impl RowMatcher {
 
         self.reset_for(prev, cur_paints);
         self.claim_exact(prev, cur_paints);
-        if places.panes.is_on() {
+        if places.backdrops.is_on() {
             self.index_exact_matches(prev_len);
         }
         self.emit_moves_and_adds(out, prev, cur_paints, places);
@@ -184,7 +184,7 @@ impl RowMatcher {
     /// Phase 3: a curr row sharing a prev row's `hash` is the same shape moved, so both rects are damaged; one with no partner is an add and damages only its own rect.
     ///
     /// Requires `cur_keyed` sorted hash-major, so one never-reset forward cursor over `prev_keyed` serves every curr row. Child markers have zero screens and are dropped by [`damage::push_screen`].
-    /// Each rect is marked with its place for the panes' walk: a current row at its own, a prev
+    /// Each rect is marked with its place for the backdrops' walk: a current row at its own, a prev
     /// row before every current one.
     fn emit_moves_and_adds(
         &mut self,
@@ -209,18 +209,18 @@ impl RowMatcher {
             }
             match self.prev_keyed.get(pi) {
                 Some(&(pk, prow)) if pk.hash == ck.hash => {
-                    if places.panes.is_on() {
+                    if places.backdrops.is_on() {
                         let gone = self.gone_place(prow, places);
-                        places.panes.mark(out.len(), gone);
+                        places.backdrops.mark(out.len(), gone);
                     }
                     damage::push_screen(out, prev[prow as usize].screen);
-                    places.panes.mark(out.len(), of.row(crow));
+                    places.backdrops.mark(out.len(), of.row(crow));
                     damage::push_screen(out, cur[crow as usize].screen);
                     self.prev_matched[prow as usize] = true;
                     pi += 1;
                 }
                 _ => {
-                    places.panes.mark(out.len(), of.row(crow));
+                    places.backdrops.mark(out.len(), of.row(crow));
                     damage::push_screen(out, cur[crow as usize].screen);
                 }
             }
@@ -231,9 +231,9 @@ impl RowMatcher {
     fn emit_removals(&self, out: &mut Vec<Rect>, prev: &[Paint], places: &mut RowPlaces<'_>) {
         for (row, p) in prev.iter().enumerate() {
             if !self.prev_matched[row] {
-                if places.panes.is_on() {
+                if places.backdrops.is_on() {
                     let gone = self.gone_place(row as u32, places);
-                    places.panes.mark(out.len(), gone);
+                    places.backdrops.mark(out.len(), gone);
                 }
                 damage::push_screen(out, p.screen);
             }
@@ -259,17 +259,18 @@ impl RowMatcher {
         }
     }
 
-    /// The place of prev row `prow`, gone this frame, for the panes' walk: its earliest possible
-    /// one, just after the last current row matched exactly to a prev row before it, else before
-    /// every current row. A pane it could have been under counts it as before.
+    /// The place of prev row `prow`, gone this frame, for the backdrops' walk: its earliest
+    /// possible one, just after the last current row matched exactly to a prev row before it, else
+    /// before every current row. A backdrop it could have been under counts it as before.
     ///
-    /// A pane now at `prow` is the exception: it takes the gone row's own place, so a pane that
-    /// changed in place is not under itself. Were the gone row not that pane, the pane's key, its
-    /// owner and row, named no pane last frame, and it has no capture to keep.
+    /// A backdrop now at `prow` is the exception: it takes the gone row's own place, so a backdrop
+    /// that changed in place is not under itself. Were the gone row not that backdrop, the
+    /// backdrop's key, its owner and row, named no backdrop last frame, and it has no capture to
+    /// keep.
     fn gone_place(&self, prow: u32, places: &RowPlaces<'_>) -> u64 {
         let of = places.of;
         let row = of.span.start + prow;
-        if prow < of.span.len && places.pane_rows.binary_search(&row).is_ok() {
+        if prow < of.span.len && places.backdrop_rows.binary_search(&row).is_ok() {
             return of.row(prow);
         }
         self.last_matched_before[prow as usize]

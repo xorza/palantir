@@ -313,7 +313,7 @@ const FROSTED: FloatMaterial = FloatMaterial {
 
 /// A blur that is no length, and a fill the glass could not see through, are refused.
 #[test]
-fn dress_floats_refuses_a_bad_blur_or_tint() {
+fn dress_floats_refuses_a_bad_blur_or_fill_alpha() {
     let p = &Palette::DARK;
     for (sigma, alpha, rule) in [
         (-1.0, 0.6, "a length must"),

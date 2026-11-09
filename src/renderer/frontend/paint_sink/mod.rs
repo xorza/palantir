@@ -52,12 +52,12 @@
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::renderer::frontend::payload::draw_backdrop_payload::DrawBackdropPayload;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
@@ -80,8 +80,8 @@ pub(crate) trait PaintSink {
     /// through one gate so they agree on what is invisible.
     fn quad(&mut self, payload: DrawQuadPayload);
 
-    /// A backdrop pane: a quad over the pixels painted before it, and its key.
-    fn pane(&mut self, payload: DrawPanePayload);
+    /// A backdrop: a quad over the pixels painted before it, and its key.
+    fn backdrop(&mut self, payload: DrawBackdropPayload);
 
     fn text(&mut self, payload: DrawTextPayload);
 

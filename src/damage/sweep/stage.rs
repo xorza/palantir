@@ -29,28 +29,29 @@ pub(crate) enum Content {
     Dense,
     /// One fill, so what is left of a frame is what repainting costs by itself.
     Plain,
-    /// [`Self::Dense`] under two frosted panes, whose captures a change under them repeats.
+    /// [`Self::Dense`] under two frosted backdrops, whose captures a change under them repeats.
     Glass,
     /// The bench's screen under a toolbar, a sidebar and a popup of frosted glass: few rows, and
-    /// much of a whole frame's cost in its panes.
+    /// much of a whole frame's cost in its backdrops.
     SceneGlass,
 }
 
-/// The panes of [`Content::SceneGlass`].
-const SCENE_PANES: [Rect; 3] = [
+/// The backdrops of [`Content::SceneGlass`].
+const SCENE_BACKDROPS: [Rect; 3] = [
     Rect::new(0.0, 0.0, 1280.0, 48.0),
     Rect::new(0.0, 48.0, 240.0, 672.0),
     Rect::new(500.0, 200.0, 320.0, 220.0),
 ];
 
-/// How far a pane's footprint reaches past its rect, near what its frosted blur reads.
-const PANE_REACH: f32 = 48.0;
+/// How far a backdrop's footprint reaches past its rect, near what its frosted blur reads.
+const BACKDROP_REACH: f32 = 48.0;
 
 const DENSE_ROWS: u32 = 36;
 const DENSE_COLS: u32 = 32;
 
-/// The glass panes on the reference window, far enough apart that one's change leaves the other.
-const PANES: [Rect; 2] = [
+/// The glass backdrops on the reference window, far enough apart that one's change leaves the
+/// other.
+const BACKDROPS: [Rect; 2] = [
     Rect::new(500.0, 200.0, 320.0, 220.0),
     Rect::new(40.0, 400.0, 240.0, 240.0),
 ];
@@ -113,7 +114,7 @@ impl Stage {
 
     /// Every stage: the two whole screens, then one change at a time from the dense one: no
     /// content, a quarter of the pixels of the same window, more pixels of the same aspect, and
-    /// panes; and panes over the bench's own screen.
+    /// backdrops; and backdrops over the bench's own screen.
     pub(crate) const ALL: [Self; 7] = [
         Self::SCENE,
         Self {
@@ -150,12 +151,12 @@ impl Stage {
         },
     ];
 
-    /// This stage's panes on the reference window.
-    const fn panes(&self) -> &'static [Rect] {
+    /// This stage's backdrops on the reference window.
+    const fn backdrops(&self) -> &'static [Rect] {
         match self.content {
             Content::Scene | Content::Dense | Content::Plain => &[],
-            Content::Glass => &PANES,
-            Content::SceneGlass => &SCENE_PANES,
+            Content::Glass => &BACKDROPS,
+            Content::SceneGlass => &SCENE_BACKDROPS,
         }
     }
 
@@ -184,7 +185,7 @@ impl Stage {
         FrameFacts {
             surface: self.surface(),
             rows_per_mpx: rows_per_mpx(frame_scene.visible_row_count(), self.physical),
-            pane_share: frame_scene.pane_share(),
+            backdrop_share: frame_scene.backdrop_share(),
         }
     }
 
@@ -201,8 +202,8 @@ impl Stage {
     }
 
     /// The raw rects of `scenario`'s frames on this stage: scaled to its window, and where a rect
-    /// reaches a pane, within [`PANE_REACH`] of it, that pane's rect after them, as a damage walk
-    /// pushes a stale pane's.
+    /// reaches a backdrop, within [`BACKDROP_REACH`] of it, that backdrop's rect after them, as a
+    /// damage walk pushes a stale backdrop's.
     pub(crate) fn raw_frames(&self, scenario: &Scenario) -> Vec<Vec<Rect>> {
         let surface = self.surface();
         scenario
@@ -210,11 +211,11 @@ impl Stage {
             .iter()
             .map(|frame| {
                 let mut raw: Vec<Rect> = frame.iter().map(|r| scaled(*r, surface)).collect();
-                for pane in self.panes() {
-                    let pane = scaled(*pane, surface);
-                    let footprint = pane.inflated(PANE_REACH);
+                for backdrop in self.backdrops() {
+                    let backdrop = scaled(*backdrop, surface);
+                    let footprint = backdrop.inflated(BACKDROP_REACH);
                     if raw.iter().any(|r| r.intersects(footprint)) {
-                        raw.push(pane);
+                        raw.push(backdrop);
                     }
                 }
                 raw
@@ -236,7 +237,7 @@ impl Stage {
             }
             Content::Glass | Content::SceneGlass => {
                 let surface = self.surface();
-                let panes = self.panes();
+                let backdrops = self.backdrops();
                 Panel::zstack()
                     .id_salt("sweep-glass")
                     .size((Sizing::FILL, Sizing::FILL))
@@ -247,12 +248,12 @@ impl Stage {
                             scene.record(ui);
                         }
                         Panel::canvas()
-                            .id_salt("sweep-panes")
+                            .id_salt("sweep-backdrops")
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                for pane in panes {
+                                for backdrop in backdrops {
                                     ui.add_shape(
-                                        Shape::rect().at(scaled(*pane, surface)),
+                                        Shape::rect().at(scaled(*backdrop, surface)),
                                         Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
                                             .with_material(Material::frosted(16.0)),
                                     );

@@ -9,7 +9,7 @@
 - md viewer
 - optimal resolve strategies
 - genrate shape geometry in vertex shader to simplify fragment
-- box mavterial?
+- box material?
 - materials for other shapes
 - Draw::Effect - do we need it if we have box?
 - Brush::Linear add conveninet ctors
@@ -27,5 +27,4 @@ Under reduced transparency
     - With Ground, the material reads the window's clear color in place of the blurred backdrop. The fill and the border then draw on top as usual, so the box paints opaque.
     - With Nothing, the material is dropped. The fill paints as a plain translucent fill, and the border stays.
 
-- rename the renderer's internal "pane" to "backdrop" (AGENTS.md, "One word, one meaning for what is behind")
 - measure one glass shader with its spectrum branch on V3D (`gpu/backdrop`, "One glass")

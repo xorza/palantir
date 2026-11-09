@@ -1,13 +1,13 @@
 //! [`PlaneCtx`]: one plane's encode walk, built per tree by [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
@@ -16,17 +16,20 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
+use crate::renderer::frontend::payload::draw_backdrop_payload::DrawBackdropPayload;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_effect_payload::{DrawEffectPayload, EffectPaneDraw};
+use crate::renderer::frontend::payload::draw_effect_payload::{
+    DrawEffectPayload, EffectCaptureDraw,
+};
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_pane_payload::BackdropDraw;
-use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{
     DrawQuadPayload, RectQuad, TriangleQuad,
@@ -36,13 +39,12 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::tree::Tree;
+use crate::scene::tree::backdrop_entry::BackdropOrigin;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationCursor;
-use crate::scene::tree::pane_entry::PaneOrigin;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -78,11 +80,11 @@ pub(super) struct PlaneCtx<'a, 'g> {
     pub(super) gradients: &'a mut GradientPass<'g>,
     pub(super) paint_animation_cursor: PaintAnimationCursor<'a>,
     pub(super) damage_filter: Option<CullRegion<'a>>,
-    /// The plane's panes in paint order, and the ticket of each.
-    pub(super) panes: &'a [PaneRow],
-    pub(super) tickets: &'a [Option<PaneTicket>],
-    /// The first of `panes` not yet painted: panes paint in their order.
-    pub(super) next_pane: usize,
+    /// The plane's backdrops in paint order, and the ticket of each.
+    pub(super) backdrops: &'a [PlaneBackdrop],
+    pub(super) tickets: &'a [Option<BackdropTicket>],
+    /// The first of `backdrops` not yet painted: backdrops paint in their order.
+    pub(super) next_backdrop: usize,
     /// Logical-px inflation of each `subtree_paint_rect` before the damage cull, covering the AA pad the backend PreClears.
     pub(super) damage_cull_margin: f32,
     pub(super) viewport: Rect,
@@ -97,10 +99,10 @@ struct RectPaint {
     alpha: f32,
 }
 
-/// What makes a rect a material's box: its material, and what it reads, the ticket the pane
+/// What makes a rect a material's box: its material, and what it reads, the ticket the backdrop
 /// ledger wrote for it or the ground.
 #[derive(Clone, Copy, Debug)]
-struct PaneLook {
+struct BackdropLook {
     material: LoweredMaterial,
     read: BackdropDraw,
 }
@@ -114,21 +116,21 @@ struct NativeStroke {
     ramp: CurveRamp,
 }
 
-/// A box as one paint call draws it: its rect, its shadow, its material, and where its pane is
+/// A box as one paint call draws it: its rect, its shadow, its material, and where its backdrop is
 /// recorded.
 #[derive(Clone, Copy, Debug)]
 struct BoxPaint {
     paint: RectPaint,
     shadow: LoweredShadow,
     material: Option<LoweredMaterial>,
-    site: PaneSite,
+    site: BackdropSite,
 }
 
-/// Where a pane is recorded: by its owner, as its chrome or its shape at `shape_idx`.
+/// Where a backdrop is recorded: by its owner, as its chrome or its shape at `shape_idx`.
 #[derive(Clone, Copy, Debug)]
-struct PaneSite {
+struct BackdropSite {
     owner: NodeId,
-    origin: PaneOrigin,
+    origin: BackdropOrigin,
     shape_idx: u32,
 }
 
@@ -140,10 +142,10 @@ fn paint_rect(paint: RectPaint, out: &mut impl PaintSink) {
 
 /// Paint `paint` as a material's box over what it reads, through `look`: one draw, its fill, a
 /// color or a gradient, and its border over the whole box.
-fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
+fn paint_backdrop(paint: RectPaint, look: BackdropLook, out: &mut impl PaintSink) {
     let RectPaint { quad, spin, alpha } = paint;
     out.draw(
-        DrawPanePayload {
+        DrawBackdropPayload {
             coverage: quad.coverage,
             rect: quad.rect,
             corners: quad.corners,
@@ -161,15 +163,19 @@ fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
 
 impl PlaneCtx<'_, '_> {
     /// What makes the rect recorded at `site` a material's box: `material` and what it reads;
-    /// `None` for a rect of no material, or a pane the cascade lists not.
-    fn pane_look(&mut self, site: PaneSite, material: Option<LoweredMaterial>) -> Option<PaneLook> {
+    /// `None` for a rect of no material, or a backdrop the cascade lists not.
+    fn backdrop_look(
+        &mut self,
+        site: BackdropSite,
+        material: Option<LoweredMaterial>,
+    ) -> Option<BackdropLook> {
         let material = material?;
         let read = if material.captures() {
-            BackdropDraw::Capture(self.pane_ticket(site)?)
+            BackdropDraw::Capture(self.backdrop_ticket(site)?)
         } else {
             BackdropDraw::Ground
         };
-        Some(PaneLook { material, read })
+        Some(BackdropLook { material, read })
     }
 
     /// Paint a box, a node's chrome or a rect shape: its drop shadow under its fill, its fill or
@@ -182,9 +188,9 @@ impl PlaneCtx<'_, '_> {
             material,
             site,
         } = item;
-        let pane = self.pane_look(site, material);
-        let paint_fill = |out: &mut _| match pane {
-            Some(look) => paint_pane(paint, look, out),
+        let backdrop = self.backdrop_look(site, material);
+        let paint_fill = |out: &mut _| match backdrop {
+            Some(look) => paint_backdrop(paint, look, out),
             None => paint_rect(paint, out),
         };
         let RectPaint { quad, spin, alpha } = paint;
@@ -275,41 +281,41 @@ impl PlaneCtx<'_, '_> {
         }
     }
 
-    /// The ticket of the pane recorded at `site`, as the tree lists it; `None` for a pane the
-    /// cascade lists not, whose rect lies outside every clip.
-    fn pane_ticket(&mut self, site: PaneSite) -> Option<PaneTicket> {
-        let PaneSite {
+    /// The ticket of the backdrop recorded at `site`, as the tree lists it; `None` for a backdrop
+    /// the cascade lists not, whose rect lies outside every clip.
+    fn backdrop_ticket(&mut self, site: BackdropSite) -> Option<BackdropTicket> {
+        let BackdropSite {
             owner,
             origin,
             shape_idx,
         } = site;
-        let entries = &self.tree.panes;
+        let entries = &self.tree.backdrops;
         let at = entries
             .binary_search_by_key(&(shape_idx, origin), |entry| {
                 (entry.shape_idx, entry.origin)
             })
-            .expect("a painted pane is listed");
-        let key = PaneKey {
+            .expect("a painted backdrop is listed");
+        let key = BackdropKey {
             owner: self.tree.records.widget_id()[owner.idx()],
             shape: entries[at].row,
         };
-        let Some(ahead) = self.panes[self.next_pane..]
+        let Some(ahead) = self.backdrops[self.next_backdrop..]
             .iter()
-            .position(|pane| pane.key == key)
+            .position(|backdrop| backdrop.key == key)
         else {
             debug_assert!(
-                !self.panes[..self.next_pane]
+                !self.backdrops[..self.next_backdrop]
                     .iter()
-                    .any(|pane| pane.key == key),
-                "panes paint in the cascade's order"
+                    .any(|backdrop| backdrop.key == key),
+                "backdrops paint in the cascade's order"
             );
             return None;
         };
-        let at = self.next_pane + ahead;
-        self.next_pane = at + 1;
+        let at = self.next_backdrop + ahead;
+        self.next_backdrop = at + 1;
         let ticket = self.tickets[at];
         if let Some(ticket) = ticket {
-            debug_assert_eq!(ticket.capture.key, key, "a pane's ticket is its own");
+            debug_assert_eq!(ticket.capture.key, key, "a backdrop's ticket is its own");
         }
         ticket
     }
@@ -374,9 +380,9 @@ impl PlaneCtx<'_, '_> {
                             paint: RectPaint { quad, spin, alpha },
                             shadow: *shadow,
                             material: *material,
-                            site: PaneSite {
+                            site: BackdropSite {
                                 owner: id,
-                                origin: PaneOrigin::Shape,
+                                origin: BackdropOrigin::Shape,
                                 shape_idx,
                             },
                         },
@@ -528,22 +534,22 @@ impl PlaneCtx<'_, '_> {
                 images,
                 content_hash: _,
             } => {
-                let pane = match backdrop {
+                let backdrop = match backdrop {
                     Some(EffectBackdrop::Capture(read)) => {
-                        let site = PaneSite {
+                        let site = BackdropSite {
                             owner: id,
-                            origin: PaneOrigin::Shape,
+                            origin: BackdropOrigin::Shape,
                             shape_idx,
                         };
-                        let Some(ticket) = self.pane_ticket(site) else {
+                        let Some(ticket) = self.backdrop_ticket(site) else {
                             return;
                         };
-                        Some(EffectPaneDraw {
+                        Some(EffectCaptureDraw {
                             read: BackdropDraw::Capture(ticket),
                             reach: read.reach,
                         })
                     }
-                    Some(EffectBackdrop::Ground) => Some(EffectPaneDraw {
+                    Some(EffectBackdrop::Ground) => Some(EffectCaptureDraw {
                         read: BackdropDraw::Ground,
                         reach: 0.0,
                     }),
@@ -557,7 +563,7 @@ impl PlaneCtx<'_, '_> {
                         effect: *effect,
                         params: *params,
                         images: *images,
-                        pane,
+                        backdrop,
                         opacity: 1.0,
                         time: paint_mod.time,
                     },
@@ -689,9 +695,9 @@ impl PlaneCtx<'_, '_> {
                     },
                     shadow: chrome.shadow,
                     material: chrome.material,
-                    site: PaneSite {
+                    site: BackdropSite {
                         owner: id,
-                        origin: PaneOrigin::Chrome,
+                        origin: BackdropOrigin::Chrome,
                         shape_idx: self.tree.records.shape_span()[id.idx()].start,
                     },
                 },

@@ -1,25 +1,26 @@
-//! Which backdrop panes the frame's damage reaches from below, so their captures go stale.
+//! Which backdrops the frame's damage reaches from below, so their captures go stale.
 //!
 //! # Decisions
 //!
-//! - **Damage takes a pane's rect, not its footprint.** Each raw damage rect has a place in paint
-//!   order, laid as marks during the walk; a row that left takes the earliest place it could have
-//!   had, a cost of one capture at worst. One forward walk over the panes in paint order is the
-//!   fixed point: damage before a pane that touches its footprint adds the pane's rect, which
-//!   counts as damage at the pane's place for the panes above it. The encode filter adds the
-//!   footprint of each pane the damage reaches, so a capturing pane's footprint has its draws.
-//!   Refused: Chromium's whole-surface rule, which repaints the surface for one pane.
-//! - **A pane the last frame did not hold is stale.** Its key is its row among its owner's, so
+//! - **Damage takes a backdrop's rect, not its footprint.** Each raw damage rect has a place in
+//!   paint order, laid as marks during the walk; a row that left takes the earliest place it could
+//!   have had, a cost of one capture at worst. One forward walk over the backdrops in paint order
+//!   is the fixed point: damage before a backdrop that touches its footprint adds the backdrop's
+//!   rect, which counts as damage at the backdrop's place for the backdrops above it. The encode
+//!   filter adds the footprint of each backdrop the damage reaches, so a capturing backdrop's
+//!   footprint has its draws. Refused: Chromium's whole-surface rule, which repaints the surface
+//!   for one backdrop.
+//! - **A backdrop the last frame did not hold is stale.** Its key is its row among its owner's, so
 //!   a row removed before it gives it a new key, and with it no held capture, while the row
 //!   matcher sees the same row and damages nothing. Stale, its rect joins the damage and its
 //!   footprint the encode filter, so the capture it takes reads every draw under it.
 
 use crate::cascade::Cascade;
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
-use crate::damage::dirty_panes::DirtyPanes;
+use crate::damage::dirty_backdrops::DirtyBackdrops;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::identity::pane_keys::PaneKeys;
+use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::scene::forest::Forest;
 use std::mem;
 use std::ops::Range;
@@ -38,7 +39,7 @@ struct RawMark {
 #[derive(Clone, Debug)]
 struct MarkRun {
     /// The mark's position plus one, or `0` for the rects before every mark, which stand before
-    /// every pane: a run counts for a pane at `position` when `key <= position`.
+    /// every backdrop: a run counts for a backdrop at `position` when `key <= position`.
     key: u64,
     rects: Range<u32>,
     bounds: Rect,
@@ -46,22 +47,22 @@ struct MarkRun {
     prefix_bounds: Rect,
 }
 
-/// The paint-order positions of a frame's raw rects, and the forward walk over its panes that
-/// reads them. Marks are kept only on a frame with panes.
+/// The paint-order positions of a frame's raw rects, and the forward walk over its backdrops that
+/// reads them. Marks are kept only on a frame with backdrops.
 #[derive(Debug, Default)]
-pub(super) struct PaneWalk {
+pub(super) struct BackdropWalk {
     marks: Vec<RawMark>,
     /// Walk scratch: the marks as runs, sorted by key.
     runs: Vec<MarkRun>,
-    /// The last frame's pane keys.
-    held: PaneKeys,
-    /// This frame's pane keys.
-    keys: PaneKeys,
-    /// The panes this frame's damage left stale.
-    dirty: DirtyPanes,
+    /// The last frame's backdrop keys.
+    held: BackdropKeys,
+    /// This frame's backdrop keys.
+    keys: BackdropKeys,
+    /// The backdrops this frame's damage left stale.
+    dirty: DirtyBackdrops,
 }
 
-impl PaneWalk {
+impl BackdropWalk {
     /// The paint-order position of row `row` of the plane `ord`th in paint order: planes in order,
     /// rows in order within one, each row at an even position.
     pub(super) const fn position(ord: usize, row: u32) -> u64 {
@@ -79,14 +80,14 @@ impl PaneWalk {
         }
     }
 
-    /// Start a frame: hold the last frame's pane keys, take `cascade`'s, and drop the last
-    /// frame's marks and stale panes. Every frame starts here, a whole one too, so the keys held
-    /// are the last frame's whatever it painted, and a whole frame reports no stale pane.
+    /// Start a frame: hold the last frame's backdrop keys, take `cascade`'s, and drop the last
+    /// frame's marks and stale backdrops. Every frame starts here, a whole one too, so the keys
+    /// held are the last frame's whatever it painted, and a whole frame reports no stale backdrop.
     pub(super) fn start_frame(&mut self, cascade: &Cascade) {
-        self.next_keys(&cascade.pane_keys);
+        self.next_keys(&cascade.backdrop_keys);
     }
 
-    fn next_keys(&mut self, keys: &PaneKeys) {
+    fn next_keys(&mut self, keys: &BackdropKeys) {
         self.marks.clear();
         self.dirty.clear();
         mem::swap(&mut self.held, &mut self.keys);
@@ -99,13 +100,13 @@ impl PaneWalk {
         Self::position(ord, span.start).saturating_sub(1)
     }
 
-    /// Whether the frame has panes, so the rects pushed take marks.
+    /// Whether the frame has backdrops, so the rects pushed take marks.
     pub(super) const fn is_on(&self) -> bool {
         !self.keys.is_empty()
     }
 
-    /// The panes this frame's damage left stale.
-    pub(super) const fn dirty(&self) -> &DirtyPanes {
+    /// The backdrops this frame's damage left stale.
+    pub(super) const fn dirty(&self) -> &DirtyBackdrops {
         &self.dirty
     }
 
@@ -122,10 +123,10 @@ impl PaneWalk {
         }
     }
 
-    /// Walk the panes in paint order: a pane the last frame did not hold, or whose footprint a
-    /// rect painted before it touches, has a stale capture, so its rect joins the damage, at its
-    /// own position for the panes above it, and its key joins [`Self::dirty`]. Returns `false`
-    /// when more panes went stale than it holds.
+    /// Walk the backdrops in paint order: a backdrop the last frame did not hold, or whose
+    /// footprint a rect painted before it touches, has a stale capture, so its rect joins the
+    /// damage, at its own position for the backdrops above it, and its key joins [`Self::dirty`].
+    /// Returns `false` when more backdrops went stale than it holds.
     pub(super) fn walk(
         &mut self,
         cascade: &Cascade,
@@ -135,38 +136,39 @@ impl PaneWalk {
         if !self.is_on() {
             return true;
         }
-        let panes = forest
-            .trees
-            .iter_paint_order()
-            .enumerate()
-            .flat_map(|(ord, (plane, _))| {
-                cascade.planes[plane]
-                    .panes
-                    .iter()
-                    .map(move |pane| (Self::position(ord, pane.paint_row), pane))
-            });
-        self.walk_panes(panes, rects)
+        let backdrops =
+            forest
+                .trees
+                .iter_paint_order()
+                .enumerate()
+                .flat_map(|(ord, (plane, _))| {
+                    cascade.planes[plane]
+                        .backdrops
+                        .iter()
+                        .map(move |backdrop| (Self::position(ord, backdrop.paint_row), backdrop))
+                });
+        self.walk_backdrops(backdrops, rects)
     }
 
-    /// [`Self::walk`] over `panes`, each at its position, in paint order.
+    /// [`Self::walk`] over `backdrops`, each at its position, in paint order.
     ///
-    /// A position only approximates paint order: a pane stands past every row painted before it
-    /// ([`PaneRow::paint_row`]), but a row its node paints after it can stand below it, and the
-    /// marks come in any order. The rects before the walk are sorted into runs by position once,
-    /// with the bounds of each prefix, so the runs before a pane are the prefix a binary search
-    /// finds, and that prefix's bounds reject a footprint far from all of it. The pane rects the walk pushes, at most
-    /// [`DirtyPanes::CAP`], are read at their own positions. Cost: each pane reads the bounds of
-    /// each run before it whose prefix its footprint touches, and the rects of a run whose own
-    /// bounds it touches.
-    fn walk_panes<'a>(
+    /// A position only approximates paint order: a backdrop stands past every row painted before it
+    /// ([`PlaneBackdrop::paint_row`]), but a row its node paints after it can stand below it, and
+    /// the marks come in any order. The rects before the walk are sorted into runs by position
+    /// once, with the bounds of each prefix, so the runs before a backdrop are the prefix a binary
+    /// search finds, and that prefix's bounds reject a footprint far from all of it. The backdrop
+    /// rects the walk pushes, at most [`DirtyBackdrops::CAP`], are read at their own positions.
+    /// Cost: each backdrop reads the bounds of each run before it whose prefix its footprint
+    /// touches, and the rects of a run whose own bounds it touches.
+    fn walk_backdrops<'a>(
         &mut self,
-        panes: impl Iterator<Item = (u64, &'a PaneRow)>,
+        backdrops: impl Iterator<Item = (u64, &'a PlaneBackdrop)>,
         rects: &mut Vec<Rect>,
     ) -> bool {
         self.sort_runs(rects);
-        let mut walked: ArrayVec<[RawMark; DirtyPanes::CAP]> = ArrayVec::new();
-        for (position, pane) in panes {
-            let fp = pane.footprint;
+        let mut walked: ArrayVec<[RawMark; DirtyBackdrops::CAP]> = ArrayVec::new();
+        for (position, backdrop) in backdrops {
+            let fp = backdrop.footprint;
             let ready = self.runs.partition_point(|run| run.key <= position);
             let before = ready
                 .checked_sub(1)
@@ -180,17 +182,17 @@ impl PaneWalk {
             let walked_before = walked
                 .iter()
                 .any(|mark| mark.position < position && rects[mark.start as usize].intersects(fp));
-            if self.held.contains(pane.key) && !before && !walked_before {
+            if self.held.contains(backdrop.key) && !before && !walked_before {
                 continue;
             }
-            if !self.dirty.push(pane.key) {
+            if !self.dirty.push(backdrop.key) {
                 return false;
             }
             walked.push(RawMark {
                 start: rects.len() as u32,
                 position,
             });
-            rects.push(pane.rect);
+            rects.push(backdrop.rect);
         }
         true
     }
@@ -234,23 +236,27 @@ impl PaneWalk {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::cascade::pane_row::PaneRow;
-    use crate::damage::pane_walk::PaneWalk;
+    use crate::cascade::plane_backdrop::PlaneBackdrop;
+    use crate::damage::backdrop_walk::BackdropWalk;
     #[cfg(test)]
     use crate::internals::scratch_report;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::identity::pane_key::PaneKey;
-    use crate::primitives::identity::pane_keys::PaneKeys;
+    use crate::primitives::identity::backdrop_key::BackdropKey;
+    use crate::primitives::identity::backdrop_keys::BackdropKeys;
 
-    impl PaneWalk {
-        /// Mark pane `key` stale in this frame, as a walk that found damage under it does.
+    impl BackdropWalk {
+        /// Mark backdrop `key` stale in this frame, as a walk that found damage under it does.
         ///
         /// # Panics
         ///
-        /// Panics past [`DirtyPanes::CAP`](crate::damage::dirty_panes::DirtyPanes::CAP), which a
+        /// Panics past
+        /// [`DirtyBackdrops::CAP`](crate::damage::dirty_backdrops::DirtyBackdrops::CAP), which a
         /// real walk answers by painting whole.
-        pub(crate) fn force_stale(&mut self, key: PaneKey) {
-            assert!(self.dirty.push(key), "more stale panes than a frame holds");
+        pub(crate) fn force_stale(&mut self, key: BackdropKey) {
+            assert!(
+                self.dirty.push(key),
+                "more stale backdrops than a frame holds"
+            );
         }
 
         #[cfg(test)]
@@ -262,40 +268,43 @@ pub(crate) mod internals {
         }
 
         /// [`Self::start_frame`] over `keys`, for a bench without a cascade.
-        pub(crate) fn start_over(&mut self, keys: &PaneKeys) {
+        pub(crate) fn start_over(&mut self, keys: &BackdropKeys) {
             self.next_keys(keys);
         }
 
-        /// [`Self::walk`] over `panes` at their positions, for a bench without a cascade.
+        /// [`Self::walk`] over `backdrops` at their positions, for a bench without a cascade.
         pub(crate) fn walk_over(
             &mut self,
-            panes: &[(u64, PaneRow)],
+            backdrops: &[(u64, PlaneBackdrop)],
             rects: &mut Vec<Rect>,
         ) -> bool {
-            self.walk_panes(panes.iter().map(|(at, pane)| (*at, pane)), rects)
+            self.walk_backdrops(
+                backdrops.iter().map(|(at, backdrop)| (*at, backdrop)),
+                rects,
+            )
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cascade::pane_row::PaneRow;
-    use crate::damage::dirty_panes::DirtyPanes;
-    use crate::damage::pane_walk::PaneWalk;
+    use crate::cascade::plane_backdrop::PlaneBackdrop;
+    use crate::damage::backdrop_walk::BackdropWalk;
+    use crate::damage::dirty_backdrops::DirtyBackdrops;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::identity::pane_key::PaneKey;
-    use crate::primitives::identity::pane_keys::PaneKeys;
+    use crate::primitives::identity::backdrop_key::BackdropKey;
+    use crate::primitives::identity::backdrop_keys::BackdropKeys;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::shape::paint::blur_plan::BlurPlan;
 
-    /// Panes `a`, `b` and `c` at positions 10, 20 and 30, each a 10 px square 100 px from the
+    /// Backdrops `a`, `b` and `c` at positions 10, 20 and 30, each a 10 px square 100 px from the
     /// next, its footprint the square itself.
-    fn panes() -> Vec<(u64, PaneRow)> {
+    fn backdrops() -> Vec<(u64, PlaneBackdrop)> {
         (0..3u32)
             .map(|i| {
                 let rect = Rect::new(i as f32 * 100.0, 0.0, 10.0, 10.0);
-                let pane = PaneRow {
-                    key: PaneKey {
+                let backdrop = PlaneBackdrop {
+                    key: BackdropKey {
                         owner: WidgetId::from_hash(u64::from(i)),
                         shape: 0,
                     },
@@ -305,18 +314,18 @@ mod tests {
                     plan: BlurPlan::new(1.0),
                     footprint: rect,
                 };
-                (10 * u64::from(i + 1), pane)
+                (10 * u64::from(i + 1), backdrop)
             })
             .collect()
     }
 
-    /// The panes `marked` leaves stale on a frame that holds all three, where each `(position,
+    /// The backdrops `marked` leaves stale on a frame that holds all three, where each `(position,
     /// x)` lays a 4 px rect at `x` painted at `position`, `None` before every mark.
-    fn stale(marked: &[(Option<u64>, f32)]) -> DirtyPanes {
-        let panes = panes();
-        let mut keys = PaneKeys::default();
-        keys.refill(panes.iter().map(|(_, pane)| pane.key));
-        let mut walk = PaneWalk::default();
+    fn stale(marked: &[(Option<u64>, f32)]) -> DirtyBackdrops {
+        let backdrops = backdrops();
+        let mut keys = BackdropKeys::default();
+        keys.refill(backdrops.iter().map(|(_, backdrop)| backdrop.key));
+        let mut walk = BackdropWalk::default();
         walk.start_over(&keys);
         walk.start_over(&keys);
         let mut rects = Vec::new();
@@ -326,49 +335,53 @@ mod tests {
             }
             rects.push(Rect::new(x, 2.0, 4.0, 4.0));
         }
-        assert!(walk.walk_over(&panes, &mut rects));
+        assert!(walk.walk_over(&backdrops, &mut rects));
         *walk.dirty()
     }
 
-    /// A rect stales the pane under it only when painted before it, whatever order the marks
+    /// A rect stales the backdrop under it only when painted before it, whatever order the marks
     /// came in: at 25 over `a` (at 10) it is after `a`, at 5 over `b` (at 20) before `b`, at 15
-    /// over `c` (at 30) before `c`. A rect before every mark is before every pane. A held pane
-    /// nothing touches stays clean.
+    /// over `c` (at 30) before `c`. A rect before every mark is before every backdrop. A held
+    /// backdrop nothing touches stays clean.
     #[test]
-    fn a_rect_stales_only_the_panes_painted_after_it() {
-        let key = |i: usize| panes()[i].1.key;
-        assert_eq!(stale(&[]), DirtyPanes::default());
-        assert_eq!(stale(&[(Some(25), 2.0)]), DirtyPanes::default(), "after a");
+    fn a_rect_stales_only_the_backdrops_painted_after_it() {
+        let key = |i: usize| backdrops()[i].1.key;
+        assert_eq!(stale(&[]), DirtyBackdrops::default());
+        assert_eq!(
+            stale(&[(Some(25), 2.0)]),
+            DirtyBackdrops::default(),
+            "after a"
+        );
         assert_eq!(
             stale(&[(Some(25), 2.0), (Some(5), 102.0), (Some(15), 202.0)]),
-            DirtyPanes::from_iter([key(1), key(2)]),
+            DirtyBackdrops::from_iter([key(1), key(2)]),
         );
         assert_eq!(
             stale(&[(None, 2.0), (Some(25), 102.0)]),
-            DirtyPanes::from_iter([key(0)]),
+            DirtyBackdrops::from_iter([key(0)]),
             "before every mark",
         );
     }
 
-    /// A pane the last frame did not hold is stale, and its rect stands before every later pane:
-    /// `a`, new, grown to reach `b`'s footprint, stales `b` too.
+    /// A backdrop the last frame did not hold is stale, and its rect stands before every later
+    /// backdrop: `a`, new, grown to reach `b`'s footprint, stales `b` too.
     #[test]
-    fn a_new_panes_rect_stales_the_panes_above_it() {
-        let mut panes = panes();
-        panes[0].1.rect = Rect::new(0.0, 0.0, 105.0, 10.0);
-        let mut held = PaneKeys::default();
-        held.refill(panes[1..].iter().map(|(_, pane)| pane.key));
-        let mut keys = PaneKeys::default();
-        keys.refill(panes.iter().map(|(_, pane)| pane.key));
-        let mut walk = PaneWalk::default();
+    fn a_new_backdrops_rect_stales_the_backdrops_above_it() {
+        let mut backdrops = backdrops();
+        backdrops[0].1.rect = Rect::new(0.0, 0.0, 105.0, 10.0);
+        let mut held = BackdropKeys::default();
+        held.refill(backdrops[1..].iter().map(|(_, backdrop)| backdrop.key));
+        let mut keys = BackdropKeys::default();
+        keys.refill(backdrops.iter().map(|(_, backdrop)| backdrop.key));
+        let mut walk = BackdropWalk::default();
         walk.start_over(&held);
         walk.start_over(&keys);
         let mut rects = Vec::new();
-        assert!(walk.walk_over(&panes, &mut rects));
+        assert!(walk.walk_over(&backdrops, &mut rects));
         assert_eq!(
             *walk.dirty(),
-            DirtyPanes::from_iter([panes[0].1.key, panes[1].1.key])
+            DirtyBackdrops::from_iter([backdrops[0].1.key, backdrops[1].1.key])
         );
-        assert_eq!(rects, [panes[0].1.rect, panes[1].1.rect]);
+        assert_eq!(rects, [backdrops[0].1.rect, backdrops[1].1.rect]);
     }
 }

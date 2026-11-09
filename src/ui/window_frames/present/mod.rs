@@ -18,8 +18,8 @@ use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
+use crate::renderer::backdrop_captures::{BackdropCaptures, BackdropDamage, Settled};
 use crate::renderer::frontend::{BuildPlan, FrameOutput, Frontend};
-use crate::renderer::pane_captures::{PaneCaptures, PaneDamage, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::repaint_scissors::RepaintScissors;
@@ -48,7 +48,7 @@ pub(crate) struct WindowSpec {
 pub(crate) struct TargetKey {
     pub(crate) physical: UVec2,
     pub(crate) format: TargetFormat,
-    /// Whether pixels can be copied out of the target, as a pane's capture is.
+    /// Whether pixels can be copied out of the target, as a backdrop's capture is.
     pub(crate) gives_copy: bool,
 }
 
@@ -163,7 +163,7 @@ impl WindowFrames {
     }
 
     /// Draw through `stream`, the window's on a device the host attached, at startup and after a
-    /// loss alike. What the window kept on an earlier device is gone with it: the pane ledger
+    /// loss alike. What the window kept on an earlier device is gone with it: the backdrop ledger
     /// starts over, the target's contents read invalid, and each screenshot on its way back from
     /// that device goes back to the requests, ahead of the asks queued since. On a new window
     /// these hold nothing.
@@ -174,7 +174,7 @@ impl WindowFrames {
             "a window keeps its owner"
         );
         self.stream = stream;
-        self.pane_captures = PaneCaptures::default();
+        self.backdrop_captures = BackdropCaptures::default();
         self.invalidate_target_contents();
         self.screenshots.requeue_pending();
     }
@@ -249,23 +249,23 @@ impl WindowFrames {
         self.damage_base = DamageBase::Prev;
     }
 
-    /// Build the draw list of `plan` under the panes it captures, as a painted frame builds it,
+    /// Build the draw list of `plan` under the backdrops it captures, as a painted frame builds it,
     /// for no target: a partial frame whose captures overflow its scissors builds whole.
     pub(crate) fn compose(&mut self, frontend: &mut Frontend, plan: RenderPlan) {
         let mut plan = plan;
-        if self.decide_panes(plan) == Settled::Overflow {
+        if self.decide_backdrops(plan) == Settled::Overflow {
             plan = plan.to_full();
-            self.decide_panes(plan);
+            self.decide_backdrops(plan);
         }
         self.build(frontend, plan);
-        self.pane_captures.settle(&frontend.buffer);
+        self.backdrop_captures.settle(&frontend.buffer);
     }
 
-    /// Drop from the pane ledger the results the shared backdrop atlas evicted from this window's
-    /// panes, so its next frame captures them again.
-    pub(crate) fn forget_evicted_panes(&mut self, backend: &mut WgpuBackend) {
-        let ledger = &mut self.pane_captures;
-        backend.drain_evicted_panes(self.stream.owner(), |key| ledger.forget(key));
+    /// Drop from the backdrop ledger the results the shared backdrop atlas evicted from this
+    /// window's backdrops, so its next frame captures them again.
+    pub(crate) fn forget_evicted_backdrops(&mut self, backend: &mut WgpuBackend) {
+        let ledger = &mut self.backdrop_captures;
+        backend.drain_evicted_backdrops(self.stream.owner(), |key| ledger.forget(key));
     }
 
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
@@ -310,7 +310,7 @@ impl WindowFrames {
                     let scene = self.ui.frame_scene();
                     promote_share(
                         scene.visible_row_count(),
-                        scene.pane_share(),
+                        scene.backdrop_share(),
                         scene.stamp.display.physical,
                     )
                 }),
@@ -356,7 +356,7 @@ impl WindowFrames {
                 }
             }
         };
-        self.pane_captures.settle(&ctx.frontend.buffer);
+        self.backdrop_captures.settle(&ctx.frontend.buffer);
         fitted.path = self.capture_path(fitted.path, &ctx.frontend.buffer);
         debug_assert!(
             matches!(
@@ -382,8 +382,8 @@ impl WindowFrames {
         facts: PresentFacts,
     ) -> Result<Fitted, Escalation> {
         let plan = path.plan;
-        // More panes capture than the repaint holds scissors for.
-        if self.decide_panes(plan) == Settled::Overflow {
+        // More backdrops capture than the repaint holds scissors for.
+        if self.decide_backdrops(plan) == Settled::Overflow {
             return Err(Escalation::ByStrategy);
         }
         let path = if self.loses_kept_pixels(path.route) {
@@ -399,7 +399,7 @@ impl WindowFrames {
         let Some(scissors) = RepaintScissors::new(
             plan.damage,
             &display,
-            self.pane_captures.capture_footprints(),
+            self.backdrop_captures.capture_footprints(),
         ) else {
             return Err(Escalation::ByStrategy);
         };
@@ -415,11 +415,11 @@ impl WindowFrames {
         Ok(Fitted { path, scissors })
     }
 
-    /// Build the whole frame `plan` paints. A whole frame captures every pane and keeps no pixel,
-    /// so nothing can refuse it.
+    /// Build the whole frame `plan` paints. A whole frame captures every backdrop and keeps no
+    /// pixel, so nothing can refuse it.
     fn build_whole(&mut self, ctx: &mut BuildCtx<'_, '_>, plan: RenderPlan) {
         debug_assert!(matches!(plan.damage, Damage::Full));
-        let settled = self.decide_panes(plan);
+        let settled = self.decide_backdrops(plan);
         debug_assert_eq!(
             settled,
             Settled::Fits,
@@ -433,12 +433,12 @@ impl WindowFrames {
     }
 
     /// The ledger's tickets for a frame painted by `plan`.
-    fn decide_panes(&mut self, plan: RenderPlan) -> Settled {
+    fn decide_backdrops(&mut self, plan: RenderPlan) -> Settled {
         let scene = self.ui.frame_scene();
-        self.pane_captures.decide(
-            scene.panes(),
+        self.backdrop_captures.decide(
+            scene.backdrops(),
             scene.stamp.display,
-            PaneDamage::of(plan, self.damage.dirty_panes()),
+            BackdropDamage::of(plan, self.damage.dirty_backdrops()),
         )
     }
 
@@ -450,7 +450,7 @@ impl WindowFrames {
             self.ui.frame_scene(),
             BuildPlan {
                 render: plan,
-                panes: self.pane_captures.tickets(),
+                backdrops: self.backdrop_captures.tickets(),
             },
         );
         self.ui
@@ -461,16 +461,16 @@ impl WindowFrames {
 
     /// Whether a partial frame on `route` cannot paint in the target it keeps its pixels in: only a
     /// retained target paints a partial frame direct, and it cannot when it holds the last frame's
-    /// damage outline, or a pane may capture from a target that gives no copy. Decided before the
-    /// frame builds, from the tickets, as the partial draw list culls what a whole frame would
+    /// damage outline, or a backdrop may capture from a target that gives no copy. Decided before
+    /// the frame builds, from the tickets, as the partial draw list culls what a whole frame would
     /// paint.
     fn loses_kept_pixels(&self, route: Route) -> bool {
         let gives_copy = self.target.is_some_and(|target| target.gives_copy);
         route == Route::Direct
-            && (self.target_outlined || (!gives_copy && self.pane_captures.may_capture()))
+            && (self.target_outlined || (!gives_copy && self.backdrop_captures.may_capture()))
     }
 
-    /// `path` for a frame whose panes capture as `buffer` says: a direct whole frame paints
+    /// `path` for a frame whose backdrops capture as `buffer` says: a direct whole frame paints
     /// through the backbuffer when its captures cannot copy out of the target, which gives no
     /// copy, or would copy more than the surface holds, where its blurs read the backbuffer and
     /// the copy onto the target moves the surface once; the backbuffer may be new, as the frame
@@ -653,8 +653,8 @@ pub(crate) mod internals {
     #[derive(Debug, Default)]
     pub(crate) struct ForcedFrame {
         damage: Option<Damage>,
-        /// What the frame's content changed, which leaves each pane whose footprint it touches
-        /// stale. Kept apart from `damage`, whose rects may have merged past a pane no change
+        /// What the frame's content changed, which leaves each backdrop whose footprint it touches
+        /// stale. Kept apart from `damage`, whose rects may have merged past a backdrop no change
         /// reached.
         changed: Vec<Rect>,
     }
@@ -669,7 +669,8 @@ pub(crate) mod internals {
             self.forced.changed.extend_from_slice(changed);
         }
 
-        /// Put the forced decision in `report`'s plan, and mark the panes its change left stale.
+        /// Put the forced decision in `report`'s plan, and mark the backdrops its change left
+        /// stale.
         pub(crate) fn apply_forced(&mut self, report: &mut FrameReport) {
             let Some(damage) = self.forced.damage.take() else {
                 return;
@@ -678,18 +679,18 @@ pub(crate) mod internals {
                 clear: self.ui.theme().window_bg,
                 damage,
             });
-            // A whole frame captures every pane and reports none stale.
+            // A whole frame captures every backdrop and reports none stale.
             if matches!(damage, Damage::Full) {
                 return;
             }
-            for pane in self.ui.frame_scene().panes() {
+            for backdrop in self.ui.frame_scene().backdrops() {
                 if self
                     .forced
                     .changed
                     .iter()
-                    .any(|rect| rect.intersects(pane.footprint))
+                    .any(|rect| rect.intersects(backdrop.footprint))
                 {
-                    self.damage.force_stale_pane(pane.key);
+                    self.damage.force_stale_backdrop(backdrop.key);
                 }
             }
         }

@@ -305,7 +305,7 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
 }
 
 /// `with_material` sets the material alone, and a chrome whose only paint is a material is not a
-/// no-op: it makes a pane.
+/// no-op: it makes a backdrop.
 #[test]
 fn a_chrome_with_only_a_material_paints() {
     let base = Chrome::new(RgbaF32::WHITE);
@@ -342,9 +342,12 @@ fn a_ceiling_for_an_ink_holds_it_at_the_text_contrast() {
     );
     for (fill, want) in [(0x383838, 0.04443538), (0x1f1f1f, 0.11089178)] {
         let fill = RgbaF32::hex(fill).with_alpha(0.72);
-        let filter = Material::frosted(20.0).with_max_luminance_for(ink, fill);
-        let ceiling = filter.max_luminance.expect("a ceiling");
-        assert_eq!(filter, Material::frosted(20.0).with_max_luminance(ceiling));
+        let material = Material::frosted(20.0).with_max_luminance_for(ink, fill);
+        let ceiling = material.max_luminance.expect("a ceiling");
+        assert_eq!(
+            material,
+            Material::frosted(20.0).with_max_luminance(ceiling)
+        );
         // The hand value's eighth digit, and the derivation's f32 rounding, a few ulps of 1e-8.
         assert!((ceiling - want).abs() < 1e-7, "{ceiling}");
         let ground = 0.28 * ceiling + 0.72 * fill.luminance();
@@ -368,9 +371,9 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
         "byte 173 is the lowest"
     );
     let fill = RgbaF32::hex(0xe4e6e8).with_alpha(0.3);
-    let filter = Material::frosted(20.0).with_min_luminance_for(ink, fill);
-    let floor = filter.min_luminance.expect("a floor");
-    assert_eq!(filter, Material::frosted(20.0).with_min_luminance(floor));
+    let material = Material::frosted(20.0).with_min_luminance_for(ink, fill);
+    let floor = material.min_luminance.expect("a floor");
+    assert_eq!(material, Material::frosted(20.0).with_min_luminance(floor));
     assert!((floor - 0.266_466_08).abs() < 1e-7, "{floor}");
     let ground = 0.7 * floor + 0.3 * fill.luminance();
     assert!((ground - level(174).r).abs() < 2e-8, "{ground}");
@@ -387,7 +390,7 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
 #[test]
 fn each_refused_bound_returns_its_case() {
     use crate::primitives::paint::material::InkBound;
-    let filter = Material::frosted(20.0);
+    let material = Material::frosted(20.0);
     let half = |hex: u32| RgbaF32::hex(hex).with_alpha(0.5);
     let floors = [
         (0x808080, half(0xffffff), InkBound::InkFailsOnFill),
@@ -395,24 +398,24 @@ fn each_refused_bound_returns_its_case() {
         (
             0x000000,
             RgbaF32::hex(0xffffff),
-            InkBound::TintNotTranslucent { alpha: 1.0 },
+            InkBound::FillNotTranslucent { alpha: 1.0 },
         ),
     ];
     for (ink, fill, want) in floors {
         assert_eq!(
-            filter.min_luminance_for(RgbaF32::hex(ink), fill),
+            material.min_luminance_for(RgbaF32::hex(ink), fill),
             Err(want),
             "floor for {ink:06x}"
         );
     }
     assert_eq!(
-        filter.max_luminance_for(RgbaF32::hex(0xffffff), half(0xffffff)),
+        material.max_luminance_for(RgbaF32::hex(0xffffff), half(0xffffff)),
         Err(InkBound::InkFailsOnFill),
         "ceiling for white over white"
     );
     assert!(
         matches!(
-            filter.max_luminance_for(RgbaF32::hex(0x202020), half(0x000000)),
+            material.max_luminance_for(RgbaF32::hex(0x202020), half(0x000000)),
             Err(InkBound::InkTooDark { .. })
         ),
         "ceiling for a dark grey"
@@ -443,7 +446,7 @@ fn srgb_decode(e: f64) -> f64 {
 /// channel toward the ink, as the dither and the rounding may move it, still stores a ground the
 /// ink reads 4.5:1 on.
 #[test]
-fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
+fn a_saturated_fill_holds_the_ink_at_the_text_contrast() {
     const WEIGHTS: [f64; 3] = [0.2126, 0.7152, 0.0722];
     const HUES: [[f64; 3]; 7] = [
         [1.0, 0.0, 0.0],

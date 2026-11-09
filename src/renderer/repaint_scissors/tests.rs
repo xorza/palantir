@@ -33,9 +33,9 @@ fn scissors_past_the_cap_fit_no_partial_repaint() {
     assert!(RepaintScissors::new(Damage::Partial(damage), &display(), footprints).is_none());
 }
 
-/// A partial repaint takes the footprint of each pane that may capture, as the target there
-/// holds the last frame's pane, then each damage rect, scaled, padded and clamped, less what the
-/// footprints already cover: no pixel lies under two scissors, and damage inside a footprint
+/// A partial repaint takes the footprint of each backdrop that may capture, as the target there
+/// holds the last frame's backdrop, then each damage rect, scaled, padded and clamped, less what
+/// the footprints already cover: no pixel lies under two scissors, and damage inside a footprint
 /// adds no piece.
 #[test]
 fn partial_repaint_preserves_padded_physical_scissors() {
@@ -48,7 +48,7 @@ fn partial_repaint_preserves_padded_physical_scissors() {
         MergePolicy::with_budget(0.0),
         Rect::new(0.0, 0.0, 50.0, 50.0),
     );
-    // One capturing pane: its footprint, already physical, joins the scissors first.
+    // One capturing backdrop: its footprint, already physical, joins the scissors first.
     let repaint = RepaintScissors::new(
         Damage::Partial(damage),
         &display(),

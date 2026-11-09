@@ -1,4 +1,4 @@
-//! Backdrop panes over the pixels painted before them.
+//! Materials over the pixels painted before them.
 
 use palantir::glam::UVec2;
 use palantir::widget::{PaintAnimation, Shape};
@@ -29,18 +29,19 @@ fn backdrop_scene(ui: &mut Ui, size: UVec2) {
             color,
         );
     }
-    Text::new("Backdrop panes blur what lies under them")
+    Text::new("Materials blur what lies under them")
         .id(WidgetId::from_hash("backdrop-text"))
         .show(ui);
 }
 
-/// Pin: panes over stripes and text, left to right: a plain blur, a frosted pane (saturated,
-/// grained and tinted), a rounded pane with a border, a windowed pane, which blurs around its
-/// hole, a pane over a pane, and a pane cut by the surface's edge, whose blur mirrors there.
+/// Pin: backdrops over stripes and text, left to right: a plain blur, a frosted backdrop
+/// (saturated, grained and tinted), a rounded backdrop with a border, a windowed backdrop, which
+/// blurs around its hole, a backdrop over a backdrop, and a backdrop cut by the surface's edge,
+/// whose blur mirrors there.
 #[test]
-fn backdrop_panes_match_golden() {
+fn backdrops_match_golden() {
     let size = UVec2::new(640, 120);
-    GoldenName::BackdropPanes.assert_scene(size, |ui| {
+    GoldenName::Backdrops.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-canvas"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -87,10 +88,10 @@ fn backdrop_panes_match_golden() {
     });
 }
 
-/// Pin: a rounded, bordered pane turned 30° about its center, which still blurs by screen
+/// Pin: a rounded, bordered backdrop turned 30° about its center, which still blurs by screen
 /// position, so the stripes under it stay upright.
 #[test]
-fn a_turned_pane_matches_golden() {
+fn a_turned_backdrop_matches_golden() {
     let size = UVec2::new(200, 160);
     GoldenName::BackdropTurned.assert_scene(size, |ui| {
         Panel::canvas()

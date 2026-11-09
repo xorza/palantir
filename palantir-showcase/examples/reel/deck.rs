@@ -387,7 +387,7 @@ impl Deck {
     fn materials(&self, ui: &mut Ui) {
         let t = self.local();
         let glass = t > 7.0;
-        // The pane sweeps across the colors and back, 8 s a pass.
+        // The box sweeps across the colors and back, 8 s a pass.
         let x = 140.0 + 520.0 * (0.5 - 0.5 * (std::f32::consts::TAU * t / 8.0).cos());
         Self::page(
             ui,
@@ -413,7 +413,7 @@ impl Deck {
                                 .chrome(Chrome::rounded(RgbaF32::hex(hex), Corners::all(85.0)))
                                 .show(ui);
                         }
-                        let filter = if glass {
+                        let material = if glass {
                             Material::glass(Lens {
                                 bezel: 28.0,
                                 thickness: 40.0,
@@ -425,7 +425,7 @@ impl Deck {
                             Material::frosted(18.0)
                         };
                         Block::new()
-                            .id(id(5, "pane"))
+                            .id(id(5, "box"))
                             .at((x, 70.0))
                             .size((Sizing::fixed(360.0), Sizing::fixed(220.0)))
                             .chrome(Chrome {
@@ -434,7 +434,7 @@ impl Deck {
                                     fill: RgbaF32::WHITE.with_alpha(0.12).into(),
                                     border: Border::new(RgbaF32::WHITE.with_alpha(0.35), 1.0),
                                     shadow: Shadow::NONE,
-                                    material: Some(filter),
+                                    material: Some(material),
                                 },
                             })
                             .show(ui);

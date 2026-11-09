@@ -10,9 +10,9 @@ use glam::UVec2;
 /// million physical pixels.
 pub(crate) const PROMOTE_HALF_ROWS_PER_MPX: f32 = 400.0;
 
-/// What all of the surface under pane footprints counts for in [`promote_share`]'s density, in the
-/// same rows per million physical pixels.
-pub(crate) const PROMOTE_PANE_ROWS_PER_MPX: f32 = 300.0;
+/// What all of the surface under backdrop footprints counts for in [`promote_share`]'s density, in
+/// the same rows per million physical pixels.
+pub(crate) const PROMOTE_BACKDROP_ROWS_PER_MPX: f32 = 300.0;
 
 /// A scene's rows per million physical pixels.
 pub(crate) fn rows_per_mpx(row_count: usize, physical: UVec2) -> f32 {
@@ -27,10 +27,10 @@ pub(crate) fn density_share(rows_per_mpx: f32, half_rows_per_mpx: f32) -> f32 {
 
 /// The share of the surface a damage may cover before [`PresentStrategy::DirectAdaptive`] paints a
 /// whole frame direct: `d / (d + 400)` of the density `d`, the rows that draw on the surface per
-/// million physical pixels, and 300 for all of the surface under pane footprints.
+/// million physical pixels, and 300 for all of the surface under backdrop footprints.
 ///
 /// A partial frame pays a copy of the whole surface, and saves the rows and the pixels outside its
-/// damage and the captures of the panes it leaves, so a denser scene makes more damage worth a
+/// damage and the captures of the backdrops it leaves, so a denser scene makes more damage worth a
 /// partial frame, and an empty one makes none. Both sides scale with the surface, which leaves the
 /// density. The numbers are in `.notes/PERF.md`.
 ///
@@ -38,9 +38,9 @@ pub(crate) fn density_share(rows_per_mpx: f32, half_rows_per_mpx: f32) -> f32 {
 /// to 0.7 on a dense one; the bounds as the measure, on a tiler too, whose partial frame moves them;
 /// a lower share on a stale backbuffer, and a first whole frame through the backbuffer, which helped
 /// one GPU and cost another.
-pub(super) fn promote_share(row_count: usize, pane_share: f32, physical: UVec2) -> f32 {
+pub(super) fn promote_share(row_count: usize, backdrop_share: f32, physical: UVec2) -> f32 {
     density_share(
-        rows_per_mpx(row_count, physical) + PROMOTE_PANE_ROWS_PER_MPX * pane_share,
+        rows_per_mpx(row_count, physical) + PROMOTE_BACKDROP_ROWS_PER_MPX * backdrop_share,
         PROMOTE_HALF_ROWS_PER_MPX,
     )
 }

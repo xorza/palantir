@@ -465,7 +465,7 @@ impl RecordStore {
             name,
             kind,
             params,
-            pane,
+            capture,
             reduced_transparency,
             images,
         } = paint;
@@ -498,13 +498,13 @@ impl RecordStore {
         let backdrop = matches!(kind, KindId::Backdrop).then_some(if reduced {
             EffectBackdrop::Ground
         } else {
-            EffectBackdrop::Capture(pane)
+            EffectBackdrop::Capture(capture)
         });
         match backdrop {
-            Some(EffectBackdrop::Capture(pane)) => {
+            Some(EffectBackdrop::Capture(capture)) => {
                 h.write_u8(1);
-                h.write_u32(pane.sigma.to_bits());
-                h.write_u32(pane.reach.to_bits());
+                h.write_u32(capture.sigma.to_bits());
+                h.write_u32(capture.reach.to_bits());
             }
             Some(EffectBackdrop::Ground) => h.write_u8(2),
             None => {}

@@ -3,11 +3,11 @@
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::primitives::identity::pane_keys::PaneKeys;
+use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, PaneSource};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, BackdropSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::effect_draw_row::EffectDrawRow;
@@ -70,12 +70,12 @@ pub(crate) struct RenderBuffer {
     pub(crate) curves: Vec<CurveInstance>,
     /// Flat pool of rounded-clip mask chains (outer→inner); `DrawGroup.rounded_clips` and `TextBatch.rounded_clips` are spans into it. Value-equal chains dedup at mask staging.
     pub(crate) rounded_clips: Vec<RoundedClip>,
-    /// The backdrop panes in paint order; each one that captures breaks the main pass at its
+    /// The backdrops in paint order; each one that captures breaks the main pass at its
     /// barrier and copies what the groups before it painted.
     pub(crate) backdrops: Vec<BackdropRow>,
-    /// Every pane of the frame, drawn or not: the backend's roster, which keeps an unchanged
-    /// pane's cached blur while it stays out of the frame's damage.
-    pub(crate) live_panes: PaneKeys,
+    /// Every backdrop of the frame, drawn or not: the backend's roster, which keeps an unchanged
+    /// backdrop's cached blur while it stays out of the frame's damage.
+    pub(crate) live_backdrops: BackdropKeys,
     /// Clear fold: an unclipped opaque solid sharp quad covering the viewport discards everything composed before it and is dropped, its fill recorded here for the backend to clear to.
     pub(crate) clear_override: Option<RgbaF16>,
     /// The display this buffer was composed for, held whole so every reader sees the viewport the compose session used.
@@ -101,7 +101,7 @@ impl RenderBuffer {
             curves: Vec::new(),
             rounded_clips: Vec::new(),
             backdrops: Vec::new(),
-            live_panes: PaneKeys::default(),
+            live_backdrops: BackdropKeys::default(),
             clear_override: None,
             display: Display::default(),
             time: Duration::ZERO,
@@ -150,15 +150,15 @@ impl RenderBuffer {
         }
     }
 
-    /// The physical px the frame's captures copy out of the target: the footprints of the panes
+    /// The physical px the frame's captures copy out of the target: the footprints of the backdrops
     /// that capture, overlaps counted twice, as each copies its own.
     pub(crate) fn captured_area(&self) -> u64 {
         self.backdrops
             .iter()
             .filter_map(|row| match row.read {
-                BackdropRead::Pane {
+                BackdropRead::Capture {
                     capture,
-                    source: PaneSource::Capture { .. },
+                    source: BackdropSource::Capture { .. },
                 } => Some(capture.footprint.area()),
                 _ => None,
             })
@@ -166,7 +166,7 @@ impl RenderBuffer {
     }
 
     /// Drop every scene column but the backdrop rows, leaving per-frame stamps; shared with the
-    /// composer's clear fold, which keeps the rows of the panes it hides.
+    /// composer's clear fold, which keeps the rows of the backdrops it hides.
     pub(crate) fn discard_scene(&mut self) {
         self.quads.clear();
         self.texts.clear();

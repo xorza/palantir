@@ -1,4 +1,4 @@
-//! A pane with nothing painted before it, whose backdrop is the clear.
+//! A material with nothing painted before it, whose backdrop is the clear.
 
 use crate::gpu::backdrop::tests::{CLEAR, Reference, SIZE, assert_within_a_step, window};
 use crate::gpu::test_gpu::headless_test_gpu;
@@ -14,24 +14,24 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::Vec2;
 
-/// σ 2 reaches 8 px, so the pane's footprint spans x 8..56: a speck at the window's corner lies
+/// σ 2 reaches 8 px, so the backdrop's footprint spans x 8..56: a speck at the window's corner lies
 /// outside it, and a veil over x 4..60 covers it without covering the window.
-const PANE: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
+const BACKDROP: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
 const SPECK: Rect = Rect::new(0.0, 0.0, 2.0, 2.0);
 const VEIL: Rect = Rect::new(4.0, 0.0, 56.0, 48.0);
 
-/// What a scene paints before its pane, past its background.
+/// What a scene paints before its backdrop, past its background.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Before {
     Nothing,
-    /// A red speck outside the pane's footprint.
+    /// A red speck outside the backdrop's footprint.
     Speck,
-    /// [`CLEAR`] over the pane's footprint, so the pane captures the clear's bytes.
+    /// [`CLEAR`] over the backdrop's footprint, so the backdrop captures the clear's bytes.
     Veil,
 }
 
-/// A frosted pane at [`PANE`], after a background of `background` over the window, which folds
-/// into the clear, then `before`, and a square inside the pane when `under` is some.
+/// A frosted backdrop at [`BACKDROP`], after a background of `background` over the window, which
+/// folds into the clear, then `before`, and a square inside the backdrop when `under` is some.
 fn scene(
     background: Option<RgbaF32>,
     before: Before,
@@ -62,21 +62,21 @@ fn scene(
                 }
                 let filter = Material::frosted(2.0).with_saturation(1.6).with_noise(0.0);
                 ui.add_shape(
-                    Shape::rect().at(PANE),
+                    Shape::rect().at(BACKDROP),
                     Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.25)).with_material(filter),
                 );
             });
     }
 }
 
-/// A pane with nothing painted under its footprint shows the clear without a capture or a blur,
+/// A backdrop with nothing painted under its footprint shows the clear without a capture or a blur,
 /// as one whose capture holds only the clear's bytes shows it: the same bytes, as the clear it
 /// shows is the one the target holds, rounded to its byte and to the blur's `f16`. Its edge's
-/// coverage blends the same pane, so it matches too. A speck outside the footprint leaves it on
-/// the clear. A background over the whole window folds into the clear, so a pane after it shows
+/// coverage blends the same backdrop, so it matches too. A speck outside the footprint leaves it on
+/// the clear. A background over the whole window folds into the clear, so a backdrop after it shows
 /// the background the same way.
 #[test]
-fn a_pane_with_nothing_under_it_shows_the_clear() {
+fn a_backdrop_with_nothing_under_it_shows_the_clear() {
     for (clear, background, what) in [
         (CLEAR, None, "the window's clear"),
         (RgbaF32::BLACK, Some(CLEAR), "a folded background"),
@@ -99,11 +99,11 @@ fn a_pane_with_nothing_under_it_shows_the_clear() {
                     captured.get_pixel(x, y),
                     "{what}: {before:?} ({x}, {y})"
                 );
-                if !PANE.contains(at) {
+                if !BACKDROP.contains(at) {
                     assert_eq!(
                         pixel.0,
                         [clear_bytes.r, clear_bytes.g, clear_bytes.b, 255],
-                        "{what}: {before:?} ({x}, {y}) outside the pane"
+                        "{what}: {before:?} ({x}, {y}) outside the backdrop"
                     );
                 }
             }
@@ -111,11 +111,11 @@ fn a_pane_with_nothing_under_it_shows_the_clear() {
     }
 }
 
-/// On a kept window, a pane shows the clear while nothing lies under it, captures once a square
+/// On a kept window, a backdrop shows the clear while nothing lies under it, captures once a square
 /// appears under it, and shows the clear again once the square leaves, freeing its result: each
 /// frame matches a whole repaint of its scene within one 8-bit step.
 #[test]
-fn a_pane_shows_the_clear_or_a_capture_as_what_lies_under_it_changes() {
+fn a_backdrop_shows_the_clear_or_a_capture_as_what_lies_under_it_changes() {
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, SIZE, CLEAR);
     let mut reference = Reference::new(&gpu, SIZE, CLEAR);

@@ -1,7 +1,7 @@
 //! A forced frame paints a decision on a still screen, as a damage sweep times it.
 
 use crate::damage::Damage;
-use crate::damage::dirty_panes::DirtyPanes;
+use crate::damage::dirty_backdrops::DirtyBackdrops;
 use crate::damage::region::DamageRegion;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
@@ -11,7 +11,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
-use crate::renderer::render_buffer::backdrop_row::PaneSource;
+use crate::renderer::render_buffer::backdrop_row::BackdropSource;
 use crate::shape::Shape;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -22,11 +22,11 @@ use crate::widgets::panel::Panel;
 use glam::UVec2;
 
 const SIZE: UVec2 = UVec2::new(160, 120);
-/// A pane in the window's middle, past the reach of a change at its top-left corner.
-const PANE: Rect = Rect::new(100.0, 70.0, 40.0, 30.0);
+/// A backdrop in the window's middle, past the reach of a change at its top-left corner.
+const BACKDROP: Rect = Rect::new(100.0, 70.0, 40.0, 30.0);
 
-/// Two tiles over a backdrop, with an optional pane.
-fn scene(ui: &mut Ui, pane: bool) {
+/// Two tiles over a backdrop, with an optional material.
+fn scene(ui: &mut Ui, backdrop: bool) {
     Panel::zstack()
         .id_salt("forced-scene")
         .size((Sizing::FILL, Sizing::FILL))
@@ -37,13 +37,13 @@ fn scene(ui: &mut Ui, pane: bool) {
                 .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                 .chrome(Chrome::new(RgbaF32::srgba(1.0, 0.2, 0.0, 0.5)))
                 .show(ui);
-            if pane {
+            if backdrop {
                 Panel::canvas()
-                    .id_salt("forced-panes")
+                    .id_salt("forced-backdrops")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect().at(PANE),
+                            Shape::rect().at(BACKDROP),
                             Paint::from(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
                         );
                     });
@@ -102,16 +102,16 @@ fn a_forced_frame_paints_its_decision_and_keeps_the_screen() {
     assert!(target.read_back() == still, "a whole repaint: other pixels");
 }
 
-/// A change under a pane's footprint makes it capture again, as damage under it does; a change far
-/// from it leaves its capture held, the merged rect reaching over it or not.
+/// A change under a backdrop's footprint makes it capture again, as damage under it does; a change
+/// far from it leaves its capture held, the merged rect reaching over it or not.
 #[test]
-fn a_forced_frame_stales_the_panes_its_change_touches() {
+fn a_forced_frame_stales_the_backdrops_its_change_touches() {
     let gpu = headless_test_gpu();
     let mut host = OffscreenHost::builder(gpu.handles())
         .shaper(TextShaper::test_mono())
         .swapchain_present()
         .build();
-    let target = gpu.target("palantir.test.forced_pane", SIZE);
+    let target = gpu.target("palantir.test.forced_backdrop", SIZE);
     let mut app = |ui: &mut Ui| scene(ui, true);
     host.frame(target.as_target(), &mut app);
     host.frame(target.as_target(), &mut app);
@@ -122,11 +122,11 @@ fn a_forced_frame_stales_the_panes_its_change_touches() {
         host.last_render_buffer()
             .backdrops
             .iter()
-            .filter(|row| row.source().is_some_and(PaneSource::is_new))
+            .filter(|row| row.source().is_some_and(BackdropSource::is_new))
             .count()
     };
     // The first partial frame after a direct one repaints whole, as the backbuffer is stale, and
-    // captures the pane; from the next the capture holds.
+    // captures the backdrop; from the next the capture holds.
     assert_eq!(
         captures(partial(&[far]), &[far]),
         1,
@@ -136,22 +136,22 @@ fn a_forced_frame_stales_the_panes_its_change_touches() {
     assert_eq!(
         captures(partial(&[Rect::new(0.0, 0.0, 160.0, 120.0)]), &[far]),
         0,
-        "a far change under a merged rect that reaches the pane"
+        "a far change under a merged rect that reaches the backdrop"
     );
     assert_eq!(
-        captures(partial(&[PANE]), &[PANE]),
+        captures(partial(&[BACKDROP]), &[BACKDROP]),
         1,
-        "a change under the pane"
+        "a change under the backdrop"
     );
     assert_eq!(
         captures(partial(&[far]), &[far]),
         0,
         "the mark lasts one frame"
     );
-    captures(Damage::Full, &[PANE]);
+    captures(Damage::Full, &[BACKDROP]);
     assert_eq!(
-        *host.window.frames.damage().dirty_panes(),
-        DirtyPanes::default(),
-        "a whole frame reports no stale pane"
+        *host.window.frames.damage().dirty_backdrops(),
+        DirtyBackdrops::default(),
+        "a whole frame reports no stale backdrop"
     );
 }

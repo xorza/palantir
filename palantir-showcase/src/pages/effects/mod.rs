@@ -286,7 +286,7 @@ fn ring(ui: &mut Ui, k: Kit) {
     );
 }
 
-/// Colored bars and a word under a pane of water.
+/// Colored bars and a word under a backdrop of water.
 fn water(ui: &mut Ui, k: Kit) {
     let size = CELL - 2.0 * CELL_PADDING;
     for (i, color) in (0..10).zip(k.swatch.all().iter().cycle()) {
@@ -301,9 +301,9 @@ fn water(ui: &mut Ui, k: Kit) {
         Shape::text(label, GlyphFont::new(40.0)).at_origin(Vec2::new(size * 0.22, size * 0.55)),
         k.t.ink,
     );
-    let pane = Rect::new(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
+    let backdrop = Rect::new(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
     if let Some(shape) = ui.add_shape(
-        Shape::rect().at(pane).corners(Corners::all(20.0)),
+        Shape::rect().at(backdrop).corners(Corners::all(20.0)),
         EffectPaint::new(
             WATER,
             Water {

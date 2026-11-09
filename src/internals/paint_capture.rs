@@ -6,12 +6,12 @@
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::draw_backdrop_payload::DrawBackdropPayload;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
@@ -69,7 +69,7 @@ paint_calls! {
     PushClip(PushClipPayload) => push_clip,
     PushTransform(TranslateScale) => push_transform,
     Quad(DrawQuadPayload) => quad,
-    Pane(DrawPanePayload) => pane,
+    Backdrop(DrawBackdropPayload) => backdrop,
     Text(DrawTextPayload) => text,
     Mesh(DrawMeshPayload) => mesh,
     Polyline(DrawPolylinePayload) => polyline,

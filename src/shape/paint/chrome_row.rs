@@ -14,7 +14,7 @@ pub(crate) struct ChromeRow {
     pub(crate) border: LoweredBorder,
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,
-    /// The chrome's material; one that captures makes the chrome a pane.
+    /// The chrome's material; one that captures makes the chrome a backdrop.
     pub(crate) material: Option<LoweredMaterial>,
     pub(crate) hash: ContentHash,
     /// Whether the focus ring draws over this chrome: set on the one node per tree holding keyboard focus. A flag, not a stroke ([`Tree::focus_ring`](crate::scene::tree::Tree) holds it once); folded into `hash` for damage.

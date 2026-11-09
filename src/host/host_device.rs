@@ -93,7 +93,7 @@ impl HostDevice {
 
     /// The CPU half of a frame that paints, the one sequence every painting host runs: build the
     /// pipelines of its target's format, hand over a screenshot the device finished, drop what
-    /// evicted panes held, then record `app` and build the draw list through `cpu`'s frontend.
+    /// evicted backdrops held, then record `app` and build the draw list through `cpu`'s frontend.
     pub(super) fn frame<'c, T: App>(
         &mut self,
         cpu: &'c mut HostCpu,
@@ -103,7 +103,7 @@ impl HostDevice {
     ) -> CpuFrame<'c> {
         self.backend.prepare_format(spec.target.format);
         frames.deliver_screenshot(&self.backend);
-        frames.forget_evicted_panes(&mut self.backend);
+        frames.forget_evicted_backdrops(&mut self.backend);
         let report = frames.record(spec, app);
         frames.build_paint(
             BuildCtx {

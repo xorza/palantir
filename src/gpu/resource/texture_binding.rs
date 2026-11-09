@@ -29,7 +29,7 @@ pub(crate) struct TextureBinding {
     /// The group a backdrop's composite reads its result through, a material's and an app's
     /// backdrop effect's alike: the results atlas, its sampler, the slot table and the spectrum a
     /// lens spreads.
-    panes: wgpu::BindGroupLayout,
+    backdrops: wgpu::BindGroupLayout,
     /// Linear within a mip, nearest between, clamped on all axes. Safe because no user passes a coordinate outside `0..1`: the gradient shader applies [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t` first and the image shader `fract`s uv under `FLAG_TILED`. Nearest image filtering is a shader-side snap, so all filters ride this sampler.
     sampler: wgpu::Sampler,
 }
@@ -66,7 +66,7 @@ impl TextureBinding {
             },
             count: None,
         };
-        let panes = gpu
+        let backdrops = gpu
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("palantir.backdrop.composite.bgl"),
@@ -80,14 +80,14 @@ impl TextureBinding {
         Self {
             layout,
             images,
-            panes,
+            backdrops,
             sampler,
         }
     }
 
-    /// The layout of the group a pane's composite reads its result through.
-    pub(crate) const fn panes(&self) -> &wgpu::BindGroupLayout {
-        &self.panes
+    /// The layout of the group a backdrop's composite reads its result through.
+    pub(crate) const fn backdrops(&self) -> &wgpu::BindGroupLayout {
+        &self.backdrops
     }
 
     pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {

@@ -10,25 +10,25 @@ pub(crate) mod payload;
 
 use crate::cascade::Cascade;
 use crate::cascade::paint::PaintRows;
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::tracy;
 use crate::display::frame_stamp::FrameStamp;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::layout::Layout;
+use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::gradient_atlas::FlushedRows;
-use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::forest::Forest;
 
-/// What a frame builds: the plan it paints by, and the ticket of each pane of its scene, planes
-/// and panes in paint order.
+/// What a frame builds: the plan it paints by, and the ticket of each backdrop of its scene, planes
+/// and backdrops in paint order.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BuildPlan<'a> {
     pub(crate) render: RenderPlan,
-    pub(crate) panes: &'a [Option<PaneTicket>],
+    pub(crate) backdrops: &'a [Option<BackdropTicket>],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -59,23 +59,23 @@ impl FrameScene<'_> {
             .sum()
     }
 
-    /// The share of the surface the scene's pane footprints hold, each pane's counted alone, so
-    /// panes that overlap can read past one.
-    pub(crate) fn pane_share(&self) -> f32 {
+    /// The share of the surface the scene's backdrop footprints hold, each backdrop's counted
+    /// alone, so backdrops that overlap can read past one.
+    pub(crate) fn backdrop_share(&self) -> f32 {
         let surface = self.stamp.display.logical_rect();
         let area: f32 = self
-            .panes()
-            .map(|pane| pane.footprint.clamp_to(surface).area())
+            .backdrops()
+            .map(|backdrop| backdrop.footprint.clamp_to(surface).area())
             .sum();
         area / surface.area()
     }
 
-    /// The scene's panes, planes and panes in paint order.
-    pub(crate) fn panes(&self) -> impl Iterator<Item = &PaneRow> {
+    /// The scene's backdrops, planes and backdrops in paint order.
+    pub(crate) fn backdrops(&self) -> impl Iterator<Item = &PlaneBackdrop> {
         self.forest
             .trees
             .iter_paint_order()
-            .flat_map(|(plane, _)| &self.cascade.planes[plane].panes)
+            .flat_map(|(plane, _)| &self.cascade.planes[plane].backdrops)
     }
 }
 
@@ -133,7 +133,9 @@ impl Frontend {
                 .begin(scene.stamp, &scene.forest.record_store, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
         sink.finish();
-        self.buffer.live_panes.clone_from(&scene.cascade.pane_keys);
+        self.buffer
+            .live_backdrops
+            .clone_from(&scene.cascade.backdrop_keys);
     }
 }
 
@@ -151,10 +153,13 @@ pub(crate) mod internals {
         TextureLimit::from_device(NonZeroU32::new(8192).unwrap());
 
     impl BuildPlan<'static> {
-        /// A build of a scene that holds no pane, as a test or a bench drives one; the encoder
-        /// asserts a ticket for each pane.
-        pub(crate) const fn without_panes(render: RenderPlan) -> Self {
-            Self { render, panes: &[] }
+        /// A build of a scene that holds no backdrop, as a test or a bench drives one; the encoder
+        /// asserts a ticket for each backdrop.
+        pub(crate) const fn without_backdrops(render: RenderPlan) -> Self {
+            Self {
+                render,
+                backdrops: &[],
+            }
         }
     }
 

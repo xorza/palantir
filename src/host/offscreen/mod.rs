@@ -492,7 +492,7 @@ pub(crate) mod internals {
             self.device.backend().gpu_image_cache_len()
         }
 
-        /// The blurs the last frame ran, one per pane whose cached result went stale.
+        /// The blurs the last frame ran, one per backdrop whose cached result went stale.
         pub(crate) const fn backdrop_blurs(&self) -> usize {
             self.device.backend().backdrop_blurs()
         }

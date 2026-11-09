@@ -551,7 +551,7 @@ fn an_effect_lands_as_one_physical_row() {
                     effect: EffectId(3),
                     params: Span::new(12, 8),
                     images: Span::new(4, 2),
-                    pane: None,
+                    backdrop: None,
                     opacity: 1.0,
                     time: 1.25,
                 },

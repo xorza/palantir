@@ -1,17 +1,17 @@
 //! The backdrop's device benches, each in device time between passes. Every frame moves the
 //! clear, so each paints whole and captures once.
 //!
-//! - `atomic/backdrop_capture/gpu/<size>`: the capture of a pane over the left half of the
-//!   scene, scrolled a pixel a frame: the copy of its footprint out of the target. A pane over
+//! - `atomic/backdrop_capture/gpu/<size>`: the capture of a backdrop over the left half of the
+//!   scene, scrolled a pixel a frame: the copy of its footprint out of the target. A backdrop over
 //!   the whole surface would paint through the backbuffer and copy nothing.
 //! - `atomic/backdrop_composite/gpu/<look>/<side>`: the main pass of a `side`² surface holding one
-//!   rect and a pane over all of it, less the pane's capture and blur between its two passes: the
-//!   pane's composite, with the clear, the rect and the pass break beside it.
-//! - `integration/backdrop_frame/<backend>/<look>/<arm>`: whole frames under three panes; see
+//!   rect and a backdrop over all of it, less the backdrop's capture and blur between its two
+//!   passes: the backdrop's composite, with the clear, the rect and the pass break beside it.
+//! - `integration/backdrop_frame/<backend>/<look>/<arm>`: whole frames under three backdrops; see
 //!   [`integration`].
-//! - `integration/backdrop_frame/gpu/<scene>/<arm>`: whole frames of the panes' other
-//!   arrangements: a modal, cards, a first pane, a stacked pair, near and apart pairs, and more
-//!   stale panes than a partial frame holds; see [`scenes`].
+//! - `integration/backdrop_frame/gpu/<scene>/<arm>`: whole frames of the backdrops' other
+//!   arrangements: a modal, cards, a first backdrop, a stacked pair, near and apart pairs, and more
+//!   stale backdrops than a partial frame holds; see [`scenes`].
 
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
@@ -41,10 +41,10 @@ use glam::{UVec2, Vec2};
 use std::time::Instant;
 
 const SIZES: [UVec2; 2] = [UVec2::new(1920, 1080), UVec2::new(3840, 2160)];
-/// The pane's σ in physical px: two levels down, so the blur after the capture stays small.
+/// The backdrop's σ in physical px: two levels down, so the blur after the capture stays small.
 const SIGMA: f32 = 10.0;
 
-/// What a frame records: the scene, shifted by `scroll`, under a pane over the left half
+/// What a frame records: the scene, shifted by `scroll`, under a backdrop over the left half
 /// of the surface.
 #[derive(Debug, Default)]
 struct State<S> {
@@ -65,7 +65,7 @@ impl<S: Scene> State<S> {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         Panel::canvas()
-                            .id_salt("backdrop-capture-bench-pane")
+                            .id_salt("backdrop-capture-bench-backdrop")
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 ui.add_shape(
@@ -175,8 +175,8 @@ impl Look {
         }
     }
 
-    /// The look's backdrop at σ `sigma` logical px, and its tint.
-    fn backdrop(self, sigma: f32) -> (Material, RgbaF32) {
+    /// The look's material at σ `sigma` logical px.
+    fn material(self, sigma: f32) -> Material {
         let lens = |dispersion| Lens {
             bezel: 24.0,
             thickness: 16.0,
@@ -185,23 +185,20 @@ impl Look {
             highlight: 0.6,
         };
         match self {
-            Self::Blur => (Material::blur(sigma), RgbaF32::TRANSPARENT),
-            Self::Frosted => (Material::frosted(sigma), RgbaF32::new(1.0, 1.0, 1.0, 0.2)),
-            Self::Glass => (
-                Material::glass(lens(0.06)).with_blur(2.0),
-                RgbaF32::TRANSPARENT,
-            ),
-            Self::GlassPlain => (
-                Material::glass(lens(0.0)).with_blur(2.0),
-                RgbaF32::TRANSPARENT,
-            ),
+            Self::Blur => Material::blur(sigma),
+            Self::Frosted => Material::frosted(sigma),
+            Self::Glass => Material::glass(lens(0.06)).with_blur(2.0),
+            Self::GlassPlain => Material::glass(lens(0.0)).with_blur(2.0),
         }
     }
 
-    /// The pane's paint: its fill over its material, blurred by `sigma`.
+    /// The look's paint: its fill over its material, blurred by `sigma` logical px.
     fn paint(self, sigma: f32) -> Paint {
-        let (backdrop, tint) = self.backdrop(sigma);
-        Paint::from(tint).with_material(backdrop)
+        let fill = match self {
+            Self::Frosted => RgbaF32::new(1.0, 1.0, 1.0, 0.2),
+            Self::Blur | Self::Glass | Self::GlassPlain => RgbaF32::TRANSPARENT,
+        };
+        Paint::from(fill).with_material(self.material(sigma))
     }
 }
 
@@ -229,8 +226,8 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                             });
                     });
                     let host = &frames.host;
-                    assert_eq!(host.last_render_buffer().backdrops.len(), 1, "one pane");
-                    // The main pass spans the pane's capture and blur, which `backdrop_capture`
+                    assert_eq!(host.last_render_buffer().backdrops.len(), 1, "one backdrop");
+                    // The main pass spans the backdrop's capture and blur, which `backdrop_capture`
                     // and `backdrop_blur` time.
                     let stats = host.ui().gpu_pass_stats();
                     let backdrop = stats.last_backdrops();
@@ -250,17 +247,17 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
 enum Arm {
     /// Nothing: every frame skips.
     Cached,
-    /// A square above the toolbar's pane, inside it, flips color: no pane goes stale.
+    /// A square above the toolbar's backdrop, inside it, flips color: no backdrop goes stale.
     Hover,
-    /// A square under the toolbar's pane flips color: that pane captures again, and the sidebar's,
-    /// whose footprint the toolbar's rect reaches.
+    /// A square under the toolbar's backdrop flips color: that backdrop captures again, and the
+    /// sidebar's, whose footprint the toolbar's rect reaches.
     Under,
-    /// The popup's pane steps a pixel and back inside the region it captured.
+    /// The popup's backdrop steps a pixel and back inside the region it captured.
     Sliding,
-    /// The popup's pane moves 4 logical px a frame, out of the region it captured, as an
+    /// The popup's backdrop moves 4 logical px a frame, out of the region it captured, as an
     /// animated popup does.
     Moving,
-    /// The page scrolls under every pane: each captures again.
+    /// The page scrolls under every backdrop: each captures again.
     Scrolling,
 }
 
@@ -288,7 +285,7 @@ impl Arm {
     /// The paint a settled frame of `look` plans, and on the device the blurs it runs. A slide
     /// keeps its capture only on a lattice coarser than a pixel, which glass's light blur is not.
     fn expected(self, look: Look) -> (FramePaint, usize) {
-        let sigma = look.backdrop(FRAME_SIGMA).0.blur * FRAME_DPR.get();
+        let sigma = look.material(FRAME_SIGMA).blur * FRAME_DPR.get();
         let slides_inside = BlurPlan::new(sigma).lattice() > 1;
         match self {
             Self::Cached => (FramePaint::Skip, 0),
@@ -310,15 +307,15 @@ const TOOLBAR: Rect = Rect::new(0.0, 0.0, 1280.0, 48.0);
 const SIDEBAR: Rect = Rect::new(0.0, 48.0, 240.0, 672.0);
 const POPUP: Rect = Rect::new(500.0, 200.0, 320.0, 220.0);
 
-/// The scene with a toolbar, a sidebar and a popup as panes over it, in `look`, at frame
+/// The scene with a toolbar, a sidebar and a popup as backdrops over it, in `look`, at frame
 /// `n` of `arm`.
 #[derive(Debug, Default)]
-struct PaneFrame<S> {
+struct MaterialFrame<S> {
     frame: SceneFrame<S>,
     n: u32,
 }
 
-impl<S: Scene> PaneFrame<S> {
+impl<S: Scene> MaterialFrame<S> {
     fn record(&mut self, look: Look, arm: Arm, ui: &mut Ui) {
         let odd = self.n % 2 == 1;
         let flip = |on: bool| {
@@ -348,7 +345,7 @@ impl<S: Scene> PaneFrame<S> {
             .show(ui, |ui| {
                 self.frame.record(ui);
                 Panel::canvas()
-                    .id_salt("backdrop-frame-panes")
+                    .id_salt("backdrop-frame-backdrops")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
@@ -368,7 +365,7 @@ impl<S: Scene> PaneFrame<S> {
 }
 
 /// `integration/backdrop_frame/<backend>/<look>/<arm>`: one whole frame of the scene under
-/// three panes, wall time. `cpu` records through compose with no device; `gpu` runs the host's
+/// three backdrops, wall time. `cpu` records through compose with no device; `gpu` runs the host's
 /// frame on the desktop's present strategy and waits for it. Each case checks its arm's paint, and
 /// on the device the blurs its frames run.
 pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
@@ -384,7 +381,7 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
                             .depth(Depth::Compose)
                             .build();
                         let start = Instant::now();
-                        let mut state = PaneFrame::<S>::default();
+                        let mut state = MaterialFrame::<S>::default();
                         let mut frame = || {
                             state.n += 1;
                             h.at(start.elapsed());
@@ -396,7 +393,7 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
                         assert_eq!(frame(), arm.expected(look).0, "{}", arm.label());
                         bencher.iter(&mut frame);
                     }
-                    Backend::Gpu => pane_frames::<S>(bencher, backends, look, arm),
+                    Backend::Gpu => backdrop_frames::<S>(bencher, backends, look, arm),
                 });
             }
         }
@@ -408,14 +405,14 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
 }
 
 /// The device half of `integration/backdrop_frame`.
-fn pane_frames<S: Scene>(bencher: &mut Bencher<'_>, backends: &Backends, look: Look, arm: Arm) {
+fn backdrop_frames<S: Scene>(bencher: &mut Bencher<'_>, backends: &Backends, look: Look, arm: Arm) {
     let gpu = backends.device(Timing::PassOnly);
     let target = gpu.target("palantir.bench.backdrop_frame", FRAME_SURFACE);
     let mut host = OffscreenHost::builder(gpu.handles())
         .collect_gpu_stats(false)
         .swapchain_present()
         .build();
-    let mut state = PaneFrame::<S>::default();
+    let mut state = MaterialFrame::<S>::default();
     let mut frame = || {
         state.n += 1;
         let mut app = |ui: &mut Ui| state.record(look, arm, ui);
@@ -441,7 +438,7 @@ fn pane_frames<S: Scene>(bencher: &mut Bencher<'_>, backends: &Backends, look: L
 /// The 4K surface of the modal arms, a 1920 × 1080 window at 2×.
 const MODAL_SURFACE: UVec2 = UVec2::new(3840, 2160);
 
-/// One case of `integration/backdrop_frame/gpu` past the three panes: what its frames record,
+/// One case of `integration/backdrop_frame/gpu` past the three backdrops: what its frames record,
 /// and what a settled frame paints and blurs.
 #[derive(Debug)]
 struct SceneCase<S> {
@@ -583,21 +580,21 @@ const fn scroll<S>(frame: &mut SceneFrame<S>, n: u32) {
     frame.scroll = Vec2::new(0.0, (n % 64) as f32);
 }
 
-/// The scene, and `panes` on a canvas over it.
-fn over<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, panes: impl FnOnce(&mut Ui)) {
+/// The scene, and `backdrops` on a canvas over it.
+fn over<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, backdrops: impl FnOnce(&mut Ui)) {
     Panel::zstack()
         .id_salt("backdrop-scene")
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             fixture.record(ui);
             Panel::canvas()
-                .id_salt("backdrop-scene-panes")
+                .id_salt("backdrop-scene-backdrops")
                 .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, panes);
+                .show(ui, backdrops);
         });
 }
 
-/// A frosted pane over the whole window, as a modal dialog's page sits.
+/// A frosted backdrop over the whole window, as a modal dialog's page sits.
 fn modal<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
     over(fixture, ui, |ui| {
         ui.add_shape(Shape::rect(), Look::Frosted.paint(SIGMA));
@@ -649,8 +646,8 @@ fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
 /// `integration/backdrop_frame/gpu/<scene>/<arm>`: one whole frame of each [`SceneCase`], wall
 /// time, at 2×, waited for. Each case checks its settled frame's paint and blurs.
 ///
-/// - `modal`: the scene at 4K under a frosted pane over the window; `cached` keeps every
-///   frame still, `scrolling` scrolls the page under the pane, which captures every frame.
+/// - `modal`: the scene at 4K under a frosted backdrop over the window; `cached` keeps every
+///   frame still, `scrolling` scrolls the page under the backdrop, which captures every frame.
 /// - `cards`: eight frosted cards in a 4 × 2 grid, 60 logical px apart, as a dashboard of glass
 ///   tiles sits: inside the 77.5 logical px a σ of 16 reaches, so each card's footprint takes in
 ///   its neighbors'.
@@ -659,8 +656,8 @@ fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
 ///   scrolling page.
 /// - `stacked`: a glass popup over a frosted sidebar, which captures what the sidebar painted.
 /// - `pair_near` and `pair_apart`: two frosted cards whose gap the second's reach covers or not.
-/// - `many/under`: a strip under each row of twelve frosted cards flips color, staling more panes
-///   than a partial frame holds, so the frame paints whole.
+/// - `many/under`: a strip under each row of twelve frosted cards flips color, staling more
+///   backdrops than a partial frame holds, so the frame paints whole.
 fn scenes<S: Scene>(group: &mut CaseGroup<'_>, backends: &Backends, backend: Backend) {
     for scene in SceneCase::<S>::ALL {
         group.bench_function(backend.case(scene.name), |bencher| {

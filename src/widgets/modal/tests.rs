@@ -49,8 +49,8 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
 /// A modal takes no placement, so the layer default makes its barrier cover the screen; the root
 /// paints the scrim, a chrome. The theme's dims in half-clear black with no material; a color
 /// passed in dims in that color; a blurred scrim paints its fill over the window seen through its
-/// material, a pane; and under reduced transparency a scrim that asks for nothing then drops its
-/// material and keeps its fill half clear, while one that keeps its material reads the ground.
+/// material, a backdrop; and under reduced transparency a scrim that asks for nothing then drops
+/// its material and keeps its fill half clear, while one that keeps its material reads the ground.
 #[test]
 fn the_barrier_root_covers_the_whole_surface_in_the_scrim() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
@@ -60,7 +60,7 @@ fn the_barrier_root_covers_the_whole_surface_in_the_scrim() {
         .with_material(Material::blur(8.0).with_reduced_transparency(ReducedBackdrop::Nothing));
     let grounded = Chrome::new(custom).with_material(Material::blur(8.0));
     let themed = Chrome::new(RgbaF32::BLACK.with_alpha8(128));
-    // What the scrim's material reads: a pane that captures, the ground, or none.
+    // What the scrim's material reads: a backdrop that captures, the ground, or none.
     for (label, explicit, reduced, fill, reads) in [
         ("themed", None, false, themed.paint.fill.clone(), None),
         (

@@ -373,12 +373,12 @@ fn the_residuals_loops_write_the_same_texels() {
     }
 }
 
-/// A region inside another gives the texels of its own pane, the region shrunk by the reach, the
-/// same values bit for bit, wherever the two results and their places in the scratch land, the
+/// A region inside another gives the texels of its own backdrop, the region shrunk by the reach,
+/// the same values bit for bit, wherever the two results and their places in the scratch land, the
 /// two drawn in the same passes: every read lands on the lattice's texels at a fixed phase, so the
 /// arithmetic does not depend on where a pass's target sits.
 #[test]
-fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
+fn a_larger_region_gives_a_backdrops_texels_bit_for_bit() {
     let gpu = headless_test_gpu();
     let pixels = capture_pixels();
     for sigma in [1.5f32, 4.01] {
@@ -386,11 +386,11 @@ fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
         let lattice = plan.lattice();
         let reach = plan.reach().div_ceil(lattice);
         let big = whole(plan, UVec2::ZERO, FORMAT);
-        let pane = URect::new(2 * reach, reach, 4, 3);
+        let backdrop = URect::new(2 * reach, reach, 4, 3);
         let small = BlurJob {
             region: URect::from_min_max(
-                pane.min - UVec2::splat(reach),
-                pane.max() + UVec2::splat(reach),
+                backdrop.min - UVec2::splat(reach),
+                backdrop.max() + UVec2::splat(reach),
             ),
             dest_origin: UVec2::new(1, big.dest_rect().max().y + 2),
             ..big
@@ -399,8 +399,8 @@ fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
         let got = blur(&gpu, &pixels, &mut [big, small], dest.max());
         let width = dest.max().x;
         let apron = plan.apron();
-        for y in pane.min.y..pane.max().y {
-            for x in pane.min.x..pane.max().x {
+        for y in backdrop.min.y..backdrop.max().y {
+            for x in backdrop.min.x..backdrop.max().x {
                 let in_big = got[((y + apron) * width + x + apron) as usize];
                 let local = UVec2::new(x, y) - small.region.min + UVec2::splat(apron);
                 let at = small.dest_origin + local;
@@ -496,15 +496,15 @@ fn blur_batches(
     read_f16(gpu, &dest)
 }
 
-/// A pane's job copies only its footprint, into a capture and levels that start at the first
-/// texel it reads, and gives the pane's texels of the whole surface's job bit for bit: the origins
-/// move every read by whole texels of its level. The capture starts at the footprint, and the
-/// levels at the region's first texel of level 1, `region.min · 2^(levels − 1)`, both inside a
-/// surface large enough that each misses its origin. Two panes of 1 and 3 levels in one batch
+/// A backdrop's job copies only its footprint, into a capture and levels that start at the first
+/// texel it reads, and gives the backdrop's texels of the whole surface's job bit for bit: the
+/// origins move every read by whole texels of its level. The capture starts at the footprint, and
+/// the levels at the region's first texel of level 1, `region.min · 2^(levels − 1)`, both inside a
+/// surface large enough that each misses its origin. Two backdrops of 1 and 3 levels in one batch
 /// share levels that start at a multiple of 4 of level 1, so each mip starts at a whole texel of
 /// its level, and give the texels each gives alone.
 #[test]
-fn a_pane_blurs_from_its_footprint_alone() {
+fn a_backdrop_blurs_from_its_footprint_alone() {
     const LARGE: UVec2 = UVec2::new(320, 256);
     let gpu = headless_test_gpu();
     let color = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -532,7 +532,7 @@ fn a_pane_blurs_from_its_footprint_alone() {
         color.size(),
     );
     let surface = URect::new(0, 0, LARGE.x, LARGE.y);
-    let pane = URect::new(150, 120, 9, 7);
+    let backdrop = URect::new(150, 120, 9, 7);
     let job_of = |plan: BlurPlan, footprint: URect| BlurJob {
         plan,
         surface: LARGE,
@@ -542,17 +542,17 @@ fn a_pane_blurs_from_its_footprint_alone() {
         dest_origin: UVec2::ZERO,
         layout: JobLayout::default(),
     };
-    let pane_job = |plan: BlurPlan, pane: URect| {
+    let backdrop_job = |plan: BlurPlan, backdrop: URect| {
         let reach = UVec2::splat(plan.reach());
-        let footprint = URect::from_min_max(pane.min - reach, pane.max() + reach);
+        let footprint = URect::from_min_max(backdrop.min - reach, backdrop.max() + reach);
         job_of(plan, footprint.clamp_to(surface))
     };
-    // The texels of `pane` at the last level, in the result of `job` read from `got`.
-    let pane_texels = |got: &[[f32; 4]], width: u32, job: BlurJob, pane: URect| {
+    // The texels of `backdrop` at the last level, in the result of `job` read from `got`.
+    let backdrop_texels = |got: &[[f32; 4]], width: u32, job: BlurJob, backdrop: URect| {
         let (lattice, apron) = (job.plan.lattice(), job.plan.apron());
         let mut texels = Vec::new();
-        for y in pane.min.y / lattice..pane.max().y.div_ceil(lattice) {
-            for x in pane.min.x / lattice..pane.max().x.div_ceil(lattice) {
+        for y in backdrop.min.y / lattice..backdrop.max().y.div_ceil(lattice) {
+            for x in backdrop.min.x / lattice..backdrop.max().x.div_ceil(lattice) {
                 let at = job.dest_origin + UVec2::new(x, y) - job.region.min + UVec2::splat(apron);
                 texels.push(got[(at.y * width + at.x) as usize]);
             }
@@ -570,7 +570,7 @@ fn a_pane_blurs_from_its_footprint_alone() {
         let whole = job_of(plan, surface);
         let alone = BlurJob {
             dest_origin: UVec2::new(0, whole.dest_rect().max().y),
-            ..pane_job(plan, pane)
+            ..backdrop_job(plan, backdrop)
         };
         let mut jobs = [whole, alone];
         let got = blur_batches(&gpu, &color, &mut jobs, &[0..1, 1..2]);
@@ -587,16 +587,16 @@ fn a_pane_blurs_from_its_footprint_alone() {
         }
         let w = width(&jobs);
         assert_eq!(
-            pane_texels(&got, w, whole, pane),
-            pane_texels(&got, w, alone, pane),
+            backdrop_texels(&got, w, whole, backdrop),
+            backdrop_texels(&got, w, alone, backdrop),
             "σ {sigma}"
         );
     }
 
     let left = URect::new(50, 40, 9, 7);
     let (shallow, deep) = (
-        pane_job(BlurPlan::new(4.01), left),
-        pane_job(BlurPlan::new(20.0), pane),
+        backdrop_job(BlurPlan::new(4.01), left),
+        backdrop_job(BlurPlan::new(20.0), backdrop),
     );
     assert_eq!((shallow.plan.levels(), deep.plan.levels()), (1, 3));
     let deep = BlurJob {
@@ -613,17 +613,17 @@ fn a_pane_blurs_from_its_footprint_alone() {
     let got_together = blur_batches(&gpu, &color, &mut together, &[0..2]);
     let levels_origin = together[0].layout.levels_origin;
     assert_eq!(levels_origin, together[1].layout.levels_origin, "one batch");
-    // Level 1 starts at the shallow pane's region, (50, 40) − 22 halved: (14, 9); and at the
+    // Level 1 starts at the shallow backdrop's region, (50, 40) − 22 halved: (14, 9); and at the
     // deep one's times 4: (5, 1) · 4 = (20, 4). The batch's levels start at the smaller, (14, 4),
     // floored to a multiple of 4: (12, 4).
     assert_eq!(shallow.region.min, UVec2::new(14, 9));
     assert_eq!(deep.region.min, UVec2::new(5, 1));
     assert_eq!(levels_origin, UVec2::new(12, 4));
     let w = width(&apart);
-    for (job, pane) in [(0, left), (1, pane)] {
+    for (job, backdrop) in [(0, left), (1, backdrop)] {
         assert_eq!(
-            pane_texels(&got_apart, w, apart[job], pane),
-            pane_texels(&got_together, w, together[job], pane),
+            backdrop_texels(&got_apart, w, apart[job], backdrop),
+            backdrop_texels(&got_together, w, together[job], backdrop),
             "job {job}"
         );
     }

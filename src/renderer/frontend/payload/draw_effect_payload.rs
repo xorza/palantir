@@ -5,7 +5,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
-use crate::renderer::frontend::payload::draw_pane_payload::BackdropDraw;
+use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
 use crate::renderer::frontend::payload::spin::Spin;
 
 /// An effect over a rounded rect in the logical frame; `params` indexes the window's
@@ -20,8 +20,8 @@ pub(crate) struct DrawEffectPayload {
     pub(crate) params: Span,
     /// Its images, indexed into the record store's image column.
     pub(crate) images: Span,
-    /// A backdrop effect's pane; `None` for a color effect.
-    pub(crate) pane: Option<EffectPaneDraw>,
+    /// A backdrop effect's backdrop; `None` for a color effect.
+    pub(crate) backdrop: Option<EffectCaptureDraw>,
     /// A paint animation's fade, which scales the coverage.
     pub(crate) opacity: f32,
     /// Seconds into the paint animation's pass, which the effect reads; 0 when unanimated.
@@ -31,7 +31,7 @@ pub(crate) struct DrawEffectPayload {
 /// What a backdrop effect's draw reads, and how far past its rect it reads, in logical px; a
 /// draw over the ground reads under its rect alone.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct EffectPaneDraw {
+pub(crate) struct EffectCaptureDraw {
     pub(crate) read: BackdropDraw,
     pub(crate) reach: f32,
 }

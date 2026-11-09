@@ -194,7 +194,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
     );
 }
 
-/// A main pass broken at a pane timestamps the break's start and end, and the segment between
+/// A main pass broken at a backdrop timestamps the break's start and end, and the segment between
 /// is of no kind: First opens at 0, Quads starts at 1, the break starts at 2 and ends at 3, Text
 /// starts at 4, and Last closes at 5. Each pass opens a statistics query. A break with no room
 /// for its two timestamps and the last voids the kinds. Skipped on an adapter without in-pass

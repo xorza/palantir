@@ -1,5 +1,5 @@
 //! Which path a frame paints by, from the scene the present path reads: the share a partial frame
-//! stays partial under follows the rows and the panes on the surface.
+//! stays partial under follows the rows and the backdrops on the surface.
 
 use crate::damage::Damage;
 use crate::gpu::frame::submission::Route;
@@ -29,8 +29,8 @@ const SIZE: UVec2 = UVec2::new(400, 200);
 struct Screen {
     /// Small blocks in the corner away from what changes.
     filler_count: u32,
-    /// A pane over the window's right half.
-    pane: bool,
+    /// A backdrop over the window's right half.
+    backdrop: bool,
 }
 
 /// A 100 × 80 block that flips, 10 % of the window; a 4 × 4 one that flips; and `screen` around them.
@@ -59,7 +59,7 @@ fn record(ui: &mut Ui, screen: Screen, big: RgbaF32, tiny: RgbaF32) {
                 let at = Vec2::new((i % 50) as f32 * 3.0, 100.0 + (i / 50) as f32 * 3.0);
                 block(ui, ("filler", i), at, Vec2::splat(2.0), RgbaF32::WHITE);
             }
-            if screen.pane {
+            if screen.backdrop {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(220.0, 0.0, 180.0, 200.0)),
                     Paint::from(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
@@ -94,12 +94,12 @@ fn path_of_a_tenth(screen: Screen) -> PaintPath {
 
 /// The same 10 % damage, on three screens. Two rows on 0.08 Mpx read a thin scene, so a whole frame
 /// is cheaper and it paints direct. Four hundred rows more read a dense one, and it stays partial.
-/// A pane over half of the thin scene counts for a whole frame's captures, and it stays partial too.
+/// A backdrop over half of the thin scene counts for a whole frame's captures, and it stays partial too.
 #[test]
 fn the_scene_decides_how_a_partial_frame_paints() {
     let thin = Screen {
         filler_count: 0,
-        pane: false,
+        backdrop: false,
     };
     let path = path_of_a_tenth(thin);
     assert_eq!(path.route, Route::Direct);
@@ -107,11 +107,11 @@ fn the_scene_decides_how_a_partial_frame_paints() {
     for screen in [
         Screen {
             filler_count: 400,
-            pane: false,
+            backdrop: false,
         },
         Screen {
             filler_count: 0,
-            pane: true,
+            backdrop: true,
         },
     ] {
         let path = path_of_a_tenth(screen);

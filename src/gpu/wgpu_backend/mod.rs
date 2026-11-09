@@ -23,10 +23,10 @@
 //!   bounds under the surface's viewport moved onto it, and each rect is copied into the
 //!   backbuffer.
 //!
-//! A backdrop pane that captures breaks the main pass at its barrier: the pass ends, the pane's
+//! A backdrop that captures breaks the main pass at its barrier: the pass ends, the backdrop's
 //! footprint is copied out of the target and blurred, and the next pass loads the target. On a
 //! Partial frame the footprint joins the scissors, as the target there holds the last frame's
-//! pane.
+//! backdrop.
 //!
 //! The `dim_undamaged` debug mode adds a pre-pass on Partial frames in its own pass:
 //! the no-stencil dim pipeline is incompatible with the main pass's stencil
@@ -101,7 +101,7 @@ use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
 use crate::gpu::wgpu_backend::render_stream::{RenderStream, StreamPasses};
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
@@ -132,7 +132,7 @@ pub(crate) struct WgpuBackend {
     /// Shared gradient LUT atlas lent to the quad and curve pipelines.
     gradient: GpuGradientAtlas,
     programs: Programs,
-    /// The frame's backdrop panes: their captures, blurs and results.
+    /// The frame's backdrops: their captures, blurs and results.
     backdrops: Backdrops,
     /// The registered images; host recorders create, rewrite and free them through the
     /// `ImageRegistry` the host built over this `Rc`.
@@ -243,7 +243,7 @@ impl<'a> FrameTarget<'a> {
         }
     }
 
-    /// The texture [`Self::color_view`] views, which a pane's capture copies out of.
+    /// The texture [`Self::color_view`] views, which a backdrop's capture copies out of.
     const fn color(self) -> &'a wgpu::Texture {
         match self {
             Self::Direct { texture, .. } => texture,
@@ -274,7 +274,7 @@ impl<'a> FrameTarget<'a> {
 #[derive(Clone, Copy, Debug)]
 struct MainPass<'a> {
     color_view: &'a wgpu::TextureView,
-    /// The texture `color_view` views, which a pane's capture copies out of.
+    /// The texture `color_view` views, which a backdrop's capture copies out of.
     color: &'a wgpu::Texture,
     stencil_view: Option<&'a wgpu::TextureView>,
     clear: wgpu::Color,
@@ -625,8 +625,8 @@ impl WgpuBackend {
 
     /// Where a pass loads and stores its whole target, the canvas a partial frame paints the size
     /// of its damage, as a pass on the backbuffer would move the whole surface to keep what lies
-    /// around it. A pane that captures reads the target where the canvas does not reach, so this
-    /// runs after the upload, which plans the breaks.
+    /// around it. A backdrop that captures reads the target where the canvas does not reach, so
+    /// this runs after the upload, which plans the breaks.
     fn canvas_cut<'a>(
         &self,
         submission: &Submission<'a>,
@@ -865,7 +865,7 @@ impl WgpuBackend {
             },
         );
 
-        // Every frame, so a pane that left frees its cached result.
+        // Every frame, so a backdrop that left frees its cached result.
         self.backdrops.prepare(
             &mut ctx,
             BackdropFrame {
@@ -1161,7 +1161,7 @@ impl WgpuBackend {
                                 effects: buffer.effects.effect(),
                                 items: items(),
                                 groups: &effect_groups,
-                                panes: self.backdrops.group(),
+                                backdrops: self.backdrops.group(),
                                 gradients: &self.gradient.bind_group,
                             },
                         ),
@@ -1246,18 +1246,18 @@ impl WgpuBackend {
         self.gpu.poll();
     }
 
-    /// Hand `owner`'s pane ledger, through `forget`, each pane whose backdrop result the shared
-    /// atlas evicted, before its next frame decides what its panes hold.
-    pub(crate) fn drain_evicted_panes(
+    /// Hand `owner`'s backdrop ledger, through `forget`, each backdrop whose result the shared
+    /// atlas evicted, before its next frame decides what its backdrops hold.
+    pub(crate) fn drain_evicted_backdrops(
         &mut self,
         owner: RenderOwnerId,
-        mut forget: impl FnMut(PaneKey),
+        mut forget: impl FnMut(BackdropKey),
     ) {
         self.backdrops.evicted(owner).for_each(&mut forget);
         self.backdrops.forget_evicted(owner);
     }
 
-    /// Release what the backend keeps for `stream`'s owner, its `GpuView` targets and pane
+    /// Release what the backend keeps for `stream`'s owner, its `GpuView` targets and backdrop
     /// results, and the cutout cells its plan holds, as its window closes; the stream itself drops
     /// with the window. Per-submit eviction is owner-scoped, so without this survivors would hold
     /// its textures until shutdown, and its tables' cells would stay out of the atlas's reach.
@@ -1407,7 +1407,7 @@ pub(crate) mod internals {
             self.image_store.resident()
         }
 
-        /// The blurs the last frame ran, one per pane whose cached result went stale.
+        /// The blurs the last frame ran, one per backdrop whose cached result went stale.
         pub(crate) const fn backdrop_blurs(&self) -> usize {
             self.backdrops.blurs()
         }

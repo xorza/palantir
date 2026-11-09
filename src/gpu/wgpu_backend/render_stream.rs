@@ -31,7 +31,7 @@ pub(crate) struct RenderStream {
     /// Off-screen target holding the last frame painted through it, for `LoadOp::Load` partial
     /// damage; made on the first such frame, and again for a new size or format.
     backbuffer: Option<Backbuffer>,
-    /// The group a pane's blur reads [`Self::backbuffer`] through as its level 0, made on the
+    /// The group a backdrop's blur reads [`Self::backbuffer`] through as its level 0, made on the
     /// first frame that blurs from it and dropped with it.
     blur_source: Option<TargetSource>,
     /// Whether [`Self::backbuffer`] holds what the target shows. A direct frame leaves it stale,
@@ -120,7 +120,7 @@ impl RenderStream {
         self.backbuffer.as_ref()
     }
 
-    /// The backbuffer as a frame through it lends it to its panes, with the group they read it
+    /// The backbuffer as a frame through it lends it to its backdrops, with the group they read it
     /// through; `None` where none is made.
     pub(super) fn frame_backbuffer(&mut self) -> Option<FrameBackbuffer<'_>> {
         let backbuffer = self.backbuffer.as_ref()?;

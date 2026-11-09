@@ -73,8 +73,8 @@ How to read it:
   it; **`dense_1x` and `dense_4k` against `dense`** whether it follows the pixels, while a budget
   counts logical px² whatever the scale.
 - **`scene` alone holds the session**, whose rects describe that screen.
-- **`scene_glass` against `scene` asks what panes add**: few rows, and much of a whole frame's cost
-  in its captures, which a partial frame leaves held.
+- **`scene_glass` against `scene` asks what materials add**: few rows, and much of a whole frame's
+  cost in its captures, which a partial frame leaves held.
 - **Rects scale with the surface**, so a share stays a share: `dense_4k`'s icons are 1.5× larger,
   which keeps the coverage and not the logical sizes.
 

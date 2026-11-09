@@ -20,8 +20,8 @@ pub fn popup_button() -> WidgetId {
     WidgetId::from_hash("materials-popup-button")
 }
 
-/// The pane inside a look's cell.
-const PANE: Rect = Rect::new(30.0, 50.0, 160.0, 100.0);
+/// The backdrop inside a look's cell.
+const LIVE_BOX: Rect = Rect::new(30.0, 50.0, 160.0, 100.0);
 
 pub fn build(ui: &mut Ui, k: Kit) {
     Section::new("Looks")
@@ -34,9 +34,9 @@ pub fn build(ui: &mut Ui, k: Kit) {
             support::note(
                 ui,
                 k,
-                "Each pane wears a stock material, a backdrop effect that shows the pixels \
-                 painted before it under its fill, which tints them. The page under it turns, so \
-                 each pane blurs again every frame; a pane over a still page costs nothing. With \
+                "Each box wears a stock material, a backdrop effect that shows the pixels \
+                 painted before it under its fill, which colors them. The page under it turns, so \
+                 each box blurs again every frame; a box over a still page costs nothing. With \
                  transparency reduced, each shows over the window's ground instead.",
             );
             support::tiles(ui, |ui| {
@@ -50,14 +50,14 @@ pub fn build(ui: &mut Ui, k: Kit) {
                 look(
                     ui,
                     k,
-                    "frosted — σ 16, tinted",
+                    "frosted — σ 16, filled",
                     Material::frosted(16.0),
                     RgbaF32::new(1.0, 1.0, 1.0, 0.18),
                 );
                 look(
                     ui,
                     k,
-                    "glass — a dense lens, σ 1, tinted",
+                    "glass — a dense lens, σ 1, filled",
                     Material::glass(Lens {
                         bezel: 32.0,
                         thickness: 28.0,
@@ -87,16 +87,16 @@ pub fn build(ui: &mut Ui, k: Kit) {
     live(ui, k);
 }
 
-/// The live pane's knobs: the blur, and how much of the fill covers it.
+/// The live backdrop's knobs: the blur, and how much of the fill covers it.
 #[derive(Debug)]
-struct LivePane {
+struct LiveBackdrop {
     blur: f32,
     fill: f32,
     /// Whether the floor holds the ink; off, the label reads only as well as the page under it.
     hold: bool,
 }
 
-impl Default for LivePane {
+impl Default for LiveBackdrop {
     fn default() -> Self {
         Self {
             blur: 16.0,
@@ -106,21 +106,21 @@ impl Default for LivePane {
     }
 }
 
-/// One frosted pane over the turning page, its blur and its fill from the knobs, its text held to
-/// 4.5:1 by the floor its ink and fill call for.
+/// One frosted backdrop over the turning page, its blur and its fill from the knobs, its text held
+/// to 4.5:1 by the floor its ink and fill call for.
 fn live(ui: &mut Ui, k: Kit) {
-    Section::new("Live pane")
+    Section::new("Live material")
         .apis(&[api!(Material::with_min_luminance_for)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "Blur and fill one frosted pane. The floor its dark ink and light fill call for \
+                "Blur and fill one frosted box. The floor its dark ink and light fill call for \
                  lifts whatever shows through, so the label keeps 4.5:1 at any setting; switch it \
                  off to see the label sink into the dark stripes.",
             );
             let id = WidgetId::from_hash("showcase::materials::live");
-            ui.with_state::<LivePane, _>(id, |ui, l| {
+            ui.with_state::<LiveBackdrop, _>(id, |ui, l| {
                 Knob {
                     label: "blur",
                     range: 0.0..=40.0,
@@ -151,7 +151,7 @@ fn live(ui: &mut Ui, k: Kit) {
                     None => ui.intern("no floor: a dark stripe behind the label shows as dark"),
                 };
                 support::readout(ui, k, "floor", floor);
-                DemoCell::new("the knobs' pane")
+                DemoCell::new("the knobs' backdrop")
                     .size(CELL, CELL)
                     .show(ui, k, |ui| {
                         Panel::canvas()
@@ -159,13 +159,15 @@ fn live(ui: &mut Ui, k: Kit) {
                             .show(ui, |ui| {
                                 page(ui, k, Vec2::splat(CELL));
                                 ui.add_shape(
-                                    Shape::rect().at(PANE).corners(Corners::all(14.0)),
+                                    Shape::rect().at(LIVE_BOX).corners(Corners::all(14.0)),
                                     Paint::from(fill).with_material(material),
                                 );
                                 let label = ui.intern("readable");
                                 ui.add_shape(
-                                    Shape::text(label, GlyphFont::new(18.0))
-                                        .at_origin(Vec2::new(PANE.min.x + 16.0, PANE.min.y + 36.0)),
+                                    Shape::text(label, GlyphFont::new(18.0)).at_origin(Vec2::new(
+                                        LIVE_BOX.min.x + 16.0,
+                                        LIVE_BOX.min.y + 36.0,
+                                    )),
                                     ink,
                                 );
                             });
@@ -174,7 +176,7 @@ fn live(ui: &mut Ui, k: Kit) {
         });
 }
 
-/// A cell of `label` holding the turning page and one pane of `material` and `fill` over it.
+/// A cell of `label` holding the turning page and one backdrop of `material` and `fill` over it.
 fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, fill: RgbaF32) {
     DemoCell::new(label).size(CELL, CELL).show(ui, k, |ui| {
         Panel::canvas()
@@ -188,7 +190,7 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, fill: Rgba
                     14.0
                 };
                 ui.add_shape(
-                    Shape::rect().at(PANE).corners(Corners::all(corners)),
+                    Shape::rect().at(LIVE_BOX).corners(Corners::all(corners)),
                     Paint::from(fill)
                         .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
                         .with_material(material),
@@ -197,7 +199,7 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, fill: Rgba
     });
 }
 
-/// Colored bars and a turning cross filling `size`, so a pane over it has detail to blur and a
+/// Colored bars and a turning cross filling `size`, so a backdrop over it has detail to blur and a
 /// reason to blur again each frame.
 fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     for (i, color) in (0..12).zip(k.swatch.all().iter().cycle()) {
@@ -207,7 +209,8 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
             *color,
         );
     }
-    // Essential: the turning page is what each pane shows, so it turns under reduced motion too.
+    // Essential: the turning page is what each backdrop shows, so it turns under reduced motion
+    // too.
     let spin = PaintAnimation::turn(0.0, 1.0)
         .with_period(Duration::from_secs(8))
         .with_repeat(PaintRepeat::Forever)

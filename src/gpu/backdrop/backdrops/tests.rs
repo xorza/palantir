@@ -10,34 +10,34 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, PaneSource};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, BackdropSource};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 use std::mem::offset_of;
 
 const SURFACE: UVec2 = UVec2::new(200, 100);
 
-fn key(i: u32) -> PaneKey {
-    PaneKey {
-        owner: WidgetId::from_hash("pane"),
+fn key(i: u32) -> BackdropKey {
+    BackdropKey {
+        owner: WidgetId::from_hash("backdrop"),
         shape: i,
     }
 }
 
-/// Pane `i` over x `10 + 40 i ..`, at σ 2, taking its result from `source`.
-fn row(i: u32, source: PaneSource) -> BackdropRow {
+/// Backdrop `i` over x `10 + 40 i ..`, at σ 2, taking its result from `source`.
+fn row(i: u32, source: BackdropSource) -> BackdropRow {
     BackdropRow::fixture(i, URect::new(10 + 40 * i, 10, 30, 30), BlurPlan::new(2.0))
         .with_source(source)
 }
 
 /// [`row`] capturing after `i + 1` groups.
 fn captured(i: u32) -> BackdropRow {
-    row(i, PaneSource::Capture { barrier: i + 1 })
+    row(i, BackdropSource::Capture { barrier: i + 1 })
 }
 
 /// Prepare one frame of `owner` holding `rows`.
@@ -45,7 +45,7 @@ fn prepare(backdrops: &mut Backdrops, gpu: &TestGpu, owner: RenderOwnerId, rows:
     let mut buffer = RenderBuffer::new();
     buffer.display = Display::from_physical(SURFACE, 1.0);
     buffer.backdrops.extend_from_slice(rows);
-    buffer.live_panes.refill(
+    buffer.live_backdrops.refill(
         rows.iter()
             .filter_map(BackdropRow::capture)
             .map(|capture| capture.key),
@@ -64,7 +64,7 @@ fn prepare(backdrops: &mut Backdrops, gpu: &TestGpu, owner: RenderOwnerId, rows:
     });
 }
 
-/// The atlas slot of `owner`'s pane `i`, if its result is one.
+/// The atlas slot of `owner`'s backdrop `i`, if its result is one.
 fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
     match backdrops.cache.get(&(owner, key(i)))?.kept {
         Kept::Slot(slot) => Some(slot),
@@ -72,9 +72,9 @@ fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
     }
 }
 
-/// Two windows' panes under one key keep a result each, in slots apart: a frame of one leaves the
-/// other's, its panes leaving drops only its own, and retiring a window drops the rest of its.
-/// Frames with no backdrop make no resources; a frame of a backdrop over the ground makes the
+/// Two windows' backdrops under one key keep a result each, in slots apart: a frame of one leaves
+/// the other's, its backdrops leaving drops only its own, and retiring a window drops the rest of
+/// its. Frames with no backdrop make no resources; a frame of a backdrop over the ground makes the
 /// composite's, shows the clear as the target holds it, and makes no blur; the first that captures
 /// makes the blur, and both stay.
 #[test]
@@ -114,7 +114,7 @@ fn each_window_keeps_its_own_results() {
     assert!(!at_a.intersects(at_b), "{at_a:?} and {at_b:?} apart");
     assert_eq!(backdrops.blurs(), 1);
 
-    prepare(&mut backdrops, &gpu, a, &[row(0, PaneSource::Held)]);
+    prepare(&mut backdrops, &gpu, a, &[row(0, BackdropSource::Held)]);
     assert_eq!(backdrops.blurs(), 0);
     assert_eq!(slot(&backdrops, a, 0), Some(at_a), "held");
     prepare(&mut backdrops, &gpu, a, &[]);
@@ -127,20 +127,25 @@ fn each_window_keeps_its_own_results() {
             .resources
             .as_ref()
             .is_some_and(|r| r.blur.is_some()),
-        "kept for the next pane"
+        "kept for the next backdrop"
     );
 }
 
-/// A pane that shows the clear holds the clear as the target holds it and frees its slot, which
-/// the next capture of the same size takes; a held pane of the clear keeps it without a blur.
+/// A backdrop that shows the clear holds the clear as the target holds it and frees its slot, which
+/// the next capture of the same size takes; a held backdrop of the clear keeps it without a blur.
 #[test]
-fn a_pane_of_the_clear_frees_its_slot() {
+fn a_backdrop_of_the_clear_frees_its_slot() {
     let gpu = headless_test_gpu();
     let owner = RenderOwners::default().reserve();
     let mut backdrops = Backdrops::new(&gpu, &TextureBinding::new(&gpu));
     prepare(&mut backdrops, &gpu, owner, &[captured(0)]);
     let first = slot(&backdrops, owner, 0).unwrap();
-    prepare(&mut backdrops, &gpu, owner, &[row(0, PaneSource::Clear)]);
+    prepare(
+        &mut backdrops,
+        &gpu,
+        owner,
+        &[row(0, BackdropSource::Clear)],
+    );
     assert_eq!(backdrops.blurs(), 0);
     let held = held_clear(CLEAR.to_f16(), TargetFormat::RGBA8_SRGB);
     assert!(matches!(
@@ -151,7 +156,7 @@ fn a_pane_of_the_clear_frees_its_slot() {
         &mut backdrops,
         &gpu,
         owner,
-        &[row(0, PaneSource::Held), captured(1)],
+        &[row(0, BackdropSource::Held), captured(1)],
     );
     assert_eq!(backdrops.blurs(), 1);
     assert!(matches!(
@@ -164,7 +169,7 @@ fn a_pane_of_the_clear_frees_its_slot() {
 /// An 8-bit sRGB target holds the clear as its byte decoded, and a float one as the `f16` clear:
 /// each rounded to `f16`, as the blur stores its levels.
 #[test]
-fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
+fn the_clear_a_backdrop_shows_is_the_one_the_target_holds() {
     let byte = RgbaF32::from(RgbaF32::from(SrgbaU8::rgb(51, 115, 178)).to_f16());
     assert_eq!(
         held_clear(CLEAR.to_f16(), TargetFormat::RGBA8_SRGB),
@@ -178,10 +183,11 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
     );
 }
 
-/// `BackdropSlot` lies as the backdrop effect contract declares `PalantirPane`, and `SpectrumCell`
-/// as it declares `PalantirSpectrumCell`, which storage bindings read unchecked: the slot's clear,
-/// a `vec3` the shader aligns to 16 bytes, starts at 16 after the lattice and the ceiling, and
-/// `reads` at 32 after the floor; each of a cell's three `vec3`s takes 16 bytes, 48 in all.
+/// `BackdropSlot` lies as the backdrop effect contract declares `PalantirBackdrop`, and
+/// `SpectrumCell` as it declares `PalantirSpectrumCell`, which storage bindings read unchecked: the
+/// slot's clear, a `vec3` the shader aligns to 16 bytes, starts at 16 after the lattice and the
+/// ceiling, and `reads` at 32 after the floor; each of a cell's three `vec3`s takes 16 bytes, 48 in
+/// all.
 #[test]
 fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
     let contract = ShaderBody {
@@ -217,14 +223,14 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
     assert_eq!(offset_of!(BackdropSlot, reads), 32);
     assert_eq!(offset_of!(BackdropSlot, fill_kind), 100);
     assert_eq!(size_of::<BackdropSlot>(), 112);
-    contract.assert_struct_layout("PalantirPane", size_of::<BackdropSlot>(), &members);
+    contract.assert_struct_layout("PalantirBackdrop", size_of::<BackdropSlot>(), &members);
 }
 
-/// At its ceiling the shared atlas evicts the least recently used result no pane of the frame
-/// reads, from any window, and lists it for that window's ledger. A 64² atlas holds four 32²
-/// slots (30² results rounded up): window a takes two, window b three, so b's third evicts one of
-/// a's. A result past the ceiling finds no room at all: its pane shows the clear, blurs nothing,
-/// and is listed for its own ledger, which then captures it again.
+/// At its ceiling the shared atlas evicts the least recently used result no backdrop of the frame
+/// reads, from any window, and lists it for that window's ledger. A 64² atlas holds four 32² slots
+/// (30² results rounded up): window a takes two, window b three, so b's third evicts one of a's. A
+/// result past the ceiling finds no room at all: its backdrop shows the clear, blurs nothing, and
+/// is listed for its own ledger, which then captures it again.
 #[test]
 fn a_full_atlas_evicts_the_least_recently_used_result() {
     let gpu = headless_test_gpu();
@@ -250,18 +256,18 @@ fn a_full_atlas_evicts_the_least_recently_used_result() {
     assert_eq!(backdrops.evicted(a).count(), 0);
 
     let huge = BackdropRow::fixture(9, URect::new(0, 0, 100, 100), BlurPlan::new(2.0))
-        .with_source(PaneSource::Capture { barrier: 1 });
+        .with_source(BackdropSource::Capture { barrier: 1 });
     prepare(&mut backdrops, &gpu, b, &[huge]);
     assert_eq!(backdrops.blurs(), 0);
     assert_eq!(backdrops.slots[0].lattice, 0.0, "it shows the clear");
     assert_eq!(backdrops.evicted(b).collect::<Vec<_>>(), [key(9)]);
 }
 
-/// At its budget the atlas evicts a result no pane of the frame reads before it grows, and grows
-/// past the budget only for the frame's own results. A budget of 32² `Rgba16Float` texels holds
-/// one 32² slot under a 64 ceiling: window b's pane evicts window a's and takes its slot, the
-/// atlas still 32 wide; b's second pane finds only b's own first result, so the atlas grows to 64
-/// and both stay.
+/// At its budget the atlas evicts a result no backdrop of the frame reads before it grows, and
+/// grows past the budget only for the frame's own results. A budget of 32² `Rgba16Float` texels
+/// holds one 32² slot under a 64 ceiling: window b's backdrop evicts window a's and takes its slot,
+/// the atlas still 32 wide; b's second backdrop finds only b's own first result, so the atlas grows
+/// to 64 and both stay.
 #[test]
 fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
     let gpu = headless_test_gpu();
@@ -288,8 +294,8 @@ fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
     assert!(slot(&backdrops, b, 1).is_some());
 }
 
-/// An atlas grown past its budget packs its results back into the budget an expiry window after
-/// its last grow, once they fit: b's two panes take it to 64; when one leaves, the other is held,
+/// An atlas grown past its budget packs its results back into the budget an expiry window after its
+/// last grow, once they fit: b's two backdrops take it to 64; when one leaves, the other is held,
 /// and after [`EXPIRY_FRAMES`] frames the atlas is 32 wide again with that result inside it.
 #[test]
 fn an_atlas_past_its_budget_shrinks_back_after_idle() {
@@ -299,7 +305,7 @@ fn an_atlas_past_its_budget_shrinks_back_after_idle() {
     let edge = |backdrops: &Backdrops| backdrops.resources.as_ref().unwrap().atlas.edge();
     prepare(&mut backdrops, &gpu, owner, &[captured(0), captured(1)]);
     assert_eq!(edge(&backdrops), 64, "grown past the budget");
-    let held = [row(1, PaneSource::Held)];
+    let held = [row(1, BackdropSource::Held)];
     for _ in 1..EXPIRY_FRAMES {
         prepare(&mut backdrops, &gpu, owner, &held);
     }
@@ -308,5 +314,8 @@ fn an_atlas_past_its_budget_shrinks_back_after_idle() {
     assert_eq!(edge(&backdrops), 32, "packed back into the budget");
     let kept = slot(&backdrops, owner, 1).unwrap();
     assert!(kept.max().max_element() <= 32, "{kept:?} inside the budget");
-    assert!(slot(&backdrops, owner, 0).is_none(), "the pane that left");
+    assert!(
+        slot(&backdrops, owner, 0).is_none(),
+        "the backdrop that left"
+    );
 }

@@ -130,13 +130,13 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
 
 /// A sane chrome reaches the row unchanged and every field reaches the hash.
 /// A chrome's material lowers as it reads this record, its fill as authored either way: through
-/// its effect over what is under it, a pane; over the ground, while transparency is reduced, no
-/// pane; or not at all, where its use paints nothing then, leaving the translucent fill. A rect
+/// its effect over what is under it, a backdrop; over the ground, while transparency is reduced, no
+/// backdrop; or not at all, where its use paints nothing then, leaving the translucent fill. A rect
 /// shape lowers the same way, its read resolved in the registry, where the stock frost is effect 3.
 #[test]
 fn a_material_lowers_as_it_reads() {
-    let tint = RgbaF32::hex(0x204060).with_alpha8(184);
-    let frosted = Chrome::new(tint).with_material(Material::frosted(20.0));
+    let color = RgbaF32::hex(0x204060).with_alpha8(184);
+    let frosted = Chrome::new(color).with_material(Material::frosted(20.0));
     let solid = |brush: LoweredBrush| match brush {
         LoweredBrush::Solid(color) => color,
         LoweredBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
@@ -155,7 +155,7 @@ fn a_material_lowers_as_it_reads() {
             "{read:?}"
         );
         assert_eq!(row.material.map(LoweredMaterial::effect), read.map(|_| id));
-        assert_eq!(solid(row.fill), tint.to_f16(), "{read:?}");
+        assert_eq!(solid(row.fill), color.to_f16(), "{read:?}");
     }
 
     let effects = EffectRegistry::default();
@@ -179,7 +179,7 @@ fn a_material_lowers_as_it_reads() {
         let material = material.expect("a frosted rect wears its material");
         assert_eq!(material.captures(), captures);
         assert_eq!(material.effect(), id);
-        assert_eq!(solid(fill), tint.to_f16());
+        assert_eq!(solid(fill), color.to_f16());
     }
 }
 

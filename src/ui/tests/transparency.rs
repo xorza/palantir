@@ -1,4 +1,4 @@
-//! Reduced transparency, as the system asks or a preference picks: every pane paints solid.
+//! Reduced transparency, as the system asks or a preference picks: every backdrop paints solid.
 
 use glam::UVec2;
 
@@ -29,19 +29,19 @@ const SURFACE: UVec2 = UVec2::new(200, 100);
 /// of full over that ask brings the capture back, and a pick of reduced over a system that asks
 /// nothing takes it away again.
 #[test]
-fn reduced_transparency_records_every_pane_solid() {
-    let id = WidgetId::from_hash("pane");
-    let pane =
+fn reduced_transparency_records_every_backdrop_solid() {
+    let id = WidgetId::from_hash("backdrop");
+    let backdrop =
         Chrome::new(RgbaF32::hex(0x204060).with_alpha8(184)).with_material(Material::frosted(20.0));
     let record = |ui: &mut Ui| {
         Panel::vstack()
             .id(id)
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-            .chrome(pane.clone())
+            .chrome(backdrop.clone())
             .show(ui, |_| {});
     };
     let filtered = |h: &Harness| {
-        let node = h.node_of(id).expect("the pane recorded").node;
+        let node = h.node_of(id).expect("the backdrop recorded").node;
         let row = h.ui().tree(Layer::Main).chrome(node).expect("a chrome row");
         row.material.is_some_and(LoweredMaterial::captures)
     };
@@ -78,10 +78,11 @@ fn reduced_transparency_records_every_pane_solid() {
 }
 
 /// While transparency is reduced a material reads the window's ground, the clear, in place of what
-/// is painted under it, and runs no blur: over a red square, a blurred pane under a quarter-white
-/// fill paints the bytes the same pane paints at full transparency over nothing, where it reads the
-/// clear. One that asks for nothing then paints its fill over the red square, as a plain
-/// translucent rect does. The square stops short of the window's edge, so it folds into no clear.
+/// is painted under it, and runs no blur: over a red square, a blurred backdrop under a
+/// quarter-white fill paints the bytes the same backdrop paints at full transparency over nothing,
+/// where it reads the clear. One that asks for nothing then paints its fill over the red square, as
+/// a plain translucent rect does. The square stops short of the window's edge, so it folds into no
+/// clear.
 #[test]
 fn a_material_reads_the_ground_while_transparency_is_reduced() {
     let gpu = headless_test_gpu();

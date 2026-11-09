@@ -1,4 +1,4 @@
-//! The path light takes through a pane's lens: the closed form the composite shades with.
+//! The path light takes through a backdrop's lens: the closed form the composite shades with.
 
 /// One lens in physical px: a bezel `bezel` wide rising to `thickness` as a squircle of the
 /// inward fraction, of refractive index `index`. Light falls straight down onto the glass and
@@ -56,15 +56,15 @@ impl LensOptics {
         (self.lean(index).ceil() as u32).saturating_add(1)
     }
 
-    /// How far past a rounded-rect pane whose narrowest side is `narrowest` px the bezel sends a
-    /// sample, at index `index`: a sample `d` px in moves inward by at most the lean, along the
+    /// How far past a rounded-rect backdrop whose narrowest side is `narrowest` px the bezel sends
+    /// a sample, at index `index`: a sample `d` px in moves inward by at most the lean, along the
     /// edge's normal, and a rounded rect's chord along an inward normal is no shorter than its
-    /// narrowest side, so the sample leaves the pane by at most `d + lean − narrowest`, with `d`
-    /// no deeper than the bezel or half the narrowest side. A pixel more, as the composite takes
-    /// the normal from the distance's screen differences, which a pixel from the ridge where two
-    /// edges meet can point either way: there a sample moves out from `d ≥ narrowest / 2 − 1`.
-    /// Rounded up a pixel for the bilinear read, and never past [`Self::reach`]: a pane wider than
-    /// its bezel and lean together reads only itself, and a pixel past it.
+    /// narrowest side, so the sample leaves the backdrop by at most `d + lean − narrowest`, with
+    /// `d` no deeper than the bezel or half the narrowest side. A pixel more, as the composite
+    /// takes the normal from the distance's screen differences, which a pixel from the ridge where
+    /// two edges meet can point either way: there a sample moves out from `d ≥ narrowest / 2 − 1`.
+    /// Rounded up a pixel for the bilinear read, and never past [`Self::reach`]: a backdrop wider
+    /// than its bezel and lean together reads only itself, and a pixel past it.
     #[expect(
         clippy::cast_sign_loss,
         reason = "the overshoot is clamped at 0, and a NaN casts to 0"

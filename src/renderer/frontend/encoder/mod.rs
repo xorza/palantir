@@ -59,22 +59,22 @@ impl Encoder {
     ) {
         let BuildPlan {
             render: plan,
-            panes: tickets,
+            backdrops: tickets,
         } = plan;
         let viewport = scene.stamp.display.logical_rect();
         let now = scene.stamp.time;
         // Matches the backend's padded physical scissor; both derive from `AA_PADDING_PX`.
         let damage_cull_margin = repaint_scissors::cull_margin(scene.stamp.display.scale_factor());
-        // A pane that captures reads everything painted under its footprint before it.
+        // A backdrop that captures reads everything painted under its footprint before it.
         self.footprints.clear();
         let damage_filter = match &plan.damage {
             Damage::Partial(damage) => {
                 self.footprints.extend(
                     scene
-                        .panes()
+                        .backdrops()
                         .zip(tickets)
                         .filter(|(_, ticket)| ticket.is_some_and(|ticket| ticket.captures))
-                        .map(|(pane, _)| pane.footprint),
+                        .map(|(backdrop, _)| backdrop.footprint),
                 );
                 Some(CullRegion {
                     damage: &damage.region,
@@ -87,12 +87,12 @@ impl Encoder {
             scene.forest.record_store.gradients.records.as_slice(),
             &mut self.gradient_atlas,
         );
-        let mut first_pane = 0;
+        let mut first_backdrop = 0;
         for (plane, tree) in scene.forest.trees.iter_paint_order() {
             let plane_cascades = &scene.cascade.planes[plane];
-            let panes = plane_cascades.panes.as_slice();
-            let plane_tickets = &tickets[first_pane..first_pane + panes.len()];
-            first_pane += panes.len();
+            let backdrops = plane_cascades.backdrops.as_slice();
+            let plane_tickets = &tickets[first_backdrop..first_backdrop + backdrops.len()];
+            first_backdrop += backdrops.len();
             let mut ctx = PlaneCtx {
                 tree,
                 layout: &scene.layout[plane],
@@ -101,9 +101,9 @@ impl Encoder {
                 gradients: &mut gradients,
                 paint_animation_cursor: tree.paint_animations.cursor(),
                 damage_filter,
-                panes,
+                backdrops,
                 tickets: plane_tickets,
-                next_pane: 0,
+                next_backdrop: 0,
                 damage_cull_margin,
                 viewport,
                 now,
@@ -113,7 +113,7 @@ impl Encoder {
             }
         }
 
-        debug_assert_eq!(first_pane, tickets.len(), "a ticket for each pane");
+        debug_assert_eq!(first_backdrop, tickets.len(), "a ticket for each backdrop");
 
         collision_overlay::emit(scene, out);
     }
@@ -123,9 +123,9 @@ impl Encoder {
 pub(crate) mod internals {
     use crate::internals::paint_capture::PaintCapture;
     use crate::internals::scratch_report;
+    use crate::renderer::backdrop_captures::{BackdropCaptures, BackdropDamage};
     use crate::renderer::frontend::encoder::Encoder;
     use crate::renderer::frontend::{BuildPlan, FrameScene};
-    use crate::renderer::pane_captures::{PaneCaptures, PaneDamage};
     use crate::renderer::render_plan::RenderPlan;
 
     impl Encoder {
@@ -143,21 +143,25 @@ pub(crate) mod internals {
         }
     }
 
-    /// Encode `scene` under `plan` through `encoder` into a capture, every pane capturing, as a
+    /// Encode `scene` under `plan` through `encoder` into a capture, every backdrop capturing, as a
     /// fresh window's do.
     pub(crate) fn encode(
         scene: FrameScene<'_>,
         encoder: &mut Encoder,
         plan: RenderPlan,
     ) -> PaintCapture {
-        let mut ledger = PaneCaptures::default();
-        ledger.decide(scene.panes(), scene.stamp.display, PaneDamage::Whole);
+        let mut ledger = BackdropCaptures::default();
+        ledger.decide(
+            scene.backdrops(),
+            scene.stamp.display,
+            BackdropDamage::Whole,
+        );
         let mut recorded = PaintCapture::default();
         encoder.encode(
             &scene,
             BuildPlan {
                 render: plan,
-                panes: ledger.tickets(),
+                backdrops: ledger.tickets(),
             },
             &mut recorded,
         );

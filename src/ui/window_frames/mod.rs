@@ -21,7 +21,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::input_event::InputEvent;
 use crate::primitives::input::interaction::input_delta::InputDelta;
-use crate::renderer::pane_captures::PaneCaptures;
+use crate::renderer::backdrop_captures::BackdropCaptures;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::IdRecipe;
@@ -77,8 +77,8 @@ pub(crate) struct WindowFrames {
     strategy: PresentStrategy,
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
-    /// The captures this window's panes hold, which decide what a frame captures again.
-    pane_captures: PaneCaptures,
+    /// The captures this window's backdrops hold, which decide what a frame captures again.
+    backdrop_captures: BackdropCaptures,
     screenshots: ScreenshotLane,
     /// What the next frame paints in place of its own damage, for a bench that measures a decision.
     #[cfg(feature = "internals")]
@@ -113,7 +113,7 @@ impl WindowFrames {
             target_outlined: false,
             strategy,
             target: None,
-            pane_captures: PaneCaptures::default(),
+            backdrop_captures: BackdropCaptures::default(),
             screenshots: ScreenshotLane::default(),
             #[cfg(feature = "internals")]
             forced: present::internals::ForcedFrame::default(),

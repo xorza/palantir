@@ -1,9 +1,9 @@
-//! Where one pass stands in a main pass broken at its panes' barriers.
+//! Where one pass stands in a main pass broken at its backdrops' barriers.
 
-/// One pass of a main pass the panes that capture break at their barriers.
+/// One pass of a main pass the backdrops that capture break at their barriers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MainSegment {
-    /// The only pass: no pane captures.
+    /// The only pass: no backdrop captures.
     Whole,
     First,
     Inner,

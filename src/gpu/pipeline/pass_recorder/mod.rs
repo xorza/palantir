@@ -71,7 +71,8 @@ impl PassState for wgpu::RenderPass<'_> {
 }
 
 /// Bind-group slots a draw of this backend uses: group 0, 1 (a shadow's cutout tables, an effect's
-/// images), 2 (a pane's backdrops) and 3 (the gradient atlas a material's box reads).
+/// images), 2 (the backdrop results a backdrop effect reads) and 3 (the gradient atlas a material's
+/// box reads).
 const GROUP_SLOTS: usize = 4;
 
 /// Vertex-buffer slots a draw of this backend uses: buffer 0, 1 (a mesh's instances, a shadow's

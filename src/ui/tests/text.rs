@@ -391,7 +391,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     let mut frontend = Frontend::for_test();
     frontend.build(
         idle.frames().ui().frame_scene(),
-        BuildPlan::without_panes(plan),
+        BuildPlan::without_backdrops(plan),
     );
     let run = frontend
         .buffer

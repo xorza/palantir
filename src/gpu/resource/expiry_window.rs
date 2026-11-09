@@ -2,7 +2,7 @@
 
 /// The display frames an expiry window spans: at its end per-frame scratch steps down to the most
 /// a frame of the window needed, and what no frame needed goes. Two seconds of a 60 Hz animation,
-/// so a pane that closes and opens again within one gesture keeps its textures; a window that
+/// so a backdrop that closes and opens again within one gesture keeps its textures; a window that
 /// paints no frame keeps them until it paints again, as no frame runs to shrink them. Expire after
 /// idle, as Chromium's `cc::ResourcePool` and Flutter's `RasterCache` drop what recent frames did
 /// not use. Counted in display frames ([`GpuCtx::frame`](crate::gpu::frame::gpu_ctx::GpuCtx)),

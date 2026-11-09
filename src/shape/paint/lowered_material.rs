@@ -18,10 +18,10 @@ use crate::shape::record_store::RecordStore;
 /// registry resolved its name to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum MaterialRead {
-    /// What is painted under the box, captured and blurred: a pane.
+    /// What is painted under the box, captured and blurred: a backdrop.
     Capture(EffectId),
     /// The window's ground, its clear color, while transparency is reduced: no capture, no blur
-    /// and no pane.
+    /// and no backdrop.
     Ground(EffectId),
 }
 
@@ -131,7 +131,7 @@ impl LoweredMaterial {
         }
     }
 
-    /// Whether it reads what is painted under the box, a pane the cascade lists.
+    /// Whether it reads what is painted under the box, a backdrop the cascade lists.
     pub(crate) const fn captures(self) -> bool {
         matches!(self.read, MaterialRead::Capture(_))
     }

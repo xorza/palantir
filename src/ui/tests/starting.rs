@@ -27,7 +27,7 @@ fn empty_ui_drives_a_frame_safely() {
     let mut frontend = Frontend::for_test();
     frontend.build(
         h.frames().ui().frame_scene(),
-        BuildPlan::without_panes(RenderPlan {
+        BuildPlan::without_backdrops(RenderPlan {
             clear: h.ui().theme().window_bg,
             damage: Damage::Full,
         }),

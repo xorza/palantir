@@ -122,7 +122,7 @@ pub struct GpuPassStats {
 
 impl GpuPassStats {
     /// Whole-pass duration; `None` until the first resolve or without
-    /// `TIMESTAMP_QUERY`. On a frame whose backdrop panes capture, the main pass
+    /// `TIMESTAMP_QUERY`. On a frame whose backdrops capture, the main pass
     /// breaks at each, and the duration spans the captures and blurs between.
     pub const fn last_pass(&self) -> Option<Duration> {
         self.pass
@@ -137,7 +137,7 @@ impl GpuPassStats {
     }
 
     /// Pipeline-statistics counters around the main pass, summed over the passes
-    /// it breaks into at backdrop panes; `None` without `PIPELINE_STATISTICS_QUERY`,
+    /// it breaks into at backdrops; `None` without `PIPELINE_STATISTICS_QUERY`,
     /// or when the last frame broke it into more than 16 passes.
     pub const fn last_pipeline_stats(&self) -> Option<PipelineStats> {
         self.stats

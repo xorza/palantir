@@ -3,8 +3,8 @@
 use crate::damage::region::DamageRegion;
 use crate::primitives::geometry::rect::Rect;
 
-/// The screen a partial frame encodes: its damage, and the footprints of the panes it repaints,
-/// which the main pass repaints when such a pane captures.
+/// The screen a partial frame encodes: its damage, and the footprints of the backdrops it repaints,
+/// which the main pass repaints when such a backdrop captures.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CullRegion<'a> {
     pub(super) damage: &'a DamageRegion,

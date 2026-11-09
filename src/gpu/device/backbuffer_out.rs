@@ -11,9 +11,10 @@ pub(crate) enum BackbufferOut {
     /// a handheld's RADV +0.3 to +2.6 %.
     Copy,
     /// A full-screen draw in a pass that clears the target: Apple's GPUs, whose pass writes the
-    /// target from its tiles where the copy reads it through another engine. On the Apple laptop the draw
-    /// takes 2 to 6 % off the partial frames that capture a pane (`backdrop_frame/gpu/blur/sliding`
-    /// −6.2 %, `glass/under` −4.5 %) and leaves the rest within 1 %.
+    /// target from its tiles where the copy reads it through another engine. On the Apple laptop
+    /// the draw takes 2 to 6 % off the partial frames that capture a backdrop
+    /// (`backdrop_frame/gpu/blur/sliding` −6.2 %, `glass/under` −4.5 %) and leaves the rest within
+    /// 1 %.
     Draw,
 }
 

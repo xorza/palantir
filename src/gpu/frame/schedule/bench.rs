@@ -16,9 +16,9 @@
 //!   the clear / re-stamp elision already applies and the scissor
 //!   requests around it collapse too.
 //!
-//! `segments/<panes>/512` walks a 512-group frame in one piece more than `panes` backdrop panes, broken
-//! at their barriers spread evenly through it, as the main pass breaks at each capturing pane: the
-//! CPU the breaks add over one walk.
+//! `segments/<backdrops>/512` walks a 512-group frame in one piece more than `backdrops` backdrops,
+//! broken at their barriers spread evenly through it, as the main pass breaks at each capturing
+//! backdrop: the CPU the breaks add over one walk.
 //!
 //! Walks run at full repaint (`damage = None`): the damage opener adds a fixed two steps per walk and
 //! would only dilute the per-group signal. Step and scissor counts print once per workload as the
@@ -174,15 +174,15 @@ pub(crate) fn atomic(c: &mut Criterion) {
             });
         }
     }
-    for panes in [1u32, 8, 64] {
+    for backdrops in [1u32, 8, 64] {
         group.throughput(Throughput::Elements(SEGMENT_GROUPS as u64));
         group.bench_function(
-            Backend::Cpu.case(&format!("segments/{panes}/{SEGMENT_GROUPS}")),
+            Backend::Cpu.case(&format!("segments/{backdrops}/{SEGMENT_GROUPS}")),
             |b| {
                 let buffer = Workload::DistinctScissors.fixture(SEGMENT_GROUPS);
                 let walk = Walk::new(&buffer);
-                let barriers: Vec<u32> = (1..=panes)
-                    .map(|i| i * SEGMENT_GROUPS as u32 / (panes + 1))
+                let barriers: Vec<u32> = (1..=backdrops)
+                    .map(|i| i * SEGMENT_GROUPS as u32 / (backdrops + 1))
                     .collect();
                 let walk_all = || {
                     let mut from = 0;
@@ -204,7 +204,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 assert_eq!(
                     walk_all(),
                     SEGMENT_GROUPS,
-                    "segments/{panes}/{SEGMENT_GROUPS}"
+                    "segments/{backdrops}/{SEGMENT_GROUPS}"
                 );
                 b.iter(|| black_box(walk_all()));
             },

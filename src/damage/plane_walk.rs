@@ -6,10 +6,10 @@ use crate::cascade::paint::{PaintBlocks, PaintRows};
 use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::damage;
+use crate::damage::backdrop_walk::BackdropWalk;
 use crate::damage::counters::DamageCounters;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
 use crate::damage::node_snapshot::NodeSnapshot;
-use crate::damage::pane_walk::PaneWalk;
 use crate::damage::plane_frame::PlaneFrame;
 use crate::damage::row_matcher::{NodeRows, PaintsChange, RowMatcher, RowPlaces};
 use crate::primitives::geometry::rect::Rect;
@@ -51,8 +51,8 @@ pub(super) struct PlaneWalk<'a> {
     pub(super) paints: &'a mut PaintBlocks,
     pub(super) matcher: &'a mut RowMatcher,
     pub(super) raw_rects: &'a mut Vec<Rect>,
-    /// Marks each node's rects with its first paint row, for the panes' forward walk.
-    pub(super) panes: &'a mut PaneWalk,
+    /// Marks each node's rects with its first paint row, for the backdrops' forward walk.
+    pub(super) backdrops: &'a mut BackdropWalk,
     /// The plane's place in paint order.
     pub(super) ord: usize,
     /// Per-row screen extents for the order-inversion check; filled only when a node's row order inverted.
@@ -77,9 +77,9 @@ impl PlaneWalk<'_> {
             };
             // A node's rects, and its subtree's, come from its first row or later.
             let span = self.frame.cascade.paint_arena.node_spans[i];
-            self.panes.mark(
+            self.backdrops.mark(
                 self.raw_rects.len(),
-                PaneWalk::node_position(self.ord, span),
+                BackdropWalk::node_position(self.ord, span),
             );
             let advance = match self.classify(node) {
                 Tier::Untracked => 1,
@@ -206,18 +206,18 @@ impl PlaneWalk<'_> {
             self.raw_rects,
             change,
             &mut RowPlaces {
-                panes: self.panes,
+                backdrops: self.backdrops,
                 of: NodeRows {
                     ord: self.ord,
                     span,
                 },
-                pane_rows: &self.frame.cascade.pane_rows,
+                backdrop_rows: &self.frame.cascade.backdrop_rows,
             },
         );
         // The node's own rects from here on: the whole of it, from its first row.
-        self.panes.mark(
+        self.backdrops.mark(
             self.raw_rects.len(),
-            PaneWalk::node_position(self.ord, span),
+            BackdropWalk::node_position(self.ord, span),
         );
 
         // Exact-matched rows emit no content damage, but a pair whose paint order inverted still flips its overlap. Only exact pairs participate; moved and added rows already cover theirs.

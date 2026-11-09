@@ -4,10 +4,10 @@ use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
 use crate::bench::scene::Scene;
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::damage::Damage;
-use crate::damage::dirty_panes::DirtyPanes;
-use crate::damage::pane_walk::PaneWalk;
+use crate::damage::backdrop_walk::BackdropWalk;
+use crate::damage::dirty_backdrops::DirtyBackdrops;
 use crate::damage::region::DamageRegion;
 use crate::damage::sweep::player::{PlayedFrame, Player};
 use crate::damage::sweep::policy::Policy;
@@ -16,8 +16,8 @@ use crate::damage::sweep::stage::Stage;
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::identity::pane_key::PaneKey;
-use crate::primitives::identity::pane_keys::PaneKeys;
+use crate::primitives::identity::backdrop_key::BackdropKey;
+use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
@@ -483,19 +483,20 @@ pub(crate) fn integration(c: &mut Criterion) {
     group.finish();
 }
 
-/// `atomic/damage/cpu/backdrop_walk/<panes>/<rects>`: the forward walk over `panes` panes in a
-/// row against `rects` raw rects, each painted after the pane before it and touching no footprint,
-/// so every pane scans every rect before it and none goes stale: the walk's worst case.
+/// `atomic/damage/cpu/backdrop_walk/<backdrops>/<rects>`: the forward walk over `backdrops`
+/// backdrops in a row against `rects` raw rects, each painted after the backdrop before it and
+/// touching no footprint, so every backdrop scans every rect before it and none goes stale: the
+/// walk's worst case.
 fn backdrop_walk(group: &mut CaseGroup<'_>) {
-    for panes in [1u32, 8, 64] {
+    for backdrops in [1u32, 8, 64] {
         for rects in [1u32, 16, 256] {
-            let case = format!("backdrop_walk/{panes}/{rects}");
+            let case = format!("backdrop_walk/{backdrops}/{rects}");
             group.bench_function(Backend::Cpu.case(&case), |b| {
-                let rows: Vec<(u64, PaneRow)> = (0..panes)
+                let rows: Vec<(u64, PlaneBackdrop)> = (0..backdrops)
                     .map(|i| {
                         let rect = Rect::new(i as f32 * 20.0, 0.0, 10.0, 10.0);
-                        let pane = PaneRow {
-                            key: PaneKey {
+                        let backdrop = PlaneBackdrop {
+                            key: BackdropKey {
                                 owner: WidgetId::from_hash(i),
                                 shape: 0,
                             },
@@ -505,27 +506,31 @@ fn backdrop_walk(group: &mut CaseGroup<'_>) {
                             plan: BlurPlan::new(1.0),
                             footprint: rect.inflated(4.0),
                         };
-                        (PaneWalk::position(0, pane.row), pane)
+                        (BackdropWalk::position(0, backdrop.row), backdrop)
                     })
                     .collect();
-                let mut keys = PaneKeys::default();
-                keys.refill(rows.iter().map(|(_, pane)| pane.key));
-                let mut walk = PaneWalk::default();
+                let mut keys = BackdropKeys::default();
+                keys.refill(rows.iter().map(|(_, backdrop)| backdrop.key));
+                let mut walk = BackdropWalk::default();
                 let mut raw = Vec::new();
-                let fill = |walk: &mut PaneWalk, raw: &mut Vec<Rect>| {
+                let fill = |walk: &mut BackdropWalk, raw: &mut Vec<Rect>| {
                     walk.start_over(&keys);
                     raw.clear();
                     for r in 0..rects {
-                        walk.mark(raw.len(), PaneWalk::position(0, 2 * (r % panes)));
+                        walk.mark(raw.len(), BackdropWalk::position(0, 2 * (r % backdrops)));
                         raw.push(Rect::new(r as f32, 500.0, 4.0, 4.0));
                     }
                 };
-                // The first walk holds no pane, so every one is new and stale.
+                // The first walk holds no backdrop, so every one is new and stale.
                 fill(&mut walk, &mut raw);
                 let _ = walk.walk_over(&rows, &mut raw);
                 fill(&mut walk, &mut raw);
                 assert!(walk.walk_over(&rows, &mut raw));
-                assert_eq!(*walk.dirty(), DirtyPanes::default(), "no pane goes stale");
+                assert_eq!(
+                    *walk.dirty(),
+                    DirtyBackdrops::default(),
+                    "no backdrop goes stale"
+                );
                 b.iter(|| {
                     fill(&mut walk, &mut raw);
                     black_box(walk.walk_over(&rows, &mut raw))

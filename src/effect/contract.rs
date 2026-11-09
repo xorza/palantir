@@ -21,21 +21,21 @@ use crate::primitives::paint::brush::gradient::Spread;
 /// text.
 const CONTRACT: &str = include_str!("contract.wgsl");
 
-/// What a backdrop effect reads besides: `effect_backdrop` over the pane's result, which follows
-/// the contract for that kind alone.
+/// What a backdrop effect reads besides: `effect_backdrop` over the backdrop's result, which
+/// follows the contract for that kind alone.
 const BACKDROP: &str = include_str!("backdrop.wgsl");
 
 /// The bindings the backdrop contract declares, which an app's text names not.
 const BACKDROP_BINDINGS: [&str; 4] = [
     "palantir_results",
     "palantir_results_sampler",
-    "palantir_panes",
+    "palantir_backdrops",
     "palantir_spectrum",
 ];
 
-/// What palantir's fragment stage sets before it calls a backdrop effect: the pane it draws, its
-/// rect's top-left and the scale `effect_backdrop` maps a logical position by.
-const BACKDROP_SET: &str = "palantir_pane = v.pane;\n    palantir_rect = v.rect;\n    \
+/// What palantir's fragment stage sets before it calls a backdrop effect: the backdrop it draws,
+/// its rect's top-left and the scale `effect_backdrop` maps a logical position by.
+const BACKDROP_SET: &str = "palantir_backdrop_idx = v.backdrop_idx;\n    palantir_rect = v.rect;\n    \
      palantir_rotation = v.clock.w;\n    palantir_scale = scale;\n    ";
 /// Palantir's own stages around `effect`, with markers for the antialiasing reach, the parameter
 /// read and the call.
@@ -83,11 +83,11 @@ pub(crate) const WINDOW_FLAG: u32 = 1;
 /// material path.
 pub(crate) const MATERIAL_FLAG: u32 = 2;
 
-/// The group a material's box reads the gradient atlas through, past the panes.
+/// The group a material's box reads the gradient atlas through, past the backdrops.
 pub(crate) const GRADIENTS_GROUP: u32 = 3;
 
-/// The group a backdrop effect reads its pane's result through, past its images.
-pub(crate) const PANES_GROUP: u32 = 2;
+/// The group a backdrop effect reads its backdrop's result through, past its images.
+pub(crate) const BACKDROPS_GROUP: u32 = 2;
 
 /// The complete module palantir compiles for `wgsl`, an effect of `spec`'s kind: the app's text,
 /// the contract with its kind's reads and its images, and palantir's stages, once the app's text

@@ -4,7 +4,7 @@ use crate::primitives::layout::visibility::Visibility;
 use crate::scene::node::node_flags::NodeFlags;
 
 /// Whether a node is disabled and whether it is invisible, each held when the node or an ancestor
-/// holds it. The record pass reads it a frame ahead of the cascade, to gate panes and paint
+/// holds it. The record pass reads it a frame ahead of the cascade, to gate backdrops and paint
 /// animations, and the cascade to gate paint and input; both derive it through [`Self::child`].
 /// Refused: the rule written in each pass, which only a debug paint-row assert held equal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

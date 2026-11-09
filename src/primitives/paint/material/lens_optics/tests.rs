@@ -57,15 +57,15 @@ fn the_lens_bends_only_its_bezel_and_reach_bounds_it() {
     assert_eq!(widest.reach(65504.0), u32::MAX);
 }
 
-/// A sample `d` px in lands `d + displacement` px along the inward normal; a pane whose
+/// A sample `d` px in lands `d + displacement` px along the inward normal; a backdrop whose
 /// narrowest side holds that keeps it, and one narrower lets it out by the difference, and a
 /// pixel for a normal turned at the ridge. The lean at 1.9 is `16 · √(3.61 − 1) = 25.85`, so
-/// its reach is 27. A 64 px pane holds the 24 px bezel, the lean and the pixel, 50.85, and
-/// reads a pixel past itself; a 40 px pane lets a sample out by `20 + 25.85 − 40 + 1 = 6.85`,
-/// so 8; a 4 px pane by `2 + 25.85 − 4 + 1`, so 26. Over the bezel the closed form stays
+/// its reach is 27. A 64 px backdrop holds the 24 px bezel, the lean and the pixel, 50.85, and
+/// reads a pixel past itself; a 40 px backdrop lets a sample out by `20 + 25.85 − 40 + 1 = 6.85`,
+/// so 8; a 4 px backdrop by `2 + 25.85 − 4 + 1`, so 26. Over the bezel the closed form stays
 /// inside each margin, moved inward, and within a pixel of the ridge moved out.
 #[test]
-fn a_wide_pane_holds_what_its_bezel_bends() {
+fn a_wide_backdrop_holds_what_its_bezel_bends() {
     assert_eq!(LENS.reach(1.9), 27);
     assert_eq!(LENS.margin(1.9, 64.0), 1);
     assert_eq!(LENS.margin(1.9, 40.0), 8);

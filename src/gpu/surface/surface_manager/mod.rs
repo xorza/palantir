@@ -24,7 +24,7 @@ const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER
 /// advertises only `RENDER_ATTACHMENT`, so requiring these made it unusable;
 /// without `COPY_DST` the backbuffer is drawn onto the surface
 /// ([`Backbuffer::present_onto`](crate::gpu::surface::backbuffer::Backbuffer::present_onto)), and
-/// without `COPY_SRC` a frame whose panes capture paints through the backbuffer.
+/// without `COPY_SRC` a frame whose backdrops capture paints through the backbuffer.
 const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages =
     wgpu::TextureUsages::COPY_DST.union(wgpu::TextureUsages::COPY_SRC);
 

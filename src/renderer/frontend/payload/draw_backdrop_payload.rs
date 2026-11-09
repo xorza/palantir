@@ -7,26 +7,26 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, QuadGeometry};
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::pane_captures::PaneTicket;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 
-/// What a backdrop reads: what is painted under it, by the ticket the pane ledger wrote for it, or
-/// the window's ground, while transparency is reduced, with no ticket.
+/// What a backdrop reads: what is painted under it, by the ticket the backdrop ledger wrote for it,
+/// or the window's ground, while transparency is reduced, with no ticket.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum BackdropDraw {
-    Capture(PaneTicket),
+    Capture(BackdropTicket),
     Ground,
 }
 
 /// A material's box covering `coverage` of `rect`, showing what it reads through `material` under
 /// its fill, a color or a gradient, and its border over the whole box, faded to `opacity`.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct DrawPanePayload {
+pub(crate) struct DrawBackdropPayload {
     pub(crate) coverage: Coverage,
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
@@ -43,8 +43,8 @@ pub(crate) struct DrawPanePayload {
     pub(crate) read: BackdropDraw,
 }
 
-impl DrawPanePayload {
-    /// The rect as a quad packs it, which the pane's effect instance takes its rect, corners,
+impl DrawBackdropPayload {
+    /// The rect as a quad packs it, which the backdrop's effect instance takes its rect, corners,
     /// turn and stroke width from, so it lies on the pixels a rect of it does.
     pub(crate) fn geometry(&self) -> DrawQuadPayload {
         let kind = match self.coverage {
@@ -68,8 +68,8 @@ impl DrawPanePayload {
     }
 }
 
-impl PaintPayload for DrawPanePayload {
-    /// This pane faded by `by`.
+impl PaintPayload for DrawBackdropPayload {
+    /// This backdrop faded by `by`.
     #[inline]
     fn faded(self, by: f32) -> Self {
         if by == 1.0 {
@@ -83,7 +83,7 @@ impl PaintPayload for DrawPanePayload {
         }
     }
 
-    /// Whether the pane draws nothing: it covers no pixel, or none of it shows, as a paint
+    /// Whether the backdrop draws nothing: it covers no pixel, or none of it shows, as a paint
     /// animation's alpha reads it.
     #[inline]
     fn is_noop(&self) -> bool {
@@ -91,6 +91,6 @@ impl PaintPayload for DrawPanePayload {
     }
 
     fn paint(self, sink: &mut impl PaintSink) {
-        sink.pane(self);
+        sink.backdrop(self);
     }
 }

@@ -43,7 +43,7 @@ use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
-use crate::renderer::frontend::payload::draw_pane_payload::BackdropDraw;
+use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
 use crate::shape::Shape;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::theme::Theme;
@@ -1554,7 +1554,7 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
 const SHARP: Shift = Shift { dx: 0.0 };
 
 /// While transparency is reduced a backdrop effect's shape reads the window's ground, which takes
-/// no ticket and lists no pane, or paints nothing where it asks for nothing then. At full
+/// no ticket and lists no backdrop, or paints nothing where it asks for nothing then. At full
 /// transparency it captures what is under it.
 #[test]
 fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced() {
@@ -1567,7 +1567,7 @@ fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced()
             .calls
             .iter()
             .filter_map(|call| match call {
-                PaintCall::Effect(p) => Some(p.pane.map(|pane| pane.read)),
+                PaintCall::Effect(p) => Some(p.backdrop.map(|backdrop| backdrop.read)),
                 _ => None,
             })
             .collect()
@@ -1634,7 +1634,7 @@ fn a_material_effect_binds_no_image() {
 #[test]
 fn a_backdrop_effect_blurs_as_a_material() {
     let gpu = headless_test_gpu();
-    let row = |pane: &dyn Fn(&mut Ui)| {
+    let row = |backdrop: &dyn Fn(&mut Ui)| {
         let mut h = Harness::builder(UVec2::new(32, 16))
             .mono()
             .depth(Depth::gpu(gpu.handles()))
@@ -1651,7 +1651,7 @@ fn a_backdrop_effect_blurs_as_a_material() {
                 Shape::rect().at(Rect::new(16.0, 0.0, 16.0, 16.0)),
                 RgbaF32::WHITE,
             );
-            pane(ui);
+            backdrop(ui);
         });
         let image = h.read_back();
         (0..32).map(|x| image.get_pixel(x, 8).0).collect::<Vec<_>>()

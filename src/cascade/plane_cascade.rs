@@ -2,7 +2,7 @@
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::paint::PaintArena;
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::content_hash::ContentHash;
 use crate::common::non_max::NonMaxU32;
 use crate::primitives::geometry::rect::Rect;
@@ -82,15 +82,15 @@ pub(crate) struct PlaneCascade {
     /// nodes hold a row is structural, so the incremental walk rewrites a moved
     /// node's row through this.
     pub(super) hit_rows: Vec<Option<NonMaxU32>>,
-    /// Per-node scale of the transform the node's shapes paint under, which a pane's blur reach
+    /// Per-node scale of the transform the node's shapes paint under, which a backdrop's blur reach
     /// scales by; kept, as the paint rows are, for a node the incremental walk skips.
     pub(super) shape_scales: Vec<f32>,
-    /// The plane's backdrop panes in paint order, rebuilt after every walk from the tree's panes
+    /// The plane's backdrops in paint order, rebuilt after every walk from the tree's backdrops
     /// and the rows above.
-    pub(crate) panes: Vec<PaneRow>,
-    /// The rows of [`Self::panes`], sorted, for a search by row: the panes are in paint order,
-    /// where an ancestor's shape painted after its children has a lower row than theirs.
-    pub(crate) pane_rows: Vec<u32>,
+    pub(crate) backdrops: Vec<PlaneBackdrop>,
+    /// The rows of [`Self::backdrops`], sorted, for a search by row: the backdrops are in paint
+    /// order, where an ancestor's shape painted after its children has a lower row than theirs.
+    pub(crate) backdrop_rows: Vec<u32>,
     /// Offset of this plane's first `EntryRow` in
     /// [`Cascade::entries`](crate::cascade::Cascade::entries), fixed for the
     /// plane's run and set at `reset_for`. A full rebuild pushes one entry per

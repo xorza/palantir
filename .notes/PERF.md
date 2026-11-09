@@ -116,12 +116,12 @@ new run.
   times the same, and blending off saves 40 µs (27 %); 4.1 M fragments over 1.12 screens, 0.4 M
   under a later opaque interior. The shadows: 79 µs of raster, 46 µs of coverage math. Every
   fragment shader sits at 24 to 48 VGPRs and 20 to 32 waves a SIMD, with no spills.
-- **Backdrop passes** (`.notes/research/2026-10-28-backdrops.md`): a blur pass costs the
-  Apple laptop about 48 µs whatever it draws and the AMD iGPU about 6 µs; on the AMD iGPU a frame's backdrop work
-  is the composite, then the blurs, then the captures (cards: 793, 610 and 248 µs). The
-  composite on the fanless's 4K `modal/scrolling` costs 1.4 ms over a pane that returns at once: the
-  B-spline read 0.29 ms, grain and saturation 0.21, the luminance ceiling and tint 0.16, the
-  dither nothing; on the AMD iGPU at 2048² the B-spline is a third of it and the grain 90 µs.
+- **Backdrop passes** (`.notes/research/2026-10-28-backdrops.md`): a blur pass costs the Apple
+  laptop about 48 µs whatever it draws and the AMD iGPU about 6 µs; on the AMD iGPU a frame's
+  backdrop work is the composite, then the blurs, then the captures (cards: 793, 610 and 248 µs).
+  The composite on the fanless's 4K `modal/scrolling` costs 1.4 ms over a backdrop that returns at
+  once: the B-spline read 0.29 ms, grain and saturation 0.21, the luminance ceiling and fill 0.16,
+  the dither nothing; on the AMD iGPU at 2048² the B-spline is a third of it and the grain 90 µs.
 - **On the board the GPU is the frame**: `frame/gpu/scrolling` 18 ms, its CPU half 0.55 ms; a whole
   2560 × 1440 main pass 17.1 ms, of which the tabled shadows 7.7 (coverage 5.8: cutout lookups
   2.1, source clip 1.4), the quads 4.6, text 0.16, and every fragment entry trivial 4.8. In
@@ -190,7 +190,7 @@ new run.
 - **Blur: two tents in one pass**: −11 % on `backdrop_blur/jobs/*` on
   the fanless, but 25 fetches a texel from the larger level, `backdrop_blur/48/2048` +145 %.
 - **Blur only the texels the composite reads**: board −0.7 to −5 %,
-  handheld −0.5 to −4.4 % but +1 % on the blur frames. A held capture serves a pane inside the
+  handheld −0.5 to −4.4 % but +1 % on the blur frames. A held capture serves a backdrop inside the
   snapped region, so the cut needs the footprint snapped everywhere it is read (damage, the
   encoder's filter, the capture), for a few percent.
 - **Composite: dither by the sRGB slope**: no change; the composite does not wait on its `pow`s.
@@ -284,11 +284,11 @@ new run.
   ANGLE `vk_renderer.cpp` (`isTileBasedRenderer`), Mesa V3DV `v3dv_cmd_buffer.c`.
 - **Glass draws through pipelines of its own, and its spectrum's tables are a buffer**:
   `QuadForm::BackdropLens` and `BackdropSpectrum`, which the `QUAD_FORM` constant prunes.
-  Refused: the lens behind a branch, whose registers V3D spilled on every pane; the tables as
+  Refused: the lens behind a branch, whose registers V3D spilled on every backdrop; the tables as
   WGSL constant arrays, which V3D indexes by a select over every entry. Pi glass frames −26 to
   −41 %. The module doc of `gpu::backdrop` holds both.
-- **A glass pane's footprint holds what its lens reads, not its reach**: `LensOptics::margin`,
-  from the pane's narrowest side where the cascade knows it. Glass frames −5.6 to −10.6 % on the
+- **A glass backdrop's footprint holds what its lens reads, not its reach**: `LensOptics::margin`,
+  from the backdrop's narrowest side where the cascade knows it. Glass frames −5.6 to −10.6 % on the
   board, handheld and mac; one texel of 54 handheld frames moves by one f16 step at 1.
 
 - **The backbuffer reaches the target by a draw on Apple GPUs** (run 10). `BackbufferOut::Draw`
@@ -304,11 +304,11 @@ new run.
   the catalog, the grid and how to read it). A pair of rects merges by the pixels its bounds add
   past what the two cover, 5,000 px² at most, overlapping or not. A frame repaints whole past a
   share of `d / (d + 400)`, of the density `d`: the rows that draw on the surface per million
-  physical pixels, and 300 for all of the surface under pane footprints. Sum of CPU and GPU, each
-  scenario's regret past its cheapest decision as a percent of that frame, over six stages of
-  content, scale and surface; `scene_glass`, added after, is without and with the pane term:
+  physical pixels, and 300 for all of the surface under backdrop footprints. Sum of CPU and GPU,
+  each scenario's regret past its cheapest decision as a percent of that frame, over six stages of
+  content, scale and surface; `scene_glass`, added after, is without and with the backdrop term:
 
-  | host | mean, one share 0.4 and a 20,000 px² budget | mean, now | worst, then | worst, now | `scene_glass`, no pane term | with it |
+  | host | mean, one share 0.4 and a 20,000 px² budget | mean, now | worst, then | worst, now | `scene_glass`, no backdrop term | with it |
   | --- | --- | --- | --- | --- | --- | --- |
   | mac | 3.6 | 0.7 | 37 | 17 | 10.8 | 0.6 |
   | handheld | 17.8 | 2.2 | 137 | 78 | 15.1 | 1.3 |
@@ -318,7 +318,7 @@ new run.
   Without the bare `plain` stage, the mean goes from 4.0 to 1.1. The worst left is a caret on a
   screen of two rows, which repaints whole. Rows count as they draw: a child marker draws nothing,
   and a frame culls a row off the surface however it repaints, so a long list or a zoomed-out graph
-  is no dense screen. The pane term's 200 scored 0.06 better than its 300, and reads a share of
+  is no dense screen. The backdrop term's 200 scored 0.06 better than its 300, and reads a share of
   about 0.26 on the screen where a toolbar's and a sidebar's stale rects cover 24 %, a cliff of 65
   to 104 % a step past it. Refused, each from the best policy of its host group, read before rows
   counted as they draw:
@@ -367,7 +367,7 @@ new run.
   `LensOptics::margin` reads no narrowest side for it.
 - **A direct frame still copies its captures**: no sampled swapchain on Metal or DX12
   (Rejected). Skipping every copy took the fanless 5 to 12 % off the frames that capture.
-- **A pane's break test reads one bounding box** of what was painted since the break, so an
+- **A backdrop's break test reads one bounding box** of what was painted since the break, so an
   L-shaped layout breaks anew though no draw touches the footprint; no bench has one.
 - **Shadow coverage per instance**: `filter_cdf_series` takes `1 / σ` and `h²/6` per pixel; the
   coverage math is about 40 µs of the shadows' 115 µs on the AMD iGPU.
@@ -378,9 +378,9 @@ new run.
   23 % faster; no profile says why.
 - **The board's tabled shadows** run at 2 threads where V3D runs 4 at 16 registers; a lean entry
   for the edge cells could run on 4, at twice the shadow draws. Ceiling: 15.0 against 17.1 ms.
-- **The board's pass breaks**: each pane capture ends the main pass, 3.8 ms on V3D. Painting what
-  lies under the panes into capture canvases first trades the breaks for drawing each footprint
-  twice.
+- **The board's pass breaks**: each backdrop capture ends the main pass, 3.8 ms on V3D. Painting
+  what lies under the backdrops into capture canvases first trades the breaks for drawing each
+  footprint twice.
 - **The board's vertex floor**: the main pass with every fragment entry trivial takes 4.8 ms.
 - **The cutout bake's cost model** assumes a bake a frame; with held tables more keys would pay,
   but which shadows read a table is a rendering decision.

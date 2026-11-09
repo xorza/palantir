@@ -251,10 +251,10 @@ fn a_retained_target_keeps_no_damage_outline() {
     assert_eq!(texture.read_back(), reference.read_back());
 }
 
-/// On a retained target that gives no copy, a partial frame whose pane captures paints
+/// On a retained target that gives no copy, a partial frame whose backdrop captures paints
 /// through the backbuffer, decided before it builds: as a partial frame over the backbuffer
 /// the first frame left, then whole once a direct frame left the backbuffer behind. A partial
-/// frame whose pane holds its result paints in place.
+/// frame whose backdrop holds its result paints in place.
 #[test]
 fn a_retained_target_without_copies_captures_through_the_backbuffer() {
     let gpu = headless_test_gpu();

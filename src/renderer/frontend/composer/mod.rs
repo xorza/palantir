@@ -14,6 +14,7 @@ use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::shape::record_store::RecordStore;
 
+mod backdrop_break;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod clip_stack;
@@ -24,7 +25,6 @@ mod lowering;
 mod occlusion_pruner;
 mod packed_quad;
 mod paint_order;
-mod pane_break;
 mod physical_map;
 mod polyline_scratch;
 mod rect_grid;

@@ -1,4 +1,4 @@
-//! Backdrop panes painted end to end on a headless window, against reference arithmetic and
+//! Backdrops painted end to end on a headless window, against reference arithmetic and
 //! against whole repaints.
 
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
@@ -33,14 +33,14 @@ mod fill;
 mod neighbors;
 
 const SIZE: UVec2 = UVec2::new(64, 48);
-/// A clear three tenths of a step past the sRGB bytes 51, 115 and 178, so a pane that showed it
+/// A clear three tenths of a step past the sRGB bytes 51, 115 and 178, so a backdrop that showed it
 /// unrounded could miss the clear around it by a step, and far enough from the midpoints that
 /// the target rounds it as the CPU does.
 pub(super) const CLEAR: RgbaF32 = RgbaF32::srgb(51.3 / 255.0, 115.3 / 255.0, 178.3 / 255.0);
-const PANE: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
+const BACKDROP: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
 
-/// Stripes of three colors and widths under where the pane sits, and the pane when `sigma` is
-/// some.
+/// Stripes of three colors and widths under where the backdrop sits, and the backdrop when `sigma`
+/// is some.
 fn scene(ui: &mut Ui, sigma: Option<f32>) {
     Panel::canvas()
         .id_salt("backdrop-scene")
@@ -60,7 +60,7 @@ fn scene(ui: &mut Ui, sigma: Option<f32>) {
             }
             if let Some(sigma) = sigma {
                 ui.add_shape(
-                    Shape::rect().at(PANE),
+                    Shape::rect().at(BACKDROP),
                     Paint::NONE.with_material(Material::blur(sigma)),
                 );
             }
@@ -118,7 +118,7 @@ fn reference(plan: BlurPlan, image: &RgbaImage, channel: usize) -> Vec<f64> {
     out
 }
 
-/// What a pixel of a frame with a pane holds against the same frame without it.
+/// What a pixel of a frame with a backdrop holds against the same frame without it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Expect {
     /// The pixels under it blurred, within one 8-bit step: the dither's half step and the `f16`
@@ -158,18 +158,18 @@ fn assert_blurred(
     }
 }
 
-/// A pane shows the pixels painted before it blurred, as the reference arithmetic blurs the same
-/// frame without it: every channel within one 8-bit step, the dither's half step and the `f16`
-/// stages' rounding. Outside the pane the frame is unchanged, bit for bit. σ 3 blurs at full
+/// A backdrop shows the pixels painted before it blurred, as the reference arithmetic blurs the
+/// same frame without it: every channel within one 8-bit step, the dither's half step and the `f16`
+/// stages' rounding. Outside the backdrop the frame is unchanged, bit for bit. σ 3 blurs at full
 /// resolution and σ 6 one level down.
 #[test]
-fn a_pane_shows_the_pixels_before_it_blurred() {
+fn a_backdrop_shows_the_pixels_before_it_blurred() {
     let gpu = headless_test_gpu();
     let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
     let under = reference.paint(|ui| scene(ui, None));
     for sigma in [3.0f32, 6.0] {
         let inside = |p: Vec2| {
-            if PANE.contains(p) {
+            if BACKDROP.contains(p) {
                 Expect::Blurred
             } else {
                 Expect::Same
@@ -186,12 +186,12 @@ fn a_pane_shows_the_pixels_before_it_blurred() {
     }
 }
 
-/// A luminance ceiling scales what a pane shows down to it before the tint, and leaves what is
-/// darker alone. White on the left, the black clear on the right, under a pane of σ 1 tinted gray
-/// 0.2 at alpha 0.5 and capped at 0.1, which lowers to the f16 0.0999755859375: away from the
+/// A luminance ceiling scales what a backdrop shows down to it before the fill, and leaves what is
+/// darker alone. White on the left, the black clear on the right, under a backdrop of σ 1 filled
+/// gray 0.2 at alpha 0.5 and capped at 0.1, which lowers to the f16 0.0999755859375: away from the
 /// seam, the white side composites to `0.5 · 0.0999755859375 + 0.5 · 0.2 = 0.14998779296875` and
-/// the black side to `0.5 · 0 + 0.5 · 0.2 = 0.1`, each channel within one 8-bit step. Without
-/// the ceiling the white side is `0.5 · 1 + 0.5 · 0.2 = 0.6`.
+/// the black side to `0.5 · 0 + 0.5 · 0.2 = 0.1`, each channel within one 8-bit step. Without the
+/// ceiling the white side is `0.5 · 1 + 0.5 · 0.2 = 0.6`.
 #[test]
 fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
     let gpu = headless_test_gpu();
@@ -237,9 +237,9 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
     }
 }
 
-/// A luminance floor lifts what a pane shows up to it by a neutral before the tint, black too,
+/// A luminance floor lifts what a backdrop shows up to it by a neutral before the fill, black too,
 /// and leaves what is brighter alone. White on the left, the black clear on the right, under a
-/// pane of σ 1 tinted gray 0.2 at alpha 0.5 with a floor of 0.3, which lowers to the f16 at or
+/// backdrop of σ 1 filled gray 0.2 at alpha 0.5 with a floor of 0.3, which lowers to the f16 at or
 /// above it, 0.300048828125: away from the seam, the black side composites to
 /// `0.5 · 0.300048828125 + 0.5 · 0.2 = 0.2500244140625` and the white side stays
 /// `0.5 · 1 + 0.5 · 0.2 = 0.6`. Without the floor the black side is `0.1`.
@@ -288,9 +288,9 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
     }
 }
 
-/// A canvas with a square of `under` painted before a pane of σ `sigma` at `pane`, and a square
-/// of `over` painted after it, inside it.
-fn layered(ui: &mut Ui, under: RgbaF32, pane: Rect, sigma: f32, over: RgbaF32) {
+/// A canvas with a square of `under` painted before a backdrop of σ `sigma` at `backdrop`, and a
+/// square of `over` painted after it, inside it.
+fn layered(ui: &mut Ui, under: RgbaF32, backdrop: Rect, sigma: f32, over: RgbaF32) {
     Panel::canvas()
         .id_salt("backdrop-layered")
         .size((Sizing::FILL, Sizing::FILL))
@@ -303,7 +303,7 @@ fn layered(ui: &mut Ui, under: RgbaF32, pane: Rect, sigma: f32, over: RgbaF32) {
                 );
             }
             ui.add_shape(
-                Shape::rect().at(pane),
+                Shape::rect().at(backdrop),
                 Paint::NONE.with_material(Material::blur(sigma)),
             );
             ui.add_shape(Shape::rect().at(Rect::new(30.0, 20.0, 6.0, 6.0)), over);
@@ -358,11 +358,11 @@ fn assert_within_a_step(got: &RgbaImage, want: &RgbaImage, what: &str) {
     }
 }
 
-/// On a window kept across frames, a change under a pane captures it again, one above it inside
-/// it does not, and a pane sliding inside the region it captured keeps the capture; each partial
-/// frame matches a whole repaint of its scene within one 8-bit step.
+/// On a window kept across frames, a change under a backdrop captures it again, one above it inside
+/// it does not, and a backdrop sliding inside the region it captured keeps the capture; each
+/// partial frame matches a whole repaint of its scene within one 8-bit step.
 #[test]
-fn a_partial_frame_recaptures_only_a_stale_pane() {
+fn a_partial_frame_recaptures_only_a_stale_backdrop() {
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, SIZE, RgbaF32::BLACK);
     let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
@@ -372,7 +372,7 @@ fn a_partial_frame_recaptures_only_a_stale_pane() {
     let sigma = 10.0;
     let plan = BlurPlan::new(sigma);
     assert_eq!(plan.lattice(), 4);
-    let pane = Rect::new(16.0, 8.0, 30.0, 30.0);
+    let backdrop = Rect::new(16.0, 8.0, 30.0, 30.0);
     let slid = Rect::new(17.0, 8.0, 30.0, 30.0);
     // The slide keeps the footprint inside the captured, lattice-snapped region on every side.
     let region = |rect: Rect| {
@@ -382,11 +382,11 @@ fn a_partial_frame_recaptures_only_a_stale_pane() {
             URect::from_min_max(px.min.saturating_sub(reach), (px.max() + reach).min(SIZE));
         plan.region(footprint, SIZE).unwrap()
     };
-    assert_eq!(region(pane).union(region(slid)), region(pane));
+    assert_eq!(region(backdrop).union(region(slid)), region(backdrop));
     let steps = [
-        (blue, pane, blue, "first", Some(1)),
-        (red, pane, blue, "under", Some(1)),
-        (red, pane, red, "over", Some(0)),
+        (blue, backdrop, blue, "first", Some(1)),
+        (red, backdrop, blue, "under", Some(1)),
+        (red, backdrop, red, "over", Some(0)),
         (red, slid, red, "slid", Some(0)),
     ];
     for (under, rect, over, what, blurs) in steps {
@@ -397,15 +397,15 @@ fn a_partial_frame_recaptures_only_a_stale_pane() {
     }
 }
 
-/// Two panes, the second over the first, with squares under, between and over them, on a kept
+/// Two backdrops, the second over the first, with squares under, between and over them, on a kept
 /// window: each frame matches a whole repaint of its scene within one 8-bit step. A change under
-/// the first pane captures both, as the first's rect lies under the second's footprint; one over
-/// the second, painted after both, captures neither. The window is large enough that the change
-/// under covers less than the share past which a partial frame repaints whole; that frame still
-/// paints whole, as the first frame painted straight into the target and left the backbuffer
+/// the first backdrop captures both, as the first's rect lies under the second's footprint; one
+/// over the second, painted after both, captures neither. The window is large enough that the
+/// change under covers less than the share past which a partial frame repaints whole; that frame
+/// still paints whole, as the first frame painted straight into the target and left the backbuffer
 /// behind.
 #[test]
-fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
+fn a_backdrop_over_a_backdrop_repaints_as_a_whole_frame() {
     let scene = |under: RgbaF32, over: RgbaF32| {
         move |ui: &mut Ui| {
             Panel::canvas()
@@ -460,11 +460,11 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
     }
 }
 
-/// A chrome with a material paints the pane a rect shape of the same chrome paints, bit for bit:
-/// both lower to one material draw, keyed by the owner's first row.
+/// A chrome with a material paints the backdrop a rect shape of the same chrome paints, bit for
+/// bit: both lower to one material draw, keyed by the owner's first row.
 #[test]
-fn a_chrome_pane_paints_as_a_rect_pane() {
-    let tint = RgbaF32::new(1.0, 1.0, 1.0, 0.25);
+fn a_chrome_backdrop_paints_as_a_rect_backdrop() {
+    let fill = RgbaF32::new(1.0, 1.0, 1.0, 0.25);
     let filter = Material::frosted(4.0);
     let stripes = |ui: &mut Ui| {
         Panel::canvas()
@@ -481,9 +481,9 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
             .show(ui, |ui| {
                 stripes(ui);
                 Panel::canvas()
-                    .id_salt("backdrop-chrome-pane")
+                    .id_salt("backdrop-chrome-backdrop")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .chrome(Chrome::rounded(tint, Corners::all(8.0)).with_material(filter))
+                    .chrome(Chrome::rounded(fill, Corners::all(8.0)).with_material(filter))
                     .show(ui, |_| {});
             });
     });
@@ -494,27 +494,30 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
             .show(ui, |ui| {
                 stripes(ui);
                 Panel::canvas()
-                    .id_salt("backdrop-chrome-pane")
+                    .id_salt("backdrop-chrome-backdrop")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
                             Shape::rect().corners(8.0),
-                            Paint::from(tint).with_material(filter),
+                            Paint::from(fill).with_material(filter),
                         );
                     });
             });
     });
-    assert!(chrome == shape, "a chrome pane differs from a rect pane");
-    assert!(chrome != reference.paint(stripes), "the pane paints");
+    assert!(
+        chrome == shape,
+        "a chrome backdrop differs from a rect backdrop"
+    );
+    assert!(chrome != reference.paint(stripes), "the backdrop paints");
 }
 
 /// A frosted popup with a translucent border and a shadow that shrinks, then grows back, as a
 /// palette does while a search narrows and clears, on a kept window: each frame matches a whole
-/// repaint within one 8-bit step. Growing back captures the pane again, and its footprint holds
-/// the damage rect; were the two scissors to overlap, the walk past the pane's barrier would
+/// repaint within one 8-bit step. Growing back captures the backdrop again, and its footprint holds
+/// the damage rect; were the two scissors to overlap, the walk past the backdrop's barrier would
 /// composite the border, and everything translucent after it, twice there.
 #[test]
-fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
+fn a_backdrop_growing_back_paints_once_under_overlapping_repaints() {
     let size = UVec2::new(1000, 700);
     let scene = |h: f32, inner: RgbaF32| {
         move |ui: &mut Ui| {
@@ -537,7 +540,7 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
                             .with_material(Material::frosted(8.0));
                     Popup::new()
                         .anchor(Anchor::at_point(Vec2::new(30.0, 20.0)))
-                        .id_salt("backdrop-grow-pane")
+                        .id_salt("backdrop-grow-backdrop")
                         .layer(Layer::Menu)
                         .chrome(chrome)
                         .size((Sizing::fixed(260.0), Sizing::fixed(h)))

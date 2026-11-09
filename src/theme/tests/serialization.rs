@@ -30,9 +30,9 @@ fn default_theme_roundtrips_through_ron() {
     assert_eq!(loaded, Theme::stock(ColorScheme::Dark));
     assert_eq!(pretty(&loaded), serialized);
     assert!(!serialized.contains("color("), "an off-grid default color");
-    // A backdrop costs a capture and a blur each frame its pane repaints, so only what floats
-    // over content wears one: the menu, popup, picker popup, tooltip and modal panels, and no
-    // slot at all without a float material. A file omits a chrome's absent material.
+    // A material costs a capture and a blur each frame what lies under it repaints, so only what
+    // floats over content wears one: the menu, popup, picker popup, tooltip and modal panels, and
+    // no slot at all without a float material. A file omits a chrome's absent material.
     assert_eq!(serialized.matches("material:").count(), 5);
     let opaque = Metrics {
         float_material: None,

@@ -24,8 +24,8 @@ use glam::UVec2;
 use half::f16;
 
 const SIZE: UVec2 = UVec2::new(96, 48);
-/// A pane whose left bezel spans x 16..32 on its middle row.
-const PANE: Rect = Rect::new(16.0, 8.0, 64.0, 32.0);
+/// A backdrop whose left bezel spans x 16..32 on its middle row.
+const BACKDROP: Rect = Rect::new(16.0, 8.0, 64.0, 32.0);
 const ROW: u32 = 24;
 
 /// Strong glass of `refractive_index` with no glint, so a pixel holds what the lens shows and
@@ -40,7 +40,7 @@ fn lens(refractive_index: f32, dispersion: f32) -> Lens {
     }
 }
 
-/// The window's linear pixels, `[r, g, b, a]` a pixel, with `under` painted before a pane of
+/// The window's linear pixels, `[r, g, b, a]` a pixel, with `under` painted before a backdrop of
 /// `lens`, blurred by σ `blur`.
 fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
     let gpu = headless_test_gpu();
@@ -57,7 +57,7 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
                     ui.add_shape(Shape::rect().at(rect), color);
                 }
                 ui.add_shape(
-                    Shape::rect().at(PANE).corners(Corners::all(16.0)),
+                    Shape::rect().at(BACKDROP).corners(Corners::all(16.0)),
                     Paint::NONE.with_material(Material::glass(lens).with_blur(blur)),
                 );
             });
@@ -75,7 +75,7 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
         .collect()
 }
 
-/// The pane's left bezel on its middle row, x 16..32.
+/// The backdrop's left bezel on its middle row, x 16..32.
 fn bezel(pixels: &[[f32; 4]]) -> &[[f32; 4]] {
     let start = (ROW * SIZE.x + 16) as usize;
     &pixels[start..start + 16]
@@ -199,7 +199,7 @@ fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
 /// 1.5, against the lamp's own closed form in `f64`: Schlick's Fresnel at the surface's tilt
 /// `θ`, `f0 = ((n − 1) / (n + 1))² = 0.04`, times `sin θ · max(outward · lamp, 0)`, the 3D
 /// normal against a lamp low at the top left. It reaches 0 where the bezel meets the flat top,
-/// which takes no glint, so the pane shows no step there, and holds 0 on a bezel facing away.
+/// which takes no glint, so the backdrop shows no step there, and holds 0 on a bezel facing away.
 /// The edge itself, where the slope is vertical, takes the whole facing. Within 1e-6, through
 /// the shader's `pow`.
 #[test]

@@ -75,7 +75,7 @@ impl<'a> RenderTarget<'a> {
         self.texture.usage().contains(wgpu::TextureUsages::COPY_DST)
     }
 
-    /// Whether pixels can be copied out of this target, as a pane's capture is.
+    /// Whether pixels can be copied out of this target, as a backdrop's capture is.
     pub(crate) fn gives_copy(self) -> bool {
         self.texture.usage().contains(wgpu::TextureUsages::COPY_SRC)
     }

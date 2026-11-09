@@ -1,6 +1,6 @@
-//! The panes the cascade lists: each one's plan and footprint, which every later stage reads.
+//! The backdrops the cascade lists: each one's plan and footprint, which every later stage reads.
 
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
@@ -16,26 +16,27 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
 
-/// The one pane a frame lists, and its footprint in physical px.
+/// The one backdrop a frame lists, and its footprint in physical px.
 #[derive(Debug)]
 struct Listed {
-    pane: PaneRow,
+    backdrop: PlaneBackdrop,
     physical: URect,
 }
 
-/// The one pane a frame of `filter` at `rect` lists, on a surface of 200² physical px at `scale`.
+/// The one backdrop a frame of `filter` at `rect` lists, on a surface of 200² physical px at
+/// `scale`.
 fn listed(scale: f32, rect: Rect, filter: Material) -> Listed {
     listed_under(scale, None, rect, filter)
 }
 
-/// [`listed`] with the pane inside a canvas that clips to `clip` logical px square when some.
+/// [`listed`] with the backdrop inside a canvas that clips to `clip` logical px square when some.
 fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: Material) -> Listed {
     let mut h = Harness::builder(UVec2::splat(200))
         .mono()
         .system_scale(SystemScale::new(scale).unwrap())
         .build();
     h.frame(|ui: &mut Ui| {
-        let canvas = Panel::canvas().id_salt("panes");
+        let canvas = Panel::canvas().id_salt("backdrops");
         let canvas = match clip {
             Some(side) => canvas
                 .size((Sizing::fixed(side), Sizing::fixed(side)))
@@ -47,24 +48,24 @@ fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: Material) -> 
         });
     });
     let scene = h.frames().ui().frame_scene();
-    let panes: Vec<PaneRow> = scene.panes().copied().collect();
-    assert_eq!(panes.len(), 1);
+    let backdrops: Vec<PlaneBackdrop> = scene.backdrops().copied().collect();
+    assert_eq!(backdrops.len(), 1);
     Listed {
-        pane: panes[0],
-        physical: panes[0].physical_footprint(scene.stamp.display),
+        backdrop: backdrops[0],
+        physical: backdrops[0].physical_footprint(scene.stamp.display),
     }
 }
 
-/// A pane's plan is its physical σ's, and its footprint its rect grown by the plan's reach and a
-/// pixel. At scale 2, σ 5 is 10 physical px: two levels, and a pane at (20, 20)..(60, 40) logical
-/// reads (40, 40)..(120, 80) physical grown by the reach and the pixel.
+/// A backdrop's plan is its physical σ's, and its footprint its rect grown by the plan's reach and
+/// a pixel. At scale 2, σ 5 is 10 physical px: two levels, and a backdrop at (20, 20)..(60, 40)
+/// logical reads (40, 40)..(120, 80) physical grown by the reach and the pixel.
 #[test]
-fn a_pane_lists_its_plan_and_footprint() {
-    let Listed { pane, physical } =
+fn a_backdrop_lists_its_plan_and_footprint() {
+    let Listed { backdrop, physical } =
         listed(2.0, Rect::new(20.0, 20.0, 40.0, 20.0), Material::blur(5.0));
     let plan = BlurPlan::new(10.0);
     assert_eq!(plan.levels(), 2);
-    assert_eq!(pane.plan, plan);
+    assert_eq!(backdrop.plan, plan);
     let reach = plan.reach() + 1;
     assert_eq!(
         physical,
@@ -75,30 +76,30 @@ fn a_pane_lists_its_plan_and_footprint() {
     );
 }
 
-/// A pane's plan takes its σ in f32. σ 1639/256 at scale 1.25 is 8.0029 physical px, past the
+/// A backdrop's plan takes its σ in f32. σ 1639/256 at scale 1.25 is 8.0029 physical px, past the
 /// 8 px edge of the second level: two levels. Rounded to f16 again it would be 8.0 and one level,
 /// whose reach differs.
 #[test]
-fn a_panes_plan_takes_its_sigma_unrounded() {
+fn a_backdrops_plan_takes_its_sigma_unrounded() {
     let sigma = 1639.0 / 256.0;
     let physical = sigma * 1.25;
     assert!(physical > 8.0);
     assert_eq!(BlurPlan::new(physical).levels(), 2);
     assert_eq!(BlurPlan::new(8.0).levels(), 1);
-    let Listed { pane, .. } = listed(
+    let Listed { backdrop, .. } = listed(
         1.25,
         Rect::new(20.0, 20.0, 20.0, 20.0),
         Material::blur(sigma),
     );
-    assert_eq!(pane.plan, BlurPlan::new(physical));
+    assert_eq!(backdrop.plan, BlurPlan::new(physical));
 }
 
-/// A pane past every plan and every lens coerces instead of overflowing: σ 65504 logical, the
+/// A backdrop past every plan and every lens coerces instead of overflowing: σ 65504 logical, the
 /// widest a lane holds, at scale 2 plans as `BlurPlan::MAX_SIGMA`; a lens of thickness and index
 /// 65504 reaches `u32::MAX`, so the footprint is the whole surface.
 #[test]
-fn a_pane_past_every_plan_coerces_to_the_widest() {
-    let Listed { pane, physical } = listed(
+fn a_backdrop_past_every_plan_coerces_to_the_widest() {
+    let Listed { backdrop, physical } = listed(
         2.0,
         Rect::new(20.0, 20.0, 40.0, 20.0),
         Material::blur(65504.0).with_lens(Lens {
@@ -107,20 +108,20 @@ fn a_pane_past_every_plan_coerces_to_the_widest() {
             ..Lens::WINDOW_GLASS
         }),
     );
-    assert_eq!(pane.plan, BlurPlan::new(BlurPlan::MAX_SIGMA));
+    assert_eq!(backdrop.plan, BlurPlan::new(BlurPlan::MAX_SIGMA));
     assert_eq!(
         physical,
         URect::from_min_max(UVec2::ZERO, UVec2::splat(200))
     );
 }
 
-/// A glass pane's footprint grows by what its lens reads past it. The lens below leans
-/// `8 · √(1.5² − 1) = 8.94` px, a reach of 10. A pane 80 px high holds its 10 px bezel, the lean
-/// and a pixel, and reads a pixel past itself; one 12 px high lets a sample out by
-/// `6 + 8.94 − 12 + 1`, so 5; one a clip cuts keeps the reach, as its screen rect is not its own.
-/// Sharp, so the plan reads nothing past a pixel; at scale 1, so logical px are physical.
+/// A glass backdrop's footprint grows by what its lens reads past it. The lens below leans `8 ·
+/// √(1.5² − 1) = 8.94` px, a reach of 10. A backdrop 80 px high holds its 10 px bezel, the lean and
+/// a pixel, and reads a pixel past itself; one 12 px high lets a sample out by `6 + 8.94 − 12 + 1`,
+/// so 5; one a clip cuts keeps the reach, as its screen rect is not its own. Sharp, so the plan
+/// reads nothing past a pixel; at scale 1, so logical px are physical.
 #[test]
-fn a_glass_panes_footprint_holds_what_its_lens_reads() {
+fn a_glass_backdrops_footprint_holds_what_its_lens_reads() {
     let lens = Lens {
         bezel: 10.0,
         thickness: 8.0,

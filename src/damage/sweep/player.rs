@@ -27,7 +27,7 @@ const WARM: Duration = Duration::from_secs(1);
 #[derive(Clone, Debug)]
 pub(crate) struct PlayedFrame {
     damage: Damage,
-    /// What the frame's content changed, which leaves the panes it touches stale.
+    /// What the frame's content changed, which leaves the backdrops it touches stale.
     changed: Vec<Rect>,
 }
 

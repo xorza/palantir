@@ -1,15 +1,15 @@
 //! How a backdrop blur of one σ runs: the levels it halves through, the residual Gaussian it ends
-//! with, and how far past a pane it reads.
+//! with, and how far past a backdrop it reads.
 //!
 //! # Decisions
 //!
-//! - **Exact variance and mean from a pyramid and a residual Gaussian.** The capture is the
-//!   pixels behind the pane at full resolution, level 0. A tent `[1 3 3 1]` halves it while σ in
-//!   the level's texels exceeds 4 (Skia's threshold), a separable Gaussian runs at the last
-//!   level, and the composite reads that level through a cubic B-spline (Sigg and Hadwiger), or
-//!   texel for texel at level 0. Each stage keeps an impulse's mean and adds a known variance at
-//!   every phase (Marsden's identity for the B-spline), so the residual's taps are solved to the
-//!   exact remainder, cut at `ShadowGeometry::REACH_SIGMAS`; the whole stays within 0.31 % of a
+//! - **Exact variance and mean from a pyramid and a residual Gaussian.** The capture is the pixels
+//!   behind the backdrop at full resolution, level 0. A tent `[1 3 3 1]` halves it while σ in the
+//!   level's texels exceeds 4 (Skia's threshold), a separable Gaussian runs at the last level, and
+//!   the composite reads that level through a cubic B-spline (Sigg and Hadwiger), or texel for
+//!   texel at level 0. Each stage keeps an impulse's mean and adds a known variance at every phase
+//!   (Marsden's identity for the B-spline), so the residual's taps are solved to the exact
+//!   remainder, cut at `ShadowGeometry::REACH_SIGMAS`; the whole stays within 0.31 % of a
 //!   Gaussian's peak. Refused: a half-resolution capture, whose box moves an impulse's mean with
 //!   its phase, so a blurred edge jumps as content scrolls a pixel (15.7 % of the peak at σ 2);
 //!   dual Kawase, whose strength steps by iteration count; a full-resolution Gaussian at every σ;
@@ -22,11 +22,11 @@
 //!   A capture whose format does not filter loads all sixteen. Refused: linear-sampled pairs of
 //!   residual taps, whose split weight rounds to that precision.
 //! - **The reach is the plan's exact support.** [`BlurPlan::reach`] sums every stage's support in
-//!   physical px, so a capture of any larger region gives a pane's pixels bit for bit. Refused:
+//!   physical px, so a capture of any larger region gives a backdrop's pixels bit for bit. Refused:
 //!   3σ of the whole kernel.
 //! - **The lattice is the surface.** The capture and the levels are anchored at the surface's
-//!   origin, so a pane sliding over a still page blurs the same texels the same way every frame.
-//!   Mirror applies only at the surface's edge, where nothing is painted.
+//!   origin, so a backdrop sliding over a still page blurs the same texels the same way every
+//!   frame. Mirror applies only at the surface's edge, where nothing is painted.
 
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::Libm;
@@ -36,16 +36,16 @@ use glam::UVec2;
 /// A backdrop blur's stages, each of whose variances is fixed, and the residual Gaussian that takes
 /// what they leave of σ², so the whole blur has variance σ² at every phase of its lattice.
 ///
-/// The capture holds the pixels behind a pane at full resolution, level 0. A `[1 3 3 1]` tent
+/// The capture holds the pixels behind a backdrop at full resolution, level 0. A `[1 3 3 1]` tent
 /// halves it while σ in the current level's texels exceeds [`Self::MAX_LEVEL_SIGMA`], the residual
 /// runs at the last level, and the composite reads that level through a cubic B-spline, or texel
-/// for texel at level 0. Every stage keeps an impulse's mean at every phase, so a pane's blur does
-/// not shift as content scrolls under it by a pixel. Lengths are physical px, and a level's texel
-/// is `2^level` of them.
+/// for texel at level 0. Every stage keeps an impulse's mean at every phase, so a backdrop's blur
+/// does not shift as content scrolls under it by a pixel. Lengths are physical px, and a level's
+/// texel is `2^level` of them.
 ///
-/// A plan holds what decides a frame — its levels, radius and reach — and the residual's
-/// variance; [`Self::taps`] solves the weights only for a blur that runs, as a pane that keeps its
-/// result and the cascade's footprint read none.
+/// A plan holds what decides a frame — its levels, radius and reach — and the residual's variance;
+/// [`Self::taps`] solves the weights only for a blur that runs, as a backdrop that keeps its result
+/// and the cascade's footprint read none.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BlurPlan {
     levels: u8,
@@ -150,8 +150,8 @@ impl BlurPlan {
         self.radius
     }
 
-    /// How far past a pane, in physical px, its blur reads: the plan's exact support, so a capture
-    /// of any larger region gives the pane's pixels the same values.
+    /// How far past a backdrop, in physical px, its blur reads: the plan's exact support, so a
+    /// capture of any larger region gives the backdrop's pixels the same values.
     pub(crate) const fn reach(self) -> u32 {
         self.reach
     }

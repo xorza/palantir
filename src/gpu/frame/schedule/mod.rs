@@ -124,7 +124,7 @@ pub(crate) enum RenderStep {
 }
 
 /// The groups one pass of the main pass paints, `groups[from..barrier]`: a main pass breaks at
-/// a capturing pane's barrier to copy what the groups before it painted, and resumes there.
+/// a capturing backdrop's barrier to copy what the groups before it painted, and resumes there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct GroupSpan {
     pub(crate) from: u32,
@@ -527,7 +527,7 @@ pub(crate) mod internals {
     }
 
     impl GroupSpan {
-        /// Every group: a main pass no pane breaks.
+        /// Every group: a main pass no backdrop breaks.
         pub(crate) const ALL: Self = Self {
             from: 0,
             barrier: None,
@@ -556,7 +556,7 @@ pub(crate) mod internals {
             self.run_between(buffer, damage, stencil, GroupSpan::ALL)
         }
 
-        /// [`Self::run`] over `groups`, as one pass of a main pass broken at a pane's barrier
+        /// [`Self::run`] over `groups`, as one pass of a main pass broken at a backdrop's barrier
         /// walks.
         pub(crate) fn run_between(
             &self,

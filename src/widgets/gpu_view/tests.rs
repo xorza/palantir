@@ -114,7 +114,7 @@ fn an_attach_moves_the_view_ceiling_in_the_next_build() {
     };
     let mut frontend = Frontend::for_test();
     let target_size = |frontend: &mut Frontend| {
-        frontend.build(h.ui().frame_scene(), BuildPlan::without_panes(plan));
+        frontend.build(h.ui().frame_scene(), BuildPlan::without_backdrops(plan));
         frontend.buffer.frame_targets[0].full
     };
     assert_eq!(target_size(&mut frontend), UVec2::splat(100));
@@ -142,7 +142,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 
     frontend.build(
         h.frames().ui().frame_scene(),
-        BuildPlan::without_panes(plan(Damage::Full)),
+        BuildPlan::without_backdrops(plan(Damage::Full)),
     );
     h.frames()
         .gpu_views()
@@ -163,7 +163,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
     frontend.build(
         h.frames().ui().frame_scene(),
-        BuildPlan::without_panes(plan(Damage::Partial(elsewhere))),
+        BuildPlan::without_backdrops(plan(Damage::Partial(elsewhere))),
     );
     h.frames()
         .gpu_views()

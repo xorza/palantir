@@ -44,7 +44,7 @@ pub(super) fn collect(
     collect_between(buffer, damage_scissor, masks, GroupSpan::ALL)
 }
 
-/// [`collect`] of the walk over `groups`, as one pass of a main pass broken at a pane's barrier
+/// [`collect`] of the walk over `groups`, as one pass of a main pass broken at a backdrop's barrier
 /// walks.
 pub(super) fn collect_between(
     buffer: &RenderBuffer,

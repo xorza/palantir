@@ -15,7 +15,7 @@ pub(crate) enum PassStep {
         groups: GroupSpan,
         load: ColorLoad,
     },
-    /// Copy break `at`'s panes out of the color target and blur them, between two main passes.
+    /// Copy break `at`'s backdrops out of the color target and blur them, between two main passes.
     Break { at: usize },
     /// Copy each damage rect of the damage canvas into the backbuffer.
     CanvasOut,
@@ -105,7 +105,7 @@ impl FramePasses {
         };
         self.push_main(shape, segment, from, None);
         if canvas {
-            debug_assert!(!broken, "a damage canvas holds no pane's capture");
+            debug_assert!(!broken, "a damage canvas holds no backdrop's capture");
             self.steps.push(PassStep::CanvasOut);
         }
         if shape.target != TargetKind::Direct {

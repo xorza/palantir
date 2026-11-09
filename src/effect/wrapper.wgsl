@@ -26,13 +26,13 @@ const PALANTIR_WINDOW: u32 = /*{WINDOW}*/;
 
 // One shape: its rect (`min`, `size`) and corner radii in physical px, its clock (`time`,
 // `opacity`, `scale`, and its turn about its center in radians), the word its parameters start
-// at, a backdrop effect's pane, and its flags.
+// at, a backdrop effect's backdrop, and its flags.
 struct PalantirInstance {
     @location(0) rect: vec4<f32>,
     @location(1) corners: vec4<f32>,
     @location(2) clock: vec4<f32>,
     @location(3) params: u32,
-    @location(4) pane: u32,
+    @location(4) backdrop_idx: u32,
     @location(5) flags: u32,
 }
 
@@ -42,7 +42,7 @@ struct PalantirVarying {
     @location(1) @interpolate(flat) corners: vec4<f32>,
     @location(2) @interpolate(flat) clock: vec4<f32>,
     @location(3) @interpolate(flat) params: u32,
-    @location(4) @interpolate(flat) pane: u32,
+    @location(4) @interpolate(flat) backdrop_idx: u32,
     @location(5) @interpolate(flat) flags: u32,
 }
 
@@ -77,7 +77,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
         instance.corners,
         instance.clock,
         instance.params,
-        instance.pane,
+        instance.backdrop_idx,
         instance.flags,
     );
 }

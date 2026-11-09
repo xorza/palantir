@@ -354,7 +354,7 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
                 "An input method composes in place: the text so far is drawn underlined at \
                  the caret, the candidate window opens beside the caret, and the bound \
                  String changes only when the composition commits. On macOS: add the \
-                 Japanese – Romaji input source, switch to it, type nihon, then Space to \
+                 Jabackdropse – Romaji input source, switch to it, type nihon, then Space to \
                  pick a candidate and Enter to commit.",
             );
             TextEdit::new(&mut s.ime)

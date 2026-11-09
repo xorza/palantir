@@ -82,7 +82,7 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
                 out.push((p.fill.color, visible));
             }
             PaintCall::Quad(_)
-            | PaintCall::Pane(_)
+            | PaintCall::Backdrop(_)
             | PaintCall::Text(_)
             | PaintCall::Mesh(_)
             | PaintCall::Polyline(_)

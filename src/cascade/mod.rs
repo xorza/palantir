@@ -11,7 +11,7 @@ pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod paint;
 mod paint_rect;
-pub(crate) mod pane_row;
+pub(crate) mod plane_backdrop;
 pub(crate) mod plane_cascade;
 pub(crate) mod rows;
 
@@ -24,7 +24,7 @@ use crate::cascade::rows::root_row::RootRow;
 use crate::cascade::rows::scope_row::ScopeRow;
 use crate::cascade::rows::tab_stop_row::{TabEnd, TabStopRow};
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::identity::pane_keys::PaneKeys;
+use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::primitives::input::scroll_targets::ScrollTargets;
 use crate::primitives::input::sense::Sense;
@@ -53,8 +53,8 @@ pub(crate) struct Cascade {
     pub(crate) roots: Vec<RootRow>,
     /// Arrow groups in record order — see [`ArrowGroupRow`].
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
-    /// The key of every plane's panes, listed after each run.
-    pub(crate) pane_keys: PaneKeys,
+    /// The key of every plane's backdrops, listed after each run.
+    pub(crate) backdrop_keys: BackdropKeys,
     /// The ids of the pass this cascade was built from, in resolve order: [`Self::locate_at`]
     /// reads a reading pass's id at its own position here first, as passes mostly resolve
     /// alike. A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record`
@@ -476,7 +476,10 @@ pub(crate) mod internals {
                     warm.entries_base, full.entries_base,
                     "{label}: {plane:?} entry base"
                 );
-                assert_eq!(warm.panes, full.panes, "{label}: {plane:?} panes");
+                assert_eq!(
+                    warm.backdrops, full.backdrops,
+                    "{label}: {plane:?} backdrops"
+                );
                 for (node, id) in tree.records.widget_id().iter().enumerate() {
                     let at = || format!("{plane:?} node {node} ({id:?})");
                     assert_eq!(

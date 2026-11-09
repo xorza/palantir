@@ -4,7 +4,7 @@ use crate::damage::region::{CollapsedDamage, DAMAGE_RECT_CAP, DamageRegion, Merg
 use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::primitives::geometry::rect::Rect;
 use crate::ui::window_frames::present::present_facts::{
-    PROMOTE_HALF_ROWS_PER_MPX, PROMOTE_PANE_ROWS_PER_MPX, density_share,
+    PROMOTE_BACKDROP_ROWS_PER_MPX, PROMOTE_HALF_ROWS_PER_MPX, density_share,
 };
 use std::cmp::Ordering;
 use std::fmt;
@@ -56,8 +56,8 @@ pub(crate) struct FrameFacts {
     pub(crate) surface: Rect,
     /// The scene's density: the rows that draw on the surface per million physical pixels.
     pub(crate) rows_per_mpx: f32,
-    /// The share of the surface pane footprints hold, each pane's counted alone.
-    pub(crate) pane_share: f32,
+    /// The share of the surface backdrop footprints hold, each backdrop's counted alone.
+    pub(crate) backdrop_share: f32,
 }
 
 /// The coverage past which a frame repaints whole.
@@ -66,11 +66,11 @@ pub(crate) enum Promote {
     /// One share, whatever the screen holds.
     Coverage(f32),
     /// `d / (d + half)` of the density `d`: the rows that draw per million physical pixels, and
-    /// `pane_rows_per_mpx` for all the surface held by pane footprints, as a whole frame captures
-    /// and blurs every pane and a partial one only those its change reached.
+    /// `backdrop_rows_per_mpx` for all the surface held by backdrop footprints, as a whole frame
+    /// captures and blurs every backdrop and a partial one only those its change reached.
     Density {
         half_rows_per_mpx: f32,
-        pane_rows_per_mpx: f32,
+        backdrop_rows_per_mpx: f32,
     },
 }
 
@@ -80,9 +80,9 @@ impl Promote {
             Self::Coverage(share) => share,
             Self::Density {
                 half_rows_per_mpx,
-                pane_rows_per_mpx,
+                backdrop_rows_per_mpx,
             } => density_share(
-                facts.rows_per_mpx + pane_rows_per_mpx * facts.pane_share,
+                facts.rows_per_mpx + backdrop_rows_per_mpx * facts.backdrop_share,
                 half_rows_per_mpx,
             ),
         }
@@ -95,8 +95,8 @@ impl fmt::Display for Promote {
             Self::Coverage(share) => write!(f, "{share:.1}"),
             Self::Density {
                 half_rows_per_mpx,
-                pane_rows_per_mpx,
-            } => write!(f, "d{half_rows_per_mpx:.0}p{pane_rows_per_mpx:.0}"),
+                backdrop_rows_per_mpx,
+            } => write!(f, "d{half_rows_per_mpx:.0}p{backdrop_rows_per_mpx:.0}"),
         }
     }
 }
@@ -114,7 +114,7 @@ impl Policy {
         merge: MergePolicy::DEFAULT,
         promote: Promote::Density {
             half_rows_per_mpx: PROMOTE_HALF_ROWS_PER_MPX,
-            pane_rows_per_mpx: PROMOTE_PANE_ROWS_PER_MPX,
+            backdrop_rows_per_mpx: PROMOTE_BACKDROP_ROWS_PER_MPX,
         },
     };
 
@@ -152,12 +152,12 @@ impl Policy {
         1400.0,
     ];
 
-    /// What all of the surface under panes counts for, in rows per Mpx, the shipped value among them.
-    const PANE_ROWS: [f32; 7] = [
+    /// What all of the surface under backdrops counts for, in rows per Mpx, the shipped value among them.
+    const BACKDROP_ROWS: [f32; 7] = [
         0.0,
         100.0,
         200.0,
-        PROMOTE_PANE_ROWS_PER_MPX,
+        PROMOTE_BACKDROP_ROWS_PER_MPX,
         500.0,
         1000.0,
         3000.0,
@@ -166,11 +166,11 @@ impl Policy {
     /// Every combination of the knob values, [`Self::PRODUCTION`] among them.
     pub(super) fn grid() -> Vec<Self> {
         let densities = Self::HALVES.into_iter().flat_map(|half_rows_per_mpx| {
-            Self::PANE_ROWS
+            Self::BACKDROP_ROWS
                 .into_iter()
-                .map(move |pane_rows_per_mpx| Promote::Density {
+                .map(move |backdrop_rows_per_mpx| Promote::Density {
                     half_rows_per_mpx,
-                    pane_rows_per_mpx,
+                    backdrop_rows_per_mpx,
                 })
         });
         let promotes: Vec<Promote> = Self::SHARES

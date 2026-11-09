@@ -1,5 +1,5 @@
-// Every pipeline's device has dual-source blending (`DeviceRequirements::FEATURES`), which a pane's
-// effect stage writes through; an enable stands before every declaration.
+// Every pipeline's device has dual-source blending (`DeviceRequirements::FEATURES`), which a
+// backdrop's effect stage writes through; an enable stands before every declaration.
 enable dual_source_blending;
 
 // Shared WGSL prelude. `ShaderBody::specialize` concatenates it

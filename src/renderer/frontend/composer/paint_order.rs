@@ -4,14 +4,14 @@
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
+use crate::renderer::backdrop_captures::BackdropTicket;
+use crate::renderer::frontend::composer::backdrop_break::BackdropBreak;
 use crate::renderer::frontend::composer::clip_stack::{ClipFrame, ClipStack};
 use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;
 use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
-use crate::renderer::frontend::composer::pane_break::PaneBreak;
 use crate::renderer::frontend::composer::rect_grid::RectGrid;
-use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::PaneSource;
+use crate::renderer::render_buffer::backdrop_row::BackdropSource;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -29,7 +29,7 @@ pub(super) enum Lane {
 }
 
 /// The retained state of paint order: the open text batch, the higher-kind rects, where the open
-/// group's slices begin, the occluders the group prunes with, and the pane break.
+/// group's slices begin, the occluders the group prunes with, and the backdrop break.
 ///
 /// Within a group the backend replays by [`Lane`], not in record order. That is safe iff no
 /// overlapping pair of draws swaps record order, which [`Ordering::order`] enforces by closing the
@@ -47,8 +47,8 @@ pub(super) struct PaintOrder {
     cursors: GroupCursors,
     /// Solid-opaque occluders in the open group, and the sweep dropping earlier quads they cover.
     occlusion: OcclusionPruner,
-    /// The last break the main pass takes for a pane, and what is painted after it.
-    pane_break: PaneBreak,
+    /// The last break the main pass takes for a backdrop, and what is painted after it.
+    backdrop_break: BackdropBreak,
 }
 
 /// Allocation-owning state for text batching. The open grid may span groups; the closed grid and
@@ -130,7 +130,7 @@ impl PaintOrder {
         self.higher_kinds.start_frame(viewport);
         self.cursors = GroupCursors::default();
         self.occlusion.start_frame(viewport);
-        self.pane_break.open(0);
+        self.backdrop_break.open(0);
     }
 }
 
@@ -160,7 +160,7 @@ impl Ordering<'_> {
     }
 
     /// Close what a draw of `lane` at `visible` would reorder against, register it, and count it
-    /// as painted since the pane break.
+    /// as painted since the backdrop break.
     ///
     /// A quad closes the group where it overlaps anything in it that replays above it: text of the
     /// open batch that renders at the group's end, text of a batch closed in the group, a
@@ -191,34 +191,34 @@ impl Ordering<'_> {
                 self.order.higher_kinds.push(tier, visible);
             }
         }
-        self.order.pane_break.paint(visible);
+        self.order.backdrop_break.paint(visible);
     }
 
-    /// Where a pane of `ticket` reads its backdrop: its cached result where it holds one, else a
-    /// capture at a break of the main pass. A capturing pane whose footprint misses everything
+    /// Where a backdrop of `ticket` reads: its cached result where it holds one, else a
+    /// capture at a break of the main pass. A capturing backdrop whose footprint misses everything
     /// painted since the last break shares it, and shows the clear when that is `0`, before any;
     /// else the text batch and the group close at a new barrier, so nothing before it coalesces,
     /// reorders or prunes against what follows: the main pass can break there and read the
     /// pixels the groups before it painted.
-    pub(super) fn pane_source(&mut self, ticket: PaneTicket) -> PaneSource {
+    pub(super) fn backdrop_source(&mut self, ticket: BackdropTicket) -> BackdropSource {
         if !ticket.captures {
-            return PaneSource::Held;
+            return BackdropSource::Held;
         }
         let barrier = self
             .order
-            .pane_break
+            .backdrop_break
             .shared(ticket.capture.footprint)
             .unwrap_or_else(|| {
                 self.close_batch();
                 self.flush();
                 let barrier = self.out.groups.len() as u32;
-                self.order.pane_break.open(barrier);
+                self.order.backdrop_break.open(barrier);
                 barrier
             });
         if barrier == 0 {
-            PaneSource::Clear
+            BackdropSource::Clear
         } else {
-            PaneSource::Capture { barrier }
+            BackdropSource::Capture { barrier }
         }
     }
 
@@ -429,7 +429,7 @@ pub(crate) mod internals {
                 higher_kinds,
                 cursors: _,
                 occlusion,
-                pane_break: _,
+                backdrop_break: _,
             } = self;
             open_grid.scratch_bytes()
                 + closed_grid.scratch_bytes()

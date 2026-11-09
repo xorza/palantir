@@ -6,11 +6,11 @@
 //! The composer's replay of recorded paint into draw groups and batches, at a
 //! typical and a heavy draw count: curves alone, the higher-kind tiers (meshes,
 //! images, text) where overlap decides whether a batch closes, and the quad
-//! lane: plain, clipped, under rounded clips, pruned, as panes, and a polyline.
+//! lane: plain, clipped, under rounded clips, pruned, as backdrops, and a polyline.
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::internals::compose_rig::ComposeRig;
@@ -22,27 +22,29 @@ use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
+use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_backdrop_payload::{
+    BackdropDraw, DrawBackdropPayload,
+};
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_pane_payload::{BackdropDraw, DrawPanePayload};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::renderer::pane_captures::PaneTicket;
-use crate::renderer::render_buffer::backdrop_row::PaneCapture;
+use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
@@ -236,8 +238,8 @@ enum QuadCase {
     RoundedClip,
     /// Every quad opaque over the one before: the group's prune keeps the last.
     Pruned,
-    /// A grid of panes that hold their results: listed, never breaking the main pass.
-    Panes,
+    /// A grid of backdrops that hold their results: listed, never breaking the main pass.
+    Backdrops,
     /// One polyline of that many points: its kept walk and its segment and joint instances.
     Polyline,
 }
@@ -285,7 +287,7 @@ impl QuadCase {
                 let rect = Rect::new(0.0, 0.0, Self::CELL * 4.0, Self::CELL * 4.0);
                 (0..count).for_each(|_| push_quad(&mut cmds, rect));
             }
-            Self::Panes => (0..count).for_each(|i| push_pane(&mut cmds, cell(i), i as u32)),
+            Self::Backdrops => (0..count).for_each(|i| push_backdrop(&mut cmds, cell(i), i as u32)),
             Self::Polyline => {
                 let store = &mut bench.rig.store;
                 let p_start = store.polyline_points.len() as u32;
@@ -317,14 +319,14 @@ impl QuadCase {
         bench
     }
 
-    /// What one replay leaves: quads, groups and listed panes for the quad arms, curve instances
-    /// for the polyline, one segment per gap and one joint per interior point.
+    /// What one replay leaves: quads, groups and listed backdrops for the quad arms, curve
+    /// instances for the polyline, one segment per gap and one joint per interior point.
     const fn expected(self, count: usize) -> [usize; 3] {
         match self {
             Self::Plain => [count, 1, 0],
             Self::Clipped | Self::RoundedClip => [count, count, 0],
             Self::Pruned => [1, 1, 0],
-            Self::Panes => [count, 1, count],
+            Self::Backdrops => [count, 1, count],
             Self::Polyline => [2 * count - 3, 1, 0],
         }
     }
@@ -343,12 +345,12 @@ fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
     );
 }
 
-/// A pane at `rect` that holds its result, so it lists without breaking the main pass.
-fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
+/// A backdrop at `rect` that holds its result, so it lists without breaking the main pass.
+fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
     let plan = BlurPlan::new(4.0);
-    let footprint = URect::covering(rect.inflated(PaneRow::reach(plan, 0)));
+    let footprint = URect::covering(rect.inflated(PlaneBackdrop::reach(plan, 0)));
     cmds.draw(
-        DrawPanePayload {
+        DrawBackdropPayload {
             coverage: Coverage::Inside,
             rect,
             corners: Corners::ZERO,
@@ -358,17 +360,17 @@ fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
             stroke: LoweredBorder::NONE,
             material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
-            read: BackdropDraw::Capture(PaneTicket {
-                capture: PaneCapture {
-                    key: PaneKey {
-                        owner: WidgetId::from_hash("bench.pane"),
+            read: BackdropDraw::Capture(BackdropTicket {
+                capture: BackdropCapture {
+                    key: BackdropKey {
+                        owner: WidgetId::from_hash("bench.backdrop"),
                         shape: i,
                     },
                     footprint,
                     plan,
                     region: plan
                         .region(footprint, footprint.max())
-                        .expect("a bench pane paints"),
+                        .expect("a bench backdrop paints"),
                 },
                 captures: false,
             }),

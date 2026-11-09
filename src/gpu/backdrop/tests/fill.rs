@@ -52,7 +52,7 @@ fn a_gradient_fill_draws_in_the_material_draw() {
         "a material's gradient fill",
     );
     let kinds = material.encode_paint().kinds();
-    assert_eq!(kinds, ["Pane"], "one draw, the material's");
+    assert_eq!(kinds, ["Backdrop"], "one draw, the material's");
 }
 
 /// A translucent border lies over the material's opaque fill, as CSS's border-box background
@@ -76,7 +76,7 @@ fn a_border_lies_over_the_material() {
             pixel[c]
         );
     }
-    let [PaintCall::Pane(_)] = h.encode_paint().calls.as_slice() else {
+    let [PaintCall::Backdrop(_)] = h.encode_paint().calls.as_slice() else {
         panic!("one draw, the material's");
     };
 }

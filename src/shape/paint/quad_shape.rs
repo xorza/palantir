@@ -24,7 +24,7 @@ use std::hash::{Hash as _, Hasher as _};
 pub(crate) enum QuadShape {
     /// A rect's or a circle's paint: a filled or bordered box, placed against the owner where it
     /// is drawn ([`BoxGeometry::place`]), with its shadow and its material. A material that
-    /// captures makes it a pane over the pixels painted before it.
+    /// captures makes it a backdrop over the pixels painted before it.
     Box {
         geometry: BoxGeometry,
         fill: LoweredBrush,

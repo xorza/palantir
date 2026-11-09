@@ -150,8 +150,11 @@ diff with `git apply -3` and resolves where 5b moved the code.
 - Step 4 is on master as `6f9288c87`. It also renames `ShapeStroke` to `LoweredBorder` and
   `ShapeBrush` to `LoweredBrush`, with their files, as `f410241e4` does, so step 5 holds less.
   Docs that call a line's paint "stroke" keep the word.
-- Step 5 is staged on master and not committed: the tree of `f410241e4`, with the fixes of steps
-  2 and 3 applied again. `f410241e4` also wrote "Border" in seven docs of a line's stroke width
-  or color (the curve instance, the color picker's rings, the chevron, the spinner, the check
-  mark), as `89b0c79dd` still does; step 5 keeps "Stroke" there, and the end tree keeps that fix.
-  The full gate passes.
+- Step 5 is on master as `3dae9b619`, with the step 2 and 3 fixes and "Stroke" kept in seven
+  docs of a line's width or color, which `89b0c79dd` still gets wrong.
+- Step 5b is on master as `0a1f3994e`.
+- Step 6 is on master: `git diff f410241e4 fbfb89b1f` applied with
+  `git apply -3`. Seven files conflicted where step 5b had moved the code; each takes step 5b's
+  code with the backdrop names (`reads_backdrop`, `backdrops`, `BackdropEntry`, `EffectCapture`).
+  A review of it moved step 9's `InkBound::FillNotTranslucent` and its two test names into it,
+  and named the material tests' and the reel's `filter` a `material` and the reel's "pane" a box.

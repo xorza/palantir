@@ -44,22 +44,22 @@ pub(crate) enum ColorMode {
 }
 
 /// What a backdrop effect reads under it: what is painted there, captured, or the window's
-/// ground while transparency is reduced, which takes no capture and makes no pane.
+/// ground while transparency is reduced, which takes no capture and makes no backdrop.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum EffectBackdrop {
-    Capture(EffectPane),
+    Capture(EffectCapture),
     Ground,
 }
 
 /// What a backdrop effect captures under it, in logical px: the σ of its blur and how far past its
 /// rect it reads.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct EffectPane {
+pub(crate) struct EffectCapture {
     pub(crate) sigma: f32,
     pub(crate) reach: f32,
 }
 
-impl EffectPane {
+impl EffectCapture {
     /// Reads under its rect alone, sharp.
     pub(crate) const ZERO: Self = Self {
         sigma: 0.0,
@@ -67,25 +67,25 @@ impl EffectPane {
     };
 }
 
-/// What a pane reads, as the cascade plans its capture: a box's material or a backdrop effect.
+/// What a backdrop reads, as the cascade plans its capture: a box's material or a backdrop effect.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum PaneRead {
+pub(crate) enum BackdropReader {
     Material(LoweredMaterial),
-    Effect(EffectPane),
+    Effect(EffectCapture),
 }
 
-impl PaneRead {
+impl BackdropReader {
     /// The blur's σ in logical px.
     pub(crate) fn sigma(self) -> f32 {
         match self {
             Self::Material(material) => material.sigma(),
-            Self::Effect(pane) => pane.sigma,
+            Self::Effect(capture) => capture.sigma,
         }
     }
 
-    /// How far past the pane, in physical px under `scale` physical px per logical px, its
-    /// composite reads: a lens's margin ([`LoweredMaterial::lens_margin`], `narrowest` its pane's
-    /// narrowest side), or an effect's reach rounded out.
+    /// How far past the backdrop, in physical px under `scale` physical px per logical px, its
+    /// composite reads: a lens's margin ([`LoweredMaterial::lens_margin`], `narrowest` its
+    /// backdrop's narrowest side), or an effect's reach rounded out.
     #[expect(
         clippy::cast_sign_loss,
         reason = "a reach is a length, which `EffectPaint::reach` checks, and a scale is positive"
@@ -93,7 +93,7 @@ impl PaneRead {
     pub(crate) fn margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
         match self {
             Self::Material(material) => material.lens_margin(scale, narrowest),
-            Self::Effect(pane) => (pane.reach * scale).ceil() as u32,
+            Self::Effect(capture) => (capture.reach * scale).ceil() as u32,
         }
     }
 }
@@ -164,7 +164,7 @@ pub(crate) enum ShapeRecord {
     /// An app-written effect over a rounded rect: `local_rect = None` paints the owner's rect,
     /// `Some(r)` paints `r` owner-relative, which may exceed the owner. `params` indexes the
     /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images
-    /// and its pane.
+    /// and its backdrop.
     Effect {
         /// What a backdrop effect reads under it; `None` for a color effect.
         backdrop: Option<EffectBackdrop>,
@@ -231,25 +231,25 @@ impl TextAnchor {
 }
 
 impl ShapeRecord {
-    /// What the record reads as a pane over the pixels before it: a rect's material or a backdrop
-    /// effect's, each where it captures; `None` for every other record.
-    pub(crate) const fn pane(&self) -> Option<PaneRead> {
+    /// What the record reads as a backdrop over the pixels before it: a rect's material or a
+    /// backdrop effect's, each where it captures; `None` for every other record.
+    pub(crate) const fn backdrop_reader(&self) -> Option<BackdropReader> {
         match self {
             Self::Quad(QuadShape::Box {
                 material: Some(material),
                 ..
-            }) if material.captures() => Some(PaneRead::Material(*material)),
+            }) if material.captures() => Some(BackdropReader::Material(*material)),
             Self::Effect {
-                backdrop: Some(EffectBackdrop::Capture(pane)),
+                backdrop: Some(EffectBackdrop::Capture(capture)),
                 ..
-            } => Some(PaneRead::Effect(*pane)),
+            } => Some(BackdropReader::Effect(*capture)),
             _ => None,
         }
     }
 
-    /// Whether the record is a pane over the pixels before it.
-    pub(crate) const fn is_pane(&self) -> bool {
-        self.pane().is_some()
+    /// Whether the record reads a backdrop over the pixels before it.
+    pub(crate) const fn reads_backdrop(&self) -> bool {
+        self.backdrop_reader().is_some()
     }
 
     /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::push`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.

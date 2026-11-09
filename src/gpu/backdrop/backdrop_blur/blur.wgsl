@@ -4,7 +4,7 @@
 // A residual tap is a `textureLoad` with its weight in the shader: a
 // bilinear fetch between two texels splits its weight at the hardware's
 // sub-texel precision, which Vulkan lets be as coarse as 1/16, and a level's
-// texels can differ by the whole contrast of the content under a pane. A
+// texels can differ by the whole contrast of the content under a backdrop. A
 // tent's fetch splits a quarter from three quarters, which 1/16 holds
 // exactly. Either way a read lands on the lattice's texels at a fixed phase,
 // so a pass is the same arithmetic wherever its target sits.

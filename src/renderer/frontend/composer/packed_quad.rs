@@ -45,7 +45,7 @@ impl PackedQuad {
     }
 
     /// Reduce a quad-tier draw to physical space; everything past this is shape-blind.
-    // Always inlined into `quad` and `pane`: as a call, `repeated_chrome` ran 4 % slower.
+    // Always inlined into `quad` and `backdrop`: as a call, `repeated_chrome` ran 4 % slower.
     #[inline(always)]
     pub(super) fn pack(p: &DrawQuadPayload, lowering: &Lowering<'_>) -> Self {
         let scale_physical = lowering.transform.physical_scale();
@@ -62,7 +62,7 @@ impl PackedQuad {
                 };
                 let source = lowering.scaled_rect_with(rect, edges);
                 // Shadow scalars are logical px, so scale them; a gradient axis is unit-space,
-                // and a pane's lanes are ratios.
+                // and a backdrop's lanes are ratios.
                 let fill_axis = if p.fill.kind.is_shadow() {
                     p.fill_axis.scaled_saturating(scale_physical)
                 } else {

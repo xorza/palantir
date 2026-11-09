@@ -47,7 +47,7 @@ common → primitives → {animation, text, display, window, clipboard, image_re
   window's submit (`DisplayFrames`). A cache shrinks back to its budget once its live set fits. An
   upload past the staging belt's chunk gets a buffer of its own, and a translucent image
   premultiplies through fixed CPU bands. Refused: a high-water mark kept for the window's life,
-  which one 4K glass pane put at about 240 MiB; streaming an image's bands through one buffer, a
+  which one 4K glass material put at about 240 MiB; streaming an image's bands through one buffer, a
   GPU wait per band to bound a peak that lasts one submit.
 
 ## Swapchain
@@ -217,11 +217,11 @@ driver serves that command alone; the drive table's `version` names it
   or `background` for a `Chrome`, which holds more than a fill; "chrome" for a widget's
   scaffolding; a scrim type beside it, a second route to one box.
 - **One word, one meaning for what is behind.** *Backdrop* is the pixels painted under a shape,
-  which a backdrop effect reads; *material* a backdrop effect a box wears under its fill; *barrier*
-  what stands between an overlay and the layers below (`Barrier`, as Flutter's `ModalBarrier`).
-  Refused: CSS's two senses, `::backdrop` behind a dialog and `backdrop-filter` behind an element;
-  "pane" for any of them, the dock's and the splitter's word. Not yet done inside the renderer,
-  whose names still say "pane" (`.notes/TODO.md`).
+  which a backdrop effect reads, and in the renderer their capture and its result; *material* a
+  backdrop effect a box wears under its fill; *barrier* what stands between an overlay and the
+  layers below (`Barrier`, as Flutter's `ModalBarrier`). Refused: CSS's two senses, `::backdrop`
+  behind a dialog and `backdrop-filter` behind an element; "pane" for any of them, the dock's and
+  the splitter's word.
 - **Constructors.** `new` first; a named one names the kind or arrangement (`Panel::hstack`);
   `from_*` converts; `on(&snapshot)` attaches an overlay, `for_id(id)` by id. No widget
   constructor takes `ui`.
@@ -344,7 +344,7 @@ driver serves that command alone; the drive table's `version` names it
   frames are work a power-saver mode asks to save, as Windows' Energy saver turns transparency
   effects off, while a loop shows what the content is, as WebKit keeps animations running at 30 fps
   in Low Power Mode. Refused: reduced motion under power, which stops a loop a person needs, as a
-  turning page under a pane; no reduction past the frame rate, which blurs and transitions on.
+  turning page under a material; no reduction past the frame rate, which blurs and transitions on.
 - **Reduced power starts a frame at most at 30 Hz**, input frames included, on a grid of whole
   refresh periods so each frame lands on a vsync, as WebKit limits its rendering update in Low
   Power Mode ([WebKit bug 215745](https://bugs.webkit.org/show_bug.cgi?id=215745)). Each frame
@@ -353,7 +353,7 @@ driver serves that command alone; the drive table's `version` names it
   motion alone, which saves nothing on a frame that input asks for; no limit, which saves nothing
   for an app with no cheaper paint.
 - **The stock themes frost their floats** in `Metrics::float_material`: any `Material` under the
-  float's tint, its luminance bound derived from each float's ink. Refused: opaque defaults, which
+  float's fill, its luminance bound derived from each float's ink. Refused: opaque defaults, which
   made an app build its themes again to frost them and again to stop; a token per look (blur,
   frost, glass), three spellings of a choice one material holds.
 - **Blur, frosted and glass are stock effects.** A `Material` names a backdrop effect over

@@ -1,4 +1,4 @@
-//! The physical scissors a frame repaints inside: its damage, and the footprint of each pane
+//! The physical scissors a frame repaints inside: its damage, and the footprint of each backdrop
 //! that captures.
 
 use crate::damage::Damage;
@@ -6,7 +6,7 @@ use crate::damage::region::{CollapsedDamage, DAMAGE_RECT_CAP};
 use crate::display::Display;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::pane_captures::PaneCaptures;
+use crate::renderer::backdrop_captures::BackdropCaptures;
 use std::{iter, slice};
 use tinyvec::ArrayVec;
 
@@ -41,24 +41,24 @@ impl RepaintScissors {
     }
 
     /// The physical-px repaint shape of `damage` on `display`: `Full`, or `Partial` with each of
-    /// `footprints`, the physical footprint of each pane the frame may capture, as the target
-    /// there still holds the last frame's pane, then the damage scissors after scaling, AA
-    /// padding and clamping. Footprints go first, as a pane's damage, its own rect and what
+    /// `footprints`, the physical footprint of each backdrop the frame may capture, as the target
+    /// there still holds the last frame's backdrop, then the damage scissors after scaling, AA
+    /// padding and clamping. Footprints go first, as a backdrop's damage, its own rect and what
     /// changed under it, lies inside its footprint and then adds no piece. Regions arrive
     /// non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw
     /// list disagree and must not degrade to a full clear.
     ///
     /// Decided from the ledger's tickets before the frame builds, so a frame past the cap builds
-    /// once, whole. A ticket that captures may end as a pane that holds, clears or hides; its
+    /// once, whole. A ticket that captures may end as a backdrop that holds, clears or hides; its
     /// footprint then repaints what the encoder kept under it, overdraw and no more. Refused:
     /// the footprints of the built frame's capturing rows, which a frame past the cap learned
     /// only by building twice.
     ///
-    /// The scissors are disjoint: each keeps only the pixels the ones before it left, split into
-    /// at most four rects. The main pass replays the groups once per scissor, and after a pane's
-    /// barrier it replays them without a clear, so a pixel two scissors share would composite
-    /// every translucent draw past the barrier twice, as a padded damage rect inside a footprint
-    /// did. `None` when the pieces outgrow [`SCISSOR_CAP`]: the frame then paints whole.
+    /// The scissors are disjoint: each keeps only the pixels the ones before it left, split into at
+    /// most four rects. The main pass replays the groups once per scissor, and after a backdrop's
+    /// barrier it replays them without a clear, so a pixel two scissors share would composite every
+    /// translucent draw past the barrier twice, as a padded damage rect inside a footprint did.
+    /// `None` when the pieces outgrow [`SCISSOR_CAP`]: the frame then paints whole.
     pub(crate) fn new(
         damage: Damage,
         display: &Display,
@@ -122,10 +122,10 @@ pub(crate) struct PartialScissors {
     rects: ArrayVec<[URect; SCISSOR_CAP]>,
 }
 
-/// The damage rects, and a footprint for each pane a partial frame captures, each footprint room
-/// for the four pieces a damage rect inside it leaves. Damage rects that overlap split each other
-/// too, and past the cap the frame paints whole.
-const SCISSOR_CAP: usize = DAMAGE_RECT_CAP + 4 * PaneCaptures::PARTIAL_CAP;
+/// The damage rects, and a footprint for each backdrop a partial frame captures, each footprint
+/// room for the four pieces a damage rect inside it leaves. Damage rects that overlap split each
+/// other too, and past the cap the frame paints whole.
+const SCISSOR_CAP: usize = DAMAGE_RECT_CAP + 4 * BackdropCaptures::PARTIAL_CAP;
 
 impl PartialScissors {
     pub(crate) fn iter(&self) -> iter::Copied<slice::Iter<'_, URect>> {

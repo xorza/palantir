@@ -18,8 +18,8 @@ use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 /// Each is built on the first frame whose census asks for it ([`Self::ensure`]), before the
 /// frame's passes borrow the set; [`Self::new`] builds what nearly every frame draws, the plain
 /// halves of the solid, gradient and triangle quads and of every other family. A
-/// pane's forms, a shadow's forms, the stencil-test twins and the masks wait for a frame that
-/// draws one, as the backdrop blur's pipelines wait for a pane: an app with none pays for none.
+/// backdrop's forms, a shadow's forms, the stencil-test twins and the masks wait for a frame that
+/// draws one, as the backdrop blur's pipelines wait for a backdrop: an app with none pays for none.
 #[derive(Debug)]
 pub(crate) struct FormatPipelines {
     format: wgpu::TextureFormat,

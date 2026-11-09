@@ -7,7 +7,7 @@ use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::counters::CascadeCounters;
 use crate::cascade::paint::Paint;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
-use crate::cascade::pane_row::PaneRow;
+use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::cascade::plane_cascade::PlaneCascade;
 use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
 use crate::cascade::rows::entry_row::EntryRow;
@@ -21,7 +21,7 @@ use crate::common::tracy;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::sense::Sense;
@@ -31,11 +31,11 @@ use crate::scene::layer::Layer;
 use crate::scene::node::inherited::Inherited;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
+use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
 use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::record::{PaneRead, ShapeRecord};
+use crate::shape::record::{BackdropReader, ShapeRecord};
 use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -391,17 +391,19 @@ impl CascadeEngine {
     }
 }
 
-/// Stamp `cascade`, now built from `forest`, with `key`, and list its panes' keys.
+/// Stamp `cascade`, now built from `forest`, with `key`, and list its backdrops' keys.
 fn seal(forest: &Forest, key: CascadeKey, cascade: &mut Cascade) {
     cascade.key = Some(key);
     let Cascade {
-        planes, pane_keys, ..
+        planes,
+        backdrop_keys,
+        ..
     } = cascade;
-    pane_keys.refill(
+    backdrop_keys.refill(
         forest
             .trees
             .iter_paint_order()
-            .flat_map(|(plane, _)| planes[plane].panes.iter().map(|pane| pane.key)),
+            .flat_map(|(plane, _)| planes[plane].backdrops.iter().map(|backdrop| backdrop.key)),
     );
 }
 
@@ -584,23 +586,23 @@ impl CascadeEngine {
         while let Some(popped) = self.stack.pop() {
             finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
         }
-        source.list_panes(lc);
+        source.list_backdrops(lc);
         true
     }
 }
 
 impl TreeSource<'_> {
-    /// Rebuild `lc.panes` from the panes `tree` recorded, each at its paint row and that row's
-    /// screen, and `lc.pane_rows` from them.
-    fn list_panes(self, lc: &mut PlaneCascade) {
+    /// Rebuild `lc.backdrops` from the backdrops `tree` recorded, each at its paint row and that
+    /// row's screen, and `lc.backdrop_rows` from them.
+    fn list_backdrops(self, lc: &mut PlaneCascade) {
         let Self {
             tree,
             display_scale,
             ..
         } = self;
-        lc.panes.clear();
+        lc.backdrops.clear();
         let widget_ids = tree.records.widget_id();
-        for entry in &tree.panes {
+        for entry in &tree.backdrops {
             let node = entry.node.idx();
             let span = lc.paint_arena.node_spans[node];
             if span.len == 0 {
@@ -608,7 +610,7 @@ impl TreeSource<'_> {
             }
             debug_assert!(
                 entry.row < span.len,
-                "a pane's row lies in its owner's span"
+                "a backdrop's row lies in its owner's span"
             );
             let row = span.start + entry.row;
             let rect = lc.paint_arena.rows[row as usize].screen;
@@ -617,22 +619,24 @@ impl TreeSource<'_> {
             }
             let paint_row = after_children(tree, lc, entry).max(row);
             let read = match entry.origin {
-                PaneOrigin::Chrome => tree
+                BackdropOrigin::Chrome => tree
                     .chrome(entry.node)
                     .and_then(|row| row.material)
                     .filter(|material| material.captures())
-                    .map(PaneRead::Material),
-                PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].pane(),
+                    .map(BackdropReader::Material),
+                BackdropOrigin::Shape => {
+                    tree.shapes.records[entry.shape_idx as usize].backdrop_reader()
+                }
             }
-            .expect("a listed pane reads under it");
+            .expect("a listed backdrop reads under it");
             let shape_scale = lc.shape_scales[node];
             let scale = shape_scale * display_scale;
             let plan = BlurPlan::new(read.sigma() * scale);
             let narrowest = self
                 .narrowest_side(entry, rect, shape_scale)
                 .map(|n| n * display_scale);
-            lc.panes.push(PaneRow {
-                key: PaneKey {
+            lc.backdrops.push(PlaneBackdrop {
+                key: BackdropKey {
                     owner: widget_ids[node],
                     shape: entry.row,
                 },
@@ -640,22 +644,24 @@ impl TreeSource<'_> {
                 paint_row,
                 rect,
                 plan,
-                footprint: rect
-                    .inflated(PaneRow::reach(plan, read.margin(scale, narrowest)) / display_scale),
+                footprint: rect.inflated(
+                    PlaneBackdrop::reach(plan, read.margin(scale, narrowest)) / display_scale,
+                ),
             });
         }
-        lc.pane_rows.clear();
-        lc.pane_rows.extend(lc.panes.iter().map(|pane| pane.row));
-        lc.pane_rows.sort_unstable();
+        lc.backdrop_rows.clear();
+        lc.backdrop_rows
+            .extend(lc.backdrops.iter().map(|backdrop| backdrop.row));
+        lc.backdrop_rows.sort_unstable();
     }
 
-    /// The narrowest side, in logical px, of a pane drawn whole at `rect` on the screen, which a
-    /// lens reads inside of: a shape's quad that no paint animation turns and no clip cuts. `None`
-    /// for a turning or clipped pane, whose screen rect is not its own, and for chrome, whose lift
-    /// this walk does not keep.
-    fn narrowest_side(self, entry: &PaneEntry, rect: Rect, shape_scale: f32) -> Option<f32> {
+    /// The narrowest side, in logical px, of a backdrop drawn whole at `rect` on the screen, which
+    /// a lens reads inside of: a shape's quad that no paint animation turns and no clip cuts.
+    /// `None` for a turning or clipped backdrop, whose screen rect is not its own, and for chrome,
+    /// whose lift this walk does not keep.
+    fn narrowest_side(self, entry: &BackdropEntry, rect: Rect, shape_scale: f32) -> Option<f32> {
         let Self { tree, layout, .. } = self;
-        if entry.origin != PaneOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
+        if entry.origin != BackdropOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
             return None;
         }
         let ShapeRecord::Quad(quad) = &tree.shapes.records[entry.shape_idx as usize] else {
@@ -663,19 +669,19 @@ impl TreeSource<'_> {
         };
         let local = quad.bbox_local(layout.rect[entry.node.idx()].size).size;
         let (w, h) = (local.w * shape_scale, local.h * shape_scale);
-        // The lift and a clip that misses the pane round the size within a few f32 ulps; a clip
-        // that cuts less than this lets a sample out by less than the pixel `PaneRow::reach` rounds
-        // out.
+        // The lift and a clip that misses the backdrop round the size within a few f32 ulps; a clip
+        // that cuts less than this lets a sample out by less than the pixel `PlaneBackdrop::reach`
+        // rounds out.
         let whole = |screen: f32, lifted: f32| screen >= lifted * (1.0 - 1e-5);
         (whole(rect.size.w, w) && whole(rect.size.h, h)).then_some(w.min(h))
     }
 }
 
-/// The first row past the subtree of the last child `entry`'s node records before the pane, `0`
-/// for a pane no child precedes: a node's rows lie before its children's, each subtree's rows
+/// The first row past the subtree of the last child `entry`'s node records before the backdrop, `0`
+/// for a backdrop no child precedes: a node's rows lie before its children's, each subtree's rows
 /// in one run from its root's span, so the run ends where the next node's span starts.
-fn after_children(tree: &Tree, lc: &PlaneCascade, entry: &PaneEntry) -> u32 {
-    if entry.origin == PaneOrigin::Chrome {
+fn after_children(tree: &Tree, lc: &PlaneCascade, entry: &BackdropEntry) -> u32 {
+    if entry.origin == BackdropOrigin::Chrome {
         return 0;
     }
     let mut child = None;

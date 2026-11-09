@@ -148,8 +148,8 @@ struct Sampled {
     group: wgpu::BindGroup,
 }
 
-/// The surface's pixels behind a batch's panes, the blur's level 0, in the surface's format, from
-/// the batch's capture origin; grown to the largest batch seen, so every window shares one.
+/// The surface's pixels behind a batch's backdrops, the blur's level 0, in the surface's format,
+/// from the batch's capture origin; grown to the largest batch seen, so every window shares one.
 #[derive(Debug)]
 struct CaptureTarget {
     format: TargetFormat,
@@ -215,8 +215,8 @@ struct SourcePasses {
     horizontal: wgpu::RenderPipeline,
 }
 
-/// Levels `1..` in one texture, mip `k − 1` holding level `k` of a batch's panes from the batch's
-/// levels origin, grown to the largest batch seen; with a view and a source group per mip.
+/// Levels `1..` in one texture, mip `k − 1` holding level `k` of a batch's backdrops from the
+/// batch's levels origin, grown to the largest batch seen; with a view and a source group per mip.
 #[derive(Debug)]
 struct Levels {
     texture: wgpu::Texture,
@@ -227,7 +227,7 @@ struct Levels {
 /// The device side of the backdrop blur: its pipelines, the capture, the levels and the scratch
 /// the passes write, all grown to the largest batch seen, with slack, so a steady frame allocates
 /// nothing and a resize drag makes them again only now and then. Each texture steps down to what
-/// the last [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames read, and goes where none read it, so one full-screen pane
+/// the last [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames read, and goes where none read it, so one full-screen backdrop
 /// does not hold its textures for the session.
 ///
 /// None of them passes the device's edge. The capture and the levels hold what lies on one
@@ -945,7 +945,7 @@ impl BackdropBlur {
         });
         let apron = plan.apron() as i32;
         // A read past the region lands on another job's texels of the scratch, or on none,
-        // outside the support of every texel the pane shows.
+        // outside the support of every texel the backdrop shows.
         slot(BlurParams {
             target_to_lattice: region.min.as_ivec2() - IVec2::splat(apron) - dest_origin.as_ivec2(),
             level_size,
@@ -1115,8 +1115,8 @@ pub(crate) mod internals {
             self.scratch_packer = ShelfPacker::within(ceiling);
         }
 
-        /// The capture a surface of `size` and `format` renders the pixels behind its panes into,
-        /// grown to fit.
+        /// The capture a surface of `size` and `format` renders the pixels behind its backdrops
+        /// into, grown to fit.
         pub(crate) fn capture_view(
             &mut self,
             gpu: &Gpu,

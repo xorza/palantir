@@ -16,9 +16,9 @@ pub struct GpuFrameCtx<'a> {
     pub target: &'a wgpu::TextureView,
     /// What the target shows, in physical pixels, after the widget's composed transform and downsampling for the device texture cap. Set your viewport to it.
     ///
-    /// **What is on screen, not always the whole view**: a widget's rect may reach past the window or a scroll's pane, and nothing is allocated for the unseen part. Then [`Self::physical_full_size`] is the whole and [`Self::physical_offset`] places this within it.
+    /// **What is on screen, not always the whole view**: a widget's rect may reach past the window or a scroll's backdrop, and nothing is allocated for the unseen part. Then [`Self::physical_full_size`] is the whole and [`Self::physical_offset`] places this within it.
     pub physical_size: UVec2,
-    /// What the whole view measures in the same pixels (equal to [`Self::physical_size`] when nothing clips). Derive your projection's shape from this: it does not change as a scroll slides the view past its pane.
+    /// What the whole view measures in the same pixels (equal to [`Self::physical_size`] when nothing clips). Derive your projection's shape from this: it does not change as a scroll slides the view past its backdrop.
     pub physical_full_size: UVec2,
     /// Where [`Self::physical_size`] begins within [`Self::physical_full_size`]; `ZERO` when nothing clips. Skew your projection by it, as a tile renderer does. **Not optional for a picked view**: hit-testing is reported against `physical_full_size`, so framing to `physical_size` would disagree and appear to zoom as a scroll slides.
     pub physical_offset: UVec2,

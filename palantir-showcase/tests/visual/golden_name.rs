@@ -59,7 +59,7 @@ impl GoldenName {
 
 golden_names! {
     BackdropGlass => "backdrop_glass",
-    BackdropPanes => "backdrop_panes",
+    Backdrops => "backdrops",
     BackdropTurned => "backdrop_turned",
     AddShapeRoundedRectLinearGradient => "add_shape_rounded_rect_linear_gradient",
     ArcShapes => "arc_shapes",
