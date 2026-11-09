@@ -44,7 +44,7 @@ fn tile(ui: &mut Ui) {
     Block::new()
         .id_salt("tile")
         .size(20.0)
-        .chrome(Chrome::fill(RgbaF32::WHITE))
+        .chrome(Chrome::new(RgbaF32::WHITE))
         .show(ui);
 }
 
@@ -584,7 +584,7 @@ fn a_float_window_captures_its_linear_values() {
         Block::new()
             .id_salt("fill")
             .size(8.0)
-            .chrome(Chrome::fill(RgbaF32::new(0.25, 0.5, 1.0, 1.0)))
+            .chrome(Chrome::new(RgbaF32::new(0.25, 0.5, 1.0, 1.0)))
             .show(ui);
     };
     let mut pixels = Vec::new();
@@ -717,7 +717,7 @@ fn a_new_display_reads_back_the_new_size_and_scale() {
         Block::new()
             .id_salt("white")
             .size((2.0, 1.0))
-            .chrome(Chrome::fill(RgbaF32::WHITE))
+            .chrome(Chrome::new(RgbaF32::WHITE))
             .show(ui);
     };
     let white = |x0: u32, x1: u32, y0: u32, y1: u32| {

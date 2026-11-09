@@ -48,7 +48,7 @@ impl Motion {
 
 fn look(bg: RgbaF32, text: RgbaF32) -> AnimatedLook {
     AnimatedLook {
-        chrome: Chrome::fill(bg),
+        chrome: Chrome::new(bg),
         text: TextStyle::stock(ColorScheme::Dark).with_color(text),
     }
 }

@@ -23,6 +23,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -665,7 +666,7 @@ fn a_scene_counts_the_rows_that_draw_on_the_surface() {
                 .id_salt(("visible-rows", salt))
                 .at(at)
                 .size((Sizing::fixed(10.0), Sizing::fixed(10.0)))
-                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .chrome(Chrome::new(RgbaF32::WHITE))
                 .show(ui);
         };
         h.frame(|ui| {
@@ -697,11 +698,8 @@ fn a_scene_reads_the_share_its_panes_hold() {
                 .show(ui, |ui| {
                     for _ in 0..pane_count {
                         ui.add_shape(
-                            Shape::rect(
-                                Chrome::fill(RgbaF32::TRANSPARENT)
-                                    .with_material(Material::blur(2.0)),
-                            )
-                            .at(Rect::new(0.0, 0.0, 100.0, 100.0)),
+                            Shape::rect().at(Rect::new(0.0, 0.0, 100.0, 100.0)),
+                            Paint::from(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
                         );
                     }
                 });

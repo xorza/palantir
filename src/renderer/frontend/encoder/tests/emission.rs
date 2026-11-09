@@ -3,6 +3,7 @@
 use crate::common::content_hash::ContentHash;
 use crate::host::harness::Harness;
 use crate::image_registry::texture_limit::TextureLimit;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -15,6 +16,8 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::paint::Paint;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
@@ -139,7 +142,7 @@ fn baseline_draw_rect_count_cases() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::new(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
                 Scene::InvisibleFrame => {
@@ -152,11 +155,11 @@ fn baseline_draw_rect_count_cases() {
                     Block::new()
                         .id(WidgetId::from_hash("degenerate"))
                         .size(50.0)
-                        .chrome(Chrome {
-                            fill: RgbaF32::TRANSPARENT.into(),
-                            border: Border::NONE,
-                            ..Default::default()
-                        })
+                        .chrome(
+                            Chrome::NONE
+                                .with_fill(RgbaF32::TRANSPARENT)
+                                .with_border(Border::NONE),
+                        )
                         .show(ui);
                 }
                 Scene::FrameWithClipRectSurface => {
@@ -183,48 +186,35 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            ui.add_shape(Shape::rect(Chrome::rounded(
-                RgbaF32::srgb(1.0, 0.0, 0.0),
-                4.0,
-            )));
-            ui.add_shape(Shape::windowed_rect(Chrome::rounded(
-                RgbaF32::srgb(0.0, 1.0, 0.0),
-                6.0,
-            )));
-            ui.add_shape(Shape::line(
-                Vec2::new(0.0, 0.0),
-                Vec2::new(20.0, 0.0),
-                Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 2.0),
-            ));
+            ui.add_shape(Shape::rect().corners(4.0), RgbaF32::srgb(1.0, 0.0, 0.0));
             ui.add_shape(
-                Shape::line(
-                    Vec2::new(0.0, 5.0),
-                    Vec2::new(20.0, 5.0),
-                    Border::new(tint, 2.0),
-                )
-                .ramp(ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
+                Shape::rect().corners(6.0).coverage(Coverage::Outside),
+                RgbaF32::srgb(0.0, 1.0, 0.0),
             );
             ui.add_shape(
-                Shape::line(
-                    Vec2::new(0.0, 0.0),
-                    Vec2::new(10.0, 10.0),
-                    Border::new(tint, 2.0),
-                )
-                .ramp(ColorRamp::two_stop(
+                Shape::line(Vec2::new(0.0, 0.0), Vec2::new(20.0, 0.0)),
+                Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 2.0),
+            );
+            ui.add_shape(
+                Shape::line(Vec2::new(0.0, 5.0), Vec2::new(20.0, 5.0)),
+                Stroke::new(tint, 2.0)
+                    .with_ramp(ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
+            );
+            ui.add_shape(
+                Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+                Stroke::new(tint, 2.0).with_ramp(ColorRamp::two_stop(
                     RgbaF32::TRANSPARENT,
                     RgbaF32::TRANSPARENT,
                 )),
             );
-            ui.add_shape(Shape::line(
-                Vec2::new(0.0, 0.0),
-                Vec2::new(10.0, 10.0),
-                Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 0.0),
-            ));
-            ui.add_shape(Shape::line(
-                Vec2::new(0.0, 0.0),
-                Vec2::new(10.0, 10.0),
-                Border::new(RgbaF32::TRANSPARENT, 2.0),
-            ));
+            ui.add_shape(
+                Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+                Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 0.0),
+            );
+            ui.add_shape(
+                Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+                Stroke::new(RgbaF32::TRANSPARENT, 2.0),
+            );
             Block::new()
                 .id(WidgetId::from_hash("host"))
                 .size(50.0)
@@ -274,26 +264,28 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(
-                Shape::shadow(Shadow {
+                Shape::rect()
+                    .at(Rect::new(10.0, 20.0, 30.0, 40.0))
+                    .corners(4.0),
+                Paint::NONE.with_shadow(Shadow {
                     color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -1.0,
                     inset: false,
-                })
-                .at(Rect::new(10.0, 20.0, 30.0, 40.0))
-                .corners(4.0),
+                }),
             );
             ui.add_shape(
-                Shape::shadow(Shadow {
+                Shape::rect()
+                    .at(Rect::new(10.0, 20.0, 30.0, 40.0))
+                    .corners(4.0),
+                Paint::NONE.with_shadow(Shadow {
                     color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -2.0,
                     inset: true,
-                })
-                .at(Rect::new(10.0, 20.0, 30.0, 40.0))
-                .corners(4.0),
+                }),
             );
             Block::new()
                 .id(WidgetId::from_hash("host"))
@@ -388,11 +380,13 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     for case in &cases {
         let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 6.0);
         let chrome = Chrome {
-            fill: RgbaF32::WHITE.into(),
-            border: case.border,
             corners: case.corners,
-            shadow: if case.inset { shadow.inset() } else { shadow },
-            material: None,
+            paint: Paint {
+                fill: RgbaF32::WHITE.into(),
+                border: case.border,
+                shadow: if case.inset { shadow.inset() } else { shadow },
+                material: None,
+            },
         };
         for entry in ["chrome", "rect shape"] {
             let mut h = Harness::mono(UVec2::new(200, 200));
@@ -408,7 +402,12 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
                         Panel::canvas()
                             .id(WidgetId::from_hash("chrome"))
                             .size((100.0, 60.0))
-                            .show(ui, |ui| ui.add_shape(Shape::rect(chrome.clone())));
+                            .show(ui, |ui| {
+                                ui.add_shape(
+                                    Shape::rect().corners(chrome.corners),
+                                    chrome.paint.clone(),
+                                );
+                            });
                     }
                 });
             });

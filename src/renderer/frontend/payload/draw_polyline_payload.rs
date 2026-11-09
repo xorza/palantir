@@ -1,23 +1,26 @@
 //! One stroked-polyline draw.
 
 use crate::common::span::Span;
+use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::math::domain::is_invisible;
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::record::ColorMode;
-use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 
 /// Stroked polyline payload; `width` is logical px. Points and colors live in the window's
 /// [`RecordStore`]; `colors` holds 1 (broadcast), `points.len` (per-point) or `points.len - 1`
-/// (per-segment), per `color_mode`. Points are owner-local; the composer applies `origin` and inflates
-/// `bounds` for stroke, cap, join and AA once in physical space.
+/// (per-segment), per `color_mode`. Points are as recorded; the composer fits them by `fit` into the
+/// owner-local frame, then applies `origin` and inflates `bounds`, already fitted, for stroke, cap,
+/// join and AA once in physical space.
 ///
 /// [`RecordStore`]: crate::shape::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawPolylinePayload {
     pub(crate) bounds: StrokeBounds,
     pub(crate) origin: Vec2,
+    pub(crate) fit: FitMap,
     pub(crate) width: f32,
     pub(crate) points: Span,
     pub(crate) colors: Span,
@@ -60,14 +63,14 @@ impl PaintPayload for DrawPolylinePayload {
         sink.polyline(self);
     }
 
-    /// Geometry is asserted, not gated: `PolylineShape::is_noop` rejects `< 2` points and a
-    /// non-painting width before lowering, and the encoder forwards both verbatim. Other payloads
+    /// Geometry is asserted, not gated: the polyline's lowering drops `< 2` points and a
+    /// non-painting width, and the encoder forwards both verbatim. Other payloads
     /// gate because theirs are layout outputs that can legitimately collapse. Debug-only is safe:
     /// `is_noop` also covers the geometry, and the composer emits nothing for one.
     fn check(&self) {
         debug_assert!(
             !self.is_degenerate(),
-            "degenerate polyline reached the sink — `PolylineShape::is_noop` \
+            "degenerate polyline reached the sink — its lowering \
              should have dropped it: {self:?}",
         );
     }

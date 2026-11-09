@@ -1,8 +1,10 @@
-//! Cap and join styling, shared by every stroked shape.
+//! How a stroke ends and turns: [`LineCap`] and [`LineJoin`].
 
-/// Endpoint cap style for stroked shapes (Line, Polyline, béziers, Arc).
+/// How a [`Stroke`](crate::Stroke) ends: a line, a Bézier, an arc or a polyline.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum LineCap {
     /// Ends exactly at the endpoint. The default.
     #[default]
@@ -13,9 +15,11 @@ pub enum LineCap {
     Round = 2,
 }
 
-/// Interior-join style for [`Shape::polyline`](crate::widget::Shape::polyline).
+/// How a [`Stroke`](crate::Stroke) turns at a polyline's interior points.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum LineJoin {
     /// Extends both edges to their crossing point. The default; becomes [`Self::Bevel`] past the miter limit.
     #[default]

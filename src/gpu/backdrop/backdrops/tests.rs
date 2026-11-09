@@ -206,13 +206,17 @@ fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
         ("clear", offset_of!(BackdropSlot, clear)),
         ("min_luminance", offset_of!(BackdropSlot, min_luminance)),
         ("reads", offset_of!(BackdropSlot, reads)),
-        ("tint", offset_of!(BackdropSlot, tint)),
+        ("fill", offset_of!(BackdropSlot, fill)),
+        ("fill_axis", offset_of!(BackdropSlot, fill_axis)),
         ("stroke_color", offset_of!(BackdropSlot, stroke_color)),
         ("stroke_width", offset_of!(BackdropSlot, stroke_width)),
+        ("fill_kind", offset_of!(BackdropSlot, fill_kind)),
+        ("fill_lut_row", offset_of!(BackdropSlot, fill_lut_row)),
     ];
     assert_eq!(offset_of!(BackdropSlot, clear), 16);
     assert_eq!(offset_of!(BackdropSlot, reads), 32);
-    assert_eq!(size_of::<BackdropSlot>(), 96);
+    assert_eq!(offset_of!(BackdropSlot, fill_kind), 100);
+    assert_eq!(size_of::<BackdropSlot>(), 112);
     contract.assert_struct_layout("PalantirPane", size_of::<BackdropSlot>(), &members);
 }
 

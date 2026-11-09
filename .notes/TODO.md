@@ -9,6 +9,7 @@
 - md viewer
 - optimal resolve strategies
 - genrate shape geometry in vertex shader to simplify fragment
+- box mavterial?
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows

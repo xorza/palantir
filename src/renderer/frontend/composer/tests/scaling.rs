@@ -2,6 +2,7 @@
 
 use crate::common::span::Span;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -9,6 +10,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -23,7 +25,6 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::stroke_bounds::StrokeJoints;
-use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
@@ -626,21 +627,26 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     assert_eq!(q.rect, Rect::new(-261996.0, -261996.0, 524072.0, 524072.0));
 }
 
-/// A quarter turn about the pivot `c = (6, 6)` of a mesh at origin (4, 4), at display scale 2:
-/// `R c = (−6, 6)`, so the instance's complex scale is `2·(cos, sin) = (0, 2)` and its translate
-/// `2·((4, 4) + c − R c) = 2·(16, 4) = (32, 8)`. Unturned, the same mesh is `(2, 0)` and
-/// `2·(4, 4) = (8, 8)`. The tolerance is the f32 cosine of a quarter turn, −4.4e-8, not 0, times
-/// the lengths involved.
+/// A mesh at origin (4, 4), at display scale 2, its instance `x_axis`, `y_axis` and `translate`.
+/// Unturned and unfit: `(2, 0)`, `(0, 2)` and `2·(4, 4) = (8, 8)`. A quarter turn about the pivot
+/// `c = (6, 6)` maps `p` to `R(p − c) + c`, `R c = (−6, 6)`: the axes `2·(cos, sin) = (0, 2)` and
+/// `2·(−sin, cos) = (−2, 0)`, the translate `2·((4, 4) + c − R c) = 2·(16, 4) = (32, 8)`. The fit
+/// `p ↦ (1, 2) + (3, 0.5)·p` scales each axis, `(6, 0)` and `(0, 1)`, and moves the translate to
+/// `2·((4, 4) + (1, 2)) = (10, 12)`; turned as well, `R((1, 2) − c) + c = R(−5, −4) + c =
+/// (4, −5) + (6, 6) = (10, 1)`, so `2·((4, 4) + (10, 1)) = (28, 10)`, and the axes `(0, 6)` and
+/// `(−1, 0)`. The tolerance is the f32 cosine of a quarter turn, −4.4e-8, not 0, times the
+/// lengths involved.
 #[test]
-fn a_turned_mesh_instance_turns_and_scales_at_once() {
+fn a_mesh_instance_fits_turns_and_scales_at_once() {
     const EPS: f32 = 1e-5;
-    let instance = |spin: Option<Spin>| {
+    let instance = |spin: Option<Spin>, fit: FitMap| {
         let buf = run(
             |b, _| {
                 b.draw(
                     DrawMeshPayload {
                         bbox: Rect::new(0.0, 0.0, 12.0, 12.0),
                         origin: Vec2::new(4.0, 4.0),
+                        fit,
                         tint: RgbaF32::WHITE.to_f16(),
                         vertices: Span::new(0, 3),
                         idxs: Span::new(0, 3),
@@ -651,25 +657,54 @@ fn a_turned_mesh_instance_turns_and_scales_at_once() {
             },
             &params(2.0, UVec2::new(200, 200)),
         );
-        buf.meshes.instance()[0]
+        let instance = buf.meshes.instance()[0];
+        [instance.x_axis, instance.y_axis, instance.translate]
     };
-    let still = instance(None);
-    assert_eq!(still.rotor_scale, Vec2::new(2.0, 0.0));
-    assert_eq!(still.translate, Vec2::new(8.0, 8.0));
-
-    let turned = instance(Some(Spin {
+    let quarter = Some(Spin {
         pivot: Vec2::new(6.0, 6.0),
         angle: FRAC_PI_2,
-    }));
-    assert!(
-        turned.rotor_scale.abs_diff_eq(Vec2::new(0.0, 2.0), EPS),
-        "{:?}",
-        turned.rotor_scale
+    });
+    let fit = FitMap {
+        offset: Vec2::new(1.0, 2.0),
+        scale: Vec2::new(3.0, 0.5),
+    };
+    let close = |got: [Vec2; 3], want: [Vec2; 3]| {
+        assert!(
+            got.iter().zip(want).all(|(g, w)| g.abs_diff_eq(w, EPS)),
+            "{got:?} != {want:?}"
+        );
+    };
+    assert_eq!(
+        instance(None, FitMap::IDENTITY),
+        [
+            Vec2::new(2.0, 0.0),
+            Vec2::new(0.0, 2.0),
+            Vec2::new(8.0, 8.0)
+        ]
     );
-    assert!(
-        turned.translate.abs_diff_eq(Vec2::new(32.0, 8.0), EPS),
-        "{:?}",
-        turned.translate
+    close(
+        instance(quarter, FitMap::IDENTITY),
+        [
+            Vec2::new(0.0, 2.0),
+            Vec2::new(-2.0, 0.0),
+            Vec2::new(32.0, 8.0),
+        ],
+    );
+    assert_eq!(
+        instance(None, fit),
+        [
+            Vec2::new(6.0, 0.0),
+            Vec2::new(0.0, 1.0),
+            Vec2::new(10.0, 12.0)
+        ]
+    );
+    close(
+        instance(quarter, fit),
+        [
+            Vec2::new(0.0, 6.0),
+            Vec2::new(-1.0, 0.0),
+            Vec2::new(28.0, 10.0),
+        ],
     );
 }
 

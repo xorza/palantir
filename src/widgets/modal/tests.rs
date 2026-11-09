@@ -56,13 +56,13 @@ fn the_barrier_root_covers_the_whole_surface_in_the_scrim() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
     let id = WidgetId::from_hash("modal-full-surface");
     let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
-    let blurred = Chrome::fill(custom)
+    let blurred = Chrome::new(custom)
         .with_material(Material::blur(8.0).with_reduced_transparency(ReducedBackdrop::Nothing));
-    let grounded = Chrome::fill(custom).with_material(Material::blur(8.0));
-    let themed = Chrome::fill(RgbaF32::BLACK.with_alpha8(128));
+    let grounded = Chrome::new(custom).with_material(Material::blur(8.0));
+    let themed = Chrome::new(RgbaF32::BLACK.with_alpha8(128));
     // What the scrim's material reads: a pane that captures, the ground, or none.
     for (label, explicit, reduced, fill, reads) in [
-        ("themed", None, false, themed.fill.clone(), None),
+        ("themed", None, false, themed.paint.fill.clone(), None),
         (
             "a color",
             Some(Chrome::from(custom)),

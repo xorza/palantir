@@ -3,9 +3,9 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
-use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -15,17 +15,18 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::icon_fit::IconFit;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::text::recorded_text::RecordedText;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::arc_geometry::ArcGeometry;
+use crate::shape::paint::bezier_geometry::BezierGeometry;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
-use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
 use crate::shape::paint::lowered_material::LoweredMaterial;
+use crate::shape::paint::lowered_stroke::LoweredStroke;
+use crate::shape::paint::point_placement::PointPlacement;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::style::{LineCap, LineJoin};
 use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
@@ -42,7 +43,7 @@ pub(crate) enum ColorMode {
     PerSegment = 2,
 }
 
-/// What a backdrop effect's shape reads under it: what is painted there, captured, or the window's
+/// What a backdrop effect reads under it: what is painted there, captured, or the window's
 /// ground while transparency is reduced, which takes no capture and makes no pane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum EffectBackdrop {
@@ -87,7 +88,7 @@ impl PaneRead {
     /// narrowest side), or an effect's reach rounded out.
     #[expect(
         clippy::cast_sign_loss,
-        reason = "a reach is a length, which `EffectShape::reach` checks, and a scale is positive"
+        reason = "a reach is a length, which `EffectPaint::reach` checks, and a scale is positive"
     )]
     pub(crate) fn margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
         match self {
@@ -101,9 +102,9 @@ impl PaneRead {
 #[repr(u8)]
 #[derive(Clone, Debug)]
 pub(crate) enum ShapeRecord {
-    /// Rounded rectangle, box-shadow, or rounded triangle, per [`QuadShape`].
+    /// A box or a rounded triangle, per [`QuadShape`].
     Quad(QuadShape),
-    /// Stroked polyline. `points`/`colors` index the `RecordStore`; `colors` has 1 entry for `Single`, `points.len()` for `PerPoint`, `points.len() - 1` for `PerSegment`. `bbox` is the owner-relative centerline AABB; damage and composition apply the stroke inflation.
+    /// Stroked polyline. `points`/`colors` index the `RecordStore`; `colors` has 1 entry for `Single`, `points.len()` for `PerPoint`, `points.len() - 1` for `PerSegment`. `bbox` is the points' AABB as authored, the extent `placement` fits into its rect where the polyline is drawn; damage and composition apply the stroke inflation.
     Polyline {
         width: f32,
         color_mode: ColorMode,
@@ -112,6 +113,7 @@ pub(crate) enum ShapeRecord {
         points: Span,
         colors: Span,
         bbox: Rect,
+        placement: PointPlacement,
         content_hash: ContentHash,
     },
     /// Shaped text run, *authoring inputs only*: measured size and the shaped-buffer key are layout outputs in `Layout.text_shapes`. `wrap` selects shape-once (`Single`) or reshape under a narrower committed width (`Wrap`); `align` positions the glyph bbox (`Auto`/`Stretch` collapse to top-left).
@@ -131,11 +133,12 @@ pub(crate) enum ShapeRecord {
     },
     /// User-supplied colored triangle mesh. Spans index the `RecordStore`'s `meshes` pool; `content_hash` covers vertex+index bytes.
     Mesh {
-        local_rect: Option<Rect>,
+        placement: PointPlacement,
         tint: RgbaF16,
         vertices: Span,
         idxs: Span,
-        /// Owner-local AABB of the vertex positions, frozen from `Mesh::bbox()` so the encoder doesn't re-scan.
+        /// AABB of the vertex positions as authored, the extent `placement` fits; frozen from
+        /// `Mesh::bbox()` so the encoder doesn't re-scan.
         bbox: Rect,
         content_hash: ContentHash,
     },
@@ -149,13 +152,13 @@ pub(crate) enum ShapeRecord {
         mag_filter: ImageFilter,
         downsample: ImageDownsample,
     },
-    /// A baked SVG icon, rasterized at the exact physical size into the icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup. `tint` multiplies a tintable icon whole and a color icon's alpha only, see [`IconShape`](crate::widget::IconShape).
+    /// A baked SVG icon, rasterized at the exact physical size into the icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup. `tint` multiplies a tintable icon whole and a color icon's alpha only, see [`IconPaint`](crate::widget::IconPaint).
     Icon {
         local_rect: Option<Rect>,
         handle: IconHandle,
-        fit: IconFit,
+        fit: Fit,
         tint: RgbaF16,
-        /// Draws a color icon as its own luminance, see [`IconShape::desaturate`](crate::widget::IconShape::desaturate).
+        /// Draws a color icon as its own luminance, see [`IconPaint::desaturate`](crate::widget::IconPaint::desaturate).
         desaturate: bool,
     },
     /// An app-written effect over a rounded rect: `local_rect = None` paints the owner's rect,
@@ -173,27 +176,27 @@ pub(crate) enum ShapeRecord {
         images: Span,
         content_hash: ContentHash,
     },
-    /// Native GPU stroke: a cubic Bézier or exact circular arc, per [`CurveBasis`] (quadratics promote to cubic, lines degenerate; see `CurveShape`'s lowering). Owner-local, no joins. `bbox` is the tight centerline AABB.
-    ///
-    /// Field order is the layout: this variant fills `ShapeRecord`'s 88 B with the byte-wide `cap` beside the tag and the 8-aligned `ramp` last.
+    /// Native GPU stroke of a cubic Bézier (quadratics promote to cubic, lines degenerate; see
+    /// `CurveShape`'s lowering), fit into its owner where it is drawn
+    /// ([`BezierGeometry::place`]). No joins.
     Curve {
         /// End-cap style; `Round`/`Square` extend the strip by `width/2` past each endpoint.
         cap: LineCap,
-        basis: CurveBasis,
-        stroke: LoweredBorder,
-        bbox: Rect,
-        /// The ramp the stroke color multiplies, sampled along `t` (p0 to p3 for a cubic, a0 to a1 for an arc).
+        geometry: BezierGeometry,
+        stroke: LoweredStroke,
+        /// The ramp the stroke color multiplies, sampled along `t`, p0 to p3.
         ramp: CurveRamp,
     },
-}
-
-/// Owner-local paint bbox of a [`ShapeRecord::Mesh`]: the vertex hull, which can exceed the owner rect (the owner rect would make partial damage too small). `local_rect` only offsets it.
-pub(crate) fn mesh_paint_bbox_local(bbox: Rect, local_rect: Option<Rect>) -> Rect {
-    let origin = local_rect.map_or(Vec2::ZERO, |r| r.min);
-    Rect {
-        min: bbox.min + origin,
-        size: bbox.size,
-    }
+    /// Native GPU stroke of an [`ArcGeometry`], whose circle resolves against the owner where it
+    /// is drawn ([`ArcGeometry::place`]).
+    Arc {
+        /// End-cap style, as a curve's.
+        cap: LineCap,
+        geometry: ArcGeometry,
+        stroke: LoweredStroke,
+        /// The ramp the stroke color multiplies, sampled along the sweep.
+        ramp: CurveRamp,
+    },
 }
 
 /// Where a [`ShapeRecord::Text`] puts its run in the owner: the record's `local_origin` and `align`.
@@ -232,7 +235,7 @@ impl ShapeRecord {
     /// effect's, each where it captures; `None` for every other record.
     pub(crate) const fn pane(&self) -> Option<PaneRead> {
         match self {
-            Self::Quad(QuadShape::Rect {
+            Self::Quad(QuadShape::Box {
                 material: Some(material),
                 ..
             }) if material.captures() => Some(PaneRead::Material(*material)),
@@ -256,51 +259,30 @@ impl ShapeRecord {
         let mut h = Hasher::new();
         mem::discriminant(self).hash(&mut h);
         match self {
-            // All three shapes share this record's discriminant, so `QuadShape`'s goes
-            // in first to keep a rectangle, shadow and triangle apart.
+            // Both shapes share this record's discriminant, so `QuadShape`'s goes in first
+            // to keep a box and a triangle apart.
             Self::Quad(shape) => {
                 mem::discriminant(shape).hash(&mut h);
                 match shape {
-                    QuadShape::Rect {
-                        kind,
-                        local_rect,
-                        corners,
+                    QuadShape::Box {
+                        geometry,
                         fill,
                         border,
                         shadow,
                         material,
                     } => {
-                        h.write_u8(*kind as u8);
-                        hash_optional_rect(*local_rect, &mut h);
-                        corners.hash(&mut h);
+                        geometry.hash_into(&mut h);
                         hash_brush(*fill, &mut h);
                         border.hash_into(&mut h);
                         shadow.hash(&mut h);
                         material.hash(&mut h);
                     }
-                    QuadShape::Shadow {
-                        local_rect,
-                        corners,
-                        shadow,
-                    } => {
-                        hash_optional_rect(*local_rect, &mut h);
-                        corners.hash(&mut h);
-                        shadow.hash(&mut h);
-                    }
-                    // `bbox` derives from `a`/`b`/`c` + `radius`, so it is excluded.
                     QuadShape::Triangle {
-                        a,
-                        b,
-                        c,
-                        radius,
+                        geometry,
                         fill,
                         border,
-                        bbox: _,
                     } => {
-                        a.hash_visual(&mut h);
-                        b.hash_visual(&mut h);
-                        c.hash_visual(&mut h);
-                        radius.hash_visual(&mut h);
+                        geometry.hash_into(&mut h);
                         fill.hash(&mut h);
                         border.hash_into(&mut h);
                     }
@@ -313,6 +295,7 @@ impl ShapeRecord {
             // diff reads as "unchanged".
             Self::Polyline {
                 content_hash,
+                placement,
                 width: _,
                 color_mode: _,
                 cap: _,
@@ -320,7 +303,10 @@ impl ShapeRecord {
                 points: _,
                 colors: _,
                 bbox: _,
-            } => content_hash.hash(&mut h),
+            } => {
+                content_hash.hash(&mut h);
+                placement.hash_into(&mut h);
+            }
             // The shaping inputs are layout's as well as paint's, so one method feeds
             // both hashes.
             Self::Text {
@@ -342,14 +328,14 @@ impl ShapeRecord {
                 self.hash_layout_inputs(&mut h);
             }
             Self::Mesh {
-                local_rect,
+                placement,
                 tint,
                 content_hash,
                 vertices: _,
                 idxs: _,
                 bbox: _,
             } => {
-                hash_optional_rect(*local_rect, &mut h);
+                placement.hash_into(&mut h);
                 tint.hash(&mut h);
                 content_hash.hash(&mut h);
             }
@@ -391,7 +377,7 @@ impl ShapeRecord {
                     }
                 }
                 // The fit (including `Tile`'s UV transform, which changes every
-                // pan/zoom frame), both sampling filters and the minification tap mode:
+                // pan/zoom placement), both sampling filters and the minification tap mode:
                 // two 1-bit filters in the low bits, the 3-variant `downsample` above.
                 hash_fit(fit, &mut h);
                 h.write_u8(
@@ -433,43 +419,38 @@ impl ShapeRecord {
             }
             // Geometry + style are hashed inline (every input lives on the record).
             // `bbox` is excluded. The ramp goes in by content hash so equal geometry
-            // with different ramps differs. `CurveBasis`'s discriminant goes in first
-            // to keep a cubic and an arc apart; the shared stroke fields are hashed
-            // after the split.
+            // with different ramps differs.
             Self::Curve {
                 cap,
-                basis,
+                geometry:
+                    BezierGeometry {
+                        bezier: CubicBezier { p0, p1, p2, p3 },
+                        placement,
+                    },
                 stroke,
-                bbox: _,
                 ramp,
             } => {
-                mem::discriminant(basis).hash(&mut h);
-                match basis {
-                    CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }) => {
-                        for point in [p0, p1, p2, p3] {
-                            point.hash_visual(&mut h);
-                        }
-                    }
-                    CurveBasis::Arc(CircularArc {
-                        center,
-                        radius,
+                for point in [p0, p1, p2, p3] {
+                    point.hash_visual(&mut h);
+                }
+                placement.hash_into(&mut h);
+                hash_stroke(*stroke, *cap, *ramp, &mut h);
+            }
+            Self::Arc {
+                cap,
+                geometry:
+                    ArcGeometry {
+                        local_rect,
                         start_angle,
                         sweep,
-                    }) => {
-                        center.hash_visual(&mut h);
-                        radius.hash_visual(&mut h);
-                        start_angle.hash_visual(&mut h);
-                        sweep.hash_visual(&mut h);
-                    }
-                }
-                stroke.hash_into(&mut h);
-                match ramp {
-                    CurveRamp::None => h.write_u8(*cap as u8),
-                    CurveRamp::Interned { id: _, hash } => {
-                        h.write_u8(*cap as u8 | 0x80);
-                        hash.hash(&mut h);
-                    }
-                }
+                    },
+                stroke,
+                ramp,
+            } => {
+                hash_optional_rect(*local_rect, &mut h);
+                start_angle.hash_visual(&mut h);
+                sweep.hash_visual(&mut h);
+                hash_stroke(*stroke, *cap, *ramp, &mut h);
             }
         }
         ContentHash::finish(&h)
@@ -511,6 +492,19 @@ fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
     }
 }
 
+/// Fold a native stroke's paint into the shape hash: its width and color, its cap, and its ramp
+/// by content hash.
+fn hash_stroke(stroke: LoweredStroke, cap: LineCap, ramp: CurveRamp, h: &mut Hasher) {
+    stroke.hash_into(h);
+    match ramp {
+        CurveRamp::None => h.write_u8(cap as u8),
+        CurveRamp::Interned { id: _, hash } => {
+            h.write_u8(cap as u8 | 0x80);
+            hash.hash(h);
+        }
+    }
+}
+
 /// Fold a lowered fill into the shape hash via [`LoweredBrush::hash_parts`], which
 /// the chrome hash reads too.
 fn hash_brush(fill: LoweredBrush, h: &mut Hasher) {
@@ -536,7 +530,12 @@ impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {
             Self::Quad(shape) => shape.has_nan(),
-            Self::Polyline { width, bbox, .. } => width.is_nan() || bbox.has_nan(),
+            Self::Polyline {
+                width,
+                bbox,
+                placement,
+                ..
+            } => width.is_nan() || bbox.has_nan() || placement.has_nan(),
             Self::Text {
                 local_origin,
                 color,
@@ -544,11 +543,11 @@ impl NanCheck for ShapeRecord {
                 ..
             } => local_origin.has_nan() || color.has_nan() || font.has_nan(),
             Self::Mesh {
-                local_rect,
+                placement,
                 tint,
                 bbox,
                 ..
-            } => local_rect.has_nan() || tint.has_nan() || bbox.has_nan(),
+            } => placement.has_nan() || tint.has_nan() || bbox.has_nan(),
             Self::Image {
                 local_rect,
                 tint,
@@ -558,7 +557,26 @@ impl NanCheck for ShapeRecord {
             Self::Icon {
                 local_rect, tint, ..
             } => local_rect.has_nan() || tint.has_nan(),
-            Self::Curve { stroke, bbox, .. } => stroke.has_nan() || bbox.has_nan(),
+            Self::Curve {
+                geometry: BezierGeometry { bezier, placement },
+                stroke,
+                ..
+            } => {
+                let CubicBezier { p0, p1, p2, p3 } = bezier;
+                [p0, p1, p2, p3].iter().any(|p| p.is_nan())
+                    || placement.has_nan()
+                    || stroke.has_nan()
+            }
+            Self::Arc {
+                geometry:
+                    ArcGeometry {
+                        local_rect,
+                        start_angle,
+                        sweep,
+                    },
+                stroke,
+                ..
+            } => local_rect.has_nan() || start_angle.is_nan() || sweep.is_nan() || stroke.has_nan(),
             Self::Effect { local_rect, .. } => local_rect.has_nan(),
         }
     }

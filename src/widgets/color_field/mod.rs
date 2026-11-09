@@ -1,12 +1,13 @@
 //! The saturation/value area of a color picker, and the texture it paints itself with.
 
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::math::domain;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::{ColorModel, HUE_BLOCK};
 use crate::primitives::paint::image::Image;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
@@ -152,16 +153,17 @@ impl AreaValue for Field<'_> {
             self.0.saturation() * size.w,
             (1.0 - self.0.value()) * size.h,
         );
-        ui.add_shape(Shape::circle(
-            at,
-            radius,
-            Border::new(theme.handle_outer, width),
-        ));
-        ui.add_shape(Shape::circle(
-            at,
-            domain::length_at_least(radius - width, 0.0),
-            Border::new(theme.handle_inner, width),
-        ));
+        let ring =
+            |radius: f32| Rect::new(at.x - radius, at.y - radius, 2.0 * radius, 2.0 * radius);
+        let inner = domain::length_at_least(radius - width, 0.0);
+        ui.add_shape(
+            Shape::circle().at(ring(radius)),
+            Stroke::new(theme.handle_outer, width),
+        );
+        ui.add_shape(
+            Shape::circle().at(ring(inner)),
+            Stroke::new(theme.handle_inner, width),
+        );
     }
 }
 

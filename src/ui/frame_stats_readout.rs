@@ -57,7 +57,7 @@ pub(crate) fn record(ui: &mut Ui) {
         font_size: 12.0,
         ..ui.theme().text
     };
-    let chrome = Chrome::fill(RgbaF32::new(0.0, 0.0, 0.0, 0.75));
+    let chrome = Chrome::new(RgbaF32::new(0.0, 0.0, 0.0, 0.75));
     let row = Node {
         size: Some(SizeSpec::new(Sizing::FILL, Sizing::HUG)),
         justify: Some(Justify::End),
@@ -73,7 +73,7 @@ pub(crate) fn record(ui: &mut Ui) {
         record_node(ui, &row, None, |ui| {
             record_node(ui, &chip, Some(&chrome), |ui| {
                 record_node(ui, &leaf, None, |ui| {
-                    ui.add_shape(Shape::text(label, style.font()).color(style.color));
+                    ui.add_shape(Shape::text(label, style.font()), style.color);
                 });
             });
         });

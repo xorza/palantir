@@ -8,13 +8,13 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
-use crate::shape::style::LineCap;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -32,19 +32,15 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::line(
-                        Vec2::new(120.0, 120.0),
-                        Vec2::new(180.0, 180.0),
-                        Border::new(BLUE, 2.0),
-                    )
-                    .cap(LineCap::Round),
+                    Shape::line(Vec2::new(120.0, 120.0), Vec2::new(180.0, 180.0)),
+                    Stroke::new(BLUE, 2.0).with_cap(LineCap::Round),
                 );
                 for i in 0..child_count {
                     Block::new()
                         .id(WidgetId::from_hash(("child", i)))
                         .at((10.0 + i as f32 * 50.0, 10.0))
                         .size(20.0)
-                        .chrome(Chrome::fill(RED))
+                        .chrome(Chrome::new(RED))
                         .show(ui);
                 }
             });
@@ -75,7 +71,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
             .at(pos)
             .size((Sizing::fixed(30.0), Sizing::fixed(30.0)))
             .show(ui, |ui| {
-                Block::new().size(10.0).chrome(Chrome::fill(RED)).show(ui);
+                Block::new().size(10.0).chrome(Chrome::new(RED)).show(ui);
             });
     }
     let canvas = |ui: &mut Ui, order: [(&str, (f32, f32)); 2]| {
@@ -117,7 +113,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
         Block::new()
             .id(WidgetId::from_hash(key))
             .size(size)
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
     }
     type Order<'a> = [(&'a str, Rect); 3];
     let canvas = |ui: &mut Ui, order: Order<'_>| {
@@ -219,7 +215,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
         Block::new()
             .id(WidgetId::from_hash(key))
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-            .chrome(Chrome::fill(fill))
+            .chrome(Chrome::new(fill))
             .show(ui);
     }
     let stack = |ui: &mut Ui, order: [(&str, RgbaF32); 2]| {
@@ -255,12 +251,8 @@ fn shape_crossing_child_boundary_is_redamaged() {
 
     let line = |ui: &mut Ui| {
         ui.add_shape(
-            Shape::line(
-                Vec2::new(10.0, 40.0),
-                Vec2::new(70.0, 40.0),
-                Border::new(BLUE, 4.0),
-            )
-            .cap(LineCap::Round),
+            Shape::line(Vec2::new(10.0, 40.0), Vec2::new(70.0, 40.0)),
+            Stroke::new(BLUE, 4.0).with_cap(LineCap::Round),
         );
     };
     let child = |ui: &mut Ui| {
@@ -268,7 +260,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
             .id(WidgetId::from_hash("child"))
             .at((CHILD.min.x, CHILD.min.y))
             .size(CHILD.size.w)
-            .chrome(Chrome::fill(RED))
+            .chrome(Chrome::new(RED))
             .show(ui);
     };
     let over = |ui: &mut Ui| {
@@ -313,12 +305,8 @@ fn overlapping_direct_shape_swap_is_redamaged() {
     const PROBE: Rect = Rect::new(38.0, 29.0, 2.0, 2.0);
     let line = |ui: &mut Ui, color: RgbaF32| {
         ui.add_shape(
-            Shape::line(
-                Vec2::new(10.0, 30.0),
-                Vec2::new(70.0, 30.0),
-                Border::new(color, 8.0),
-            )
-            .cap(LineCap::Round),
+            Shape::line(Vec2::new(10.0, 30.0), Vec2::new(70.0, 30.0)),
+            Stroke::new(color, 8.0).with_cap(LineCap::Round),
         );
     };
     let canvas = |ui: &mut Ui, first: RgbaF32, second: RgbaF32| {
@@ -354,7 +342,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
             .id(WidgetId::from_hash(key))
             .at((r.min.x, r.min.y))
             .size(r.size.w)
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui);
     }
     let canvas = |ui: &mut Ui, with_b: bool| {
@@ -367,12 +355,8 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                     node(ui, "b", CHILD_B);
                 }
                 ui.add_shape(
-                    Shape::line(
-                        Vec2::new(10.0, 100.0),
-                        Vec2::new(70.0, 100.0),
-                        Border::new(RED, 4.0),
-                    )
-                    .cap(LineCap::Round),
+                    Shape::line(Vec2::new(10.0, 100.0), Vec2::new(70.0, 100.0)),
+                    Stroke::new(RED, 4.0).with_cap(LineCap::Round),
                 );
             });
     };
@@ -407,15 +391,11 @@ fn rekeying_a_child_damages_only_the_child() {
                     .id(WidgetId::from_hash(key))
                     .at((CHILD.min.x, CHILD.min.y))
                     .size(CHILD.size.w)
-                    .chrome(Chrome::fill(BLUE))
+                    .chrome(Chrome::new(BLUE))
                     .show(ui);
                 ui.add_shape(
-                    Shape::line(
-                        Vec2::new(10.0, 100.0),
-                        Vec2::new(70.0, 100.0),
-                        Border::new(RED, 4.0),
-                    )
-                    .cap(LineCap::Round),
+                    Shape::line(Vec2::new(10.0, 100.0), Vec2::new(70.0, 100.0)),
+                    Stroke::new(RED, 4.0).with_cap(LineCap::Round),
                 );
             });
     };
@@ -447,16 +427,18 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                    Shape::rect().at(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                    RgbaF32::srgb(1.0, 0.0, 0.0),
                 );
                 if include_middle {
                     ui.add_shape(
-                        Shape::rect(RgbaF32::srgb(0.0, 1.0, 0.0))
-                            .at(Rect::new(60.0, 0.0, 20.0, 20.0)),
+                        Shape::rect().at(Rect::new(60.0, 0.0, 20.0, 20.0)),
+                        RgbaF32::srgb(0.0, 1.0, 0.0),
                     );
                 }
                 ui.add_shape(
-                    Shape::rect(RgbaF32::srgb(0.0, 0.0, 1.0)).at(Rect::new(120.0, 0.0, 20.0, 20.0)),
+                    Shape::rect().at(Rect::new(120.0, 0.0, 20.0, 20.0)),
+                    RgbaF32::srgb(0.0, 0.0, 1.0),
                 );
             });
     };
@@ -510,11 +492,11 @@ fn shape_added_in_middle_damages_only_new() {
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(red_rect));
+                ui.add_shape(Shape::rect().at(red_rect), RgbaF32::srgb(1.0, 0.0, 0.0));
                 if include_middle {
-                    ui.add_shape(Shape::rect(RgbaF32::srgb(0.0, 1.0, 0.0)).at(green_rect));
+                    ui.add_shape(Shape::rect().at(green_rect), RgbaF32::srgb(0.0, 1.0, 0.0));
                 }
-                ui.add_shape(Shape::rect(RgbaF32::srgb(0.0, 0.0, 1.0)).at(blue_rect));
+                ui.add_shape(Shape::rect().at(blue_rect), RgbaF32::srgb(0.0, 0.0, 1.0));
             });
     };
 
@@ -571,7 +553,7 @@ fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
         Block::new()
             .id(WidgetId::from_hash("L"))
             .size(30.0)
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui);
     };
     let parent = |ui: &mut Ui, id: &'static str, holds_leaf: bool| {
@@ -621,7 +603,7 @@ fn a_root_moved_to_another_plane_damages_its_extent() {
             Block::new()
                 .id(WidgetId::from_hash("moved"))
                 .size(30.0)
-                .chrome(Chrome::fill(BLUE))
+                .chrome(Chrome::new(BLUE))
                 .show(ui);
         });
     };
@@ -674,12 +656,8 @@ fn front_insert_damages_only_the_new_shape() {
     const OLD_PROBE: Rect = Rect::new(30.0, 19.0, 2.0, 2.0);
     let line = |ui: &mut Ui, y: f32| {
         ui.add_shape(
-            Shape::line(
-                Vec2::new(10.0, y),
-                Vec2::new(70.0, y),
-                Border::new(BLUE, 2.0),
-            )
-            .cap(LineCap::Round),
+            Shape::line(Vec2::new(10.0, y), Vec2::new(70.0, y)),
+            Stroke::new(BLUE, 2.0).with_cap(LineCap::Round),
         );
     };
     let build = |ui: &mut Ui, with_front: bool| {
@@ -689,12 +667,8 @@ fn front_insert_damages_only_the_new_shape() {
             .show(ui, |ui| {
                 if with_front {
                     ui.add_shape(
-                        Shape::line(
-                            Vec2::new(140.0, 150.0),
-                            Vec2::new(170.0, 150.0),
-                            Border::new(RED, 2.0),
-                        )
-                        .cap(LineCap::Round),
+                        Shape::line(Vec2::new(140.0, 150.0), Vec2::new(170.0, 150.0)),
+                        Stroke::new(RED, 2.0).with_cap(LineCap::Round),
                     );
                 }
                 line(ui, 20.0);
@@ -731,13 +705,13 @@ fn a_hidden_container_takes_no_snapshot() {
                     Block::new()
                         .id(hidden_child)
                         .size(20.0)
-                        .chrome(Chrome::fill(BLUE))
+                        .chrome(Chrome::new(BLUE))
                         .show(ui);
                 });
                 Block::new()
                     .id(shown)
                     .size(20.0)
-                    .chrome(Chrome::fill(RED))
+                    .chrome(Chrome::new(RED))
                     .show(ui);
             });
     });
@@ -774,12 +748,12 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
                         Panel::zstack()
                             .id(child)
                             .size(50.0)
-                            .chrome(Chrome::fill(BLUE))
+                            .chrome(Chrome::new(BLUE))
                             .show(ui, |ui| {
                                 Block::new()
                                     .id(grandchild)
                                     .size(20.0)
-                                    .chrome(Chrome::fill(RED))
+                                    .chrome(Chrome::new(RED))
                                     .show(ui);
                             });
                     });
@@ -826,7 +800,7 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
                         .id(WidgetId::from_hash(("card", card)))
                         .at((CARD.min.x, CARD.min.y))
                         .size(CARD.size.w)
-                        .chrome(Chrome::fill(BLUE))
+                        .chrome(Chrome::new(BLUE))
                         .show(ui);
                 }
             });

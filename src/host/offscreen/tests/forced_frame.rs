@@ -10,6 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::shape::Shape;
 use crate::text::shaper::TextShaper;
@@ -29,12 +30,12 @@ fn scene(ui: &mut Ui, pane: bool) {
     Panel::zstack()
         .id_salt("forced-scene")
         .size((Sizing::FILL, Sizing::FILL))
-        .chrome(Chrome::fill(RgbaF32::hex(0x202830)))
+        .chrome(Chrome::new(RgbaF32::hex(0x202830)))
         .show(ui, |ui| {
             Block::new()
                 .id_salt("forced-tile")
                 .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
-                .chrome(Chrome::fill(RgbaF32::srgba(1.0, 0.2, 0.0, 0.5)))
+                .chrome(Chrome::new(RgbaF32::srgba(1.0, 0.2, 0.0, 0.5)))
                 .show(ui);
             if pane {
                 Panel::canvas()
@@ -42,11 +43,8 @@ fn scene(ui: &mut Ui, pane: bool) {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect(
-                                Chrome::fill(RgbaF32::TRANSPARENT)
-                                    .with_material(Material::blur(2.0)),
-                            )
-                            .at(PANE),
+                            Shape::rect().at(PANE),
+                            Paint::from(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
                         );
                     });
             }

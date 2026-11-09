@@ -8,9 +8,9 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::renderer::pane_captures::{PaneCaptures, PaneDamage, PaneTicket, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::PaneSource::{
@@ -382,7 +382,7 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             let square = Rect::new(42.0, 42.0, 4.0, 4.0);
-                            ui.add_shape(Shape::rect(RgbaF32::WHITE).at(square));
+                            ui.add_shape(Shape::rect().at(square), RgbaF32::WHITE);
                         });
                     Panel::canvas()
                         .id(WidgetId::from_hash("moved"))
@@ -390,15 +390,15 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
                         .show(ui, |ui| {
                             if lead {
                                 let lead = Rect::new(0.0, 0.0, 4.0, 4.0);
-                                ui.add_shape(Shape::rect(RgbaF32::WHITE).at(lead));
+                                ui.add_shape(Shape::rect().at(lead), RgbaF32::WHITE);
                             }
                             let pane = Rect::new(40.0, 40.0, 40.0, 40.0);
                             ui.add_shape(
-                                Shape::rect(Chrome::NONE.with_material(Material::blur(4.0)))
-                                    .at(pane),
+                                Shape::rect().at(pane),
+                                Paint::NONE.with_material(Material::blur(4.0)),
                             );
                             let square = Rect::new(60.0, 60.0, 10.0, 10.0);
-                            ui.add_shape(Shape::rect(over).at(square));
+                            ui.add_shape(Shape::rect().at(square), over);
                         });
                 });
         }

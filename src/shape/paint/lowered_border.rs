@@ -1,4 +1,4 @@
-//! A lowered shape's stroke.
+//! [`LoweredBorder`]: a box's or a triangle's border, lowered.
 
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
@@ -6,7 +6,7 @@ use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use std::hash::Hasher;
 
-/// Lowered stroke: a straight-alpha color and a logical-px width.
+/// A lowered border: a straight-alpha color and a logical-px width, inside the shape's edge.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct LoweredBorder {
     pub(crate) width: f32,
@@ -22,7 +22,7 @@ impl LoweredBorder {
         }
     }
 
-    /// The stroke a no-op normalizes to, read as "no stroke here" in a payload.
+    /// The border a no-op normalizes to, read as "no border here" in a payload.
     pub(crate) const NONE: Self = Self {
         width: 0.0,
         color: RgbaF16::TRANSPARENT,
@@ -39,7 +39,7 @@ impl LoweredBorder {
         is_invisible(self.width) || self.color.is_noop()
     }
 
-    /// Collapses a no-op stroke to [`Self::NONE`], so `DrawQuadPayload::is_noop` can test the stroke by color alone.
+    /// Collapses a no-op border to [`Self::NONE`], so `DrawQuadPayload::is_noop` can test the border by color alone.
     /// A NaN width normalizes away like any non-painting width; catching it loudly is `Shapes::add`'s job.
     #[inline]
     pub(crate) const fn normalized(self) -> Self {
@@ -48,14 +48,14 @@ impl LoweredBorder {
 }
 
 impl LoweredBorder {
-    /// `stroke` lowered: its color quantized to f16, and normalized on the way in, as a record's
+    /// `border` lowered: its color quantized to f16, and normalized on the way in, as a record's
     /// raw bytes are a hash key, and `-0.0`, a sub-`EPS` hair or invisible ink would each hash
     /// apart while painting nothing. A named method, not `From`, as it loses both.
     #[inline]
-    pub(crate) fn lower(stroke: Border) -> Self {
+    pub(crate) fn lower(border: Border) -> Self {
         Self {
-            width: stroke.width,
-            color: stroke.color.to_f16(),
+            width: border.width,
+            color: border.color.to_f16(),
         }
         .normalized()
     }
@@ -74,20 +74,20 @@ mod tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::shape::paint::lowered_border::LoweredBorder;
 
-    /// Every stroke that paints nothing (`-0.0` width, a hair below `EPS`, transparent ink) lowers to one value.
+    /// Every border that paints nothing (`-0.0` width, a hair below `EPS`, transparent ink) lowers to one value.
     #[test]
-    fn every_invisible_stroke_lowers_to_one_value() {
+    fn every_invisible_border_lowers_to_one_value() {
         let cases = [
             Border::new(RgbaF32::WHITE, -0.0),
             Border::new(RgbaF32::WHITE, 0.0),
             Border::new(RgbaF32::WHITE, 1e-9),
             Border::new(RgbaF32::TRANSPARENT, 4.0),
         ];
-        for stroke in cases {
+        for border in cases {
             assert_eq!(
-                LoweredBorder::lower(stroke),
+                LoweredBorder::lower(border),
                 LoweredBorder::NONE,
-                "{stroke:?} paints nothing",
+                "{border:?} paints nothing",
             );
         }
         let visible = Border::new(RgbaF32::WHITE, 2.0);

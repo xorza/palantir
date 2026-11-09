@@ -9,9 +9,9 @@
 )]
 
 use image::RgbaImage;
-use palantir::IconFit;
+use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{IconShape, Shape};
+use palantir::widget::Shape;
 use palantir::{
     ColorScheme, Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale, Text,
     TextStyle, Ui,
@@ -21,6 +21,7 @@ use std::rc::Rc;
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
+use palantir::widget::IconPaint;
 
 /// Fills its 8x8 viewBox with one color, so every covered pixel is opaque. Marked
 /// tintable, so the expected value is the tint alone.
@@ -91,17 +92,17 @@ fn render(size: UVec2, scale: SystemScale, mut scene: impl FnMut(&mut Ui, &IconS
 }
 
 /// Icon `name` of `icons`, filling its pane.
-fn icon(icons: &IconSet, name: &str) -> IconShape {
-    Shape::icon(icons.by_name(name).expect("fixture icon")).fit(IconFit::Fill)
+fn icon(icons: &IconSet, name: &str) -> IconPaint {
+    IconPaint::new(icons.by_name(name).expect("fixture icon")).fit(Fit::Fill)
 }
 
 /// `icon` in a pane over `at`.
-fn pane(ui: &mut Ui, at: Rect, icon: IconShape) {
+fn pane(ui: &mut Ui, at: Rect, icon: IconPaint) {
     Panel::zstack()
         .id_salt(("pane", at.min.x as i32, at.min.y as i32))
         .at(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
-        .show(ui, |ui| ui.add_shape(icon));
+        .show(ui, |ui| ui.add_shape(Shape::rect(), icon));
 }
 
 /// A tintable icon reaches the framebuffer as coverage times the tint, filling

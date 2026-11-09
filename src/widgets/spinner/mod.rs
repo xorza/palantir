@@ -1,17 +1,18 @@
 //! The indeterminate activity spinner, rotating on the paint clock.
 
 use crate::animation::motion_role::MotionRole;
-use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::input::interaction::response::Response;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::border::Border;
+use crate::primitives::math::domain::is_invisible;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
-use crate::shape::style::LineCap;
 use crate::theme::spinner::SpinnerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -98,25 +99,23 @@ impl<'a> Spinner<'a> {
         self.widget
             .default_size((Sizing::fixed(diameter), Sizing::fixed(diameter)))
             .show(ui, None, |ui| {
-                let ArcGeometry { center, radius } = ArcGeometry::new(extent, diameter, width);
-                let arc = Shape::arc(
-                    CircularArc {
-                        center,
-                        radius,
-                        start_angle: 0.0,
-                        sweep,
-                    },
-                    Border::new(color, width),
-                )
-                .ramp(comet())
-                .cap(LineCap::Round);
+                let SpinnerCircle { center, radius } = SpinnerCircle::new(extent, diameter, width);
                 // An arc of no length paints its cap as a dot, which a turn cannot rotate yet
                 // (`.notes/TODO.md`), so it paints nothing, as before dots existed.
-                if !arc.has_length() {
+                if is_invisible(radius) || is_invisible(sweep.abs()) {
                     return;
                 }
+                let circle = Rect::new(
+                    center.x - radius,
+                    center.y - radius,
+                    2.0 * radius,
+                    2.0 * radius,
+                );
                 ui.add_shape_animated(
-                    arc,
+                    Shape::arc(0.0, sweep).at(circle),
+                    Stroke::new(color, width)
+                        .with_ramp(comet())
+                        .with_cap(LineCap::Round),
                     PaintAnimation::turn(0.0, 1.0)
                         .with_period(period)
                         .with_repeat(PaintRepeat::Forever)
@@ -135,12 +134,12 @@ impl Configure for Spinner<'_> {
 }
 
 #[derive(Debug, PartialEq)]
-struct ArcGeometry {
+struct SpinnerCircle {
     center: Vec2,
     radius: f32,
 }
 
-impl ArcGeometry {
+impl SpinnerCircle {
     /// A circle of `diameter` centered in `extent`, its trace inset by half the stroke width so
     /// round caps stay inside.
     fn new(extent: Vec2, diameter: f32, width: f32) -> Self {

@@ -1,5 +1,6 @@
 //! The per-frame memo from a recorded gradient to its atlas row.
 
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::gradient_atlas::CpuGradientAtlas;
@@ -45,6 +46,11 @@ impl GradientPass<'_> {
             LoweredBrush::Solid(color) => BrushSource::Solid(color),
             LoweredBrush::Gradient { id, .. } => BrushSource::Gradient(self.resolve(id)),
         }
+    }
+
+    /// The ramp recorded under `id`.
+    pub(super) const fn ramp(&self, id: GradientId) -> &ColorRamp {
+        &self.gradients[id.0 as usize].ramp
     }
 
     pub(super) fn resolve(&mut self, id: GradientId) -> ResolvedGradient {

@@ -6,10 +6,11 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
-use crate::shape::style::LineCap;
 use crate::text::glyph_font::GlyphFont;
 use crate::ui::Ui;
 use crate::ui::tests::support::SURFACE;
@@ -27,7 +28,8 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
             .size(20.0)
             .show(ui);
         ui.add_shape_animated(
-            Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+            Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+            RgbaF32::srgb(1.0, 0.0, 0.0),
             PaintAnimation::alpha(0.0, 1.0).with_period(Duration::from_secs(1)),
         );
     };
@@ -59,17 +61,27 @@ fn a_turn_records_on_every_kind() {
             .id(WidgetId::from_hash("spun"))
             .size(20.0)
             .show(ui);
-        ui.add_shape_animated(Shape::line(Vec2::ZERO, Vec2::X * 8.0, stroke), quarter);
         ui.add_shape_animated(
-            Shape::line(Vec2::ONE, Vec2::ONE, stroke).cap(LineCap::Round),
+            Shape::line(Vec2::ZERO, Vec2::X * 8.0),
+            Stroke::new(stroke.color, stroke.width),
             quarter,
         );
         ui.add_shape_animated(
-            Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+            Shape::line(Vec2::ONE, Vec2::ONE),
+            Stroke::new(stroke.color, stroke.width).with_cap(LineCap::Round),
+            quarter,
+        );
+        ui.add_shape_animated(
+            Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+            RgbaF32::WHITE,
             quarter,
         );
         let label = ui.intern("turned");
-        ui.add_shape_animated(Shape::text(label, GlyphFont::new(14.0)), quarter);
+        ui.add_shape_animated(
+            Shape::text(label, GlyphFont::new(14.0)),
+            RgbaF32::WHITE,
+            quarter,
+        );
     });
     let cmds = h.encode_paint();
     let turns: Vec<bool> = cmds
@@ -89,11 +101,12 @@ fn a_turn_records_on_every_kind() {
 }
 
 /// A quarter turn about a 20×20 owner's center (10, 10) reaches the encoded draws, each with its
-/// pivot relative to its own origin. A triangle, placed like a rect in the logical frame, keeps its
-/// points and carries the pivot (10, 10); a mesh placed at (4, 4) carries (10, 10) − (4, 4) =
-/// (6, 6).
+/// pivot relative to the owner. A triangle, placed like a rect in the logical frame, keeps its
+/// points and carries the pivot (10, 10); a mesh placed at (4, 4) carries it too, its place in the
+/// fit that maps its vertices into the owner.
 #[test]
 fn a_turn_reaches_a_triangle_and_a_mesh() {
+    use crate::primitives::geometry::fit::FitMap;
     use crate::primitives::geometry::mesh::Mesh;
     use crate::renderer::frontend::payload::spin::Spin;
     use crate::widgets::panel::Panel;
@@ -112,12 +125,13 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
             .size(20.0)
             .show(ui, |ui| {
                 ui.add_shape_animated(
-                    Shape::triangle(Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(0.0, 10.0))
-                        .fill(RgbaF32::WHITE),
+                    Shape::triangle(Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(0.0, 10.0)),
+                    RgbaF32::WHITE,
                     quarter,
                 );
                 ui.add_shape_animated(
                     Shape::mesh(&mesh).at(Rect::new(4.0, 4.0, 8.0, 8.0)),
+                    RgbaF32::WHITE,
                     quarter,
                 );
             });
@@ -150,15 +164,21 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
         .calls
         .iter()
         .find_map(|call| match call {
-            PaintCall::Mesh(p) => Some(p.spin),
+            PaintCall::Mesh(p) => Some((p.spin, p.fit)),
             _ => None,
         })
         .expect("the mesh encodes");
     assert_eq!(
         spin,
-        Some(Spin {
-            pivot: Vec2::new(6.0, 6.0),
-            angle: FRAC_PI_2,
-        })
+        (
+            Some(Spin {
+                pivot: Vec2::new(10.0, 10.0),
+                angle: FRAC_PI_2,
+            }),
+            FitMap {
+                offset: Vec2::new(4.0, 4.0),
+                scale: Vec2::ONE,
+            },
+        )
     );
 }

@@ -11,6 +11,7 @@ use crate::image_registry::texture_limit::TextureLimit;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::effect_id::EffectId;
@@ -18,6 +19,7 @@ use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -33,7 +35,6 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
-use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::{UVec2, Vec2};
@@ -176,6 +177,7 @@ pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
         DrawMeshPayload {
             bbox,
             origin: Vec2::ZERO,
+            fit: FitMap::IDENTITY,
             tint: RgbaF32::WHITE.to_f16(),
             vertices: Span::new(0, 3),
             idxs: Span::new(0, 3),
@@ -277,6 +279,7 @@ impl<'a> TestPolyline<'a> {
                 alpha: 1.0,
                 bounds,
                 origin: Vec2::ZERO,
+                fit: FitMap::IDENTITY,
                 width,
                 points: Span::new(p_start, points.len() as u32),
                 colors: Span::new(c_start, colors.len() as u32),

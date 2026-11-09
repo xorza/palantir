@@ -23,33 +23,6 @@ fn assert_bounds(start_angle: f32, sweep: f32, lo: Vec2, hi: Vec2) {
     assert_eq!((b.min, b.max()), (lo, hi), "arc {sweep} from {start_angle}");
 }
 
-/// A sweep within one full circle stays as authored, its ends included; past one, it clamps to `±2π` with its sign.
-#[test]
-fn coercion_clamps_the_sweep_to_one_full_circle() {
-    let cases = [
-        (FRAC_PI_2, FRAC_PI_2),
-        (-PI, -PI),
-        (TAU, TAU),
-        (-TAU, -TAU),
-        (3.0 * PI, TAU),
-        (-5.0 * PI, -TAU),
-        (f32::MAX, TAU),
-    ];
-    for (sweep, want) in cases {
-        let arc = CircularArc {
-            center: C,
-            radius: R,
-            start_angle: 0.25,
-            sweep,
-        };
-        assert_eq!(
-            arc.coerced(),
-            CircularArc { sweep: want, ..arc },
-            "sweep {sweep}"
-        );
-    }
-}
-
 /// Hand-computed bounds per sweep case; screen convention (0 = +x, π/2 = +y down).
 #[test]
 fn quarter_half_and_full_sweeps() {

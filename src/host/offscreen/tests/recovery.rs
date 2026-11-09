@@ -25,15 +25,18 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
+use crate::shape::icon_paint::IconPaint;
+use crate::shape::image_paint::ImagePaint;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -158,14 +161,10 @@ impl App for Scene {
             .id_salt("scene")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::rect(self.tile).at(Rect::new(4.0, 4.0, 12.0, 12.0)));
+                ui.add_shape(Shape::rect().at(Rect::new(4.0, 4.0, 12.0, 12.0)), self.tile);
                 ui.add_shape(
-                    Shape::rect(LinearGradient::two_stop(
-                        0.0,
-                        RgbaF32::hex(0xff0000),
-                        RgbaF32::hex(0x0000ff),
-                    ))
-                    .at(Rect::new(20.0, 4.0, 40.0, 12.0)),
+                    Shape::rect().at(Rect::new(20.0, 4.0, 40.0, 12.0)),
+                    LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
                 );
                 for i in 0..4 {
                     Block::new()
@@ -173,14 +172,16 @@ impl App for Scene {
                         .at((4.0 + 24.0 * i as f32, 24.0))
                         .size(16.0)
                         .chrome(Chrome {
-                            fill: RgbaF32::hex(0x30364a).into(),
                             corners: Corners::all(4.0),
-                            shadow: Shadow::drop(
-                                RgbaF32::srgba(0.0, 0.0, 0.0, 0.75),
-                                Vec2::new(0.0, 2.0),
-                                4.0,
-                            ),
-                            ..Chrome::NONE
+                            paint: Paint {
+                                fill: RgbaF32::hex(0x30364a).into(),
+                                shadow: Shadow::drop(
+                                    RgbaF32::srgba(0.0, 0.0, 0.0, 0.75),
+                                    Vec2::new(0.0, 2.0),
+                                    4.0,
+                                ),
+                                ..Chrome::NONE.paint
+                            },
                         })
                         .show(ui);
                 }
@@ -192,35 +193,44 @@ impl App for Scene {
                     .clip(ClipMode::Rounded)
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect(RgbaF32::BLACK).at(Rect::new(0.0, 0.0, 28.0, 14.0)),
+                            Shape::rect().at(Rect::new(0.0, 0.0, 28.0, 14.0)),
+                            RgbaF32::BLACK,
                         );
                     });
                 Text::new("Recover").at((4.0, 48.0)).show(ui);
-                ui.add_shape(Shape::icon(mask).at(Rect::new(60.0, 48.0, 24.0, 12.0)));
-                ui.add_shape(Shape::icon(color).at(Rect::new(88.0, 48.0, 16.0, 16.0)));
-                ui.add_shape(Shape::mesh(&self.mesh));
-                ui.add_shape(Shape::line(
-                    Vec2::new(44.0, 90.0),
-                    Vec2::new(80.0, 110.0),
-                    Border::new(RgbaF32::hex(0xffa63d), 3.0),
-                ));
-                ui.add_shape(Shape::polyline(
-                    &[
+                ui.add_shape(
+                    Shape::rect().at(Rect::new(60.0, 48.0, 24.0, 12.0)),
+                    IconPaint::new(mask),
+                );
+                ui.add_shape(
+                    Shape::rect().at(Rect::new(88.0, 48.0, 16.0, 16.0)),
+                    IconPaint::new(color),
+                );
+                ui.add_shape(Shape::mesh(&self.mesh), RgbaF32::WHITE);
+                ui.add_shape(
+                    Shape::line(Vec2::new(44.0, 90.0), Vec2::new(80.0, 110.0)),
+                    Stroke::new(RgbaF32::hex(0xffa63d), 3.0),
+                );
+                ui.add_shape(
+                    Shape::polyline(&[
                         Vec2::new(84.0, 110.0),
                         Vec2::new(96.0, 90.0),
                         Vec2::new(108.0, 110.0),
-                    ],
-                    Border::new(RgbaF32::hex(0xd897ff), 2.0),
-                ));
-                ui.add_shape(Shape::image(image).at(Rect::new(112.0, 48.0, 12.0, 8.0)));
+                    ]),
+                    Stroke::new(RgbaF32::hex(0xd897ff), 2.0),
+                );
+                ui.add_shape(
+                    Shape::rect().at(Rect::new(112.0, 48.0, 12.0, 8.0)),
+                    ImagePaint::new(image),
+                );
                 GpuView::new(&self.view)
                     .id_salt("view")
                     .at((112.0, 64.0))
                     .size(20.0)
                     .show(ui);
                 ui.add_shape(
-                    Shape::rect(Chrome::NONE.with_material(Material::blur(2.0)))
-                        .at(Rect::new(96.0, 60.0, 40.0, 30.0)),
+                    Shape::rect().at(Rect::new(96.0, 60.0, 40.0, 30.0)),
+                    Paint::NONE.with_material(Material::blur(2.0)),
                 );
             });
     }
@@ -376,7 +386,7 @@ fn a_loss_inside_a_frame_that_grows_a_buffer_submits_nothing_that_panics() {
                         .id_salt((x, y))
                         .at((x as f32, y as f32))
                         .size(1.0)
-                        .chrome(Chrome::fill(RgbaF32::hex(CHECKER[((x + y) % 2) as usize])))
+                        .chrome(Chrome::new(RgbaF32::hex(CHECKER[((x + y) % 2) as usize])))
                         .show(ui);
                 }
             }
@@ -403,7 +413,7 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
             .id_salt("tile")
             .at((4.0, 4.0))
             .size(4.0)
-            .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
+            .chrome(Chrome::new(RgbaF32::hex(0xd23f7a)))
             .show(ui);
         if asked.borrow().is_none() {
             *asked.borrow_mut() = ui.request_screenshot(Some(region));

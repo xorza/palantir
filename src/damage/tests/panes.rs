@@ -9,6 +9,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -55,7 +56,7 @@ impl Scene {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         if let Some((rect, color)) = self.under {
-                            ui.add_shape(Shape::rect(color).at(rect));
+                            ui.add_shape(Shape::rect().at(rect), color);
                         }
                     });
                 for (i, &rect) in self.panes.iter().enumerate() {
@@ -64,13 +65,13 @@ impl Scene {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             ui.add_shape(
-                                Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA)))
-                                    .at(rect),
+                                Shape::rect().at(rect),
+                                Paint::NONE.with_material(Material::blur(SIGMA)),
                             );
                             if i == 0 {
-                                ui.add_shape(Shape::rect(self.over).at(OVER));
+                                ui.add_shape(Shape::rect().at(OVER), self.over);
                                 if self.blink {
-                                    ui.add_shape_animated(blink_shape(), blink());
+                                    ui.add_shape_animated(blink_shape(), RgbaF32::WHITE, blink());
                                 }
                             }
                         });
@@ -81,7 +82,7 @@ impl Scene {
 
 /// A caret-like square inside [`PANE`]'s footprint, which [`blink`] turns on and off.
 fn blink_shape() -> RectShape {
-    Shape::rect(RgbaF32::WHITE).at(Rect::new(60.0, 60.0, 2.0, 10.0))
+    Shape::rect().at(Rect::new(60.0, 60.0, 2.0, 10.0))
 }
 
 /// A square-wave alpha that flips every 500 ms.
@@ -209,13 +210,16 @@ fn a_clipped_blink_before_a_pane_leaves_it() {
                     .id(WidgetId::from_hash("clip"))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .clip_rect()
-                    .show(ui, |ui| ui.add_shape_animated(blink_shape(), blink()));
+                    .show(ui, |ui| {
+                        ui.add_shape_animated(blink_shape(), RgbaF32::WHITE, blink());
+                    });
                 Panel::canvas()
                     .id(WidgetId::from_hash(("pane", 0)))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(PANE),
+                            Shape::rect().at(PANE),
+                            Paint::NONE.with_material(Material::blur(SIGMA)),
                         );
                     });
             });
@@ -239,7 +243,7 @@ fn a_chrome_pane_goes_stale_as_a_shape_pane() {
                 .id(WidgetId::from_hash("chrome-scene"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(under).at(UNDER));
+                    ui.add_shape(Shape::rect().at(UNDER), under);
                     Panel::canvas()
                         .id(WidgetId::from_hash("chrome-pane"))
                         .at(PANE.min)
@@ -276,10 +280,11 @@ fn a_pane_whose_row_moves_is_stale() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     if lead {
-                        ui.add_shape(Shape::rect(BLUE).at(far));
+                        ui.add_shape(Shape::rect().at(far), BLUE);
                     }
                     ui.add_shape(
-                        Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(PANE),
+                        Shape::rect().at(PANE),
+                        Paint::NONE.with_material(Material::blur(SIGMA)),
                     );
                 });
         }
@@ -316,13 +321,14 @@ fn a_child_canvas_change_under_a_later_ancestor_pane_stales_it() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             ui.add_shape(
-                                Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA)))
-                                    .at(INNER),
+                                Shape::rect().at(INNER),
+                                Paint::NONE.with_material(Material::blur(SIGMA)),
                             );
-                            ui.add_shape(Shape::rect(fill).at(SQUARE));
+                            ui.add_shape(Shape::rect().at(SQUARE), fill);
                         });
                     ui.add_shape(
-                        Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(OUTER),
+                        Shape::rect().at(OUTER),
+                        Paint::NONE.with_material(Material::blur(SIGMA)),
                     );
                 });
         }
@@ -362,13 +368,14 @@ fn panes_out_of_row_order_walk_quietly() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA)))
-                                .at(INNER),
+                            Shape::rect().at(INNER),
+                            Paint::NONE.with_material(Material::blur(SIGMA)),
                         );
-                        ui.add_shape(Shape::rect(BLUE).at(SQUARE));
+                        ui.add_shape(Shape::rect().at(SQUARE), BLUE);
                     });
                 ui.add_shape(
-                    Shape::rect(Chrome::NONE.with_material(Material::blur(SIGMA))).at(OUTER),
+                    Shape::rect().at(OUTER),
+                    Paint::NONE.with_material(Material::blur(SIGMA)),
                 );
             });
     };

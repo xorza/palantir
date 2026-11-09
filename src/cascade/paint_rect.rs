@@ -9,11 +9,13 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use crate::primitives::paint::line_style::LineCap;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
+use crate::shape::paint::placed_stroke::PlacedStroke;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::record::{self, ShapeRecord, TextAnchor};
+use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
 use crate::text;
 use glam::Vec2;
@@ -214,6 +216,25 @@ impl PaintRectCtx<'_> {
                 };
                 // Every direct text shape has one layout-derived entry, from measure (leaf) or post-arrange shaping (container), handed out by the cursor the encoder walks the column with.
                 let shaped = text_runs.shaped(s, layout);
+                // A native stroke's reach: its centerline grown by its width, cap and the physical
+                // AA fringe once in screen space, or its cap's dot.
+                let native_screen = |place: PlacedStroke, cap: LineCap, width: f32| match place {
+                    PlacedStroke::Curve(basis) => {
+                        let centerline = shape.to_screen(spun_if_animated(basis.bbox(), idx), None);
+                        let screen = StrokeReach {
+                            width: width * shape_transform.scale(),
+                            fringe: AA_HALF_WIDTH / display_scale,
+                            cap,
+                            joints: StrokeJoints::Unjoined,
+                        }
+                        .bbox(centerline);
+                        clip_screen(screen, shape_clip)
+                    }
+                    PlacedStroke::Dot(dot) => {
+                        shape.to_screen(spun_if_animated(dot.rect, idx), shape_clip)
+                    }
+                    PlacedStroke::Nothing => Rect::ZERO,
+                };
                 let screen = match s {
                     ShapeRecord::Text {
                         local_origin,
@@ -241,10 +262,12 @@ impl PaintRectCtx<'_> {
                         join,
                         points,
                         bbox,
+                        placement,
                         ..
                     } => {
                         // The AA fringe is physical: inflate only after the centerline and stroke width reach screen space.
-                        let centerline = shape.to_screen(spun_if_animated(*bbox, idx), None);
+                        let fitted = placement.map(*bbox, layout_rect.size).apply_rect(*bbox);
+                        let centerline = shape.to_screen(spun_if_animated(fitted, idx), None);
                         let screen = StrokeReach {
                             width: *width * shape_transform.scale(),
                             fringe: AA_HALF_WIDTH / display_scale,
@@ -254,35 +277,53 @@ impl PaintRectCtx<'_> {
                         .bbox(centerline);
                         clip_screen(screen, shape_clip)
                     }
+                    // Placed against the owner as the encoder places them.
                     ShapeRecord::Curve {
-                        stroke, cap, bbox, ..
-                    } => {
-                        let centerline = shape.to_screen(spun_if_animated(*bbox, idx), None);
-                        let screen = StrokeReach {
-                            width: stroke.width * shape_transform.scale(),
-                            fringe: AA_HALF_WIDTH / display_scale,
-                            cap: *cap,
-                            joints: StrokeJoints::Unjoined,
-                        }
-                        .bbox(centerline);
-                        clip_screen(screen, shape_clip)
-                    }
-                    // A triangle's bbox carries its corner radius but not the physical AA fringe, added here like the stroked kinds above.
-                    ShapeRecord::Quad(QuadShape::Triangle { bbox, .. }) => clip_screen(
-                        shape
-                            .to_screen(spun_if_animated(*bbox, idx), None)
-                            .inflated(AA_HALF_WIDTH / display_scale),
-                        shape_clip,
+                        cap,
+                        geometry,
+                        stroke,
+                        ..
+                    } => native_screen(
+                        geometry.place(layout_rect.size, *cap, stroke.width),
+                        *cap,
+                        stroke.width,
                     ),
+                    ShapeRecord::Arc {
+                        cap,
+                        geometry,
+                        stroke,
+                        ..
+                    } => native_screen(
+                        geometry.place(layout_rect.size, *cap, stroke.width),
+                        *cap,
+                        stroke.width,
+                    ),
+                    // A triangle's bbox carries its corner radius but not the physical AA fringe, added here like the stroked kinds above.
+                    ShapeRecord::Quad(QuadShape::Triangle { geometry, .. }) => {
+                        match geometry.place(layout_rect.size) {
+                            Some(placed) => clip_screen(
+                                shape
+                                    .to_screen(spun_if_animated(placed.bbox, idx), None)
+                                    .inflated(AA_HALF_WIDTH / display_scale),
+                                shape_clip,
+                            ),
+                            None => Rect::ZERO,
+                        }
+                    }
                     // These kinds resolve their whole bound in owner-local space, so one lift finishes each. A quad's shadow halo is inside `QuadShape::bbox_local`.
                     ShapeRecord::Quad(quad) => shape.to_screen(
                         spun_if_animated(quad.bbox_local(layout_rect.size), idx),
                         shape_clip,
                     ),
+                    // The vertex hull, which can exceed the owner rect: the owner rect would make
+                    // partial damage too small.
                     ShapeRecord::Mesh {
-                        bbox, local_rect, ..
+                        bbox, placement, ..
                     } => shape.to_screen(
-                        spun_if_animated(record::mesh_paint_bbox_local(*bbox, *local_rect), idx),
+                        spun_if_animated(
+                            placement.map(*bbox, layout_rect.size).apply_rect(*bbox),
+                            idx,
+                        ),
                         shape_clip,
                     ),
                     // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::Natural`.
@@ -317,7 +358,10 @@ impl PaintRectCtx<'_> {
                         ..
                     } => shape.to_screen(
                         spun_if_animated(
-                            fit.resolve(owner_local.resolve_local(*local_rect), handle.view_box()),
+                            fit.place_artwork(
+                                owner_local.resolve_local(*local_rect),
+                                handle.view_box(),
+                            ),
                             idx,
                         ),
                         shape_clip,

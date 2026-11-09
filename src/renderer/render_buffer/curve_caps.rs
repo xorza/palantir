@@ -1,6 +1,6 @@
 //! The caps a curve instance draws, as the shader reads them.
 
-use crate::shape::style::LineCap;
+use crate::primitives::paint::line_style::LineCap;
 use bytemuck::{Pod, Zeroable};
 
 /// The ends of a stroke a curve instance draws, each a bit of the shader's word: a polyline
@@ -48,8 +48,8 @@ const _: () = assert!(CurveCaps::CAP_MASK & (CurveCaps::AT_START | CurveCaps::AT
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::paint::line_style::LineCap;
     use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
-    use crate::shape::style::LineCap;
 
     /// The word as the shader masks it: cap in the low bits, bit 8 start, bit 9 end.
     #[test]

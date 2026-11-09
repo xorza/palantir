@@ -8,6 +8,7 @@ use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::support::{
@@ -21,7 +22,6 @@ use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
-use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
 

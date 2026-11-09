@@ -1,12 +1,13 @@
-//! Drop shadows pushed as `Shape::Shadow` and as widget chrome
-//! (`Chrome { shadow }`), side by side. Tiles sit on a bright surface;
+//! Drop shadows pushed as a rect shape's paint and as widget chrome
+//! (`Chrome { paint: Paint { shadow } }`), side by side. Tiles sit on a bright surface;
 //! black-on-dark shadows don't read.
 
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Kit, Knob, Section, Surface};
+use palantir::Paint;
 use palantir::glam::Vec2;
-use palantir::widget::{ShadowShape, Shape};
+use palantir::widget::Shape;
 use palantir::{
     Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, WidgetId,
 };
@@ -100,12 +101,16 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 }
 
-fn shadow_shape(s: Shadow) -> ShadowShape {
-    Shape::shadow(s).at(CARD).corners(card_corners())
+/// The card's shadow `s` alone, as one shape of a stack.
+fn card_shadow(ui: &mut Ui, s: Shadow) {
+    ui.add_shape(
+        Shape::rect().at(CARD).corners(card_corners()),
+        Paint::NONE.with_shadow(s),
+    );
 }
 
 fn card_fill(ui: &mut Ui) {
-    ui.add_shape(Shape::rect(Chrome::rounded(CARD_INK, card_corners())).at(CARD));
+    ui.add_shape(Shape::rect().at(CARD).corners(card_corners()), CARD_INK);
 }
 
 /// Shadows painted more than once, so the shape and chrome routes use identical parameters.
@@ -136,58 +141,64 @@ const fn inset_shadow() -> Shadow {
 
 /// Standard soft drop shadow — Material Design "elevation 2".
 fn soft(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(soft_shadow()));
+    card_shadow(ui, soft_shadow());
     card_fill(ui);
 }
 
 /// Heavier drop, larger blur — "elevation 8" look.
 fn elevated(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(elevated_shadow()));
+    card_shadow(ui, elevated_shadow());
     card_fill(ui);
 }
 
 /// Tight, dense shadow hugging the shape — UI button rest state.
 fn tight(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow::drop(
-        RgbaF32::srgba(0.0, 0.0, 0.0, 0.35),
-        Vec2::new(0.0, 1.0),
-        2.0,
-    )));
+    card_shadow(
+        ui,
+        Shadow::drop(
+            RgbaF32::srgba(0.0, 0.0, 0.0, 0.35),
+            Vec2::new(0.0, 1.0),
+            2.0,
+        ),
+    );
     card_fill(ui);
 }
 
 /// σ = 0 sharp drop; should match the rounded-rect SDF shifted by `offset`.
 fn sharp(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow::drop(
-        RgbaF32::srgba(0.0, 0.0, 0.0, 1.0),
-        Vec2::new(6.0, 6.0),
-        2.0,
-    )));
+    card_shadow(
+        ui,
+        Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 1.0), Vec2::new(6.0, 6.0), 2.0),
+    );
     card_fill(ui);
 }
 
 /// Colored glow, zero offset — bloom feel.
 fn glow(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(
+    card_shadow(
+        ui,
         Shadow::drop(RgbaF32::srgba(0.4, 0.6, 1.0, 0.6), Vec2::ZERO, 18.0).with_spread(2.0),
-    ));
+    );
     card_fill(ui);
 }
 
 /// Inset shadow — interior darkening, pressed-button feel.
 fn inset(ui: &mut Ui) {
     card_fill(ui);
-    ui.add_shape(shadow_shape(inset_shadow()));
+    card_shadow(ui, inset_shadow());
 }
 
 /// Multi-shadow stack, pushed deepest first; the composer batches them into one draw.
 fn stacked(ui: &mut Ui) {
     for (dy, blur, alpha) in [(18.0, 24.0, 0.18), (8.0, 10.0, 0.22), (1.0, 2.0, 0.30)] {
-        ui.add_shape(shadow_shape(Shadow::drop(
-            RgbaF32::srgba(0.0, 0.0, 0.0, alpha),
-            Vec2::new(0.0, dy),
-            blur,
-        )));
+        card_shadow(
+            ui,
+            Shadow::drop(
+                RgbaF32::srgba(0.0, 0.0, 0.0, alpha),
+                Vec2::new(0.0, dy),
+                blur,
+            ),
+        );
     }
     card_fill(ui);
 }
@@ -273,7 +284,7 @@ fn live(ui: &mut Ui, k: Kit) {
                 DemoCell::new("the knobs' shadow")
                     .surface(Surface::LightWell)
                     .show(ui, k, |ui| {
-                        ui.add_shape(shadow_shape(shadow));
+                        card_shadow(ui, shadow);
                         card_fill(ui);
                     });
             });

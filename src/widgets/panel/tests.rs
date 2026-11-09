@@ -31,7 +31,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("paint-only"))
                 .size(50.0)
-                .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {})
                 .response
                 .node(ui);
@@ -50,7 +50,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("clipped"))
                 .size(50.0)
-                .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rect()
                 .show(ui, |_| {})
                 .response
@@ -60,11 +60,11 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded"))
                 .size(50.0)
-                .chrome(Chrome {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    corners: Corners::all(4.0),
-                    ..Default::default()
-                })
+                .chrome(
+                    Chrome::NONE
+                        .with_corners(Corners::all(4.0))
+                        .with_fill(RgbaF32::srgb(0.2, 0.2, 0.2)),
+                )
                 .clip_rounded()
                 .show(ui, |_| {})
                 .response
@@ -75,7 +75,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded-zero"))
                 .size(50.0)
-                .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rounded()
                 .show(ui, |_| {})
                 .response
@@ -98,7 +98,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 #[test]
 fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     let mut h = Harness::mono(UVec2::new(200, 120));
-    h.ui_mut().theme_mut().panel_chrome = Some(Chrome::fill(RgbaF32::WHITE));
+    h.ui_mut().theme_mut().panel_chrome = Some(Chrome::new(RgbaF32::WHITE));
     h.ui_mut().theme_mut().panel_clip = ClipMode::Rect;
     let [explicit, inherited] = h.frame_value(|ui| {
         [
@@ -135,11 +135,11 @@ fn panel_hugs_largest_child_and_layers_them() {
                 let panel = Panel::zstack()
                     .id(WidgetId::from_hash("card"))
                     .padding(10.0)
-                    .chrome(Chrome {
-                        fill: RgbaF32::srgb(0.1, 0.1, 0.15).into(),
-                        corners: Corners::all(8.0),
-                        ..Default::default()
-                    })
+                    .chrome(
+                        Chrome::NONE
+                            .with_corners(Corners::all(8.0))
+                            .with_fill(RgbaF32::srgb(0.1, 0.1, 0.15)),
+                    )
                     .show(ui, |ui| {
                         [
                             Button::new()
@@ -199,7 +199,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                         Block::new()
                             .id(WidgetId::from_hash("filler"))
                             .size((Sizing::FILL, Sizing::FILL))
-                            .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                            .chrome(Chrome::new(RgbaF32::srgb(0.5, 0.5, 0.5)))
                             .show(ui)
                             .node(ui)
                     })
@@ -252,7 +252,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                     .id(WidgetId::from_hash("locked"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
                     .padding(20.0)
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.2, 0.2)))
                     .disabled(disabled)
                     .show(ui, |ui| {
                         clicked = Button::new()
@@ -331,7 +331,7 @@ fn zstack_layers_children_without_painting_chrome() {
                             Block::new()
                                 .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
-                                .chrome(Chrome::fill(RgbaF32::srgb(0.1, 0.1, 0.2)))
+                                .chrome(Chrome::new(RgbaF32::srgb(0.1, 0.1, 0.2)))
                                 .show(ui)
                                 .node(ui),
                             Button::new()
@@ -384,7 +384,7 @@ fn zstack_aligns_child_per_axis() {
                                 .id(WidgetId::from_hash("c"))
                                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .align(*align)
-                                .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                                .chrome(Chrome::new(RgbaF32::srgb(0.5, 0.5, 0.5)))
                                 .show(ui)
                                 .node(ui)
                         })

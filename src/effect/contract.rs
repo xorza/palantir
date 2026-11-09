@@ -7,12 +7,14 @@ use naga::front::wgsl;
 use naga::valid::{Capabilities, ValidationFlags, Validator};
 use naga::{Module, ScalarKind, StructMember, TypeInner, VectorSize};
 
-use crate::effect::effect_store::{EffectModule, ModuleEntries};
+use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::effect::effect_params::{EffectParam, ParamType};
+use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use crate::primitives::paint::brush::gradient::Spread;
 
 /// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's
 /// text, as WGSL declarations hold in any order, so a position in a parse error reads in the app's
@@ -39,9 +41,13 @@ const BACKDROP_SET: &str = "palantir_pane = v.pane;\n    palantir_rect = v.rect;
 /// read and the call.
 const WRAPPER: &str = include_str!("wrapper.wgsl");
 
-/// Palantir's material stage around a backdrop effect over `MaterialInput`, after its shape stages,
-/// with a marker for the window bit.
+/// Palantir's material path, after a backdrop effect's stages, which its fragment stage takes for a
+/// material's box; with markers for the fill kinds it reads.
 const MATERIAL: &str = include_str!("material.wgsl");
+
+/// What a backdrop effect's fragment stage does first for a material's box.
+const MATERIAL_BRANCH: &str = "if ((v.flags & PALANTIR_MATERIAL) != 0u) {\n        \
+     return palantir_material(v, local, input, out);\n    }\n    ";
 
 /// What the module starts with: the enable for the wrapper's dual-source output, on the app's first
 /// line, so the app's line numbers hold.
@@ -51,14 +57,13 @@ const ENTRY: &str = "effect";
 const INPUT: &str = "EffectInput";
 const OUTPUT: &str = "EffectOutput";
 
-/// What an effect's module is checked against and holds: its kind, its parameters' layout, its
-/// image slots and its stages.
+/// What an effect's module is checked against and holds: its kind, its parameters' layout and its
+/// image slots.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ContractSpec {
     pub(crate) kind: KindId,
     pub(crate) params: ParamsLayout,
     pub(crate) image_slots: u8,
-    pub(crate) entries: ModuleEntries,
 }
 
 /// What an effect's parameter struct must match: `U`'s fields and size.
@@ -71,8 +76,15 @@ pub(crate) struct ParamsLayout {
 /// The group an effect's images bind at, past the parameter words at group 0.
 pub(crate) const IMAGES_GROUP: u32 = 1;
 
-/// An instance's flag for a material's box that fills outside its rounded rect, a windowed rect.
+/// An instance's flag for a material's box that covers outside its rounded rect.
 pub(crate) const WINDOW_FLAG: u32 = 1;
+
+/// An instance's flag for a material's box, which a backdrop effect's stage draws through the
+/// material path.
+pub(crate) const MATERIAL_FLAG: u32 = 2;
+
+/// The group a material's box reads the gradient atlas through, past the panes.
+pub(crate) const GRADIENTS_GROUP: u32 = 3;
 
 /// The group a backdrop effect reads its pane's result through, past its images.
 pub(crate) const PANES_GROUP: u32 = 2;
@@ -86,13 +98,9 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         kind,
         params,
         image_slots,
-        entries,
     } = spec;
     if image_slots > MAX_IMAGE_SLOTS {
         return Err(EffectError::TooManyImageSlots { slots: image_slots });
-    }
-    if entries == ModuleEntries::ShapeAndMaterial && image_slots > 0 {
-        return Err(EffectError::MaterialImageSlots { slots: image_slots });
     }
     if params.size > MAX_PARAMS_SIZE {
         return Err(EffectError::ParamsTooLarge { size: params.size });
@@ -105,11 +113,9 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
     let app = parse_and_validate(format!("{wgsl}\n{contract}"), Capabilities::default())?;
     check_bindings(&app.module, kind, image_slots)?;
     let params_struct = check_entry(&app.module, params)?;
-    let material = match entries {
-        ModuleEntries::Shape => String::new(),
-        ModuleEntries::ShapeAndMaterial => {
-            MATERIAL.replace("/*{WINDOW}*/", &format!("{WINDOW_FLAG}u"))
-        }
+    let material = match kind {
+        KindId::Color => String::new(),
+        KindId::Backdrop => material(),
     };
     let full = format!(
         "{ENABLE}{wgsl}\n{contract}{}{material}",
@@ -123,7 +129,6 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         text: full.text,
         kind,
         image_slots,
-        entries,
     })
 }
 
@@ -213,17 +218,36 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
         }
         None => (String::new(), "effect(input)"),
     };
+    let (set, branch) = match kind {
+        KindId::Color => ("", ""),
+        KindId::Backdrop => (BACKDROP_SET, MATERIAL_BRANCH),
+    };
     WRAPPER
         .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
+        .replace("/*{MATERIAL}*/", &format!("{MATERIAL_FLAG}u"))
+        .replace("/*{WINDOW}*/", &format!("{WINDOW_FLAG}u"))
         .replace("/*{PARAMS}*/", &read)
-        .replace(
-            "/*{BACKDROP_SET}*/",
-            match kind {
-                KindId::Color => "",
-                KindId::Backdrop => BACKDROP_SET,
-            },
-        )
+        .replace("/*{BACKDROP_SET}*/", set)
         .replace("/*{CALL}*/", call)
+        .replace("/*{MATERIAL_BRANCH}*/", branch)
+}
+
+/// The material path with the fill kinds the quad shader reads put in.
+fn material() -> String {
+    [
+        ("FILL_TAG_MASK", FillKind::TAG_MASK),
+        ("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
+        ("SPREAD_MASK", FillKind::SPREAD_MASK),
+        ("FILL_SOLID", FillKind::TAG_SOLID),
+        ("FILL_LINEAR", FillKind::TAG_LINEAR),
+        ("FILL_RADIAL", FillKind::TAG_RADIAL),
+        ("SPREAD_REPEAT", Spread::Repeat as u32),
+        ("SPREAD_REFLECT", Spread::Reflect as u32),
+    ]
+    .into_iter()
+    .fold(MATERIAL.to_owned(), |text, (marker, value)| {
+        text.replace(&format!("/*{{{marker}}}*/"), &format!("{value}u"))
+    })
 }
 
 /// The WGSL that reads `field` from the instance's words, starting at `at`.

@@ -7,7 +7,7 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use palantir::IconFit;
+use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{Mesh, Shape};
 use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
@@ -15,7 +15,8 @@ use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Tex
 use crate::fixtures;
 use crate::fixtures::icon;
 use crate::visual_rig::VisualRig;
-use palantir::Border;
+use palantir::Stroke;
+use palantir::widget::IconPaint;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
 const COL: f32 = 20.0;
@@ -40,7 +41,7 @@ fn ramp(ui: &mut Ui) {
                 .id_salt(("block", v))
                 .at(Vec2::new(x, BLOCK_Y))
                 .size((Sizing::fixed(COL), Sizing::fixed(10.0)))
-                .chrome(Chrome::fill(gray(v)))
+                .chrome(Chrome::new(gray(v)))
                 .show(ui);
             Text::new("\u{2588}")
                 .id_salt(("text", v))
@@ -49,11 +50,10 @@ fn ramp(ui: &mut Ui) {
                 .font_size(16.0)
                 .color(gray(v))
                 .show(ui);
-            ui.add_shape(Shape::line(
-                Vec2::new(x + 2.0, LINE_Y),
-                Vec2::new(x + COL - 2.0, LINE_Y),
-                Border::new(gray(v), 6.0),
-            ));
+            ui.add_shape(
+                Shape::line(Vec2::new(x + 2.0, LINE_Y), Vec2::new(x + COL - 2.0, LINE_Y)),
+                Stroke::new(gray(v), 6.0),
+            );
             let (left, right) = (x + 2.0, x + COL - 2.0);
             let quad = [
                 Vec2::new(left, MESH_Y),
@@ -61,13 +61,19 @@ fn ramp(ui: &mut Ui) {
                 Vec2::new(right, MESH_Y + 10.0),
                 Vec2::new(left, MESH_Y + 10.0),
             ];
-            ui.add_shape(Shape::mesh(&Mesh::filled_polygon(&quad, gray(v))));
+            ui.add_shape(
+                Shape::mesh(&Mesh::filled_polygon(&quad, gray(v))),
+                RgbaF32::WHITE,
+            );
             Panel::zstack()
                 .id_salt(("icon", v))
                 .at(Vec2::new(x + 5.0, ICON_Y))
                 .size((Sizing::fixed(10.0), Sizing::fixed(10.0)))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::icon(solid).fit(IconFit::Fill).tint(gray(v)));
+                    ui.add_shape(
+                        Shape::rect(),
+                        IconPaint::new(solid).fit(Fit::Fill).tint(gray(v)),
+                    );
                 });
         }
     });

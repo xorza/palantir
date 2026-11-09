@@ -69,7 +69,7 @@ impl<'a> ColorSwatch<'a> {
             .chip
             .plan(&response, Selection::Unselected, ui_theme.text);
         let look = widget.wear(ui, plan);
-        let inset = look.chrome.border.width;
+        let inset = look.chrome.paint.border.width;
 
         widget.record(ui, Some(&look.chrome), |ui| {
             checker.paint_chip(

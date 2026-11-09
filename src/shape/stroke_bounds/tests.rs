@@ -1,6 +1,6 @@
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
-use crate::shape::style::{LineCap, LineJoin};
 use std::f32::consts;
 
 #[test]

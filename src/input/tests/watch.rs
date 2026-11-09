@@ -266,7 +266,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
         Block::new()
             .id(WidgetId::from_hash("modifier-visual"))
             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-            .chrome(Chrome::fill(color))
+            .chrome(Chrome::new(color))
             .show(ui);
     }
 

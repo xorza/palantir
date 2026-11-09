@@ -202,11 +202,20 @@ driver serves that command alone; the drive table's `version` names it
 - **Fixed short forms.** `idx`, `pos`, `ctx`/`Ctx`, `dir`, `bg`, `col`, `exec`, `desc`, `cur`,
   `prev`, plurals with `s`; prose, strings and test names keep whole words. A foreign name and a
   term of another meaning keep theirs (`GradientIndex`, `WindowDirectory`, `Menu`).
-- **`Chrome` is a painted box**: fill, border, radii, shadow and material, the one value of a
-  node's box, a rect shape (`Shape::rect`) and a modal's scrim, as Flutter's `BoxDecoration`
-  serves `Container` and `DecoratedBox`. `bg` is a background color alone. Refused: `bg` or
-  `background` for a `Chrome`, which holds more than a fill; "chrome" for a widget's scaffolding;
-  a rect's own paint setters or a scrim type beside it, more routes to one box.
+- **A shape is geometry, a paint what covers it.** *Shape* is geometry laid out in a rect: a rect,
+  circle, arc, triangle, line, curve, polyline, text or mesh. *Paint* is what covers one: `Paint`
+  for a box, `Stroke` for a line, a color for text, a tint for a mesh, `ImagePaint`, `IconPaint`,
+  `EffectPaint`. *Fill* is a box's brush, over its material where it has one; *brush* a color or a
+  gradient. *Border* is a box's edge, inside its rect; *stroke* a line's paint, centered on its
+  path. *Tint* multiplies what an image, an icon or a mesh shows, and nothing else. *Coverage* is
+  the side of its boundary a shape covers; *fit* how a point shape or an icon fills its rect.
+  Refused: "tint" for a material's fill, "stroke" for a box's edge.
+- **`Chrome` is a node's box**: its corners and its `Paint`, the one value of a node's box and a
+  modal's scrim, as Compose's `background(brush, shape)` takes the shape beside the brush and
+  Flutter's `BoxDecoration` serves `Container`. `with_fill`, `with_border`, `with_shadow` and
+  `with_material` are sugar that calls `Paint`'s. `bg` is a background color alone. Refused: `bg`
+  or `background` for a `Chrome`, which holds more than a fill; "chrome" for a widget's
+  scaffolding; a scrim type beside it, a second route to one box.
 - **One word, one meaning for what is behind.** *Backdrop* is the pixels painted under a shape,
   which a backdrop effect reads; *material* a backdrop effect a box wears under its fill; *barrier*
   what stands between an overlay and the layers below (`Barrier`, as Flutter's `ModalBarrier`).
@@ -240,6 +249,40 @@ driver serves that command alone; the drive table's `version` names it
   or `fraction`. A color is linear `RgbaF32`; `SrgbaU8` is bytes in and out.
 - **Lines and corners.** A line's width is `width`, a bar's cross size `thickness`, one rounding
   `radius`, four `Corners`.
+
+### Shapes and paint
+
+- **`Ui::add_shape(shape, paint)`.** Each shape takes the paints its pipeline draws, checked by the
+  sealed `Lower` bound on the pair, as Skia's `drawRRect(rrect, paint)`, Flutter's `Canvas` and
+  SwiftUI's `Shape` with a `ShapeStyle` do. Refused: a `.paint(p)` setter on each shape, which
+  keeps paint in the builder; Vello's separate `fill` and `stroke` calls, which split a box's one
+  draw. A pair the pipeline cannot draw panics at `add_shape`: a triangle's gradient, a
+  polyline's ramp, an image's corners.
+- **A shape lays out in a rect.** Every shape fills the owner's arranged rect or `.at(rect)`, as
+  WPF's `Rectangle` and `Ellipse` fill their slot and SwiftUI's shapes take the rect they are
+  offered; a circle is the largest one centered in it and an arc runs on that circle, as Compose's
+  `drawArc` runs on its rect's oval. What depends on the owner's size resolves where the shape is
+  drawn, so the cascade and the encoder place it through one function. Refused: a center and a
+  radius, which no layout moves.
+- **A point shape's points are px in its rect, and `Fit` scales them**, with CSS `object-fit`'s
+  names: `Natural` by default, as given; `Fill`, `Contain`, `Cover`; as WPF's `Polygon` and `Path`
+  take points with a `Stretch`. A stroke's width and a corner radius do not scale, as WPF's
+  stroke thickness does not; `Cover` paints past the rect, which a clip crops. Refused: fractions
+  of the rect, as SwiftUI's `path(in:)` builds them, which each glyph drawn to the pixel would
+  divide by its size. `ImageFit` keeps its own set, as an image tiles and crops.
+- **A material reaches under the border, in one draw.** The material and its fill, a color or a
+  gradient, cover the whole box, and the border lies over them, as CSS's background and
+  `backdrop-filter` cover the border box. One effect stage draws every use of an effect: a
+  backdrop effect's also draws a material's box, its fill sampled from the gradient atlas the
+  quads read. Refused: the fill inside the border, which showed sharp content through a
+  translucent border; the gradient as a quad above the material, a second draw and a break in
+  the run of material draws; a material stage compiled apart, a second pipeline per effect.
+- **The covered side is the shape's**: `Coverage::{Inside, Outside}` on `RectShape`, as Skia's
+  inverse fill types belong to the path. Refused: a second constructor of one geometry; a flag
+  setter.
+- **Images, icons and effects are paints of a rect**, as Skia's `SkImageShader` and SwiftUI's
+  `ImagePaint` fill a shape. Refused: a `Brush::Image`, as a brush is saved in theme files and
+  tweened, which a handle cannot be; an effect as a shape kind with a rect of its own.
 
 ### Argument shapes
 

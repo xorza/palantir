@@ -28,14 +28,14 @@ fn the_theme_popup_slot_is_the_last_resort() {
     let id = WidgetId::from_hash("chrome-popup");
     let style_fill = RgbaF32::srgb(0.2, 0.7, 0.4);
     let style = PopupTheme {
-        panel: Chrome::fill(style_fill),
+        panel: Chrome::new(style_fill),
         padding: Spacing::all(5.0),
     };
     let cases: [(&str, Step, Option<RgbaF32>, Spacing); 6] = [
         ("neither", |p, _| p, Some(theme_fill), theme_padding),
         (
             "default only",
-            |p, _| p.default_chrome(Chrome::fill(RgbaF32::srgb(0.9, 0.1, 0.1))),
+            |p, _| p.default_chrome(Chrome::new(RgbaF32::srgb(0.9, 0.1, 0.1))),
             Some(default_fill),
             theme_padding,
         ),
@@ -56,7 +56,7 @@ fn the_theme_popup_slot_is_the_last_resort() {
             "style and default",
             |p, s| {
                 p.style(s)
-                    .default_chrome(Chrome::fill(RgbaF32::srgb(0.9, 0.1, 0.1)))
+                    .default_chrome(Chrome::new(RgbaF32::srgb(0.9, 0.1, 0.1)))
             },
             Some(default_fill),
             Spacing::all(5.0),
@@ -65,9 +65,9 @@ fn the_theme_popup_slot_is_the_last_resort() {
     for (label, build, want, padding) in cases {
         let mut h = Harness::mono(SURFACE);
         let theme = h.ui_mut().theme_mut();
-        theme.popup.panel = Chrome::fill(theme_fill);
+        theme.popup.panel = Chrome::new(theme_fill);
         theme.popup.padding = theme_padding;
-        theme.panel_chrome = Some(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)));
+        theme.panel_chrome = Some(Chrome::new(RgbaF32::srgb(0.0, 1.0, 0.0)));
         h.frame(|ui| {
             build(Popup::new().anchor(Anchor::at_point(ANCHOR)).id(id), &style).show(ui, |_| {});
         });

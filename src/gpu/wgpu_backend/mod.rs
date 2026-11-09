@@ -849,7 +849,7 @@ impl WgpuBackend {
             },
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
-        self.effect_store.prepare(buffer.effects.program());
+        self.effect_store.prepare(buffer.effects.effect());
         self.programs.effect.upload(
             &mut ctx,
             EffectStores {
@@ -1158,10 +1158,11 @@ impl WgpuBackend {
                             ctx.rec,
                             ctx.pipelines.stencil(),
                             EffectBatch {
-                                programs: buffer.effects.program(),
+                                effects: buffer.effects.effect(),
                                 items: items(),
                                 groups: &effect_groups,
                                 panes: self.backdrops.group(),
+                                gradients: &self.gradient.bind_group,
                             },
                         ),
                     }

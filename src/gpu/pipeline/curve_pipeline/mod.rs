@@ -21,11 +21,11 @@ use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::line_style::LineCap;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::{CurveInstance, SEGMENTS_PER_INSTANCE};
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::shape::stroke_bounds::MITER_LIMIT;
-use crate::shape::style::LineCap;
 use std::mem::offset_of;
 
 const IDXS_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;

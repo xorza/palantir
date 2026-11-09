@@ -1,4 +1,4 @@
-//! A line's color and width, as a border or as a path's stroke.
+//! [`Border`]: a box's edge, its color and width.
 
 use crate::primitives::math::animatable::PX_SETTLE_EPS;
 use crate::primitives::math::domain;
@@ -7,9 +7,9 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use palantir_derive::{Animatable, Lerp};
 
-/// One color and one width; where the width lies is the shape's rule. An area shape ([`Chrome`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centers it on the path.
-///
-/// [`Chrome`]: crate::Chrome
+/// A box's edge: one color and one width, painted inside the box's boundary, as CSS's `border`
+/// is. A [`Paint`](crate::Paint) holds one for a rect, a circle and a triangle, and a node's
+/// [`Chrome`](crate::Chrome) through its paint; a line takes a [`Stroke`](crate::Stroke).
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable,
 )]
@@ -44,19 +44,19 @@ impl Border {
         self.width = domain::raised_to(self.width, 0.0);
     }
 
-    /// The "no stroke" sentinel: width 0, transparent; `Border::default()` but `const`.
+    /// The "no border" sentinel: width 0, transparent; `Border::default()` but `const`.
     pub const NONE: Self = Self {
         color: RgbaF32::TRANSPARENT,
         width: 0.0,
     };
 
-    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Border::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Chrome`'s `skip_serializing_if` needs `fn(&T) -> bool`.
+    /// True when this border paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Border::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Chrome`'s `skip_serializing_if` needs `fn(&T) -> bool`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         is_invisible(self.width) || self.color.is_noop()
     }
 
-    /// Construct a stroke with `color` and `width`.
+    /// A border of `color` and `width`.
     #[inline]
     pub const fn new(color: RgbaF32, width: f32) -> Self {
         Self { color, width }

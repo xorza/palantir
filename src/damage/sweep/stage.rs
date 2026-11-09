@@ -10,6 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::bench::settle_look;
@@ -71,7 +72,7 @@ fn dense(ui: &mut Ui) {
                             Panel::zstack()
                                 .id_salt(("sweep-cell", row, col))
                                 .size((Sizing::FILL, Sizing::FILL))
-                                .chrome(Chrome::fill(RgbaF32::srgb(shade, shade, shade + 0.05)))
+                                .chrome(Chrome::new(RgbaF32::srgb(shade, shade, shade + 0.05)))
                                 .show(ui, |ui| {
                                     Text::new("cell").id_salt("sweep-label").show(ui);
                                 });
@@ -230,7 +231,7 @@ impl Stage {
                 Panel::zstack()
                     .id_salt("sweep-plain")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.1, 0.1, 0.12)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.1, 0.1, 0.12)))
                     .show(ui, |_| {});
             }
             Content::Glass | Content::SceneGlass => {
@@ -251,11 +252,9 @@ impl Stage {
                             .show(ui, |ui| {
                                 for pane in panes {
                                     ui.add_shape(
-                                        Shape::rect(
-                                            Chrome::fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
-                                                .with_material(Material::frosted(16.0)),
-                                        )
-                                        .at(scaled(*pane, surface)),
+                                        Shape::rect().at(scaled(*pane, surface)),
+                                        Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
+                                            .with_material(Material::frosted(16.0)),
                                     );
                                 }
                             });

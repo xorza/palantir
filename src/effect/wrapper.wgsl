@@ -20,15 +20,20 @@ const PALANTIR_CORNERS = array<vec2<f32>, 4>(
     vec2<f32>(1.0, 1.0),
 );
 
+// `EffectInstance::flags`'s bits: a material's box, and one that covers outside its rounded rect.
+const PALANTIR_MATERIAL: u32 = /*{MATERIAL}*/;
+const PALANTIR_WINDOW: u32 = /*{WINDOW}*/;
+
 // One shape: its rect (`min`, `size`) and corner radii in physical px, its clock (`time`,
 // `opacity`, `scale`, and its turn about its center in radians), the word its parameters start
-// at, and a backdrop effect's pane.
+// at, a backdrop effect's pane, and its flags.
 struct PalantirInstance {
     @location(0) rect: vec4<f32>,
     @location(1) corners: vec4<f32>,
     @location(2) clock: vec4<f32>,
     @location(3) params: u32,
     @location(4) pane: u32,
+    @location(5) flags: u32,
 }
 
 struct PalantirVarying {
@@ -38,6 +43,7 @@ struct PalantirVarying {
     @location(2) @interpolate(flat) clock: vec4<f32>,
     @location(3) @interpolate(flat) params: u32,
     @location(4) @interpolate(flat) pane: u32,
+    @location(5) @interpolate(flat) flags: u32,
 }
 
 struct PalantirOut {
@@ -46,7 +52,8 @@ struct PalantirOut {
 }
 
 // Every pixel center within the antialiasing reach of the rect, as a quad shades it: the rect's
-// pixels grown by it, or past each edge by it where a turn takes the edges off the pixel grid.
+// pixels grown by it, or past each edge by it where a turn takes the edges off the pixel grid; a
+// window's rect is its edge exactly, as it lies over content of its own extent.
 @vertex
 fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> PalantirVarying {
     let pos = instance.rect.xy;
@@ -57,7 +64,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
     if (rotation != 0.0) {
         lo -= vec2<f32>(PALANTIR_AA_HALF_WIDTH);
         hi += vec2<f32>(PALANTIR_AA_HALF_WIDTH);
-    } else {
+    } else if ((instance.flags & PALANTIR_WINDOW) == 0u) {
         lo = floor(lo - vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
         hi = ceil(hi + vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
     }
@@ -71,6 +78,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
         instance.clock,
         instance.params,
         instance.pane,
+        instance.flags,
     );
 }
 
@@ -93,14 +101,16 @@ fn palantir_local(clip: vec4<f32>, rect: vec4<f32>, rotation: f32) -> vec2<f32> 
     return palantir_turned(frag, rect.xy + rect.zw * 0.5, -rotation) - rect.xy;
 }
 
+// One stage for every draw of the effect: its color and what it keeps of what is under it, over
+// its rounded rect; or, for a material's box, palantir's material around what it shows.
 @fragment
 fn palantir_fs(v: PalantirVarying) -> PalantirOut {
     let local = palantir_local(v.clip, v.rect, v.clock.w);
-    let d = palantir_sdf(local, v.rect.zw, v.corners);
-    let coverage = clamp((PALANTIR_AA_HALF_WIDTH - d) / (2.0 * PALANTIR_AA_HALF_WIDTH), 0.0, 1.0)
-        * v.clock.y;
     let scale = v.clock.z;
     let input = EffectInput(local / scale, v.rect.zw / scale, v.corners / scale, v.clock.x, scale);
     /*{BACKDROP_SET}*/let out = /*{CALL}*/;
+    /*{MATERIAL_BRANCH}*/let d = palantir_sdf(local, v.rect.zw, v.corners);
+    let coverage = clamp((PALANTIR_AA_HALF_WIDTH - d) / (2.0 * PALANTIR_AA_HALF_WIDTH), 0.0, 1.0)
+        * v.clock.y;
     return PalantirOut(out.color * coverage, vec4<f32>(1.0) - coverage * (vec4<f32>(1.0) - out.under));
 }

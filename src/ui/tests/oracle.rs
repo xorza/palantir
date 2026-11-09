@@ -5,12 +5,13 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::oracle::Oracle;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
+use crate::shape::image_paint::ImagePaint;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -55,7 +56,7 @@ impl Knobs {
 }
 
 fn fill(c: RgbaF32) -> Chrome {
-    Chrome::fill(c)
+    Chrome::new(c)
 }
 
 fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
@@ -85,21 +86,19 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .id(WidgetId::from_hash("spinner"))
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                 .show(ui, |ui| {
-                    let line = Shape::line(
-                        Vec2::new(10.0, 20.0),
-                        Vec2::new(70.0, 20.0),
-                        Border::new(RgbaF32::WHITE, 2.0),
-                    );
+                    let line = Shape::line(Vec2::new(10.0, 20.0), Vec2::new(70.0, 20.0));
+                    let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
                     if k.spin {
                         ui.add_shape_animated(
                             line,
+                            stroke,
                             PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs(4))
                                 .with_repeat(PaintRepeat::Forever),
                         );
                     } else {
-                        ui.add_shape(line);
+                        ui.add_shape(line, stroke);
                     }
                 });
             Panel::zstack()
@@ -111,7 +110,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     } else {
                         ImageFit::Fill
                     };
-                    ui.add_shape(Shape::image(picture.clone()).fit(fit));
+                    ui.add_shape(Shape::rect(), ImagePaint::new(picture.clone()).fit(fit));
                 });
             if k.extra {
                 Block::new()

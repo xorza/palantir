@@ -4,8 +4,9 @@
 // One pane's result as `Backdrops` writes its slot (`BackdropSlot`): the result's texel coordinate
 // of the lattice's first texel, the physical px of a texel or 0 for a pane that shows `clear`, the
 // physical rect the shape reads, `(min, max)`, its rect grown by its reach; and a material's
-// luminance bounds, fill and border, which palantir's material stage reads and an app's effect does
-// not.
+// luminance bounds, fill and border, which palantir's material path reads and an app's effect does
+// not. The fill is a straight color, or the multiplier on the gradient at `fill_lut_row`, whose
+// `fill_kind` and `fill_axis` read as a quad's.
 struct PalantirPane {
     offset: vec2<f32>,
     lattice: f32,
@@ -13,9 +14,12 @@ struct PalantirPane {
     clear: vec3<f32>,
     min_luminance: f32,
     reads: vec4<f32>,
-    tint: vec4<f32>,
+    fill: vec4<f32>,
+    fill_axis: vec4<f32>,
     stroke_color: vec4<f32>,
     stroke_width: f32,
+    fill_kind: u32,
+    fill_lut_row: u32,
 }
 @group(2) @binding(0) var palantir_results: texture_2d<f32>;
 @group(2) @binding(1) var palantir_results_sampler: sampler;

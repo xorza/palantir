@@ -4,6 +4,7 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
+use palantir::Paint;
 use palantir::glam::Vec2;
 use palantir::widget::{GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
@@ -86,11 +87,11 @@ pub fn build(ui: &mut Ui, k: Kit) {
     live(ui, k);
 }
 
-/// The live pane's knobs: the blur, and how much of the tint covers it.
+/// The live pane's knobs: the blur, and how much of the fill covers it.
 #[derive(Debug)]
 struct LivePane {
     blur: f32,
-    tint: f32,
+    fill: f32,
     /// Whether the floor holds the ink; off, the label reads only as well as the page under it.
     hold: bool,
 }
@@ -99,14 +100,14 @@ impl Default for LivePane {
     fn default() -> Self {
         Self {
             blur: 16.0,
-            tint: 0.3,
+            fill: 0.3,
             hold: true,
         }
     }
 }
 
-/// One frosted pane over the turning page, its blur and its tint from the knobs, its text held to
-/// 4.5:1 by the floor its ink and tint call for.
+/// One frosted pane over the turning page, its blur and its fill from the knobs, its text held to
+/// 4.5:1 by the floor its ink and fill call for.
 fn live(ui: &mut Ui, k: Kit) {
     Section::new("Live pane")
         .apis(&[api!(Material::with_min_luminance_for)])
@@ -114,7 +115,7 @@ fn live(ui: &mut Ui, k: Kit) {
             support::note(
                 ui,
                 k,
-                "Blur and tint one frosted pane. The floor its dark ink and light tint call for \
+                "Blur and fill one frosted pane. The floor its dark ink and light fill call for \
                  lifts whatever shows through, so the label keeps 4.5:1 at any setting; switch it \
                  off to see the label sink into the dark stripes.",
             );
@@ -128,20 +129,20 @@ fn live(ui: &mut Ui, k: Kit) {
                 }
                 .show(ui, k, &mut l.blur);
                 Knob {
-                    label: "tint",
+                    label: "fill",
                     range: 0.0..=0.9,
                     step: 0.05,
                     unit: "",
                 }
-                .show(ui, k, &mut l.tint);
+                .show(ui, k, &mut l.fill);
                 let ink = RgbaF32::hex(0x14161a);
-                let tint = RgbaF32::WHITE.with_alpha(l.tint);
+                let fill = RgbaF32::WHITE.with_alpha(l.fill);
                 support::row(ui, |ui| {
                     Switch::new(&mut l.hold).label("Hold the ink").show(ui);
                 });
                 let frosted = Material::frosted(l.blur);
                 let material = if l.hold {
-                    frosted.with_min_luminance_for(ink, tint)
+                    frosted.with_min_luminance_for(ink, fill)
                 } else {
                     frosted
                 };
@@ -158,17 +159,14 @@ fn live(ui: &mut Ui, k: Kit) {
                             .show(ui, |ui| {
                                 page(ui, k, Vec2::splat(CELL));
                                 ui.add_shape(
-                                    Shape::rect(
-                                        Chrome::rounded(tint, Corners::all(14.0))
-                                            .with_material(material),
-                                    )
-                                    .at(PANE),
+                                    Shape::rect().at(PANE).corners(Corners::all(14.0)),
+                                    Paint::from(fill).with_material(material),
                                 );
                                 let label = ui.intern("readable");
                                 ui.add_shape(
                                     Shape::text(label, GlyphFont::new(18.0))
-                                        .color(ink)
                                         .at_origin(Vec2::new(PANE.min.x + 16.0, PANE.min.y + 36.0)),
+                                    ink,
                                 );
                             });
                     });
@@ -176,8 +174,8 @@ fn live(ui: &mut Ui, k: Kit) {
         });
 }
 
-/// A cell of `label` holding the turning page and one pane of `material` and `tint` over it.
-fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, tint: RgbaF32) {
+/// A cell of `label` holding the turning page and one pane of `material` and `fill` over it.
+fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, fill: RgbaF32) {
     DemoCell::new(label).size(CELL, CELL).show(ui, k, |ui| {
         Panel::canvas()
             .id_salt(label)
@@ -190,12 +188,10 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, tint: Rgba
                     14.0
                 };
                 ui.add_shape(
-                    Shape::rect(
-                        Chrome::rounded(tint, Corners::all(corners))
-                            .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
-                            .with_material(material),
-                    )
-                    .at(PANE),
+                    Shape::rect().at(PANE).corners(Corners::all(corners)),
+                    Paint::from(fill)
+                        .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
+                        .with_material(material),
                 );
             });
     });
@@ -206,7 +202,10 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, tint: Rgba
 fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     for (i, color) in (0..12).zip(k.swatch.all().iter().cycle()) {
         let x = i as f32 * size.x / 12.0;
-        ui.add_shape(Shape::rect(*color).at(Rect::new(x, 0.0, size.x / 24.0, size.y)));
+        ui.add_shape(
+            Shape::rect().at(Rect::new(x, 0.0, size.x / 24.0, size.y)),
+            *color,
+        );
     }
     // Essential: the turning page is what each pane shows, so it turns under reduced motion too.
     let spin = PaintAnimation::turn(0.0, 1.0)
@@ -217,11 +216,11 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     let bar = size.min_element() * 0.12;
     for (w, h) in [(arm, bar), (bar, arm)] {
         let rect = Rect::new((size.x - w) / 2.0, (size.y - h) / 2.0, w, h);
-        ui.add_shape_animated(Shape::rect(RgbaF32::WHITE).at(rect), spin);
+        ui.add_shape_animated(Shape::rect().at(rect), RgbaF32::WHITE, spin);
     }
 }
 
-/// The frosted chrome the popup and the menu share: a dark tint, rounded, with a hairline.
+/// The frosted chrome the popup and the menu share: a dark fill, rounded, with a hairline.
 fn frosted_chrome() -> Chrome {
     Chrome::rounded(RgbaF32::new(0.08, 0.09, 0.11, 0.45), Corners::all(10.0))
         .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))

@@ -85,7 +85,7 @@ impl WrappedLeaf {
                 Block::new()
                     .id(WidgetId::from_hash((self.id, "leaf")))
                     .size(self.size)
-                    .chrome(Chrome::fill(self.fill))
+                    .chrome(Chrome::new(self.fill))
                     .show(ui);
             });
     }

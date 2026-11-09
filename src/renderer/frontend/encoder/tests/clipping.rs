@@ -7,6 +7,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
@@ -41,7 +42,7 @@ fn clip_emits_balanced_push_pop() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(40.0)
-                        .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                        .chrome(Chrome::new(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                 });
         });
@@ -59,11 +60,13 @@ fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
                 .id(WidgetId::from_hash("rounded"))
                 .size(80.0)
                 .chrome(Chrome {
-                    fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
-                    border: Border::new(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
                     corners: Corners::all(8.0),
-                    shadow: Shadow::NONE,
-                    material: None,
+                    paint: Paint {
+                        fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
+                        border: Border::new(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
+                        shadow: Shadow::NONE,
+                        material: None,
+                    },
                 })
                 .clip_rounded()
                 .show(ui, |ui| {

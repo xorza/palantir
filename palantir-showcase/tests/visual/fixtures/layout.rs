@@ -23,17 +23,17 @@ fn vstack_fill_weights_matches_golden() {
                 Block::new()
                     .id_salt("a")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.85, 0.30, 0.30)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.85, 0.30, 0.30)))
                     .show(ui);
                 Block::new()
                     .id_salt("b")
                     .size((Sizing::FILL, Sizing::fill(2.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.30, 0.85, 0.40)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.30, 0.85, 0.40)))
                     .show(ui);
                 Block::new()
                     .id_salt("c")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.30, 0.50, 0.95)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.30, 0.50, 0.95)))
                     .show(ui);
             });
     });

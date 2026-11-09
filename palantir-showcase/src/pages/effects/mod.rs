@@ -4,9 +4,10 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Kit, Section};
-use palantir::Chrome;
 use palantir::glam::Vec2;
-use palantir::widget::{EffectShape, GlyphFont, PaintAnimation, PaintRepeat, Shape};
+use palantir::widget::EffectPaint;
+use palantir::widget::RectShape;
+use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     BackdropEffect, Button, ButtonTheme, Configure, Corners, EffectError, EffectName, EffectParams,
     EffectSource, Panel, PressEffect, PressInput, Rect, ReducedPaint, RgbaF32, Sizing, Ui,
@@ -70,7 +71,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Background")
         .apis(&[
             api!(Ui::load_effect as LoadSky),
-            api!(Shape::effect as fn(EffectName<Sky>, Sky) -> EffectShape<Sky>),
+            api!(EffectPaint::new as fn(EffectName<Sky>, Sky) -> EffectPaint<Sky>),
             api!(
                 EffectSource::power_saver
                     as fn(EffectSource<Sky>, ReducedPaint<Sky>) -> EffectSource<Sky>
@@ -88,7 +89,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 .size(CELL * 2.0, CELL * 0.6)
                 .show(ui, k, |ui| {
                     ui.add_shape_animated(
-                        Shape::effect(AURORA, sky(k)).corners(Corners::all(10.0)),
+                        Shape::rect().corners(Corners::all(10.0)),
+                        EffectPaint::new(AURORA, sky(k)),
                         looping(AURORA_LOOP_S),
                     );
                 });
@@ -149,9 +151,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Ring")
-        .apis(&[api!(
-            EffectShape::at as fn(EffectShape<Ring>, Rect) -> EffectShape<Ring>
-        )])
+        .apis(&[api!(RectShape::at)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -169,18 +169,18 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Water")
         .apis(&[
             api!(
-                Shape::backdrop_effect
+                EffectPaint::new
                     as fn(
                         EffectName<Water, BackdropEffect>,
                         Water,
-                    ) -> EffectShape<Water, BackdropEffect>
+                    ) -> EffectPaint<Water, BackdropEffect>
             ),
             api!(
-                EffectShape::reach
+                EffectPaint::reach
                     as fn(
-                        EffectShape<Water, BackdropEffect>,
+                        EffectPaint<Water, BackdropEffect>,
                         f32,
-                    ) -> EffectShape<Water, BackdropEffect>
+                    ) -> EffectPaint<Water, BackdropEffect>
             ),
         ])
         .show(ui, k, |ui| {
@@ -253,7 +253,13 @@ fn ring(ui: &mut Ui, k: Kit) {
     let card = Rect::new((inner - side) / 2.0, (inner - side) / 2.0, side, side);
     let radius = 16.0;
     ui.add_shape_animated(
-        Shape::effect(
+        Shape::rect().at(Rect::new(
+            card.min.x - RING_REACH,
+            card.min.y - RING_REACH,
+            card.size.w + 2.0 * RING_REACH,
+            card.size.h + 2.0 * RING_REACH,
+        )),
+        EffectPaint::new(
             RING,
             Ring {
                 color_a: k.t.accent,
@@ -263,21 +269,18 @@ fn ring(ui: &mut Ui, k: Kit) {
                 glow: 8.0,
                 pad0: 0.0,
             },
-        )
-        .at(Rect::new(
-            card.min.x - RING_REACH,
-            card.min.y - RING_REACH,
-            card.size.w + 2.0 * RING_REACH,
-            card.size.h + 2.0 * RING_REACH,
-        )),
+        ),
         looping(RING_LOOP_S),
     );
-    ui.add_shape(Shape::rect(Chrome::rounded(k.t.raised, Corners::all(radius))).at(card));
+    ui.add_shape(
+        Shape::rect().at(card).corners(Corners::all(radius)),
+        k.t.raised,
+    );
     let label = ui.intern("ring");
     ui.add_shape(
         Shape::text(label, GlyphFont::new(18.0))
-            .color(k.t.ink)
             .at_origin(Vec2::new(card.min.x + 16.0, card.min.y + 32.0)),
+        k.t.ink,
     );
 }
 
@@ -286,17 +289,20 @@ fn water(ui: &mut Ui, k: Kit) {
     let size = CELL - 2.0 * CELL_PADDING;
     for (i, color) in (0..10).zip(k.swatch.all().iter().cycle()) {
         let x = i as f32 * size / 10.0;
-        ui.add_shape(Shape::rect(*color).at(Rect::new(x, 0.0, size / 20.0, size)));
+        ui.add_shape(
+            Shape::rect().at(Rect::new(x, 0.0, size / 20.0, size)),
+            *color,
+        );
     }
     let label = ui.intern("water");
     ui.add_shape(
-        Shape::text(label, GlyphFont::new(40.0))
-            .color(k.t.ink)
-            .at_origin(Vec2::new(size * 0.22, size * 0.55)),
+        Shape::text(label, GlyphFont::new(40.0)).at_origin(Vec2::new(size * 0.22, size * 0.55)),
+        k.t.ink,
     );
     let pane = Rect::new(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
     ui.add_shape_animated(
-        Shape::backdrop_effect(
+        Shape::rect().at(pane).corners(Corners::all(20.0)),
+        EffectPaint::new(
             WATER,
             Water {
                 tint: RgbaF32::new(0.1, 0.45, 0.7, 0.18),
@@ -306,8 +312,6 @@ fn water(ui: &mut Ui, k: Kit) {
                 pad1: 0.0,
             },
         )
-        .at(pane)
-        .corners(Corners::all(20.0))
         .reach(WATER_AMPLITUDE),
         looping(WATER_LOOP_S),
     );

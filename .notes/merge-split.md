@@ -104,6 +104,24 @@ showcase's and tests' `stroke` variables that hold a `Border`, and the derive do
 helpers become `cell`. Its tree is `89b0c79dd`'s, so this step also takes any hunk that steps 7
 to 9 did not.
 
+## After the split: the shape API
+
+Decided: geometry and paint stay two arguments, as Skia's `drawRRect(rrect, paint)`, Flutter's
+`Canvas`, Compose's `DrawScope`, iced's `Frame::fill` and SwiftUI's `GraphicsContext.fill` take
+them. These commits follow step 10:
+
+- **A readable bound.** `add_shape<S: PaintedBy<P>, P>(shape: S, paint: P)`, a sealed trait with
+  one explicit impl per pair, so rustdoc lists the paints on each shape's page. The color, brush
+  and gradient shorthand on box shapes stays, as explicit impls. `Lower` and its tuple bound go.
+- **Animation chains.** `add_shape` returns an `AddedShape` with `animate(animation)`, and
+  `add_shape_animated` goes.
+- **A linear pipeline inside.** The pair converts into one non-generic `Draw`. Then the draw
+  resolves its effect names and reduced alternatives, a no-op draw drops, `RecordStore::record`
+  copies the payloads into the frame's arena and returns the fixed-size record, and the tree
+  pushes it. The trait consts `CAN_READ_BACKDROP` and `READS_TIME` become questions of the
+  `Draw`. The write to the store stays one step: an owning return value would allocate each
+  frame, and a borrowed one would need a second record type for the store to patch.
+
 ## Risks
 
 - **An old commit that does not pass the gate.** The gate did not run on `ebf25775c`,
@@ -130,6 +148,11 @@ to 9 did not.
   the `backdrop` argument of the two `reduced_transparency` setters, and "`reduced_transparency`"
   for "the reduced paint" in the material docs. One of these, in `material/tests.rs`, is also
   missing from `89b0c79dd`, so the end tree keeps it as a fix too.
-- Step 4 is staged on master and not committed. It also renames `ShapeStroke` to `LoweredBorder`
-  and `ShapeBrush` to `LoweredBrush`, with their files, as `f410241e4` does, so step 5 holds
-  less. Docs that call a line's paint "stroke" keep the word. The full gate passes.
+- Step 4 is on master as `6f9288c87`. It also renames `ShapeStroke` to `LoweredBorder` and
+  `ShapeBrush` to `LoweredBrush`, with their files, as `f410241e4` does, so step 5 holds less.
+  Docs that call a line's paint "stroke" keep the word.
+- Step 5 is staged on master and not committed: the tree of `f410241e4`, with the fixes of steps
+  2 and 3 applied again. `f410241e4` also wrote "Border" in seven docs of a line's stroke width
+  or color (the curve instance, the color picker's rings, the chevron, the spinner, the check
+  mark), as `89b0c79dd` still does; step 5 keeps "Stroke" there, and the end tree keeps that fix.
+  The full gate passes.

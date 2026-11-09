@@ -8,7 +8,7 @@ use crate::primitives::paint::color::RgbaF32;
 
 /// A color for every value in `0..=1`: stops plus the interpolation space.
 ///
-/// A [`Gradient`](crate::Gradient) is a ramp plus a geometry; a stroked curve's own parameter runs 0 to 1, so it takes a bare ramp ([`CurveShape::ramp`](crate::widget::CurveShape::ramp)). Also the identity of a baked atlas row: equal ramps bake equal texels.
+/// A [`Gradient`](crate::Gradient) is a ramp plus a geometry; a stroked curve's own parameter runs 0 to 1, so it takes a bare ramp ([`Stroke::with_ramp`](crate::Stroke::with_ramp)). Also the identity of a baked atlas row: equal ramps bake equal texels.
 // `repr(C)` keeps `interpolation` last; see the note on `Gradient`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

@@ -1,20 +1,25 @@
+use crate::effect::effect_registry::EffectRegistry;
 use crate::image_registry::ImageRegistry;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{Image, ImageFit};
-use crate::shape::Shape;
+use crate::primitives::paint::paint::Paint;
+use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::reduction::Reductions;
+use crate::shape::image_paint::ImagePaint;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::polyline::PolylineShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
+use crate::shape::sealed::{LowerShape, Resolve};
 use crate::shape::shapes::Shapes;
+use crate::shape::{Lower, Shape};
 use glam::UVec2;
 use glam::Vec2;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -85,7 +90,7 @@ fn polyline_color_cardinality_is_enforced_at_the_setter() {
             for &colors_len in color_lengths {
                 let shape = catch_unwind(AssertUnwindSafe(|| {
                     source.apply(
-                        Shape::polyline(&points[..points_len], Border::new(tint, 1.0)),
+                        Shape::polyline(&points[..points_len]),
                         &colors[..colors_len],
                     )
                 }));
@@ -102,7 +107,10 @@ fn polyline_color_cardinality_is_enforced_at_the_setter() {
                 let mut shapes = Shapes::default();
                 let mut store = RecordStore::default();
                 let stored = points_len >= 2;
-                assert_eq!(shapes.add(shape, &mut store), stored.then_some(0));
+                assert_eq!(
+                    add(&mut shapes, (shape, Stroke::new(tint, 1.0)), &mut store),
+                    stored.then_some(0)
+                );
                 assert_eq!(shapes.records.len(), usize::from(stored));
                 assert_eq!(shapes.hashes.len(), usize::from(stored));
                 assert_eq!(
@@ -147,7 +155,14 @@ fn image_dimensions_above_u16_survive_lowering() {
     let mut shapes = Shapes::default();
     let mut store = RecordStore::default();
 
-    assert_eq!(shapes.add(Shape::image(handle(WIDTH)), &mut store), Some(0));
+    assert_eq!(
+        add(
+            &mut shapes,
+            (Shape::rect(), ImagePaint::new(handle(WIDTH))),
+            &mut store
+        ),
+        Some(0)
+    );
     let ShapeRecord::Image {
         source: ImageSource::Texture { size, .. },
         ..
@@ -186,12 +201,14 @@ fn builders_refuse_what_they_check() {
     let white = RgbaF32::WHITE;
     for radius in [N, -1.0, 1.0e5] {
         panic_probe::assert_panics_with(<Corners as LaneCodec>::LANE_RULE, || {
-            Shape::rect(Chrome::rounded(white, radius)).at(ok_rect)
+            check(&(Shape::rect().at(ok_rect).corners(radius), white));
         });
     }
     panic_probe::assert_panics_with(domain::COLOR_RULE, || {
-        Shape::rect(Chrome::NONE.with_border(Border::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)))
-            .at(ok_rect)
+        check(&(
+            Shape::rect().at(ok_rect),
+            Paint::NONE.with_border(Border::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)),
+        ));
     });
     // 65520 is the least magnitude that packs to an infinite f16 lane; 65504 is the greatest
     // finite one. Every value below packs into such a lane, so its kind's rule refuses a NaN or a
@@ -203,16 +220,17 @@ fn builders_refuse_what_they_check() {
         (domain::LANE_RULE, wide),
     ] {
         panic_probe::assert_panics_with(rule, || {
-            Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y).radius(radius)
+            check(&(
+                Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y).radius(radius),
+                RgbaF32::WHITE,
+            ));
         });
     }
     panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
-        Shape::rect(Chrome::fill(LinearGradient::two_stop(
-            N,
-            white,
-            RgbaF32::BLACK,
-        )))
-        .at(ok_rect)
+        check(&(
+            Shape::rect().at(ok_rect),
+            LinearGradient::two_stop(N, white, RgbaF32::BLACK),
+        ));
     });
     let half = Vec2::splat(0.5);
     let radial = |center, radius| {
@@ -224,22 +242,23 @@ fn builders_refuse_what_they_check() {
     };
     for (center, radius) in [(Vec2::new(wide, 0.5), half), (half, Vec2::new(0.5, wide))] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
-            Shape::rect(Chrome::fill(radial(center, radius))).at(ok_rect)
+            check(&(Shape::rect().at(ok_rect), radial(center, radius)));
         });
     }
     panic_probe::assert_panics_with(domain::LANE_RULE, || {
-        Shape::rect(Chrome::fill(ConicGradient::new(
-            Vec2::new(0.5, -wide),
-            0.0,
-            [Stop::new(0.0, white), Stop::new(1.0, RgbaF32::BLACK)],
-        )))
-        .at(ok_rect)
+        check(&(
+            Shape::rect().at(ok_rect),
+            ConicGradient::new(
+                Vec2::new(0.5, -wide),
+                0.0,
+                [Stop::new(0.0, white), Stop::new(1.0, RgbaF32::BLACK)],
+            ),
+        ));
     });
-    let _ = Shape::rect(Chrome::fill(radial(
-        Vec2::splat(-65504.0),
-        Vec2::splat(65504.0),
-    )))
-    .at(ok_rect);
+    check(&(
+        Shape::rect().at(ok_rect),
+        radial(Vec2::splat(-65504.0), Vec2::splat(65504.0)),
+    ));
     for filter in [
         Material::blur(wide),
         Material::blur(1.0).with_saturation(wide),
@@ -250,7 +269,7 @@ fn builders_refuse_what_they_check() {
         }),
     ] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
-            Shape::rect(Chrome::NONE.with_material(filter)).at(ok_rect)
+            check(&(Shape::rect().at(ok_rect), Paint::NONE.with_material(filter)));
         });
     }
     for (rule, shadow) in [
@@ -298,10 +317,13 @@ fn builders_refuse_what_they_check() {
         ),
     ] {
         panic_probe::assert_panics_with(rule, || {
-            Shape::shadow(Shadow {
-                color: white,
-                ..shadow
-            })
+            check(&(
+                Shape::rect(),
+                Paint::NONE.with_shadow(Shadow {
+                    color: white,
+                    ..shadow
+                }),
+            ));
         });
     }
     let widest = Shadow {
@@ -317,44 +339,9 @@ fn builders_refuse_what_they_check() {
         (widest.offset, widest.blur, widest.spread),
         "the widest shadow packs exactly"
     );
-    let _ = Shape::shadow(widest);
-    let arc = CircularArc {
-        center: Vec2::ZERO,
-        radius: 4.0,
-        start_angle: 0.0,
-        sweep: 1.0,
-    };
-    for (rule, bad) in [
-        (
-            domain::OFFSET_RULE,
-            CircularArc {
-                center: Vec2::new(0.0, N),
-                ..arc
-            },
-        ),
-        (
-            domain::LENGTH_RULE,
-            CircularArc {
-                radius: -1.0,
-                ..arc
-            },
-        ),
-        (
-            domain::ANGLE_RULE,
-            CircularArc {
-                start_angle: N,
-                ..arc
-            },
-        ),
-        (
-            domain::ANGLE_RULE,
-            CircularArc {
-                sweep: f32::INFINITY,
-                ..arc
-            },
-        ),
-    ] {
-        panic_probe::assert_panics_with(rule, || Shape::arc(bad, thin()));
+    check(&(Shape::rect(), Paint::NONE.with_shadow(widest)));
+    for (start_angle, sweep) in [(N, 1.0), (0.0, f32::INFINITY)] {
+        panic_probe::assert_panics_with(domain::ANGLE_RULE, || Shape::arc(start_angle, sweep));
     }
     let bezier = CubicBezier {
         p0: Vec2::ZERO,
@@ -369,43 +356,62 @@ fn builders_refuse_what_they_check() {
         CubicBezier { p2: off, ..bezier },
         CubicBezier { p3: off, ..bezier },
     ] {
-        panic_probe::assert_panics_with(domain::OFFSET_RULE, || Shape::cubic_bezier(bad, thin()));
+        panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+            check(&(Shape::cubic_bezier(bad), thin()));
+        });
     }
     panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
-        Shape::line(Vec2::ZERO, Vec2::X, Border::new(white, -1.0))
+        check(&(Shape::line(Vec2::ZERO, Vec2::X), Stroke::new(white, -1.0)));
     });
 
     // Geometry is checked as offsets at every door; a varying polyline color as a color.
-    let geometry: [fn(); 10] = [
-        || drop(Shape::rect(Chrome::NONE).at(Rect::new(0.0, N, 8.0, 8.0))),
+    let geometry: [fn(); 9] = [
+        || check(&(Shape::rect().at(Rect::new(0.0, N, 8.0, 8.0)), Paint::NONE)),
         || {
-            drop(Shape::windowed_rect(Chrome::NONE).at(Rect::new(f32::INFINITY, 0.0, 8.0, 8.0)));
+            check(&(
+                Shape::rect()
+                    .at(Rect::new(f32::INFINITY, 0.0, 8.0, 8.0))
+                    .coverage(Coverage::Outside),
+                Paint::NONE,
+            ));
         },
-        || drop(Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::new(N, 0.0))),
-        || drop(Shape::line(Vec2::ZERO, Vec2::new(0.0, N), thin())),
         || {
-            drop(Shape::quadratic_bezier(
-                QuadraticBezier {
+            check(&(
+                Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::new(N, 0.0)),
+                RgbaF32::WHITE,
+            ));
+        },
+        || check(&(Shape::line(Vec2::ZERO, Vec2::new(0.0, N)), thin())),
+        || {
+            check(&(
+                Shape::quadratic_bezier(QuadraticBezier {
                     p0: Vec2::ZERO,
                     p1: Vec2::X,
                     p2: Vec2::new(0.0, f32::INFINITY),
-                },
+                }),
                 thin(),
             ));
         },
-        || drop(Shape::circle(Vec2::new(N, 0.0), 4.0, thin())),
-        || drop(Shape::polyline(&[Vec2::ZERO, Vec2::new(N, 1.0)], thin())),
+        || check(&(Shape::polyline(&[Vec2::ZERO, Vec2::new(N, 1.0)]), thin())),
         || {
             drop(Mesh::filled_polygon(
                 &[Vec2::new(N, 0.0), Vec2::X, Vec2::Y],
                 RgbaF32::WHITE,
             ));
         },
-        || drop(Shape::shadow(Shadow::NONE).at(Rect::new(0.0, 0.0, N, 8.0))),
+        || {
+            check(&(
+                Shape::rect().at(Rect::new(0.0, 0.0, N, 8.0)),
+                Paint::NONE.with_shadow(Shadow::NONE),
+            ));
+        },
         || {
             let mut h = Harness::mono(UVec2::ONE);
             let text = h.ui_mut().intern("t");
-            drop(Shape::text(text, GlyphFont::new(16.0)).at_origin(Vec2::new(N, 0.0)));
+            check(&(
+                Shape::text(text, GlyphFont::new(16.0)).at_origin(Vec2::new(N, 0.0)),
+                RgbaF32::WHITE,
+            ));
         },
     ];
     for build in geometry {
@@ -413,24 +419,41 @@ fn builders_refuse_what_they_check() {
     }
     panic_probe::assert_panics_with(domain::COLOR_RULE, || {
         let colors = [white, RgbaF32::new(N, 0.0, 0.0, 1.0)];
-        drop(Shape::polyline(&[Vec2::ZERO, Vec2::X], thin()).per_point(&colors));
+        check(&(
+            Shape::polyline(&[Vec2::ZERO, Vec2::X]).per_point(&colors),
+            thin(),
+        ));
     });
     // Each color multiplies the stroke color into one f16 lane: 255 · 256 = 65280 fits under
     // 65504, and 256 · 256 = 65536 does not, though each factor is a color.
-    let bright = Border::new(RgbaF32::new(256.0, 1.0, 1.0, 1.0), 1.0);
+    let bright = Stroke::new(RgbaF32::new(256.0, 1.0, 1.0, 1.0), 1.0);
     let two = [Vec2::ZERO, Vec2::X];
-    let _ = Shape::polyline(&two, bright).per_segment(&[RgbaF32::new(255.0, 1.0, 1.0, 1.0)]);
+    check(&(
+        Shape::polyline(&two).per_segment(&[RgbaF32::new(255.0, 1.0, 1.0, 1.0)]),
+        bright,
+    ));
     panic_probe::assert_panics_with(TINT_RULE, || {
         let colors = [white, RgbaF32::new(256.0, 1.0, 1.0, 1.0)];
-        drop(Shape::polyline(&two, bright).per_point(&colors));
+        check(&(Shape::polyline(&two).per_point(&colors), bright));
     });
     panic_probe::assert_panics_with(TINT_RULE, || {
-        drop(Shape::polyline(&two, bright).per_segment(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]));
+        check(&(
+            Shape::polyline(&two).per_segment(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]),
+            bright,
+        ));
     });
-    let _ = Shape::rect(Chrome::NONE).at(Rect::new(0.0, 0.0, -4.0, 8.0));
+    check(&(
+        Shape::rect().at(Rect::new(0.0, 0.0, -4.0, 8.0)),
+        Paint::NONE,
+    ));
 
     // A tile's phase is an offset and each axis of its repeat count positive.
-    let tile = |offset, scale| drop(Shape::image(handle(1)).fit(ImageFit::Tile { offset, scale }));
+    let tile = |offset, scale| {
+        check(&(
+            Shape::rect(),
+            ImagePaint::new(handle(1)).fit(ImageFit::Tile { offset, scale }),
+        ));
+    };
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
         tile(Vec2::new(f32::INFINITY, 0.0), Vec2::ONE);
     });
@@ -451,8 +474,24 @@ fn handle(width: u32) -> ImageHandle {
     )
 }
 
-fn thin() -> Border {
-    Border::new(RgbaF32::WHITE, 1.0)
+fn thin() -> Stroke {
+    Stroke::new(RgbaF32::WHITE, 1.0)
+}
+
+/// Check `pair` as [`Ui::add_shape`](crate::Ui::add_shape) does.
+#[track_caller]
+fn check(pair: &impl LowerShape) {
+    pair.validate();
+}
+
+/// Add `pair` to `shapes`, under full reductions and no effects.
+fn add(shapes: &mut Shapes, pair: impl Lower, store: &mut RecordStore) -> Option<u32> {
+    let effects = EffectRegistry::default();
+    let resolve = Resolve {
+        effects: &effects,
+        reductions: Reductions::FULL,
+    };
+    shapes.add(pair, resolve, store)
 }
 
 /// A shadow the crate derives past the lanes, as an animated chrome's tween overshoots, saturates

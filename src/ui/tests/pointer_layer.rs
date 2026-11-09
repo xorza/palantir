@@ -20,7 +20,7 @@ fn block(ui: &mut Ui, layer: Layer, color: RgbaF32) {
         Block::new()
             .id_salt(("block", layer))
             .size(8.0)
-            .chrome(Chrome::fill(color))
+            .chrome(Chrome::new(color))
             .show(ui);
     });
 }

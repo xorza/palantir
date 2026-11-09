@@ -31,8 +31,8 @@ const SURFACE: UVec2 = UVec2::new(200, 100);
 #[test]
 fn reduced_transparency_records_every_pane_solid() {
     let id = WidgetId::from_hash("pane");
-    let pane = Chrome::fill(RgbaF32::hex(0x204060).with_alpha8(184))
-        .with_material(Material::frosted(20.0));
+    let pane =
+        Chrome::new(RgbaF32::hex(0x204060).with_alpha8(184)).with_material(Material::frosted(20.0));
     let record = |ui: &mut Ui| {
         Panel::vstack()
             .id(id)
@@ -96,21 +96,27 @@ fn a_material_reads_the_ground_while_transparency_is_reduced() {
         h.prime(2, |ui| {
             if under {
                 ui.add_shape(
-                    Shape::rect(RgbaF32::hex(0xff0000)).at(Rect::new(0.0, 0.0, 24.0, 16.0)),
+                    Shape::rect().at(Rect::new(0.0, 0.0, 24.0, 16.0)),
+                    RgbaF32::hex(0xff0000),
                 );
             }
-            ui.add_shape(Shape::rect(chrome.clone()).at(Rect::new(4.0, 4.0, 16.0, 8.0)));
+            ui.add_shape(
+                Shape::rect()
+                    .at(Rect::new(4.0, 4.0, 16.0, 8.0))
+                    .corners(chrome.corners),
+                chrome.paint.clone(),
+            );
         });
         (h.read_back().get_pixel(12, 8).0, h.backdrop_blurs())
     };
-    let (ground, blurs) = paint(true, true, Chrome::fill(fill).with_material(blur));
+    let (ground, blurs) = paint(true, true, Chrome::new(fill).with_material(blur));
     assert_eq!(blurs, 0, "the ground needs no blur");
-    let (over_nothing, _) = paint(false, false, Chrome::fill(fill).with_material(blur));
+    let (over_nothing, _) = paint(false, false, Chrome::new(fill).with_material(blur));
     assert_eq!(ground, over_nothing);
-    let (red, _) = paint(false, true, Chrome::fill(RgbaF32::TRANSPARENT));
+    let (red, _) = paint(false, true, Chrome::new(RgbaF32::TRANSPARENT));
     assert_ne!(ground, red, "the ground is no red");
     let dim = blur.with_reduced_transparency(ReducedBackdrop::Nothing);
-    let (kept, _) = paint(true, true, Chrome::fill(fill).with_material(dim));
-    let (plain, _) = paint(false, true, Chrome::fill(fill));
+    let (kept, _) = paint(true, true, Chrome::new(fill).with_material(dim));
+    let (plain, _) = paint(false, true, Chrome::new(fill));
     assert_eq!(kept, plain);
 }

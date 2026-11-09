@@ -653,7 +653,6 @@ mod record_store_tests {
     use crate::display::frame_stamp::FrameStamp;
     use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::identity::widget_id::WidgetId;
-    use crate::primitives::paint::border::Border;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::frontend::Frontend;
@@ -664,6 +663,7 @@ mod record_store_tests {
     use crate::shape::Shape;
 
     use crate::display::Display;
+    use crate::primitives::paint::stroke::Stroke;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
@@ -721,10 +721,10 @@ mod record_store_tests {
                 .id(WidgetId::from_hash(id))
                 .size(96.0)
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::mesh(self.mesh));
+                    ui.add_shape(Shape::mesh(self.mesh), RgbaF32::WHITE);
                     ui.add_shape(
-                        Shape::polyline(self.points, Border::new(RgbaF32::WHITE, 3.0))
-                            .per_point(self.colors),
+                        Shape::polyline(self.points).per_point(self.colors),
+                        Stroke::new(RgbaF32::WHITE, 3.0),
                     );
                     let label = ui.intern(self.label);
                     Text::new(label)
@@ -962,6 +962,7 @@ mod cutout_census_tests {
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::paint::Paint;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
@@ -1006,13 +1007,14 @@ mod cutout_census_tests {
                 .show(ui, |ui| {
                     for card in 0..cards.get() {
                         ui.add_shape(
-                            Shape::shadow(Shadow {
+                            Shape::rect()
+                                .at(Rect::new(10.0 + 70.0 * card as f32, 40.0, 40.0, 30.0))
+                                .corners(8.0),
+                            Paint::NONE.with_shadow(Shadow {
                                 color: RgbaF32::BLACK,
                                 blur: 4.0,
                                 ..Shadow::NONE
-                            })
-                            .at(Rect::new(10.0 + 70.0 * card as f32, 40.0, 40.0, 30.0))
-                            .corners(8.0),
+                            }),
                         );
                     }
                     let fill = if tick.get() {
@@ -1024,7 +1026,7 @@ mod cutout_census_tests {
                         .id_salt("tick")
                         .at((500.0, 150.0))
                         .size(10.0)
-                        .chrome(Chrome::fill(fill))
+                        .chrome(Chrome::new(fill))
                         .show(ui);
                 });
         };
@@ -1148,13 +1150,13 @@ mod screenshot_tests {
                     .id_salt("red")
                     .at((2.0, 2.0))
                     .size(10.0)
-                    .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
+                    .chrome(Chrome::new(RgbaF32::hex(0xd23f7a)))
                     .show(ui);
                 Block::new()
                     .id_salt("blue")
                     .at((14.0, 6.0))
                     .size(8.0)
-                    .chrome(Chrome::fill(RgbaF32::hex(0x2f6fd0)))
+                    .chrome(Chrome::new(RgbaF32::hex(0x2f6fd0)))
                     .show(ui);
                 if let Frame::Asking(region) = frame {
                     asked.set(ui.request_screenshot(region));
@@ -1340,9 +1342,9 @@ mod escalation_tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::layout::sizing::Sizing;
-    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
+    use crate::primitives::paint::paint::Paint;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_buffer::backdrop_row::PaneSource;
     use crate::renderer::render_plan::RenderPlan;
@@ -1400,12 +1402,8 @@ mod escalation_tests {
             .show(ui, |ui| {
                 for i in 0..count {
                     ui.add_shape(
-                        Shape::rect(Chrome::NONE.with_material(Material::blur(2.0))).at(Rect::new(
-                            20.0 + 40.0 * i as f32,
-                            0.0,
-                            8.0,
-                            SIDE,
-                        )),
+                        Shape::rect().at(Rect::new(20.0 + 40.0 * i as f32, 0.0, 8.0, SIDE)),
+                        Paint::NONE.with_material(Material::blur(2.0)),
                     );
                 }
             });
@@ -1658,9 +1656,9 @@ mod capture_path_tests {
     use crate::gpu::frame::submission::Route;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
-    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
+    use crate::primitives::paint::paint::Paint;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
     use crate::ui::Ui;
@@ -1699,9 +1697,13 @@ mod capture_path_tests {
                 .id_salt("panes")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 4.0, 4.0)));
                     ui.add_shape(
-                        Shape::rect(Chrome::NONE.with_material(Material::blur(2.0))).at(pane),
+                        Shape::rect().at(Rect::new(0.0, 0.0, 4.0, 4.0)),
+                        RgbaF32::WHITE,
+                    );
+                    ui.add_shape(
+                        Shape::rect().at(pane),
+                        Paint::NONE.with_material(Material::blur(2.0)),
                     );
                 });
         };

@@ -89,6 +89,7 @@ use crate::scene::tree::NodeChrome;
 use crate::shape::Lower;
 use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::paint_animation::PaintAnimation;
+use crate::shape::sealed::{LowerShape as _, Resolve};
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
 use crate::text::font_source::FontSource;
@@ -828,19 +829,29 @@ impl Ui {
         self.resources.windows().contains(token)
     }
 
-    /// Attach a paint primitive to the active node. Direct text counts toward
-    /// layout only on a leaf; container-owned text is an overlay shaped against the
-    /// container's padded width.
+    /// Attach `shape` to the active node, covered by `paint`: each shape takes the paints its
+    /// pipeline draws ([`Lower`]). Direct text counts toward layout only on a leaf;
+    /// container-owned text is an overlay shaped against the container's padded width.
     ///
     /// # Panics
     ///
-    /// When `shape` is an [`EffectShape`](crate::widget::EffectShape) whose effect is not
-    /// loaded, or loaded with other parameters or kind; while power is reduced, the same for the
-    /// alternative it paints in place of it.
+    /// When `paint` holds a value outside its kind, as [`Paint::validate`](crate::Paint) says, or
+    /// draws what the shape's pipeline cannot, as [`Lower`] lists; when it is an
+    /// [`EffectPaint`](crate::widget::EffectPaint) whose effect is not loaded, or loaded with
+    /// other parameters or kind; while power is reduced, the same for the alternative it paints
+    /// in place of it.
     #[track_caller]
-    pub fn add_shape(&mut self, mut shape: impl Lower) {
-        shape.resolve(self.resources.effects(), self.frame_runtime.reductions);
-        self.forest.add_shape(shape);
+    pub fn add_shape<S, P>(&mut self, shape: S, paint: P)
+    where
+        (S, P): Lower,
+    {
+        let pair = (shape, paint);
+        pair.validate();
+        let resolve = Resolve {
+            effects: self.resources.effects(),
+            reductions: self.frame_runtime.reductions,
+        };
+        self.forest.add_shape(pair, resolve, None);
     }
 
     /// Load an icon set and get back an owning [`IconSet`]. Hold it: dropping the
@@ -996,16 +1007,16 @@ impl Ui {
         self.forest.record_store.text.text(text)
     }
 
-    /// Append `shape` to the active node and animate it at paint time. The recorded
-    /// shape is identical every frame, so the widget never re-records. Drops silently
-    /// if the shape was noop-collapsed. With motion reduced ([`Self::is_motion_reduced`]), a
+    /// Append `shape`, covered by `paint`, to the active node and animate it at paint time. The
+    /// recorded shape is identical every frame, so the widget never re-records. Drops silently
+    /// if the pair paints nothing. With motion reduced ([`Self::is_motion_reduced`]), a
     /// decorative animation lands at once, as
     /// [`MotionRole::Decorative`] says. An
-    /// [`EffectShape`](crate::widget::EffectShape) reads the animation's time.
+    /// [`EffectPaint`](crate::widget::EffectPaint) reads the animation's time.
     ///
     /// # Panics
     ///
-    /// As [`Self::add_shape`]; when `animation` drives no channel and `shape` reads no time, so
+    /// As [`Self::add_shape`]; when `animation` drives no channel and `paint` reads no time, so
     /// nothing would move.
     ///
     /// ```
@@ -1014,7 +1025,8 @@ impl Ui {
     /// # use std::time::Duration;
     /// # fn demo(ui: &mut Ui) {
     /// ui.add_shape_animated(
-    ///     Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+    ///     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+    ///     RgbaF32::WHITE,
     ///     PaintAnimation::alpha(0.4, 1.0)
     ///         .with_period(Duration::from_secs(2))
     ///         .with_repeat(PaintRepeat::Forever)
@@ -1023,21 +1035,26 @@ impl Ui {
     /// # }
     /// ```
     #[track_caller]
-    pub fn add_shape_animated<S: Lower>(&mut self, mut shape: S, animation: PaintAnimation) {
+    pub fn add_shape_animated<S, P>(&mut self, shape: S, paint: P, animation: PaintAnimation)
+    where
+        (S, P): Lower,
+    {
+        let pair = (shape, paint);
         assert!(
-            S::READS_TIME || animation.drives_channel(),
-            "a paint animation that drives no channel moves only an effect's time, and {shape:?} reads none"
+            <(S, P)>::READS_TIME || animation.drives_channel(),
+            "a paint animation that drives no channel moves only an effect's time, and {pair:?} reads none"
         );
-        shape.resolve(self.resources.effects(), self.frame_runtime.reductions);
+        pair.validate();
         let animation = if self.is_motion_reduced() {
             animation.reduced()
         } else {
             Some(animation)
         };
-        match animation {
-            Some(animation) => self.forest.add_shape_animated(shape, animation),
-            None => self.forest.add_shape(shape),
-        }
+        let resolve = Resolve {
+            effects: self.resources.effects(),
+            reductions: self.frame_runtime.reductions,
+        };
+        self.forest.add_shape(pair, resolve, animation);
     }
 
     /// Open a side layer that paints above `Main`, escapes ancestor clip and
@@ -1101,7 +1118,7 @@ impl Ui {
             Border::NONE
         };
         let material = chrome
-            .and_then(|chrome| chrome.material.as_ref())
+            .and_then(|chrome| chrome.paint.material.as_ref())
             .and_then(|material| {
                 MaterialRead::resolve(
                     material,

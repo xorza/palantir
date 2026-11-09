@@ -208,14 +208,14 @@ const PINS: &[Pin] = &[
     pin::<PushClipPayload>("payload::PushClipPayload", 24, 4),
     pin::<DrawQuadPayload>("payload::DrawQuadPayload", 80, 4),
     pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
-    pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 56, 4),
-    pin::<DrawMeshPayload>("payload::DrawMeshPayload", 64, 4),
+    pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 72, 4),
+    pin::<DrawMeshPayload>("payload::DrawMeshPayload", 80, 4),
     pin::<DrawImagePayload>("payload::DrawImagePayload", 88, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
     pin::<Quad>("renderer::Quad", 64, 4),
     pin::<CurveInstance>("renderer::CurveInstance", 76, 4),
-    pin::<MeshInstance>("renderer::MeshInstance", 24, 4),
+    pin::<MeshInstance>("renderer::MeshInstance", 32, 4),
     pin::<ImageInstance>("renderer::ImageInstance", 48, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
     pin::<RasterQuad>("raster_pipeline::RasterQuad", 32, 4),
@@ -225,7 +225,7 @@ const PINS: &[Pin] = &[
     pin::<TextDrawRow>("renderer::TextDrawRow", 88, 8),
     pin::<IconDrawRow>("renderer::IconDrawRow", 52, 4),
     pin::<ImageDrawRow>("renderer::ImageDrawRow", 56, 8),
-    pin::<MeshDrawRow>("renderer::MeshDrawRow", 40, 4),
+    pin::<MeshDrawRow>("renderer::MeshDrawRow", 48, 4),
 ];
 
 #[test]

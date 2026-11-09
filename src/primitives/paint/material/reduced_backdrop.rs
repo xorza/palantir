@@ -1,7 +1,7 @@
 //! [`ReducedBackdrop`]: what a use of a backdrop paints while transparency is reduced.
 
 /// What a [`Material`](crate::Material) or a backdrop effect's shape
-/// ([`EffectShape::reduced_transparency`](crate::widget::EffectShape::reduced_transparency))
+/// ([`EffectPaint::reduced_transparency`](crate::widget::EffectPaint::reduced_transparency))
 /// paints while transparency is reduced
 /// ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)). A choice of each use,
 /// as the role decides it: a float's material reads the ground, and a scrim keeps its dim, as iOS

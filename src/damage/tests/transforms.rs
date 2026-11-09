@@ -35,7 +35,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .chrome(Chrome::fill(fill))
+                            .chrome(Chrome::new(fill))
                             .show(ui)
                             .node(ui),
                     );
@@ -82,7 +82,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                            .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(ui),
                     );
@@ -140,7 +140,7 @@ fn transform_animation_keeps_far_positions_split() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                            .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(ui),
                     );
@@ -202,8 +202,8 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                                     // paint rect saturates and stays invariant
                                     // under small `dx`.
                                     ui.add_shape(
-                                        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0))
-                                            .at(Rect::new(-200.0, 0.0, 500.0, 50.0)),
+                                        Shape::rect().at(Rect::new(-200.0, 0.0, 500.0, 50.0)),
+                                        RgbaF32::srgb(1.0, 0.0, 0.0),
                                     );
                                 });
                         });
@@ -250,8 +250,8 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
                                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                                 .show(ui, |ui| {
                                     ui.add_shape(
-                                        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0))
-                                            .at(Rect::new(-200.0, 0.0, 500.0, 50.0)),
+                                        Shape::rect().at(Rect::new(-200.0, 0.0, 500.0, 50.0)),
+                                        RgbaF32::srgb(1.0, 0.0, 0.0),
                                     );
                                 });
                         });
@@ -293,8 +293,8 @@ fn self_transform_shift_damages_direct_shapes() {
                         .show(ui, |ui| {
                             // Direct shape on the transformed panel, as darkroom's beziers.
                             ui.add_shape(
-                                Shape::rect(RgbaF32::srgb(0.2, 0.6, 0.9))
-                                    .at(Rect::new(40.0, 40.0, 30.0, 30.0)),
+                                Shape::rect().at(Rect::new(40.0, 40.0, 30.0, 30.0)),
+                                RgbaF32::srgb(0.2, 0.6, 0.9),
                             );
                         });
                 });
@@ -339,8 +339,8 @@ fn self_transform_shift_with_invariant_clipped_paint_rect_contributes_damage() {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 ui.add_shape(
-                                    Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0))
-                                        .at(Rect::new(-200.0, -200.0, 500.0, 500.0)),
+                                    Shape::rect().at(Rect::new(-200.0, -200.0, 500.0, 500.0)),
+                                    RgbaF32::srgb(1.0, 0.0, 0.0),
                                 );
                             });
                     });
@@ -372,11 +372,11 @@ fn self_transform_shift_leaves_the_panels_own_chrome_alone() {
                 .id(WidgetId::from_hash("xform"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
                 .size((Sizing::FILL, Sizing::FILL))
-                .chrome(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.0, 0.0, 1.0)))
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0))
-                            .at(Rect::new(10.0, 10.0, 5.0, 5.0)),
+                        Shape::rect().at(Rect::new(10.0, 10.0, 5.0, 5.0)),
+                        RgbaF32::srgb(1.0, 0.0, 0.0),
                     );
                 });
         });
@@ -412,7 +412,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
                                 Block::new()
                                     .id(WidgetId::from_hash(key))
                                     .size(40.0)
-                                    .chrome(Chrome::fill(BLUE))
+                                    .chrome(Chrome::new(BLUE))
                                     .show(ui);
                             }
                         });
@@ -476,12 +476,12 @@ fn content_change_under_constant_transform_stays_row_tight() {
                             Block::new()
                                 .id(WidgetId::from_hash("a"))
                                 .size(40.0)
-                                .chrome(Chrome::fill(fill))
+                                .chrome(Chrome::new(fill))
                                 .show(ui);
                             Block::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size(40.0)
-                                .chrome(Chrome::fill(BLUE))
+                                .chrome(Chrome::new(BLUE))
                                 .show(ui);
                         });
                 });

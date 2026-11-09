@@ -257,10 +257,13 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     }
     // The strip rides the `surround` band, and an unselected chip on it is a ghost: no fill at
     // rest, `element_mid` under the pointer.
-    assert_eq!(theme.strip, Chrome::fill(Palette::DARK.surround));
-    assert_eq!(theme.unselected.normal.chrome.fill, Chrome::NONE.fill);
+    assert_eq!(theme.strip, Chrome::new(Palette::DARK.surround));
     assert_eq!(
-        theme.unselected.hovered.chrome.fill,
+        theme.unselected.normal.chrome.paint.fill,
+        Chrome::NONE.paint.fill
+    );
+    assert_eq!(
+        theme.unselected.hovered.chrome.paint.fill,
         Palette::DARK.element_mid.into()
     );
     assert_eq!(Selection::from(true), Selection::Selected);
@@ -408,7 +411,7 @@ fn the_accent_button_fills_with_the_accent_and_moves_away_from_its_ink() {
         let stock = ButtonTheme::from_parts(&p, &Metrics::DEFAULT);
         let accent = ButtonTheme::accent(&p, &Metrics::DEFAULT);
         let looks = &accent.unselected;
-        let fill = |look: &WidgetLook| look.chrome.fill.as_solid().expect("a solid fill");
+        let fill = |look: &WidgetLook| look.chrome.paint.fill.as_solid().expect("a solid fill");
         let away = if p == Palette::DARK { 1.0 } else { 0.0 };
         let mixed = |t: f32| {
             RgbaF32::new(
@@ -425,7 +428,7 @@ fn the_accent_button_fills_with_the_accent_and_moves_away_from_its_ink() {
         for look in [&looks.normal, &looks.hovered, &looks.active] {
             assert_eq!(look.text.color, Some(p.on_accent));
             assert_eq!(
-                look.chrome.border.color,
+                look.chrome.paint.border.color,
                 fill(look),
                 "no outline of another color"
             );

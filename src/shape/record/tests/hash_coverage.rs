@@ -1,14 +1,18 @@
 //! The exhaustive pin: every named field on every shape either moves the
 //! hash or is listed as deliberately excluded.
 
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
+use crate::shape::paint::quad_shape::{BoxGeometry, BoxOutline};
+use crate::shape::paint::triangle_geometry::TriangleGeometry;
 use crate::shape::record::*;
 use crate::shape::record_store::recorded_gradients::GradientId;
-use crate::shape::rect::RectKind;
 use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -41,146 +45,82 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let rect = |r| Some(Rect::new(r, 0.0, 4.0, 4.0));
     let pt = |x| Vec2::new(x, 0.0);
 
-    let quad_rect = |kind, local_rect, corners, fill, stroke| {
-        ShapeRecord::Quad(QuadShape::Rect {
-            kind,
-            local_rect,
-            corners,
+    let quad_box = |coverage, local_rect, outline, fill, stroke| {
+        ShapeRecord::Quad(QuadShape::Box {
+            geometry: BoxGeometry {
+                local_rect,
+                outline,
+                coverage,
+            },
             fill,
             border: stroke,
             shadow: LoweredShadow::lower(Shadow::NONE),
             material: None,
         })
     };
-    let base = quad_rect(
-        RectKind::Rounded,
-        rect(0.0),
-        Corners::all(2.0),
-        solid,
-        stroke,
+    let rounded = BoxOutline::Rect(Corners::all(2.0));
+    let base = quad_box(Coverage::Inside, rect(0.0), rounded, solid, stroke);
+    moves(
+        "Quad/Box.coverage",
+        &base,
+        &quad_box(Coverage::Outside, rect(0.0), rounded, solid, stroke),
     );
     moves(
-        "Quad/Rect.kind",
+        "Quad/Box.local_rect",
         &base,
-        &quad_rect(
-            RectKind::Windowed,
+        &quad_box(Coverage::Inside, rect(1.0), rounded, solid, stroke),
+    );
+    moves(
+        "Quad/Box.outline corners",
+        &base,
+        &quad_box(
+            Coverage::Inside,
             rect(0.0),
-            Corners::all(2.0),
+            BoxOutline::Rect(Corners::all(3.0)),
+            solid,
+            stroke,
+        ),
+    );
+    // A circle carries no corners, so the outline's kind alone tells it from a sharp rect.
+    moves(
+        "Quad/Box.outline circle",
+        &quad_box(
+            Coverage::Inside,
+            rect(0.0),
+            BoxOutline::Rect(Corners::ZERO),
+            solid,
+            stroke,
+        ),
+        &quad_box(
+            Coverage::Inside,
+            rect(0.0),
+            BoxOutline::Circle,
             solid,
             stroke,
         ),
     );
     moves(
-        "Quad/Rect.local_rect",
+        "Quad/Box.fill",
         &base,
-        &quad_rect(
-            RectKind::Rounded,
-            rect(1.0),
-            Corners::all(2.0),
-            solid,
-            stroke,
-        ),
-    );
-    moves(
-        "Quad/Rect.corners",
-        &base,
-        &quad_rect(
-            RectKind::Rounded,
+        &quad_box(
+            Coverage::Inside,
             rect(0.0),
-            Corners::all(3.0),
-            solid,
-            stroke,
-        ),
-    );
-    moves(
-        "Quad/Rect.fill",
-        &base,
-        &quad_rect(
-            RectKind::Rounded,
-            rect(0.0),
-            Corners::all(2.0),
+            rounded,
             LoweredBrush::Solid(red),
             stroke,
         ),
     );
-    let ShapeRecord::Quad(QuadShape::Rect {
-        kind,
-        local_rect,
-        corners,
-        fill,
-        border,
-        ..
-    }) = base
-    else {
-        unreachable!()
-    };
-    moves(
-        "Quad/Rect.shadow",
-        &base,
-        &ShapeRecord::Quad(QuadShape::Rect {
-            kind,
-            local_rect,
-            corners,
-            fill,
-            border,
-            shadow: LoweredShadow::lower(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0)),
-            material: None,
-        }),
-    );
-    moves(
-        "Quad/Rect.material",
-        &base,
-        &ShapeRecord::Quad(QuadShape::Rect {
-            kind,
-            local_rect,
-            corners,
-            fill,
-            border,
-            shadow: LoweredShadow::lower(Shadow::NONE),
-            material: Some(LoweredMaterial::fixture(8.0)),
-        }),
-    );
-    moves(
-        "Quad/Rect.stroke",
-        &base,
-        &quad_rect(
-            RectKind::Rounded,
-            rect(0.0),
-            Corners::all(2.0),
-            solid,
-            stroke2,
-        ),
-    );
-    // A gradient's content hash rides in its brush; its frame-local id does not move the hash.
-    let grad = |id, hash| LoweredBrush::Gradient {
-        id: GradientId(id),
-        hash: ContentHash::from_u64(hash),
-    };
-    let grad_rect = |fill| {
-        quad_rect(
-            RectKind::Rounded,
-            rect(0.0),
-            Corners::all(2.0),
-            fill,
-            stroke,
-        )
-    };
-    moves(
-        "Quad/Rect.fill gradient hash",
-        &grad_rect(grad(0, 1)),
-        &grad_rect(grad(0, 2)),
-    );
-    excluded(
-        "Quad/Rect.fill gradient id",
-        &grad_rect(grad(0, 1)),
-        &grad_rect(grad(5, 1)),
-    );
-
-    let shadow = |local_rect, corners, sh| {
-        ShapeRecord::Quad(QuadShape::Shadow {
-            local_rect,
-            corners,
-            shadow: LoweredShadow::lower(sh),
+    let box_with = |shadow: Shadow, material| {
+        ShapeRecord::Quad(QuadShape::Box {
+            geometry: BoxGeometry {
+                local_rect: rect(0.0),
+                outline: rounded,
+                coverage: Coverage::Inside,
+            },
+            fill: solid,
+            border: stroke,
+            shadow: LoweredShadow::lower(shadow),
+            material,
         })
     };
     let sh = Shadow {
@@ -190,17 +130,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         spread: 1.0,
         inset: false,
     };
-    let base = shadow(rect(0.0), Corners::all(2.0), sh);
-    moves(
-        "Quad/Shadow.local_rect",
-        &base,
-        &shadow(rect(1.0), Corners::all(2.0), sh),
-    );
-    moves(
-        "Quad/Shadow.corners",
-        &base,
-        &shadow(rect(0.0), Corners::all(3.0), sh),
-    );
+    moves("Quad/Box.shadow", &base, &box_with(sh, None));
     for (label, changed) in [
         (
             "color",
@@ -221,66 +151,84 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ("inset", Shadow { inset: true, ..sh }),
     ] {
         moves(
-            &format!("Quad/Shadow.shadow.{label}"),
-            &base,
-            &shadow(rect(0.0), Corners::all(2.0), changed),
+            &format!("Quad/Box.shadow.{label}"),
+            &box_with(sh, None),
+            &box_with(changed, None),
         );
     }
+    moves(
+        "Quad/Box.material",
+        &base,
+        &box_with(Shadow::NONE, Some(LoweredMaterial::fixture(8.0))),
+    );
+    moves(
+        "Quad/Box.border",
+        &base,
+        &quad_box(Coverage::Inside, rect(0.0), rounded, solid, stroke2),
+    );
+    // A gradient's content hash rides in its brush; its frame-local id does not move the hash.
+    let grad = |id, hash| LoweredBrush::Gradient {
+        id: GradientId(id),
+        hash: ContentHash::from_u64(hash),
+    };
+    let grad_box = |fill| quad_box(Coverage::Inside, rect(0.0), rounded, fill, stroke);
+    moves(
+        "Quad/Box.fill gradient hash",
+        &grad_box(grad(0, 1)),
+        &grad_box(grad(0, 2)),
+    );
+    excluded(
+        "Quad/Box.fill gradient id",
+        &grad_box(grad(0, 1)),
+        &grad_box(grad(5, 1)),
+    );
 
-    let tri = |a, b, c, radius, fill, stroke, bbox| {
+    let tri = |corners, radius, placement, fill, stroke| {
         ShapeRecord::Quad(QuadShape::Triangle {
-            a,
-            b,
-            c,
-            radius,
+            geometry: TriangleGeometry {
+                corners,
+                radius,
+                placement,
+            },
             fill,
             border: stroke,
-            bbox,
         })
     };
-    let base = tri(pt(0.0), pt(1.0), pt(2.0), 1.0, white, stroke, Rect::ZERO);
-    moves(
-        "Quad/Triangle.a",
-        &base,
-        &tri(pt(9.0), pt(1.0), pt(2.0), 1.0, white, stroke, Rect::ZERO),
-    );
-    moves(
-        "Quad/Triangle.b",
-        &base,
-        &tri(pt(0.0), pt(9.0), pt(2.0), 1.0, white, stroke, Rect::ZERO),
-    );
-    moves(
-        "Quad/Triangle.c",
-        &base,
-        &tri(pt(0.0), pt(1.0), pt(9.0), 1.0, white, stroke, Rect::ZERO),
-    );
+    let corners = [pt(0.0), pt(1.0), pt(2.0)];
+    let natural = PointPlacement::NATURAL;
+    let base = tri(corners, 1.0, natural, white, stroke);
+    for (label, moved) in [
+        ("a", [pt(9.0), pt(1.0), pt(2.0)]),
+        ("b", [pt(0.0), pt(9.0), pt(2.0)]),
+        ("c", [pt(0.0), pt(1.0), pt(9.0)]),
+    ] {
+        moves(
+            &format!("Quad/Triangle.corners.{label}"),
+            &base,
+            &tri(moved, 1.0, natural, white, stroke),
+        );
+    }
     moves(
         "Quad/Triangle.radius",
         &base,
-        &tri(pt(0.0), pt(1.0), pt(2.0), 2.0, white, stroke, Rect::ZERO),
+        &tri(corners, 2.0, natural, white, stroke),
     );
+    for (label, placement) in placements(rect) {
+        moves(
+            &format!("Quad/Triangle.placement.{label}"),
+            &base,
+            &tri(corners, 1.0, placement, white, stroke),
+        );
+    }
     moves(
         "Quad/Triangle.fill",
         &base,
-        &tri(pt(0.0), pt(1.0), pt(2.0), 1.0, red, stroke, Rect::ZERO),
+        &tri(corners, 1.0, natural, red, stroke),
     );
     moves(
-        "Quad/Triangle.stroke",
+        "Quad/Triangle.border",
         &base,
-        &tri(pt(0.0), pt(1.0), pt(2.0), 1.0, white, stroke2, Rect::ZERO),
-    );
-    excluded(
-        "Quad/Triangle.bbox (derived from a/b/c/radius)",
-        &base,
-        &tri(
-            pt(0.0),
-            pt(1.0),
-            pt(2.0),
-            1.0,
-            white,
-            stroke,
-            Rect::new(5.0, 5.0, 5.0, 5.0),
-        ),
+        &tri(corners, 1.0, natural, white, stroke2),
     );
 
     let poly =
@@ -292,6 +240,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             points,
             colors,
             bbox,
+            placement: PointPlacement::NATURAL,
             content_hash: ContentHash::from_u64(content_hash),
         };
     let base = poly(
@@ -318,6 +267,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             8,
         ),
     );
+    for (label, placement) in placements(rect) {
+        moves(
+            &format!("Polyline.placement.{label}"),
+            &base,
+            &replaced(base.clone(), placement),
+        );
+    }
     // Folded into `content_hash` at lowering; must not be hashed twice.
     excluded(
         "Polyline.width",
@@ -568,7 +524,10 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     );
 
     let mesh = |local_rect, tint, vertices, idxs, bbox, content_hash| ShapeRecord::Mesh {
-        local_rect,
+        placement: PointPlacement {
+            local_rect,
+            fit: Fit::Natural,
+        },
         tint,
         vertices,
         idxs,
@@ -584,7 +543,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         7,
     );
     moves(
-        "Mesh.local_rect",
+        "Mesh.placement.local_rect",
         &base,
         &mesh(
             rect(1.0),
@@ -595,6 +554,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             7,
         ),
     );
+    for (label, placement) in placements(rect) {
+        moves(
+            &format!("Mesh.placement.{label}"),
+            &base,
+            &replaced(base.clone(), placement),
+        );
+    }
     moves(
         "Mesh.tint",
         &base,
@@ -827,84 +793,202 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    let curve = |cap, basis, stroke, bbox, ramp| ShapeRecord::Curve {
+    let curve = |cap, bezier, stroke, ramp| ShapeRecord::Curve {
         cap,
-        basis,
+        geometry: BezierGeometry {
+            bezier,
+            placement: PointPlacement::NATURAL,
+        },
         stroke,
-        bbox,
         ramp,
     };
-    let cubic = CurveBasis::Cubic(CubicBezier {
+    let cubic = CubicBezier {
         p0: Vec2::ZERO,
         p1: Vec2::ZERO,
         p2: Vec2::ZERO,
         p3: Vec2::ZERO,
-    });
+    };
     let none = CurveRamp::None;
     let interned = |id, hash| CurveRamp::Interned {
         id: GradientId(id),
         hash: ContentHash::from_u64(hash),
     };
-    let red_stroke = LoweredBorder::lower(Border::new(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0));
-    let base = curve(LineCap::Butt, cubic, stroke, Rect::ZERO, none);
-    moves(
-        "Curve.basis",
-        &base,
-        &curve(
-            LineCap::Butt,
-            CurveBasis::Arc(CircularArc {
-                center: Vec2::ZERO,
-                radius: 1.0,
-                start_angle: 0.0,
-                sweep: 1.0,
-            }),
-            stroke,
-            Rect::ZERO,
-            none,
+    // A native stroke's paint, apart from a border's.
+    let line = |color: RgbaF32, width| LoweredStroke::lower(Stroke::new(color, width));
+    let stroke = line(RgbaF32::BLACK, 1.0);
+    let stroke2 = line(RgbaF32::BLACK, 2.0);
+    let red_stroke = line(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0);
+    let base = curve(LineCap::Butt, cubic, stroke, none);
+    for (label, bezier) in [
+        (
+            "p0",
+            CubicBezier {
+                p0: pt(1.0),
+                ..cubic
+            },
         ),
-    );
+        (
+            "p1",
+            CubicBezier {
+                p1: pt(1.0),
+                ..cubic
+            },
+        ),
+        (
+            "p2",
+            CubicBezier {
+                p2: pt(1.0),
+                ..cubic
+            },
+        ),
+        (
+            "p3",
+            CubicBezier {
+                p3: pt(1.0),
+                ..cubic
+            },
+        ),
+    ] {
+        moves(
+            &format!("Curve.bezier.{label}"),
+            &base,
+            &curve(LineCap::Butt, bezier, stroke, none),
+        );
+    }
     moves(
         "Curve.stroke width",
         &base,
-        &curve(LineCap::Butt, cubic, stroke2, Rect::ZERO, none),
+        &curve(LineCap::Butt, cubic, stroke2, none),
     );
     moves(
         "Curve.stroke color",
         &base,
-        &curve(LineCap::Butt, cubic, red_stroke, Rect::ZERO, none),
+        &curve(LineCap::Butt, cubic, red_stroke, none),
     );
     moves(
         "Curve.cap",
         &base,
-        &curve(LineCap::Round, cubic, stroke, Rect::ZERO, none),
+        &curve(LineCap::Round, cubic, stroke, none),
     );
     // A ramp's content hash moves the hash, its frame-local id does not. Cap and ramp share a byte, so the cap must still move it.
-    let ramped = curve(LineCap::Butt, cubic, stroke, Rect::ZERO, interned(0, 1));
+    let ramped = curve(LineCap::Butt, cubic, stroke, interned(0, 1));
     moves("Curve.ramp present", &base, &ramped);
     moves(
         "Curve.ramp hash",
         &ramped,
-        &curve(LineCap::Butt, cubic, stroke, Rect::ZERO, interned(0, 2)),
+        &curve(LineCap::Butt, cubic, stroke, interned(0, 2)),
     );
     moves(
         "Curve.cap under a ramp",
         &ramped,
-        &curve(LineCap::Round, cubic, stroke, Rect::ZERO, interned(0, 1)),
+        &curve(LineCap::Round, cubic, stroke, interned(0, 1)),
     );
     excluded(
         "Curve.ramp id (frame-local)",
         &ramped,
-        &curve(LineCap::Butt, cubic, stroke, Rect::ZERO, interned(7, 1)),
+        &curve(LineCap::Butt, cubic, stroke, interned(7, 1)),
+    );
+    for (label, placement) in placements(rect) {
+        moves(
+            &format!("Curve.placement.{label}"),
+            &base,
+            &replaced(base.clone(), placement),
+        );
+    }
+
+    let arc = |cap, geometry, stroke, ramp| ShapeRecord::Arc {
+        cap,
+        geometry,
+        stroke,
+        ramp,
+    };
+    let quarter = ArcGeometry {
+        local_rect: None,
+        start_angle: 0.0,
+        sweep: 1.0,
+    };
+    let base = arc(LineCap::Butt, quarter, stroke, none);
+    for (label, changed) in [
+        (
+            "local_rect",
+            ArcGeometry {
+                local_rect: rect(0.0),
+                ..quarter
+            },
+        ),
+        (
+            "start_angle",
+            ArcGeometry {
+                start_angle: 0.5,
+                ..quarter
+            },
+        ),
+        (
+            "sweep",
+            ArcGeometry {
+                sweep: 2.0,
+                ..quarter
+            },
+        ),
+    ] {
+        moves(
+            &format!("Arc.arc.{label}"),
+            &base,
+            &arc(LineCap::Butt, changed, stroke, none),
+        );
+    }
+    moves(
+        "Arc.cap",
+        &base,
+        &arc(LineCap::Round, quarter, stroke, none),
+    );
+    moves(
+        "Arc.stroke",
+        &base,
+        &arc(LineCap::Butt, quarter, stroke2, none),
+    );
+    moves(
+        "Arc.ramp",
+        &base,
+        &arc(LineCap::Butt, quarter, stroke, interned(0, 1)),
     );
     excluded(
-        "Curve.bbox (derived from basis/width/cap)",
-        &base,
-        &curve(
-            LineCap::Butt,
-            cubic,
-            stroke,
-            Rect::new(5.0, 5.0, 5.0, 5.0),
-            none,
-        ),
+        "Arc.ramp id (frame-local)",
+        &arc(LineCap::Butt, quarter, stroke, interned(0, 1)),
+        &arc(LineCap::Butt, quarter, stroke, interned(7, 1)),
     );
+}
+
+/// A placement that differs from [`PointPlacement::NATURAL`] in each field, as `rect` places one.
+fn placements(rect: impl Fn(f32) -> Option<Rect>) -> [(&'static str, PointPlacement); 2] {
+    [
+        (
+            "local_rect",
+            PointPlacement {
+                local_rect: rect(3.0),
+                fit: Fit::Natural,
+            },
+        ),
+        (
+            "fit",
+            PointPlacement {
+                local_rect: None,
+                fit: Fit::Contain,
+            },
+        ),
+    ]
+}
+
+/// `record`, a polyline, a mesh or a curve, with its placement set to `to`.
+fn replaced(mut record: ShapeRecord, to: PointPlacement) -> ShapeRecord {
+    match &mut record {
+        ShapeRecord::Polyline { placement, .. }
+        | ShapeRecord::Mesh { placement, .. }
+        | ShapeRecord::Curve {
+            geometry: BezierGeometry { placement, .. },
+            ..
+        } => *placement = to,
+        other => panic!("{other:?} has no point placement"),
+    }
+    record
 }

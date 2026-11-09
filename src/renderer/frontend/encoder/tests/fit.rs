@@ -4,6 +4,7 @@ use crate::damage::region::DamageRegion;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
+use crate::shape::image_paint::ImagePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -33,7 +34,10 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (_, mode, _) in modes {
-                    ui.add_shape(Shape::image(handle.clone()).downsample(mode));
+                    ui.add_shape(
+                        Shape::rect(),
+                        ImagePaint::new(handle.clone()).downsample(mode),
+                    );
                 }
             });
     });
@@ -94,7 +98,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
                         .at((node.min.x, node.min.y))
                         .size(node.size.w)
                         .show(ui, |ui| {
-                            ui.add_shape(Shape::image(handle.clone()).fit(fit));
+                            ui.add_shape(Shape::rect(), ImagePaint::new(handle.clone()).fit(fit));
                         });
                 });
         });
@@ -114,4 +118,81 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
             .collect();
         assert_eq!(screens, [expected], "{fit:?} cascade bound");
     }
+}
+
+/// A point shape fits its owner where it is drawn: the polyline (0, 0)–(10, 10) under
+/// `Fit::Fill` in a 40 × 20 canvas scales by (40 / 10, 20 / 10) = (4, 2) about the centers,
+/// offset `(20, 10) − (5, 5) · (4, 2) = (0, 0)`, and the payload's bound is the fitted extent.
+#[test]
+fn a_polyline_fits_its_owner_where_it_is_drawn() {
+    use crate::internals::paint_capture::PaintCall;
+    use crate::primitives::geometry::fit::{Fit, FitMap};
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::stroke::Stroke;
+    use crate::shape::Shape;
+
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let points = [Vec2::ZERO, Vec2::splat(10.0)];
+    h.frame(|ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::polyline(&points).fit(Fit::Fill),
+                    Stroke::new(RgbaF32::WHITE, 1.0),
+                );
+            });
+    });
+    let cmds = h.encode_paint();
+    let [PaintCall::Polyline(p)] = cmds.calls.as_slice() else {
+        panic!("one polyline draw, got {:?}", cmds.kinds());
+    };
+    assert_eq!(
+        p.fit,
+        FitMap {
+            offset: Vec2::ZERO,
+            scale: Vec2::new(4.0, 2.0),
+        }
+    );
+    assert_eq!(p.bounds.cull_rect(), Rect::new(0.0, 0.0, 40.0, 20.0));
+}
+
+/// An arc of no sweep paints its round cap as a disc in the stroke color times its ramp at the
+/// start: white times red is red. The 20 × 20 canvas puts the circle's center at (10, 10) and its
+/// start, 10 along +x, at (20, 10), so the 4 px dot covers (18, 8)–(22, 12).
+#[test]
+fn an_arc_of_no_sweep_paints_its_dot_in_the_ramp_start() {
+    use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::line_style::LineCap;
+    use crate::primitives::paint::stroke::Stroke;
+    use crate::renderer::frontend::encoder::tests::support;
+    use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
+    use crate::shape::Shape;
+
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+    let ramp = ColorRamp::two_stop(red, RgbaF32::new(0.0, 0.0, 1.0, 1.0));
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    h.frame(|ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::arc(0.0, 0.0),
+                    Stroke::new(RgbaF32::WHITE, 4.0)
+                        .with_ramp(ramp)
+                        .with_cap(LineCap::Round),
+                );
+            });
+    });
+    let cmds = h.encode_paint();
+    let rects: Vec<_> = cmds.calls.iter().filter_map(support::as_rect).collect();
+    assert_eq!(rects.len(), 1, "one dot, got {:?}", cmds.kinds());
+    assert_eq!(rects[0].fill.color, red.to_f16());
+    let QuadGeometry::Rect { rect, .. } = rects[0].geometry else {
+        unreachable!("`as_rect` keeps rect geometry");
+    };
+    assert_eq!(rect, Rect::new(18.0, 8.0, 4.0, 4.0));
 }

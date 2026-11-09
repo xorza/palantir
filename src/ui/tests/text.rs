@@ -171,7 +171,7 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
                 Widget::leaf().id(widget_id).record(ui, None, |ui| {
                     for i in 0..runs {
                         let text = ui.intern(format!("run {i}"));
-                        ui.add_shape(Shape::text(text, GlyphFont::new(14.0)));
+                        ui.add_shape(Shape::text(text, GlyphFont::new(14.0)), RgbaF32::WHITE);
                     }
                 });
             });
@@ -278,9 +278,9 @@ fn blinking_text(ui: &mut Ui, text: &str) {
                     ..GlyphFont::new(16.0)
                 },
             )
-            .color(RgbaF32::WHITE)
             .wrap(TextWrap::SingleLine)
             .align(Align::default()),
+            RgbaF32::WHITE,
             PaintAnimation::alpha(0.0, 1.0)
                 .with_started_at(HALF)
                 .with_period(HALF * 2)

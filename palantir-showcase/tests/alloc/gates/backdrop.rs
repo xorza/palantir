@@ -1,6 +1,5 @@
 //! Backdrop panes over the showcase's first page add no allocation to a steady frame.
 
-use palantir::Chrome;
 use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
 use palantir::widget::Shape;
 use palantir::{App, Depth, Harness};
@@ -9,6 +8,7 @@ use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::Audit;
+use palantir::Paint;
 
 /// The look of the panes.
 #[derive(Clone, Copy, Debug)]
@@ -30,29 +30,20 @@ fn panes(ui: &mut Ui, shell: &mut Shell, look: Look, under: RgbaF32) {
                 .id_salt("alloc-backdrop-panes")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(under).at(Rect::new(300.0, 20.0, 12.0, 12.0)));
+                    ui.add_shape(Shape::rect().at(Rect::new(300.0, 20.0, 12.0, 12.0)), under);
                     for rect in [
                         Rect::new(0.0, 0.0, 1280.0, 48.0),
                         Rect::new(0.0, 48.0, 240.0, 672.0),
                         Rect::new(500.0, 200.0, 320.0, 220.0),
                     ] {
-                        let shape =
-                            match look {
-                                Look::Plain => {
-                                    Shape::rect(Chrome::NONE.with_material(Material::blur(12.0)))
-                                        .at(rect)
-                                }
-                                Look::Frosted => Shape::rect(
-                                    Chrome::fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
-                                        .with_material(Material::frosted(16.0)),
-                                )
-                                .at(rect),
-                                Look::Glass => Shape::rect(Chrome::NONE.with_material(
-                                    Material::glass(Lens::WINDOW_GLASS).with_blur(2.0),
-                                ))
-                                .at(rect),
-                            };
-                        ui.add_shape(shape);
+                        let paint = match look {
+                            Look::Plain => Paint::NONE.with_material(Material::blur(12.0)),
+                            Look::Frosted => Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
+                                .with_material(Material::frosted(16.0)),
+                            Look::Glass => Paint::NONE
+                                .with_material(Material::glass(Lens::WINDOW_GLASS).with_blur(2.0)),
+                        };
+                        ui.add_shape(Shape::rect().at(rect), paint);
                     }
                 });
         });

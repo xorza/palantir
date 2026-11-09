@@ -123,7 +123,7 @@ fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
         &looks.active,
         &looks.disabled,
     ]
-    .map(|look| look.chrome.border);
+    .map(|look| look.chrome.paint.border);
     for (i, a) in rings.iter().enumerate() {
         for b in &rings[i + 1..] {
             assert_ne!(a, b, "premise: each state rings apart");

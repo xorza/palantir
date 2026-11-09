@@ -28,13 +28,13 @@ use crate::primitives::effect::effect_params::EffectParams;
 /// - `effect_over`, `effect_add`, `effect_multiply` and `effect_screen`, each an
 ///   `EffectOutput` from a premultiplied color;
 /// - with [image slots](Self::image_slots), `effect_image0` and on, each a `texture_2d<f32>` of
-///   the image a shape binds in that slot ([`EffectShape::images`](crate::widget::EffectShape::images)),
+///   the image a shape binds in that slot ([`EffectPaint::images`](crate::widget::EffectPaint::images)),
 ///   whose sample is linear and premultiplied, and `effect_sampler`, linear and clamped to the
 ///   edge, as `textureSample(effect_image0, effect_sampler, uv)` reads them;
 /// - for a [`BackdropEffect`](crate::BackdropEffect), `effect_backdrop(pos)`: what is painted
 ///   under the shape at `pos`, logical px from its rect's top-left, linear and opaque, blurred by
-///   the shape's [σ](crate::widget::EffectShape::blur), and read within its
-///   [reach](crate::widget::EffectShape::reach), a read past it reading its edge. A sample
+///   the shape's [σ](crate::widget::EffectPaint::blur), and read within its
+///   [reach](crate::widget::EffectPaint::reach), a read past it reading its edge. A sample
 ///   that needs no uniform control flow, so a loop or a branch may read it.
 ///
 /// The WGSL declares no binding of its own, as palantir binds every resource an effect reads;

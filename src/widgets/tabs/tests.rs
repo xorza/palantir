@@ -12,12 +12,12 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::line_style::LineCap;
 use crate::scene::layer::Layer;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::bezier_geometry::BezierGeometry;
 use crate::shape::paint::lowered_brush::LoweredBrush;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::quad_shape::{BoxGeometry, QuadShape};
 use crate::shape::record::ShapeRecord;
-use crate::shape::style::LineCap;
 use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::color_scheme::ColorScheme;
@@ -196,7 +196,7 @@ fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
         match shape {
             ShapeRecord::Curve {
                 cap,
-                basis: CurveBasis::Cubic(line),
+                geometry: BezierGeometry { bezier: line, .. },
                 stroke: drawn,
                 ..
             } => {
@@ -1218,8 +1218,12 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         .tree(Layer::Main)
         .shapes_of(node)
         .filter_map(|shape| match shape {
-            ShapeRecord::Quad(QuadShape::Rect {
-                local_rect: Some(rect),
+            ShapeRecord::Quad(QuadShape::Box {
+                geometry:
+                    BoxGeometry {
+                        local_rect: Some(rect),
+                        ..
+                    },
                 ..
             }) => Some(*rect),
             _ => None,

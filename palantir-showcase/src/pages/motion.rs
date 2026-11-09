@@ -6,15 +6,20 @@ use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::DemoCell;
 use crate::support::{Kit, Knob, Section, Swatches};
+use palantir::LineCap;
+use palantir::LineJoin;
+use palantir::Paint;
+use palantir::Stroke;
 use palantir::glam::{UVec2, Vec2};
+use palantir::widget::IconPaint;
+use palantir::widget::ImagePaint;
 use palantir::widget::{
-    AnimationRequest, GlyphFont, LineCap, LineJoin, Mesh, MotionRole, PaintAnimation, PaintRepeat,
-    RectShape, Shape,
+    AnimationRequest, GlyphFont, Mesh, MotionRole, PaintAnimation, PaintRepeat, RectShape, Shape,
 };
 use palantir::{
-    Align, Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing,
-    IconFit, IconHandle, IconSet, IconTable, Image, ImageFit, Panel, Rect, RgbaF32, Sense, Shadow,
-    Sizing, Spinner, Text, TranslateScale, Ui, VAlign, WidgetId,
+    Align, Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
+    IconHandle, IconSet, IconTable, Image, ImageFit, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
+    Spinner, Text, TranslateScale, Ui, VAlign, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
@@ -147,7 +152,7 @@ fn turn(ui: &mut Ui, k: Kit) {
     let sources = TurnSources::load(ui);
     Section::new("Turn")
         .apis(&[
-            api!(Ui::add_shape_animated as fn(&mut Ui, RectShape, PaintAnimation)),
+            api!(Ui::add_shape_animated as fn(&mut Ui, RectShape, RgbaF32, PaintAnimation)),
             api!(PaintAnimation::turn),
         ])
         .show(ui, k, |ui| {
@@ -180,23 +185,24 @@ fn turn(ui: &mut Ui, k: Kit) {
                 };
                 cell(ui, "rect", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::rect(
-                            Chrome::rounded(k.swatch.teal, Corners::all(10.0))
-                                .with_border(Border::new(RgbaF32::WHITE, 2.0)),
-                        )
-                        .at(source),
+                        Shape::rect().at(source).corners(Corners::all(10.0)),
+                        Paint::from(k.swatch.teal).with_border(Border::new(RgbaF32::WHITE, 2.0)),
                         spin,
                     );
                 });
                 cell(ui, "shadow", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(6.0, 6.0), 6.0))
-                            .at(source)
-                            .corners(Corners::all(6.0)),
+                        Shape::rect().at(source).corners(Corners::all(6.0)),
+                        Paint::NONE.with_shadow(Shadow::drop(
+                            RgbaF32::BLACK,
+                            Vec2::new(6.0, 6.0),
+                            6.0,
+                        )),
                         spin,
                     );
                     ui.add_shape_animated(
-                        Shape::rect(Chrome::rounded(k.swatch.orange, Corners::all(6.0))).at(source),
+                        Shape::rect().at(source).corners(Corners::all(6.0)),
+                        k.swatch.orange,
                         spin,
                     );
                 });
@@ -207,47 +213,40 @@ fn turn(ui: &mut Ui, k: Kit) {
                             Vec2::new(85.0, 80.0),
                             Vec2::new(50.0, 15.0),
                         )
-                        .radius(6.0_f32)
-                        .fill(k.swatch.violet),
+                        .radius(6.0_f32),
+                        k.swatch.violet,
                         spin,
                     );
                 });
                 cell(ui, "mesh", &mut |ui| {
-                    ui.add_shape_animated(Shape::mesh(&mesh), spin);
+                    ui.add_shape_animated(Shape::mesh(&mesh), RgbaF32::WHITE, spin);
                 });
                 cell(ui, "dot", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::line(
-                            Vec2::splat(50.0),
-                            Vec2::splat(50.0),
-                            Border::new(k.swatch.teal, 30.0),
-                        )
-                        .cap(LineCap::Square),
+                        Shape::line(Vec2::splat(50.0), Vec2::splat(50.0)),
+                        Stroke::new(k.swatch.teal, 30.0).with_cap(LineCap::Square),
                         spin,
                     );
                 });
                 cell(ui, "image", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::image(sources.image.handle().clone())
-                            .at(source)
-                            .fit(ImageFit::Fill),
+                        Shape::rect().at(source),
+                        ImagePaint::new(sources.image.handle().clone()).fit(ImageFit::Fill),
                         spin,
                     );
                 });
                 cell(ui, "text", &mut |ui| {
                     let label = ui.intern("Turning");
                     ui.add_shape_animated(
-                        Shape::text(label, GlyphFont::new(18.0))
-                            .color(k.t.ink)
-                            .at_origin(Vec2::new(18.0, 40.0)),
+                        Shape::text(label, GlyphFont::new(18.0)).at_origin(Vec2::new(18.0, 40.0)),
+                        k.t.ink,
                         spin,
                     );
                 });
                 cell(ui, "icon", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::icon(sources.icon)
-                            .at(Rect::new(25.0, 25.0, 50.0, 50.0))
-                            .fit(IconFit::Fill),
+                        Shape::rect().at(Rect::new(25.0, 25.0, 50.0, 50.0)),
+                        IconPaint::new(sources.icon).fit(Fit::Fill),
                         spin,
                     );
                 });
@@ -488,15 +487,16 @@ fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
         )
     };
     let points: [Vec2; PLOT_POINTS] = array::from_fn(|i| at(i as f32 / (PLOT_POINTS - 1) as f32));
-    ui.add_shape(Shape::polyline(&points, Border::new(k.t.ink_dim, 1.5)).join(LineJoin::Round));
+    ui.add_shape(
+        Shape::polyline(&points),
+        Stroke::new(k.t.ink_dim, 1.5).with_join(LineJoin::Round),
+    );
     let dot = at(t);
     ui.add_shape(
-        Shape::rect(Chrome::rounded(k.swatch.orange, Corners::all(5.0))).at(Rect::new(
-            dot.x - 5.0,
-            dot.y - 5.0,
-            10.0,
-            10.0,
-        )),
+        Shape::rect()
+            .at(Rect::new(dot.x - 5.0, dot.y - 5.0, 10.0, 10.0))
+            .corners(Corners::all(5.0)),
+        k.swatch.orange,
     );
 }
 

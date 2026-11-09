@@ -10,10 +10,10 @@ use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::harness::Harness;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineJoin;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
-use crate::shape::style::LineJoin;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -67,15 +67,15 @@ fn record_cubics(ui: &mut Ui, phase: bool) {
     for row in 0..GRID {
         for col in 0..GRID {
             let origin = Vec2::new(col as f32 * CELL, row as f32 * CELL);
-            ui.add_shape(Shape::cubic_bezier(
-                CubicBezier {
+            ui.add_shape(
+                Shape::cubic_bezier(CubicBezier {
                     p0: origin + Vec2::new(2.0, 8.0),
                     p1: origin + Vec2::new(5.0, 5.5 + wobble),
                     p2: origin + Vec2::new(11.0, 10.5),
                     p3: origin + Vec2::new(14.0, 8.0),
-                },
-                Border::new(color, 2.0),
-            ));
+                }),
+                Stroke::new(color, 2.0),
+            );
         }
     }
 }
@@ -91,7 +91,10 @@ fn record_joins(ui: &mut Ui, phase: bool) {
                 origin + Vec2::new(8.0, 4.0 + wobble),
                 origin + Vec2::new(13.5, 11.5),
             ];
-            ui.add_shape(Shape::polyline(&points, Border::new(color, 3.0)).join(LineJoin::Round));
+            ui.add_shape(
+                Shape::polyline(&points),
+                Stroke::new(color, 3.0).with_join(LineJoin::Round),
+            );
         }
     }
 }

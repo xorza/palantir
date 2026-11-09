@@ -54,9 +54,9 @@ impl Checkerboard {
         if color.a < 1.0 {
             self.paint(ui, inside);
         }
-        ui.add_shape(Shape::rect(color).at(inside));
+        ui.add_shape(Shape::rect().at(inside), color);
         if let Some(veil) = veil {
-            ui.add_shape(Shape::rect(veil).at(inside));
+            ui.add_shape(Shape::rect().at(inside), veil);
         }
     }
 
@@ -67,7 +67,7 @@ impl Checkerboard {
         reason = "the cell count is held at zero or above before the cast"
     )]
     pub(crate) fn paint(&self, ui: &mut Ui, rect: Rect) {
-        ui.add_shape(Shape::rect(self.light).at(rect));
+        ui.add_shape(Shape::rect().at(rect), self.light);
         let cols = (rect.size.w / self.cell).ceil().max(0.0) as u32;
         let rows = (rect.size.h / self.cell).ceil().max(0.0) as u32;
         for row in 0..rows {
@@ -76,12 +76,10 @@ impl Checkerboard {
                 let y = row as f32 * self.cell;
                 let w = self.cell.min(rect.size.w - x);
                 let h = self.cell.min(rect.size.h - y);
-                ui.add_shape(Shape::rect(self.dark).at(Rect::new(
-                    rect.min.x + x,
-                    rect.min.y + y,
-                    w,
-                    h,
-                )));
+                ui.add_shape(
+                    Shape::rect().at(Rect::new(rect.min.x + x, rect.min.y + y, w, h)),
+                    self.dark,
+                );
             }
         }
     }

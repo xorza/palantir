@@ -18,6 +18,7 @@ use palantir::{
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
+use palantir::widget::ImagePaint;
 
 /// A scene touching several format-dependent pipelines: a bordered rounded frame around a labeled button.
 fn scene(ui: &mut Ui) {
@@ -90,7 +91,7 @@ fn image_scene(ui: &mut Ui, image: &ImageHandle) {
         .padding(8.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            ui.add_shape(Shape::image(image.clone()));
+            ui.add_shape(Shape::rect(), ImagePaint::new(image.clone()));
         });
 }
 

@@ -1,5 +1,5 @@
-//! Filled shape primitives: triangles, meshes and
-//! `Shape::windowed_rect`, the inverted-fill corner mask standing in for rounded clipping without a
+//! Filled shape primitives: triangles, meshes and a rect covering its outside
+//! (`Coverage::Outside`), the inverted-fill corner mask standing in for rounded clipping without a
 //! stencil pass.
 #![expect(
     clippy::disallowed_methods,
@@ -9,8 +9,9 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
-use palantir::Chrome;
+use palantir::Paint;
 use palantir::glam::Vec2;
+use palantir::widget::Coverage;
 use palantir::widget::{Mesh, RectShape, Shape};
 use palantir::{Border, LinearGradient, RgbaF32, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
@@ -51,8 +52,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             });
         });
 
-    Section::new("Windowed rect")
-        .apis(&[api!(Shape::windowed_rect as fn(Chrome) -> RectShape)])
+    Section::new("Outside coverage")
+        .apis(&[api!(RectShape::coverage), api!(type Coverage)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -73,31 +74,24 @@ const B: Vec2 = Vec2::new(84.0, 24.0);
 const C: Vec2 = Vec2::new(148.0, 142.0);
 
 fn sharp(ui: &mut Ui, k: Kit) {
-    ui.add_shape(Shape::triangle(A, B, C).fill(k.swatch.teal));
+    ui.add_shape(Shape::triangle(A, B, C), k.swatch.teal);
 }
 
 fn rounded(ui: &mut Ui, k: Kit) {
-    ui.add_shape(
-        Shape::triangle(A, B, C)
-            .fill(k.swatch.lime)
-            .radius(12.0_f32),
-    );
+    ui.add_shape(Shape::triangle(A, B, C).radius(12.0_f32), k.swatch.lime);
 }
 
 fn stroked(ui: &mut Ui, k: Kit) {
     ui.add_shape(
-        Shape::triangle(A, B, C)
-            .fill(k.swatch.violet)
-            .border(Border::new(RgbaF32::WHITE, 3.0))
-            .radius(10.0_f32),
+        Shape::triangle(A, B, C).radius(10.0_f32),
+        Paint::from(k.swatch.violet).with_border(Border::new(RgbaF32::WHITE, 3.0)),
     );
 }
 
 fn outline(ui: &mut Ui, k: Kit) {
     ui.add_shape(
-        Shape::triangle(A, B, C)
-            .border(Border::new(k.swatch.orange, 3.0))
-            .radius(8.0_f32),
+        Shape::triangle(A, B, C).radius(8.0_f32),
+        Paint::NONE.with_border(Border::new(k.swatch.orange, 3.0)),
     );
 }
 
@@ -110,8 +104,8 @@ fn radii(ui: &mut Ui, k: Kit) {
                 Vec2::new(62.0, 54.0 + dy),
                 Vec2::new(98.0, 35.0 + dy),
             )
-            .fill(k.swatch.orange)
             .radius(*r),
+            k.swatch.orange,
         );
     }
 }
@@ -126,7 +120,7 @@ fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) 
             build(&mut m);
             m
         });
-        ui.add_shape(Shape::mesh(m));
+        ui.add_shape(Shape::mesh(m), RgbaF32::WHITE);
     });
 }
 
@@ -179,22 +173,22 @@ fn gradient_quad(ui: &mut Ui, k: Kit) {
 /// The headline use: rounded-corner clipping without a stencil pass; the windowed rect fills the corner wedges
 /// with the tile background and strokes the boundary over a plain unclipped gradient.
 fn window_mask(ui: &mut Ui, k: Kit) {
-    ui.add_shape(Shape::rect(LinearGradient::two_stop(
-        FRAC_PI_2,
-        RgbaF32::hex(0x1a1a2e),
-        RgbaF32::hex(0x4c5cdb),
-    )));
-    ui.add_shape(Shape::windowed_rect(
-        Chrome::rounded(k.t.ground, 18.0).with_border(Border::new(k.swatch.teal, 2.0)),
-    ));
+    ui.add_shape(
+        Shape::rect(),
+        LinearGradient::two_stop(FRAC_PI_2, RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)),
+    );
+    ui.add_shape(
+        Shape::rect().corners(18.0).coverage(Coverage::Outside),
+        Paint::from(k.t.ground).with_border(Border::new(k.swatch.teal, 2.0)),
+    );
 }
 
 /// A translucent fill exposes the geometry: only the corner wedges outside the rounded boundary are covered.
 fn window_anatomy(ui: &mut Ui, k: Kit) {
-    ui.add_shape(Shape::windowed_rect(
-        Chrome::rounded(k.swatch.orange.with_alpha(0.75), 28.0)
-            .with_border(Border::new(k.swatch.lime, 4.0)),
-    ));
+    ui.add_shape(
+        Shape::rect().corners(28.0).coverage(Coverage::Outside),
+        Paint::from(k.swatch.orange.with_alpha(0.75)).with_border(Border::new(k.swatch.lime, 4.0)),
+    );
 }
 
 /// The live triangle's knobs.
@@ -243,10 +237,8 @@ fn live(ui: &mut Ui, k: Kit) {
                 let (radius, stroke) = (l.radius, l.stroke);
                 DemoCell::new("the knobs' triangle").show(ui, k, |ui| {
                     ui.add_shape(
-                        Shape::triangle(A, B, C)
-                            .fill(k.swatch.violet)
-                            .border(Border::new(k.t.ink, stroke))
-                            .radius(radius),
+                        Shape::triangle(A, B, C).radius(radius),
+                        Paint::from(k.swatch.violet).with_border(Border::new(k.t.ink, stroke)),
                     );
                 });
             });

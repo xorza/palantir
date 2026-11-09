@@ -2,6 +2,7 @@
 //! rounded triangles, which all lower to one `Quad` instance.
 
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -13,7 +14,6 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeometry};
-use crate::shape::rect::RectKind;
 use glam::Vec2;
 
 /// The geometry half of a [`DrawQuadPayload`]. Rects, windowed rects and
@@ -68,11 +68,11 @@ pub(crate) struct DrawQuadPayload {
     pub(crate) fill_axis: FillAxis,
 }
 
-/// What [`DrawQuadPayload::rect`] lowers: a rect of `kind` with its corner
+/// What [`DrawQuadPayload::rect`] lowers: a rect covering `coverage` with its corner
 /// radii, fill brush and stroke.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RectQuad {
-    pub(crate) kind: RectKind,
+    pub(crate) coverage: Coverage,
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
     pub(crate) fill: BrushSource,
@@ -90,14 +90,14 @@ pub(crate) struct TriangleQuad {
 }
 
 impl DrawQuadPayload {
-    /// A rect of `q.kind` with `q.fill` and `q.stroke`. The brush is lowered
+    /// A rect covering `q.coverage` with `q.fill` and `q.stroke`. The brush is lowered
     /// here because the GPU lanes it fills are this type's. A
-    /// [`RectKind::Windowed`] rect's `FillKind` carries the window bit, so the
+    /// [`Coverage::Outside`] rect's `FillKind` carries the window bit, so the
     /// shader inverts the fill coverage and the composer's opaque-cover checks
     /// (`fill_kind == FillKind::SOLID`) do not treat its hole as an occluder.
     pub(crate) fn rect(q: RectQuad) -> Self {
         let RectQuad {
-            kind,
+            coverage,
             rect,
             corners,
             fill,
@@ -105,7 +105,7 @@ impl DrawQuadPayload {
         } = q;
         // Border stays solid-only.
         let mut lanes = fill.gpu_fill();
-        if kind == RectKind::Windowed {
+        if coverage == Coverage::Outside {
             lanes.kind = lanes.kind.with_window();
         }
         Self {
@@ -223,7 +223,7 @@ impl PaintPayload for DrawQuadPayload {
     /// stroke can put down a texel.
     ///
     /// Shadow parameters are not gated: a zero-σ drop shadow still paints a
-    /// hard shifted rect, and `Shape::Shadow::is_noop` catches no-effect cases.
+    /// hard shifted rect, and the box's lowering drops a shadow that paints nothing.
     ///
     /// A gradient fill is never a no-op here: [`BrushSource::gpu_fill`] sets
     /// its color lane to white (the atlas row supplies the color), and

@@ -130,8 +130,8 @@ fn values_with_no_blend_switch_halfway() {
     b.text.family = FontFamily::MONO;
     b.text.weight = FontWeight::BOLD;
     b.text.slant = FontSlant::Italic;
-    b.button.unselected.normal.chrome.shadow.inset =
-        !a.button.unselected.normal.chrome.shadow.inset;
+    b.button.unselected.normal.chrome.paint.shadow.inset =
+        !a.button.unselected.normal.chrome.paint.shadow.inset;
 
     for (t, want) in [(0.25, &a), (0.49, &a), (0.5, &b), (0.75, &b)] {
         let mix = Theme::lerp(&a.clone(), &b.clone(), t);
@@ -147,8 +147,8 @@ fn values_with_no_blend_switch_halfway() {
         assert_eq!(mix.text.weight, want.text.weight, "{t}");
         assert_eq!(mix.text.slant, want.text.slant, "{t}");
         assert_eq!(
-            mix.button.unselected.normal.chrome.shadow.inset,
-            want.button.unselected.normal.chrome.shadow.inset,
+            mix.button.unselected.normal.chrome.paint.shadow.inset,
+            want.button.unselected.normal.chrome.paint.shadow.inset,
             "{t}"
         );
     }
@@ -161,15 +161,15 @@ fn an_appearing_panel_chrome_is_half_there_halfway() {
     let mut a = Theme::stock(ColorScheme::Dark);
     a.panel_chrome = None;
     let mut b = a.clone();
-    b.panel_chrome = Some(Chrome::fill(RED));
+    b.panel_chrome = Some(Chrome::new(RED));
     let mid = Theme::lerp(&a, &b, 0.5)
         .panel_chrome
         .expect("a blend, not an absence");
     assert_eq!(
-        mid.fill,
+        mid.paint.fill,
         RgbaF32::lerp(&RgbaF32::TRANSPARENT, &RED, 0.5).into()
     );
-    let Brush::Solid(fill) = mid.fill else {
+    let Brush::Solid(fill) = mid.paint.fill else {
         panic!("a solid fill blends to a solid fill");
     };
     assert_eq!(fill.a, 0.5);

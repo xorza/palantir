@@ -46,7 +46,7 @@ impl ModalTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             panel: m.dress_float(p.popup_panel(m), p.text),
-            scrim: Chrome::fill(RgbaF32::BLACK.with_alpha8(128)),
+            scrim: Chrome::new(RgbaF32::BLACK.with_alpha8(128)),
             padding: Spacing::all(m.space.xl),
             min_width: 280.0,
         }

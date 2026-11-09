@@ -1,10 +1,8 @@
-//! The chrome of a painted box: fill, border, corner radii, a shadow and a material, as one value
-//! a theme hands over whole, for a node's box, a rect shape and a modal's scrim alike.
+//! [`Chrome`]: a node's box, its corners and its paint, as one value a theme hands over whole.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::animatable::Animatable;
-use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::border::Border;
@@ -12,43 +10,30 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use palantir_derive::{Animatable, Lerp};
 
-/// A painted box: the one value of a node's box (`Block`, `Panel`, `Grid`, per-state widget
-/// visuals), a rect shape ([`Shape::rect`](crate::widget::Shape::rect)) and a modal's scrim, as
-/// Flutter's `BoxDecoration` serves `Container` and a standalone `DecoratedBox`.
-/// [`Self::NONE`] is transparent fill, no border, square corners: nothing emitted. Pure data;
-/// paint emission goes through `Tree::chrome_table` and the encoder.
+/// A node's box: its corner radii and its [`Paint`], the one value a node's box (`Block`,
+/// `Panel`, `Grid`, per-state widget visuals) and a modal's scrim take, as Compose's
+/// `Modifier.background(brush, shape)` takes the shape beside the brush. The node's arranged rect
+/// is the rest of its geometry. [`Self::NONE`] paints nothing. Pure data; paint emission goes
+/// through `Tree::chrome_table` and the encoder.
 ///
-/// `Animatable` is derived: fill and border interpolate componentwise, `corners` is
+/// `Animatable` is derived: the paint interpolates as [`Paint`] does, and `corners` is
 /// `#[animate(lerp_only)]`, so a look's fade takes its radii at once and a theme's lerp blends
-/// them. "No border" is `Border::NONE`, not an `Option`; paint-time `is_noop` filtering catches
-/// authored and animation-decayed no-ops.
+/// them.
 ///
-/// Plain data, so arithmetic may pass through values no widget takes. A widget's
-/// `chrome` and `default_chrome` check it where it enters and panic unless
-/// every color is a [color](crate::widget::domain::color), gradient angles are
-/// [angles](crate::widget::domain::angle), centers and the shadow's offset and spread
-/// [offsets](crate::widget::domain::offset), the border width, radial radii, each corner
-/// radius and the shadow's blur [lengths](crate::widget::domain::length), and the material as
-/// [`Material`] lists. Every value but the border width packs into an f16 lane, so it is a
-/// [lane](crate::widget::domain::lane) too.
+/// Plain data, checked where it enters a widget: each corner radius a
+/// [length](crate::widget::domain::length) and a [lane](crate::widget::domain::lane), and the
+/// paint as [`Paint`] lists.
 // Intentionally **not `Copy`**: it is the largest of the three types
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable)]
 #[must_use]
 pub struct Chrome {
-    /// Interior paint. [`Brush::TRANSPARENT`] fills nothing.
-    pub fill: Brush,
-    /// The edge ring, painted inside the rect. Layout adds its width to the
-    /// padding, so children sit inside the border. `Border::NONE` (the `Default`)
-    /// is omitted from serialized output.
-    #[serde(default, skip_serializing_if = "Border::is_noop")]
-    pub border: Border,
-    /// Zero (or sub-`EPS`) radii, the `Default`, are omitted from serialized
-    /// output.
+    /// Zero (or sub-`EPS`) radii, the `Default`, are omitted from serialized output.
     #[serde(
         default,
         skip_serializing_if = "Corners::is_approx_zero",
@@ -56,44 +41,21 @@ pub struct Chrome {
     )]
     #[animate(lerp_only)]
     pub corners: Corners,
-    /// Single drop / inset shadow; `Shadow::NONE` (the `Default`) means none and is
-    /// omitted from serialized output. It animates componentwise (alpha lerps for
-    /// hover-elevation). For multi-shadow stacks push shadow shapes through
-    /// `Ui::add_shape`. As in CSS `box-shadow`, a drop shadow paints under the fill
-    /// and an inset one over it, inside the border.
-    #[serde(default, skip_serializing_if = "Shadow::is_noop")]
-    pub shadow: Shadow,
-    /// The backdrop effect the box wears under its fill, which tints what it shows; `None` (the
-    /// `Default`) wears none and is omitted from serialized output. A gradient fill and the
-    /// border paint over it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub material: Option<Material>,
+    /// What covers the box.
+    pub paint: Paint,
 }
 
 impl Chrome {
-    /// Panics unless its fill, border, corners, shadow and material each pass their own
-    /// check. One branch-free test of every part, the checks that name the broken rule only on
-    /// the cold path: `Widget::record` runs it on every chromed widget each frame, where the part
-    /// checks one by one took 4.4 % of a CPU frame (`.notes/PERF.md`, "The CPU frame").
+    /// Panics unless its corners and its paint each pass their own check. One branch-free test of
+    /// every part, the checks that name the broken rule only on the cold path: `Widget::record`
+    /// runs it on every chromed widget each frame, where the part checks one by one took 4.4 % of
+    /// a CPU frame (`.notes/PERF.md`, "The CPU frame").
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
-        if !self.is_valid() {
+        if !(self.corners.is_valid() & self.paint.is_valid()) {
             self.reject();
         }
-    }
-
-    /// Whether every part holds its kinds: the test [`Self::validate`] makes, without naming the
-    /// rule a part breaks.
-    const fn is_valid(&self) -> bool {
-        self.fill.is_valid()
-            & self.border.is_valid()
-            & self.corners.is_valid()
-            & self.shadow.is_valid()
-            & match &self.material {
-                Some(material) => material.is_valid(),
-                None => true,
-            }
     }
 
     /// [`Self::validate`]'s cold half: panics with the rule a part breaks.
@@ -101,35 +63,20 @@ impl Chrome {
     #[inline(never)]
     #[track_caller]
     const fn reject(&self) -> ! {
-        self.fill.validate();
-        self.border.validate();
         self.corners.validate();
-        self.shadow.validate();
-        if let Some(material) = &self.material {
-            material.validate();
-        }
-        panic!("`Chrome::is_valid` refused a chrome whose parts each pass their check");
+        self.paint.reject();
     }
 
-    /// Canonical chrome that paints nothing; an explicit override to suppress
-    /// theme chrome.
+    /// Canonical chrome that paints nothing; an explicit override to suppress theme chrome.
     pub const NONE: Self = Self {
-        fill: Brush::TRANSPARENT,
-        border: Border::NONE,
         corners: Corners::ZERO,
-        shadow: Shadow::NONE,
-        material: None,
+        paint: Paint::NONE,
     };
 
-    /// True when this paints nothing visible. The encoder skips no-op chrome; the
-    /// shadow check is required since the chrome branch paints the shadow as its
-    /// own draw.
+    /// True when this paints nothing visible. The encoder skips no-op chrome.
     #[inline]
     pub const fn is_noop(&self) -> bool {
-        self.fill.is_noop()
-            && self.border.is_noop()
-            && self.shadow.is_noop()
-            && self.material.is_none()
+        self.paint.is_noop()
     }
 
     /// `padding` grown by the border on every edge, as a node wearing this chrome lays out: **the
@@ -139,82 +86,68 @@ impl Chrome {
     /// animates, rounds here as it does in the layout.
     #[inline]
     pub(crate) fn fold_padding(&self, padding: Spacing) -> Spacing {
-        let ring = self.border_inset();
+        let ring = self.paint.border_inset();
         if ring == 0.0 {
             return padding;
         }
         Spacing::saturating(padding.to_array().map(|lane| lane + ring))
     }
 
-    /// How far the border reaches in from the edge: its width, or zero when the
-    /// width paints nothing. On the width alone, not [`Border::is_noop`]: a border an invisible
-    /// color makes still gets room.
-    #[inline]
-    pub(crate) const fn border_inset(&self) -> f32 {
-        if is_invisible(self.border.width) {
-            0.0
-        } else {
-            self.border.width
-        }
-    }
-
-    /// A plain fill: no border, corners, shadow or material.
-    pub fn fill(brush: impl Into<Brush>) -> Self {
+    /// A box of `paint` with square corners.
+    pub fn new(paint: impl Into<Paint>) -> Self {
         Self {
-            fill: brush.into(),
-            border: Border::NONE,
             corners: Corners::ZERO,
-            shadow: Shadow::NONE,
-            material: None,
+            paint: paint.into(),
         }
     }
 
-    /// A fill with rounded corners: no border or shadow.
-    pub fn rounded(brush: impl Into<Brush>, corners: impl Into<Corners>) -> Self {
-        Self::fill(brush).with_corners(corners)
+    /// A box of `paint` with rounded `corners`.
+    pub fn rounded(paint: impl Into<Paint>, corners: impl Into<Corners>) -> Self {
+        Self::new(paint).with_corners(corners)
     }
 
-    /// Set the fill, keeping the rest.
-    pub fn with_fill(mut self, brush: impl Into<Brush>) -> Self {
-        self.fill = brush.into();
-        self
-    }
-
-    /// Set the corner radii, keeping the rest.
+    /// This box with its corner radii `corners`.
     pub fn with_corners(mut self, corners: impl Into<Corners>) -> Self {
         self.corners = corners.into();
         self
     }
 
-    /// Set the border, keeping fill/corners/shadow.
+    /// This box with its paint `paint`.
+    pub fn with_paint(mut self, paint: impl Into<Paint>) -> Self {
+        self.paint = paint.into();
+        self
+    }
+
+    /// Sugar for [`Paint::with_fill`] on this box's paint.
+    pub fn with_fill(mut self, brush: impl Into<Brush>) -> Self {
+        self.paint = self.paint.with_fill(brush);
+        self
+    }
+
+    /// Sugar for [`Paint::with_border`] on this box's paint.
     pub const fn with_border(mut self, border: Border) -> Self {
-        self.border = border;
+        self.paint.border = border;
         self
     }
 
-    /// Set the drop/inset shadow, keeping fill/corners/border.
+    /// Sugar for [`Paint::with_shadow`] on this box's paint.
     pub const fn with_shadow(mut self, shadow: Shadow) -> Self {
-        self.shadow = shadow;
+        self.paint.shadow = shadow;
         self
     }
 
-    /// Set the material, keeping the rest: the fill tints what it shows.
+    /// Sugar for [`Paint::with_material`] on this box's paint.
     pub const fn with_material(mut self, material: Material) -> Self {
-        self.material = Some(material);
+        self.paint.material = Some(material);
         self
     }
 }
 
-/// Every field can carry a NaN (the fill through a gradient's geometry, the rest
-/// through scalars); `lower::chrome` screens it, as a `Chrome` never passes
-/// through `Shapes::add`.
+/// Either part can carry a NaN; `lower::chrome` screens it, as a `Chrome` never passes through
+/// `Shapes::add`.
 impl NanCheck for Chrome {
     fn has_nan(&self) -> bool {
-        self.fill.has_nan()
-            || self.border.has_nan()
-            || self.corners.has_nan()
-            || self.shadow.has_nan()
-            || self.material.as_ref().is_some_and(Material::has_nan)
+        self.corners.has_nan() || self.paint.has_nan()
     }
 }
 
@@ -224,28 +157,36 @@ impl Default for Chrome {
     }
 }
 
-/// A plain fill of `brush`, as [`Chrome::fill`]: sugar for a box that only fills, as
-/// `Shape::rect(color)` and `Modal::scrim(color)` take one.
+/// A square box of `brush`, as [`Chrome::new`]: sugar for a box that only fills, as
+/// `Modal::scrim(color)` takes one.
 impl From<Brush> for Chrome {
     fn from(brush: Brush) -> Self {
-        Self::fill(brush)
+        Self::new(brush)
     }
 }
 
-/// A plain fill of `color`, as [`Chrome::fill`].
+/// A square box of `color`, as [`Chrome::new`].
 impl From<RgbaF32> for Chrome {
     fn from(color: RgbaF32) -> Self {
-        Self::fill(color)
+        Self::new(color)
     }
 }
 
-/// A plain fill of `gradient`, as [`Chrome::fill`].
+/// A square box of `gradient`, as [`Chrome::new`].
 impl<G: GradientGeometry> From<Gradient<G>> for Chrome
 where
     Brush: From<Gradient<G>>,
+    Paint: From<Gradient<G>>,
 {
     fn from(gradient: Gradient<G>) -> Self {
-        Self::fill(gradient)
+        Self::new(gradient)
+    }
+}
+
+/// A square box of `paint`, as [`Chrome::new`].
+impl From<Paint> for Chrome {
+    fn from(paint: Paint) -> Self {
+        Self::new(paint)
     }
 }
 
@@ -350,15 +291,15 @@ mod tests {
         let shadow = Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 4.0);
 
         let with_border = base.clone().with_border(border);
-        assert_eq!(with_border.border, border);
-        assert_eq!(with_border.fill, base.fill);
+        assert_eq!(with_border.paint.border, border);
+        assert_eq!(with_border.paint.fill, base.paint.fill);
         assert_eq!(with_border.corners, base.corners);
-        assert_eq!(with_border.shadow, base.shadow);
+        assert_eq!(with_border.paint.shadow, base.paint.shadow);
 
         let with_shadow = base.clone().with_shadow(shadow);
-        assert_eq!(with_shadow.shadow, shadow);
-        assert_eq!(with_shadow.fill, base.fill);
-        assert_eq!(with_shadow.border, base.border);
+        assert_eq!(with_shadow.paint.shadow, shadow);
+        assert_eq!(with_shadow.paint.fill, base.paint.fill);
+        assert_eq!(with_shadow.paint.border, base.paint.border);
         assert_eq!(with_shadow.corners, base.corners);
     }
 
@@ -371,7 +312,7 @@ mod tests {
         type Set = fn(&mut Chrome, f32);
         /// The fill's scalar `idx` of two, whatever its kind: one of each kind of value it holds.
         fn fill(chrome: &mut Chrome, idx: usize) -> &mut f32 {
-            match (&mut chrome.fill, idx) {
+            match (&mut chrome.paint.fill, idx) {
                 (Brush::Solid(c), 0) => &mut c.r,
                 (Brush::Solid(c), _) => &mut c.a,
                 (Brush::Linear(g), _) => &mut g.geometry.angle,
@@ -382,7 +323,7 @@ mod tests {
             }
         }
         fn material(chrome: &mut Chrome) -> &mut Material {
-            chrome.material.as_mut().unwrap()
+            chrome.paint.material.as_mut().unwrap()
         }
         fn lens(chrome: &mut Chrome) -> &mut Lens {
             &mut material(chrome).input.lens
@@ -397,13 +338,13 @@ mod tests {
         const LENGTH: usize = 5;
         const REFRACTIVE_INDEX: usize = 11;
         let sets: [(Set, usize); 15] = [
-            (|c, v| c.border.width = v, LENGTH),
-            (|c, v| c.border.color.g = v, LANE),
-            (|c, v| c.shadow.color.b = v, LANE),
-            (|c, v| c.shadow.offset.x = v, LANE),
-            (|c, v| c.shadow.offset.y = v, LANE),
-            (|c, v| c.shadow.blur = v, LENGTH_LANE),
-            (|c, v| c.shadow.spread = v, LANE),
+            (|c, v| c.paint.border.width = v, LENGTH),
+            (|c, v| c.paint.border.color.g = v, LANE),
+            (|c, v| c.paint.shadow.color.b = v, LANE),
+            (|c, v| c.paint.shadow.offset.x = v, LANE),
+            (|c, v| c.paint.shadow.offset.y = v, LANE),
+            (|c, v| c.paint.shadow.blur = v, LENGTH_LANE),
+            (|c, v| c.paint.shadow.spread = v, LANE),
             (|c, v| material(c).blur = v, LENGTH_LANE),
             (|c, v| material(c).input.saturation = v, LENGTH_LANE),
             (|c, v| material(c).input.noise = v, LENGTH_LANE),
@@ -465,11 +406,11 @@ mod tests {
                     let mut chrome = held.clone();
                     set(&mut chrome, v);
                     let parts = panic_probe::caught(|| {
-                        chrome.fill.validate();
-                        chrome.border.validate();
+                        chrome.paint.fill.validate();
+                        chrome.paint.border.validate();
                         chrome.corners.validate();
-                        chrome.shadow.validate();
-                        if let Some(material) = &chrome.material {
+                        chrome.paint.shadow.validate();
+                        if let Some(material) = &chrome.paint.material {
                             material.validate();
                         }
                     });
@@ -499,20 +440,14 @@ mod tests {
     fn rounded_and_the_with_setters_set_their_field_alone() {
         let ink = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
         let rounded = Chrome::rounded(ink, 6.0);
-        assert_eq!(rounded, Chrome::fill(ink).with_corners(Corners::all(6.0)));
+        assert_eq!(rounded, Chrome::new(ink).with_corners(Corners::all(6.0)));
         assert_eq!(rounded.corners, Corners::all(6.0));
 
         let bordered = rounded.with_border(Border::new(RgbaF32::BLACK, 2.0));
         let gradient = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
         let refilled = bordered.clone().with_fill(gradient.clone());
-        assert_eq!(refilled.fill, Brush::Linear(gradient));
-        assert_eq!(
-            Chrome {
-                fill: bordered.fill.clone(),
-                ..refilled
-            },
-            bordered
-        );
+        assert_eq!(refilled.paint.fill, Brush::Linear(gradient));
+        assert_eq!(refilled.with_fill(bordered.paint.fill.clone()), bordered);
         let recornered = bordered.clone().with_corners(Corners::top(3.0));
         assert_eq!(recornered.corners, Corners::top(3.0));
         assert_eq!(
@@ -536,11 +471,13 @@ mod tests {
             .with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 4.0), 6.0));
         let half = |color| RgbaF32::lerp(&RgbaF32::TRANSPARENT, color, 0.5);
         let mid = Chrome {
-            fill: half(&ink).into(),
-            border: Border::new(half(&RgbaF32::BLACK), 1.0),
             corners: Corners::all(4.0),
-            shadow: Shadow::drop(half(&RgbaF32::BLACK), Vec2::new(0.0, 2.0), 3.0),
-            material: None,
+            paint: Paint {
+                fill: half(&ink).into(),
+                border: Border::new(half(&RgbaF32::BLACK), 1.0),
+                shadow: Shadow::drop(half(&RgbaF32::BLACK), Vec2::new(0.0, 2.0), 3.0),
+                material: None,
+            },
         };
         assert_eq!(half(&ink).a, 0.5);
         let some = Some(chrome.clone());

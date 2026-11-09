@@ -1,42 +1,32 @@
-//! The line, Bézier and arc builder: every geometry lowers to one `ShapeRecord::Curve`, with stroke properties traveling beside it.
+//! [`CurveShape`]: a line or a Bézier, which a [`Stroke`] draws; every geometry lowers to one
+//! `ShapeRecord::Curve`.
 
-use crate::primitives::geometry::circular_arc::CircularArc;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::domain::vec2;
-use crate::primitives::math::libm_ext::LibmVec2;
-use crate::primitives::paint::border::Border;
-use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::lower;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::bezier_geometry::BezierGeometry;
 use crate::shape::paint::curve_ramp::CurveRamp;
-use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::lowered_stroke::LoweredStroke;
+use crate::shape::paint::point_placement::PointPlacement;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use crate::shape::rect::RectKind;
-use crate::shape::sealed;
-use crate::shape::style::LineCap;
+use crate::shape::sealed::{self, Resolve};
 use glam::Vec2;
-use std::f32::consts::TAU;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CurveGeometry {
     Line { a: Vec2, b: Vec2 },
     CubicBezier(CubicBezier),
     QuadraticBezier(QuadraticBezier),
-    Arc(CircularArc),
 }
 
 impl CurveGeometry {
-    /// The one point a curve of no length covers, or `None` for a curve with length. An arc of no
-    /// radius sits at its center, and one of no sweep at its start.
+    /// The one point a curve of no length sits at; `None` for a curve with length.
     fn point(self) -> Option<Vec2> {
         match self {
             Self::Line { a, b } => vec2::approx_eq(a, b).then_some(a),
@@ -47,143 +37,100 @@ impl CurveGeometry {
             Self::QuadraticBezier(QuadraticBezier { p0, p1, p2 }) => {
                 (vec2::approx_eq(p0, p1) && vec2::approx_eq(p0, p2)).then_some(p0)
             }
-            Self::Arc(CircularArc {
-                center,
-                radius,
-                start_angle,
-                sweep,
-            }) => {
-                if is_invisible(radius) {
-                    Some(center)
-                } else if is_invisible(sweep.abs()) {
-                    Some(center + radius * Vec2::libm_from_angle(start_angle))
-                } else {
-                    None
-                }
-            }
         }
     }
 
-    /// The basis the curve pipeline traces. Lines and quadratics become cubics (exact promotion; a line's inner control points sit on the segment's thirds so `t` runs linearly and the composer keeps it one GPU instance). An arc keeps its own basis: the shader evaluates the exact circle.
-    fn basis(self) -> CurveBasis {
+    /// The cubic every geometry draws as: a line's thirds, a quadratic's degree elevation.
+    fn bezier(self) -> CubicBezier {
         match self {
             Self::Line { a, b } => {
                 let third = (b - a) / 3.0;
-                CurveBasis::Cubic(CubicBezier {
+                CubicBezier {
                     p0: a,
                     p1: a + third,
                     p2: b - third,
                     p3: b,
-                })
+                }
             }
-            Self::CubicBezier(bezier) => CurveBasis::Cubic(bezier),
-            Self::QuadraticBezier(bezier) => CurveBasis::Cubic(CubicBezier::from(bezier)),
-            Self::Arc(arc) => {
-                debug_assert!(
-                    arc.sweep.abs() <= TAU,
-                    "Shape::arc coerces its sweep to ±2π, not {}",
-                    arc.sweep,
-                );
-                CurveBasis::Arc(arc)
-            }
+            Self::CubicBezier(bezier) => bezier,
+            Self::QuadraticBezier(bezier) => CubicBezier::from(bezier),
         }
     }
 }
 
-/// The stroke properties every geometry carries into lowering, so only the geometry varies between entry points.
+/// A line or a Bézier, its points logical px from its rect's top-left: the owner's arranged rect
+/// or [`Self::at`] a rect of its own, its points fit into it by [`Self::fit`]. A [`Stroke`] draws
+/// it ([`Ui::add_shape`](crate::Ui::add_shape)).
 #[derive(Clone, Copy, Debug)]
-struct CurveStyle {
-    stroke: Border,
-    ramp: Option<ColorRamp>,
-    cap: LineCap,
-}
-
-/// Stroked line, Bézier, or circular arc, centered on the curve like every path shape.
-#[derive(Clone, Debug)]
 #[must_use]
 pub struct CurveShape {
     geometry: CurveGeometry,
-    style: CurveStyle,
+    placement: PointPlacement,
 }
 
 impl CurveShape {
-    pub(super) const fn new(geometry: CurveGeometry, stroke: Border) -> Self {
+    pub(super) const fn new(geometry: CurveGeometry) -> Self {
         Self {
             geometry,
-            style: CurveStyle {
-                stroke,
-                ramp: None,
-                cap: LineCap::Butt,
-            },
+            placement: PointPlacement::NATURAL,
         }
     }
 
-    /// Vary the color along the curve: at parameter `t` it is the stroke color times `ramp` at `t`, per channel (as a mesh tint). `t` runs 0 to 1 (`p0` → `p3` on a Bézier, across the sweep on an arc); it is not arc length, so color changes fastest where the curve moves least per step.
-    pub const fn ramp(mut self, ramp: ColorRamp) -> Self {
-        self.style.ramp = Some(ramp);
+    /// Lay out in `rect`, in owner-relative coords, instead of the owner's arranged rect.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
+    pub const fn at(mut self, rect: Rect) -> Self {
+        rect.validate();
+        self.placement.local_rect = Some(rect);
         self
     }
 
-    /// How the two ends are finished.
-    pub const fn cap(mut self, cap: LineCap) -> Self {
-        self.style.cap = cap;
+    /// Fit the points into the rect by `fit`; [`Fit::Natural`], as given, by default.
+    pub const fn fit(mut self, fit: Fit) -> Self {
+        self.placement.fit = fit;
         self
-    }
-
-    /// Whether the curve has length: one without paints its cap alone, as a rect.
-    pub(crate) fn has_length(&self) -> bool {
-        self.geometry.point().is_none()
     }
 }
 
-impl sealed::LowerShape for CurveShape {
-    fn is_noop(&self) -> bool {
-        if self.style.stroke.is_noop() || self.style.ramp.is_some_and(|ramp| ramp.is_noop()) {
-            return true;
-        }
-        // A curve of no length paints its caps alone, and a butt cap has no extent.
-        self.style.cap == LineCap::Butt && self.geometry.point().is_some()
+impl sealed::LowerShape for (CurveShape, Stroke) {
+    #[track_caller]
+    fn validate(&self) {
+        self.1.validate();
     }
 
-    /// The geometry's [`CurveBasis`] plus its tight bbox; tessellation is GPU-side at draw time.
-    /// A curve of no length lowers to its cap alone, as SVG paints a zero-length subpath: a disc
-    /// for a round cap, a square for a square one, the stroke width across, turning with a `turn`
-    /// animation as any quad does.
-    fn lower(self, store: &mut RecordStore) -> ShapeRecord {
-        let Self {
-            geometry,
-            style: CurveStyle { stroke, ramp, cap },
-        } = self;
-        if let Some(point) = geometry.point() {
-            let color = ramp.map_or(stroke.color, |ramp| stroke.color.tinted(ramp.color_at(0.0)));
-            let half = stroke.width * 0.5;
-            let corners = match cap {
-                LineCap::Round => Corners::saturating([half; 4]),
-                LineCap::Square => Corners::ZERO,
-                LineCap::Butt => unreachable!("a zero-length butt-capped curve is a no-op"),
-            };
-            return ShapeRecord::Quad(QuadShape::Rect {
-                kind: RectKind::Rounded,
-                local_rect: Some(Rect::new(
-                    point.x - half,
-                    point.y - half,
-                    stroke.width,
-                    stroke.width,
-                )),
-                corners,
-                fill: lower::brush(store, &Brush::Solid(color)),
-                border: LoweredBorder::lower(Border::NONE),
-                shadow: LoweredShadow::lower(Shadow::NONE),
-                material: None,
-            });
-        }
-        let basis = geometry.basis();
-        ShapeRecord::Curve {
+    /// The points keep their placement, which resolves where the curve is drawn
+    /// ([`BezierGeometry::place`]): a curve of no length paints its cap there, as a fit can move its
+    /// point. A butt cap on no length has no extent, so it drops here.
+    fn lower(self, _resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
+        let (
+            CurveShape {
+                geometry,
+                placement,
+            },
+            stroke,
+        ) = self;
+        // The width and color enter through `LoweredStroke::lower`.
+        let Stroke {
+            width: _,
+            color: _,
+            ramp,
             cap,
-            basis,
-            stroke: LoweredBorder::lower(stroke),
-            bbox: basis.bbox(),
-            ramp: ramp.map_or(CurveRamp::None, |ramp| lower::ramp(store, &ramp)),
+            join: _,
+        } = stroke;
+        if stroke.is_noop() || (cap == LineCap::Butt && geometry.point().is_some()) {
+            return None;
         }
+        Some(ShapeRecord::Curve {
+            cap,
+            geometry: BezierGeometry {
+                bezier: geometry.bezier(),
+                placement,
+            },
+            stroke: LoweredStroke::lower(stroke),
+            ramp: ramp.map_or(CurveRamp::None, |ramp| lower::ramp(store, &ramp)),
+        })
     }
 }

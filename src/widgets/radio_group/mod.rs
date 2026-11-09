@@ -9,7 +9,6 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
 use crate::scene::node::node_mode::NodeMode;
 use crate::shape::Shape;
@@ -415,8 +414,10 @@ impl<T: PartialEq> ToggleFace for Pick<'_, T> {
             let inset = domain::length_at_least(slot.indicator_inset, 0.0);
             let dot = domain::length_at_least(pip - 2.0 * inset, 0.0);
             ui.add_shape(
-                Shape::rect(Chrome::rounded(slot.indicator, dot * 0.5))
-                    .at(Rect::new(inset, inset, dot, dot)),
+                Shape::rect()
+                    .at(Rect::new(inset, inset, dot, dot))
+                    .corners(dot * 0.5),
+                slot.indicator,
             );
         }
     }

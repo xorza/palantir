@@ -12,21 +12,15 @@ use crate::primitives::identity::effect_id::EffectId;
 use soa_rs::Soars;
 
 /// One effect draw row. SoA storage lets the backend upload `rows.instance()` in one write;
-/// `program` picks the pipeline, and `images` its images in the record store's image column.
+/// `effect` picks the pipeline, and `images` its images in the record store's image column; the
+/// instance's flags tell a material's box, which the effect's one stage draws through palantir's
+/// material path.
 #[derive(Soars, Clone, Copy, Debug, PartialEq)]
 #[soa_derive(Debug)]
 pub(crate) struct EffectDrawRow {
-    pub(crate) program: EffectProgram,
+    pub(crate) effect: EffectId,
     pub(crate) images: Span,
     pub(crate) instance: EffectInstance,
-}
-
-/// What draws an effect row: a loaded effect's shape stages, or its material stages for a
-/// material's box.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EffectProgram {
-    App(EffectId),
-    Material(EffectId),
 }
 
 /// Per-shape GPU state an effect's stages read (`effect/wrapper.wgsl`'s `PalantirInstance`).
@@ -51,12 +45,14 @@ pub(crate) struct EffectInstance {
     /// A backdrop effect's row in the frame's backdrops, the slot its result reads; 0 for a color
     /// effect, whose stages read none.
     pub(crate) pane: u32,
-    /// [`Self::WINDOW`] for a material's box that fills outside its rounded rect; 0 for every
-    /// other.
+    /// [`Self::MATERIAL`] for a material's box, with [`Self::WINDOW`] where it covers outside its
+    /// rounded rect; 0 for an app's draw.
     pub(crate) flags: u32,
 }
 
 impl EffectInstance {
-    /// `flags`'s bit for a window, a material's box on a windowed rect.
+    /// `flags`'s bit for a material's box that covers outside its rounded rect.
     pub(crate) const WINDOW: u32 = contract::WINDOW_FLAG;
+    /// `flags`'s bit for a material's box.
+    pub(crate) const MATERIAL: u32 = contract::MATERIAL_FLAG;
 }

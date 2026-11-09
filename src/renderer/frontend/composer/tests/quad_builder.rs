@@ -2,6 +2,7 @@
 
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
@@ -11,14 +12,13 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::RectQuad;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::rect::RectKind;
 use glam::Vec2;
 
 /// A rect quad, opaque white, sharp, strokeless and unturned until a setter says otherwise, at
 /// full alpha.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct QuadBuilder {
-    kind: RectKind,
+    coverage: Coverage,
     rect: Rect,
     corners: Corners,
     fill: BrushSource,
@@ -29,7 +29,7 @@ pub(super) struct QuadBuilder {
 impl QuadBuilder {
     pub(super) fn new(rect: Rect) -> Self {
         Self {
-            kind: RectKind::Rounded,
+            coverage: Coverage::Inside,
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
@@ -40,7 +40,7 @@ impl QuadBuilder {
 
     /// A windowed rect, whose interior is a hole.
     pub(super) fn windowed(mut self) -> Self {
-        self.kind = RectKind::Windowed;
+        self.coverage = Coverage::Outside;
         self
     }
 
@@ -78,7 +78,7 @@ impl QuadBuilder {
     pub(super) fn draw(self, buf: &mut PaintCapture) {
         buf.draw(
             DrawQuadPayload::rect(RectQuad {
-                kind: self.kind,
+                coverage: self.coverage,
                 rect: self.rect,
                 corners: self.corners,
                 fill: self.fill,

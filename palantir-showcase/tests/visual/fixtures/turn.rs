@@ -1,9 +1,8 @@
 //! A turn paint animation on each shape kind that turns, held at 30°.
 
-use palantir::Chrome;
-use palantir::IconFit;
+use palantir::Fit;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::LineCap;
+
 use palantir::widget::{GlyphFont, Mesh, PaintAnimation, Shape};
 use palantir::{
     Border, Configure, Corners, Image, ImageFit, LinearGradient, Panel, Rect, RgbaF32, Shadow,
@@ -15,6 +14,12 @@ use std::rc::Rc;
 use crate::fixtures::icon;
 use crate::golden_name::GoldenName;
 use crate::visual_rig::VisualRig;
+use palantir::LineCap;
+use palantir::Paint;
+use palantir::Stroke;
+use palantir::widget::Coverage;
+use palantir::widget::IconPaint;
+use palantir::widget::ImagePaint;
 
 /// A twelfth of a turn, 30°, from the first frame on.
 fn thirty_degrees() -> PaintAnimation {
@@ -47,14 +52,14 @@ fn a_turned_triangle_and_mesh_match_golden() {
                         Vec2::new(85.0, 80.0),
                         Vec2::new(50.0, 15.0),
                     )
-                    .radius(8.0_f32)
-                    .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
-                    .border(Border::new(RgbaF32::WHITE, 3.0)),
+                    .radius(8.0_f32),
+                    Paint::from(RgbaF32::srgb(0.2, 0.5, 1.0))
+                        .with_border(Border::new(RgbaF32::WHITE, 3.0)),
                     thirty_degrees(),
                 );
             });
             owner(ui, "mesh", |ui| {
-                ui.add_shape_animated(Shape::mesh(&mesh), thirty_degrees());
+                ui.add_shape_animated(Shape::mesh(&mesh), RgbaF32::WHITE, thirty_degrees());
             });
         });
     });
@@ -72,72 +77,61 @@ fn turned_quads_match_golden() {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "rounded", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect(
-                        Chrome::rounded(RgbaF32::srgb(0.2, 0.5, 1.0), Corners::all(10.0))
-                            .with_border(Border::new(RgbaF32::WHITE, 3.0)),
-                    )
-                    .at(source),
+                    Shape::rect().at(source).corners(Corners::all(10.0)),
+                    Paint::from(RgbaF32::srgb(0.2, 0.5, 1.0))
+                        .with_border(Border::new(RgbaF32::WHITE, 3.0)),
                     thirty_degrees(),
                 );
             });
             owner(ui, "gradient", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect(LinearGradient::two_stop(
-                        0.0,
-                        RgbaF32::hex(0xff5e44),
-                        RgbaF32::hex(0xfacc15),
-                    ))
-                    .at(source),
+                    Shape::rect().at(source),
+                    LinearGradient::two_stop(0.0, RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)),
                     thirty_degrees(),
                 );
             });
             owner(ui, "drop", |ui| {
                 ui.add_shape_animated(
-                    Shape::shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(8.0, 8.0), 6.0))
-                        .at(source)
-                        .corners(Corners::all(6.0)),
+                    Shape::rect().at(source).corners(Corners::all(6.0)),
+                    Paint::NONE.with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(8.0, 8.0), 6.0)),
                     thirty_degrees(),
                 );
                 ui.add_shape_animated(
-                    Shape::rect(Chrome::rounded(
-                        RgbaF32::srgb(0.85, 0.85, 0.85),
-                        Corners::all(6.0),
-                    ))
-                    .at(source),
+                    Shape::rect().at(source).corners(Corners::all(6.0)),
+                    RgbaF32::srgb(0.85, 0.85, 0.85),
                     thirty_degrees(),
                 );
             });
             owner(ui, "inset", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect(Chrome::rounded(
-                        RgbaF32::srgb(0.85, 0.85, 0.85),
-                        Corners::all(6.0),
-                    ))
-                    .at(source),
+                    Shape::rect().at(source).corners(Corners::all(6.0)),
+                    RgbaF32::srgb(0.85, 0.85, 0.85),
                     thirty_degrees(),
                 );
                 ui.add_shape_animated(
-                    Shape::shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(6.0, 6.0), 5.0).inset())
-                        .at(source)
-                        .corners(Corners::all(6.0)),
+                    Shape::rect().at(source).corners(Corners::all(6.0)),
+                    Paint::NONE.with_shadow(
+                        Shadow::drop(RgbaF32::BLACK, Vec2::new(6.0, 6.0), 5.0).inset(),
+                    ),
                     thirty_degrees(),
                 );
             });
             owner(ui, "dot", |ui| {
                 let stroke = Border::new(RgbaF32::srgb(1.0, 0.85, 0.2), 30.0);
                 ui.add_shape_animated(
-                    Shape::line(Vec2::new(50.0, 50.0), Vec2::new(50.0, 50.0), stroke)
-                        .cap(LineCap::Square),
+                    Shape::line(Vec2::new(50.0, 50.0), Vec2::new(50.0, 50.0)),
+                    Stroke::new(stroke.color, stroke.width).with_cap(LineCap::Square),
                     thirty_degrees(),
                 );
             });
             owner(ui, "window", |ui| {
                 ui.add_shape_animated(
-                    Shape::windowed_rect(
-                        Chrome::rounded(RgbaF32::srgb(0.2, 0.5, 1.0), Corners::all(14.0))
-                            .with_border(Border::new(RgbaF32::WHITE, 2.0)),
-                    )
-                    .at(source),
+                    Shape::rect()
+                        .at(source)
+                        .corners(Corners::all(14.0))
+                        .coverage(Coverage::Outside),
+                    Paint::from(RgbaF32::srgb(0.2, 0.5, 1.0))
+                        .with_border(Border::new(RgbaF32::WHITE, 2.0)),
                     thirty_degrees(),
                 );
             });
@@ -164,13 +158,15 @@ fn turned_images_match_golden() {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "fill", |ui| {
                 ui.add_shape_animated(
-                    Shape::image(handle.clone()).at(source).fit(ImageFit::Fill),
+                    Shape::rect().at(source),
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
                     thirty_degrees(),
                 );
             });
             owner(ui, "tile", |ui| {
                 ui.add_shape_animated(
-                    Shape::image(handle.clone()).at(source).fit(ImageFit::Tile {
+                    Shape::rect().at(source),
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Tile {
                         offset: Vec2::ZERO,
                         scale: Vec2::splat(3.0),
                     }),
@@ -194,17 +190,15 @@ fn a_turned_label_and_icon_match_golden() {
             owner(ui, "label", |ui| {
                 let label = ui.intern("Turned");
                 ui.add_shape_animated(
-                    Shape::text(label, GlyphFont::new(20.0))
-                        .color(RgbaF32::WHITE)
-                        .at_origin(Vec2::new(18.0, 38.0)),
+                    Shape::text(label, GlyphFont::new(20.0)).at_origin(Vec2::new(18.0, 38.0)),
+                    RgbaF32::WHITE,
                     thirty_degrees(),
                 );
             });
             owner(ui, "icon", |ui| {
                 ui.add_shape_animated(
-                    Shape::icon(icons.by_name("halves").expect("fixture icon"))
-                        .at(Rect::new(25.0, 25.0, 50.0, 50.0))
-                        .fit(IconFit::Fill),
+                    Shape::rect().at(Rect::new(25.0, 25.0, 50.0, 50.0)),
+                    IconPaint::new(icons.by_name("halves").expect("fixture icon")).fit(Fit::Fill),
                     thirty_degrees(),
                 );
             });

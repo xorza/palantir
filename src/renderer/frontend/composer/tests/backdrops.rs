@@ -3,28 +3,30 @@
 use crate::cascade::pane_row::PaneRow;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::composer::tests::support::{
     draw, draw_marked, params, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_pane_payload::{BackdropDraw, DrawPanePayload};
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{
     BackdropRead, BackdropRow, PaneCapture, PaneSource,
 };
-use crate::renderer::render_buffer::effect_draw_row::EffectProgram;
+use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use crate::shape::rect::RectKind;
 use glam::UVec2;
 
 /// The ticket of pane `i` at `rect` and σ `sigma`, at scale 1, as the ledger writes it: its
@@ -53,11 +55,12 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> PaneTicket {
 fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: PaneTicket, alpha: f32) {
     buf.draw(
         DrawPanePayload {
-            kind: RectKind::Rounded,
+            coverage: Coverage::Inside,
             rect,
             corners: Corners::ZERO,
             spin: None,
-            tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
+            fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
+            fill_axis: FillAxis::ZERO,
             stroke: LoweredBorder::NONE,
             material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
@@ -127,8 +130,8 @@ fn a_pane_cuts_the_frame_at_its_barrier() {
     assert_eq!(effects.len(), 1);
     assert_eq!(effects[0].last_group, 1);
     assert_eq!(
-        buf.effects.program()[0],
-        EffectProgram::Material(EffectId(0))
+        (buf.effects.effect()[0], buf.effects.instance()[0].flags),
+        (EffectId(0), EffectInstance::MATERIAL)
     );
     let instance = buf.effects.instance()[0];
     assert_eq!((instance.pane, instance.opacity), (0, 1.0));
@@ -193,9 +196,9 @@ fn a_fade_scales_the_panes_opacity() {
     assert_eq!(buf.effects.instance()[0].opacity, 0.5);
     let look = buf.backdrops[0].look.expect("a material's pane has a look");
     assert_eq!(
-        RgbaF32::from(look.tint).a,
+        RgbaF32::from(look.fill.color).a,
         0.125,
-        "the tint's quarter alpha, halved"
+        "the fill's quarter alpha, halved"
     );
 }
 
@@ -270,11 +273,12 @@ fn a_material_over_the_ground_breaks_nothing() {
             draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
             b.draw(
                 DrawPanePayload {
-                    kind: RectKind::Rounded,
+                    coverage: Coverage::Inside,
                     rect,
                     corners: Corners::ZERO,
                     spin: None,
-                    tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
+                    fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
+                    fill_axis: FillAxis::ZERO,
                     stroke: LoweredBorder::NONE,
                     material: LoweredMaterial::fixture(4.0),
                     opacity: 1.0,
@@ -292,8 +296,8 @@ fn a_material_over_the_ground_breaks_nothing() {
     assert_eq!(row.capture(), None);
     assert_eq!(row.reads, rect);
     assert_eq!(
-        buf.effects.program()[0],
-        EffectProgram::Material(EffectId(0))
+        (buf.effects.effect()[0], buf.effects.instance()[0].flags),
+        (EffectId(0), EffectInstance::MATERIAL)
     );
     assert_eq!(buf.effects.instance()[0].pane, 0);
 }

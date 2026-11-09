@@ -1,41 +1,31 @@
-//! The circular arc [`Shape::arc`](crate::widget::Shape::arc) strokes and the curve pipeline traces natively (see `gpu::curve_pipeline`), and its bbox.
+//! The circular arc [`Shape::arc`](crate::widget::Shape::arc) and [`Shape::circle`](crate::widget::Shape::circle) stroke and the curve pipeline traces natively (see `gpu::curve_pipeline`), and its bbox.
 
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::libm_ext::Libm;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 /// A circular arc about `center`, owner-local, sweeping `sweep` radians from `start_angle`. Angles are screen-convention radians (0 = +x, increasing = clockwise); a negative sweep runs counter-clockwise.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CircularArc {
+pub(crate) struct CircularArc {
     /// The circle's center.
-    pub center: Vec2,
+    pub(crate) center: Vec2,
     /// The circle's radius.
-    pub radius: f32,
+    pub(crate) radius: f32,
     /// Where the arc starts, in radians.
-    pub start_angle: f32,
-    /// How far the arc turns from `start_angle`, in radians; `±2π` is a full circle, and [`Shape::arc`](crate::widget::Shape::arc) draws a longer sweep as one.
-    pub sweep: f32,
+    pub(crate) start_angle: f32,
+    /// How far the arc turns from `start_angle`, in radians; `±2π` is a full circle.
+    pub(crate) sweep: f32,
 }
 
 impl CircularArc {
-    /// Panics unless `center` is an [offset](crate::widget::domain::offset), `radius` a [length](crate::widget::domain::length) and both angles [angles](crate::widget::domain::angle).
-    #[inline]
-    #[track_caller]
-    pub(crate) const fn validate(self) {
-        vec2::offset(self.center);
-        domain::length(self.radius);
-        domain::angle(self.start_angle);
-        domain::angle(self.sweep);
-    }
-
-    /// The arc with `sweep` clamped to one full circle, `±2π`, its sign kept: a longer sweep traces the same circle.
-    #[inline]
-    pub(crate) const fn coerced(self) -> Self {
+    /// The arc of the largest circle centered in `rect`, from `start_angle` turning by `sweep`.
+    pub(crate) const fn inscribed(rect: Rect, start_angle: f32, sweep: f32) -> Self {
         Self {
-            sweep: self.sweep.clamp(-TAU, TAU),
-            ..self
+            center: rect.center(),
+            radius: 0.5 * rect.size.w.min(rect.size.h),
+            start_angle,
+            sweep,
         }
     }
 

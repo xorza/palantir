@@ -171,10 +171,8 @@ impl<'a> Text<'a> {
             .show(ui, None, |ui| {
                 let text = ui.intern(self.text);
                 ui.add_shape(
-                    Shape::text(text, font)
-                        .color(color)
-                        .wrap(self.wrap)
-                        .align(self.align),
+                    Shape::text(text, font).wrap(self.wrap).align(self.align),
+                    color,
                 );
             })
             .response

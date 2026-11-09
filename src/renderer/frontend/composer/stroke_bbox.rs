@@ -5,10 +5,10 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use crate::primitives::paint::line_style::LineCap;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::physical_map::PhysicalMap;
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
-use crate::shape::style::LineCap;
 use glam::Vec2;
 
 /// One stroked shape's owner-local centerline and the style laid over it.

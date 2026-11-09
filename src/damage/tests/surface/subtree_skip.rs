@@ -32,17 +32,17 @@ fn stable_painting_subtree_triggers_skip_jump() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("painting_parent"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(60.0)))
-                    .chrome(Chrome::fill(BLUE))
+                    .chrome(Chrome::new(BLUE))
                     .show(ui, |ui| {
                         Block::new()
                             .id(WidgetId::from_hash("child_a"))
                             .size(20.0)
-                            .chrome(Chrome::fill(RED))
+                            .chrome(Chrome::new(RED))
                             .show(ui);
                         Block::new()
                             .id(WidgetId::from_hash("child_b"))
                             .size(20.0)
-                            .chrome(Chrome::fill(RED))
+                            .chrome(Chrome::new(RED))
                             .show(ui);
                     });
             });
@@ -76,7 +76,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .chrome(Chrome::fill(BLUE))
+                    .chrome(Chrome::new(BLUE))
                     .show(ui);
             });
     };
@@ -119,12 +119,12 @@ fn popup_barrier_does_not_force_full_repaint() {
         Popup::new()
             .anchor(Anchor::at_point(anchor))
             .id(WidgetId::from_hash("p"))
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("body-leaf"))
                     .size(60.0)
-                    .chrome(Chrome::fill(RED))
+                    .chrome(Chrome::new(RED))
                     .show(ui);
             });
     });
@@ -162,7 +162,7 @@ fn click_on_empty_bg_does_not_force_full() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .chrome(Chrome::fill(BLUE))
+                    .chrome(Chrome::new(BLUE))
                     .show(ui);
             });
     };

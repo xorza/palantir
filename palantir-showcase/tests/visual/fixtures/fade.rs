@@ -2,10 +2,11 @@
 
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{Mesh, Shape};
-use palantir::{Border, LinearGradient, Rect, RgbaF32};
+use palantir::{LinearGradient, Rect, RgbaF32};
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
+use palantir::Stroke;
 
 /// White fading to transparent black across 200 px over black, on every color-interpolating path (mesh vertices, polyline points, gradient stops). Premultiplied, the midpoint is white at half alpha (0.5 linear, sRGB 188); straight, it was half-gray (0.25 linear, sRGB 137). Pixel 99 sits at t = 99.5 / 200.
 #[test]
@@ -28,13 +29,14 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
-                ui.add_shape(Shape::mesh(&mesh));
+                ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE);
                 ui.add_shape(
-                    Shape::polyline(&line, Border::new(white, 20.0)).per_point(&[white, clear]),
+                    Shape::polyline(&line).per_point(&[white, clear]),
+                    Stroke::new(white, 20.0),
                 );
                 ui.add_shape(
-                    Shape::rect(LinearGradient::two_stop(0.0, white, clear))
-                        .at(Rect::new(0.0, 90.0, 200.0, 20.0)),
+                    Shape::rect().at(Rect::new(0.0, 90.0, 200.0, 20.0)),
+                    LinearGradient::two_stop(0.0, white, clear),
                 );
             });
         })

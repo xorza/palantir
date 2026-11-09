@@ -75,7 +75,7 @@ const DISTINCT: Metrics = Metrics {
     },
     float_material: Some(FloatMaterial {
         material: Material::blur(31.0),
-        tint_alpha: 0.5,
+        fill_alpha: 0.5,
     }),
     transition: AnimationSpec::MEDIUM,
 };
@@ -165,12 +165,19 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("splitter rule", t.splitter.rule_thickness, 0.25),
         (
             "picker chip ring",
-            t.color_picker.chip.unselected.normal.chrome.border.width,
+            t.color_picker
+                .chip
+                .unselected
+                .normal
+                .chrome
+                .paint
+                .border
+                .width,
             0.25,
         ),
         ("picker gap", t.color_picker.gap, 3.0),
         ("caret", t.text_edit.caret_width, 0.5),
-        ("dock preview", t.dock.preview.border.width, 0.5),
+        ("dock preview", t.dock.preview.paint.border.width, 0.5),
         ("tab close", t.tabs.close_glyph_width, 0.5),
         ("combo arrow", t.combo_box.arrow_width, 0.5),
         ("spinner floor", t.spinner.min_stroke_width, 0.5),
@@ -184,7 +191,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(got, want, "{slot}");
     }
     assert_eq!(t.dock.ghost_offset, Vec2::new(5.0, 7.0));
-    // Each float wears the material's blur, and its fill at the material's tint.
+    // Each float wears the material's blur, and its fill at the material's fill.
     for (slot, panel) in [
         ("menu", &t.menu.panel),
         ("popup", &t.popup.panel),
@@ -192,9 +199,13 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("tooltip", &t.tooltip.panel),
         ("modal", &t.modal.panel),
     ] {
-        assert_eq!(panel.material.map(|m| m.blur), Some(31.0), "{slot} blur");
-        let fill = panel.fill.as_solid().expect(slot);
-        assert_eq!(fill.a, 0.5, "{slot} tint");
+        assert_eq!(
+            panel.paint.material.map(|m| m.blur),
+            Some(31.0),
+            "{slot} blur"
+        );
+        let fill = panel.paint.fill.as_solid().expect(slot);
+        assert_eq!(fill.a, 0.5, "{slot} fill");
     }
     assert_eq!(t.text.font_size, 27.0, "the ambient text is the body tier");
     let captions = [
@@ -224,7 +235,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     ];
     for (slot, chrome, radius, border) in chromes {
         assert_eq!(chrome.corners, Corners::all(radius), "{slot} corners");
-        assert_eq!(chrome.border.width, border, "{slot} border");
+        assert_eq!(chrome.paint.border.width, border, "{slot} border");
     }
     assert_eq!(
         t.menu.item.unselected.hovered.chrome.corners,
@@ -242,10 +253,10 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(animation, DISTINCT.transition, "{slot} transition");
     }
     for (slot, shadow) in [
-        ("tooltip", t.tooltip.panel.shadow),
-        ("menu", t.menu.panel.shadow),
-        ("picker popup", t.color_picker.popup.panel.shadow),
-        ("modal", t.modal.panel.shadow),
+        ("tooltip", t.tooltip.panel.paint.shadow),
+        ("menu", t.menu.panel.paint.shadow),
+        ("picker popup", t.color_picker.popup.panel.paint.shadow),
+        ("modal", t.modal.panel.paint.shadow),
     ] {
         assert_eq!(
             shadow,
@@ -286,9 +297,14 @@ fn a_modal_sits_a_rung_under_its_buttons() {
         let p = Palette::for_scheme(scheme);
         let panel = ModalTheme::from_parts(p, &m).panel;
         assert_eq!(panel, p.popup_panel(&m), "{scheme:?}");
-        assert_eq!(panel.fill, p.element.into(), "{scheme:?}");
-        let button = ButtonTheme::from_parts(p, &m).unselected.normal.chrome.fill;
+        assert_eq!(panel.paint.fill, p.element.into(), "{scheme:?}");
+        let button = ButtonTheme::from_parts(p, &m)
+            .unselected
+            .normal
+            .chrome
+            .paint
+            .fill;
         assert_eq!(button, p.element_mid.into(), "{scheme:?}");
-        assert_ne!(panel.fill, button, "{scheme:?}");
+        assert_ne!(panel.paint.fill, button, "{scheme:?}");
     }
 }

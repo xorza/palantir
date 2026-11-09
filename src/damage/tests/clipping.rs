@@ -8,6 +8,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::paint::Paint;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
@@ -44,7 +45,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                 Block::new()
                                     .id(WidgetId::from_hash("overflow"))
                                     .size(child_size)
-                                    .chrome(Chrome::fill(fill))
+                                    .chrome(Chrome::new(fill))
                                     .show(ui)
                                     .node(ui),
                             );
@@ -71,7 +72,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 
 /// A node painting a drop shadow contributes its **inflated** paint bounds
 /// (`rect + offset`, then `4*sigma + max(spread, 0)` per side) to damage. Both
-/// `Shape::Shadow` and `Chrome::shadow` chrome must reach the same
+/// a rect shape's shadow and a node's chrome shadow must reach the same
 /// `paint_rect`, so a tab swap clears the full halo.
 #[test]
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
@@ -87,17 +88,17 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .chrome(Chrome::fill(BLUE))
+                .chrome(Chrome::new(BLUE))
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::shadow(Shadow {
+                        Shape::rect().corners(0.0),
+                        Paint::NONE.with_shadow(Shadow {
                             color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                             offset: Vec2::new(12.0, -7.0),
                             blur: 8.0,
                             spread: 2.0,
                             inset: false,
-                        })
-                        .corners(0.0),
+                        }),
                     );
                 });
         }),
@@ -105,17 +106,13 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .chrome(Chrome {
-                    fill: BLUE.into(),
-                    shadow: Shadow {
-                        color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
-                        offset: Vec2::new(12.0, -7.0),
-                        blur: 8.0,
-                        spread: 2.0,
-                        inset: false,
-                    },
-                    ..Default::default()
-                })
+                .chrome(Chrome::NONE.with_fill(BLUE).with_shadow(Shadow {
+                    color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
+                    offset: Vec2::new(12.0, -7.0),
+                    blur: 8.0,
+                    spread: 2.0,
+                    inset: false,
+                }))
                 .show(ui, |_| {});
         }),
     ];
@@ -180,17 +177,17 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("card"))
                                 .size((Sizing::fixed(card), Sizing::fixed(card)))
-                                .chrome(Chrome::fill(fill))
+                                .chrome(Chrome::new(fill))
                                 .show(ui, |ui| {
                                     ui.add_shape(
-                                        Shape::shadow(Shadow {
+                                        Shape::rect().corners(0.0),
+                                        Paint::NONE.with_shadow(Shadow {
                                             color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                                             offset: Vec2::ZERO,
                                             blur,
                                             spread: 0.0,
                                             inset: false,
-                                        })
-                                        .corners(0.0),
+                                        }),
                                     );
                                 });
                         });
@@ -229,12 +226,12 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
             Panel::hstack()
                 .id(host_id)
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                .chrome(Chrome::fill(BLUE))
+                .chrome(Chrome::new(BLUE))
                 .clip_rect()
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0))
-                            .at(Rect::new(0.0, 0.0, 400.0, 20.0)),
+                        Shape::rect().at(Rect::new(0.0, 0.0, 400.0, 20.0)),
+                        RgbaF32::srgb(1.0, 0.0, 0.0),
                     );
                 });
         });
@@ -291,7 +288,7 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(CHILD)
-                        .chrome(Chrome::fill(BLUE))
+                        .chrome(Chrome::new(BLUE))
                         .show(ui);
                 });
         });
@@ -327,7 +324,7 @@ fn growing_scroll_content_damages_the_thumb_it_moves() {
                             Block::new()
                                 .id(WidgetId::from_hash("content"))
                                 .size((Sizing::fixed(50.0), Sizing::fixed(content)))
-                                .chrome(Chrome::fill(BLUE))
+                                .chrome(Chrome::new(BLUE))
                                 .show(ui);
                         });
                 });

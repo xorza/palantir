@@ -42,7 +42,7 @@ fn pairs(p: &Palette) -> Vec<Pair> {
     };
     let selection = TextEditTheme::from_parts(p, &Metrics::DEFAULT).selection;
     let accent_button = ButtonTheme::accent(p, &Metrics::DEFAULT).unselected;
-    let fill = |look: &WidgetLook| look.chrome.fill.as_solid().expect("a solid fill");
+    let fill = |look: &WidgetLook| look.chrome.paint.fill.as_solid().expect("a solid fill");
     let wash = p.element_mid.mix(selection.with_alpha(1.0), selection.a);
     vec![
         pair("text on window_bg", p.text, p.window_bg, TEXT),
@@ -165,7 +165,7 @@ fn stock_themes_wear_their_scheme_palette() {
     assert_eq!(light.window_bg, Palette::LIGHT.window_bg);
     assert_eq!(light.switch.indicator, Palette::LIGHT.on_accent);
     assert_eq!(
-        light.tooltip.panel.shadow,
+        light.tooltip.panel.paint.shadow,
         Palette::LIGHT.float_shadow(&Metrics::DEFAULT)
     );
     let dark = Theme::stock(ColorScheme::Dark);
@@ -195,12 +195,12 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
             ("modal", &t.modal.panel),
         ] {
             assert_eq!(
-                panel.material.map(|m| m.blur),
+                panel.paint.material.map(|m| m.blur),
                 Some(20.0),
                 "{float} {scheme:?}"
             );
             assert_eq!(
-                panel.fill.as_solid().map(|fill| fill.a),
+                panel.paint.fill.as_solid().map(|fill| fill.a),
                 Some(184.0 / 255.0),
                 "{float} {scheme:?}"
             );
@@ -213,7 +213,7 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
 }
 
 /// `dress_floats` dresses exactly the five floating surfaces: each keeps its fill's color at the
-/// tint's alpha, over the material whose bound holds its weakest ink (muted on a menu,
+/// fill's alpha, over the material whose bound holds its weakest ink (muted on a menu,
 /// the picker and a bare popup, full on a tooltip and the modal), a ceiling under the dark
 /// palette's light inks and a floor under the light palette's dark ones; every other slot is as
 /// `from_parts` built it. A bound the material names is replaced, and its look is kept: a glass
@@ -236,20 +236,21 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
         };
         let inks = [p.text_muted, p.text_muted, p.text_muted, p.text, p.text];
         for ((before, after), ink) in panels(&stock).into_iter().zip(panels(&frosted)).zip(inks) {
-            let tint = before
+            let fill = before
+                .paint
                 .fill
                 .as_solid()
                 .expect("a solid fill")
                 .with_alpha(0.6);
-            assert_eq!(after.fill.as_solid(), Some(tint), "{scheme:?}");
+            assert_eq!(after.paint.fill.as_solid(), Some(fill), "{scheme:?}");
             let material = Material::frosted(20.0);
             let want = match scheme {
-                ColorScheme::Dark => material.with_max_luminance_for(ink, tint),
-                ColorScheme::Light => material.with_min_luminance_for(ink, tint),
+                ColorScheme::Dark => material.with_max_luminance_for(ink, fill),
+                ColorScheme::Light => material.with_min_luminance_for(ink, fill),
             };
-            assert_eq!(after.material, Some(want), "{scheme:?}");
-            assert_eq!(after.border, before.border);
-            assert_eq!(after.shadow, before.shadow);
+            assert_eq!(after.paint.material, Some(want), "{scheme:?}");
+            assert_eq!(after.paint.border, before.paint.border);
+            assert_eq!(after.paint.shadow, before.paint.shadow);
         }
         frosted.menu.panel = stock.menu.panel.clone();
         frosted.color_picker.popup = stock.color_picker.popup.clone();
@@ -264,9 +265,10 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
     let mut theme = Theme::stock(ColorScheme::Dark);
     let ink = Palette::DARK.text;
     theme.menu.item.shortcut = ink;
-    let tint = theme
+    let fill = theme
         .menu
         .panel
+        .paint
         .fill
         .as_solid()
         .expect("solid")
@@ -274,12 +276,12 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
     theme.dress_floats(FROSTED);
     let frosted = Material::frosted(20.0);
     assert_eq!(
-        theme.menu.panel.material,
-        Some(frosted.with_max_luminance_for(ink, tint))
+        theme.menu.panel.paint.material,
+        Some(frosted.with_max_luminance_for(ink, fill))
     );
     assert_ne!(
-        theme.menu.panel.material,
-        Some(frosted.with_max_luminance_for(Palette::DARK.text_muted, tint))
+        theme.menu.panel.paint.material,
+        Some(frosted.with_max_luminance_for(Palette::DARK.text_muted, fill))
     );
 
     // Any material: glass that keeps its dim while transparency is reduced, and a floor it names
@@ -290,26 +292,26 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
     let mut theme = Theme::stock(ColorScheme::Dark);
     theme.dress_floats(FloatMaterial {
         material: glass,
-        tint_alpha: 0.6,
+        fill_alpha: 0.6,
     });
-    let tint = theme.tooltip.panel.fill.as_solid().expect("solid");
+    let fill = theme.tooltip.panel.paint.fill.as_solid().expect("solid");
     let unbound = Material {
         min_luminance: None,
         ..glass
     };
     assert_eq!(
-        theme.tooltip.panel.material,
-        Some(unbound.with_max_luminance_for(Palette::DARK.text, tint))
+        theme.tooltip.panel.paint.material,
+        Some(unbound.with_max_luminance_for(Palette::DARK.text, fill))
     );
 }
 
-/// The frosted material the tests dress floats in: σ 20 under a 0.6 tint.
+/// The frosted material the tests dress floats in: σ 20 under a 0.6 fill.
 const FROSTED: FloatMaterial = FloatMaterial {
     material: Material::frosted(20.0),
-    tint_alpha: 0.6,
+    fill_alpha: 0.6,
 };
 
-/// A blur that is no length, and a tint the glass could not see through, are refused.
+/// A blur that is no length, and a fill the glass could not see through, are refused.
 #[test]
 fn dress_floats_refuses_a_bad_blur_or_tint() {
     let p = &Palette::DARK;
@@ -320,7 +322,7 @@ fn dress_floats_refuses_a_bad_blur_or_tint() {
         let panic = std::panic::catch_unwind(|| {
             Theme::from_parts(p, &Metrics::DEFAULT).dress_floats(FloatMaterial {
                 material: Material::frosted(sigma),
-                tint_alpha: alpha,
+                fill_alpha: alpha,
             });
         })
         .expect_err("refused");

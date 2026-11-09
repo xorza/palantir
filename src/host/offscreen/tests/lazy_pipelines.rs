@@ -10,6 +10,7 @@ use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -33,7 +34,7 @@ fn record(ui: &mut Ui, scene: Scene) {
             Block::new()
                 .id_salt("plain")
                 .size(20.0)
-                .chrome(Chrome::fill(fill))
+                .chrome(Chrome::new(fill))
                 .show(ui);
         }
         Scene::Shadowed => {
@@ -42,8 +43,11 @@ fn record(ui: &mut Ui, scene: Scene) {
                 .at((10.0, 10.0))
                 .size(20.0)
                 .chrome(Chrome {
-                    fill: fill.into(),
-                    shadow: Shadow::drop(RgbaF32::BLACK, Vec2::new(1.0, 2.0), 3.0),
+                    paint: Paint {
+                        fill: fill.into(),
+                        shadow: Shadow::drop(RgbaF32::BLACK, Vec2::new(1.0, 2.0), 3.0),
+                        ..Chrome::NONE.paint
+                    },
                     ..Chrome::NONE
                 })
                 .show(ui);
@@ -58,7 +62,7 @@ fn record(ui: &mut Ui, scene: Scene) {
                     Block::new()
                         .id_salt("inside")
                         .size(60.0)
-                        .chrome(Chrome::fill(RgbaF32::WHITE))
+                        .chrome(Chrome::new(RgbaF32::WHITE))
                         .show(ui);
                 });
         }

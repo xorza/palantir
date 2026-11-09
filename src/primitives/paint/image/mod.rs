@@ -2,7 +2,6 @@
 //! lives in [`crate::image_registry`].
 
 pub(crate) mod error;
-pub(crate) mod icon_fit;
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -54,7 +53,7 @@ impl ImageFit {
 }
 
 /// How texels are interpolated when an image paints at a size other than its
-/// intrinsic one; [`Shape::image`](crate::widget::Shape::image) picks it
+/// intrinsic one; [`ImagePaint`](crate::widget::ImagePaint) picks it
 /// separately for minification and magnification. Implemented as a UV
 /// texel-center snap, so every combination shares one sampler and bind group.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -74,7 +73,7 @@ pub enum ImageFilter {
 /// fine detail scintillate. Spreading taps across the pixel's derivative
 /// footprint stops that.
 ///
-/// Opt in via [`ImageShape::downsample`](crate::widget::ImageShape::downsample);
+/// Opt in via [`ImagePaint::downsample`](crate::widget::ImagePaint::downsample);
 /// the taps cost fill rate. Magnified and 1:1 draws take the single tap.
 /// Coverage is exact to 8× minification (the tap grid is capped); past that it
 /// is an evenly spread sample of the footprint.

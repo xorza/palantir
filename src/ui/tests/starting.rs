@@ -146,7 +146,7 @@ fn cold_start_first_frame_damage_is_full() {
         Block::new()
             .auto_id()
             .size(50.0)
-            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui);
     });
     assert!(

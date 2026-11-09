@@ -301,7 +301,7 @@ impl ThemeWalk for Chrome {
     where
         F: FnMut(&Material),
     {
-        if let Some(material) = &self.material {
+        if let Some(material) = &self.paint.material {
             f(material);
         }
     }
@@ -414,7 +414,7 @@ impl Theme {
 
     /// Dress every floating surface in `material`: the panels of menus and combo lists, the color
     /// picker's popup, a bare popup's panel, tooltips and the modal's panel. Each keeps its
-    /// fill's color at the material's tint over its material, blurred, frosted or glass, held so the
+    /// fill's color at the material's fill alpha over its material, blurred, frosted or glass, held so the
     /// weakest ink its recipe paints reads at WCAG 4.5:1 over any backdrop, read from this theme:
     /// a menu row's shortcut ink on a menu and on a bare popup, which an app fills with rows like
     /// a menu's, the picker's channel-name ink, the tooltip's text, and the ambient text on the

@@ -3,11 +3,11 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::image::Image;
+use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
@@ -182,16 +182,14 @@ impl AreaValue for StripKind<'_> {
         let width = domain::length_at_least(theme.handle_width, 0.0);
         let x = self.read() * size.w;
         let (top, bottom) = (Vec2::new(x, 0.0), Vec2::new(x, size.h));
-        ui.add_shape(Shape::line(
-            top,
-            bottom,
-            Border::new(theme.handle_outer, width * 2.5),
-        ));
-        ui.add_shape(Shape::line(
-            top,
-            bottom,
-            Border::new(theme.handle_inner, width),
-        ));
+        ui.add_shape(
+            Shape::line(top, bottom),
+            Stroke::new(theme.handle_outer, width * 2.5),
+        );
+        ui.add_shape(
+            Shape::line(top, bottom),
+            Stroke::new(theme.handle_inner, width),
+        );
     }
 }
 

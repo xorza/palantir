@@ -110,7 +110,7 @@ fn button_scene(id_salt: &'static str, label: &'static str) -> impl FnMut(&mut U
             .padding(12.0)
             .gap(8.0)
             .size((Sizing::FILL, Sizing::FILL))
-            .chrome(Chrome::fill(RgbaF32::srgb(0.15, 0.15, 0.18)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Button::new().id_salt(id_salt).label(label).show(ui);
             });
@@ -126,19 +126,19 @@ fn corner_pair_scene(salt: &'static str) -> impl FnMut(&mut Ui) + Copy {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
-            .chrome(Chrome::fill(RgbaF32::srgb(0.15, 0.15, 0.18)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Block::new()
                     .id_salt(("tl", salt))
                     .at(Vec2::new(0.0, 0.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .chrome(Chrome::fill(TOP_LEFT))
+                    .chrome(Chrome::new(TOP_LEFT))
                     .show(ui);
                 Block::new()
                     .id_salt(("br", salt))
                     .at(Vec2::new(180.0, 180.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .chrome(Chrome::fill(BOTTOM_RIGHT))
+                    .chrome(Chrome::new(BOTTOM_RIGHT))
                     .show(ui);
             });
     }
@@ -285,13 +285,13 @@ fn damage_rect_overlay_outlines_thin_sliver() {
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
-                .chrome(Chrome::fill(RgbaF32::srgb(0.12, 0.12, 0.15)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.12, 0.12, 0.15)))
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("sliver")
                         .at(Vec2::new(60.0, 20.0))
                         .size((Sizing::fixed(2.0), Sizing::fixed(40.0)))
-                        .chrome(Chrome::fill(if on {
+                        .chrome(Chrome::new(if on {
                             RgbaF32::srgb(0.9, 0.5, 0.2)
                         } else {
                             RgbaF32::srgb(0.2, 0.3, 0.7)

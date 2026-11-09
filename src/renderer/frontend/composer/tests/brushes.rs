@@ -25,7 +25,6 @@ use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, G
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::render_buffer::effect_draw_row::EffectProgram;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use glam::{UVec2, Vec2};
@@ -564,7 +563,10 @@ fn an_effect_lands_as_one_physical_row() {
     assert_eq!(buf.effects.len(), 1);
     assert_eq!(buf.batches(PaintTier::Effect).len(), 1);
     assert_eq!(buf.batches(PaintTier::Effect)[0].items, Span::new(0, 1));
-    assert_eq!(buf.effects.program()[0], EffectProgram::App(EffectId(3)));
+    assert_eq!(
+        (buf.effects.effect()[0], buf.effects.instance()[0].flags),
+        (EffectId(3), 0)
+    );
     assert_eq!(buf.effects.images()[0], Span::new(4, 2));
     let instance = buf.effects.instance()[0];
     assert_eq!(instance.rect, Rect::new(10.0, 12.0, 20.0, 16.0));

@@ -10,6 +10,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::theme::Theme;
@@ -157,11 +158,13 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let AnimationUi { mut h, id } = support::setup_animation_ui("look-test");
 
     let chrome = Chrome {
-        fill: RgbaF32::hex(0x336699).into(),
-        border: Border::new(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
-        shadow: Shadow::NONE,
-        material: None,
+        paint: Paint {
+            fill: RgbaF32::hex(0x336699).into(),
+            border: Border::new(RgbaF32::hex(0xffffff), 2.0),
+            shadow: Shadow::NONE,
+            material: None,
+        },
     };
     let look = WidgetLook {
         chrome: chrome.clone(),
@@ -182,9 +185,15 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
-    assert_eq!(snap.chrome.fill, chrome.fill, "None: fill snaps to target");
-    assert_eq!(snap.chrome.border.width, 2.0, "None: stroke width snaps");
-    assert_eq!(snap.chrome.border.color, chrome.border.color);
+    assert_eq!(
+        snap.chrome.paint.fill, chrome.paint.fill,
+        "None: fill snaps to target"
+    );
+    assert_eq!(
+        snap.chrome.paint.border.width, 2.0,
+        "None: stroke width snaps"
+    );
+    assert_eq!(snap.chrome.paint.border.color, chrome.paint.border.color);
     assert_eq!(snap.chrome.corners, chrome.corners);
     assert_eq!(
         snap.text, fallback,
@@ -199,7 +208,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // Retargeting the fill allocates a `Chrome` row; text is unchanged, so the snap-if-close path leaves no TextStyle row.
     let look2 = WidgetLook {
         chrome: Chrome {
-            fill: RgbaF32::hex(0xff0000).into(),
+            paint: Paint {
+                fill: RgbaF32::hex(0xff0000).into(),
+                ..chrome.paint
+            },
             ..chrome
         },
         text: TextStyleOverrides::NONE,

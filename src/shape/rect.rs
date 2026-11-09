@@ -1,64 +1,35 @@
-//! The rectangle builder. Lowers to `ShapeRecord::Quad(QuadShape::Rect)`.
+//! [`RectShape`]: a rounded rect, the geometry a box, an image, an icon and an effect fill.
 
-use crate::effect::effect_registry::EffectRegistry;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::reduction::Reductions;
-use crate::shape::lower::{self, LoweredBox};
-use crate::shape::paint::lowered_material::MaterialRead;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::lower;
+use crate::shape::paint::quad_shape::{BoxGeometry, BoxOutline};
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use crate::shape::sealed;
+use crate::shape::sealed::{self, IntoPaint, Resolve};
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum RectKind {
-    /// Fill inside the rounded boundary.
-    Rounded = 0,
-    /// Fill outside the rounded boundary, leaving its interior transparent.
-    Windowed = 1,
-}
-
-/// A box a [`Chrome`] paints: its fill, border, corners, shadow and material, over the owner's
-/// arranged rect or [`Self::at`] a rect of its own.
-#[derive(Clone, Debug)]
+/// A rounded rect: the owner's arranged rect or [`Self::at`] a rect of its own, its corner radii,
+/// and the side of its boundary it covers. A [`Paint`](crate::Paint), an effect, an image or an icon covers it
+/// ([`Ui::add_shape`](crate::Ui::add_shape)).
+#[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct RectShape {
-    pub(crate) kind: RectKind,
     pub(crate) local_rect: Option<Rect>,
-    pub(crate) chrome: Chrome,
-    /// What `Ui::add_shape` finds the material reads.
-    material: MaterialState,
-}
-
-/// What a [`RectShape`]'s material reads, which only the resolve before it lowers knows.
-#[derive(Clone, Copy, Debug)]
-enum MaterialState {
-    Unresolved,
-    /// `None` where the box paints no material: none set, or one that paints nothing for what is
-    /// reduced.
-    Resolved(Option<MaterialRead>),
+    pub(crate) corners: Corners,
+    pub(crate) coverage: Coverage,
 }
 
 impl RectShape {
-    /// A box of `kind` painting `chrome`.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `chrome` passes its checks, as a widget's `chrome` does.
-    #[track_caller]
-    pub(super) const fn new(kind: RectKind, chrome: Chrome) -> Self {
-        chrome.validate();
+    pub(super) const fn new() -> Self {
         Self {
-            kind,
             local_rect: None,
-            chrome,
-            material: MaterialState::Unresolved,
+            corners: Corners::ZERO,
+            coverage: Coverage::Inside,
         }
     }
 
-    /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect.
+    /// Lay out in `rect`, in owner-relative coords, instead of the owner's arranged rect.
     ///
     /// # Panics
     ///
@@ -70,63 +41,64 @@ impl RectShape {
         self
     }
 
-    /// The material's read, as [`sealed::LowerShape::resolve`] found it.
-    fn material_read(&self) -> Option<MaterialRead> {
-        match self.material {
-            MaterialState::Resolved(read) => read,
-            MaterialState::Unresolved => unreachable!(
-                "`Ui::add_shape` resolves a rect's material before it checks or lowers it"
-            ),
-        }
+    /// Round the corners. Takes one number for all four, or a [`Corners`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every radius is a [length](crate::widget::domain::length) and a
+    /// [lane](crate::widget::domain::lane).
+    #[track_caller]
+    pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
+        let corners = corners.into();
+        corners.validate();
+        self.corners = corners;
+        self
+    }
+
+    /// Cover `coverage`, the inside of the boundary by default.
+    pub const fn coverage(mut self, coverage: Coverage) -> Self {
+        self.coverage = coverage;
+        self
+    }
+
+    /// Panic unless the rect is square-cornered and covers its inside, as `what`'s pipeline,
+    /// which clips to neither corners nor a side, draws.
+    #[track_caller]
+    pub(crate) fn assert_plain(&self, what: &str) {
+        assert!(
+            self.corners == Corners::ZERO,
+            "{what} paints a square-cornered rect"
+        );
+        assert!(
+            self.coverage == Coverage::Inside,
+            "{what} paints the inside of its rect"
+        );
     }
 }
 
-impl sealed::LowerShape for RectShape {
+/// A box of `P`: its fill, border, shadow and material over the rect.
+impl<P: IntoPaint> sealed::LowerShape for (RectShape, P) {
     const CAN_BE_PANE: bool = true;
 
     #[track_caller]
-    fn resolve(&mut self, effects: &EffectRegistry, reductions: Reductions) {
-        self.material = MaterialState::Resolved(
-            self.chrome
-                .material
-                .as_ref()
-                .and_then(|material| MaterialRead::resolve(material, effects, reductions)),
-        );
+    fn validate(&self) {
+        self.1.clone().into().validate();
     }
 
-    fn is_noop(&self) -> bool {
-        self.local_rect.is_some_and(Rect::is_paint_empty)
-            || (self.chrome.fill.is_noop()
-                && self.chrome.border.is_noop()
-                && self.chrome.shadow.is_noop()
-                && self.material_read().is_none())
-    }
-
-    /// Geometry is already in storage form; the box lowers as a node's chrome does
-    /// ([`lower::lower_box`]).
-    fn lower(self, store: &mut RecordStore) -> ShapeRecord {
-        let read = self.material_read();
-        let Self {
-            kind,
+    fn lower(self, resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
+        let (
+            RectShape {
+                local_rect,
+                corners,
+                coverage,
+            },
+            paint,
+        ) = self;
+        let geometry = BoxGeometry {
             local_rect,
-            chrome,
-            material: _,
-        } = self;
-        let LoweredBox {
-            fill,
-            border,
-            corners,
-            shadow,
-            material,
-        } = lower::lower_box(store, &chrome, read);
-        ShapeRecord::Quad(QuadShape::Rect {
-            kind,
-            local_rect,
-            corners,
-            fill,
-            border,
-            shadow,
-            material,
-        })
+            outline: BoxOutline::Rect(corners),
+            coverage,
+        };
+        lower::paint_box(resolve, store, geometry, &paint.into())
     }
 }

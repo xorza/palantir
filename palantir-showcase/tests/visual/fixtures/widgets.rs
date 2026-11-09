@@ -16,6 +16,7 @@ use crate::golden_name::GoldenName;
 
 use crate::theme;
 use crate::visual_rig::VisualRig;
+use palantir::Paint;
 
 /// A well padded by `p` and filling the surface around `body`.
 fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
@@ -40,7 +41,7 @@ fn rounded_clip(ui: &mut Ui, panel: Panel) {
         Block::new()
             .id_salt("inner")
             .size((Sizing::FILL, Sizing::FILL))
-            .chrome(Chrome::fill(RgbaF32::BLACK))
+            .chrome(Chrome::new(RgbaF32::BLACK))
             .show(ui);
     });
 }
@@ -83,11 +84,9 @@ fn a_border_paints_inside_the_rect() {
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(
-                        Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0))
-                            .with_border(Border::new(RgbaF32::WHITE, 2.0)),
-                    )
-                    .at(Rect::new(4.0, 4.0, 12.0, 12.0)),
+                    Shape::rect().at(Rect::new(4.0, 4.0, 12.0, 12.0)),
+                    Paint::from(RgbaF32::srgb(1.0, 0.0, 0.0))
+                        .with_border(Border::new(RgbaF32::WHITE, 2.0)),
                 );
             });
         })
@@ -116,7 +115,7 @@ fn surface_rounded_clips_full_fill_child() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(20.0)
-            .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.42, 0.72)))
+            .chrome(Chrome::new(RgbaF32::srgb(1.0, 0.42, 0.72)))
             .show(ui, |ui| {
                 let panel = Panel::zstack()
                     .id_salt("rounded")
@@ -379,7 +378,7 @@ fn modal_dialog_matches_golden() {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
-            .chrome(Chrome::fill(RgbaF32::srgb(0.35, 0.45, 0.65)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.35, 0.45, 0.65)))
             .show(ui, |_| {});
         Modal::new().id_salt("m").show(ui, |ui| {
             Text::new("Confirm?").id_salt("mt").show(ui);

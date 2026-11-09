@@ -1,4 +1,4 @@
-//! The textured-rectangle builder. Lowers to `ShapeRecord::Image`.
+//! [`ImagePaint`]: a registered image over a rect. Lowers to `ShapeRecord::Image`.
 
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::rect::Rect;
@@ -8,14 +8,15 @@ use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use crate::shape::sealed;
+use crate::shape::rect::RectShape;
+use crate::shape::sealed::{self, Resolve};
 
-/// Textured rectangle painted from a registered [`ImageHandle`].
+/// A registered [`ImageHandle`] painted over a [`RectShape`]
+/// ([`Ui::add_shape`](crate::Ui::add_shape)), as Skia's `SkImageShader` fills a shape.
 #[derive(Clone, Debug)]
 #[must_use]
-pub struct ImageShape {
+pub struct ImagePaint {
     pub(crate) handle: ImageHandle,
-    pub(crate) local_rect: Option<Rect>,
     pub(crate) fit: ImageFit,
     pub(crate) min_filter: ImageFilter,
     pub(crate) mag_filter: ImageFilter,
@@ -23,11 +24,11 @@ pub struct ImageShape {
     pub(crate) tint: RgbaF32,
 }
 
-impl ImageShape {
-    pub(super) fn new(handle: ImageHandle) -> Self {
+impl ImagePaint {
+    /// The image `handle`, fit by [`ImageFit::default`], linear-filtered, untinted.
+    pub fn new(handle: ImageHandle) -> Self {
         Self {
             handle,
-            local_rect: None,
             fit: ImageFit::default(),
             min_filter: ImageFilter::default(),
             mag_filter: ImageFilter::default(),
@@ -36,19 +37,7 @@ impl ImageShape {
         }
     }
 
-    /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
-    #[track_caller]
-    pub const fn at(mut self, rect: Rect) -> Self {
-        rect.validate();
-        self.local_rect = Some(rect);
-        self
-    }
-
-    /// How the image is placed inside the paint rect.
+    /// How the image is placed inside the rect.
     ///
     /// # Panics
     ///
@@ -90,22 +79,36 @@ impl ImageShape {
     }
 }
 
-impl sealed::LowerShape for ImageShape {
-    fn is_noop(&self) -> bool {
-        self.local_rect.is_some_and(Rect::is_paint_empty) || self.tint.is_noop()
+/// An image over a rect, square-cornered and covering its inside.
+impl sealed::LowerShape for (RectShape, ImagePaint) {
+    /// # Panics
+    ///
+    /// Unless the rect is square-cornered and covers its inside, which an image's pipeline draws.
+    #[track_caller]
+    fn validate(&self) {
+        self.0.assert_plain("an image");
     }
 
-    fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
-        let Self {
-            handle,
-            local_rect,
-            fit,
-            min_filter,
-            mag_filter,
-            downsample,
-            tint,
-        } = self;
-        ShapeRecord::Image {
+    fn lower(self, _resolve: Resolve<'_>, _store: &mut RecordStore) -> Option<ShapeRecord> {
+        let (
+            RectShape {
+                local_rect,
+                corners: _,
+                coverage: _,
+            },
+            ImagePaint {
+                handle,
+                fit,
+                min_filter,
+                mag_filter,
+                downsample,
+                tint,
+            },
+        ) = self;
+        if local_rect.is_some_and(Rect::is_paint_empty) || tint.is_noop() {
+            return None;
+        }
+        Some(ShapeRecord::Image {
             local_rect,
             tint: tint.to_f16(),
             source: ImageSource::Texture {
@@ -117,6 +120,6 @@ impl sealed::LowerShape for ImageShape {
             min_filter,
             mag_filter,
             downsample,
-        }
+        })
     }
 }

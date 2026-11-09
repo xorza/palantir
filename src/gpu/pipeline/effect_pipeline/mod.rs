@@ -7,8 +7,8 @@ use std::mem::offset_of;
 
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
-use crate::effect::contract::{IMAGES_GROUP, PANES_GROUP};
-use crate::effect::effect_store::{EffectModule, ModuleEntries};
+use crate::effect::contract::{GRADIENTS_GROUP, IMAGES_GROUP, PANES_GROUP};
+use crate::effect::effect_store::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
@@ -21,12 +21,14 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::primitives::effect::effect_kind::KindId;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectProgram};
+use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 
 /// The layouts every effect's pipeline builds over: the parameter words at group 0, the images
 /// at [`IMAGES_GROUP`] for an effect that binds any, a backdrop effect's pane results at
-/// [`PANES_GROUP`], and the immediates every pipeline declares.
+/// [`PANES_GROUP`] and the gradient atlas its material path reads at [`GRADIENTS_GROUP`], and the
+/// immediates every pipeline declares.
 #[derive(Debug)]
 pub(crate) struct EffectLayouts {
     group: wgpu::BindGroupLayout,
@@ -68,7 +70,12 @@ impl EffectLayouts {
             pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.effect.backdrop.pl",
-                &[Some(&group), images(slots), Some(binding.panes())],
+                &[
+                    Some(&group),
+                    images(slots),
+                    Some(binding.panes()),
+                    Some(binding.layout()),
+                ],
             )
         });
         Self {
@@ -146,33 +153,16 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
     &INSTANCE_ATTRS,
 );
 
-/// The pipelines of one effect against one format, each with its rounded-clip twin: its shape
-/// stages', and its material stages' for a module that holds them, [`StencilVariant::NONE`]
-/// otherwise, as for an effect no use built.
-#[derive(Clone, Debug)]
-pub(crate) struct EffectPipelines {
-    pub(crate) shape: StencilVariant,
-    pub(crate) material: StencilVariant,
-}
-
-impl EffectPipelines {
-    /// No pipeline built.
-    pub(crate) const NONE: Self = Self {
-        shape: StencilVariant::NONE,
-        material: StencilVariant::NONE,
-    };
-}
-
 /// The effect at `idx`, from `module`, over the layout of its kind and image slots, against
-/// `format`: its shape stages, and its material stages where the module holds them, which dither
-/// their result before an 8-bit sRGB target stores it.
+/// `format`, with its rounded-clip twin: its one stage, which for a backdrop effect also draws a
+/// material's box and dithers that result before an 8-bit sRGB target stores it.
 pub(crate) fn build(
     gpu: &Gpu,
     layouts: &EffectLayouts,
     module: &EffectModule,
     format: wgpu::TextureFormat,
     idx: usize,
-) -> EffectPipelines {
+) -> StencilVariant {
     let label = format!("palantir.effect.{idx}");
     let shader = gpu
         .device
@@ -180,34 +170,29 @@ pub(crate) fn build(
             label: Some(&label),
             source: wgpu::ShaderSource::Wgsl(module.text.as_str().into()),
         });
+    let dither = [(
+        "PALANTIR_DITHER_SRGB8",
+        f64::from(u8::from(
+            format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
+        )),
+    )];
     let recipe = PipelineRecipe {
         vertex_entry: "palantir_vs",
         fragment_entry: "palantir_fs",
         vertex_buffers: &[Some(INSTANCE_LAYOUT)],
         topology: wgpu::PrimitiveTopology::TriangleStrip,
         blend: Some(BLEND),
+        // Only the material path, which a backdrop effect alone holds, declares the dither.
+        constants: match module.kind {
+            KindId::Color => &[],
+            KindId::Backdrop => &dither,
+        },
         ..PipelineRecipe::color(&label, &shader, layouts.pipeline(module), format)
     };
-    let mut shape = StencilVariant::NONE;
-    shape.ensure(gpu, StencilMode::Off, &recipe);
-    shape.ensure(gpu, StencilMode::Test, &recipe);
-    let mut material = StencilVariant::NONE;
-    if module.entries == ModuleEntries::ShapeAndMaterial {
-        let dither = f64::from(u8::from(
-            format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
-        ));
-        let label = format!("palantir.effect.{idx}.material");
-        let recipe = PipelineRecipe {
-            label: &label,
-            vertex_entry: "palantir_material_vs",
-            fragment_entry: "palantir_material_fs",
-            constants: &[("PALANTIR_DITHER_SRGB8", dither)],
-            ..recipe
-        };
-        material.ensure(gpu, StencilMode::Off, &recipe);
-        material.ensure(gpu, StencilMode::Test, &recipe);
-    }
-    EffectPipelines { shape, material }
+    let mut pipelines = StencilVariant::NONE;
+    pipelines.ensure(gpu, StencilMode::Off, &recipe);
+    pipelines.ensure(gpu, StencilMode::Test, &recipe);
+    pipelines
 }
 
 /// One frame's effects: their instances, their parameter words, the group the words bind
@@ -224,7 +209,7 @@ pub(crate) struct EffectPipeline {
     group_capacity: usize,
     /// What `pipelines` were copied at; `None` before the first upload.
     copied: Option<PipelinesCopy>,
-    pipelines: Vec<EffectPipelines>,
+    pipelines: Vec<StencilVariant>,
     /// Each effect's kind, at its id, copied with `pipelines`.
     kinds: Vec<KindId>,
 }
@@ -236,15 +221,16 @@ struct PipelinesCopy {
     revision: u64,
 }
 
-/// One batch of effect draws: the frame's per-draw program column, this batch's slice of it, the
-/// groups the draws bind their images through, and the group a backdrop effect reads its pane's
-/// result through, `None` before the first frame with a pane.
+/// One batch of effect draws: the frame's per-draw effect column, this batch's slice of it, the
+/// groups the draws bind their images through, the group a backdrop effect reads its pane's result
+/// through, `None` before the first frame with a pane, and the gradient atlas's group.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
-    pub(crate) programs: &'a [EffectProgram],
+    pub(crate) effects: &'a [EffectId],
     pub(crate) items: Span,
     pub(crate) groups: &'a EffectImageGroups,
     pub(crate) panes: Option<&'a wgpu::BindGroup>,
+    pub(crate) gradients: &'a wgpu::BindGroup,
 }
 
 /// What one frame uploads: each draw's instance and the span of its images in `textures`, the
@@ -338,10 +324,11 @@ impl EffectPipeline {
         rec: &mut PassRecorder<'a>,
         stencil: StencilMode,
         EffectBatch {
-            programs,
+            effects,
             items,
             groups,
             panes,
+            gradients,
         }: EffectBatch<'_>,
     ) {
         let group = self
@@ -349,8 +336,8 @@ impl EffectPipeline {
             .as_ref()
             .expect("a frame uploads before it draws");
         rec.vertex(0, &self.instances.buffer);
-        for run in Runs::new(items, |i| (programs[i as usize], self.images[i as usize])) {
-            let (program, images) = run.key;
+        for run in Runs::new(items, |i| (effects[i as usize], self.images[i as usize])) {
+            let (effect, images) = run.key;
             let images_group = if images.ids().is_empty() {
                 None
             } else {
@@ -359,16 +346,8 @@ impl EffectPipeline {
                 };
                 Some(images_group)
             };
-            let (pipeline, kind) = match program {
-                EffectProgram::App(effect) => (
-                    &self.pipelines[effect.idx()].shape,
-                    self.kinds[effect.idx()],
-                ),
-                EffectProgram::Material(effect) => {
-                    (&self.pipelines[effect.idx()].material, KindId::Backdrop)
-                }
-            };
-            rec.pipeline(pipeline.select(stencil));
+            let kind = self.kinds[effect.idx()];
+            rec.pipeline(self.pipelines[effect.idx()].select(stencil));
             rec.group(0, group);
             if let Some(images_group) = images_group {
                 rec.group_once(IMAGES_GROUP, images_group);
@@ -376,6 +355,7 @@ impl EffectPipeline {
             if kind == KindId::Backdrop {
                 let panes = panes.expect("a frame with a backdrop effect prepares its panes");
                 rec.group_once(PANES_GROUP, panes);
+                rec.group_once(GRADIENTS_GROUP, gradients);
             }
             rec.draw(0..4, run.instances.u32_range());
         }

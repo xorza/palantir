@@ -6,6 +6,7 @@
 )]
 
 use crate::host::harness::Harness;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
@@ -17,9 +18,9 @@ use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::quad_shape::{BoxGeometry, QuadShape};
 use crate::shape::record::ShapeRecord;
-use crate::shape::rect::{RectKind, RectShape};
+use crate::shape::rect::RectShape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -239,13 +240,17 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
 fn mid_recording_popup_keeps_trees_independent() {
     fn marker(slot: u8) -> RectShape {
         let w = f32::from(slot + 1);
-        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, w, w))
+        Shape::rect().at(Rect::new(0.0, 0.0, w, w))
     }
     fn marker_w(s: &ShapeRecord) -> u32 {
         match s {
-            ShapeRecord::Quad(QuadShape::Rect {
-                kind: RectKind::Rounded,
-                local_rect: Some(r),
+            ShapeRecord::Quad(QuadShape::Box {
+                geometry:
+                    BoxGeometry {
+                        coverage: Coverage::Inside,
+                        local_rect: Some(r),
+                        ..
+                    },
                 ..
             }) => r.size.w as u32,
             _ => panic!("unexpected shape variant"),
@@ -258,34 +263,34 @@ fn mid_recording_popup_keeps_trees_independent() {
         Panel::vstack()
             .id(WidgetId::from_hash("main-parent"))
             .show(ui, |ui| {
-                ui.add_shape(marker(0));
+                ui.add_shape(marker(0), RgbaF32::srgb(1.0, 0.0, 0.0));
                 Block::new()
                     .id(WidgetId::from_hash("mc1"))
                     .size(20.0)
                     .show(ui);
-                ui.add_shape(marker(1));
+                ui.add_shape(marker(1), RgbaF32::srgb(1.0, 0.0, 0.0));
                 Block::new()
                     .id(WidgetId::from_hash("mc2"))
                     .size(20.0)
                     .show(ui);
-                ui.add_shape(marker(2));
+                ui.add_shape(marker(2), RgbaF32::srgb(1.0, 0.0, 0.0));
                 ui.layer(Layer::Popup).fixed_at(popup_anchor).show(|ui| {
                     Panel::vstack()
                         .id(WidgetId::from_hash("popup-root"))
                         .show(ui, |ui| {
-                            ui.add_shape(marker(10));
+                            ui.add_shape(marker(10), RgbaF32::srgb(1.0, 0.0, 0.0));
                             Block::new()
                                 .id(WidgetId::from_hash("popup-leaf"))
                                 .size(10.0)
                                 .show(ui);
-                            ui.add_shape(marker(11));
+                            ui.add_shape(marker(11), RgbaF32::srgb(1.0, 0.0, 0.0));
                             Block::new()
                                 .id(WidgetId::from_hash("popup-leaf-2"))
                                 .size(10.0)
                                 .show(ui);
                         });
                 });
-                ui.add_shape(marker(3));
+                ui.add_shape(marker(3), RgbaF32::srgb(1.0, 0.0, 0.0));
                 Block::new()
                     .id(WidgetId::from_hash("mc3"))
                     .size(20.0)
@@ -294,7 +299,7 @@ fn mid_recording_popup_keeps_trees_independent() {
                     .id(WidgetId::from_hash("mc4"))
                     .size(20.0)
                     .show(ui);
-                ui.add_shape(marker(4));
+                ui.add_shape(marker(4), RgbaF32::srgb(1.0, 0.0, 0.0));
             })
             .response
             .node(ui)
@@ -350,7 +355,7 @@ fn a_nested_overlay_records_one_plane_above_its_opener() {
                 .id(WidgetId::from_hash(("nested", depth)))
                 .size(10.0)
                 .sense(Sense::CLICK)
-                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .chrome(Chrome::new(RgbaF32::WHITE))
                 .show(ui);
             nest(ui, rest, depth + 1);
         });

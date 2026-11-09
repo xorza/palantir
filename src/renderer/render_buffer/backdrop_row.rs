@@ -3,7 +3,11 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::shape::paint::blur_plan::BlurPlan;
 
 /// What a pane's result is: the pane, the screen its capture reads, its blur, and the texels the
@@ -67,8 +71,10 @@ pub(crate) struct MaterialLook {
     pub(crate) max_luminance: f32,
     /// The lowest relative luminance the material shows under its fill; 0 for none.
     pub(crate) min_luminance: f32,
-    /// Straight alpha, linear.
-    pub(crate) tint: RgbaF16,
+    /// The box's fill: a straight linear color, or the multiplier on the gradient its lanes name.
+    pub(crate) fill: GpuFill,
+    /// The gradient's geometry in the box's 0..1 frame; zero for a solid.
+    pub(crate) fill_axis: FillAxis,
     /// Straight alpha, linear.
     pub(crate) stroke_color: RgbaF16,
     pub(crate) stroke_width: f32,
@@ -79,7 +85,12 @@ impl MaterialLook {
     pub(crate) const PLAIN: Self = Self {
         max_luminance: 65504.0,
         min_luminance: 0.0,
-        tint: RgbaF16::TRANSPARENT,
+        fill: GpuFill {
+            color: RgbaF16::TRANSPARENT,
+            kind: FillKind::SOLID,
+            lut_row: LutRow::FALLBACK,
+        },
+        fill_axis: FillAxis::ZERO,
         stroke_color: RgbaF16::TRANSPARENT,
         stroke_width: 0.0,
     };

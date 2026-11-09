@@ -9,13 +9,13 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
-use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
 use crate::text::glyph_font::GlyphFont;
 use crate::ui::Ui;
@@ -89,12 +89,12 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(a_size), Sizing::fixed(20.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(20.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.5, 0.5, 0.5)))
                     .show(ui);
             });
     };
@@ -160,7 +160,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
                 Block::new()
                     .id(WidgetId::from_hash("new"))
                     .size(50.0)
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             });
     });
@@ -305,22 +305,28 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
                                 .with_repeat(PaintRepeat::Forever);
                             match kind {
                                 Kind::Line => ui.add_shape_animated(
-                                    Shape::polyline(&[lo, hi], Border::new(RED, 1.0)),
+                                    Shape::polyline(&[lo, hi]),
+                                    Stroke::new(RED, 1.0),
                                     turn,
                                 ),
                                 Kind::Triangle => ui.add_shape_animated(
-                                    Shape::triangle(lo, hi, corner).fill(RED),
+                                    Shape::triangle(lo, hi, corner),
+                                    RED,
                                     turn,
                                 ),
-                                Kind::Mesh => ui.add_shape_animated(Shape::mesh(&mesh), turn),
+                                Kind::Mesh => {
+                                    ui.add_shape_animated(Shape::mesh(&mesh), RgbaF32::WHITE, turn);
+                                }
                                 Kind::Rect => ui.add_shape_animated(
-                                    Shape::rect(RED).at(Rect::from_min_max(lo, hi)),
+                                    Shape::rect().at(Rect::from_min_max(lo, hi)),
+                                    RED,
                                     turn,
                                 ),
                                 Kind::Text => {
                                     let label = ui.intern("abcdef");
                                     ui.add_shape_animated(
                                         Shape::text(label, GlyphFont::new(20.0)).at_origin(lo),
+                                        RgbaF32::WHITE,
                                         turn,
                                     );
                                 }
@@ -362,18 +368,16 @@ fn node_snapshot_decomposition_matches_cascade() {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui, |ui| {
-                ui.add_shape(Shape::line(
-                    Vec2::new(0.0, 0.0),
-                    Vec2::new(10.0, 10.0),
-                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-                ));
-                ui.add_shape(Shape::line(
-                    Vec2::new(20.0, 20.0),
-                    Vec2::new(30.0, 30.0),
-                    Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
-                ));
+                ui.add_shape(
+                    Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                );
+                ui.add_shape(
+                    Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0)),
+                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                );
             });
     });
     let plane = Plane::MAIN;
@@ -413,27 +417,25 @@ fn node_snapshot_decomposition_matches_cascade() {
     assert!(h.frames().damage().raw_rects.is_empty());
 
     let two_lines = |ui: &mut Ui| {
-        ui.add_shape(Shape::line(
-            Vec2::new(0.0, 0.0),
-            Vec2::new(10.0, 10.0),
-            Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-        ));
-        ui.add_shape(Shape::line(
-            Vec2::new(20.0, 20.0),
-            Vec2::new(30.0, 30.0),
-            Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
-        ));
+        ui.add_shape(
+            Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+            Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+        );
+        ui.add_shape(
+            Shape::line(Vec2::new(20.0, 20.0), Vec2::new(30.0, 30.0)),
+            Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+        );
     };
     frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui, |ui| two_lines(ui));
         Panel::hstack()
             .id(WidgetId::from_hash("multi2"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui, |ui| two_lines(ui));
     });
     let snap2_paints = h
@@ -460,17 +462,19 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(180.0)))
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 20.0, 10.0)),
+                    Shape::rect().at(Rect::new(0.0, 0.0, 20.0, 10.0)),
+                    RgbaF32::srgb(1.0, 0.0, 0.0),
                 );
                 ui.add_shape(
-                    Shape::rect(RgbaF32::srgb(0.0, 1.0, 0.0)).at(Rect::new(60.0, 0.0, 20.0, 10.0)),
+                    Shape::rect().at(Rect::new(60.0, 0.0, 20.0, 10.0)),
+                    RgbaF32::srgb(0.0, 1.0, 0.0),
                 );
                 ui.add_shape(
-                    Shape::rect(RgbaF32::srgb(0.0, 0.0, 1.0))
-                        .at(Rect::new(0.0, moving_y, 20.0, 10.0)),
+                    Shape::rect().at(Rect::new(0.0, moving_y, 20.0, 10.0)),
+                    RgbaF32::srgb(0.0, 0.0, 1.0),
                 );
             });
     };
@@ -538,7 +542,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
         Panel::hstack()
             .id(WidgetId::from_hash("c"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(fill))
+            .chrome(Chrome::new(fill))
             .show(ui, |_| {});
     };
     frame(&mut h, |ui| build(BLUE, ui));
@@ -606,7 +610,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
         Panel::hstack()
             .id(WidgetId::from_hash("chrome_only"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(BLUE))
+            .chrome(Chrome::new(BLUE))
             .show(ui, |_| {});
     };
     frame(&mut h, build);
@@ -658,8 +662,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                             },
                         )
                         .at_origin(ORIGIN)
-                        .color(RgbaF32::WHITE)
                         .wrap(TextWrap::Truncate),
+                        RgbaF32::WHITE,
                     );
                 });
             });
@@ -736,8 +740,8 @@ fn a_text_run_damages_its_ink_past_the_block() {
                             },
                         )
                         .at_origin(ORIGIN)
-                        .color(RgbaF32::WHITE)
                         .wrap(TextWrap::SingleLine),
+                        RgbaF32::WHITE,
                     );
                 });
             });
@@ -774,18 +778,14 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
         let mut p = Panel::zstack()
             .id(WidgetId::from_hash("a"))
             .size(50.0)
-            .chrome(Chrome::fill(BLUE));
+            .chrome(Chrome::new(BLUE));
         if hidden {
             p = p.hidden();
         }
         p.show(ui, |ui| {
             ui.add_shape(
-                Shape::line(
-                    Vec2::new(5.0, 10.0),
-                    Vec2::new(20.0, 10.0),
-                    Border::new(color, 2.0),
-                )
-                .cap(LineCap::Round),
+                Shape::line(Vec2::new(5.0, 10.0), Vec2::new(20.0, 10.0)),
+                Stroke::new(color, 2.0).with_cap(LineCap::Round),
             );
         });
     };

@@ -20,6 +20,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::Shape;
+use crate::shape::image_paint::ImagePaint;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -144,7 +145,8 @@ impl Scene<'_> {
                         ))
                         .show(ui, |ui| {
                             ui.add_shape(
-                                Shape::image(image.clone())
+                                Shape::rect(),
+                                ImagePaint::new(image.clone())
                                     .fit(ImageFit::Fill)
                                     .min_filter(filter)
                                     .mag_filter(filter)

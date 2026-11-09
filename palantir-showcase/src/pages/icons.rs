@@ -9,6 +9,7 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
+use palantir::widget::IconPaint;
 use palantir::widget::Shape;
 use palantir::{
     Align, ColorButton, ColorPicker, Configure, CursorIcon, IconHandle, IconSet, IconTable, Panel,
@@ -109,7 +110,7 @@ impl Icons {
     }
 
     fn draw(ui: &mut Ui, icon: IconHandle, tint: RgbaF32) {
-        ui.add_shape(Shape::icon(icon).tint(tint));
+        ui.add_shape(Shape::rect(), IconPaint::new(icon).tint(tint));
     }
 }
 
@@ -202,13 +203,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             DemoCell::new("color icon desaturated")
                 .size(96.0, 96.0)
                 .show(ui, k, |ui| {
-                    ui.add_shape(Shape::icon(icons.save).desaturate(true));
+                    ui.add_shape(Shape::rect(), IconPaint::new(icons.save).desaturate(true));
                 });
             DemoCell::new("desaturated + 50% alpha")
                 .size(96.0, 96.0)
                 .show(ui, k, |ui| {
                     ui.add_shape(
-                        Shape::icon(icons.save)
+                        Shape::rect(),
+                        IconPaint::new(icons.save)
                             .desaturate(true)
                             .tint(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
                     );

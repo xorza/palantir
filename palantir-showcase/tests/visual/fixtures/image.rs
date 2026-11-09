@@ -7,7 +7,7 @@
 
 use image::RgbaImage;
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{ImageShape, Shape};
+use palantir::widget::Shape;
 use palantir::{
     Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Panel, Rect, RgbaF32,
     Sizing, SrgbaU8, Ui,
@@ -15,6 +15,7 @@ use palantir::{
 
 use crate::fixtures;
 use crate::visual_rig::VisualRig;
+use palantir::widget::ImagePaint;
 
 const RED: [u8; 4] = [230, 60, 60, 255];
 const BLUE: [u8; 4] = [60, 120, 230, 255];
@@ -42,17 +43,17 @@ fn render(h: &mut VisualRig, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> Rgb
 }
 
 /// `image` in a pane over `at`.
-fn pane(ui: &mut Ui, at: Rect, image: ImageShape) {
+fn pane(ui: &mut Ui, at: Rect, image: ImagePaint) {
     Panel::zstack()
         .id_salt(("pane", at.min.x as i32))
         .at(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
-        .show(ui, |ui| ui.add_shape(image));
+        .show(ui, |ui| ui.add_shape(Shape::rect(), image));
 }
 
 /// `handle` stretched over its pane.
-fn filled(handle: &ImageHandle) -> ImageShape {
-    Shape::image(handle.clone()).fit(ImageFit::Fill)
+fn filled(handle: &ImageHandle) -> ImagePaint {
+    ImagePaint::new(handle.clone()).fit(ImageFit::Fill)
 }
 
 /// Each `(x, color, what)` probe on row `y` reads its color.
@@ -232,7 +233,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         pane(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
-            Shape::image(two.clone())
+            ImagePaint::new(two.clone())
                 .fit(tile)
                 .min_filter(Linear)
                 .mag_filter(Linear),
@@ -240,7 +241,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         pane(
             ui,
             Rect::new(100.0, 0.0, size.x, size.y),
-            Shape::image(two.clone())
+            ImagePaint::new(two.clone())
                 .fit(tile)
                 .min_filter(Nearest)
                 .mag_filter(Nearest),
@@ -298,7 +299,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
     let source = load(&h, &[[STAR, SKY, SKY]; 8].concat());
     let out = render(&mut h, UVec2::new(24, 16), |ui| {
         for (i, (mode, _, _)) in cases.iter().enumerate() {
-            let image = Shape::image(source.clone())
+            let image = ImagePaint::new(source.clone())
                 .fit(ImageFit::Fill)
                 .downsample(*mode);
             pane(ui, Rect::new(i as f32 * PANE.x, 0.0, PANE.x, PANE.y), image);
@@ -359,7 +360,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
     let sources = cases.map(|(triple, _, _, _)| load(&h, &[triple; 8].concat()));
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
         for (i, (_, mode, _, _)) in cases.iter().enumerate() {
-            let image = Shape::image(sources[i].clone())
+            let image = ImagePaint::new(sources[i].clone())
                 .fit(ImageFit::Fill)
                 .downsample(*mode);
             pane(ui, Rect::new(i as f32 * PANE.x, 0.0, PANE.x, PANE.y), image);
@@ -390,7 +391,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
         pane(
             ui,
             Rect::new(0.0, 0.0, 16.0, 16.0),
-            Shape::image(source.clone()).fit(ImageFit::Fill),
+            ImagePaint::new(source.clone()).fit(ImageFit::Fill),
         );
     });
 
@@ -414,7 +415,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     let mut h = VisualRig::new();
     let source = load(&h, &[STAR, SKY, SKY, SKY]);
     let out = render(&mut h, UVec2::new(8, 16), |ui| {
-        let image = Shape::image(source.clone())
+        let image = ImagePaint::new(source.clone())
             .fit(ImageFit::Tile {
                 offset: Vec2::ZERO,
                 scale: Vec2::new(24.0, 1.0),

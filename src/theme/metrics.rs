@@ -123,7 +123,7 @@ pub struct ShadowGeometry {
 }
 
 /// A float's material without its ink: [`Self::material`], any [`Material`], under the surface's
-/// own fill at [`Self::tint_alpha`], its luminance bound derived from the dimmest ink the surface
+/// own fill at [`Self::fill_alpha`], its luminance bound derived from the dimmest ink the surface
 /// paints.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FloatMaterial {
@@ -133,17 +133,17 @@ pub struct FloatMaterial {
     pub material: Material,
     /// The alpha of the surface's fill over the material; a fraction, and 1 shows nothing through.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
-    pub tint_alpha: f32,
+    pub fill_alpha: f32,
 }
 
 impl FloatMaterial {
-    /// `panel` in this material: its solid fill at [`Self::tint_alpha`] over [`Self::material`],
+    /// `panel` in this material: its solid fill at [`Self::fill_alpha`] over [`Self::material`],
     /// bound so `ink`, the dimmest ink the surface paints, reads at 4.5:1 over any backdrop: a
-    /// ceiling for ink lighter than the tint, a floor for ink darker.
+    /// ceiling for ink lighter than the fill, a floor for ink darker.
     ///
     /// # Panics
     ///
-    /// Unless `panel`'s fill is a solid color, the tint is a fraction under 1, `ink` holds 4.5:1
+    /// Unless `panel`'s fill is a solid color, the fill is a fraction under 1, `ink` holds 4.5:1
     /// on the fill made opaque, and an ink lighter than the fill is light enough for a ceiling,
     /// as [`Material::with_max_luminance_for`] and its floor twin require.
     #[track_caller]
@@ -154,26 +154,26 @@ impl FloatMaterial {
 
     /// [`Self::dress`], or why it cannot.
     pub(crate) fn try_dress(self, panel: &Chrome, ink: RgbaF32) -> Result<Chrome, MaterialRefusal> {
-        let fill = panel.fill.as_solid().ok_or(MaterialRefusal::FillNotSolid)?;
-        let tint = fill.with_alpha(self.tint_alpha);
+        let fill = panel
+            .paint
+            .fill
+            .as_solid()
+            .ok_or(MaterialRefusal::FillNotSolid)?;
+        let fill = fill.with_alpha(self.fill_alpha);
         let unbound = Material {
             max_luminance: None,
             min_luminance: None,
             ..self.material
         };
-        let material = unbound.holding(ink, tint).map_err(MaterialRefusal::Ink)?;
-        Ok(Chrome {
-            fill: tint.into(),
-            ..panel.clone()
-        }
-        .with_material(material))
+        let material = unbound.holding(ink, fill).map_err(MaterialRefusal::Ink)?;
+        Ok(panel.clone().with_fill(fill).with_material(material))
     }
 }
 
 /// Why [`FloatMaterial::try_dress`] left a surface as it was.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum MaterialRefusal {
-    /// The surface's fill is a gradient, with no one color to tint by.
+    /// The surface's fill is a gradient, with no one color to fill by.
     FillNotSolid,
     /// No luminance bound holds the ink through the frost.
     Ink(InkBound),
@@ -240,13 +240,13 @@ impl Metrics {
             offset: Vec2::new(0.0, 8.0),
             blur: 16.0,
         },
-        // Frosted glass under a tint at 184/255, about 0.72 and on the 8-bit grid a saved color
+        // Frosted glass under a fill at 184/255, about 0.72 and on the 8-bit grid a saved color
         // keeps, over a σ 20 blur: wide enough that text under a float reads as color, not as
         // text, as Fluent puts acrylic under its flyouts
         // (https://learn.microsoft.com/windows/apps/develop/ui/in-app-acrylic).
         float_material: Some(FloatMaterial {
             material: Material::frosted(20.0),
-            tint_alpha: 184.0 / 255.0,
+            fill_alpha: 184.0 / 255.0,
         }),
         // Fluent's button transitions its fill, border and ink over `durationFaster`, 100 ms:
         // https://github.com/microsoft/fluentui/blob/master/packages/react-components/react-button/library/src/components/Button/useButtonStyles.styles.ts

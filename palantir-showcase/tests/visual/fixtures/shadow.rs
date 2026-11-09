@@ -6,7 +6,7 @@
 
 use image::{Rgba, RgbaImage};
 use palantir::glam::{IVec2, UVec2, Vec2};
-use palantir::widget::{ShadowShape, Shape};
+use palantir::widget::Shape;
 use palantir::{
     Border, Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui,
 };
@@ -15,6 +15,7 @@ use std::f64::consts::SQRT_2;
 use crate::fixtures;
 use crate::goldens;
 use crate::visual_rig::VisualRig;
+use palantir::Paint;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
 const CLEAR: RgbaF32 = RgbaF32::WHITE;
@@ -36,7 +37,10 @@ fn render(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
 fn render_shadow(source: Rect, corners: impl Into<Corners>, shadow: Shadow) -> RgbaImage {
     let corners = corners.into();
     render(CLEAR, |ui| {
-        ui.add_shape(Shape::shadow(shadow).at(source).corners(corners));
+        ui.add_shape(
+            Shape::rect().at(source).corners(corners),
+            Paint::NONE.with_shadow(shadow),
+        );
     })
 }
 
@@ -273,9 +277,10 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
                 .show(ui, |ui| {
                     if !on_chrome {
                         ui.add_shape(
-                            Shape::shadow(shadow)
+                            Shape::rect()
                                 .at(Rect::new(4.0, 4.0, 132.0, 92.0))
                                 .corners(12.0),
+                            Paint::NONE.with_shadow(shadow),
                         );
                     }
                 });
@@ -308,8 +313,11 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
                     .chrome(Chrome::rounded(fill, Corners::all(radius)).with_shadow(shadow))
                     .show(ui, |_| {});
             } else {
-                ui.add_shape(Shape::shadow(shadow).at(source).corners(radius));
-                ui.add_shape(Shape::rect(Chrome::rounded(fill, radius)).at(source));
+                ui.add_shape(
+                    Shape::rect().at(source).corners(radius),
+                    Paint::NONE.with_shadow(shadow),
+                );
+                ui.add_shape(Shape::rect().at(source).corners(radius), fill);
             }
         })
     };
@@ -495,7 +503,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
 fn an_inset_shadow_shares_its_source_edge_ramp() {
     let source = Rect::new(40.5, 40.25, 100.0, 80.0);
     let filled = render(CLEAR, |ui| {
-        ui.add_shape(Shape::rect(Chrome::rounded(INK, 14.0)).at(source));
+        ui.add_shape(Shape::rect().at(source).corners(14.0), INK);
     });
     goldens::assert_same(
         "shadow_inset_edge",
@@ -536,7 +544,7 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
     let source = Rect::new(60.0, 40.0, 100.0, 100.0);
     let img = render(RgbaF32::BLACK, |ui| {
         let glow = Shadow::drop(RgbaF32::WHITE, Vec2::ZERO, 8.0);
-        ui.add_shape(Shape::shadow(glow).at(source));
+        ui.add_shape(Shape::rect().at(source), Paint::NONE.with_shadow(glow));
     });
     let reference = BlurredBox {
         rect: source,
@@ -574,15 +582,16 @@ fn cutout_grid(ui: &mut Ui) {
                 for (x, radius) in RADII.into_iter().enumerate() {
                     let at = Vec2::new(x as f32, (row * BLURS.len() + y) as f32) * CELL;
                     ui.add_shape(
-                        Shape::shadow(Shadow {
+                        Shape::rect()
+                            .at(Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0))
+                            .corners(radius),
+                        Paint::NONE.with_shadow(Shadow {
                             color: INK,
                             offset: Vec2::new(3.0, 5.0),
                             blur,
                             spread: if inset { 4.0 } else { 2.0 },
                             inset,
-                        })
-                        .at(Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0))
-                        .corners(radius),
+                        }),
                     );
                 }
             }
@@ -600,15 +609,14 @@ fn cutout_grid(ui: &mut Ui) {
             ),
         ] {
             ui.add_shape(
-                Shape::shadow(Shadow {
+                Shape::rect().at(source).corners(corners),
+                Paint::NONE.with_shadow(Shadow {
                     color: INK,
                     offset: Vec2::new(3.0, 5.0),
                     blur: 16.0,
                     spread: if inset { 4.0 } else { 2.0 },
                     inset,
-                })
-                .at(source)
-                .corners(corners),
+                }),
             );
         }
     });
@@ -729,16 +737,18 @@ fn grid_case_rect(i: usize, case: GridCase) -> Rect {
     Rect::new(min.x, min.y, case.size.x, case.size.y)
 }
 
-fn grid_case_shape(case: GridCase, at: Rect) -> ShadowShape {
-    Shape::shadow(Shadow {
-        color: RgbaF32::srgba(0.1, 0.0, 0.3, 0.85),
-        offset: case.offset,
-        blur: case.blur,
-        spread: case.spread,
-        inset: case.inset,
-    })
-    .at(at)
-    .corners(case.corners)
+/// Add `case`'s shadow alone, its box at `at`.
+fn grid_case_shadow(ui: &mut Ui, case: GridCase, at: Rect) {
+    ui.add_shape(
+        Shape::rect().at(at).corners(case.corners),
+        Paint::NONE.with_shadow(Shadow {
+            color: RgbaF32::srgba(0.1, 0.0, 0.3, 0.85),
+            offset: case.offset,
+            blur: case.blur,
+            spread: case.spread,
+            inset: case.inset,
+        }),
+    );
 }
 
 /// The sweep, then two shadows seen through clips: a scissor across one's
@@ -747,7 +757,7 @@ fn grid_sweep(ui: &mut Ui) {
     let cases = grid_cases();
     fixtures::canvas(ui, |ui| {
         for (i, &case) in cases.iter().enumerate() {
-            ui.add_shape(grid_case_shape(case, grid_case_rect(i, case)));
+            grid_case_shadow(ui, case, grid_case_rect(i, case));
         }
         let clipped = GridCase {
             inset: false,
@@ -773,10 +783,11 @@ fn grid_sweep(ui: &mut Ui) {
                     ClipMode::Rect
                 })
                 .show(ui, |ui| {
-                    ui.add_shape(grid_case_shape(
+                    grid_case_shadow(
+                        ui,
                         clipped,
                         Rect::new(60.0, 50.0, clipped.size.x, clipped.size.y),
-                    ));
+                    );
                 });
         }
     });

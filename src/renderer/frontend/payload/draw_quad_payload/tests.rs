@@ -1,4 +1,5 @@
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -14,7 +15,6 @@ use crate::renderer::frontend::payload::draw_quad_payload::{
 };
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::rect::RectKind;
 use glam::Vec2;
 
 /// Every quad-tier constructor normalizes the stroke
@@ -52,7 +52,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
     ];
     for (label, stroke, expect_normalized) in cases {
         let rp = DrawQuadPayload::rect(RectQuad {
-            kind: RectKind::Rounded,
+            coverage: Coverage::Inside,
             rect: Rect::new(0.0, 0.0, 10.0, 10.0),
             corners: Corners::ZERO,
             fill: BrushSource::Solid(fill.to_f16()),
@@ -107,7 +107,7 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
     };
     let quad = |fill| {
         DrawQuadPayload::rect(RectQuad {
-            kind: RectKind::Rounded,
+            coverage: Coverage::Inside,
             rect: Rect::new(0.0, 0.0, 8.0, 8.0),
             corners: Corners::ZERO,
             fill,

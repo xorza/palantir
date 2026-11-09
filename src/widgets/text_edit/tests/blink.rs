@@ -5,9 +5,9 @@ use crate::widgets::text_edit::tests::*;
 /// samples visible now. On a focused, unselected editor the caret is the only
 /// rounded rect with `local_rect: Some(...)`.
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
+    use crate::primitives::geometry::coverage::Coverage;
     use crate::scene::tree::iter::TreeItem;
-    use crate::shape::paint::quad_shape::QuadShape;
-    use crate::shape::rect::RectKind;
+    use crate::shape::paint::quad_shape::{BoxGeometry, QuadShape};
 
     let tree = ui.tree(Layer::Main);
     let now = ui.now();
@@ -21,9 +21,12 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
         .any(|(idx, s)| {
             let is_caret = matches!(
                 s,
-                ShapeRecord::Quad(QuadShape::Rect {
-                    kind: RectKind::Rounded,
-                    local_rect: Some(_),
+                ShapeRecord::Quad(QuadShape::Box {
+                    geometry: BoxGeometry {
+                        coverage: Coverage::Inside,
+                        local_rect: Some(_),
+                        ..
+                    },
                     ..
                 })
             );

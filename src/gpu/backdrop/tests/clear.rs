@@ -4,9 +4,9 @@ use crate::gpu::backdrop::tests::{CLEAR, Reference, SIZE, assert_within_a_step, 
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
@@ -43,24 +43,25 @@ fn scene(
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 if let Some(background) = background {
-                    ui.add_shape(Shape::rect(background).at(Rect::new(0.0, 0.0, 64.0, 48.0)));
+                    ui.add_shape(
+                        Shape::rect().at(Rect::new(0.0, 0.0, 64.0, 48.0)),
+                        background,
+                    );
                 }
                 match before {
                     Before::Nothing => {}
                     Before::Speck => {
-                        ui.add_shape(Shape::rect(RgbaF32::srgb(1.0, 0.2, 0.1)).at(SPECK));
+                        ui.add_shape(Shape::rect().at(SPECK), RgbaF32::srgb(1.0, 0.2, 0.1));
                     }
-                    Before::Veil => ui.add_shape(Shape::rect(CLEAR).at(VEIL)),
+                    Before::Veil => ui.add_shape(Shape::rect().at(VEIL), CLEAR),
                 }
                 if let Some(under) = under {
-                    ui.add_shape(Shape::rect(under).at(Rect::new(24.0, 16.0, 8.0, 8.0)));
+                    ui.add_shape(Shape::rect().at(Rect::new(24.0, 16.0, 8.0, 8.0)), under);
                 }
                 let filter = Material::frosted(2.0).with_saturation(1.6).with_noise(0.0);
                 ui.add_shape(
-                    Shape::rect(
-                        Chrome::fill(RgbaF32::new(1.0, 1.0, 1.0, 0.25)).with_material(filter),
-                    )
-                    .at(PANE),
+                    Shape::rect().at(PANE),
+                    Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.25)).with_material(filter),
                 );
             });
     }

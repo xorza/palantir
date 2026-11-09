@@ -442,7 +442,7 @@ fn an_overshoot_below_a_floor_paints_the_floor() {
     Chrome::lerp_into(&from, &target, 1.1, &mut in_place);
     assert_eq!(in_place, past);
     past.validate();
-    assert_eq!(past.border.width, 0.0);
+    assert_eq!(past.paint.border.width, 0.0);
     for frame in 1..=12 {
         let r = map.step(
             AnimationRequest::new(id, SLOT, target.clone()),
@@ -452,9 +452,9 @@ fn an_overshoot_below_a_floor_paints_the_floor() {
         r.value.validate();
         if frame == 7 {
             assert_eq!(r.value.corners, Corners::ZERO);
-            assert_eq!(r.value.border.width, 0.0);
-            assert_eq!(r.value.shadow.blur, 0.0);
-            assert_eq!(r.value.material.map(|m| m.blur), Some(0.0));
+            assert_eq!(r.value.paint.border.width, 0.0);
+            assert_eq!(r.value.paint.shadow.blur, 0.0);
+            assert_eq!(r.value.paint.material.map(|m| m.blur), Some(0.0));
         }
     }
 }

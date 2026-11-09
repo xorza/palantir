@@ -2,6 +2,7 @@
 
 use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -38,9 +39,7 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::backdrop_row::{
     BackdropRead, BackdropRow, MaterialLook, PaneSource,
 };
-use crate::renderer::render_buffer::effect_draw_row::{
-    EffectDrawRow, EffectInstance, EffectProgram,
-};
+use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInstance};
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
@@ -51,7 +50,6 @@ use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use crate::shape::record_store::RecordStore;
-use crate::shape::rect::RectKind;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::text;
 use glam::{UVec2, Vec2};
@@ -207,7 +205,8 @@ impl PaintSink for ComposeSession<'_> {
         let look = MaterialLook {
             max_luminance: material.max_luminance(),
             min_luminance: material.min_luminance(),
-            tint: p.tint,
+            fill: p.fill,
+            fill_axis: p.fill_axis,
             stroke_color: p.stroke.color,
             stroke_width: packed.stroke_width,
         };
@@ -232,7 +231,7 @@ impl PaintSink for ComposeSession<'_> {
         self.ordering()
             .order(Lane::Tier(PaintTier::Effect), visible);
         self.out.effects.push(EffectDrawRow {
-            program: EffectProgram::Material(material.effect()),
+            effect: material.effect(),
             images: Span::default(),
             instance: EffectInstance {
                 rect: packed.rect.physical,
@@ -243,10 +242,9 @@ impl PaintSink for ComposeSession<'_> {
                 rotation: packed.rotation,
                 params: material.params,
                 pane,
-                flags: if p.kind == RectKind::Windowed {
-                    EffectInstance::WINDOW
-                } else {
-                    0
+                flags: match p.coverage {
+                    Coverage::Inside => EffectInstance::MATERIAL,
+                    Coverage::Outside => EffectInstance::MATERIAL | EffectInstance::WINDOW,
                 },
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -276,24 +274,18 @@ impl PaintSink for ComposeSession<'_> {
         {
             return;
         }
-        // Verts stay owner-local; the per-instance translate folds in owner origin and transform
-        // stack, so the shader produces physical coords.
-        // A turn about the pivot `c` maps `pos` to `R(pos - c) + c`, so the instance takes
-        // `s·R` as its complex scale and `s·(c - R c)` into its translate.
+        // Verts stay as recorded; the per-instance transform folds in the fit, the owner origin
+        // and the transform stack, so the shader produces physical coords. The fit maps `pos` to
+        // `o + S·pos`, and a turn about the pivot `c` maps that to `R(o + S·pos - c) + c`, so the
+        // instance takes `s·R·S` as its linear part and `s·(R(o - c) + c)` into its translate.
         let scale_physical = self.composer.transform.physical_scale();
-        let (rotor_scale, translate) = match p.spin {
-            None => (
-                Vec2::new(scale_physical, 0.0),
-                to_physical.point(Vec2::ZERO),
-            ),
-            Some(spin) => {
-                let rotor = Vec2::libm_from_angle(spin.angle);
-                (
-                    rotor * scale_physical,
-                    to_physical.point(spin.pivot - rotor.rotate(spin.pivot)),
-                )
-            }
-        };
+        let rotor = p
+            .spin
+            .map_or(Vec2::X, |spin| Vec2::libm_from_angle(spin.angle));
+        let pivot = p.spin.map_or(Vec2::ZERO, |spin| spin.pivot);
+        let x_axis = rotor * (scale_physical * p.fit.scale.x);
+        let y_axis = rotor.perp() * (scale_physical * p.fit.scale.y);
+        let translate = to_physical.point(rotor.rotate(p.fit.offset - pivot) + pivot);
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
                 vertices: p.vertices,
@@ -301,7 +293,8 @@ impl PaintSink for ComposeSession<'_> {
             },
             instance: MeshInstance {
                 translate,
-                rotor_scale,
+                x_axis,
+                y_axis,
                 tint: p.tint,
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -502,7 +495,7 @@ impl PaintSink for ComposeSession<'_> {
         self.ordering()
             .order(Lane::Tier(PaintTier::Effect), visible);
         self.out.effects.push(EffectDrawRow {
-            program: EffectProgram::App(p.effect),
+            effect: p.effect,
             images: p.images,
             instance: EffectInstance {
                 rect: physical,
@@ -574,11 +567,10 @@ impl PaintSink for ComposeSession<'_> {
         // off-axis.
         let to_physical = self.composer.transform.physical_map(p.origin);
         let rotor = p.bounds.spin().map(Spin::rotor);
-        let kept = self.composer.polyline.keep(
-            src_points
-                .iter()
-                .map(|&q| to_physical.point(rotor.map_or(q, |rotor| rotor.apply(q)))),
-        );
+        let kept = self.composer.polyline.keep(src_points.iter().map(|&q| {
+            let q = p.fit.apply(q);
+            to_physical.point(rotor.map_or(q, |rotor| rotor.apply(q)))
+        }));
         if !kept {
             return;
         }

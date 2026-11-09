@@ -447,7 +447,7 @@ pub(super) fn theme() -> Theme {
             item: MenuItemTheme {
                 unselected: StatefulLook {
                     normal: WidgetLook {
-                        chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                        chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                         text: TextStyleOverrides::NONE,
                     },
                     hovered: WidgetLook {
@@ -459,7 +459,7 @@ pub(super) fn theme() -> Theme {
                         text: TextStyleOverrides::NONE,
                     },
                     disabled: WidgetLook {
-                        chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                        chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                         text: TextStyleOverrides {
                             color: Some(RgbaF32::hex(0xd9a05e)),
                             ..TextStyleOverrides::NONE
@@ -468,7 +468,7 @@ pub(super) fn theme() -> Theme {
                 },
                 selected: StatefulLook {
                     normal: WidgetLook {
-                        chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                        chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                         text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0xd23f7a)),
                     },
                     hovered: WidgetLook {
@@ -480,7 +480,7 @@ pub(super) fn theme() -> Theme {
                         text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0xd23f7a)),
                     },
                     disabled: WidgetLook {
-                        chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                        chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                         text: TextStyleOverrides {
                             color: Some(RgbaF32::hex(0xd9a05e)),
                             ..TextStyleOverrides::NONE
@@ -534,7 +534,7 @@ pub(super) fn theme() -> Theme {
                 chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
                 text: TextStyleOverrides::NONE,
             },
-            bar: Chrome::fill(RgbaF32::hex(0x3a1a14)),
+            bar: Chrome::new(RgbaF32::hex(0x3a1a14)),
             bar_padding: Spacing::xy(8.0, 4.0),
             gap: 4.0,
             defaults: SlotDefaults {
@@ -557,7 +557,7 @@ pub(super) fn theme() -> Theme {
                     Vec2::new(0.0, 8.0),
                     16.0,
                 )),
-            scrim: Chrome::fill(RgbaF32::hexa(0x00000080)),
+            scrim: Chrome::new(RgbaF32::hexa(0x00000080)),
             padding: Spacing::all(24.0),
             min_width: 280.0,
         },
@@ -858,7 +858,7 @@ pub(super) fn theme() -> Theme {
             cap_focused: RgbaF32::hex(0xd23f7a),
             cap_unfocused: RgbaF32::hex(0x3d4f1e),
             cap_thickness: 2.0,
-            strip: Chrome::fill(RgbaF32::hex(0x3a1a14)),
+            strip: Chrome::new(RgbaF32::hex(0x3a1a14)),
             strip_padding: Spacing::new(8.0, 4.0, 8.0, 0.0),
             gap: 4.0,
             rule: RgbaF32::hexa(0x9ad2a02e),
@@ -870,7 +870,7 @@ pub(super) fn theme() -> Theme {
             max_width: 200.0,
             close: StatefulLook {
                 normal: WidgetLook {
-                    chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                    chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                     text: TextStyleOverrides {
                         color: Some(RgbaF32::hex(0x9ad2a0)),
                         ..TextStyleOverrides::NONE
@@ -886,7 +886,7 @@ pub(super) fn theme() -> Theme {
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                    chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                     text: TextStyleOverrides {
                         color: Some(RgbaF32::hex(0xd9a05e)),
                         ..TextStyleOverrides::NONE
@@ -921,7 +921,7 @@ pub(super) fn theme() -> Theme {
         expander: ExpanderTheme {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                    chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                     text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
@@ -933,7 +933,7 @@ pub(super) fn theme() -> Theme {
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                    chrome: Chrome::new(RgbaF32::hexa(0x00000000)),
                     text: TextStyleOverrides {
                         color: Some(RgbaF32::hex(0xd9a05e)),
                         ..TextStyleOverrides::NONE

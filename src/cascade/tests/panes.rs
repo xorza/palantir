@@ -6,9 +6,9 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
@@ -43,7 +43,7 @@ fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: Material) -> 
             None => canvas.size((Sizing::FILL, Sizing::FILL)),
         };
         canvas.show(ui, |ui| {
-            ui.add_shape(Shape::rect(Chrome::NONE.with_material(filter)).at(rect));
+            ui.add_shape(Shape::rect().at(rect), Paint::NONE.with_material(filter));
         });
     });
     let scene = h.frames().ui().frame_scene();

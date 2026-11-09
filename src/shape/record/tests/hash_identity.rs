@@ -1,62 +1,57 @@
 //! Shapes that must hash apart, and the spans that must not count.
 
 use crate::common::hash;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
+use crate::shape::paint::quad_shape::{BoxGeometry, BoxOutline};
+use crate::shape::paint::triangle_geometry::TriangleGeometry;
 use crate::shape::record::*;
-use crate::shape::rect::RectKind;
 use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
-/// Same rectangle payload, different paint kind (a windowed rect inverts the painted region), and all three quad shapes share [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own must separate them and each shape's fields must reach the hasher. A collision makes damage diff skip a repaint.
+/// Same box payload, a different covered side or outline, and both quad shapes share
+/// [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own must separate them and each shape's
+/// fields must reach the hasher. A collision makes damage diff skip a repaint.
 #[test]
 fn quad_shapes_hash_apart() {
     let fill = LoweredBrush::Solid(RgbaF32::WHITE.to_f16());
     let stroke = LoweredBorder::lower(Border::new(RgbaF32::BLACK, 2.0));
-    let corners = Corners::all(8.0);
-    let rect = |kind| {
-        ShapeRecord::Quad(QuadShape::Rect {
-            kind,
-            local_rect: None,
-            corners,
+    let quad_box = |coverage, outline| {
+        ShapeRecord::Quad(QuadShape::Box {
+            geometry: BoxGeometry {
+                local_rect: None,
+                outline,
+                coverage,
+            },
             fill,
             border: stroke,
             shadow: LoweredShadow::lower(Shadow::NONE),
             material: None,
         })
     };
-
-    // Same rectangle payload, different paint kind.
-    assert_ne!(
-        rect(RectKind::Rounded).content_hash(),
-        rect(RectKind::Windowed).content_hash(),
-    );
-
-    // Same rounded box, three different shapes.
-    let shadow = ShapeRecord::Quad(QuadShape::Shadow {
-        local_rect: None,
-        corners,
-        shadow: LoweredShadow::lower(Shadow::default()),
-    });
     let triangle = ShapeRecord::Quad(QuadShape::Triangle {
-        a: Vec2::ZERO,
-        b: Vec2::ZERO,
-        c: Vec2::ZERO,
-        radius: 0.0,
+        geometry: TriangleGeometry {
+            corners: [Vec2::ZERO; 3],
+            radius: 0.0,
+            placement: PointPlacement::NATURAL,
+        },
         fill: RgbaF32::WHITE.to_f16(),
         border: stroke,
-        bbox: Rect::ZERO,
     });
+    let sharp = BoxOutline::Rect(Corners::ZERO);
     let mut seen = Vec::new();
     for (label, record) in [
-        ("rounded", rect(RectKind::Rounded)),
-        ("windowed", rect(RectKind::Windowed)),
-        ("shadow", shadow),
+        ("inside", quad_box(Coverage::Inside, sharp)),
+        ("outside", quad_box(Coverage::Outside, sharp)),
+        ("circle", quad_box(Coverage::Inside, BoxOutline::Circle)),
         ("triangle", triangle),
     ] {
         let hash = record.content_hash();
@@ -68,52 +63,36 @@ fn quad_shapes_hash_apart() {
     }
 }
 
-/// Cubics and arcs share [`ShapeRecord::Curve`]'s discriminant, so [`CurveBasis`]'s own must separate them and the arc's fields must reach the hasher.
+/// A degenerate cubic and an arc of no sweep share their stroke, cap and ramp, so only the
+/// record's discriminant tells them apart.
 #[test]
-fn curve_and_arc_bases_hash_apart() {
-    let stroke = LoweredBorder::lower(Border::new(RgbaF32::WHITE, 2.0));
-    let curve = |basis| ShapeRecord::Curve {
+fn curve_and_arc_records_hash_apart() {
+    let stroke = LoweredStroke::lower(Stroke::new(RgbaF32::WHITE, 2.0));
+    let curve = ShapeRecord::Curve {
         cap: LineCap::Butt,
-        basis,
+        geometry: BezierGeometry {
+            bezier: CubicBezier {
+                p0: Vec2::ZERO,
+                p1: Vec2::ZERO,
+                p2: Vec2::ZERO,
+                p3: Vec2::ZERO,
+            },
+            placement: PointPlacement::NATURAL,
+        },
         stroke,
-        bbox: Rect::ZERO,
         ramp: CurveRamp::None,
     };
-    let arc = |center, radius, start_angle, sweep| {
-        curve(CurveBasis::Arc(CircularArc {
-            center,
-            radius,
-            start_angle,
-            sweep,
-        }))
+    let arc = ShapeRecord::Arc {
+        cap: LineCap::Butt,
+        geometry: ArcGeometry {
+            local_rect: None,
+            start_angle: 0.0,
+            sweep: 0.0,
+        },
+        stroke,
+        ramp: CurveRamp::None,
     };
-    let baseline = arc(Vec2::ZERO, 4.0, 0.0, 1.0);
-
-    // Every non-shared field is identical, so only `CurveBasis`'s discriminant differs.
-    assert_ne!(
-        baseline.content_hash(),
-        curve(CurveBasis::Cubic(CubicBezier {
-            p0: Vec2::ZERO,
-            p1: Vec2::ZERO,
-            p2: Vec2::ZERO,
-            p3: Vec2::ZERO,
-        }))
-        .content_hash(),
-        "a degenerate cubic must not collide with an arc",
-    );
-
-    for (label, other) in [
-        ("center", arc(Vec2::new(1.0, 0.0), 4.0, 0.0, 1.0)),
-        ("radius", arc(Vec2::ZERO, 5.0, 0.0, 1.0)),
-        ("start_angle", arc(Vec2::ZERO, 4.0, 0.5, 1.0)),
-        ("sweep", arc(Vec2::ZERO, 4.0, 0.0, 1.5)),
-    ] {
-        assert_ne!(
-            baseline.content_hash(),
-            other.content_hash(),
-            "arc `{label}` escaped the hash schedule",
-        );
-    }
+    assert_ne!(curve.content_hash(), arc.content_hash());
 }
 
 #[test]
@@ -126,7 +105,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
     }
     .to_f16();
     let a = ShapeRecord::Mesh {
-        local_rect: None,
+        placement: PointPlacement::NATURAL,
         tint,
         vertices: Span::new(0, 3),
         idxs: Span::new(0, 3),
@@ -134,7 +113,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         content_hash: ContentHash::from_u64(0xdead_beef),
     };
     let b = ShapeRecord::Mesh {
-        local_rect: None,
+        placement: PointPlacement::NATURAL,
         tint,
         vertices: Span::new(1234, 3),
         idxs: Span::new(5678, 3),
@@ -144,7 +123,10 @@ fn shape_mesh_hash_excludes_span_offsets() {
     assert_eq!(a.content_hash(), b.content_hash());
 
     let with_rect = |rect| ShapeRecord::Mesh {
-        local_rect: Some(rect),
+        placement: PointPlacement {
+            local_rect: Some(rect),
+            fit: Fit::Natural,
+        },
         tint,
         vertices: Span::new(0, 3),
         idxs: Span::new(0, 3),

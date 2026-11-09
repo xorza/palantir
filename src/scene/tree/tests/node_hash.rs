@@ -6,9 +6,9 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::EPS;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::{self, SURFACE};
@@ -36,7 +36,7 @@ fn same_authoring_produces_same_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             })
             .response
@@ -51,7 +51,7 @@ fn same_authoring_produces_same_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             })
             .response
@@ -70,7 +70,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
         Panel::canvas()
             .id(WidgetId::from_hash("polyline"))
             .show(ui, |ui| {
-                ui.add_shape(Shape::polyline(points, Border::new(color, 2.0)));
+                ui.add_shape(Shape::polyline(points), Stroke::new(color, 2.0));
             })
             .response
             .node(ui)
@@ -116,7 +116,7 @@ fn changing_fill_color_changes_hash() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .chrome(Chrome::fill(fill))
+                        .chrome(Chrome::new(fill))
                         .show(ui)
                         .node(ui),
                 );
@@ -350,7 +350,7 @@ fn child_hash_does_not_affect_parent_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size(50.0)
-                    .chrome(Chrome::fill(fill))
+                    .chrome(Chrome::new(fill))
                     .show(ui);
             })
             .response
@@ -369,18 +369,16 @@ fn shape_hashes_column_sized_to_shape_records() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::line(
-                    Vec2::new(0.0, 0.0),
-                    Vec2::new(10.0, 10.0),
-                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-                ));
-                ui.add_shape(Shape::line(
-                    Vec2::new(10.0, 10.0),
-                    Vec2::new(20.0, 20.0),
-                    Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
-                ));
+                ui.add_shape(
+                    Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                );
+                ui.add_shape(
+                    Shape::line(Vec2::new(10.0, 10.0), Vec2::new(20.0, 20.0)),
+                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                );
             });
     });
     let tree = h.ui().tree(Layer::Main);
@@ -411,13 +409,12 @@ fn shape_hash_stable_across_frames() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::line(
-                    Vec2::new(0.0, 0.0),
-                    Vec2::new(10.0, 10.0),
-                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-                ));
+                ui.add_shape(
+                    Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                );
             });
     };
     let mut h = Harness::mono(SURFACE);
@@ -438,18 +435,16 @@ fn one_shape_change_only_flips_its_own_hash() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::line(
-                    Vec2::new(0.0, 0.0),
-                    Vec2::new(10.0, 10.0),
-                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-                ));
-                ui.add_shape(Shape::line(
-                    Vec2::new(5.0, 5.0),
-                    b_endpoint,
-                    Border::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
-                ));
+                ui.add_shape(
+                    Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
+                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                );
+                ui.add_shape(
+                    Shape::line(Vec2::new(5.0, 5.0), b_endpoint),
+                    Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 1.0),
+                );
             });
     };
     let mut h = Harness::mono(SURFACE);
@@ -515,14 +510,11 @@ fn a_paint_animation_moves_the_node_hash() {
         Panel::canvas()
             .id(WidgetId::from_hash("spinner"))
             .show(ui, |ui| {
-                let line = Shape::line(
-                    Vec2::new(0.0, 10.0),
-                    Vec2::new(40.0, 10.0),
-                    Border::new(RgbaF32::WHITE, 2.0),
-                );
+                let line = Shape::line(Vec2::new(0.0, 10.0), Vec2::new(40.0, 10.0));
+                let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
                 match animation {
-                    Some(animation) => ui.add_shape_animated(line, animation),
-                    None => ui.add_shape(line),
+                    Some(animation) => ui.add_shape_animated(line, stroke, animation),
+                    None => ui.add_shape(line, stroke),
                 }
             })
             .response
@@ -563,7 +555,7 @@ fn each_edit_moves_the_half_it_belongs_to() {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .padding(edit.padding)
-                .chrome(Chrome::fill(edit.fill))
+                .chrome(Chrome::new(edit.fill))
                 .show(ui, |ui| {
                     Text::new(edit.label)
                         .id(WidgetId::from_hash("label"))

@@ -26,13 +26,12 @@ use crate::host::harness::harness_builder::Depth;
 use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::rect::RectShape;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
@@ -69,9 +68,10 @@ impl<S: Scene> State<S> {
                             .id_salt("backdrop-capture-bench-pane")
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                ui.add_shape(Shape::rect(
-                                    Chrome::NONE.with_material(Material::blur(SIGMA)),
-                                ));
+                                ui.add_shape(
+                                    Shape::rect(),
+                                    Paint::NONE.with_material(Material::blur(SIGMA)),
+                                );
                             });
                         Panel::canvas()
                             .id_salt("backdrop-capture-bench-rest")
@@ -198,9 +198,10 @@ impl Look {
         }
     }
 
-    fn pane(self) -> RectShape {
-        let (backdrop, tint) = self.backdrop(SIGMA);
-        Shape::rect(Chrome::fill(tint).with_material(backdrop))
+    /// The pane's paint: its fill over its material, blurred by `sigma`.
+    fn paint(self, sigma: f32) -> Paint {
+        let (backdrop, tint) = self.backdrop(sigma);
+        Paint::from(tint).with_material(backdrop)
     }
 }
 
@@ -221,10 +222,10 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 ui.add_shape(
-                                    Shape::rect(RgbaF32::WHITE)
-                                        .at(Rect::new(10.0, 10.0, 100.0, 100.0)),
+                                    Shape::rect().at(Rect::new(10.0, 10.0, 100.0, 100.0)),
+                                    RgbaF32::WHITE,
                                 );
-                                ui.add_shape(look.pane());
+                                ui.add_shape(Shape::rect(), look.paint(SIGMA));
                             });
                     });
                     let host = &frames.host;
@@ -351,25 +352,18 @@ impl<S: Scene> PaneFrame<S> {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect(flip(arm == Arm::Under))
-                                .at(Rect::new(300.0, 20.0, 12.0, 12.0)),
+                            Shape::rect().at(Rect::new(300.0, 20.0, 12.0, 12.0)),
+                            flip(arm == Arm::Under),
                         );
                         for rect in [TOOLBAR, SIDEBAR, popup] {
-                            ui.add_shape(look.pane_at(rect));
+                            ui.add_shape(Shape::rect().at(rect), look.paint(FRAME_SIGMA));
                         }
                         ui.add_shape(
-                            Shape::rect(flip(arm == Arm::Hover))
-                                .at(Rect::new(400.0, 20.0, 12.0, 12.0)),
+                            Shape::rect().at(Rect::new(400.0, 20.0, 12.0, 12.0)),
+                            flip(arm == Arm::Hover),
                         );
                     });
             });
-    }
-}
-
-impl Look {
-    fn pane_at(self, rect: Rect) -> RectShape {
-        let (backdrop, tint) = self.backdrop(FRAME_SIGMA);
-        Shape::rect(Chrome::fill(tint).with_material(backdrop)).at(rect)
     }
 }
 
@@ -486,7 +480,10 @@ impl<S: Scene> SceneCase<S> {
                     for i in 0..8 {
                         let at =
                             Vec2::new(60.0 + (i % 4) as f32 * 300.0, 80.0 + (i / 4) as f32 * 260.0);
-                        ui.add_shape(Look::Frosted.pane_at(Rect::new(at.x, at.y, 240.0, 200.0)));
+                        ui.add_shape(
+                            Shape::rect().at(Rect::new(at.x, at.y, 240.0, 200.0)),
+                            Look::Frosted.paint(FRAME_SIGMA),
+                        );
                     }
                 });
             },
@@ -501,7 +498,10 @@ impl<S: Scene> SceneCase<S> {
                     for i in 0..6 {
                         let at =
                             Vec2::new(40.0 + (i % 3) as f32 * 400.0, 60.0 + (i / 3) as f32 * 320.0);
-                        ui.add_shape(Look::Frosted.pane_at(Rect::new(at.x, at.y, 300.0, 220.0)));
+                        ui.add_shape(
+                            Shape::rect().at(Rect::new(at.x, at.y, 300.0, 220.0)),
+                            Look::Frosted.paint(FRAME_SIGMA),
+                        );
                     }
                 });
             },
@@ -522,8 +522,11 @@ impl<S: Scene> SceneCase<S> {
             record: |fixture, n, ui| {
                 scroll(fixture, n);
                 over(fixture, ui, |ui| {
-                    ui.add_shape(Look::Frosted.pane_at(SIDEBAR));
-                    ui.add_shape(Look::Glass.pane_at(Rect::new(160.0, 200.0, 320.0, 220.0)));
+                    ui.add_shape(Shape::rect().at(SIDEBAR), Look::Frosted.paint(FRAME_SIGMA));
+                    ui.add_shape(
+                        Shape::rect().at(Rect::new(160.0, 200.0, 320.0, 220.0)),
+                        Look::Glass.paint(FRAME_SIGMA),
+                    );
                 });
             },
         },
@@ -557,14 +560,17 @@ impl<S: Scene> SceneCase<S> {
                         RgbaF32::srgb(0.1, 0.3, 1.0)
                     };
                     for y in [150.0, 400.0] {
-                        ui.add_shape(Shape::rect(color).at(Rect::new(40.0, y, 1200.0, 12.0)));
+                        ui.add_shape(Shape::rect().at(Rect::new(40.0, y, 1200.0, 12.0)), color);
                     }
                     for i in 0..12 {
                         let at = Vec2::new(
                             40.0 + (i % 6) as f32 * 205.0,
                             100.0 + (i / 6) as f32 * 250.0,
                         );
-                        ui.add_shape(Look::Frosted.pane_at(Rect::new(at.x, at.y, 160.0, 120.0)));
+                        ui.add_shape(
+                            Shape::rect().at(Rect::new(at.x, at.y, 160.0, 120.0)),
+                            Look::Frosted.paint(FRAME_SIGMA),
+                        );
                     }
                 });
             },
@@ -593,7 +599,9 @@ fn over<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, panes: impl FnOnce(&
 
 /// A frosted pane over the whole window, as a modal dialog's page sits.
 fn modal<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
-    over(fixture, ui, |ui| ui.add_shape(Look::Frosted.pane()));
+    over(fixture, ui, |ui| {
+        ui.add_shape(Shape::rect(), Look::Frosted.paint(SIGMA));
+    });
 }
 
 /// Two frosted cards side by side, `gap` logical px apart: at 8 px the second's reach covers the
@@ -602,7 +610,10 @@ fn pair<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui, gap: f32) {
     over(fixture, ui, |ui| {
         for i in 0..2 {
             let x = 200.0 + i as f32 * (320.0 + gap);
-            ui.add_shape(Look::Frosted.pane_at(Rect::new(x, 160.0, 320.0, 240.0)));
+            ui.add_shape(
+                Shape::rect().at(Rect::new(x, 160.0, 320.0, 240.0)),
+                Look::Frosted.paint(FRAME_SIGMA),
+            );
         }
     });
 }
@@ -618,7 +629,7 @@ fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
                 .id_salt("backdrop-first-background")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(RgbaF32::srgb(0.12, 0.13, 0.16)));
+                    ui.add_shape(Shape::rect(), RgbaF32::srgb(0.12, 0.13, 0.16));
                 });
             Panel::hstack()
                 .id_salt("backdrop-first-row")
@@ -627,7 +638,9 @@ fn first<S: Scene>(fixture: &mut SceneFrame<S>, ui: &mut Ui) {
                     Panel::canvas()
                         .id_salt("backdrop-first-sidebar")
                         .size((Sizing::fixed(240.0), Sizing::FILL))
-                        .show(ui, |ui| ui.add_shape(Look::Frosted.pane()));
+                        .show(ui, |ui| {
+                            ui.add_shape(Shape::rect(), Look::Frosted.paint(SIGMA));
+                        });
                     fixture.record(ui);
                 });
         });

@@ -15,12 +15,12 @@ use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::shape::style::LineCap;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::theme_slot::ThemeSlot;
@@ -263,7 +263,7 @@ impl<'a> TabStrip<'a> {
             ChipDrag::Dock { caret } => caret,
         };
         let strip_chrome = t.strip.clone();
-        let rule = Chrome::fill(t.rule);
+        let rule = Chrome::new(t.rule);
         let rule_thickness = t.rule_thickness;
 
         let mut pass = StripPass {
@@ -565,7 +565,7 @@ impl StripPass<'_> {
                 Widget::leaf()
                     .id(chip_id.with("cap"))
                     .size((Sizing::FILL, Sizing::fixed(cap)))
-                    .record(ui, Some(&Chrome::fill(t.cap(self.focus))), |_| {});
+                    .record(ui, Some(&Chrome::new(t.cap(self.focus))), |_| {});
             }
             inner.record(ui, None, |ui| {
                 content(ui, &chip);
@@ -617,7 +617,7 @@ impl StripPass<'_> {
         let width = domain::length_at_least(t.caret_width, 0.0);
         let x = x.clamp(clip.min.x, clip.max().x.max(clip.min.x));
         let mark = Rect::new(x - width * 0.5, clip.min.y, width, clip.size.h.max(0.0));
-        let fill = Chrome::fill(t.caret);
+        let fill = Chrome::new(t.caret);
         ui.layer(Layer::Tooltip)
             .fixed_at(mark.min)
             .max_size(mark.size)
@@ -754,7 +754,10 @@ impl GlyphButton {
                 center + Vec2::new(-half, half),
             ),
         ] {
-            ui.add_shape(Shape::line(from, to, Border::new(self.ink, stroke)).cap(LineCap::Round));
+            ui.add_shape(
+                Shape::line(from, to),
+                Stroke::new(self.ink, stroke).with_cap(LineCap::Round),
+            );
         }
     }
 
@@ -768,12 +771,12 @@ impl GlyphButton {
         for step in [-1.0, 0.0, 1.0] {
             let x = side * 0.5 + step * pitch;
             let y = side * 0.5;
-            ui.add_shape(Shape::rect(Chrome::rounded(self.ink, radius)).at(Rect::new(
-                x - radius,
-                y - radius,
-                diameter,
-                diameter,
-            )));
+            ui.add_shape(
+                Shape::rect()
+                    .at(Rect::new(x - radius, y - radius, diameter, diameter))
+                    .corners(radius),
+                self.ink,
+            );
         }
     }
 }

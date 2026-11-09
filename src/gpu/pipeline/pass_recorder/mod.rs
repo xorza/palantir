@@ -70,9 +70,13 @@ impl PassState for wgpu::RenderPass<'_> {
     }
 }
 
-/// Bind-group and vertex-buffer slots a draw of this backend uses: group 0, 1 (a shadow's cutout
-/// tables) and 2 (a pane's backdrops), buffer 0 and 1 (a mesh's instances, a shadow's corners).
-const SLOTS: usize = 3;
+/// Bind-group slots a draw of this backend uses: group 0, 1 (a shadow's cutout tables, an effect's
+/// images), 2 (a pane's backdrops) and 3 (the gradient atlas a material's box reads).
+const GROUP_SLOTS: usize = 4;
+
+/// Vertex-buffer slots a draw of this backend uses: buffer 0, 1 (a mesh's instances, a shadow's
+/// corners) and 2.
+const BUFFER_SLOTS: usize = 3;
 
 /// A main pass and what it has bound, slot by slot, so a pipeline switch keeps the groups and
 /// buffers it shares with the last one: a quad's form switch sets the pipeline alone. It owns the
@@ -88,8 +92,8 @@ pub(crate) struct PassRecorder<'a, S: PassState = wgpu::RenderPass<'a>> {
     viewport: ViewportPush,
     pipeline: Option<&'a S::Pipeline>,
     layout: Option<&'a S::Layout>,
-    groups: [Option<&'a S::Group>; SLOTS],
-    buffers: [Option<&'a S::Buffer>; SLOTS],
+    groups: [Option<&'a S::Group>; GROUP_SLOTS],
+    buffers: [Option<&'a S::Buffer>; BUFFER_SLOTS],
     index: Option<IndexBinding<'a, S::Buffer>>,
 }
 
@@ -107,8 +111,8 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
             viewport,
             pipeline: None,
             layout: None,
-            groups: [None; SLOTS],
-            buffers: [None; SLOTS],
+            groups: [None; GROUP_SLOTS],
+            buffers: [None; BUFFER_SLOTS],
             index: None,
         }
     }

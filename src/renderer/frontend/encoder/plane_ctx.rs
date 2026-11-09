@@ -4,14 +4,17 @@ use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::pane_row::PaneRow;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
@@ -46,10 +49,12 @@ use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::lowered_stroke::LoweredStroke;
+use crate::shape::paint::placed_stroke::PlacedStroke;
+use crate::shape::paint::quad_shape::{PlacedBox, QuadShape};
+use crate::shape::paint_animation::paint_mod::PaintMod;
 use crate::shape::record::{EffectBackdrop, ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
-use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
 use std::time::Duration;
@@ -100,6 +105,15 @@ struct PaneLook {
     read: BackdropDraw,
 }
 
+/// A curve or an arc record placed in its owner, with the stroke that draws it.
+#[derive(Clone, Copy, Debug)]
+struct NativeStroke {
+    place: PlacedStroke,
+    cap: LineCap,
+    stroke: LoweredStroke,
+    ramp: CurveRamp,
+}
+
 /// A box as one paint call draws it: its rect, its shadow, its material, and where its pane is
 /// recorded.
 #[derive(Clone, Copy, Debug)]
@@ -124,35 +138,25 @@ fn paint_rect(paint: RectPaint, out: &mut impl PaintSink) {
     out.draw(DrawQuadPayload::rect(quad).turned(spin), alpha);
 }
 
-/// Paint `paint` as a material's box over what it reads, through `look`. Its fill is solid: a
-/// gradient fill and the border over it draw as the rect above the material.
+/// Paint `paint` as a material's box over what it reads, through `look`: one draw, its fill, a
+/// color or a gradient, and its border over the whole box.
 fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
     let RectPaint { quad, spin, alpha } = paint;
-    let tint = match quad.fill {
-        BrushSource::Solid(color) => Some(color),
-        BrushSource::Gradient(_) => None,
-    };
     out.draw(
         DrawPanePayload {
-            kind: quad.kind,
+            coverage: quad.coverage,
             rect: quad.rect,
             corners: quad.corners,
             spin,
-            tint: tint.unwrap_or(RgbaF16::TRANSPARENT),
-            stroke: if tint.is_some() {
-                quad.stroke.normalized()
-            } else {
-                LoweredBorder::NONE
-            },
+            fill: quad.fill.gpu_fill(),
+            fill_axis: quad.fill.fill_axis(),
+            stroke: quad.stroke.normalized(),
             material: look.material,
             opacity: 1.0,
             read: look.read,
         },
         alpha,
     );
-    if tint.is_none() {
-        paint_rect(paint, out);
-    }
 }
 
 impl PlaneCtx<'_, '_> {
@@ -205,6 +209,69 @@ impl PlaneCtx<'_, '_> {
                 out.draw(shadow.turned(spin), alpha);
             }
             paint_fill(out);
+        }
+    }
+
+    /// Draw `native` in `owner_rect`, faded and turned by `paint_mod`: its curve on the curve
+    /// pipeline, owner-local, the basis crossing verbatim so cull, spin and sub-instance sizing
+    /// stay one code path; or its cap's dot as a box, in the stroke color times the ramp at its
+    /// start.
+    fn paint_native_stroke(
+        &mut self,
+        native: NativeStroke,
+        owner_rect: Rect,
+        paint_mod: PaintMod,
+        out: &mut impl PaintSink,
+    ) {
+        let NativeStroke {
+            place,
+            cap,
+            stroke,
+            ramp,
+        } = native;
+        match place {
+            PlacedStroke::Curve(basis) => {
+                let ramp_row = match ramp {
+                    CurveRamp::None => None,
+                    CurveRamp::Interned { id, hash: _ } => Some(self.gradient_row(id)),
+                };
+                out.draw(
+                    DrawCurvePayload {
+                        basis,
+                        bounds: StrokeBounds::new(owner_rect, basis.bbox(), paint_mod.rotation),
+                        origin: owner_rect.min,
+                        fill: GpuFill::curve(stroke.color, ramp_row),
+                        width: stroke.width,
+                        cap,
+                    },
+                    paint_mod.alpha,
+                );
+            }
+            PlacedStroke::Dot(PlacedBox { rect, corners }) => {
+                let color = match ramp {
+                    CurveRamp::None => stroke.color,
+                    CurveRamp::Interned { id, hash: _ } => RgbaF32::from(stroke.color)
+                        .tinted(self.gradients.ramp(id).color_at(0.0))
+                        .to_f16(),
+                };
+                let quad = RectQuad {
+                    coverage: Coverage::Inside,
+                    rect: owner_rect.resolve_local(Some(rect)),
+                    corners,
+                    fill: BrushSource::Solid(color),
+                    stroke: LoweredBorder::NONE,
+                };
+                let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
+                paint_rect(
+                    RectPaint {
+                        quad,
+                        spin,
+                        alpha: paint_mod.alpha,
+                    },
+                    out,
+                );
+            }
+            PlacedStroke::Nothing => {}
         }
     }
 
@@ -282,25 +349,23 @@ impl PlaneCtx<'_, '_> {
         }
         let alpha = paint_mod.alpha;
         let owner_rect = self.layout.rect[id.idx()];
-        // The turn for payloads placed in the logical frame; a payload with an origin of its own
+        // The turn for payloads placed in the logical placement; a payload with an origin of its own
         // takes `Spin::about_owner` with that origin.
         let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
         match shape {
             ShapeRecord::Quad(shape) => match shape {
-                QuadShape::Rect {
-                    kind,
-                    local_rect,
-                    corners,
+                QuadShape::Box {
+                    geometry,
                     fill,
                     border,
                     shadow,
                     material,
                 } => {
-                    let rect = owner_rect.resolve_local(*local_rect);
+                    let PlacedBox { rect, corners } = geometry.place(owner_rect.size);
                     let quad = RectQuad {
-                        kind: *kind,
-                        rect,
-                        corners: *corners,
+                        coverage: geometry.coverage,
+                        rect: owner_rect.resolve_local(Some(rect)),
+                        corners,
                         fill: self.brush_source(*fill),
                         stroke: *border,
                     };
@@ -318,30 +383,18 @@ impl PlaneCtx<'_, '_> {
                         out,
                     );
                 }
-                QuadShape::Shadow {
-                    local_rect,
-                    corners,
-                    shadow,
-                } => {
-                    // The composer grows a drop shadow from the source rect in physical pixels, so it lands on the same pixels as the fill.
-                    let source = owner_rect.resolve_local(*local_rect);
-                    if let Some(shadow) = DrawQuadPayload::shadow(source, *corners, *shadow) {
-                        out.draw(shadow.turned(spin), alpha);
-                    }
-                }
                 QuadShape::Triangle {
-                    a,
-                    b,
-                    c,
-                    radius,
+                    geometry,
                     fill,
                     border,
-                    bbox: _,
                 } => {
-                    // Placed in the logical frame, as a rect is. Solid fill only: the reused quad lanes have no room for a gradient.
+                    let Some(placed) = geometry.place(owner_rect.size) else {
+                        return;
+                    };
+                    // Placed in the logical placement, as a rect is. Solid fill only: the reused quad lanes have no room for a gradient.
                     let triangle = DrawQuadPayload::triangle(TriangleQuad {
-                        points: [*a, *b, *c].map(|q| owner_rect.min + q),
-                        radius: *radius,
+                        points: placed.centers.map(|q| owner_rect.min + q),
+                        radius: placed.radius,
                         fill: *fill,
                         stroke: *border,
                     });
@@ -390,12 +443,19 @@ impl PlaneCtx<'_, '_> {
                 points,
                 colors,
                 bbox,
+                placement,
                 content_hash: _,
             } => {
+                let fit = placement.map(*bbox, owner_rect.size);
                 out.draw(
                     DrawPolylinePayload {
-                        bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
+                        bounds: StrokeBounds::new(
+                            owner_rect,
+                            fit.apply_rect(*bbox),
+                            paint_mod.rotation,
+                        ),
                         origin: owner_rect.min,
+                        fit,
                         width: *width,
                         points: *points,
                         colors: *colors,
@@ -408,49 +468,54 @@ impl PlaneCtx<'_, '_> {
                 );
             }
             ShapeRecord::Mesh {
-                local_rect,
+                placement,
                 tint,
                 vertices,
                 idxs,
                 bbox,
                 content_hash: _,
             } => {
-                let origin = owner_rect.resolve_local(*local_rect).min;
+                let fit = placement.map(*bbox, owner_rect.size);
                 out.draw(
                     DrawMeshPayload {
-                        bbox: *bbox,
-                        origin,
+                        bbox: fit.apply_rect(*bbox),
+                        origin: owner_rect.min,
+                        fit,
                         tint: *tint,
                         vertices: *vertices,
                         idxs: *idxs,
-                        spin: Spin::about_owner(owner_rect, origin, paint_mod.rotation),
+                        spin: Spin::about_owner(owner_rect, owner_rect.min, paint_mod.rotation),
                     },
                     alpha,
                 );
             }
             ShapeRecord::Curve {
                 cap,
-                basis,
+                geometry,
                 stroke,
-                bbox,
                 ramp,
             } => {
-                // Owner-local; the basis crosses verbatim so cull, spin and sub-instance sizing stay one code path.
-                let ramp_row = match *ramp {
-                    CurveRamp::None => None,
-                    CurveRamp::Interned { id, hash: _ } => Some(self.gradient_row(id)),
+                let native = NativeStroke {
+                    place: geometry.place(owner_rect.size, *cap, stroke.width),
+                    cap: *cap,
+                    stroke: *stroke,
+                    ramp: *ramp,
                 };
-                out.draw(
-                    DrawCurvePayload {
-                        basis: *basis,
-                        bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
-                        origin: owner_rect.min,
-                        fill: GpuFill::curve(stroke.color, ramp_row),
-                        width: stroke.width,
-                        cap: *cap,
-                    },
-                    alpha,
-                );
+                self.paint_native_stroke(native, owner_rect, paint_mod, out);
+            }
+            ShapeRecord::Arc {
+                cap,
+                geometry,
+                stroke,
+                ramp,
+            } => {
+                let native = NativeStroke {
+                    place: geometry.place(owner_rect.size, *cap, stroke.width),
+                    cap: *cap,
+                    stroke: *stroke,
+                    ramp: *ramp,
+                };
+                self.paint_native_stroke(native, owner_rect, paint_mod, out);
             }
             // An effect fades, turns and reads its time with its paint animation. A backdrop effect
             // the cascade lists not lies outside every clip.
@@ -509,7 +574,7 @@ impl PlaneCtx<'_, '_> {
                 let base = owner_rect.resolve_local(*local_rect);
                 out.draw(
                     DrawIconPayload {
-                        rect: fit.resolve(base, handle.view_box()),
+                        rect: fit.place_artwork(base, handle.view_box()),
                         icon: handle.icon,
                         tint: *tint,
                         desaturate: *desaturate,
@@ -608,7 +673,7 @@ impl PlaneCtx<'_, '_> {
 
         if let Some(chrome) = chrome {
             let quad = RectQuad {
-                kind: RectKind::Rounded,
+                coverage: Coverage::Inside,
                 rect,
                 corners: chrome.corners,
                 fill: self.brush_source(chrome.fill),
@@ -634,7 +699,7 @@ impl PlaneCtx<'_, '_> {
             );
             if chrome.ring {
                 let ring = DrawQuadPayload::rect(RectQuad {
-                    kind: RectKind::Rounded,
+                    coverage: Coverage::Inside,
                     rect,
                     corners: chrome.corners,
                     fill: self.brush_source(LoweredBrush::Solid(RgbaF16::TRANSPARENT)),

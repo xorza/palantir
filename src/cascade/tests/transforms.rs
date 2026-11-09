@@ -9,11 +9,11 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::{BuildPlan, Frontend};
 use crate::renderer::render_plan::RenderPlan;
 
 use crate::host::harness::Harness;
-use crate::primitives::paint::border::Border;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -39,8 +39,8 @@ fn shape_rect_composes_self_transform() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(RgbaF32::srgb(0.5, 0.5, 0.5))
-                            .at(Rect::new(0.0, 0.0, 30.0, 30.0)),
+                        Shape::rect().at(Rect::new(0.0, 0.0, 30.0, 30.0)),
+                        RgbaF32::srgb(0.5, 0.5, 0.5),
                     );
                 });
         });
@@ -111,15 +111,15 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
                 panel = panel.clip(ClipMode::Rect);
             }
             panel.show(ui, |ui| {
-                ui.add_shape(Shape::cubic_bezier(
-                    CubicBezier {
+                ui.add_shape(
+                    Shape::cubic_bezier(CubicBezier {
                         p0: Vec2::new(10.0, 20.0),
                         p1: Vec2::new(20.0, 20.0),
                         p2: Vec2::new(30.0, 20.0),
                         p3: Vec2::new(40.0, 20.0),
-                    },
-                    Border::new(RgbaF32::WHITE, 4.0),
-                ));
+                    }),
+                    Stroke::new(RgbaF32::WHITE, 4.0),
+                );
             });
         });
 
@@ -151,8 +151,8 @@ fn self_transform_anchors_scale_at_panel_origin() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(RgbaF32::srgb(0.5, 0.5, 0.5))
-                            .at(Rect::new(0.0, 0.0, 10.0, 10.0)),
+                        Shape::rect().at(Rect::new(0.0, 0.0, 10.0, 10.0)),
+                        RgbaF32::srgb(0.5, 0.5, 0.5),
                     );
                 });
         });
@@ -185,8 +185,8 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(RgbaF32::srgb(0.5, 0.5, 0.5))
-                            .at(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                        Shape::rect().at(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                        RgbaF32::srgb(0.5, 0.5, 0.5),
                     );
                 });
         });

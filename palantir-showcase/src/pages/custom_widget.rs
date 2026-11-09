@@ -6,11 +6,14 @@ use crate::scaffold::api;
 use crate::scaffold::tokens::M;
 use crate::support;
 use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
+use palantir::LineCap;
+use palantir::LineJoin;
+use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
+use palantir::widget::{Configurator, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Border, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense,
-    Sizing, Text, Ui, VAlign, WidgetId, fmt,
+    Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, Sizing,
+    Text, Ui, VAlign, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;
@@ -142,7 +145,7 @@ fn surface(ui: &mut Ui, k: Kit) {
             "last frame's hover, press and click",
         ),
         (
-            api!(Ui::add_shape as fn(&mut Ui, PolylineShape<'static>)),
+            api!(Ui::add_shape as fn(&mut Ui, PolylineShape<'static>, Stroke)),
             "paint custom geometry — the ± glyphs",
         ),
         (
@@ -350,8 +353,9 @@ impl StepButton {
 
 fn paint_bar(ui: &mut Ui, ink: RgbaF32, points: &[Vec2]) {
     ui.add_shape(
-        Shape::polyline(points, Border::new(ink, 2.0))
-            .cap(LineCap::Round)
-            .join(LineJoin::Round),
+        Shape::polyline(points),
+        Stroke::new(ink, 2.0)
+            .with_cap(LineCap::Round)
+            .with_join(LineJoin::Round),
     );
 }

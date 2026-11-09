@@ -55,11 +55,14 @@ struct BackdropSlot {
     clear: [f32; 3],
     min_luminance: f32,
     reads: [f32; 4],
-    tint: [f32; 4],
+    fill: [f32; 4],
+    fill_axis: [f32; 4],
     stroke_color: [f32; 4],
     stroke_width: f32,
+    fill_kind: u32,
+    fill_lut_row: u32,
     /// WGSL rounds the struct's size up to its 16-byte alignment.
-    pad: [f32; 3],
+    pad: f32,
 }
 
 impl BackdropSlot {
@@ -91,10 +94,13 @@ impl BackdropSlot {
                 row.reads.max().x,
                 row.reads.max().y,
             ],
-            tint: lanes(look.tint),
+            fill: lanes(look.fill.color),
+            fill_axis: look.fill_axis.lanes(),
             stroke_color: lanes(look.stroke_color),
             stroke_width: look.stroke_width,
-            pad: [0.0; 3],
+            fill_kind: look.fill.kind.0,
+            fill_lut_row: look.fill.lut_row.0,
+            pad: 0.0,
         }
     }
 }

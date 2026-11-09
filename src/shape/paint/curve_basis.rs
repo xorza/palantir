@@ -7,9 +7,10 @@ use glam::Vec2;
 
 /// Which parametric basis a stroke traces: the half that differs between a Bézier and an arc. Both lower to a `CurveInstance` on the one curve pipeline, selected by its `kind` lane.
 ///
-/// Lowered once by [`CurveShape`](crate::widget::CurveShape) and carried verbatim from [`ShapeRecord::Curve`] through `DrawCurvePayload` to the composer. Owner-local: the composer folds in origin and transform before scaling to physical px.
+/// The encoder builds it from a [`ShapeRecord::Curve`]'s fitted Bézier or a [`ShapeRecord::Arc`]'s placed circle and carries it through `DrawCurvePayload` to the composer. Owner-local: the composer folds in origin and transform before scaling to physical px.
 ///
 /// [`ShapeRecord::Curve`]: crate::shape::record::ShapeRecord::Curve
+/// [`ShapeRecord::Arc`]: crate::shape::record::ShapeRecord::Arc
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CurveBasis {
     /// Cubic Bézier control points. Quadratics promote and lines degenerate to this at lowering.

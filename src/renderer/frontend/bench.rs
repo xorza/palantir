@@ -46,7 +46,7 @@ impl FillCase {
                 RgbaF32::hex(0x4c5cdb),
             )),
         };
-        Chrome::fill(fill)
+        Chrome::new(fill)
     }
 }
 

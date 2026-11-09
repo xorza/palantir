@@ -129,7 +129,7 @@ fn damage_animated_rect_alloc_free() {
         Panel::vstack().auto_id().show(ui, |ui| {
             Block::new()
                 .auto_id()
-                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .chrome(Chrome::new(RgbaF32::WHITE))
                 .size((Sizing::fixed(w), Sizing::fixed(40.0)))
                 .show(ui);
         });

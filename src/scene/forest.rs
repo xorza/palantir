@@ -23,6 +23,7 @@ use crate::scene::tree::{NodeChrome, Tree};
 use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
+use crate::shape::sealed::Resolve;
 use crate::text::family_keys::FamilyKeys;
 
 /// One arena per [`Plane`]; recording dispatches to `trees[cur_plane]`.
@@ -201,15 +202,40 @@ impl Forest {
         self.scratch.iter().any(|s| !s.open_frames.is_empty())
     }
 
-    /// Lowers a user-facing [`Shape`](crate::widget::Shape) and appends it to the active tree's shape buffer.
-    pub(crate) fn add_shape<S: Lower>(&mut self, shape: S) {
-        self.push_shape("add_shape", |tree, store, frame| {
-            let Some(shape_idx) = tree.shapes.add(shape, store) else {
-                return false;
-            };
-            Self::note_pane::<S>(tree, frame, shape_idx);
-            true
-        });
+    /// Lowers `shape`, its names resolved in `resolve`, appends it to the active tree's shape
+    /// buffer, and registers `animation` against it where there is one. Nothing is pushed if the
+    /// shape paints nothing; no animation entry if the node is effectively invisible.
+    #[track_caller]
+    pub(crate) fn add_shape<S: Lower>(
+        &mut self,
+        shape: S,
+        resolve: Resolve<'_>,
+        animation: Option<PaintAnimation>,
+    ) {
+        let plane = self.cur_plane();
+        self.assert_node_open(plane, "add_shape");
+        let tree = &mut self.trees[plane];
+        let frame = self.scratch[plane]
+            .open_frames
+            .last_mut()
+            .expect("`assert_node_open` above found an open frame");
+        let Some(shape_idx) = tree.shapes.add(shape, resolve, &mut self.record_store) else {
+            return;
+        };
+        Self::note_pane::<S>(tree, frame, shape_idx);
+        if let Some(animation) = animation {
+            tree.shapes.fold_paint_animation(shape_idx, &animation);
+            // The paint row is charged either way.
+            if !frame.inherited.invisible {
+                tree.paint_animations.push_entry(PaintAnimationEntry {
+                    animation,
+                    shape_idx,
+                    row: frame.paint_rows,
+                    node: frame.node,
+                });
+            }
+        }
+        frame.paint_rows += 1;
     }
 
     /// List shape `shape_idx`, of kind `S`, among the tree's panes when it is one and paints. A kind
@@ -236,52 +262,14 @@ impl Forest {
 
     /// Appends a `GpuView` shape to the active node. Only the view's target `id` and redraw `epoch` ride the shape; it skips lowering and never noop-collapses.
     pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) {
-        self.push_shape("add_gpu_view", |tree, _, _| {
-            tree.shapes.add_gpu_view(id, epoch);
-            true
-        });
-    }
-
-    /// [`Self::add_shape`] plus a `PaintAnimation` registered against the new shape. No entry is pushed if the shape noop-collapsed or the node is effectively invisible.
-    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation) {
-        self.push_shape("add_shape_animated", |tree, store, frame| {
-            let Some(shape_idx) = tree.shapes.add(shape, store) else {
-                return false;
-            };
-            tree.shapes.fold_paint_animation(shape_idx, &animation);
-            Self::note_pane::<S>(tree, frame, shape_idx);
-            // The paint row is charged either way.
-            if !frame.inherited.invisible {
-                tree.paint_animations.push_entry(PaintAnimationEntry {
-                    animation,
-                    shape_idx,
-                    row: frame.paint_rows,
-                    node: frame.node,
-                });
-            }
-            true
-        });
-    }
-
-    /// Shared body of the `add_*` entry points: gates on an open node, runs `push`, and charges one paint row if `push` returns `true`.
-    ///
-    /// `push` sees the frame before the bump, so an animation row is stamped with the row its shape takes.
-    #[inline]
-    fn push_shape(
-        &mut self,
-        what: &str,
-        push: impl FnOnce(&mut Tree, &mut RecordStore, &OpenFrame) -> bool,
-    ) {
         let plane = self.cur_plane();
-        self.assert_node_open(plane, what);
-        let tree = &mut self.trees[plane];
-        let frames = &mut self.scratch[plane].open_frames;
-        let frame = frames
+        self.assert_node_open(plane, "add_gpu_view");
+        self.trees[plane].shapes.add_gpu_view(id, epoch);
+        self.scratch[plane]
+            .open_frames
             .last_mut()
-            .expect("`assert_node_open` above found an open frame");
-        if push(tree, &mut self.record_store, frame) {
-            frame.paint_rows += 1;
-        }
+            .expect("`assert_node_open` above found an open frame")
+            .paint_rows += 1;
     }
 
     /// Open a side-layer scope for an overlay asking for `layer`. It records in the higher of

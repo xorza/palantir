@@ -216,7 +216,7 @@ impl PaintAnimation {
         })
     }
 
-    /// Drive no channel: only give an effect ([`Shape::effect`](crate::widget::Shape::effect)) its
+    /// Drive no channel: only give an effect ([`EffectPaint`](crate::widget::EffectPaint)) its
     /// time, the seconds into the current pass. Without an animation an effect's time is 0.
     pub fn clock() -> Self {
         Self::new(PaintChannel {

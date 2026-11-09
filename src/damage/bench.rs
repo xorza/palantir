@@ -53,14 +53,14 @@ fn build_grid(ui: &mut Ui, row_bg: Option<RgbaF32>, fill: impl Fn(usize) -> Rgba
                     .gap(2.0)
                     .size((Sizing::FILL, Sizing::fixed(20.0)));
                 if let Some(bg) = row_bg {
-                    row = row.chrome(Chrome::fill(bg));
+                    row = row.chrome(Chrome::new(bg));
                 }
                 row.show(ui, |ui| {
                     for c in 0..COLS {
                         Block::new()
                             .id_salt(("cell", r, c))
                             .size((Sizing::fixed(30.0), Sizing::FILL))
-                            .chrome(Chrome::fill(fill(r * COLS + c)))
+                            .chrome(Chrome::new(fill(r * COLS + c)))
                             .show(ui);
                     }
                 });
@@ -259,15 +259,14 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
         Panel::vstack()
             .id(WidgetId::from_hash(("canvas", c)))
             .size((Sizing::fixed(40.0), Sizing::fixed(25.0)))
-            .chrome(Chrome::fill(RgbaF32::srgb(0.1, 0.1, 0.12)))
+            .chrome(Chrome::new(RgbaF32::srgb(0.1, 0.1, 0.12)))
             .show(ui, |ui| {
                 for s in 0..count {
                     ui.add_shape(
-                        Shape::rect(Chrome::rounded(
-                            RgbaF32::srgb(0.3 + (s as f32) * 0.05, 0.4, 0.6),
-                            1.0,
-                        ))
-                        .at(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0)),
+                        Shape::rect()
+                            .at(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0))
+                            .corners(1.0),
+                        RgbaF32::srgb(0.3 + (s as f32) * 0.05, 0.4, 0.6),
                     );
                 }
             });
@@ -439,7 +438,7 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
                 Block::new()
                     .id_salt(("sib", i))
                     .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.2, 0.25)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.2, 0.25)))
                     .show(ui);
             }
         });

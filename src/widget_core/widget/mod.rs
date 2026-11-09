@@ -32,6 +32,7 @@ use crate::scene::node::node_mode::NodeMode;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
 use crate::shape::Shape;
+use crate::shape::effect_paint::EffectPaint;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::look_plan::LookPlan;
@@ -595,7 +596,8 @@ fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
             pad1: 0.0,
         };
         ui.add_shape_animated(
-            Shape::effect(press.effect, input).corners(corners),
+            Shape::rect().corners(corners),
+            EffectPaint::new(press.effect, input),
             PaintAnimation::clock()
                 .with_started_at(live.pressed_at)
                 .with_period(period),

@@ -46,8 +46,8 @@ const EXPLICIT_FILL: RgbaF32 = RgbaF32::new(0.1, 0.1, 0.9, 1.0);
 
 impl SetterOrder {
     fn apply<W>(self, w: W, chrome: fn(W, Chrome) -> W, default: fn(W, Chrome) -> W) -> W {
-        let d = Chrome::fill(DEFAULT_FILL);
-        let e = Chrome::fill(EXPLICIT_FILL);
+        let d = Chrome::new(DEFAULT_FILL);
+        let e = Chrome::new(EXPLICIT_FILL);
         match self {
             Self::DefaultOnly => default(w, d),
             Self::ExplicitOnly => chrome(w, e),
@@ -256,11 +256,11 @@ fn chrome_setters_check_the_chrome() {
     let bad: [(&str, Chrome); 6] = [
         (
             domain::COLOR_RULE,
-            Chrome::fill(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
+            Chrome::new(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
         ),
         (
             domain::LENGTH_RULE,
-            Chrome::fill(RgbaF32::WHITE).with_border(Border::new(RgbaF32::WHITE, -1.0)),
+            Chrome::new(RgbaF32::WHITE).with_border(Border::new(RgbaF32::WHITE, -1.0)),
         ),
         (
             <Corners as LaneCodec>::LANE_RULE,
@@ -278,14 +278,14 @@ fn chrome_setters_check_the_chrome() {
         ),
         (
             domain::LENGTH_RULE,
-            Chrome::fill(RgbaF32::WHITE).with_shadow(Shadow {
+            Chrome::new(RgbaF32::WHITE).with_shadow(Shadow {
                 blur: f32::NAN,
                 ..Shadow::default()
             }),
         ),
         (
             domain::LANE_RULE,
-            Chrome::fill(RgbaF32::WHITE).with_shadow(Shadow {
+            Chrome::new(RgbaF32::WHITE).with_shadow(Shadow {
                 spread: 65520.0,
                 ..Shadow::default()
             }),
@@ -365,7 +365,7 @@ fn widget_setters_check_their_kinds() {
     }
     // A scrim's material is checked as a chrome's is: a blur of 0 is the boundary, −1 no length.
     let blurred = |sigma| {
-        let scrim = Chrome::fill(RgbaF32::BLACK).with_material(Material::blur(sigma));
+        let scrim = Chrome::new(RgbaF32::BLACK).with_material(Material::blur(sigma));
         drop(Modal::new().scrim(scrim));
     };
     blurred(0.0);
@@ -595,7 +595,10 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                 Block::new()
                     .size((Sizing::fixed(40.0), Sizing::fixed(10.0)))
                     .show(ui);
-                ui.add_shape(Shape::rect(gradient.clone()).at(Rect::new(0.0, 0.0, 40.0, 10.0)));
+                ui.add_shape(
+                    Shape::rect().at(Rect::new(0.0, 0.0, 40.0, 10.0)),
+                    gradient.clone(),
+                );
             });
     };
     h.frame(&mut scene);

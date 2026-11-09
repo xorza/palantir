@@ -1,5 +1,6 @@
 //! The offscreen host's frames, targets and screenshots.
 
+use crate::primitives::paint::paint::Paint;
 use std::cell::Cell;
 
 use super::*;
@@ -141,7 +142,7 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
         Block::new()
             .id_salt("tile")
             .size(4.0)
-            .chrome(Chrome::fill(color.get()))
+            .chrome(Chrome::new(color.get()))
             .show(ui);
     };
     let mut frame = |host: &mut OffscreenHost| host.frame_path(texture.as_target(), &mut app);
@@ -218,7 +219,7 @@ fn a_retained_target_keeps_no_damage_outline() {
             Block::new()
                 .id_salt("tile")
                 .size(4.0)
-                .chrome(Chrome::fill(color))
+                .chrome(Chrome::new(color))
                 .show(ui);
         }
     };
@@ -269,11 +270,17 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
                 .id_salt("uncopied")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(color(under)).at(Rect::new(8.0, 8.0, 4.0, 4.0)));
-                    ui.add_shape(Shape::rect(color(away)).at(Rect::new(50.0, 20.0, 4.0, 4.0)));
                     ui.add_shape(
-                        Shape::rect(Chrome::NONE.with_material(Material::blur(1.0)))
-                            .at(Rect::new(4.0, 4.0, 16.0, 12.0)),
+                        Shape::rect().at(Rect::new(8.0, 8.0, 4.0, 4.0)),
+                        color(under),
+                    );
+                    ui.add_shape(
+                        Shape::rect().at(Rect::new(50.0, 20.0, 4.0, 4.0)),
+                        color(away),
+                    );
+                    ui.add_shape(
+                        Shape::rect().at(Rect::new(4.0, 4.0, 16.0, 12.0)),
+                        Paint::NONE.with_material(Material::blur(1.0)),
                     );
                 });
         }
@@ -310,7 +317,7 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
         Block::new()
             .id_salt("tile")
             .size(10.0)
-            .chrome(Chrome::fill(RgbaF32::WHITE))
+            .chrome(Chrome::new(RgbaF32::WHITE))
             .show(ui);
     };
 
@@ -350,7 +357,7 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
             .id_salt("tile")
             .at((18.0, 8.0))
             .size(10.0)
-            .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
+            .chrome(Chrome::new(RgbaF32::hex(0xd23f7a)))
             .show(ui);
         if ask {
             asked.set(ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0))));

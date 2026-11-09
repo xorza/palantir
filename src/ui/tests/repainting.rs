@@ -45,7 +45,7 @@ use std::time::Duration;
 fn frame_stats_overlay_records_partial_damage() {
     let mut h = Harness::mono(SURFACE);
     let theme = h.ui_mut().theme_mut();
-    theme.panel_chrome = Some(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
+    theme.panel_chrome = Some(Chrome::new(RgbaF32::srgb(0.0, 0.0, 1.0)));
     theme.panel_clip = ClipMode::Rounded;
     let overlay = h.ui().debug_overlay();
     h.ui_mut().set_debug_overlay(DebugOverlayConfig {
@@ -290,14 +290,13 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
-                .chrome(Chrome {
-                    fill: Brush::Linear(LinearGradient::two_stop(
+                .chrome(
+                    Chrome::NONE.with_fill(Brush::Linear(LinearGradient::two_stop(
                         0.0,
                         RgbaF32::srgb(1.0, 0.0, 0.0),
                         RgbaF32::srgb(0.0, 0.0, 1.0),
-                    )),
-                    ..Default::default()
-                })
+                    ))),
+                )
                 .show(ui);
             let label = ui.fmt(format_args!("retained {}", 7));
             Text::new(label)
@@ -361,12 +360,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     fn window_a(ui: &mut Ui, half: Duration) {
         Panel::hstack().size(20.0).show(ui, |ui| {
             ui.add_shape(
-                Shape::rect(LinearGradient::two_stop(
-                    0.0,
-                    RgbaF32::hex(0xff0000),
-                    RgbaF32::hex(0x0000ff),
-                ))
-                .at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
             );
             support::add_blink_shape(ui, half);
         });
@@ -386,7 +381,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         Panel::hstack().size(20.0).show(ui, |ui| {
             for idx in 0..INITIAL_ATLAS_ROWS - 1 {
                 ui.add_shape(
-                    Shape::rect(LinearGradient::two_stop(
+                    Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                    LinearGradient::two_stop(
                         0.0,
                         RgbaF32::from_srgba8(SrgbaU8::rgb(
                             idx as u8,
@@ -394,8 +390,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
                             (idx >> (u8::BITS * 2)) as u8,
                         )),
                         RgbaF32::WHITE,
-                    ))
-                    .at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                    ),
                 );
             }
         });

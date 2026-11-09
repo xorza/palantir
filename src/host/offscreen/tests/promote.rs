@@ -10,6 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -39,7 +40,7 @@ fn record(ui: &mut Ui, screen: Screen, big: RgbaF32, tiny: RgbaF32) {
             .id_salt(salt)
             .at(at)
             .size((Sizing::fixed(side.x), Sizing::fixed(side.y)))
-            .chrome(Chrome::fill(fill))
+            .chrome(Chrome::new(fill))
             .show(ui);
     };
     Panel::canvas()
@@ -60,10 +61,8 @@ fn record(ui: &mut Ui, screen: Screen, big: RgbaF32, tiny: RgbaF32) {
             }
             if screen.pane {
                 ui.add_shape(
-                    Shape::rect(
-                        Chrome::fill(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
-                    )
-                    .at(Rect::new(220.0, 0.0, 180.0, 200.0)),
+                    Shape::rect().at(Rect::new(220.0, 0.0, 180.0, 200.0)),
+                    Paint::from(RgbaF32::TRANSPARENT).with_material(Material::blur(2.0)),
                 );
             }
         });

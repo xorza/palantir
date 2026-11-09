@@ -62,16 +62,18 @@ impl PaintInput<'_> {
         widget.record(ui, Some(&self.chrome), |ui| {
             block.record(ui, None, |ui| {
                 for rect in self.selection_rects {
-                    let shape = match self.preedit_underline {
-                        None => Shape::rect(self.selection_color).at(*rect),
-                        Some(width) => Shape::rect(self.text_color).at(Rect::new(
-                            rect.min.x,
-                            rect.min.y + rect.size.h - width,
-                            rect.size.w,
-                            width,
-                        )),
-                    };
-                    ui.add_shape(shape);
+                    match self.preedit_underline {
+                        None => ui.add_shape(Shape::rect().at(*rect), self.selection_color),
+                        Some(width) => ui.add_shape(
+                            Shape::rect().at(Rect::new(
+                                rect.min.x,
+                                rect.min.y + rect.size.h - width,
+                                rect.size.w,
+                                width,
+                            )),
+                            self.text_color,
+                        ),
+                    }
                 }
 
                 let (display, color) = if self.text.is_empty() {
@@ -83,13 +85,13 @@ impl PaintInput<'_> {
                     ui.add_shape(
                         Shape::text(display, ctx.font)
                             .at_origin(Vec2::ZERO)
-                            .color(color)
                             .wrap(if ctx.multiline {
                                 TextWrap::Wrap
                             } else {
                                 TextWrap::Scroll
                             })
                             .align(layout.text_align),
+                        color,
                     );
                 }
 
@@ -101,10 +103,10 @@ impl PaintInput<'_> {
                         caret.width,
                         caret.pos.line_height,
                     );
-                    let shape = Shape::rect(caret.color).at(rect);
+                    let shape = Shape::rect().at(rect);
                     match caret.animation {
-                        Some(animation) => ui.add_shape_animated(shape, animation),
-                        None => ui.add_shape(shape),
+                        Some(animation) => ui.add_shape_animated(shape, caret.color, animation),
+                        None => ui.add_shape(shape, caret.color),
                     }
                 }
             });

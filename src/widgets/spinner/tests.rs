@@ -6,13 +6,14 @@ use crate::theme::color_scheme::ColorScheme;
 use std::f32::consts::TAU;
 
 use crate::animation::motion_role::MotionRole;
+use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::arc_geometry::ArcGeometry;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::shape::record::ShapeRecord;
 use crate::theme::spinner::SpinnerTheme;
@@ -22,7 +23,7 @@ use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::spinner::Spinner;
-use crate::widgets::spinner::{ArcGeometry, comet};
+use crate::widgets::spinner::{SpinnerCircle, comet};
 use glam::UVec2;
 use glam::Vec2;
 use std::time::Duration;
@@ -30,31 +31,29 @@ use std::time::Duration;
 /// The trace circle insets by half the stroke width (round caps), sits at the center of its
 /// box, and degenerate sizes clamp at zero.
 #[test]
-fn arc_geometry_insets_by_half_width() {
+fn spinner_circle_insets_by_half_width() {
     assert_eq!(
-        ArcGeometry::new(Vec2::splat(24.0), 24.0, 2.0),
-        ArcGeometry {
+        SpinnerCircle::new(Vec2::splat(24.0), 24.0, 2.0),
+        SpinnerCircle {
             center: Vec2::splat(12.0),
             radius: 11.0,
         }
     );
     assert_eq!(
-        ArcGeometry::new(Vec2::new(30.0, 40.0), 30.0, 2.0),
-        ArcGeometry {
+        SpinnerCircle::new(Vec2::new(30.0, 40.0), 30.0, 2.0),
+        SpinnerCircle {
             center: Vec2::new(15.0, 20.0),
             radius: 14.0,
         }
     );
-    assert_eq!(ArcGeometry::new(Vec2::splat(4.0), 4.0, 8.0).radius, 0.0);
+    assert_eq!(SpinnerCircle::new(Vec2::splat(4.0), 4.0, 8.0).radius, 0.0);
     // The default sweep leaves a gap; a full turn would read as a static ring.
     assert!(Theme::stock(ColorScheme::Dark).spinner.sweep < TAU);
 }
 
-/// Sweep, period and stroke come from `Theme::spinner`. Stroke is `diameter * width_ratio` floored at `min_stroke_width`.
+/// Sweep, period and stroke come from `Theme::spinner`. The stroke width is `diameter * width_ratio` floored at `min_stroke_width`.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
-    use crate::primitives::geometry::circular_arc::CircularArc;
-
     #[derive(Debug)]
     struct Recorded {
         sweep: f32,
@@ -83,8 +82,8 @@ fn arc_and_spin_follow_the_spinner_theme() {
             .records
             .iter()
             .find_map(|s| match s {
-                ShapeRecord::Curve {
-                    basis: CurveBasis::Arc(CircularArc { sweep, .. }),
+                ShapeRecord::Arc {
+                    geometry: ArcGeometry { sweep, .. },
                     stroke,
                     ..
                 } => Some((*sweep, stroke.width)),
@@ -201,10 +200,15 @@ fn a_fixed_size_sets_the_box_and_the_arc() {
             .records
             .iter()
             .find_map(|s| match s {
-                ShapeRecord::Curve {
-                    basis: CurveBasis::Arc(arc),
+                ShapeRecord::Arc {
+                    geometry:
+                        ArcGeometry {
+                            local_rect: Some(rect),
+                            start_angle,
+                            sweep,
+                        },
                     ..
-                } => Some(*arc),
+                } => Some(CircularArc::inscribed(*rect, *start_angle, *sweep)),
                 _ => None,
             })
             .expect("spinner records one arc")
@@ -392,7 +396,8 @@ fn a_spinner_turns_under_reduced_motion_and_decoration_does_not() {
                 .size(10.0)
                 .show(ui, |ui| {
                     ui.add_shape_animated(
-                        Shape::rect(RgbaF32::WHITE),
+                        Shape::rect(),
+                        RgbaF32::WHITE,
                         PaintAnimation::turn(0.0, 1.0).with_repeat(PaintRepeat::Forever),
                     );
                 });

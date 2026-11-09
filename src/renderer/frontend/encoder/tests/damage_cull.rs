@@ -39,12 +39,12 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .chrome(Chrome::fill(red))
+                    .chrome(Chrome::new(red))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .chrome(Chrome::fill(green))
+                    .chrome(Chrome::new(green))
                     .show(ui);
             });
         });
@@ -78,7 +78,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(20.0)
-                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::new(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 };
                 match wrap {
@@ -127,7 +127,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
                         .id(WidgetId::from_hash(key))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .at(at)
-                        .chrome(Chrome::fill(fill))
+                        .chrome(Chrome::new(fill))
                         .show(ui);
                 }
             });
@@ -189,7 +189,8 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                             .size(20.0)
                             .show(ui, |ui| {
                                 ui.add_shape_animated(
-                                    Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                                    Shape::rect().at(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                                    RgbaF32::WHITE,
                                     PaintAnimation::alpha(0.0, 1.0)
                                         .with_started_at(started_at)
                                         .with_period(HALF * 2)
@@ -251,7 +252,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
                         .id(WidgetId::from_hash("overflowing-child"))
                         .at((60.0, 0.0))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::new(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });
@@ -301,7 +302,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                         .id(WidgetId::from_hash("neighbor"))
                         .at(Vec2::new(100.0, 100.0))
                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::new(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });

@@ -140,11 +140,9 @@ fn live(ui: &mut Ui, k: Kit) {
 }
 
 fn filled(brush: Brush) -> Chrome {
-    Chrome {
-        fill: brush,
-        corners: Corners::all(support::RADIUS),
-        ..Default::default()
-    }
+    Chrome::NONE
+        .with_corners(Corners::all(support::RADIUS))
+        .with_fill(brush)
 }
 
 fn gradient_frame(ui: &mut Ui, chrome: Chrome) {

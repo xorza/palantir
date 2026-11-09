@@ -7,6 +7,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -60,11 +61,13 @@ fn widget_look_serde_roundtrip() {
             WidgetLook::default(),
             WidgetLook {
                 chrome: Chrome {
-                    fill: RgbaF32::hex(0x336699).into(),
-                    border: Border::new(RgbaF32::hex(0xffffff), 1.5),
                     corners: Corners::all(6.0),
-                    shadow: Shadow::NONE,
-                    material: None,
+                    paint: Paint {
+                        fill: RgbaF32::hex(0x336699).into(),
+                        border: Border::new(RgbaF32::hex(0xffffff), 1.5),
+                        shadow: Shadow::NONE,
+                        material: None,
+                    },
                 },
                 text: TextStyleOverrides::NONE.with_font_size(20.0),
             },

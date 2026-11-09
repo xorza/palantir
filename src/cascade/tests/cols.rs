@@ -25,7 +25,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
             Panel::hstack()
                 .id(WidgetId::from_hash("chrome"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {});
             Panel::hstack()
                 .id(WidgetId::from_hash("bare"))
@@ -144,7 +144,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
             Block::new()
                 .id(WidgetId::from_hash("painted"))
                 .size(50.0)
-                .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         });
     });
@@ -169,7 +169,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
                     Panel::vstack()
                         .id(WidgetId::from_hash("child"))
                         .size(Sizing::fixed(size))
-                        .chrome(Chrome::fill(fill))
+                        .chrome(Chrome::new(fill))
                         .show(ui, |_| {});
                 });
         }

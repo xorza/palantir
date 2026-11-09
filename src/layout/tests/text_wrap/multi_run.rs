@@ -10,8 +10,8 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::border::Border;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::paint::Paint;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
@@ -201,15 +201,15 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                     },
                 )
                 .at_origin(glam::Vec2::new(0.0, 0.0))
-                .color(RgbaF32::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default()),
+                RgbaF32::WHITE,
             );
             ui.add_shape(
-                Shape::rect(
-                    Chrome::rounded(RgbaF32::WHITE, Corners::ZERO).with_border(Border::NONE),
-                )
-                .at(Rect::new(0.0, 20.0, 4.0, 2.0)),
+                Shape::rect()
+                    .at(Rect::new(0.0, 20.0, 4.0, 2.0))
+                    .corners(Corners::ZERO),
+                Paint::from(RgbaF32::WHITE).with_border(Border::NONE),
             );
             let second = ui.intern("second-with-different-text");
             ui.add_shape(
@@ -221,9 +221,9 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                     },
                 )
                 .at_origin(glam::Vec2::new(0.0, 22.0))
-                .color(RgbaF32::WHITE)
                 .wrap(TextWrap::Truncate)
                 .align(Align::default()),
+                RgbaF32::WHITE,
             );
         });
     });

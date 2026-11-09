@@ -12,6 +12,7 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -46,11 +47,13 @@ fn chrome_section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) 
         .gap(6.0)
         .padding(8.0)
         .chrome(Chrome {
-            fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
-            border: Border::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
             corners: Corners::all(4.0),
-            shadow: Shadow::NONE,
-            material: None,
+            paint: Paint {
+                fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
+                border: Border::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
+                shadow: Shadow::NONE,
+                material: None,
+            },
         })
         .show(ui, |ui| {
             Text::new("title")

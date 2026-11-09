@@ -17,11 +17,12 @@
 use crate::fixtures::parked_icons::ParkedIcons;
 use crate::harness;
 use crate::harness::Audit;
+use palantir::Stroke;
 use palantir::glam::Vec2;
+use palantir::widget::IconPaint;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Border, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Track,
-    TranslateScale, Ui,
+    Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Track, TranslateScale, Ui,
 };
 
 /// Distinct nudge positions: more than one so damage is full every frame, few
@@ -77,7 +78,7 @@ fn many_rects_compose_alloc_free() {
                     for c in 0..16u16 {
                         Block::new()
                             .id_salt((r, c))
-                            .chrome(Chrome::fill(RgbaF32::WHITE))
+                            .chrome(Chrome::new(RgbaF32::WHITE))
                             .grid_cell((r, c))
                             .show(ui);
                     }
@@ -99,7 +100,7 @@ fn polyline_static_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::polyline(&points, Border::new(RgbaF32::WHITE, 2.0)));
+                ui.add_shape(Shape::polyline(&points), Stroke::new(RgbaF32::WHITE, 2.0));
             });
     });
 }
@@ -122,7 +123,7 @@ fn mesh_static_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::mesh(&mesh));
+                ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE);
             });
     });
 }
@@ -152,7 +153,7 @@ fn many_icons_compose_alloc_free() {
                             .id_salt((r, c))
                             .grid_cell((r, c))
                             .show(ui, |ui| {
-                                ui.add_shape(Shape::icon(chip));
+                                ui.add_shape(Shape::rect(), IconPaint::new(chip));
                             });
                     }
                 }

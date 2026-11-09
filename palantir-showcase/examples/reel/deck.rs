@@ -4,9 +4,12 @@
     reason = "a demo of the crate, whose frames owe no two systems the same bits"
 )]
 
+use palantir::Paint;
 use std::rc::Rc;
 use std::time::Duration;
 
+use palantir::Rect;
+use palantir::Stroke;
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
@@ -426,11 +429,13 @@ impl Deck {
                             .at((x, 70.0))
                             .size((Sizing::fixed(360.0), Sizing::fixed(220.0)))
                             .chrome(Chrome {
-                                fill: RgbaF32::WHITE.with_alpha(0.12).into(),
-                                border: Border::new(RgbaF32::WHITE.with_alpha(0.35), 1.0),
                                 corners: Corners::all(32.0),
-                                shadow: Shadow::NONE,
-                                material: Some(filter),
+                                paint: Paint {
+                                    fill: RgbaF32::WHITE.with_alpha(0.12).into(),
+                                    border: Border::new(RgbaF32::WHITE.with_alpha(0.35), 1.0),
+                                    shadow: Shadow::NONE,
+                                    material: Some(filter),
+                                },
                             })
                             .show(ui);
                     });
@@ -459,26 +464,27 @@ impl Deck {
                             .at((40.0, 20.0))
                             .size((Sizing::fixed(320.0), Sizing::fixed(200.0)))
                             .chrome(Chrome {
-                                fill: Brush::Linear(LinearGradient::two_stop(
-                                    0.6,
-                                    RgbaF32::hex(0x6d8cff),
-                                    RgbaF32::hex(0xec4899),
-                                )),
-                                border: Border::NONE,
                                 corners: Corners::all(28.0),
-                                shadow: Shadow::drop(
-                                    RgbaF32::BLACK.with_alpha(0.5),
-                                    Vec2::new(0.0, 12.0),
-                                    18.0,
-                                ),
-                                material: None,
+                                paint: Paint {
+                                    fill: Brush::Linear(LinearGradient::two_stop(
+                                        0.6,
+                                        RgbaF32::hex(0x6d8cff),
+                                        RgbaF32::hex(0xec4899),
+                                    )),
+                                    border: Border::NONE,
+                                    shadow: Shadow::drop(
+                                        RgbaF32::BLACK.with_alpha(0.5),
+                                        Vec2::new(0.0, 12.0),
+                                        18.0,
+                                    ),
+                                    material: None,
+                                },
                             })
                             .show(ui);
-                        ui.add_shape(Shape::circle(
-                            Vec2::new(520.0, 120.0),
-                            70.0,
-                            Border::new(RgbaF32::hex(0xfacc15), 6.0),
-                        ));
+                        ui.add_shape(
+                            Shape::circle().at(Rect::new(450.0, 50.0, 140.0, 140.0)),
+                            Stroke::new(RgbaF32::hex(0xfacc15), 6.0),
+                        );
                         Text::new("Aa")
                             .at((440.0, 220.0))
                             .font_size(72.0)
@@ -648,11 +654,16 @@ impl Deck {
                 .show(ui, |ui| {
                     if let Some((place, t)) = ring {
                         let grown = motion::min_jerk(f64::from(t)) as f32;
-                        ui.add_shape(Shape::circle(
-                            place,
-                            6.0 + 20.0 * grown,
-                            Border::new(ACCENT.with_alpha(0.7 * (1.0 - t)), 2.5),
-                        ));
+                        let radius = 6.0 + 20.0 * grown;
+                        ui.add_shape(
+                            Shape::circle().at(Rect::new(
+                                place.x - radius,
+                                place.y - radius,
+                                2.0 * radius,
+                                2.0 * radius,
+                            )),
+                            Stroke::new(ACCENT.with_alpha(0.7 * (1.0 - t)), 2.5),
+                        );
                     }
                     cursor::draw(ui, at);
                 });
@@ -675,11 +686,13 @@ fn hidden_bars(ui: &Ui) -> ScrollbarTheme {
 fn window_chrome(ui: &Ui) -> Chrome {
     let theme = ui.theme();
     Chrome {
-        fill: theme.button.unselected.normal.chrome.fill.clone(),
-        border: Border::new(theme.text.color.with_alpha(0.12), 1.0),
         corners: Corners::all(14.0),
-        shadow: Shadow::drop(RgbaF32::BLACK.with_alpha(0.35), Vec2::new(0.0, 10.0), 16.0),
-        material: None,
+        paint: Paint {
+            fill: theme.button.unselected.normal.chrome.paint.fill.clone(),
+            border: Border::new(theme.text.color.with_alpha(0.12), 1.0),
+            shadow: Shadow::drop(RgbaF32::BLACK.with_alpha(0.35), Vec2::new(0.0, 10.0), 16.0),
+            material: None,
+        },
     }
 }
 

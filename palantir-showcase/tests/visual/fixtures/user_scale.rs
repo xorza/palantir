@@ -18,7 +18,7 @@ fn block(ui: &mut Ui) {
             Block::new()
                 .id_salt("block")
                 .size((Sizing::fixed(40.0), Sizing::fixed(24.0)))
-                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .chrome(Chrome::new(RgbaF32::WHITE))
                 .show(ui);
         });
 }

@@ -43,7 +43,7 @@ pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .chrome(Chrome::fill(color))
+                .chrome(Chrome::new(color))
                 .show(ui);
         });
 }

@@ -1,6 +1,7 @@
 //! The explicit-`WidgetId` collision overlay, in every build: a duplicate id shares a widget's state between two call sites, and a bug that shows beats one that only logs (`Forest::report_explicit_collision`).
 
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -9,7 +10,6 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::rect::RectKind;
 
 /// Magenta, distinct from the red damage-rect overlay. Painted unclipped after every layer.
 const STROKE: Border = Border::new(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
@@ -23,7 +23,7 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
             let screen = entry.transform.apply_rect(rect);
             out.draw(
                 DrawQuadPayload::rect(RectQuad {
-                    kind: RectKind::Rounded,
+                    coverage: Coverage::Inside,
                     rect: screen,
                     corners: Corners::ZERO,
                     fill: BrushSource::Solid(RgbaF16::TRANSPARENT),

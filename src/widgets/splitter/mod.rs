@@ -262,8 +262,8 @@ impl<'a> Splitter<'a> {
         if bar_fill.is_some() {
             ui.request_cursor(CursorIcon::resize_along(axis));
         }
-        let bar_chrome = bar_fill.map(Chrome::fill).unwrap_or_default();
-        let rule_chrome = Chrome::fill(rule_color);
+        let bar_chrome = bar_fill.map(Chrome::new).unwrap_or_default();
+        let rule_chrome = Chrome::new(rule_color);
 
         let main_tracks = [
             Track::fill(layout_ratio),

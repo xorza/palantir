@@ -3,6 +3,7 @@
 
 use crate::display::system_scale::SystemScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::paint::Paint;
 use crate::text::font_scope::internals::INTER;
 use crate::text::wrap::TextWrap;
 use crate::theme::color_scheme::ColorScheme;
@@ -297,11 +298,13 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .size((Sizing::FILL, Sizing::HUG))
                     .padding(6.0)
                     .chrome(Chrome {
-                        fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
-                        border: Border::new(RgbaF32::srgb(0.3, 0.34, 0.42), 1.0),
                         corners: Corners::all(4.0),
-                        shadow: Shadow::NONE,
-                        material: None,
+                        paint: Paint {
+                            fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
+                            border: Border::new(RgbaF32::srgb(0.3, 0.34, 0.42), 1.0),
+                            shadow: Shadow::NONE,
+                            material: None,
+                        },
                     })
                     .show(ui, |ui| {
                         Grid::new()
@@ -342,7 +345,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Block::new()
                     .id(WidgetId::from_hash("under"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.4, 0.4, 0.5)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.4, 0.4, 0.5)))
                     .show(ui);
             });
     };

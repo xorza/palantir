@@ -141,7 +141,7 @@ impl TabsTheme {
             cap_focused: p.accent,
             cap_unfocused: p.element_strong,
             cap_thickness: m.stroke.line,
-            strip: Chrome::fill(p.surround),
+            strip: Chrome::new(p.surround),
             strip_padding: Spacing::new(m.space.sm, m.space.xs, m.space.sm, 0.0),
             gap: m.space.xs,
             rule: p.border_soft(),

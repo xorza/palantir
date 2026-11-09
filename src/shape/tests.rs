@@ -1,30 +1,30 @@
 use crate::effect::effect_registry::EffectRegistry;
-use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
-use crate::primitives::paint::border::Border;
-use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::arc_geometry::ArcGeometry;
 use crate::shape::paint::curve_ramp::CurveRamp;
-use crate::shape::paint::lowered_brush::LoweredBrush;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::placed_stroke::PlacedStroke;
+use crate::shape::paint::point_placement::PointPlacement;
+use crate::shape::paint::quad_shape::{PlacedBox, QuadShape};
+use crate::shape::paint::triangle_geometry::PlacedTriangle;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use crate::shape::rect::RectKind;
-use crate::shape::sealed::LowerShape as _;
-use crate::shape::style::LineCap;
+use crate::shape::sealed::{LowerShape, Resolve};
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -33,6 +33,21 @@ use crate::text::wrap::TextWrap;
 use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::ptr;
+
+/// The record `pair` lowers to in `store`, under full reductions and no effects.
+fn lower_in(store: &mut RecordStore, pair: impl LowerShape) -> Option<ShapeRecord> {
+    let effects = EffectRegistry::default();
+    let resolve = Resolve {
+        effects: &effects,
+        reductions: Reductions::FULL,
+    };
+    pair.lower(resolve, store)
+}
+
+/// The record `pair` lowers to in a store of its own.
+fn lower(pair: impl LowerShape) -> Option<ShapeRecord> {
+    lower_in(&mut RecordStore::default(), pair)
+}
 
 #[test]
 fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
@@ -146,11 +161,13 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
     ];
 
     for case in cases {
-        let shape = Shape::triangle(case.a, case.b, case.c)
-            .fill(RgbaF32::WHITE)
-            .radius(case.radius);
-        assert_eq!(shape.fill, RgbaF32::WHITE, "case: {}", case.label);
-        assert_eq!(shape.is_noop(), case.expected_noop, "case: {}", case.label);
+        let shape = Shape::triangle(case.a, case.b, case.c).radius(case.radius);
+        assert_eq!(
+            lower((shape, RgbaF32::WHITE)).is_none(),
+            case.expected_noop,
+            "case: {}",
+            case.label
+        );
     }
 }
 
@@ -189,46 +206,97 @@ fn triangle_rounding_keeps_the_edges() {
         ),
     ];
     for (radius, centers, clamped, expected_bbox) in cases {
-        let record = Shape::triangle(Vec2::ZERO, Vec2::new(30.0, 0.0), Vec2::new(0.0, 40.0))
-            .fill(RgbaF32::WHITE)
-            .radius(radius)
-            .lower(&mut store);
-        let ShapeRecord::Quad(QuadShape::Triangle {
-            a,
-            b,
-            c,
-            radius: lowered,
-            bbox,
-            ..
-        }) = record
-        else {
+        let shape =
+            Shape::triangle(Vec2::ZERO, Vec2::new(30.0, 0.0), Vec2::new(0.0, 40.0)).radius(radius);
+        let record = lower_in(&mut store, (shape, RgbaF32::WHITE));
+        let Some(ShapeRecord::Quad(QuadShape::Triangle { geometry, .. })) = record else {
             panic!("a triangle lowers to a triangle quad, got {record:?}");
         };
-        assert_eq!([a, b, c], centers, "radius {radius}");
-        assert_eq!(lowered, clamped, "radius {radius}");
-        assert_eq!(bbox, expected_bbox, "radius {radius}");
+        assert_eq!(
+            geometry.place(Size::ZERO),
+            Some(PlacedTriangle {
+                centers,
+                radius: clamped,
+                bbox: expected_bbox,
+            }),
+            "radius {radius}"
+        );
     }
 }
 
 #[test]
 fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
-    let gradient = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
-    let stroke = Border::new(RgbaF32::WHITE, 2.0);
-    let rect_shape =
-        Shape::windowed_rect(Chrome::rounded(gradient.clone(), 6.0).with_border(stroke)).at(rect);
-    assert!(matches!(rect_shape.kind, RectKind::Windowed));
+    let rect_shape = Shape::rect()
+        .at(rect)
+        .corners(6.0)
+        .coverage(Coverage::Outside);
     assert_eq!(rect_shape.local_rect, Some(rect));
-    assert_eq!(rect_shape.chrome.fill, Brush::Linear(gradient));
-    assert_eq!(rect_shape.chrome.border, stroke);
-    assert_eq!(rect_shape.chrome.corners.to_array(), [6.0; 4]);
+    assert_eq!(rect_shape.corners.to_array(), [6.0; 4]);
+    assert_eq!(rect_shape.coverage, Coverage::Outside);
+    assert_eq!(
+        Shape::rect().coverage,
+        Coverage::Inside,
+        "inside by default"
+    );
 
+    // Every point shape takes its rect and its fit into one placement.
+    let placed = PointPlacement {
+        local_rect: Some(rect),
+        fit: Fit::Contain,
+    };
     let mesh = Mesh::new();
-    let tint = RgbaF32::srgb(0.1, 0.2, 0.3);
-    let mesh_shape = Shape::mesh(&mesh).at(rect).tint(tint);
+    let mesh_shape = Shape::mesh(&mesh).at(rect).fit(Fit::Contain);
     assert!(ptr::eq(mesh_shape.mesh, &raw const mesh));
-    assert_eq!(mesh_shape.local_rect, Some(rect));
-    assert_eq!(mesh_shape.tint, tint);
+    assert_eq!(mesh_shape.placement, placed);
+    let triangle = Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y);
+    assert_eq!(
+        triangle.placement,
+        PointPlacement::NATURAL,
+        "natural by default"
+    );
+    assert_eq!(triangle.at(rect).fit(Fit::Contain).placement, placed);
+    let points = [Vec2::ZERO, Vec2::X];
+    assert_eq!(
+        Shape::polyline(&points)
+            .at(rect)
+            .fit(Fit::Contain)
+            .placement,
+        placed
+    );
+
+    // A rect of no size only anchors a natural point shape: the corners move by (10, 10).
+    let anchored = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0)
+        .at(Rect::new(10.0, 10.0, 0.0, 0.0));
+    let Some(ShapeRecord::Quad(QuadShape::Triangle { geometry, .. })) =
+        lower((anchored, RgbaF32::WHITE))
+    else {
+        panic!("a triangle in a rect of no size keeps its record");
+    };
+    assert_eq!(
+        geometry.place(Size::ZERO).map(|placed| placed.centers),
+        Some([
+            Vec2::new(10.0, 10.0),
+            Vec2::new(14.0, 10.0),
+            Vec2::new(10.0, 14.0)
+        ])
+    );
+
+    // A sweep within one full circle stays as authored, its ends included; past one, it clamps
+    // to `±2π` with its sign.
+    for (sweep, want) in [
+        (FRAC_PI_2, FRAC_PI_2),
+        (-PI, -PI),
+        (TAU, TAU),
+        (-TAU, -TAU),
+        (3.0 * PI, TAU),
+        (-5.0 * PI, -TAU),
+        (f32::MAX, TAU),
+    ] {
+        let arc = Shape::arc(0.25, sweep);
+        assert_eq!(arc.start_angle, 0.25, "sweep {sweep}");
+        assert_eq!(arc.sweep, want, "sweep {sweep}");
+    }
 }
 
 #[test]
@@ -263,26 +331,27 @@ fn text_noop_rejects_invalid_metrics() {
                 line_height: 19.2,
                 ..GlyphFont::new(16.0)
             },
-        )
-        .color(RgbaF32::WHITE);
+        );
         let shape = match local_origin {
             Some(origin) => shape.at_origin(origin),
             None => shape,
         };
         assert!(
-            !shape.is_noop(),
+            lower_in(&mut store, (shape, RgbaF32::WHITE)).is_some(),
             "{label}: a visible run does not stop painting over its origin",
         );
     }
 
-    let mut run =
-        |text: &str, color| Shape::text(store.text.intern(text), GlyphFont::new(16.0)).color(color);
+    let mut run = |text: &str, color| {
+        let shape = Shape::text(store.text.intern(text), GlyphFont::new(16.0));
+        lower_in(&mut store, (shape, color))
+    };
     assert!(
-        !run("hidden", RgbaF32::TRANSPARENT).is_noop(),
+        run("hidden", RgbaF32::TRANSPARENT).is_some(),
         "a transparent run still sizes its node"
     );
     assert!(
-        run("", RgbaF32::WHITE).is_noop(),
+        run("", RgbaF32::WHITE).is_none(),
         "an empty run shapes nothing"
     );
 
@@ -295,10 +364,13 @@ fn text_noop_rejects_invalid_metrics() {
                 ..GlyphFont::new(font_size)
             },
         )
-        .color(RgbaF32::WHITE)
         .wrap(TextWrap::SingleLine)
         .align(Align::TOP_LEFT);
-        assert_eq!(shape.is_noop(), expected_noop, "{label}");
+        assert_eq!(
+            lower_in(&mut store, (shape.clone(), RgbaF32::WHITE)).is_none(),
+            expected_noop,
+            "{label}"
+        );
         assert_eq!(
             shape.font.slant,
             FontSlant::Italic,
@@ -333,196 +405,182 @@ fn curve_noop_follows_the_stroke_and_the_ramp() {
         ),
     ];
     for (label, color, width, ramp, expected_noop) in cases {
-        let mut shape = Shape::line(Vec2::ZERO, Vec2::X, Border::new(color, width));
+        let mut stroke = Stroke::new(color, width);
         if let Some(ramp) = ramp {
-            shape = shape.ramp(ramp);
+            stroke = stroke.with_ramp(ramp);
         }
-        assert_eq!(shape.is_noop(), expected_noop, "case: {label}");
+        assert_eq!(
+            lower((Shape::line(Vec2::ZERO, Vec2::X), stroke)).is_none(),
+            expected_noop,
+            "case: {label}"
+        );
     }
 }
 
-/// Every curve lowers onto one of the pipeline's two bases with its tight centerline bbox. A line from (0, 0) to (9, 3) puts its inner points on the thirds, (3, 1) and (6, 2), and is bounded by its ends. The quadratic (0, 0), (6, 6), (12, 0) promotes to inner points `2/3` of the way to its control, (4, 4) and (8, 4), and peaks at `t = ½`, `0.25·0 + 0.5·6 + 0.25·0 = 3`. A cubic passes through as authored; the arch (0, 0), (3, 4), (6, 4), (9, 0) has `y(t) = 12·t(1 − t)`, peaking at 3. A quarter arc of radius 5 about (10, 20) from 0 to π/2 runs from (15, 20) to (10, 25); the same arc swept 3π lowers as the full circle, a 2π sweep bounded by (5, 15) and (15, 25).
+/// Every curve lowers to a cubic with its tight centerline bbox. A line from (0, 0) to (9, 3) puts
+/// its inner points on the thirds, (3, 1) and (6, 2), and is bounded by its ends. The quadratic
+/// (0, 0), (6, 6), (12, 0) promotes to inner points `2/3` of the way to its control, (4, 4) and
+/// (8, 4), and peaks at `t = ½`, `0.25·0 + 0.5·6 + 0.25·0 = 3`. A cubic passes through as authored;
+/// the arch (0, 0), (3, 4), (6, 4), (9, 0) has `y(t) = 12·t(1 − t)`, peaking at 3.
 #[test]
-fn curves_lower_to_their_basis_and_tight_bbox() {
-    let stroke = Border::new(RgbaF32::WHITE, 1.0);
+fn curves_lower_to_a_cubic_and_its_tight_bbox() {
+    let stroke = Stroke::new(RgbaF32::WHITE, 1.0);
     let arch = CubicBezier {
         p0: Vec2::ZERO,
         p1: Vec2::new(3.0, 4.0),
         p2: Vec2::new(6.0, 4.0),
         p3: Vec2::new(9.0, 0.0),
     };
-    let quarter = CircularArc {
-        center: Vec2::new(10.0, 20.0),
-        radius: 5.0,
-        start_angle: 0.0,
-        sweep: FRAC_PI_2,
-    };
     let cases = [
         (
             "line",
-            Shape::line(Vec2::ZERO, Vec2::new(9.0, 3.0), stroke),
-            CurveBasis::Cubic(CubicBezier {
+            Shape::line(Vec2::ZERO, Vec2::new(9.0, 3.0)),
+            CubicBezier {
                 p0: Vec2::ZERO,
                 p1: Vec2::new(3.0, 1.0),
                 p2: Vec2::new(6.0, 2.0),
                 p3: Vec2::new(9.0, 3.0),
-            }),
+            },
             Rect::new(0.0, 0.0, 9.0, 3.0),
         ),
         (
             "quadratic",
-            Shape::quadratic_bezier(
-                QuadraticBezier {
-                    p0: Vec2::ZERO,
-                    p1: Vec2::new(6.0, 6.0),
-                    p2: Vec2::new(12.0, 0.0),
-                },
-                stroke,
-            ),
-            CurveBasis::Cubic(CubicBezier {
+            Shape::quadratic_bezier(QuadraticBezier {
+                p0: Vec2::ZERO,
+                p1: Vec2::new(6.0, 6.0),
+                p2: Vec2::new(12.0, 0.0),
+            }),
+            CubicBezier {
                 p0: Vec2::ZERO,
                 p1: Vec2::new(4.0, 4.0),
                 p2: Vec2::new(8.0, 4.0),
                 p3: Vec2::new(12.0, 0.0),
-            }),
+            },
             Rect::new(0.0, 0.0, 12.0, 3.0),
         ),
         (
             "cubic",
-            Shape::cubic_bezier(arch, stroke),
-            CurveBasis::Cubic(arch),
+            Shape::cubic_bezier(arch),
+            arch,
             Rect::new(0.0, 0.0, 9.0, 3.0),
         ),
-        (
-            "arc",
-            Shape::arc(quarter, stroke),
-            CurveBasis::Arc(quarter),
-            Rect::new(10.0, 20.0, 5.0, 5.0),
-        ),
-        (
-            "arc past a full circle",
-            Shape::arc(
-                CircularArc {
-                    sweep: 3.0 * PI,
-                    ..quarter
-                },
-                stroke,
-            ),
-            CurveBasis::Arc(CircularArc {
-                sweep: TAU,
-                ..quarter
-            }),
-            Rect::new(5.0, 15.0, 10.0, 10.0),
-        ),
     ];
-    for (label, shape, want_basis, want_bbox) in cases {
-        let ShapeRecord::Curve {
-            basis,
-            bbox,
+    for (label, shape, want_bezier, want_bbox) in cases {
+        let Some(ShapeRecord::Curve {
+            geometry,
             ramp: CurveRamp::None,
             ..
-        } = shape.lower(&mut RecordStore::default())
+        }) = lower((shape, stroke))
         else {
             panic!("{label}: a curve without a ramp lowers to a ramp-less curve record");
         };
-        assert_eq!(basis, want_basis, "{label}");
-        assert_eq!(bbox, want_bbox, "{label}");
+        assert_eq!(geometry.bezier, want_bezier, "{label}");
+        let PlacedStroke::Curve(basis) = geometry.place(Size::ZERO, LineCap::Butt, 1.0) else {
+            panic!("{label}: a curve with length places as a curve");
+        };
+        assert_eq!(basis.bbox(), want_bbox, "{label}");
     }
 }
 
-/// A curve of no length paints its cap alone, as SVG paints a zero-length subpath: a round cap a
-/// disc and a square cap a square, the stroke width across and centered on the point; a butt cap
-/// has no extent. A ramp colors the dot as its start does. Width 4 at (3, 4) covers (1, 2) to
-/// (5, 6); an arc of no radius sits at its center (10, 20), one of no sweep at its start, 5 along
-/// +x at (15, 20).
+/// An arc and a circle keep their rect, angles and stroke for the owner to resolve: a circle runs
+/// the full turn from 0. No sweep under a butt cap paints nothing; under a round cap it keeps its
+/// record, whose cap paints as a dot ([`ArcGeometry::place`]).
+#[test]
+fn arcs_and_circles_lower_to_an_arc_record() {
+    let rect = Rect::new(10.0, 20.0, 30.0, 40.0);
+    let stroke = Stroke::new(RgbaF32::WHITE, 2.0).with_cap(LineCap::Round);
+    let record = |pair| match pair {
+        Some(ShapeRecord::Arc {
+            cap,
+            geometry,
+            stroke,
+            ..
+        }) => (cap, geometry, stroke.width),
+        other => panic!("an arc lowers to an arc record, got {other:?}"),
+    };
+    assert_eq!(
+        record(lower((Shape::arc(0.5, PI).at(rect), stroke))),
+        (
+            LineCap::Round,
+            ArcGeometry {
+                local_rect: Some(rect),
+                start_angle: 0.5,
+                sweep: PI,
+            },
+            2.0,
+        ),
+    );
+    assert_eq!(
+        record(lower((Shape::circle(), stroke))),
+        (
+            LineCap::Round,
+            ArcGeometry {
+                local_rect: None,
+                start_angle: 0.0,
+                sweep: TAU,
+            },
+            2.0,
+        ),
+    );
+    assert!(
+        lower((Shape::arc(0.0, 0.0), stroke.with_cap(LineCap::Butt))).is_none(),
+        "a butt cap has no extent"
+    );
+    assert!(lower((Shape::arc(0.0, 0.0), stroke)).is_some());
+}
+
+/// A curve of no length keeps its record, and its cap paints alone where it is placed, as SVG
+/// paints a zero-length subpath: a round cap a disc and a square cap a square, the stroke width
+/// across and centered on the point. A butt cap has no extent, so the curve drops here. Width 4
+/// at (3, 4) covers (1, 2) to (5, 6).
 #[test]
 fn a_curve_of_no_length_paints_its_cap_alone() {
-    let wide = Border::new(RgbaF32::WHITE, 4.0);
-    let thin = Border::new(RgbaF32::WHITE, 2.0);
+    let wide = Stroke::new(RgbaF32::WHITE, 4.0);
     let at = Vec2::new(3.0, 4.0);
-    let arc = CircularArc {
-        center: Vec2::new(10.0, 20.0),
-        radius: 5.0,
-        start_angle: 0.0,
-        sweep: 0.0,
-    };
-    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
-    let red_to_blue = ColorRamp::two_stop(red, RgbaF32::new(0.0, 0.0, 1.0, 1.0));
-    let dot = Shape::cubic_bezier(
-        CubicBezier {
-            p0: at,
-            p1: at,
-            p2: at,
-            p3: at,
-        },
-        wide,
-    );
+    let dot = Shape::cubic_bezier(CubicBezier {
+        p0: at,
+        p1: at,
+        p2: at,
+        p3: at,
+    });
     let cases = [
         (
             "round line",
-            Shape::line(at, at, wide).cap(LineCap::Round),
-            Rect::new(1.0, 2.0, 4.0, 4.0),
-            Corners::all(2.0),
-            RgbaF32::WHITE,
+            Shape::line(at, at),
+            LineCap::Round,
+            Corners::saturating([2.0; 4]),
         ),
         (
             "square line",
-            Shape::line(at, at, wide).cap(LineCap::Square),
-            Rect::new(1.0, 2.0, 4.0, 4.0),
+            Shape::line(at, at),
+            LineCap::Square,
             Corners::ZERO,
-            RgbaF32::WHITE,
         ),
         (
-            "arc of no radius",
-            Shape::arc(
-                CircularArc {
-                    radius: 0.0,
-                    sweep: 1.0,
-                    ..arc
-                },
-                thin,
-            )
-            .cap(LineCap::Round),
-            Rect::new(9.0, 19.0, 2.0, 2.0),
-            Corners::all(1.0),
-            RgbaF32::WHITE,
-        ),
-        (
-            "arc of no sweep",
-            Shape::arc(arc, thin).cap(LineCap::Square),
-            Rect::new(14.0, 19.0, 2.0, 2.0),
-            Corners::ZERO,
-            RgbaF32::WHITE,
-        ),
-        (
-            "ramped cubic",
-            dot.clone().ramp(red_to_blue).cap(LineCap::Round),
-            Rect::new(1.0, 2.0, 4.0, 4.0),
-            Corners::all(2.0),
-            red,
+            "round cubic",
+            dot,
+            LineCap::Round,
+            Corners::saturating([2.0; 4]),
         ),
     ];
-    for (label, shape, want_rect, want_corners, want_color) in cases {
-        assert!(!shape.is_noop(), "{label}");
-        let ShapeRecord::Quad(QuadShape::Rect {
-            kind: RectKind::Rounded,
-            local_rect: Some(rect),
-            corners,
-            fill: LoweredBrush::Solid(color),
-            ..
-        }) = shape.lower(&mut RecordStore::default())
-        else {
-            panic!("{label}: a dot lowers to a solid rect");
+    for (label, shape, cap, want_corners) in cases {
+        let Some(ShapeRecord::Curve { geometry, .. }) = lower((shape, wide.with_cap(cap))) else {
+            panic!("{label}: a capped curve of no length keeps its record");
         };
-        assert_eq!(rect, want_rect, "{label}");
-        assert_eq!(corners, want_corners, "{label}");
-        assert_eq!(color, want_color.to_f16(), "{label}");
+        assert_eq!(
+            geometry.place(Size::ZERO, cap, 4.0),
+            PlacedStroke::Dot(PlacedBox {
+                rect: Rect::new(1.0, 2.0, 4.0, 4.0),
+                corners: want_corners,
+            }),
+            "{label}"
+        );
     }
     assert!(
-        Shape::line(at, at, wide).is_noop(),
+        lower((Shape::line(at, at), wide)).is_none(),
         "a butt cap has no extent"
     );
-    assert!(dot.is_noop(), "nor on a cubic");
+    assert!(lower((dot, wide)).is_none(), "nor on a cubic");
 }
 
 /// Each font axis setter overrides its own field of the run's font and leaves the size, the
@@ -566,9 +624,8 @@ fn text_font_axes_override_their_own_field() {
 fn a_rect_shapes_bbox_takes_in_its_drop_shadow() {
     let owner = Size::new(100.0, 60.0);
     let bbox = |shadow: Shadow| {
-        let mut shape = Shape::rect(Chrome::fill(RgbaF32::WHITE).with_shadow(shadow));
-        shape.resolve(&EffectRegistry::default(), Reductions::FULL);
-        let ShapeRecord::Quad(quad) = shape.lower(&mut RecordStore::default()) else {
+        let paint = Paint::from(RgbaF32::WHITE).with_shadow(shadow);
+        let Some(ShapeRecord::Quad(quad)) = lower((Shape::rect(), paint)) else {
             panic!("a rect lowers to a quad");
         };
         quad.bbox_local(owner)

@@ -21,6 +21,7 @@ use crate::fixtures::parked_icons::ParkedIcons;
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::offscreen::OffscreenTarget;
 use crate::harness::{Audit, Report};
+use palantir::widget::IconPaint;
 
 /// Surface for both GPU gates, smaller than the CPU one: the first pins the
 /// driver's per-frame floor, which scales with submissions, not node count.
@@ -173,7 +174,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
                                         Panel::zstack().id_salt(c).grid_cell((0, c)).show(
                                             ui,
                                             |ui| {
-                                                ui.add_shape(Shape::icon(chip));
+                                                ui.add_shape(Shape::rect(), IconPaint::new(chip));
                                             },
                                         );
                                     }

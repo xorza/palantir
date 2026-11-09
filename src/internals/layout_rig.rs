@@ -3,6 +3,7 @@
 //! [`Widget`](crate::widget::Widget) builds a node, as it carries no widget's defaults: its
 //! `Configure` setters are the whole node.
 
+use crate::effect::effect_registry::EffectRegistry;
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
@@ -14,6 +15,8 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::border::Border;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::reduction::Reductions;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::forest::Forest;
 use crate::scene::node::Node;
@@ -24,6 +27,7 @@ use crate::scene::tree::NodeChrome;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
+use crate::shape::sealed::Resolve;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::shaped_text::ShapedText;
 use crate::text::shaper::TextShaper;
@@ -217,7 +221,15 @@ impl NodeRecorder<'_> {
         self.node(id, widget, |rec| {
             let text = rec.forest.record_store.text.intern(run.text);
             let font = GlyphFont::new(run.px);
-            rec.forest.add_shape(Shape::text(text, font).wrap(run.wrap));
+            let resolve = Resolve {
+                effects: &EffectRegistry::default(),
+                reductions: Reductions::default(),
+            };
+            rec.forest.add_shape(
+                (Shape::text(text, font).wrap(run.wrap), RgbaF32::WHITE),
+                resolve,
+                None,
+            );
         });
     }
 

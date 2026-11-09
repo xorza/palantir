@@ -29,7 +29,7 @@ use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradients::GradientId;
-use crate::shape::sealed::LowerShape;
+use crate::shape::sealed::{LowerShape, Resolve};
 use crate::widget_core::widget::Widget;
 use glam::UVec2;
 use glam::Vec2;
@@ -45,7 +45,7 @@ fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
 fn with_corners(corners: Corners) -> Chrome {
     Chrome {
         corners,
-        ..Chrome::fill(RgbaF32::WHITE)
+        ..Chrome::new(RgbaF32::WHITE)
     }
 }
 
@@ -62,37 +62,31 @@ fn nan_chromes() -> [(&'static str, Chrome, &'static str); 6] {
         ),
         (
             "fill",
-            Chrome::fill(RgbaF32::srgba(1.0, f32::NAN, 1.0, 1.0)),
+            Chrome::new(RgbaF32::srgba(1.0, f32::NAN, 1.0, 1.0)),
             domain::COLOR_RULE,
         ),
         (
             "stroke",
-            Chrome {
-                border: Border::new(RgbaF32::WHITE, f32::NAN),
-                ..Chrome::fill(RgbaF32::WHITE)
-            },
+            Chrome::new(RgbaF32::WHITE).with_border(Border::new(RgbaF32::WHITE, f32::NAN)),
             domain::LENGTH_RULE,
         ),
         (
             "shadow",
-            Chrome {
-                shadow: Shadow {
-                    color: RgbaF32::WHITE,
-                    blur: f32::NAN,
-                    ..Shadow::default()
-                },
-                ..Chrome::fill(RgbaF32::WHITE)
-            },
+            Chrome::new(RgbaF32::WHITE).with_shadow(Shadow {
+                color: RgbaF32::WHITE,
+                blur: f32::NAN,
+                ..Shadow::default()
+            }),
             domain::LENGTH_RULE,
         ),
         (
             "material",
-            Chrome::fill(RgbaF32::WHITE).with_material(Material::blur(f32::NAN)),
+            Chrome::new(RgbaF32::WHITE).with_material(Material::blur(f32::NAN)),
             domain::LENGTH_RULE,
         ),
         (
             "luminance ceiling",
-            Chrome::fill(RgbaF32::WHITE)
+            Chrome::new(RgbaF32::WHITE)
                 .with_material(Material::blur(1.0).with_max_luminance(f32::NAN)),
             domain::FACTOR_RULE,
         ),
@@ -141,7 +135,7 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
 #[test]
 fn a_material_lowers_as_it_reads() {
     let tint = RgbaF32::hex(0x204060).with_alpha8(184);
-    let frosted = Chrome::fill(tint).with_material(Material::frosted(20.0));
+    let frosted = Chrome::new(tint).with_material(Material::frosted(20.0));
     let solid = |brush: LoweredBrush| match brush {
         LoweredBrush::Solid(color) => color,
         LoweredBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
@@ -169,12 +163,14 @@ fn a_material_lowers_as_it_reads() {
         ..Reductions::FULL
     };
     let rect = |store: &mut RecordStore, reductions| {
-        let mut shape = Shape::rect(frosted.clone());
-        shape.resolve(&effects, reductions);
-        shape.lower(store)
+        let resolve = Resolve {
+            effects: &effects,
+            reductions,
+        };
+        (Shape::rect(), frosted.paint.clone()).lower(resolve, store)
     };
     for (reductions, captures) in [(Reductions::FULL, true), (reduced, false)] {
-        let ShapeRecord::Quad(QuadShape::Rect { fill, material, .. }) =
+        let Some(ShapeRecord::Quad(QuadShape::Box { fill, material, .. })) =
             rect(&mut store, reductions)
         else {
             panic!("a rect lowers to a rect quad");
@@ -206,10 +202,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         "the ring must reach the chrome hash"
     );
     // A transparent border paints nothing, but its width is the inset shadow's padding edge, so it is kept.
-    let clear_border = Chrome {
-        border: Border::new(RgbaF32::TRANSPARENT, 4.0),
-        ..with_corners(sane)
-    };
+    let clear_border = with_corners(sane).with_border(Border::new(RgbaF32::TRANSPARENT, 4.0));
     let clear = chrome(&mut store, &clear_border, Border::NONE, None);
     assert_eq!(clear.border.width, 4.0);
     assert!(clear.border.is_noop(), "it still paints no stroke");
@@ -225,15 +218,10 @@ fn chrome_lowering_keeps_an_authored_field() {
         spread: 1.0,
         inset: false,
     };
-    let base = Chrome {
-        border: Border::new(RgbaF32::WHITE, 1.0),
-        shadow,
-        ..with_corners(sane)
-    };
-    let with_shadow = |shadow| Chrome {
-        shadow,
-        ..base.clone()
-    };
+    let base = with_corners(sane)
+        .with_border(Border::new(RgbaF32::WHITE, 1.0))
+        .with_shadow(shadow);
+    let with_shadow = |shadow| base.clone().with_shadow(shadow);
     let gradient = Brush::Linear(LinearGradient::new(
         0.0,
         [
@@ -245,25 +233,10 @@ fn chrome_lowering_keeps_an_authored_field() {
         ("base", base.clone()),
         (
             "border color",
-            Chrome {
-                border: Border::new(RgbaF32::BLACK, 1.0),
-                ..base.clone()
-            },
+            base.clone().with_border(Border::new(RgbaF32::BLACK, 1.0)),
         ),
-        (
-            "fill color",
-            Chrome {
-                fill: RgbaF32::BLACK.into(),
-                ..base.clone()
-            },
-        ),
-        (
-            "gradient fill",
-            Chrome {
-                fill: gradient,
-                ..base.clone()
-            },
-        ),
+        ("fill color", base.clone().with_fill(RgbaF32::BLACK)),
+        ("gradient fill", base.clone().with_fill(gradient)),
         (
             "shadow color",
             with_shadow(Shadow {
@@ -322,6 +295,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         .iter()
         .map(|(label, authored)| {
             let read = authored
+                .paint
                 .material
                 .map(|_| MaterialRead::Capture(EffectId(2)));
             (

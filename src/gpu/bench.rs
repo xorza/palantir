@@ -24,6 +24,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
 use crate::shape::Shape;
+use crate::shape::image_paint::ImagePaint;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
@@ -167,11 +168,12 @@ impl Scene<'_> {
                     };
                     cell.show(ui, |ui| match workload {
                         Workload::GroupPerItem | Workload::SingleGroup => {
-                            ui.add_shape(Shape::rect(color).at(Rect::new(0.0, 0.0, CELL, CELL)));
+                            ui.add_shape(Shape::rect().at(Rect::new(0.0, 0.0, CELL, CELL)), color);
                         }
                         Workload::ImagesDistinct | Workload::ImagesShared => {
                             ui.add_shape(
-                                Shape::image(handles[i % handles.len()].clone())
+                                Shape::rect(),
+                                ImagePaint::new(handles[i % handles.len()].clone())
                                     .fit(ImageFit::Fill)
                                     .tint(color),
                             );

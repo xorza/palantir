@@ -39,7 +39,7 @@ impl IconSet {
         Self { inner }
     }
 
-    /// The icon named `name`, for [`Shape::icon`](crate::widget::Shape::icon) (binary search; no
+    /// The icon named `name`, for [`IconPaint`](crate::widget::IconPaint) (binary search; no
     /// allocation). Resolve once and keep the handle: it names this set, so it cannot draw
     /// another set's icon.
     pub fn by_name(&self, name: &str) -> Option<IconHandle> {

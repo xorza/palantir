@@ -90,7 +90,7 @@ fn the_key_covers_authoring_input_classes() {
     }
 
     fn chrome(r: f32, g: f32, b: f32) -> Chrome {
-        Chrome::fill(RgbaF32::srgb(r, g, b))
+        Chrome::new(RgbaF32::srgb(r, g, b))
     }
 
     assert_reruns(
@@ -156,7 +156,7 @@ fn the_key_covers_layer_and_root_identity() {
             Block::new()
                 .id(WidgetId::from_hash(key))
                 .size(20.0)
-                .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         });
     }

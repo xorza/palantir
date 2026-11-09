@@ -6,6 +6,7 @@ use crate::host::offscreen::OffscreenHost;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -25,14 +26,16 @@ fn scene(ui: &mut Ui, x: f32) {
             .at((x + 12.0 + at_x, 12.0 + at_y))
             .size(22.0)
             .chrome(Chrome {
-                fill: RgbaF32::hex(0x30364a).into(),
                 corners: Corners::all(r),
-                shadow: Shadow::drop(
-                    RgbaF32::srgba(0.0, 0.0, 0.0, 0.7),
-                    Vec2::new(1.0, 3.0),
-                    sigma,
-                ),
-                ..Chrome::NONE
+                paint: Paint {
+                    fill: RgbaF32::hex(0x30364a).into(),
+                    shadow: Shadow::drop(
+                        RgbaF32::srgba(0.0, 0.0, 0.0, 0.7),
+                        Vec2::new(1.0, 3.0),
+                        sigma,
+                    ),
+                    ..Chrome::NONE.paint
+                },
             })
             .show(ui);
     }

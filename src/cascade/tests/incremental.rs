@@ -9,13 +9,13 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 
 use crate::host::harness::Harness;
-use crate::primitives::paint::border::Border;
+use crate::primitives::paint::line_style::LineCap;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
-use crate::shape::style::LineCap;
 use crate::text::font_scope::internals::INTER;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -62,7 +62,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
         Block::new()
             .id(WidgetId::from_hash("paint"))
             .size(50.0)
-            .chrome(Chrome::fill(color))
+            .chrome(Chrome::new(color))
             .show(ui);
     }
 
@@ -103,12 +103,8 @@ fn incremental_matches_full_across_cascade_input_classes() {
                 for idx in 0..count {
                     let offset = idx as f32 * 10.0;
                     ui.add_shape(
-                        Shape::line(
-                            Vec2::splat(offset),
-                            Vec2::splat(offset + 20.0),
-                            Border::new(RgbaF32::WHITE, 2.0),
-                        )
-                        .cap(LineCap::Round),
+                        Shape::line(Vec2::splat(offset), Vec2::splat(offset + 20.0)),
+                        Stroke::new(RgbaF32::WHITE, 2.0).with_cap(LineCap::Round),
                     );
                 }
             });
@@ -182,7 +178,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
             Block::new()
                 .id(WidgetId::from_hash("outer-overlay"))
                 .size(80.0)
-                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .chrome(Chrome::new(RgbaF32::WHITE))
                 .show(ui);
             if nested {
                 inner(ui);
@@ -298,9 +294,15 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
             .id(WidgetId::from_hash("host"))
             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
             .show(ui, |ui| {
-                ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(0.0, 0.0, 10.0, 10.0)));
+                ui.add_shape(
+                    Shape::rect().at(Rect::new(0.0, 0.0, 10.0, 10.0)),
+                    RgbaF32::WHITE,
+                );
                 if extra_shape {
-                    ui.add_shape(Shape::rect(RgbaF32::WHITE).at(Rect::new(20.0, 0.0, 10.0, 10.0)));
+                    ui.add_shape(
+                        Shape::rect().at(Rect::new(20.0, 0.0, 10.0, 10.0)),
+                        RgbaF32::WHITE,
+                    );
                 }
             });
     }
@@ -368,7 +370,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
                 Panel::vstack()
                     .id(WidgetId::from_hash("body"))
                     .size((Sizing::fixed(s.size), Sizing::fixed(40.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .focusable(true)
                     .tab_idx(s.tab_idx)
                     .disabled(s.disabled)
@@ -528,7 +530,7 @@ fn refresh_recomputes_only_what_moved() {
                                     .id_salt((name, k))
                                     .size(size)
                                     .at((f32::from(k) * 30.0, 0.0))
-                                    .chrome(Chrome::fill(RgbaF32::WHITE))
+                                    .chrome(Chrome::new(RgbaF32::WHITE))
                                     .show(ui);
                             }
                         });

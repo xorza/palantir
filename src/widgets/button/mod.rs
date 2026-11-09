@@ -125,9 +125,9 @@ impl<'a> Button<'a> {
                 let label = ui.intern(label);
                 ui.add_shape(
                     Shape::text(label, look.text.font())
-                        .color(look.text.color)
                         .wrap(label_wrap)
                         .align(label_align),
+                    look.text.color,
                 );
             }
             body(ui, &look.text)

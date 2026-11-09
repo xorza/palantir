@@ -7,8 +7,8 @@ use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use palantir_derive::{Animatable, Lerp};
 
-/// A single drop or inset shadow, embedded in `Shape::Shadow` or used as
-/// `Chrome::shadow`. `Shadow::NONE` (also `Default`) is the "no shadow"
+/// A single drop or inset shadow, a [`Paint`](crate::Paint)'s, which a rect shape's or a node's
+/// chrome casts. `Shadow::NONE` (also `Default`) is the "no shadow"
 /// sentinel. `offset` is logical px; `blur` is the Gaussian σ (CSS
 /// `blur-radius / 2`), 0 a sharp edge; `spread` inflates (drop) or deflates
 /// (inset) the source rect. As in CSS a drop shadow is clipped inside the box

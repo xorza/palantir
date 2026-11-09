@@ -7,9 +7,9 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::widget_core::configure::Configure;
@@ -60,14 +60,18 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
                             .with_repeat(PaintRepeat::Forever);
                         match spun {
                             Spun::Polyline => ui.add_shape_animated(
-                                Shape::polyline(
-                                    &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
-                                    Border::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-                                ),
+                                Shape::polyline(&[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)]),
+                                Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
                                 turn,
                             ),
                             Spun::Arc => ui.add_shape_animated(
-                                Shape::arc(arc, Border::new(RgbaF32::WHITE, 2.0)),
+                                Shape::arc(arc.start_angle, arc.sweep).at(Rect::new(
+                                    arc.center.x - arc.radius,
+                                    arc.center.y - arc.radius,
+                                    2.0 * arc.radius,
+                                    2.0 * arc.radius,
+                                )),
+                                Stroke::new(RgbaF32::WHITE, 2.0),
                                 turn,
                             ),
                         }
@@ -125,14 +129,16 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(Chrome::rounded(shape_color, 0.0))
-                            .at(Rect::new(0.0, 0.0, 30.0, 30.0)),
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 30.0, 30.0))
+                            .corners(0.0),
+                        shape_color,
                     );
                     Block::new()
                         .id(WidgetId::from_hash("child"))
                         .at((50.0, 60.0))
                         .size(40.0)
-                        .chrome(Chrome::fill(child_color))
+                        .chrome(Chrome::new(child_color))
                         .show(ui);
                 });
         });
@@ -159,7 +165,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(150.0))
                 .transform(transform)
-                .chrome(Chrome::fill(chrome_color))
+                .chrome(Chrome::new(chrome_color))
                 .show(ui, |_| {});
         });
     });

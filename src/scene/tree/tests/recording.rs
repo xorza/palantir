@@ -2,6 +2,7 @@
 
 use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -11,9 +12,9 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::quad_shape::{BoxGeometry, QuadShape};
 use crate::shape::record::ShapeRecord;
-use crate::shape::rect::{RectKind, RectShape};
+use crate::shape::rect::RectShape;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 
@@ -47,7 +48,7 @@ fn shapes_attached_to_button_node() {
 fn interleaved_shapes_record_correct_order() {
     fn pos_rect(slot: u16) -> RectShape {
         let s = f32::from(slot + 1) * 10.0;
-        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, s, s))
+        Shape::rect().at(Rect::new(0.0, 0.0, s, s))
     }
     let mut h = Harness::mono(SURFACE);
     let p = h.frame_value(|ui| {
@@ -55,19 +56,19 @@ fn interleaved_shapes_record_correct_order() {
             .auto_id()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
-                ui.add_shape(pos_rect(0));
+                ui.add_shape(pos_rect(0), RgbaF32::srgb(1.0, 0.0, 0.0));
                 Block::new()
                     .id(WidgetId::from_hash("c0"))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
-                ui.add_shape(pos_rect(1));
+                ui.add_shape(pos_rect(1), RgbaF32::srgb(1.0, 0.0, 0.0));
                 Block::new()
                     .id(WidgetId::from_hash("c1"))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
-                ui.add_shape(pos_rect(2));
+                ui.add_shape(pos_rect(2), RgbaF32::srgb(1.0, 0.0, 0.0));
             })
             .response
             .node(ui)
@@ -90,9 +91,13 @@ fn interleaved_shapes_record_correct_order() {
         .tree(Layer::Main)
         .shapes_of(p)
         .map(|s| match s {
-            ShapeRecord::Quad(QuadShape::Rect {
-                kind: RectKind::Rounded,
-                local_rect: Some(rect),
+            ShapeRecord::Quad(QuadShape::Box {
+                geometry:
+                    BoxGeometry {
+                        coverage: Coverage::Inside,
+                        local_rect: Some(rect),
+                        ..
+                    },
                 ..
             }) => rect.size.w,
             _ => panic!("unexpected shape variant"),
@@ -116,7 +121,7 @@ fn interleaved_shapes_record_correct_order() {
 #[test]
 fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     fn pos_rect() -> RectShape {
-        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 10.0, 10.0))
+        Shape::rect().at(Rect::new(0.0, 0.0, 10.0, 10.0))
     }
     let mut h = Harness::mono(SURFACE);
     let mut child_id = None;
@@ -130,13 +135,13 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                     child_id = Some(
                         Block::new()
                             .id(WidgetId::from_hash("only-child"))
-                            .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                            .chrome(Chrome::new(RgbaF32::srgb(0.0, 1.0, 0.0)))
                             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                             .show(ui)
                             .node(ui),
                     );
-                    ui.add_shape(pos_rect());
-                    ui.add_shape(pos_rect());
+                    ui.add_shape(pos_rect(), RgbaF32::srgb(1.0, 0.0, 0.0));
+                    ui.add_shape(pos_rect(), RgbaF32::srgb(1.0, 0.0, 0.0));
                 })
                 .response
                 .node(ui),

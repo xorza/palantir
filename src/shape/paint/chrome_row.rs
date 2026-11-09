@@ -10,7 +10,7 @@ use crate::shape::paint::lowered_shadow::LoweredShadow;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeRow {
     pub(crate) fill: LoweredBrush,
-    /// Width is [`Chrome::border_inset`](crate::Chrome::border_inset)'s fold even when the color paints nothing; the payload normalizes it.
+    /// Width is [`Paint::border_inset`](crate::Paint::border_inset)'s fold even when the color paints nothing; the payload normalizes it.
     pub(crate) border: LoweredBorder,
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,

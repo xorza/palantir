@@ -201,7 +201,7 @@ fn spiller(ui: &mut Ui, k: Kit) {
         .size((Sizing::FILL, Sizing::FILL))
         .margin((-SPILL, -SPILL, -SPILL, -SPILL))
         // Translucent so the card edge stays visible beneath; unclipped would otherwise be a solid block.
-        .chrome(Chrome::fill(k.swatch.orange.with_alpha(0.8)))
+        .chrome(Chrome::new(k.swatch.orange.with_alpha(0.8)))
         .show(ui);
 }
 

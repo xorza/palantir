@@ -10,10 +10,8 @@ use std::any::TypeId;
 use crate::effect::contract::{self, ContractSpec, ParamsLayout};
 use crate::effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectStore;
-use crate::effect::effect_store::ModuleEntries;
 use crate::effect::error::EffectError;
 use crate::effect::stock;
-use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::effect::effect_kind::{EffectKind, EffectTypes};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
@@ -202,19 +200,16 @@ impl EffectRegistry {
             build,
             ..
         } = source;
-        let entries =
-            if K::ID == KindId::Backdrop && TypeId::of::<U>() == TypeId::of::<MaterialInput>() {
-                ModuleEntries::ShapeAndMaterial
-            } else {
-                ModuleEntries::Shape
-            };
+        // A material's box binds no images, as a `Material` names none.
+        if TypeId::of::<U>() == TypeId::of::<MaterialInput>() && image_slots > 0 {
+            return Err(EffectError::MaterialImageSlots { slots: image_slots });
+        }
         let module = contract::check(
             &wgsl,
             ContractSpec {
                 kind: K::ID,
                 params,
                 image_slots,
-                entries,
             },
         )?;
         let id = self.effects.borrow_mut().insert(

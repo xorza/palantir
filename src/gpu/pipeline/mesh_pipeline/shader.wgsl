@@ -13,12 +13,13 @@ struct VsIn {
     // pipeline's `PREMULTIPLIED_ALPHA_BLENDING` blend state, the contract
     // `premultiply` in `prelude.wgsl` states.
     @location(1) color: vec4<f32>,
-    // Per-instance transform + tint. `physical = rotor_scale ⊗ pos + translate`,
-    // a complex product that turns and scales at once;
-    // `out_color = premultiply(color * tint)`.
+    // Per-instance transform + tint.
+    // `physical = x_axis * pos.x + y_axis * pos.y + translate`, a linear map that fits, turns and
+    // scales at once; `out_color = premultiply(color * tint)`.
     @location(2) translate: vec2<f32>,
-    @location(3) rotor_scale: vec2<f32>,
-    @location(4) tint: vec4<f32>,
+    @location(3) x_axis: vec2<f32>,
+    @location(4) y_axis: vec2<f32>,
+    @location(5) tint: vec4<f32>,
 };
 
 struct VsOut {
@@ -29,9 +30,7 @@ struct VsOut {
 @vertex
 fn vs(in: VsIn) -> VsOut {
     var out: VsOut;
-    let rs = in.rotor_scale;
-    let turned = vec2<f32>(rs.x * in.pos.x - rs.y * in.pos.y, rs.y * in.pos.x + rs.x * in.pos.y);
-    out.clip = clip_from_px(turned + in.translate);
+    out.clip = clip_from_px(in.x_axis * in.pos.x + in.y_axis * in.pos.y + in.translate);
     let straight = vec4<f32>(srgb_to_linear(in.color.rgb), in.color.a) * in.tint;
     out.color = premultiply(straight.rgb, straight.a);
     return out;

@@ -129,7 +129,7 @@ fn collision_outlines_repaint_whole_until_they_clear() {
                 Block::new()
                     .id(WidgetId::from_hash("moving"))
                     .size(10.0)
-                    .chrome(Chrome::fill(RgbaF32::srgb(red, 0.0, 0.0)))
+                    .chrome(Chrome::new(RgbaF32::srgb(red, 0.0, 0.0)))
                     .show(ui);
                 Button::new().id(WidgetId::from_hash("dup")).show(ui);
                 if duplicate {

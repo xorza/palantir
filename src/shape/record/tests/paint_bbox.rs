@@ -65,29 +65,31 @@ fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
     );
 }
 
-/// A mesh whose vertex hull overflows its owner box reports the hull as its paint bbox; the owner rect would under-size partial damage (regression: the subscription-glyph triangle).
+/// A mesh's paint bbox is its vertex hull fitted, which can overflow its owner box; the owner rect
+/// would under-size partial damage (regression: the subscription-glyph triangle). `Natural` moves
+/// the hull by its rect's corner and keeps its size; `Fill` maps it onto the rect.
 #[test]
-fn mesh_paint_bbox_is_vertex_hull_not_owner_rect() {
-    let hull = Rect {
-        min: Vec2::new(-5.0, -4.0),
-        size: Size::new(25.0, 24.0),
-    };
+fn mesh_paint_bbox_is_the_fitted_vertex_hull() {
+    let hull = Rect::new(-5.0, -4.0, 25.0, 24.0);
+    let owner = Size::new(10.0, 10.0);
+    let bbox = |placement: PointPlacement| placement.map(hull, owner).apply_rect(hull);
     assert_eq!(
-        mesh_paint_bbox_local(hull, None),
+        bbox(PointPlacement::NATURAL),
         hull,
-        "the paint bbox is the vertex hull, not the owner rect"
+        "the hull, not the owner rect"
     );
-
-    let offset = Rect {
-        min: Vec2::new(2.0, 3.0),
-        size: Size::new(99.0, 99.0),
-    };
     assert_eq!(
-        mesh_paint_bbox_local(hull, Some(offset)),
-        Rect {
-            min: hull.min + offset.min,
-            size: hull.size,
-        },
-        "local_rect offsets the hull; the size is unchanged"
+        bbox(PointPlacement {
+            local_rect: Some(Rect::new(2.0, 3.0, 99.0, 99.0)),
+            fit: Fit::Natural,
+        }),
+        Rect::new(-3.0, -1.0, 25.0, 24.0),
+    );
+    assert_eq!(
+        bbox(PointPlacement {
+            local_rect: None,
+            fit: Fit::Fill,
+        }),
+        Rect::new(0.0, 0.0, 10.0, 10.0),
     );
 }

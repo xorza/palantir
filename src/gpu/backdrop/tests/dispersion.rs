@@ -10,12 +10,12 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::libm_ext::Libm;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::lens_optics::{LINE_D, LensOptics};
 use crate::primitives::paint::material::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
+use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -54,15 +54,11 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for &(rect, color) in under {
-                    ui.add_shape(Shape::rect(color).at(rect));
+                    ui.add_shape(Shape::rect().at(rect), color);
                 }
                 ui.add_shape(
-                    Shape::rect(
-                        Chrome::NONE
-                            .with_corners(Corners::all(16.0))
-                            .with_material(Material::glass(lens).with_blur(blur)),
-                    )
-                    .at(PANE),
+                    Shape::rect().at(PANE).corners(Corners::all(16.0)),
+                    Paint::NONE.with_material(Material::glass(lens).with_blur(blur)),
                 );
             });
     };

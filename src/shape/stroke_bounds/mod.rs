@@ -1,7 +1,7 @@
 //! Conservative bounding boxes for stroked geometry: how far a cap and join push a path's extent.
 
 use crate::primitives::geometry::rect::Rect;
-use crate::shape::style::{LineCap, LineJoin};
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use std::f32::consts;
 
 /// SVG-convention miter limit shared by CPU bounds, composition and the curve shader.

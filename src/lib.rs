@@ -193,7 +193,7 @@ pub mod widget {
     pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::animation::motion_role::MotionRole;
     pub use crate::common::content_hash::ContentHash;
-    pub use crate::primitives::geometry::circular_arc::CircularArc;
+    pub use crate::primitives::geometry::coverage::Coverage;
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
     pub use crate::primitives::geometry::mesh::Mesh;
     pub use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
@@ -205,10 +205,12 @@ pub mod widget {
     /// The bound on [`Ui::add_shape`](crate::Ui::add_shape); sealed.
     pub use crate::shape::Lower;
     pub use crate::shape::Shape;
+    pub use crate::shape::arc::ArcShape;
+    pub use crate::shape::circle::CircleShape;
     pub use crate::shape::curve::CurveShape;
-    pub use crate::shape::effect::EffectShape;
-    pub use crate::shape::icon::IconShape;
-    pub use crate::shape::image::ImageShape;
+    pub use crate::shape::effect_paint::EffectPaint;
+    pub use crate::shape::icon_paint::IconPaint;
+    pub use crate::shape::image_paint::ImagePaint;
     pub use crate::shape::mesh::MeshShape;
     /// The paint-time animation curves the crate ships; a custom curve is any
     /// `fn(f32) -> f32`, see [`PaintCurve`].
@@ -218,8 +220,6 @@ pub mod widget {
     };
     pub use crate::shape::polyline::PolylineShape;
     pub use crate::shape::rect::RectShape;
-    pub use crate::shape::shadow::ShadowShape;
-    pub use crate::shape::style::{LineCap, LineJoin};
     pub use crate::shape::text::TextShape;
     pub use crate::shape::triangle::TriangleShape;
     pub use crate::text::glyph_font::GlyphFont;
@@ -291,6 +291,7 @@ pub use primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKin
 pub use primitives::effect::effect_name::EffectName;
 pub use primitives::effect::effect_params::{EffectParam, EffectParams, ParamType, ParamValue};
 pub use primitives::geometry::corners::Corners;
+pub use primitives::geometry::fit::Fit;
 pub use primitives::geometry::rect::Rect;
 pub use primitives::geometry::size::Size;
 pub use primitives::geometry::spacing::Spacing;
@@ -347,13 +348,15 @@ pub use primitives::paint::color::color_model::ColorModel;
 pub use primitives::paint::color::error::ParseColorError;
 pub use primitives::paint::color::srgba_u8::SrgbaU8;
 pub use primitives::paint::image::error::ImageDataError;
-pub use primitives::paint::image::icon_fit::IconFit;
 pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
+pub use primitives::paint::line_style::{LineCap, LineJoin};
 pub use primitives::paint::material::Material;
 pub use primitives::paint::material::lens::Lens;
 pub use primitives::paint::material::material_input::MaterialInput;
 pub use primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+pub use primitives::paint::paint::Paint;
 pub use primitives::paint::shadow::Shadow;
+pub use primitives::paint::stroke::Stroke;
 pub use primitives::preference::Preference;
 pub use primitives::reduction::Reduction;
 pub use primitives::text::interned_str::InternedStr;

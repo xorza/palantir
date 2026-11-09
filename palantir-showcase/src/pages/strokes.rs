@@ -3,14 +3,17 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
+use palantir::LineCap;
+use palantir::LineJoin;
+use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
-use palantir::{Border, ColorRamp, ComboBox, Configure, RgbaF32, Sizing, Stop, Text, Ui, WidgetId};
+use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
+use palantir::{ColorRamp, ComboBox, Configure, Rect, RgbaF32, Sizing, Stop, Text, Ui, WidgetId};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     live(ui, k);
     Section::new("Width")
-        .apis(&[api!(type Border)])
+        .apis(&[api!(type Stroke)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -71,22 +74,20 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 fn widths(ui: &mut Ui, k: Kit) {
     for (i, w) in [1.0_f32, 2.0, 3.0, 5.0, 8.0].iter().enumerate() {
         let y = 20.0 + i as f32 * 26.0;
-        ui.add_shape(Shape::line(
-            Vec2::new(16.0, y),
-            Vec2::new(150.0, y),
-            Border::new(k.swatch.teal, *w),
-        ));
+        ui.add_shape(
+            Shape::line(Vec2::new(16.0, y), Vec2::new(150.0, y)),
+            Stroke::new(k.swatch.teal, *w),
+        );
     }
 }
 
 fn hairlines(ui: &mut Ui, k: Kit) {
     for (i, w) in [0.1_f32, 0.25, 0.5, 0.75, 1.0].iter().enumerate() {
         let y = 20.0 + i as f32 * 26.0;
-        ui.add_shape(Shape::line(
-            Vec2::new(16.0, y),
-            Vec2::new(150.0, y),
-            Border::new(k.t.ink, *w),
-        ));
+        ui.add_shape(
+            Shape::line(Vec2::new(16.0, y), Vec2::new(150.0, y)),
+            Stroke::new(k.t.ink, *w),
+        );
     }
 }
 
@@ -102,7 +103,10 @@ fn joins(ui: &mut Ui, k: Kit) {
             Vec2::new(84.0, y),
             Vec2::new(144.0, y + 28.0),
         ];
-        ui.add_shape(Shape::polyline(&pts, Border::new(k.swatch.teal, 5.0)).join(join));
+        ui.add_shape(
+            Shape::polyline(&pts),
+            Stroke::new(k.swatch.teal, 5.0).with_join(join),
+        );
     }
 }
 
@@ -110,11 +114,10 @@ fn joins(ui: &mut Ui, k: Kit) {
 fn caps(ui: &mut Ui, k: Kit) {
     for y in [32.0_f32, 80.0, 128.0] {
         for x in [40.0_f32, 128.0] {
-            ui.add_shape(Shape::line(
-                Vec2::new(x, y - 14.0),
-                Vec2::new(x, y + 14.0),
-                Border::new(k.t.ink, 1.0),
-            ));
+            ui.add_shape(
+                Shape::line(Vec2::new(x, y - 14.0), Vec2::new(x, y + 14.0)),
+                Stroke::new(k.t.ink, 1.0),
+            );
         }
     }
     for (y, color, cap) in [
@@ -123,12 +126,8 @@ fn caps(ui: &mut Ui, k: Kit) {
         (128.0, k.swatch.teal, LineCap::Round),
     ] {
         ui.add_shape(
-            Shape::line(
-                Vec2::new(40.0, y),
-                Vec2::new(128.0, y),
-                Border::new(color, 9.0),
-            )
-            .cap(cap),
+            Shape::line(Vec2::new(40.0, y), Vec2::new(128.0, y)),
+            Stroke::new(color, 9.0).with_cap(cap),
         );
     }
 }
@@ -141,16 +140,13 @@ fn curve_caps(ui: &mut Ui, k: Kit) {
     {
         let dy = i as f32 * 48.0;
         ui.add_shape(
-            Shape::cubic_bezier(
-                CubicBezier {
-                    p0: Vec2::new(16.0, 34.0 + dy),
-                    p1: Vec2::new(50.0, 10.0 + dy),
-                    p2: Vec2::new(114.0, 58.0 + dy),
-                    p3: Vec2::new(150.0, 34.0 + dy),
-                },
-                Border::new(k.swatch.orange, 8.0),
-            )
-            .cap(*cap),
+            Shape::cubic_bezier(CubicBezier {
+                p0: Vec2::new(16.0, 34.0 + dy),
+                p1: Vec2::new(50.0, 10.0 + dy),
+                p2: Vec2::new(114.0, 58.0 + dy),
+                p3: Vec2::new(150.0, 34.0 + dy),
+            }),
+            Stroke::new(k.swatch.orange, 8.0).with_cap(*cap),
         );
     }
 }
@@ -163,7 +159,10 @@ fn per_point(ui: &mut Ui, k: Kit) {
         Vec2::new(150.0, 148.0),
     ];
     let cols = [k.swatch.red, k.swatch.orange, k.swatch.lime, k.swatch.teal];
-    ui.add_shape(Shape::polyline(&pts, Border::new(RgbaF32::WHITE, 4.0)).per_point(&cols));
+    ui.add_shape(
+        Shape::polyline(&pts).per_point(&cols),
+        Stroke::new(RgbaF32::WHITE, 4.0),
+    );
 }
 
 fn per_segment(ui: &mut Ui, k: Kit) {
@@ -184,7 +183,10 @@ fn per_segment(ui: &mut Ui, k: Kit) {
         k.swatch.violet,
         RgbaF32::hex(0xff8fc8),
     ];
-    ui.add_shape(Shape::polyline(&pts, Border::new(RgbaF32::WHITE, 4.0)).per_segment(&cols));
+    ui.add_shape(
+        Shape::polyline(&pts).per_segment(&cols),
+        Stroke::new(RgbaF32::WHITE, 4.0),
+    );
 }
 
 const P0: Vec2 = Vec2::new(16.0, 140.0);
@@ -197,42 +199,40 @@ const Q1: Vec2 = Vec2::new(84.0, 14.0);
 const Q2: Vec2 = Vec2::new(150.0, 140.0);
 
 fn cubic(ui: &mut Ui, k: Kit) {
-    ui.add_shape(Shape::cubic_bezier(
-        CubicBezier {
+    ui.add_shape(
+        Shape::cubic_bezier(CubicBezier {
             p0: P0,
             p1: P1,
             p2: P2,
             p3: P3,
-        },
-        Border::new(k.swatch.teal, 4.0),
-    ));
+        }),
+        Stroke::new(k.swatch.teal, 4.0),
+    );
 }
 
 fn quadratic(ui: &mut Ui, k: Kit) {
-    ui.add_shape(Shape::quadratic_bezier(
-        QuadraticBezier {
+    ui.add_shape(
+        Shape::quadratic_bezier(QuadraticBezier {
             p0: Q0,
             p1: Q1,
             p2: Q2,
-        },
-        Border::new(k.swatch.lime, 4.0),
-    ));
+        }),
+        Stroke::new(k.swatch.lime, 4.0),
+    );
 }
 
 /// Two-stop ramp along the curve's t (p0 → p3) over a white stroke, so the ramp shows as authored.
 fn gradient_cubic(ui: &mut Ui, k: Kit) {
     ui.add_shape(
-        Shape::cubic_bezier(
-            CubicBezier {
-                p0: P0,
-                p1: P1,
-                p2: P2,
-                p3: P3,
-            },
-            Border::new(RgbaF32::WHITE, 8.0),
-        )
-        .ramp(ColorRamp::two_stop(k.swatch.red, k.swatch.teal))
-        .cap(LineCap::Round),
+        Shape::cubic_bezier(CubicBezier {
+            p0: P0,
+            p1: P1,
+            p2: P2,
+            p3: P3,
+        }),
+        Stroke::new(RgbaF32::WHITE, 8.0)
+            .with_ramp(ColorRamp::two_stop(k.swatch.red, k.swatch.teal))
+            .with_cap(LineCap::Round),
     );
 }
 
@@ -244,65 +244,51 @@ fn gradient_multistop(ui: &mut Ui, k: Kit) {
         Stop::new(1.0, k.swatch.teal),
     ]);
     ui.add_shape(
-        Shape::quadratic_bezier(
-            QuadraticBezier {
-                p0: Q0,
-                p1: Q1,
-                p2: Q2,
-            },
-            Border::new(RgbaF32::WHITE, 10.0),
-        )
-        .ramp(ramp)
-        .cap(LineCap::Round),
+        Shape::quadratic_bezier(QuadraticBezier {
+            p0: Q0,
+            p1: Q1,
+            p2: Q2,
+        }),
+        Stroke::new(RgbaF32::WHITE, 10.0)
+            .with_ramp(ramp)
+            .with_cap(LineCap::Round),
     );
 }
 
 fn arcs(ui: &mut Ui, k: Kit) {
     use std::f32::consts::{FRAC_PI_2, PI, TAU};
+    // The square of side `2 · radius` about `center`, whose inscribed circle an arc runs on.
+    let around = |center: Vec2, radius: f32| {
+        Rect::new(
+            center.x - radius,
+            center.y - radius,
+            2.0 * radius,
+            2.0 * radius,
+        )
+    };
     // Full circle: a ±2π sweep closes seamlessly under Butt caps.
-    ui.add_shape(Shape::circle(
-        Vec2::new(44.0, 40.0),
-        28.0,
-        Border::new(k.swatch.teal, 3.0),
-    ));
+    ui.add_shape(
+        Shape::circle().at(around(Vec2::new(44.0, 40.0), 28.0)),
+        Stroke::new(k.swatch.teal, 3.0),
+    );
     // 3/4 sweep with a ramp along the arc (the spinner's comet): transparent tail to full head, round caps; white ramp, stroke color sets the hue.
     let comet = ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE);
     ui.add_shape(
-        Shape::arc(
-            CircularArc {
-                center: Vec2::new(120.0, 40.0),
-                radius: 28.0,
-                start_angle: -FRAC_PI_2,
-                sweep: 1.5 * PI,
-            },
-            Border::new(k.swatch.orange, 6.0),
-        )
-        .ramp(comet)
-        .cap(LineCap::Round),
+        Shape::arc(-FRAC_PI_2, 1.5 * PI).at(around(Vec2::new(120.0, 40.0), 28.0)),
+        Stroke::new(k.swatch.orange, 6.0)
+            .with_ramp(comet)
+            .with_cap(LineCap::Round),
     );
     // Gauge-style bottom arc: half sweep, fat stroke, round caps.
     ui.add_shape(
-        Shape::arc(
-            CircularArc {
-                center: Vec2::new(84.0, 118.0),
-                radius: 36.0,
-                start_angle: PI,
-                sweep: PI,
-            },
-            Border::new(k.swatch.lime, 10.0),
-        )
-        .cap(LineCap::Round),
+        Shape::arc(PI, PI).at(around(Vec2::new(84.0, 118.0), 36.0)),
+        Stroke::new(k.swatch.lime, 10.0).with_cap(LineCap::Round),
     );
     // Thin negative-sweep quarter overlaying the gauge's track.
-    ui.add_shape(Shape::arc(
-        CircularArc {
-            center: Vec2::new(84.0, 118.0),
-            radius: 25.0,
-            start_angle: 0.0,
-            sweep: -TAU * 0.25,
-        },
-        Border::new(k.swatch.red, 2.0),
-    ));
+    ui.add_shape(
+        Shape::arc(0.0, -TAU * 0.25).at(around(Vec2::new(84.0, 118.0), 25.0)),
+        Stroke::new(k.swatch.red, 2.0),
+    );
 }
 
 static JOINS: [(&str, LineJoin); 3] = [
@@ -374,9 +360,10 @@ fn live(ui: &mut Ui, k: Kit) {
                             Vec2::new(420.0, 110.0),
                         ];
                         ui.add_shape(
-                            Shape::polyline(&points, Border::new(k.swatch.teal, width))
-                                .join(join)
-                                .cap(cap),
+                            Shape::polyline(&points),
+                            Stroke::new(k.swatch.teal, width)
+                                .with_join(join)
+                                .with_cap(cap),
                         );
                     });
             });

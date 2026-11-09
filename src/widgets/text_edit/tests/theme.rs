@@ -1,5 +1,5 @@
-use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::rect::RectKind;
+use crate::primitives::geometry::coverage::Coverage;
+use crate::shape::paint::quad_shape::{BoxGeometry, QuadShape};
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::{LINE_HEIGHT_FACTOR, TextStyle};
@@ -378,8 +378,11 @@ fn no_selection_paints_no_highlight_rect() {
         .filter(|s| {
             matches!(
                 s,
-                ShapeRecord::Quad(QuadShape::Rect {
-                    kind: RectKind::Rounded,
+                ShapeRecord::Quad(QuadShape::Box {
+                    geometry: BoxGeometry {
+                        coverage: Coverage::Inside,
+                        ..
+                    },
                     ..
                 })
             )
@@ -421,9 +424,13 @@ fn shift_end_paints_selection_highlight() {
 
     let rects: Vec<_> = painted_shapes(h.ui(), leaf)
         .filter_map(|s| match s {
-            ShapeRecord::Quad(QuadShape::Rect {
-                kind: RectKind::Rounded,
-                local_rect: Some(r),
+            ShapeRecord::Quad(QuadShape::Box {
+                geometry:
+                    BoxGeometry {
+                        coverage: Coverage::Inside,
+                        local_rect: Some(r),
+                        ..
+                    },
                 ..
             }) => Some(*r),
             _ => None,
@@ -470,9 +477,13 @@ fn line_height_override_changes_caret_rect_height() {
         let leaf = h.frame_value(|ui| body(ui, &mut buf, style));
         painted_shapes(h.ui(), leaf)
             .find_map(|s| match s {
-                ShapeRecord::Quad(QuadShape::Rect {
-                    kind: RectKind::Rounded,
-                    local_rect: Some(rect),
+                ShapeRecord::Quad(QuadShape::Box {
+                    geometry:
+                        BoxGeometry {
+                            coverage: Coverage::Inside,
+                            local_rect: Some(rect),
+                            ..
+                        },
                     ..
                 }) => Some(rect.size.h),
                 _ => None,

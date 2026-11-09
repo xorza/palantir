@@ -16,14 +16,18 @@ use crate::display::Display;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
+use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -45,8 +49,6 @@ use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::record::ColorMode;
-use crate::shape::rect::RectKind;
-use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{Criterion, Throughput};
@@ -299,6 +301,7 @@ impl QuadCase {
                         alpha: 1.0,
                         bounds: StrokeBounds::Still(Rect::new(0.0, Self::CELL, width, Self::CELL)),
                         origin: Vec2::ZERO,
+                        fit: FitMap::IDENTITY,
                         width: 2.0,
                         points: Span::new(p_start, count as u32),
                         colors: Span::new(c_start, 1),
@@ -330,7 +333,7 @@ impl QuadCase {
 fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
         DrawQuadPayload::rect(RectQuad {
-            kind: RectKind::Rounded,
+            coverage: Coverage::Inside,
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
@@ -346,11 +349,12 @@ fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
     let footprint = URect::covering(rect.inflated(PaneRow::reach(plan, 0)));
     cmds.draw(
         DrawPanePayload {
-            kind: RectKind::Rounded,
+            coverage: Coverage::Inside,
             rect,
             corners: Corners::ZERO,
             spin: None,
-            tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
+            fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
+            fill_axis: FillAxis::ZERO,
             stroke: LoweredBorder::NONE,
             material: LoweredMaterial::fixture(4.0),
             opacity: 1.0,
@@ -378,6 +382,7 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
         DrawMeshPayload {
             bbox,
             origin: Vec2::ZERO,
+            fit: FitMap::IDENTITY,
             tint: RgbaF32::WHITE.to_f16(),
             vertices: Span::new(0, 3),
             idxs: Span::new(0, 3),

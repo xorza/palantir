@@ -398,13 +398,13 @@ impl DirectText {
                 ..GlyphFont::new(self.font_size)
             },
         )
-        .color(RgbaF32::WHITE)
         .wrap(self.wrap)
         .align(Align::default());
-        ui.add_shape(match self.local_origin {
+        let shape = match self.local_origin {
             Some(origin) => shape.at_origin(origin),
             None => shape,
-        });
+        };
+        ui.add_shape(shape, RgbaF32::WHITE);
     }
 }
 

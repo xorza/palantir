@@ -332,9 +332,9 @@ impl<'a> DragValue<'a> {
         self.widget.record(ui, Some(&look.chrome), |ui| {
             ui.add_shape(
                 Shape::text(text, look.text.font())
-                    .color(look.text.color)
                     .wrap(TextWrap::Truncate)
                     .align(self.text_align),
+                look.text.color,
             );
         });
         ValueResponse {

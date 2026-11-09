@@ -10,7 +10,8 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Section};
 use palantir::glam::{UVec2, Vec2};
-use palantir::widget::{ImageShape, Shape};
+use palantir::widget::ImagePaint;
+use palantir::widget::Shape;
 use palantir::{
     ComboBox, Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32,
     Sizing, Switch, Text, Ui, WidgetId,
@@ -150,7 +151,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     ("Natural — 1:1, centered", ImageFit::Natural),
                 ] {
                     DemoCell::new(label).size(232.0, 132.0).show(ui, k, |ui| {
-                        ui.add_shape(fitted(src.checker.handle(), fit));
+                        ui.add_shape(Shape::rect(), fitted(src.checker.handle(), fit));
                     });
                 }
             });
@@ -162,13 +163,17 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             support::note(ui, k, "The tint multiplies each sampled texel.");
             support::tiles(ui, |ui| {
                 DemoCell::new("no tint").show(ui, k, |ui| {
-                    ui.add_shape(fitted(src.gradient.handle(), ImageFit::Fill));
+                    ui.add_shape(Shape::rect(), fitted(src.gradient.handle(), ImageFit::Fill));
                 });
                 DemoCell::new("red tint").show(ui, k, |ui| {
-                    ui.add_shape(fitted(src.gradient.handle(), ImageFit::Fill).tint(k.swatch.red));
+                    ui.add_shape(
+                        Shape::rect(),
+                        fitted(src.gradient.handle(), ImageFit::Fill).tint(k.swatch.red),
+                    );
                 });
                 DemoCell::new("half alpha").show(ui, k, |ui| {
                     ui.add_shape(
+                        Shape::rect(),
                         fitted(src.gradient.handle(), ImageFit::Fill)
                             .tint(RgbaF32::WHITE.with_alpha(0.5)),
                     );
@@ -184,14 +189,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     offset: Vec2::ZERO,
                     scale: Vec2::splat(3.0),
                 };
-                ui.add_shape(fitted(src.checker.handle(), fit));
+                ui.add_shape(Shape::rect(), fitted(src.checker.handle(), fit));
             });
             DemoCell::new("tile 2×4, offset 0.25").show(ui, k, |ui| {
                 let fit = ImageFit::Tile {
                     offset: Vec2::new(0.25, 0.0),
                     scale: Vec2::new(2.0, 4.0),
                 };
-                ui.add_shape(fitted(src.gradient.handle(), fit));
+                ui.add_shape(Shape::rect(), fitted(src.gradient.handle(), fit));
             });
         });
     });
@@ -245,13 +250,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 }
 
-fn fitted(handle: &ImageHandle, fit: ImageFit) -> ImageShape {
-    Shape::image(handle.clone()).fit(fit)
+fn fitted(handle: &ImageHandle, fit: ImageFit) -> ImagePaint {
+    ImagePaint::new(handle.clone()).fit(fit)
 }
 
 fn magnified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
     ui.add_shape(
-        Shape::image(handle.clone())
+        Shape::rect(),
+        ImagePaint::new(handle.clone())
             .fit(ImageFit::Fill)
             .mag_filter(filter),
     );
@@ -259,7 +265,8 @@ fn magnified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
 
 fn downsampled(ui: &mut Ui, handle: &ImageHandle, downsample: ImageDownsample) {
     ui.add_shape(
-        Shape::image(handle.clone())
+        Shape::rect(),
+        ImagePaint::new(handle.clone())
             .fit(ImageFit::Contain)
             .downsample(downsample),
     );
@@ -267,7 +274,8 @@ fn downsampled(ui: &mut Ui, handle: &ImageHandle, downsample: ImageDownsample) {
 
 fn minified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
     ui.add_shape(
-        Shape::image(handle.clone())
+        Shape::rect(),
+        ImagePaint::new(handle.clone())
             .fit(ImageFit::Tile {
                 offset: Vec2::ZERO,
                 scale: Vec2::splat(32.0),
@@ -335,7 +343,10 @@ fn live(ui: &mut Ui, k: Kit, src: &Sources) {
                 DemoCell::new("the knobs' image")
                     .size(360.0, 160.0)
                     .show(ui, k, |ui| {
-                        ui.add_shape(fitted(src.sprite.handle(), fit).mag_filter(filter));
+                        ui.add_shape(
+                            Shape::rect(),
+                            fitted(src.sprite.handle(), fit).mag_filter(filter),
+                        );
                     });
             });
         });

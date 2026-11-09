@@ -33,7 +33,7 @@ pub(crate) fn show(ui: &mut Ui, t: Tokens, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::fixed(WIDTH), Sizing::FILL))
         .padding((INSET, M.space.lg, 0.0, INSET))
         .gap(INSET)
-        .chrome(Chrome::fill(t.surround))
+        .chrome(Chrome::new(t.surround))
         .show(ui, body);
 }
 

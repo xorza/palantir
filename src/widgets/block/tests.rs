@@ -21,11 +21,11 @@ fn frame_paints_a_single_rounded_rect() {
                 Block::new()
                     .id(WidgetId::from_hash("decoration"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                    .chrome(Chrome {
-                        fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
-                        corners: Corners::all(6.0),
-                        ..Default::default()
-                    })
+                    .chrome(
+                        Chrome::NONE
+                            .with_corners(Corners::all(6.0))
+                            .with_fill(RgbaF32::srgb(0.2, 0.4, 0.8)),
+                    )
                     .show(ui)
                     .node(ui)
             })

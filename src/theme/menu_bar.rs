@@ -76,7 +76,7 @@ impl MenuBarTheme {
         Self {
             open: looks.hovered.clone(),
             title: looks,
-            bar: Chrome::fill(p.surround),
+            bar: Chrome::new(p.surround),
             bar_padding: Spacing::xy(m.space.sm, m.space.xs),
             gap: m.space.xs,
             defaults,

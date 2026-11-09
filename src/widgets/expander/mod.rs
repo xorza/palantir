@@ -168,11 +168,7 @@ impl<'a> Expander<'a> {
                     .id(header_id.with("arrow"))
                     .size(t.arrow_size);
                 arrow_box.record(ui, None, |ui| {
-                    ui.add_shape(
-                        Shape::triangle(a, b, c)
-                            .fill(text.color)
-                            .radius(t.arrow_radius),
-                    );
+                    ui.add_shape(Shape::triangle(a, b, c).radius(t.arrow_radius), text.color);
                 });
                 Text::new(label)
                     .id(header_id.with("label"))

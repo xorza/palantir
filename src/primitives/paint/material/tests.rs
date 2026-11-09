@@ -11,10 +11,12 @@ use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::record_store::RecordStore;
+use crate::shape::sealed::LowerShape as _;
 
 /// `material` lowered through effect 0, capturing, with its input staged in a store of its own.
 fn lowered(material: &Material) -> LoweredMaterial {
@@ -119,7 +121,7 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
     ] {
         for entry in ["rect", "chrome"] {
             let panic = std::panic::catch_unwind(|| match entry {
-                "rect" => drop(Shape::rect(Chrome::NONE.with_material(material))),
+                "rect" => (Shape::rect(), Paint::NONE.with_material(material)).validate(),
                 _ => Chrome::NONE.with_material(material).validate(),
             })
             .expect_err(entry);
@@ -306,13 +308,16 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
 /// no-op: it makes a pane.
 #[test]
 fn a_chrome_with_only_a_material_paints() {
-    let base = Chrome::fill(RgbaF32::WHITE);
+    let base = Chrome::new(RgbaF32::WHITE);
     let material = Material::frosted(8.0);
     let with = base.clone().with_material(material);
     assert_eq!(
         with,
         Chrome {
-            material: Some(material),
+            paint: Paint {
+                material: Some(material),
+                ..base.paint
+            },
             ..base
         }
     );
@@ -323,7 +328,7 @@ fn a_chrome_with_only_a_material_paints() {
 /// stores it. `#a4a4a4` is `Y = 0.371238`, so the brightest ground is
 /// `(0.371238 + 0.05) / 4.5 − 0.05 = 0.043608`, which encodes to byte 58.91, so byte 58 is the
 /// highest at or under it, and the composite may reach byte 57, `0.04091520`. Under a `#383838`
-/// tint at 0.72, `Y = 0.039546`, the ceiling is `(0.04091520 − 0.72 · 0.039546) / 0.28 =
+/// fill at 0.72, `Y = 0.039546`, the ceiling is `(0.04091520 − 0.72 · 0.039546) / 0.28 =
 /// 0.04443538`, and under `#1f1f1f`, `Y = 0.013702`, `(0.04091520 − 0.72 · 0.013702) / 0.28 =
 /// 0.11089178`. A ground at either ceiling stores byte 57. The setter sets the ceiling alone.
 #[test]
@@ -335,14 +340,14 @@ fn a_ceiling_for_an_ink_holds_it_at_the_text_contrast() {
         ink.contrast_ratio(level(59)) < 4.5,
         "byte 58 is the highest"
     );
-    for (tint, want) in [(0x383838, 0.04443538), (0x1f1f1f, 0.11089178)] {
-        let tint = RgbaF32::hex(tint).with_alpha(0.72);
-        let filter = Material::frosted(20.0).with_max_luminance_for(ink, tint);
+    for (fill, want) in [(0x383838, 0.04443538), (0x1f1f1f, 0.11089178)] {
+        let fill = RgbaF32::hex(fill).with_alpha(0.72);
+        let filter = Material::frosted(20.0).with_max_luminance_for(ink, fill);
         let ceiling = filter.max_luminance.expect("a ceiling");
         assert_eq!(filter, Material::frosted(20.0).with_max_luminance(ceiling));
         // The hand value's eighth digit, and the derivation's f32 rounding, a few ulps of 1e-8.
         assert!((ceiling - want).abs() < 1e-7, "{ceiling}");
-        let ground = 0.28 * ceiling + 0.72 * tint.luminance();
+        let ground = 0.28 * ceiling + 0.72 * fill.luminance();
         assert!((ground - level(57).r).abs() < 2e-8, "{ground}");
     }
 }
@@ -350,8 +355,8 @@ fn a_ceiling_for_an_ink_holds_it_at_the_text_contrast() {
 /// The floor holds the dark ink at WCAG's 4.5:1 over the darkest backdrop as an 8-bit target
 /// stores it. `#3d4248` is `Y = 0.053564`, so the darkest ground is
 /// `4.5 · (0.053564 + 0.05) − 0.05 = 0.416038`; byte 173 is the lowest at or over it, and the
-/// composite must reach byte 174, `0.42326767`. Under a `#e4e6e8` tint, `Y = 0.78913804`, at 0.3
-/// the floor is `(0.42326767 − 0.3 · 0.78913804) / 0.7 = 0.26646608`; at 0.72 the tint alone
+/// composite must reach byte 174, `0.42326767`. Under a `#e4e6e8` fill, `Y = 0.78913804`, at 0.3
+/// the floor is `(0.42326767 − 0.3 · 0.78913804) / 0.7 = 0.26646608`; at 0.72 the fill alone
 /// clears it, so the floor is 0. A ground at the floor stores byte 174.
 #[test]
 fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
@@ -362,12 +367,12 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
         ink.contrast_ratio(level(172)) < 4.5,
         "byte 173 is the lowest"
     );
-    let tint = RgbaF32::hex(0xe4e6e8).with_alpha(0.3);
-    let filter = Material::frosted(20.0).with_min_luminance_for(ink, tint);
+    let fill = RgbaF32::hex(0xe4e6e8).with_alpha(0.3);
+    let filter = Material::frosted(20.0).with_min_luminance_for(ink, fill);
     let floor = filter.min_luminance.expect("a floor");
     assert_eq!(filter, Material::frosted(20.0).with_min_luminance(floor));
     assert!((floor - 0.266_466_08).abs() < 1e-7, "{floor}");
-    let ground = 0.7 * floor + 0.3 * tint.luminance();
+    let ground = 0.7 * floor + 0.3 * fill.luminance();
     assert!((ground - level(174).r).abs() < 2e-8, "{ground}");
     let thick = RgbaF32::hex(0xe4e6e8).with_alpha(0.72);
     let clear = Material::frosted(20.0).with_min_luminance_for(ink, thick);
@@ -375,34 +380,34 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
 }
 
 /// Every refusal of a bound comes back as its case, none as a panic. A floor for `#808080`
-/// (`Y ≈ 0.2159`) needs a ground of `4.5 · 0.2659 − 0.05 ≈ 1.147`, past white, so no tint holds
-/// it; one for black over a black tint needs about 0.175, which the tint's 0 misses. A ceiling for
+/// (`Y ≈ 0.2159`) needs a ground of `4.5 · 0.2659 − 0.05 ≈ 1.147`, past white, so no fill holds
+/// it; one for black over a black fill needs about 0.175, which the fill's 0 misses. A ceiling for
 /// `#202020` (`Y ≈ 0.0144`) needs `0.0644 / 4.5 − 0.05 < 0`, where no level lies; one for white
-/// needs about 0.183, which a white tint's 1 exceeds.
+/// needs about 0.183, which a white fill's 1 exceeds.
 #[test]
 fn each_refused_bound_returns_its_case() {
     use crate::primitives::paint::material::InkBound;
     let filter = Material::frosted(20.0);
     let half = |hex: u32| RgbaF32::hex(hex).with_alpha(0.5);
     let floors = [
-        (0x808080, half(0xffffff), InkBound::InkFailsOnTint),
-        (0x000000, half(0x000000), InkBound::InkFailsOnTint),
+        (0x808080, half(0xffffff), InkBound::InkFailsOnFill),
+        (0x000000, half(0x000000), InkBound::InkFailsOnFill),
         (
             0x000000,
             RgbaF32::hex(0xffffff),
             InkBound::TintNotTranslucent { alpha: 1.0 },
         ),
     ];
-    for (ink, tint, want) in floors {
+    for (ink, fill, want) in floors {
         assert_eq!(
-            filter.min_luminance_for(RgbaF32::hex(ink), tint),
+            filter.min_luminance_for(RgbaF32::hex(ink), fill),
             Err(want),
             "floor for {ink:06x}"
         );
     }
     assert_eq!(
         filter.max_luminance_for(RgbaF32::hex(0xffffff), half(0xffffff)),
-        Err(InkBound::InkFailsOnTint),
+        Err(InkBound::InkFailsOnFill),
         "ceiling for white over white"
     );
     assert!(
@@ -432,9 +437,9 @@ fn srgb_decode(e: f64) -> f64 {
     }
 }
 
-/// A saturated tint, whose zero channels sit in the sRGB curve's linear toe, takes a ceiling and
+/// A saturated fill, whose zero channels sit in the sRGB curve's linear toe, takes a ceiling and
 /// a floor, and each holds the ink at 4.5:1: a backdrop of each primary, secondary and white,
-/// scaled to the bound, mixed under the tint and stored a whole encoded step off on every
+/// scaled to the bound, mixed under the fill and stored a whole encoded step off on every
 /// channel toward the ink, as the dither and the rounding may move it, still stores a ground the
 /// ink reads 4.5:1 on.
 #[test]
@@ -468,51 +473,51 @@ fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
             (scale <= 1.0).then(|| hue.map(|c| c * scale))
         })
     };
-    let stored = |backdrop: [f64; 3], tint: RgbaF32, step: f64| {
-        let alpha = f64::from(tint.a);
+    let stored = |backdrop: [f64; 3], fill: RgbaF32, step: f64| {
+        let alpha = f64::from(fill.a);
         let mixed: [f64; 3] =
-            std::array::from_fn(|i| (1.0 - alpha) * backdrop[i] + alpha * channels(tint)[i]);
+            std::array::from_fn(|i| (1.0 - alpha) * backdrop[i] + alpha * channels(fill)[i]);
         luminance(mixed.map(|c| srgb_decode(srgb_encode(c) + step)))
     };
 
     let light = RgbaF32::hex(0xebebeb);
     let light_y = f64::from(light.luminance());
-    for tint in [0x800000, 0x005000, 0x000080] {
-        let tint = RgbaF32::hex(tint).with_alpha(0.6);
+    for fill in [0x800000, 0x005000, 0x000080] {
+        let fill = RgbaF32::hex(fill).with_alpha(0.6);
         let ceiling = Material::frosted(20.0)
-            .with_max_luminance_for(light, tint)
+            .with_max_luminance_for(light, fill)
             .max_luminance
             .expect("a ceiling");
         let mut seen = 0;
         for backdrop in backdrops(f64::from(ceiling)) {
-            let ground = stored(backdrop, tint, 1.0 / 255.0);
+            let ground = stored(backdrop, fill, 1.0 / 255.0);
             assert!(
                 (light_y + 0.05) / (ground + 0.05) >= 4.5,
-                "{tint:?} {backdrop:?}"
+                "{fill:?} {backdrop:?}"
             );
             seen += 1;
         }
-        assert!(seen > 0, "{tint:?}: some hue reaches the ceiling");
+        assert!(seen > 0, "{fill:?}: some hue reaches the ceiling");
     }
 
     let dark = RgbaF32::hex(0x3d4248);
     let dark_y = f64::from(dark.luminance());
-    for tint in [0xffff00, 0x00ffff, 0x00ff00] {
-        let tint = RgbaF32::hex(tint).with_alpha(0.3);
+    for fill in [0xffff00, 0x00ffff, 0x00ff00] {
+        let fill = RgbaF32::hex(fill).with_alpha(0.3);
         let floor = Material::frosted(20.0)
-            .with_min_luminance_for(dark, tint)
+            .with_min_luminance_for(dark, fill)
             .min_luminance
             .expect("a floor");
         let mut seen = 0;
         for backdrop in backdrops(f64::from(floor)) {
-            let ground = stored(backdrop, tint, -1.0 / 255.0);
+            let ground = stored(backdrop, fill, -1.0 / 255.0);
             assert!(
                 (ground + 0.05) / (dark_y + 0.05) >= 4.5,
-                "{tint:?} {backdrop:?}"
+                "{fill:?} {backdrop:?}"
             );
             seen += 1;
         }
-        assert!(seen > 0, "{tint:?}: some hue reaches the floor");
+        assert!(seen > 0, "{fill:?}: some hue reaches the floor");
     }
 }
 
@@ -523,8 +528,8 @@ fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
 /// `(0.174647 + 0.05) / 4.5 − 0.05 = −0.000078`, and `#000000` at `0.05 / 4.5 − 0.05 = −0.0389`.
 #[test]
 fn a_ceiling_refuses_an_ink_too_dark_for_an_exact_bound() {
-    let tint = RgbaF32::hex(0x000000).with_alpha(0.5);
-    let ceiling = |ink| Material::frosted(20.0).with_max_luminance_for(RgbaF32::hex(ink), tint);
+    let fill = RgbaF32::hex(0x000000).with_alpha(0.5);
+    let ceiling = |ink| Material::frosted(20.0).with_max_luminance_for(RgbaF32::hex(ink), fill);
     assert!(ceiling(0x868686).max_luminance.is_some());
     assert!(RgbaF32::hex(0x747474).luminance() < 0.175);
     assert!(RgbaF32::hex(0x757575).luminance() > 0.175);

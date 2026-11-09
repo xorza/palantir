@@ -7,12 +7,15 @@ use std::time::Duration;
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Block, Border, Chrome, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient,
-    Rect, RgbaF32, Shadow, Sizing, SrgbaU8, Text, Ui,
+    Block, Chrome, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
+    RgbaF32, Shadow, Sizing, SrgbaU8, Text, Ui,
 };
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
+use palantir::Paint;
+use palantir::Stroke;
+use palantir::widget::ImagePaint;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
 
@@ -56,13 +59,13 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
-        .chrome(Chrome::fill(veil))
+        .chrome(Chrome::new(veil))
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("swatch")
                 .size(30.0)
-                .chrome(Chrome::fill(k.fill))
+                .chrome(Chrome::new(k.fill))
                 .show(ui);
             Text::new(k.label).id_salt("label").show(ui);
             Panel::canvas()
@@ -73,28 +76,26 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                         .id_salt("mover")
                         .at((k.nudge, 5.0))
                         .size(20.0)
-                        .chrome(Chrome::fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
+                        .chrome(Chrome::new(RgbaF32::srgb(0.9, 0.2, 0.2)))
                         .show(ui);
                 });
             Panel::zstack()
                 .id_salt("spinner")
                 .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
                 .show(ui, |ui| {
-                    let line = Shape::line(
-                        Vec2::new(10.0, 15.0),
-                        Vec2::new(70.0, 15.0),
-                        Border::new(RgbaF32::WHITE, 2.0),
-                    );
+                    let line = Shape::line(Vec2::new(10.0, 15.0), Vec2::new(70.0, 15.0));
+                    let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
                     if k.spin {
                         ui.add_shape_animated(
                             line,
+                            stroke,
                             PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs(4))
                                 .with_repeat(PaintRepeat::Forever),
                         );
                     } else {
-                        ui.add_shape(line);
+                        ui.add_shape(line, stroke);
                     }
                 });
             Panel::zstack()
@@ -106,19 +107,19 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     } else {
                         ImageFit::Fill
                     };
-                    ui.add_shape(Shape::image(picture.clone()).fit(fit));
+                    ui.add_shape(Shape::rect(), ImagePaint::new(picture.clone()).fit(fit));
                 });
             if k.extra {
                 Block::new()
                     .id_salt("extra")
                     .size(20.0)
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.3, 0.8, 0.3)))
+                    .chrome(Chrome::new(RgbaF32::srgb(0.3, 0.8, 0.3)))
                     .show(ui);
             }
             let mut maybe = Block::new()
                 .id_salt("maybe-hidden")
                 .size(20.0)
-                .chrome(Chrome::fill(RgbaF32::srgb(0.8, 0.8, 0.3)));
+                .chrome(Chrome::new(RgbaF32::srgb(0.8, 0.8, 0.3)));
             if k.hidden {
                 maybe = maybe.hidden();
             }
@@ -141,7 +142,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 Block::new()
                     .id_salt(name)
                     .size(60.0)
-                    .chrome(Chrome::fill(color))
+                    .chrome(Chrome::new(color))
                     .show(ui);
             });
     }
@@ -164,9 +165,10 @@ fn shadows(ui: &mut Ui, k: Knobs) {
             .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::shadow(shadow(blur))
+                    Shape::rect()
                         .at(Rect::new(0.0, 0.0, at.size.w, at.size.h))
                         .corners(radius),
+                    Paint::NONE.with_shadow(shadow(blur)),
                 );
             });
     };

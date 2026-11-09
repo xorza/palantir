@@ -99,7 +99,7 @@ fn prev_frame_updates_on_authoring_change() {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .chrome(Chrome::fill(fill))
+                .chrome(Chrome::new(fill))
                 .show(ui);
         }
     };

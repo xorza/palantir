@@ -12,6 +12,7 @@ use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
+use crate::shape::sealed::Resolve;
 use std::hash::Hash as _;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
@@ -32,23 +33,24 @@ pub(crate) struct Shapes {
 }
 
 impl Shapes {
-    /// Lower a user-facing [`Shape`](crate::widget::Shape) and append it to
+    /// Lower a shape and its paint, their names resolved in `resolve`, and append the record to
     /// `records`; variable-length payloads land on the [`RecordStore`].
     ///
-    /// Drops any shape whose authoring inputs would emit no pixels **before
-    /// lowering** (tier 2; see
-    /// [`paint_sink`](crate::renderer::frontend::paint_sink)), saving the lowering
-    /// cost the emit-time gate can't.
-    /// Returns the index of the pushed `ShapeRecord`, or `None` if dropped; the
-    /// index keys `Forest::add_shape_animated`'s paint-anim row.
+    /// Drops a pair whose authoring inputs would emit no pixels **as it lowers** (tier 2; see
+    /// [`paint_sink`](crate::renderer::frontend::paint_sink)), saving the cost the emit-time gate
+    /// can't. Returns the index of the pushed `ShapeRecord`, or `None` if dropped; the index keys
+    /// `Forest::add_shape`'s paint-anim row.
     ///
-    /// No NaN reaches here: every shape setter checks its input against its
-    /// kind and panics on a non-finite one.
-    pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &mut RecordStore) -> Option<u32> {
-        if shape.is_noop() {
-            return None;
-        }
-        let record = shape.lower(store);
+    /// No NaN reaches here: every shape setter and `Ui::add_shape` check their inputs and panic
+    /// on a non-finite one.
+    #[track_caller]
+    pub(crate) fn add<S: Lower>(
+        &mut self,
+        shape: S,
+        resolve: Resolve<'_>,
+        store: &mut RecordStore,
+    ) -> Option<u32> {
+        let record = shape.lower(resolve, store)?;
         debug_assert!(
             !record.has_nan(),
             "a checked shape lowered to a NaN record: {record:?}",

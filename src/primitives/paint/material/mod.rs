@@ -15,10 +15,10 @@
 //! - **It is named `Material`**, the platform term: Apple's materials, Fluent's Acrylic and Mica
 //!   materials. Refused: `BackdropFilter`, as it names an effect and no filter; `Pane`, a dock's
 //!   region; `Backdrop`, the pixels under a shape.
-//! - **A material is a property of a box.** [`Chrome::material`](crate::Chrome::material) makes
+//! - **A material is a property of a box.** [`Paint::material`](crate::Paint::material) makes
 //!   the box show the pixels painted before it in paint order, through the effect, under its own
-//!   fill and border; the fill tints them, as CSS pairs `backdrop-filter` with
-//!   `background-color`. Every earlier layer and material is behind it, so glass over glass is
+//!   fill, its border over both, as CSS pairs `backdrop-filter` with `background-color` over the
+//!   border box. Every earlier layer and material is behind it, so glass over glass is
 //!   exact. Refused: a material as a `Brush` (WinUI's `AcrylicBrush`, SwiftUI's `Material`),
 //!   which every text and stroke taking a brush would have to refuse; "glass cannot sample
 //!   glass", as SwiftUI rules.
@@ -41,7 +41,7 @@
 //!   by a neutral, so a black backdrop reaches it too. The bounds, the fill, the dither and the
 //!   border are palantir's stage around the effect, so an app's effect keeps them too. Refused:
 //!   the luminosity blend and CSS `brightness()`, which compress or scale the dark range too; a
-//!   tint alone, opaque enough to hold the bound over white; the bounds in each effect.
+//!   fill alone, opaque enough to hold the bound over white; the bounds in each effect.
 //! - **Linear light.** The capture, the blur and the composite run in linear light, as the rest
 //!   of the pipeline blends, so a blur keeps the energy of bright detail. Refused: blurring
 //!   sRGB-encoded values to imitate a browser's look.
@@ -52,7 +52,7 @@
 //!   [`ReducedBackdrop`] says: by default its effect reads the window's ground, the clear color,
 //!   so the box is the material over a bare window, opaque, exact for any effect, with no color
 //!   for an author to pick in each scheme. Refused: the fill made opaque, which painted a light
-//!   tint white and no tint black; a fallback color per use, as WinUI's
+//!   fill white and an absent fill black; a fallback color per use, as WinUI's
 //!   `AcrylicBrush.FallbackColor` (<https://learn.microsoft.com/windows/apps/design/style/acrylic>),
 //!   which each app picks per scheme; a switch in the theme, as the choice is the person's or the
 //!   system's, as CSS's `prefers-reduced-transparency` is.
@@ -80,7 +80,7 @@ use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 
 /// A backdrop effect a box wears under its fill: the pixels painted before it in paint order,
 /// blurred by the capture's σ, shown through the effect, held within its luminance bounds, under
-/// the box's fill, its tint, as CSS pairs `backdrop-filter` with `background-color`.
+/// the box's fill, as CSS pairs `backdrop-filter` with `background-color`.
 ///
 /// A material reads past its edge: what is painted around it glows in as the blur reaches, and
 /// materials painted before it show through it, so glass over glass is exact. It costs a capture
@@ -219,29 +219,29 @@ impl Material {
     }
 
     /// This material with the [`max_luminance`](Self::max_luminance) that holds `ink`, the
-    /// dimmest ink painted on the box, at WCAG's 4.5:1 over any backdrop under `tint`, the box's
+    /// dimmest ink painted on the box, at WCAG's 4.5:1 over any backdrop under `fill`, the box's
     /// fill with its alpha, as an 8-bit target stores the composite. palantir derives it, as the
     /// bound depends on the dither its composite adds.
     ///
     /// The brightest ground `ink` holds 4.5:1 on is `g = (Y(ink) + 0.05) / 4.5 − 0.05`; a step of
     /// the 8-bit target lowers it to `g'`, what the composite may reach before the target stores
-    /// it higher. The ground over a backdrop at the ceiling `c` is `(1 − α)·c + α·Y(tint)`, both
-    /// in the linear light the composite runs in; so `c = (g' − α·Y(tint)) / (1 − α)`.
+    /// it higher. The ground over a backdrop at the ceiling `c` is `(1 − α)·c + α·Y(fill)`, both
+    /// in the linear light the composite runs in; so `c = (g' − α·Y(fill)) / (1 − α)`.
     ///
     /// # Panics
     ///
-    /// Unless `tint`'s alpha is a fraction under 1, `ink` holds its contrast on `tint` made
+    /// Unless `fill`'s alpha is a fraction under 1, `ink` holds its contrast on `fill` made
     /// opaque, and `ink` is light enough that the ground it holds 4.5:1 on stores where the bound
     /// is exact: a luminance of about 0.237 or more, a grey of `#868686` or lighter.
     #[track_caller]
-    pub fn with_max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self {
-        self.max_luminance_for(ink, tint)
+    pub fn with_max_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Self {
+        self.max_luminance_for(ink, fill)
             .unwrap_or_else(|refusal| refusal.refuse())
     }
 
     /// [`Self::with_max_luminance_for`], or why it cannot hold `ink`.
-    pub(crate) fn max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Result<Self, InkBound> {
-        let alpha = tint.a;
+    pub(crate) fn max_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
+        let alpha = fill.a;
         if !(0.0..1.0).contains(&alpha) {
             return Err(InkBound::TintNotTranslucent { alpha });
         }
@@ -249,11 +249,11 @@ impl Material {
         let Some(ground) = before_storing(wanted).filter(|&ground| ground >= ceiling_bend()) else {
             return Err(InkBound::InkTooDark { ground: wanted });
         };
-        let tint_luminance = tint.luminance();
-        if tint_luminance > ground {
-            return Err(InkBound::InkFailsOnTint);
+        let fill_luminance = fill.luminance();
+        if fill_luminance > ground {
+            return Err(InkBound::InkFailsOnFill);
         }
-        Ok(self.with_max_luminance((ground - alpha * tint_luminance) / (1.0 - alpha)))
+        Ok(self.with_max_luminance((ground - alpha * fill_luminance) / (1.0 - alpha)))
     }
 
     /// This material with what it shows held to at least `luminance`, a relative luminance.
@@ -263,51 +263,51 @@ impl Material {
     }
 
     /// This material with the [`min_luminance`](Self::min_luminance) that holds `ink`, the
-    /// brightest ink painted on the box, at WCAG's 4.5:1 over any backdrop under `tint`, as an
+    /// brightest ink painted on the box, at WCAG's 4.5:1 over any backdrop under `fill`, as an
     /// 8-bit target stores the composite: the floor dark ink on light glass needs, as
     /// [`Self::with_max_luminance_for`] is the ceiling light ink on dark glass needs.
     ///
     /// The darkest ground `ink` holds 4.5:1 on is `g = 4.5 · (Y(ink) + 0.05) − 0.05`; a step of
     /// the 8-bit target raises it to `g'`, what the composite must reach for the target to store
-    /// it no lower. The ground over a backdrop at the floor `f` is `(1 − α)·f + α·Y(tint)`, so
-    /// `f = (g' − α·Y(tint)) / (1 − α)`, and 0 where the tint alone clears it.
+    /// it no lower. The ground over a backdrop at the floor `f` is `(1 − α)·f + α·Y(fill)`, so
+    /// `f = (g' − α·Y(fill)) / (1 − α)`, and 0 where the fill alone clears it.
     ///
-    /// Any ink and any tint, saturated or not, take a floor: the darkest ground an ink holds 4.5:1
+    /// Any ink and any fill, saturated or not, take a floor: the darkest ground an ink holds 4.5:1
     /// on is at least `4.5 · 0.05 − 0.05 = 0.175`, past where the bound stops being exact.
     ///
     /// # Panics
     ///
-    /// Unless `tint`'s alpha is a fraction under 1, and `ink` holds its contrast on `tint` made
+    /// Unless `fill`'s alpha is a fraction under 1, and `ink` holds its contrast on `fill` made
     /// opaque.
     #[track_caller]
-    pub fn with_min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self {
-        self.min_luminance_for(ink, tint)
+    pub fn with_min_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Self {
+        self.min_luminance_for(ink, fill)
             .unwrap_or_else(|refusal| refusal.refuse())
     }
 
     /// [`Self::with_min_luminance_for`], or why it cannot hold `ink`.
-    pub(crate) fn min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Result<Self, InkBound> {
-        let alpha = tint.a;
+    pub(crate) fn min_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
+        let alpha = fill.a;
         if !(0.0..1.0).contains(&alpha) {
             return Err(InkBound::TintNotTranslucent { alpha });
         }
         let Some(ground) = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05) else {
-            return Err(InkBound::InkFailsOnTint);
+            return Err(InkBound::InkFailsOnFill);
         };
-        let tint_luminance = tint.luminance();
-        if tint_luminance < ground {
-            return Err(InkBound::InkFailsOnTint);
+        let fill_luminance = fill.luminance();
+        if fill_luminance < ground {
+            return Err(InkBound::InkFailsOnFill);
         }
-        Ok(self.with_min_luminance(((ground - alpha * tint_luminance) / (1.0 - alpha)).max(0.0)))
+        Ok(self.with_min_luminance(((ground - alpha * fill_luminance) / (1.0 - alpha)).max(0.0)))
     }
 
-    /// The bound that holds `ink` at 4.5:1 over any backdrop under `tint`: a ceiling for ink
-    /// lighter than the tint, a floor for ink darker, or why neither can.
-    pub(crate) fn holding(self, ink: RgbaF32, tint: RgbaF32) -> Result<Self, InkBound> {
-        if ink.luminance() > tint.luminance() {
-            self.max_luminance_for(ink, tint)
+    /// The bound that holds `ink` at 4.5:1 over any backdrop under `fill`: a ceiling for ink
+    /// lighter than the fill, a floor for ink darker, or why neither can.
+    pub(crate) fn holding(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
+        if ink.luminance() > fill.luminance() {
+            self.max_luminance_for(ink, fill)
         } else {
-            self.min_luminance_for(ink, tint)
+            self.min_luminance_for(ink, fill)
         }
     }
 
@@ -372,12 +372,12 @@ impl Material {
 /// Why a luminance bound cannot hold an ink at 4.5:1 over any backdrop.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InkBound {
-    /// The tint is opaque or not a fraction: nothing shows through it to bound.
+    /// The fill is opaque or not a fraction: nothing shows through it to bound.
     TintNotTranslucent { alpha: f32 },
     /// The ground the ink needs lies where a colored pixel can store brighter than a neutral one.
     InkTooDark { ground: f32 },
-    /// The ink misses its contrast on the tint made opaque, so no bound reaches it.
-    InkFailsOnTint,
+    /// The ink misses its contrast on the fill made opaque, so no bound reaches it.
+    InkFailsOnFill,
 }
 
 impl InkBound {
@@ -386,13 +386,13 @@ impl InkBound {
     pub(crate) fn refuse(self) -> ! {
         match self {
             Self::TintNotTranslucent { alpha } => {
-                panic!("a tint's alpha is a fraction under 1: {alpha}")
+                panic!("a fill's alpha is a fraction under 1: {alpha}")
             }
             Self::InkTooDark { ground } => panic!(
                 "the ink is too dark for a ceiling: its ground {ground} lies where a colored pixel \
                  can store brighter than a neutral one"
             ),
-            Self::InkFailsOnTint => panic!("the ink holds its contrast on the opaque tint"),
+            Self::InkFailsOnFill => panic!("the ink holds its contrast on the opaque fill"),
         }
     }
 }
@@ -538,7 +538,7 @@ impl NanCheck for Material {
 
 /// Past this luminance, `decode(encode(c) + step)` equals its concave envelope over `0..=1`, so a
 /// ground there bounds what any mix of channels with its luminance stores, by Jensen on the
-/// envelope, however close to 0 a channel of a saturated tint lies.
+/// envelope, however close to 0 a channel of a saturated fill lies.
 ///
 /// Near 0 the curve leaves the sRGB power segment, and its envelope there is the line from its
 /// value at 0, `f₀ = step / 12.92`, tangent to the power segment, `(c^(1/2.4) + k)^2.4` with
@@ -579,7 +579,7 @@ fn before_storing(g: f32) -> Option<f32> {
 /// pixel stores no darker than a neutral one of its luminance when that luminance is past the
 /// floor's bend, which [`ceiling_bend`] derives. `None` where no level lies a step above `B`: a
 /// `g` past the last step under white, the ground of every ink lighter than `Y ≈ 0.18`, which no
-/// tint holds.
+/// fill holds.
 fn after_storing(g: f32) -> Option<f32> {
     let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte)).r;
     let mut bottom = RgbaF32::new(g, g, g, 1.0).to_srgba8().r;

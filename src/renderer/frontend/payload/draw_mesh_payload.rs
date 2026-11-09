@@ -1,20 +1,25 @@
 //! One indexed-triangle mesh draw.
 
 use crate::common::span::Span;
+use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::spin::Spin;
 use glam::Vec2;
 
-/// Mesh draw payload: owner-local spans into the window's [`RecordStore`] (`meshes`); the composer folds `origin` into the per-instance translate so the vertex stream stays content-stable.
+/// Mesh draw payload: spans into the window's [`RecordStore`] (`meshes`) of vertices as recorded;
+/// the composer folds `fit` and `origin` into the per-instance transform, so the vertex stream
+/// stays content-stable.
 ///
 /// [`RecordStore`]: crate::shape::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawMeshPayload {
-    /// Owner-local AABB of `vertices`.
+    /// Owner-local AABB of `vertices`, fitted.
     pub(crate) bbox: Rect,
     pub(crate) origin: Vec2,
+    /// Maps a vertex into the owner-local frame.
+    pub(crate) fit: FitMap,
     pub(crate) tint: RgbaF16,
     pub(crate) vertices: Span,
     pub(crate) idxs: Span,

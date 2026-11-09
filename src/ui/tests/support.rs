@@ -26,7 +26,7 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(salt))
         .size(50.0)
-        .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+        .chrome(Chrome::new(RgbaF32::srgb(0.2, 0.4, 0.8)))
         .show(ui)
         .node(ui)
 }
@@ -38,7 +38,8 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
     use crate::shape::paint_animation::curves;
 
     ui.add_shape_animated(
-        Shape::rect(RgbaF32::srgb(1.0, 0.0, 0.0)).at(Rect::new(0.0, 0.0, 4.0, 12.0)),
+        Shape::rect().at(Rect::new(0.0, 0.0, 4.0, 12.0)),
+        RgbaF32::srgb(1.0, 0.0, 0.0),
         PaintAnimation::alpha(0.0, 1.0)
             .with_started_at(Duration::ZERO)
             .with_period(half * 2)

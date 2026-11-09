@@ -97,7 +97,7 @@ impl<'a> Separator<'a> {
         if long.is_hug() {
             widget = widget.default_align(stretch);
         }
-        let chrome = Chrome::fill(self.color.unwrap_or(theme.color));
+        let chrome = Chrome::new(self.color.unwrap_or(theme.color));
         // Theme margin fills in only where the caller stayed silent.
         let widget = widget.default_margin(theme.margin);
         widget.show(ui, Some(&chrome), |_| {}).response

@@ -6,10 +6,10 @@ use fixedbitset::FixedBitSet;
 
 use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts, EffectPipelines};
+use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts};
+use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::effect_id::EffectId;
-use crate::renderer::render_buffer::effect_draw_row::EffectProgram;
 
 /// The [`EffectStore`] a host's registry loads through and its backend draws from. It keeps each
 /// effect's module, and builds the pipelines of the effects some use wants at one place, the
@@ -57,13 +57,13 @@ pub(crate) struct AttachedEffects {
     formats: Vec<FormatEffects>,
 }
 
-/// Every pipeline one format draws effects with: each loaded effect's, [`EffectPipelines::NONE`]
+/// Every pipeline one format draws effects with: each loaded effect's, [`StencilVariant::NONE`]
 /// where none is built.
 #[derive(Debug)]
 pub(crate) struct FormatEffects {
     format: wgpu::TextureFormat,
     /// At each effect's id.
-    pub(crate) effects: Vec<EffectPipelines>,
+    pub(crate) effects: Vec<StencilVariant>,
 }
 
 impl WgpuEffectStore {
@@ -97,7 +97,7 @@ impl WgpuEffectStore {
         }
         let mut built = FormatEffects {
             format,
-            effects: vec![EffectPipelines::NONE; modules.len()],
+            effects: vec![StencilVariant::NONE; modules.len()],
         };
         for idx in wanted.ones() {
             built.effects[idx] = attached.build(&modules[idx], format, idx);
@@ -106,14 +106,12 @@ impl WgpuEffectStore {
         *revision += 1;
     }
 
-    /// The start of a frame's GPU phase: want each effect `programs`, the frame's draws, name,
+    /// The start of a frame's GPU phase: want each effect `effects`, the frame's draws, name,
     /// and build every wanted one not built yet for each format, before any pass.
-    pub(crate) fn prepare(&self, programs: &[EffectProgram]) {
+    pub(crate) fn prepare(&self, effects: &[EffectId]) {
         let mut state = self.state.borrow_mut();
-        for &program in programs {
-            match program {
-                EffectProgram::App(id) | EffectProgram::Material(id) => state.want(id),
-            }
+        for &id in effects {
+            state.want(id);
         }
         let StoreState {
             modules,
@@ -195,7 +193,7 @@ impl AttachedEffects {
         module: &EffectModule,
         format: wgpu::TextureFormat,
         idx: usize,
-    ) -> EffectPipelines {
+    ) -> StencilVariant {
         effect_pipeline::build(&self.gpu, &self.layouts, module, format, idx)
     }
 }
@@ -221,7 +219,7 @@ impl EffectStore for WgpuEffectStore {
             wanted.grow(modules.len());
             if let Some(attached) = attached {
                 for built in &mut attached.formats {
-                    built.effects.push(EffectPipelines::NONE);
+                    built.effects.push(StencilVariant::NONE);
                 }
             }
         } else {
@@ -244,21 +242,12 @@ pub(crate) mod internals {
     use crate::gpu::resource::wgpu_effect_store::{ATTACHED, FormatEffects, WgpuEffectStore};
 
     impl WgpuEffectStore {
-        /// Whether each loaded effect's shape stages, at its id, are built, the same for every
-        /// format drawn to.
+        /// Whether each loaded effect's stage, at its id, is built, the same for every format
+        /// drawn to.
         pub(crate) fn built_effects(&self) -> Vec<bool> {
             let state = self.state.borrow();
             (0..state.modules.len())
-                .map(|idx| self.built_alike(|format| &format.effects[idx].shape))
-                .collect()
-        }
-
-        /// Whether each loaded effect's material stages, at its id, are built, the same for every
-        /// format drawn to: never for a module that holds none.
-        pub(crate) fn built_materials(&self) -> Vec<bool> {
-            let state = self.state.borrow();
-            (0..state.modules.len())
-                .map(|idx| self.built_alike(|format| &format.effects[idx].material))
+                .map(|idx| self.built_alike(|format| &format.effects[idx]))
                 .collect()
         }
 
@@ -296,10 +285,11 @@ mod tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::offscreen::{OffscreenHost, OffscreenTime};
     use crate::primitives::effect::effect_name::EffectName;
-    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
+    use crate::primitives::paint::paint::Paint;
     use crate::shape::Shape;
+    use crate::shape::effect_paint::EffectPaint;
     use crate::text::shaper::TextShaper;
     use crate::theme::Theme;
     use crate::theme::color_scheme::ColorScheme;
@@ -337,8 +327,8 @@ mod tests {
     /// that draws none of them, `Now` red (6) builds at that frame, and so does the frost (3), which
     /// the stock themes' floats wear; blue builds at the frame that draws it, red staying built. A
     /// reload of blue as green builds again, so the next frame paints green. A material builds at
-    /// the frame that draws it, its shape and material stages both, the blur for a blurred box; a
-    /// color effect holds no material stages.
+    /// the frame that draws it, through the one stage its effect draws every use with: the blur
+    /// for a blurred box.
     #[test]
     fn an_effect_builds_where_a_use_wants_it() {
         let (mut host, target) = host();
@@ -352,20 +342,15 @@ mod tests {
             )
             .unwrap();
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
-            ui.add_shape(Shape::rect(RgbaF32::WHITE));
+            ui.add_shape(Shape::rect(), RgbaF32::WHITE);
         });
         let store = |host: &OffscreenHost| host.effect_store().built_effects();
-        let materials = |host: &OffscreenHost| host.effect_store().built_materials();
         assert_eq!(
             store(&host),
             [false, false, false, true, false, false, true]
         );
-        assert_eq!(
-            materials(&host),
-            [false, false, false, true, false, false, false]
-        );
 
-        let mut blue = |ui: &mut Ui| ui.add_shape(Shape::effect(BLUE, ()));
+        let mut blue = |ui: &mut Ui| ui.add_shape(Shape::rect(), EffectPaint::new(BLUE, ()));
         host.frame(target.as_target(), &mut blue);
         assert_eq!(store(&host), [false, false, false, true, false, true, true]);
         assert_eq!(target.read_back().get_pixel(4, 4).0, [0, 0, 255, 255]);
@@ -377,13 +362,12 @@ mod tests {
         assert_eq!(target.read_back().get_pixel(4, 4).0, [0, 255, 0, 255]);
 
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
-            ui.add_shape(Shape::rect(RgbaF32::WHITE));
-            ui.add_shape(Shape::rect(Chrome::NONE.with_material(Material::blur(3.0))));
+            ui.add_shape(Shape::rect(), RgbaF32::WHITE);
+            ui.add_shape(
+                Shape::rect(),
+                Paint::NONE.with_material(Material::blur(3.0)),
+            );
         });
-        assert_eq!(
-            materials(&host),
-            [false, false, true, true, false, false, false]
-        );
         assert_eq!(store(&host), [false, false, true, true, false, true, true]);
     }
 
@@ -406,7 +390,7 @@ mod tests {
             theme
         };
         let mut nothing = |_: &mut Ui| {};
-        let mut fill = |ui: &mut Ui| ui.add_shape(Shape::rect(RgbaF32::WHITE));
+        let mut fill = |ui: &mut Ui| ui.add_shape(Shape::rect(), RgbaF32::WHITE);
 
         let (mut host, target) = host();
         host.ui_mut()
@@ -446,8 +430,8 @@ mod tests {
             .load_effect(BLUE, EffectSource::new(wgsl))
             .unwrap();
         let mut app = |ui: &mut Ui| {
-            ui.add_shape(Shape::rect(RgbaF32::new(0.2, 0.4, 0.6, 1.0)));
-            ui.add_shape(Shape::effect(BLUE, ()));
+            ui.add_shape(Shape::rect(), RgbaF32::new(0.2, 0.4, 0.6, 1.0));
+            ui.add_shape(Shape::rect(), EffectPaint::new(BLUE, ()));
         };
         for format in [
             wgpu::TextureFormat::Rgba8UnormSrgb,

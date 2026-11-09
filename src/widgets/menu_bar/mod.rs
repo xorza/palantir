@@ -308,7 +308,7 @@ impl MenuBarMenus<'_> {
         );
         let look = widget.wear(ui, plan);
         widget.record(ui, Some(&look.chrome), |ui| {
-            ui.add_shape(Shape::text(label, look.text.font()).color(look.text.color));
+            ui.add_shape(Shape::text(label, look.text.font()), look.text.color);
         });
 
         let mut step = 0;

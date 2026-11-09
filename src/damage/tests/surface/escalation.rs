@@ -99,12 +99,12 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                 Block::new()
                     .id(WidgetId::from_hash("big"))
                     .size((60.0, 60.0))
-                    .chrome(Chrome::fill(BLUE))
+                    .chrome(Chrome::new(BLUE))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("small"))
                     .size((50.0, 60.0))
-                    .chrome(Chrome::fill(BLUE))
+                    .chrome(Chrome::new(BLUE))
                     .show(ui);
             });
     };
