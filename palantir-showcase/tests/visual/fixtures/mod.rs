@@ -1,6 +1,5 @@
 //! Visual fixtures: UI scenes rendered headlessly and compared against golden PNGs.
 
-mod backdrop;
 mod blit;
 mod color;
 mod corners;
@@ -15,6 +14,7 @@ mod hidpi;
 mod icon;
 mod image;
 mod layout;
+mod material;
 mod occlusion;
 mod scroll;
 mod shadow;

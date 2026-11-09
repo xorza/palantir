@@ -58,9 +58,6 @@ impl GoldenName {
 }
 
 golden_names! {
-    BackdropGlass => "backdrop_glass",
-    Backdrops => "backdrops",
-    BackdropTurned => "backdrop_turned",
     AddShapeRoundedRectLinearGradient => "add_shape_rounded_rect_linear_gradient",
     ArcShapes => "arc_shapes",
     ButtonHello => "button_hello",
@@ -79,7 +76,11 @@ golden_names! {
     InterleavedShapesPaintOrder => "interleaved_shapes_paint_order",
     LightThemeWidgets => "light_theme_widgets",
     LineDiagonalAa => "line_diagonal_aa",
+    MaterialGlass => "material_glass",
+    MaterialTurned => "material_turned",
+    Materials => "materials",
     ModalDialog => "modal_dialog",
+    OutsideCoverageMasksCorners => "outside_coverage_masks_corners",
     PolylineBevelJoin => "polyline_bevel_join",
     PolylineGradient => "polyline_gradient",
     PolylineRoundCaps => "polyline_round_caps",
@@ -108,7 +109,6 @@ golden_names! {
     TurnedTextAndIcon => "turned_text_and_icon",
     TurnedTriangleAndMesh => "turned_triangle_and_mesh",
     VstackFillWeights => "vstack_fill_weights",
-    WindowedRectMasksCorners => "windowed_rect_masks_corners",
     ZstackCenteredButton => "zstack_centered_button",
 }
 

@@ -34,14 +34,14 @@ fn backdrop_scene(ui: &mut Ui, size: UVec2) {
         .show(ui);
 }
 
-/// Pin: backdrops over stripes and text, left to right: a plain blur, a frosted backdrop
-/// (saturated, grained and tinted), a rounded backdrop with a border, a windowed backdrop, which
-/// blurs around its hole, a backdrop over a backdrop, and a backdrop cut by the surface's edge,
-/// whose blur mirrors there.
+/// Pin: materials over stripes and text, left to right: a plain blur, a frosted material under a
+/// translucent fill (saturated and grained), a rounded material with a border, a material covering
+/// its outside, which blurs around its hole, a material over a material, and a material cut by the
+/// surface's edge, whose blur mirrors there.
 #[test]
-fn backdrops_match_golden() {
+fn materials_match_golden() {
     let size = UVec2::new(640, 120);
-    GoldenName::Backdrops.assert_scene(size, |ui| {
+    GoldenName::Materials.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-canvas"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -88,12 +88,12 @@ fn backdrops_match_golden() {
     });
 }
 
-/// Pin: a rounded, bordered backdrop turned 30° about its center, which still blurs by screen
+/// Pin: a rounded, bordered material turned 30° about its center, which still blurs by screen
 /// position, so the stripes under it stay upright.
 #[test]
-fn a_turned_backdrop_matches_golden() {
+fn a_turned_material_matches_golden() {
     let size = UVec2::new(200, 160);
-    GoldenName::BackdropTurned.assert_scene(size, |ui| {
+    GoldenName::MaterialTurned.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-turned"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -119,7 +119,7 @@ fn a_turned_backdrop_matches_golden() {
 #[test]
 fn glass_matches_golden() {
     let size = UVec2::new(320, 120);
-    GoldenName::BackdropGlass.assert_scene(size, |ui| {
+    GoldenName::MaterialGlass.assert_scene(size, |ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("backdrop-glass"))
             .size((Sizing::FILL, Sizing::FILL))

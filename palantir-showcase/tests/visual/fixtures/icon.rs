@@ -38,12 +38,12 @@ pub(crate) fn atlas() -> Rc<IconTable> {
     Rc::new(IconTable::from_svgs([("halves", HALVES_SVG), ("solid", SOLID_SVG)]).unwrap())
 }
 
-/// Assert every interior pixel of a 20x20 solid pane at `at` is `tint`: the whole
-/// interior, because glyph coverage drawn *over* a pane moves with the face,
+/// Assert every interior pixel of a 20x20 solid cell at `at` is `tint`: the whole
+/// interior, because glyph coverage drawn *over* a cell moves with the face,
 /// stopping a pixel short of each edge to leave the rasterizer's boundary row out.
 /// `RgbaF32::srgb` is encoded back on write, so the expected bytes are the authored
 /// ones.
-fn assert_pane_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
+fn assert_cell_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     let (ox, oy) = (at.x as u32, at.y as u32);
     let expected = tint.map(|c| (c * 255.0f32).round() as u8);
     for dy in 1..19 {
@@ -59,10 +59,10 @@ fn assert_pane_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     }
 }
 
-/// [`assert_pane_interior`] plus one pixel outside each side, proving the raster is
-/// the box's size; only for panes with nothing near them.
-fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
-    assert_pane_interior(img, at, tint);
+/// [`assert_cell_interior`] plus one pixel outside each side, proving the raster is
+/// the box's size; only for cells with nothing near them.
+fn assert_solid_cell(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
+    assert_cell_interior(img, at, tint);
     let (ox, oy) = (at.x as u32, at.y as u32);
     for (dx, dy) in [(-2, 10), (10, -2), (22, 10), (10, 22)] {
         let (x, y) = (ox.wrapping_add_signed(dx), oy.wrapping_add_signed(dy));
@@ -91,15 +91,15 @@ fn render(size: UVec2, scale: SystemScale, mut scene: impl FnMut(&mut Ui, &IconS
         .image
 }
 
-/// Icon `name` of `icons`, filling its pane.
+/// Icon `name` of `icons`, filling its cell.
 fn icon(icons: &IconSet, name: &str) -> IconPaint {
     IconPaint::new(icons.by_name(name).expect("fixture icon")).fit(Fit::Fill)
 }
 
-/// `icon` in a pane over `at`.
-fn pane(ui: &mut Ui, at: Rect, icon: IconPaint) {
+/// `icon` in a cell over `at`.
+fn cell(ui: &mut Ui, at: Rect, icon: IconPaint) {
     Panel::zstack()
-        .id_salt(("pane", at.min.x as i32, at.min.y as i32))
+        .id_salt(("cell", at.min.x as i32, at.min.y as i32))
         .at(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
         .show(ui, |ui| {
@@ -108,19 +108,19 @@ fn pane(ui: &mut Ui, at: Rect, icon: IconPaint) {
 }
 
 /// A tintable icon reaches the framebuffer as coverage times the tint, filling
-/// exactly its pane's pixels.
+/// exactly its cell's pixels.
 #[test]
 fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     let tint = RgbaF32::srgb(0.2, 0.8, 0.4);
     let img = render(UVec2::new(48, 48), SystemScale::ONE, |ui, icons| {
-        pane(
+        cell(
             ui,
             Rect::new(6.0, 6.0, 20.0, 20.0),
             icon(icons, "solid").tint(tint),
         );
     });
 
-    assert_solid_pane(&img, Vec2::new(6.0, 6.0), [0.2, 0.8, 0.4]);
+    assert_solid_cell(&img, Vec2::new(6.0, 6.0), [0.2, 0.8, 0.4]);
 }
 
 /// A color icon keeps the artwork's colors; the tint's RGB is ignored and only
@@ -128,14 +128,14 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
 #[test]
 fn color_icon_keeps_its_own_colors_under_a_tint() {
     let img = render(UVec2::new(48, 32), SystemScale::ONE, |ui, icons| {
-        pane(
+        cell(
             ui,
             Rect::new(8.0, 4.0, 32.0, 24.0),
             icon(icons, "halves").tint(RgbaF32::srgb(1.0, 0.0, 0.0)),
         );
     });
 
-    // Pane spans x 8..40, so the seam is x = 24; sample inside each half.
+    // The cell spans x 8..40, so the seam is x = 24; sample inside each half.
     for (x, half) in [(14, LEFT), (34, RIGHT)] {
         fixtures::assert_px(
             img.get_pixel(x, 16).0,
@@ -147,7 +147,7 @@ fn color_icon_keeps_its_own_colors_under_a_tint() {
     }
 }
 
-/// The pixel-exactness claim at scale 1.5: a 20x20 logical pane at (4, 4) is
+/// The pixel-exactness claim at scale 1.5: a 20x20 logical cell at (4, 4) is
 /// physical 6..36, a 30 px box inside the ladder's exact band, so the icon is
 /// present at 6 and 35 and absent at 5 and 36.
 #[test]
@@ -156,7 +156,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
         UVec2::new(48, 48),
         SystemScale::new(1.5).unwrap(),
         |ui, icons| {
-            pane(
+            cell(
                 ui,
                 Rect::new(4.0, 4.0, 20.0, 20.0),
                 icon(icons, "solid").tint(RgbaF32::WHITE),
@@ -189,7 +189,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
 #[test]
 fn desaturate_grays_a_color_icon_by_its_luminance() {
     let img = render(UVec2::new(48, 32), SystemScale::ONE, |ui, icons| {
-        pane(
+        cell(
             ui,
             Rect::new(8.0, 4.0, 32.0, 24.0),
             icon(icons, "halves").tint(RgbaF32::WHITE).desaturate(true),
@@ -219,7 +219,7 @@ fn desaturate_grays_a_color_icon_by_its_luminance() {
 /// pass runs text, icon, text; text and icons share one pipeline, so neither
 /// transition rebinds anything (see `Bound::Raster`).
 ///
-/// **The icon box:** a solid 8x8 viewBox filled to its pane is the tint on every
+/// **The icon box:** a solid 8x8 viewBox filled to its cell is the tint on every
 /// pixel, and the first label's glyphs run through it, so any non-tint pixel is a
 /// glyph that reordered above the icon (as a batch left open would, draining in the
 /// clipped panel's group). **The two bands:** the label must have drawn or the box
@@ -245,7 +245,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     };
     let img = render(UVec2::new(96, 72), SystemScale::ONE, |ui, icons| {
         label(ui, "under", Vec2::new(6.0, 6.0));
-        pane(
+        cell(
             ui,
             Rect::new(20.0, 6.0, 20.0, 20.0),
             icon(icons, "solid").tint(tint),
@@ -263,7 +263,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
             });
     });
 
-    assert_pane_interior(&img, Vec2::new(20.0, 6.0), [0.2, 0.8, 0.4]);
+    assert_cell_interior(&img, Vec2::new(20.0, 6.0), [0.2, 0.8, 0.4]);
 
     // This run measures x 6..=51, y 9..=20, so it shows either side of the icon's
     // 20..40 box.
@@ -277,7 +277,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
 }
 
 /// Past the 512 px raster cap an icon still fills its box: the capped raster is
-/// resampled up to it. A 300 logical px pane at (20, 20), scale 2 is physical
+/// resampled up to it. A 300 logical px cell at (20, 20), scale 2 is physical
 /// 40..640 while the raster is 512 (at its own size it would sit at 84..596).
 #[test]
 fn an_icon_past_the_raster_cap_fills_its_box() {
@@ -286,7 +286,7 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
             UVec2::new(680, 680),
             SystemScale::new(2.0).unwrap(),
             |ui, icons| {
-                pane(
+                cell(
                     ui,
                     Rect::new(20.0, 20.0, 300.0, 300.0),
                     icon(icons, name).tint(RgbaF32::WHITE),

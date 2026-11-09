@@ -17,10 +17,12 @@ use palantir::Paint;
 use palantir::Stroke;
 use palantir::widget::Coverage;
 
-/// Pin a rect's outside coverage, its inverted fill: the rect over gradient content fills the corner wedges with the background and strokes the boundary. The golden must read as a rounded-clipped card.
+/// Pin a rect's outside coverage, its inverted fill: the rect over gradient content fills the
+/// corner wedges with the background and borders the boundary. The golden must read as a
+/// rounded-clipped card.
 #[test]
-fn windowed_rect_masks_corners_matches_golden() {
-    GoldenName::WindowedRectMasksCorners.assert_scene(UVec2::new(220, 140), |ui| {
+fn outside_coverage_masks_corners_matches_golden() {
+    GoldenName::OutsideCoverageMasksCorners.assert_scene(UVec2::new(220, 140), |ui| {
         Panel::vstack()
             .auto_id()
             .padding(20.0)

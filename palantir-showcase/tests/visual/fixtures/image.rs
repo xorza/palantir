@@ -42,10 +42,10 @@ fn render(h: &mut VisualRig, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> Rgb
         .image
 }
 
-/// `image` in a pane over `at`.
-fn pane(ui: &mut Ui, at: Rect, image: ImagePaint) {
+/// `image` in a cell over `at`.
+fn cell(ui: &mut Ui, at: Rect, image: ImagePaint) {
     Panel::zstack()
-        .id_salt(("pane", at.min.x as i32))
+        .id_salt(("cell", at.min.x as i32))
         .at(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
         .show(ui, |ui| {
@@ -53,7 +53,7 @@ fn pane(ui: &mut Ui, at: Rect, image: ImagePaint) {
         });
 }
 
-/// `handle` stretched over its pane.
+/// `handle` stretched over its cell.
 fn filled(handle: &ImageHandle) -> ImagePaint {
     ImagePaint::new(handle.clone()).fit(ImageFit::Fill)
 }
@@ -98,7 +98,7 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
     for expected in [[RED, BLUE, BLUE, RED], [BLUE, BLUE, RED, RED]] {
         let out = render(&mut h, UVec2::new(4, 2), |ui| {
             for x in [0.0, 2.0] {
-                pane(ui, Rect::new(x, 0.0, 2.0, 2.0), nearest.clone());
+                cell(ui, Rect::new(x, 0.0, 2.0, 2.0), nearest.clone());
             }
         });
         for (x, y, pixel) in out.enumerate_pixels() {
@@ -129,12 +129,12 @@ fn minification_and_magnification_filters_are_independent() {
     let two = load(&h, &[RED, BLUE]);
     let magnified = render(&mut h, UVec2::new(256, 64), |ui| {
         let size = Vec2::new(128.0, 64.0);
-        pane(
+        cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             filled(&two).min_filter(Nearest).mag_filter(Linear),
         );
-        pane(
+        cell(
             ui,
             Rect::new(128.0, 0.0, size.x, size.y),
             filled(&two).min_filter(Linear).mag_filter(Nearest),
@@ -157,12 +157,12 @@ fn minification_and_magnification_filters_are_independent() {
     let four = load(&h, &[RED, BLUE, RED, BLUE]);
     let minified = render(&mut h, UVec2::new(4, 16), |ui| {
         let size = Vec2::new(2.0, 16.0);
-        pane(
+        cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             filled(&four).min_filter(Nearest).mag_filter(Linear),
         );
-        pane(
+        cell(
             ui,
             Rect::new(2.0, 0.0, size.x, size.y),
             filled(&four).min_filter(Linear).mag_filter(Nearest),
@@ -200,12 +200,12 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let three = load(&h, &[RED, BLUE, RED]);
     let strips = render(&mut h, UVec2::new(200, 32), |ui| {
         let size = Vec2::new(100.0, 32.0);
-        pane(
+        cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             filled(&three).min_filter(Linear).mag_filter(Linear),
         );
-        pane(
+        cell(
             ui,
             Rect::new(100.0, 0.0, size.x, size.y),
             filled(&three).min_filter(Nearest).mag_filter(Nearest),
@@ -232,7 +232,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     };
     let tiled = render(&mut h, UVec2::new(200, 16), |ui| {
         let size = Vec2::new(100.0, 16.0);
-        pane(
+        cell(
             ui,
             Rect::new(0.0, 0.0, size.x, size.y),
             ImagePaint::new(two.clone())
@@ -240,7 +240,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
                 .min_filter(Linear)
                 .mag_filter(Linear),
         );
-        pane(
+        cell(
             ui,
             Rect::new(100.0, 0.0, size.x, size.y),
             ImagePaint::new(two.clone())
@@ -280,7 +280,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
 
 /// Each [`ImageDownsample`] mode's answer for a lit texel the single bilinear tap misses.
 ///
-/// **Geometry.** A 24x1 `STAR SKY SKY` source in an 8x16 pane: 3 texels per pixel, taps per axis `clamp(ceil(3 · 0.5), 1, 4) = 2`. Pixel `x` covers texels `3x..3x+2`, center `3x + 1.5`.
+/// **Geometry.** A 24x1 `STAR SKY SKY` source in an 8x16 cell: 3 texels per pixel, taps per axis `clamp(ceil(3 · 0.5), 1, 4) = 2`. Pixel `x` covers texels `3x..3x+2`, center `3x + 1.5`.
 ///
 /// **Taps.** The 2x2 grid offsets `±0.75` texels: `3x + 0.75` is `0.75·T0 + 0.25·T1`, `3x + 2.25` is `0.25·T1 + 0.75·T2`.
 ///
@@ -290,7 +290,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
 /// - `Peak` = `0.75` linear, sRGB 0.8808, **225**.
 #[test]
 fn downsample_modes_recover_a_texel_the_single_tap_misses() {
-    const PANE: Vec2 = Vec2::new(8.0, 16.0);
+    const CELL: Vec2 = Vec2::new(8.0, 16.0);
     let cases = [
         (ImageDownsample::Single, 0u8, "Single"),
         (ImageDownsample::Mean, 165, "Mean"),
@@ -304,13 +304,13 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
             let image = ImagePaint::new(source.clone())
                 .fit(ImageFit::Fill)
                 .downsample(*mode);
-            pane(ui, Rect::new(i as f32 * PANE.x, 0.0, PANE.x, PANE.y), image);
+            cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
         }
     });
 
     let mut measured = Vec::with_capacity(cases.len());
     for (i, (_, expected, label)) in cases.iter().enumerate() {
-        let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
+        let pixel = out.get_pixel(i as u32 * CELL.x as u32 + 4, 8).0;
         fixtures::assert_px(
             pixel,
             [*expected, *expected, *expected, 255],
@@ -337,7 +337,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 /// **Peak.** `WHITE(α=26) CLEAR GRAY(α=255)`, where orderings disagree: straight luma picks the faint white (0.75 vs 0.162), premultiplied the gray (0.121 vs 0.057). Gray sRGB 128 = 0.21586 linear, tap `0.75 · 0.21586 = 0.1619`, **113** sRGB (white 68, double coverage 98).
 #[test]
 fn downsample_combines_taps_in_premultiplied_space() {
-    const PANE: Vec2 = Vec2::new(8.0, 16.0);
+    const CELL: Vec2 = Vec2::new(8.0, 16.0);
     const CLEAR: [u8; 4] = [0, 0, 0, 0];
     const DIM_WHITE: [u8; 4] = [255, 255, 255, 128];
     const FAINT_WHITE: [u8; 4] = [255, 255, 255, 26];
@@ -365,12 +365,12 @@ fn downsample_combines_taps_in_premultiplied_space() {
             let image = ImagePaint::new(sources[i].clone())
                 .fit(ImageFit::Fill)
                 .downsample(*mode);
-            pane(ui, Rect::new(i as f32 * PANE.x, 0.0, PANE.x, PANE.y), image);
+            cell(ui, Rect::new(i as f32 * CELL.x, 0.0, CELL.x, CELL.y), image);
         }
     });
 
     for (i, (_, _, expected, label)) in cases.iter().enumerate() {
-        let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
+        let pixel = out.get_pixel(i as u32 * CELL.x as u32 + 4, 8).0;
         fixtures::assert_px(
             pixel,
             [*expected, *expected, *expected, 255],
@@ -390,7 +390,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
     let mut h = VisualRig::new();
     let source = load(&h, &[PURE_RED, CLEAR]);
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
-        pane(
+        cell(
             ui,
             Rect::new(0.0, 0.0, 16.0, 16.0),
             ImagePaint::new(source.clone()).fit(ImageFit::Fill),
@@ -407,7 +407,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
 
 /// Taps wrap with the tile instead of clamping: a tap steps off the base UV by up to half the footprint, and `tap` wraps each fetch into the neighboring repeat.
 ///
-/// **Geometry.** A 4x1 `STAR SKY SKY SKY` tile across an 8x16 pane: 3 tiles per pixel, `uv_dx = 3`, footprint 12 texels, `n = 4`. Every pixel's base UV wraps to exactly 0.5 (`fract(3k + 1.5)`).
+/// **Geometry.** A 4x1 `STAR SKY SKY SKY` tile across an 8x16 cell: 3 tiles per pixel, `uv_dx = 3`, footprint 12 texels, `n = 4`. Every pixel's base UV wraps to exactly 0.5 (`fract(3k + 1.5)`).
 ///
 /// **Taps.** `n = 4` offsets `±0.375` and `±1.125` tiles: `-0.625, 0.125, 0.875, 1.625`.
 /// - Wrapped: `0.375, 0.125, 0.875, 0.625`, texel coords `1.5, 0.5, 3.5, 2.5`: `SKY STAR SKY SKY`, mean `0.25` linear, **137** sRGB.
@@ -423,7 +423,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
                 scale: Vec2::new(24.0, 1.0),
             })
             .downsample(ImageDownsample::Mean);
-        pane(ui, Rect::new(0.0, 0.0, 8.0, 16.0), image);
+        cell(ui, Rect::new(0.0, 0.0, 8.0, 16.0), image);
     });
 
     for x in 0..8 {
@@ -442,36 +442,36 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
 /// - `B` then `A`: singletons; `A`'s second appearance is non-adjacent and must stay its own run, else it paints before `B`.
 /// - `C C`: a trailing run, pinning that the last span closes at the batch end.
 ///
-/// Read back per pane: a drifting range paints a neighbor's color, a dropped run the clear color.
+/// Read back per cell: a drifting range paints a neighbor's color, a dropped run the clear color.
 #[test]
 fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const PATTERN: [usize; 6] = [0, 0, 1, 0, 2, 2];
     const SOURCES: [[u8; 4]; 3] = [RED, BLUE, GREEN];
-    const PANE: f32 = 32.0;
+    const CELL: f32 = 32.0;
 
     let mut h = VisualRig::new();
     let handles = SOURCES.map(|texel| load(&h, &[texel]));
     let out = render(&mut h, UVec2::new(192, 32), |ui| {
-        for (pane_idx, &source) in PATTERN.iter().enumerate() {
+        for (cell_idx, &source) in PATTERN.iter().enumerate() {
             let image = filled(&handles[source])
                 .min_filter(ImageFilter::Linear)
                 .mag_filter(ImageFilter::Linear);
-            pane(
+            cell(
                 ui,
-                Rect::new(pane_idx as f32 * PANE, 0.0, PANE, PANE),
+                Rect::new(cell_idx as f32 * CELL, 0.0, CELL, CELL),
                 image,
             );
         }
     });
 
-    for (pane, &source) in PATTERN.iter().enumerate() {
+    for (cell, &source) in PATTERN.iter().enumerate() {
         let expected = SOURCES[source];
-        let x = pane as u32 * PANE as u32 + PANE as u32 / 2;
+        let x = cell as u32 * CELL as u32 + CELL as u32 / 2;
         let pixel = out.get_pixel(x, 16).0;
         fixtures::assert_px(
             pixel,
             expected,
-            format_args!("pane {pane} draws source {source}: expected {expected:?}, got {pixel:?}"),
+            format_args!("cell {cell} draws source {source}: expected {expected:?}, got {pixel:?}"),
         );
     }
 }
