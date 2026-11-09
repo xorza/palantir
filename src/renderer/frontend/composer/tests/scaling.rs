@@ -8,19 +8,30 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::icon_ref::IconRef;
+use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::border::Border;
+use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
+use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     clip, draw, params, params_unsnapped, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::TriangleQuad;
+use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
+use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
@@ -128,7 +139,7 @@ fn nan_border_width_normalizes_away_on_every_quad_geometry() {
                         Vec2::new(5.0, 8.0),
                     ],
                     radius: 0.0,
-                    fill: RgbaF32::WHITE.to_f16(),
+                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                     border: LoweredBorder::lower(nan_border),
                 }),
                 1.0,
@@ -404,19 +415,21 @@ fn icons_batch_together_and_respect_tier_order() {
     assert_eq!(out.batches(PaintTier::Icon)[0].items.len, 2);
 }
 
-/// A triangle's corners reach the GPU as unorm16 shares of the covering quad,
-/// decoded as `quad_pipeline/shader.wgsl` does (`min + bits / 65535 * size`)
-/// to within `3000 / 65535 / 2` ~ 0.023 px of each point.
+/// A triangle reaches the GPU as its points grown by its radius, from the covering quad's
+/// top-left in f32, clockwise on screen, a radius at each, and its depth: the template takes each
+/// corner's arc center back as the grown point less the radius along the corner's bisector, so the
+/// centers come back to the points within f32 rounding of a 3000 px quad.
 ///
-/// The covering quad is the points' bounds grown by the corner radius
-/// alone, since the shader grows every quad by its AA ramp: (13.3, 7.1) to
-/// (3013.7, 2950.6), less and plus 2.
+/// The points are given counterclockwise on screen, `(b − a) × (c − a) < 0`, so the quad swaps the
+/// last two. The covering quad is the points' bounds grown by the corner radius alone, since the
+/// shader grows every quad by its AA ramp: (13.3, 7.1) to (3013.7, 2950.6), less and plus 2. The
+/// depth is the inradius, `|cross| / perimeter`, plus the radius 2.
 #[test]
 fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     let points = [
         Vec2::new(13.3, 7.1),
-        Vec2::new(3013.7, 41.9),
         Vec2::new(1500.2, 2950.6),
+        Vec2::new(3013.7, 41.9),
     ];
     let buf = run(
         |b, _arena| {
@@ -424,7 +437,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
                 DrawQuadPayload::triangle(TriangleQuad {
                     points,
                     radius: 2.0,
-                    fill: RgbaF32::WHITE.to_f16(),
+                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                     border: LoweredBorder::lower(Border::NONE),
                 }),
                 1.0,
@@ -438,36 +451,46 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
         quad.rect,
         Rect::from_min_max(Vec2::new(11.3, 5.1), Vec2::new(3015.7, 2952.6)),
     );
-    let [ax, ay, bx, by]: [u16; 4] = bytemuck::cast(quad.corners);
-    let [cx, cy, radius, _]: [u16; 4] = bytemuck::cast(quad.fill_axis);
-    let decode = |x: u16, y: u16| {
-        quad.rect.min
-            + Vec2::new(f32::from(x), f32::from(y)) / 65535.0
-                * Vec2::new(quad.rect.size.w, quad.rect.size.h)
+    assert_eq!(quad.corners, Corners::new(2.0, 2.0, 2.0, 0.0));
+    let [a, b, c] = points;
+    let cross = (b - a).perp_dot(c - a);
+    assert!(cross < 0.0, "given counterclockwise");
+    let perimeter = (b - a).length() + (c - b).length() + (a - c).length();
+    assert_eq!(quad.deep, cross.abs() / perimeter + 2.0);
+    // Clockwise, as the quad holds them: the last two swapped.
+    let clockwise = [a, c, b];
+    let grown: [Vec2; 3] = std::array::from_fn(|i| quad.rect.min + quad.points[i]);
+    assert_eq!(
+        quad.points[3], quad.points[2],
+        "the fourth point repeats the third"
+    );
+    let normal = |p: Vec2, q: Vec2| {
+        let d = q - p;
+        Vec2::new(d.y, -d.x) / d.length()
     };
-    for (want, got) in points
-        .into_iter()
-        .zip([decode(ax, ay), decode(bx, by), decode(cx, cy)])
-    {
-        // Half a unorm16 step of the covering quad, per axis.
-        let half_step = Vec2::new(quad.rect.size.w, quad.rect.size.h) / 65535.0 * 0.5;
+    for i in 0..3 {
+        let na = normal(grown[(i + 2) % 3], grown[i]);
+        let nb = normal(grown[i], grown[(i + 1) % 3]);
+        let center = grown[i] - 2.0 * (na + nb) / (1.0 + na.dot(nb));
         assert!(
-            (want - got).abs().cmple(half_step).all(),
-            "{want} decoded as {got}, half a step is {half_step}",
+            center.abs_diff_eq(clockwise[i], 1e-3),
+            "corner {i}: center {center}, point {}",
+            clockwise[i]
         );
     }
-    assert_eq!(half::f16::from_bits(radius).to_f32(), 2.0);
 }
 
-/// A triangle's turn is applied to its points: a quarter turn about (14, 14),
-/// `(x, y) ↦ (14 − (y − 14), 14 + (x − 14))`, takes (4, 4), (14, 4), (4, 14) to (24, 4),
-/// (24, 14), (14, 4). At scale 2 and radius 1 the covering quad is `2·(14, 4) − 2 = (26, 6)` to
-/// `2·(24, 14) + 2 = (50, 30)`; unturned it is (6, 6) to (30, 30). The tolerance is the f32 cosine
-/// of a quarter turn, −4.4e-8, not 0, times the lengths involved.
+/// A triangle turns as a rect does: its quad moves so its center turns about the pivot, and the
+/// shader turns it about that center, so its points stay in the quad's own frame and its gradient
+/// turns with it. At scale 2 and radius 1 the quad of (4, 4), (14, 4), (4, 14) is (6, 6) to
+/// (30, 30), its center (18, 18); a quarter turn about the pivot (14, 14), physical (28, 28),
+/// `(x, y) ↦ (28 − (y − 28), 28 + (x − 28))`, takes the center to (38, 18), so the quad is
+/// (26, 6) to (50, 30), turned by π/2. The tolerance is the f32 cosine of a quarter turn, −4.4e-8,
+/// not 0, times the lengths involved.
 #[test]
-fn a_turned_triangle_turns_its_points_about_its_pivot() {
+fn a_turned_triangle_turns_its_quad_about_its_pivot() {
     const EPS: f32 = 1e-4;
-    let quad_rect = |spin: Option<Spin>| {
+    let quad = |spin: Option<Spin>| {
         let buf = run(
             |b, _| {
                 b.draw(
@@ -478,7 +501,7 @@ fn a_turned_triangle_turns_its_points_about_its_pivot() {
                             Vec2::new(4.0, 14.0),
                         ],
                         radius: 1.0,
-                        fill: RgbaF32::WHITE.to_f16(),
+                        fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                         border: LoweredBorder::lower(Border::NONE),
                     })
                     .turned(spin),
@@ -487,21 +510,64 @@ fn a_turned_triangle_turns_its_points_about_its_pivot() {
             },
             &params(2.0, UVec2::new(100, 100)),
         );
-        buf.quads[0].rect
+        buf.quads[0]
     };
+    let still = quad(None);
     assert_eq!(
-        quad_rect(None),
+        still.rect,
         Rect::from_min_max(Vec2::new(6.0, 6.0), Vec2::new(30.0, 30.0))
     );
-    let turned = quad_rect(Some(Spin {
+    assert_eq!(still.rotation, 0.0);
+    let turned = quad(Some(Spin {
         pivot: Vec2::new(14.0, 14.0),
         angle: FRAC_PI_2,
     }));
     assert!(
-        turned.min.abs_diff_eq(Vec2::new(26.0, 6.0), EPS)
-            && turned.max().abs_diff_eq(Vec2::new(50.0, 30.0), EPS),
-        "{turned:?}"
+        turned.rect.min.abs_diff_eq(Vec2::new(26.0, 6.0), EPS)
+            && turned.rect.max().abs_diff_eq(Vec2::new(50.0, 30.0), EPS),
+        "{:?}",
+        turned.rect
     );
+    assert_eq!(turned.rotation, FRAC_PI_2);
+    assert_eq!(turned.points, still.points);
+    assert_eq!(turned.deep, still.deep);
+}
+
+/// A triangle's gradient reaches its quad as a rect's does: the kind with the triangle bit, the
+/// atlas row, and the axis as given at scale 2, as it is a fraction of the quad.
+#[test]
+fn a_triangle_carries_its_gradient_lanes() {
+    let axis = FillAxis::from_lanes([0.25, 0.5, 0.75, 1.0]);
+    let buf = run(
+        |b, _| {
+            b.draw(
+                DrawQuadPayload::triangle(TriangleQuad {
+                    points: [
+                        Vec2::new(4.0, 4.0),
+                        Vec2::new(14.0, 4.0),
+                        Vec2::new(4.0, 14.0),
+                    ],
+                    radius: 1.0,
+                    fill: BrushSource::Gradient(ResolvedGradient {
+                        axis,
+                        lut_row: LutRow(3),
+                        kind: FillKind::radial(Spread::Repeat),
+                    }),
+                    border: LoweredBorder::lower(Border::NONE),
+                }),
+                1.0,
+            );
+        },
+        &params(2.0, UVec2::new(100, 100)),
+    );
+    let quad = buf.quads[0];
+    assert_eq!(
+        quad.fill_kind,
+        FillKind::radial(Spread::Repeat).with_triangle()
+    );
+    assert_eq!(quad.fill_lut_row, LutRow(3));
+    assert_eq!(quad.fill_axis, axis);
+    assert_eq!(quad.fill, RgbaF16::WHITE);
 }
 
 /// The display's pixel snap reaches the composed quad: a fractional rect at
@@ -739,4 +805,150 @@ fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
         !turned.fill_kind.is_fast(),
         "a turned quad is not pixel-aligned"
     );
+}
+
+/// A shaped image's quad is its shape's rect, with the image's uv carried over the whole rect and
+/// its own rect as the decal. At scale 2 the shape (5, 5, 50 × 25) is (10, 10, 100 × 50) and the
+/// contained image (17.5, 5, 25 × 25) is (35, 10, 50 × 50), 25 px in: one uv per 50 px, so the
+/// rect's uv starts 25 / 50 = 0.5 before the image's and spans 100 / 50 = 2 by 1. The decal is
+/// x 25 to 75, and y open, as the image's top and bottom lie on the shape's. Corners of 4 scale
+/// to 8, the depth is half the short side, 25. A turn moves no field but the rotation. An image
+/// the shape's own size keeps its uv and an open decal.
+#[test]
+fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
+    let shaped = |image: Rect, spin: Option<Spin>| {
+        let buf = run(
+            |b, _| {
+                b.draw(
+                    DrawImagePayload {
+                        rect: image,
+                        shape: Some(PlacedOutline::Rect {
+                            rect: Rect::new(5.0, 5.0, 50.0, 25.0),
+                            corners: Corners::all(4.0),
+                        }),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(1),
+                        flags: ImageFlags::TILED,
+                        spin,
+                        view: None,
+                    },
+                    1.0,
+                );
+            },
+            &params(2.0, UVec2::new(200, 200)),
+        );
+        assert_eq!(buf.images.len(), 1);
+        buf.images.instance()[0]
+    };
+    let contained = shaped(Rect::new(17.5, 5.0, 25.0, 25.0), None);
+    assert_eq!(contained.rect, Rect::new(10.0, 10.0, 100.0, 50.0));
+    assert_eq!(contained.uv_min, Vec2::new(-0.5, 0.0));
+    assert_eq!(contained.uv_size, Vec2::new(2.0, 1.0));
+    assert_eq!(contained.decal_min, Vec2::new(25.0, -f32::MAX));
+    assert_eq!(contained.decal_max, Vec2::new(75.0, f32::MAX));
+    assert_eq!(contained.flags, ImageFlags::TILED.union(ImageFlags::SHAPED));
+    assert_eq!(contained.corners, Corners::all(8.0));
+    assert_eq!(
+        contained.points,
+        [
+            Vec2::ZERO,
+            Vec2::new(100.0, 0.0),
+            Vec2::new(100.0, 50.0),
+            Vec2::new(0.0, 50.0)
+        ]
+    );
+    assert_eq!(contained.deep, 25.0);
+    assert_eq!(contained.rotation, 0.0);
+
+    // Turned about the shape's center, logical (30, 17.5), the quad stays and turns in the
+    // shader, the uv and the decal in its own frame.
+    let turned = shaped(
+        Rect::new(17.5, 5.0, 25.0, 25.0),
+        Some(Spin {
+            pivot: Vec2::new(30.0, 17.5),
+            angle: FRAC_PI_2,
+        }),
+    );
+    assert_eq!(turned.rect, contained.rect);
+    assert_eq!(turned.rotation, FRAC_PI_2);
+    assert_eq!(
+        (
+            turned.uv_min,
+            turned.uv_size,
+            turned.decal_min,
+            turned.decal_max
+        ),
+        (
+            contained.uv_min,
+            contained.uv_size,
+            contained.decal_min,
+            contained.decal_max
+        )
+    );
+
+    let filled = shaped(Rect::new(5.0, 5.0, 50.0, 25.0), None);
+    assert_eq!(filled.uv_min, Vec2::ZERO);
+    assert_eq!(filled.uv_size, Vec2::ONE);
+    assert_eq!(filled.decal_min, Vec2::splat(-f32::MAX));
+    assert_eq!(filled.decal_max, Vec2::splat(f32::MAX));
+}
+
+/// A triangle's image packs its shape as a triangle quad does, unsnapped: at scale 2 the corners
+/// (5, 5), (25, 5), (5, 15) with radius 1 cover (8, 8) to (52, 32), and the image fills that
+/// rect, so its uv stays and its decal is open. Its flags name the triangle form.
+#[test]
+fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
+    let points = [
+        Vec2::new(5.0, 5.0),
+        Vec2::new(25.0, 5.0),
+        Vec2::new(5.0, 15.0),
+    ];
+    let buf = run(
+        |b, _| {
+            b.draw(
+                DrawImagePayload {
+                    rect: Rect::new(4.0, 4.0, 22.0, 12.0),
+                    shape: Some(PlacedOutline::Triangle {
+                        points,
+                        radius: 1.0,
+                    }),
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::ONE,
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle: TextureId(1),
+                    flags: ImageFlags::NONE,
+                    spin: None,
+                    view: None,
+                },
+                1.0,
+            );
+            b.draw(
+                DrawQuadPayload::triangle(TriangleQuad {
+                    points,
+                    radius: 1.0,
+                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+                    border: LoweredBorder::lower(Border::NONE),
+                }),
+                1.0,
+            );
+        },
+        &params(2.0, UVec2::new(200, 200)),
+    );
+    let image = buf.images.instance()[0];
+    let quad = buf.quads[0];
+    assert_eq!(
+        image.rect,
+        Rect::from_min_max(Vec2::new(8.0, 8.0), Vec2::new(52.0, 32.0))
+    );
+    assert_eq!(image.rect, quad.rect);
+    assert_eq!(image.points, quad.points);
+    assert_eq!(image.corners, quad.corners);
+    assert_eq!(image.deep, quad.deep);
+    assert_eq!(image.flags, ImageFlags::SHAPED.union(ImageFlags::TRIANGLE));
+    assert_eq!(image.uv_min, Vec2::ZERO);
+    assert_eq!(image.uv_size, Vec2::ONE);
+    assert_eq!(image.decal_min, Vec2::splat(-f32::MAX));
+    assert_eq!(image.decal_max, Vec2::splat(f32::MAX));
 }

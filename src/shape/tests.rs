@@ -9,6 +9,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::paint::Paint;
@@ -22,6 +23,7 @@ use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
@@ -174,6 +176,71 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             case.label
         );
     }
+}
+
+/// A triangle takes a gradient: `check` lets it through, and its record interns it as a rect's
+/// does, so the two share one gradient.
+#[test]
+fn a_triangle_records_its_gradient_as_a_rect_does() {
+    let gradient = LinearGradient::two_stop(0.5, RgbaF32::WHITE, RgbaF32::BLACK);
+    let triangle = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0);
+    triangle.check(&gradient);
+    let mut store = RecordStore::default();
+    let Some(ShapeRecord::Quad(QuadShape::Triangle { fill, .. })) =
+        lower_in(&mut store, (triangle, gradient.clone()))
+    else {
+        panic!("a triangle of a gradient records a triangle quad");
+    };
+    let Some(ShapeRecord::Quad(QuadShape::Box {
+        fill: rect_fill, ..
+    })) = lower_in(&mut store, (Shape::rect(), gradient))
+    else {
+        panic!("a rect of a gradient records a box");
+    };
+    let LoweredBrush::Gradient { id, hash } = fill else {
+        panic!("a triangle's gradient lowers to a gradient, got {fill:?}");
+    };
+    let LoweredBrush::Gradient {
+        id: rect_id,
+        hash: rect_hash,
+    } = rect_fill
+    else {
+        panic!("a rect's gradient lowers to a gradient, got {rect_fill:?}");
+    };
+    assert_eq!(id, rect_id);
+    assert_eq!(hash, rect_hash);
+}
+
+/// A triangle wears a material as a rect does: `check` lets it through, its record holds the
+/// material a rect's lowers to in a store of its own, and a capturing one makes the record read a backdrop. A material
+/// alone paints, with no fill or border.
+#[test]
+fn a_triangle_wears_a_material_as_a_rect_does() {
+    use crate::primitives::paint::material::Material;
+
+    let paint = Paint::NONE.with_material(Material::blur(4.0));
+    let triangle = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0);
+    triangle.check(&paint);
+    let Some(record) = lower((triangle, paint.clone())) else {
+        panic!("a triangle of a material records it");
+    };
+    let ShapeRecord::Quad(QuadShape::Triangle {
+        material: Some(material),
+        ..
+    }) = record
+    else {
+        panic!("a triangle's material lowers into its quad, got {record:?}");
+    };
+    let Some(ShapeRecord::Quad(QuadShape::Box {
+        material: Some(rect_material),
+        ..
+    })) = lower((Shape::rect(), paint))
+    else {
+        panic!("a rect of a material records it");
+    };
+    assert_eq!(material, rect_material);
+    assert!(material.captures());
+    assert!(record.reads_backdrop());
 }
 
 /// Rounding moves each edge in by the radius and dilates back by it, so the edges stay put.

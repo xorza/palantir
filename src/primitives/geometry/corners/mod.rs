@@ -171,7 +171,7 @@ impl Corners {
     /// The radii a box of `size` physical px is drawn with: scaled, then
     /// reduced so adjacent corners don't overlap (CSS Backgrounds 3 §5.5), and
     /// [saturated](F16x4::from_lanes_saturating) where a box past 131008 px still leaves one past
-    /// the lanes. `fit_radii` in `shader.wgsl` is the shader's copy.
+    /// the lanes. `fit_radii` in `quad_pipeline/shadow.wgsl` is the shader's copy.
     pub(crate) fn fit_to(self, size: Size, scale: f32) -> Self {
         Self(F16x4::from_lanes_saturating(self.fitted_radii(size, scale)))
     }
@@ -185,12 +185,6 @@ impl Corners {
     #[inline]
     pub const fn is_approx_zero(&self) -> bool {
         self.0.all_lanes_noop()
-    }
-
-    /// Four raw lane words; see [`F16x4::from_bits`].
-    #[inline]
-    pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
-        Self(F16x4::from_bits(bits))
     }
 
     #[inline]

@@ -4,14 +4,15 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::effect_pipeline::EffectPipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
+use crate::gpu::pipeline::image_pipeline::image_form::ImageForm;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
 use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
-use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
+use crate::renderer::render_buffer::quad_form::QuadForm;
 
 /// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
 ///
@@ -25,7 +26,8 @@ pub(crate) struct FormatPipelines {
     format: wgpu::TextureFormat,
     pub(crate) quad: QuadVariants,
     pub(crate) mesh: StencilVariant,
-    pub(crate) image: StencilVariant,
+    /// Indexed by [`ImageForm`].
+    pub(crate) image: [StencilVariant; 3],
     pub(crate) curve: StencilVariant,
     /// Base + stencil-test pipelines for **both** raster tenants: glyph and icon quads share one shader and group-0 layout, binding whichever atlas the step names. See [`RasterProgram`].
     pub(crate) raster: RasterVariants,
@@ -52,7 +54,8 @@ pub(crate) struct PipelineCensus {
     pub(crate) stencil: StencilMode,
     pub(crate) quads: QuadDraws,
     pub(crate) meshes: bool,
-    pub(crate) images: bool,
+    /// Images of each [`ImageForm`], indexed by it.
+    pub(crate) images: [bool; 3],
     pub(crate) curves: bool,
     /// Text or icons, which draw through the raster pipelines.
     pub(crate) rasters: bool,
@@ -64,12 +67,12 @@ impl PipelineCensus {
         Self {
             stencil: StencilMode::Off,
             quads: QuadDraws::from([
-                QuadDraw::Form(QuadForm::Solid),
-                QuadDraw::Form(QuadForm::Gradient),
-                QuadDraw::Form(QuadForm::Triangle),
+                QuadDraw::Form(QuadForm::BoxSolid),
+                QuadDraw::Form(QuadForm::BoxGradient),
+                QuadDraw::Form(QuadForm::TriangleSolid),
             ]),
             meshes: true,
-            images: true,
+            images: [true, false, false],
             curves: true,
             rasters: true,
         }
@@ -82,7 +85,7 @@ impl FormatPipelines {
             format,
             quad: QuadVariants::NONE,
             mesh: StencilVariant::NONE,
-            image: StencilVariant::NONE,
+            image: [StencilVariant::NONE; 3],
             curve: StencilVariant::NONE,
             raster: RasterVariants::NONE,
         };
@@ -105,8 +108,12 @@ impl FormatPipelines {
         if census.meshes {
             programs.mesh.ensure(&mut self.mesh, gpu, target);
         }
-        if census.images {
-            programs.image.ensure(&mut self.image, gpu, target);
+        for (form, wanted) in ImageForm::ALL.into_iter().zip(census.images) {
+            if wanted {
+                programs
+                    .image
+                    .ensure(&mut self.image[form as usize], gpu, target, form);
+            }
         }
         if census.curves {
             programs.curve.ensure(&mut self.curve, gpu, target);
@@ -140,8 +147,9 @@ impl<'a> PassPipelines<'a> {
         self.fmt.mesh.select(self.stencil)
     }
 
-    pub(crate) const fn image(self) -> &'a Pipeline {
-        self.fmt.image.select(self.stencil)
+    /// The pipeline an image of `form` draws through.
+    pub(crate) const fn image(self, form: ImageForm) -> &'a Pipeline {
+        self.fmt.image[form as usize].select(self.stencil)
     }
 
     pub(crate) const fn curve(self) -> &'a Pipeline {

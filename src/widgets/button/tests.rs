@@ -324,6 +324,7 @@ mod press {
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::pointer::PointerButton;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
     use crate::theme::Theme;
     use crate::theme::look::press_effect::PressEffect;
     use crate::ui::Ui;
@@ -360,15 +361,20 @@ mod press {
             .calls
             .iter()
             .filter_map(|call| match call {
-                PaintCall::Effect(p) => Some(PressDraw {
-                    effect: p.effect,
-                    time: p.time,
-                    rect: p.rect,
-                    corners: p.corners,
-                    input: bytemuck::pod_read_unaligned(bytemuck::cast_slice(
-                        &words[p.params.range()],
-                    )),
-                }),
+                PaintCall::Effect(p) => {
+                    let PlacedOutline::Rect { rect, corners } = p.outline else {
+                        panic!("a press effect paints its button's rect");
+                    };
+                    Some(PressDraw {
+                        effect: p.effect,
+                        time: p.time,
+                        rect,
+                        corners,
+                        input: bytemuck::pod_read_unaligned(bytemuck::cast_slice(
+                            &words[p.params.range()],
+                        )),
+                    })
+                }
                 _ => None,
             })
             .collect()

@@ -21,9 +21,13 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
+use crate::text::key::TextShapeKey;
+use crate::text::shaped_ref::ShapedTextRef;
 use glam::{UVec2, Vec2};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_6};
 
@@ -293,30 +297,50 @@ fn compose_coalesces_text_across_distinct_scissor_groups() {
     assert_eq!(buf.text_batches[0].texts.len, 2);
 }
 
-/// A clipped text run lands in a batch whose scissor equals its clipped bounds (the text shader has no per-instance clip); wider neighbor text forces a split.
+/// A clipped text run clips its own glyphs to its bounds, so it joins its wider neighbor's batch,
+/// whose scissor is the union of both runs' bounds; its row keeps its clipped bounds,
+/// (40, 40, 20 × 20). A turned run cannot clip its glyphs on the CPU, so a turned clipped one
+/// still takes a batch of its own, its scissor its clipped bounds.
 #[test]
-fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
-    let buf = run(
-        |b, _arena| {
-            text(b, Rect::new(0.0, 0.0, 200.0, 20.0));
-            clip(b, Rect::new(40.0, 40.0, 20.0, 20.0));
-            text(b, Rect::new(40.0, 40.0, 100.0, 20.0));
-            b.pop_clip();
-        },
-        &params(1.0, UVec2::new(300, 300)),
-    );
-    assert_eq!(
-        buf.text_batches.len(),
-        2,
-        "strict (clipped-narrower) text must not coalesce with wider neighbors",
-    );
-    let strict = buf
-        .text_batches
-        .iter()
-        .find(|tb| tb.scissor.size.x == 20)
-        .expect("expected a batch with 20px-wide scissor");
-    assert_eq!(strict.scissor.size.x, 20);
-    assert_eq!(strict.scissor.size.y, 20);
+fn a_clipped_text_run_batches_unless_it_turns() {
+    let turned = |spin: Option<Spin>| {
+        run(
+            |b, _arena| {
+                text(b, Rect::new(0.0, 0.0, 200.0, 20.0));
+                clip(b, Rect::new(40.0, 40.0, 20.0, 20.0));
+                b.draw(
+                    DrawTextPayload {
+                        rect: Rect::new(40.0, 40.0, 100.0, 20.0),
+                        ink: Spacing::ZERO,
+                        color: RgbaF32::WHITE.to_f16(),
+                        text: ShapedTextRef {
+                            key: TextShapeKey::fixture(),
+                            span: Span::default(),
+                        },
+                        spin,
+                    },
+                    1.0,
+                );
+                b.pop_clip();
+            },
+            &params(1.0, UVec2::new(300, 300)),
+        )
+    };
+    let still = turned(None);
+    assert_eq!(still.text_batches.len(), 1);
+    assert_eq!(still.text_batches[0].texts.len, 2);
+    assert_eq!(still.texts[1].bounds, URect::new(40, 40, 20, 20));
+    let union = still.texts[0].bounds.union(still.texts[1].bounds);
+    assert_eq!(still.text_batches[0].scissor, union);
+
+    let spun = turned(Some(Spin {
+        pivot: Vec2::new(50.0, 50.0),
+        angle: 0.5,
+    }));
+    assert_eq!(spun.text_batches.len(), 2);
+    let strict = spun.text_batches[1];
+    assert_eq!(strict.texts.len, 1);
+    assert_eq!(strict.scissor, URect::new(40, 40, 20, 20));
 }
 
 #[test]

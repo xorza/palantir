@@ -1,6 +1,6 @@
 //! Materials over the pixels painted before them.
 
-use palantir::glam::UVec2;
+use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, Shape};
 use palantir::{
     Border, ColorScheme, Configure, Corners, Lens, Material, Panel, PopupTrigger, Rect, RgbaF32,
@@ -84,6 +84,59 @@ fn materials_match_golden() {
                     Shape::rect().at(Rect::new(560.0, 0.0, 80.0, 60.0)),
                     Paint::NONE.with_material(Material::blur(16.0)),
                 );
+            });
+    });
+}
+
+/// Pin: a triangle wears a material as a rect does. Over stripes and text, a sharp triangle's
+/// plain blur, a rounded one's frosted material under a translucent fill with a border, and a
+/// rounded blur turned 30° about its own owner's center.
+#[test]
+fn triangle_materials_match_golden() {
+    let size = UVec2::new(330, 120);
+    GoldenName::TriangleMaterials.assert_scene(size, |ui| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("backdrop-triangles"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                backdrop_scene(ui, size);
+                ui.add_shape(
+                    Shape::triangle(
+                        Vec2::new(10.0, 105.0),
+                        Vec2::new(100.0, 105.0),
+                        Vec2::new(55.0, 15.0),
+                    ),
+                    Paint::NONE.with_material(Material::blur(6.0)),
+                );
+                ui.add_shape(
+                    Shape::triangle(
+                        Vec2::new(120.0, 105.0),
+                        Vec2::new(210.0, 105.0),
+                        Vec2::new(165.0, 15.0),
+                    )
+                    .radius(10.0_f32),
+                    Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
+                        .with_border(Border::new(RgbaF32::WHITE, 2.0))
+                        .with_material(Material::frosted(12.0)),
+                );
+                // In an owner of its own, so it turns about its own center.
+                Panel::zstack()
+                    .id(WidgetId::from_hash("backdrop-triangle-turned"))
+                    .at((225.0, 10.0))
+                    .size(100.0)
+                    .show(ui, |ui| {
+                        if let Some(shape) = ui.add_shape(
+                            Shape::triangle(
+                                Vec2::new(5.0, 95.0),
+                                Vec2::new(95.0, 95.0),
+                                Vec2::new(50.0, 5.0),
+                            )
+                            .radius(8.0_f32),
+                            Paint::NONE.with_material(Material::blur(8.0)),
+                        ) {
+                            shape.animate(PaintAnimation::turn(1.0 / 12.0, 1.0 / 12.0));
+                        }
+                    });
             });
     });
 }

@@ -73,12 +73,12 @@ use crate::gpu::pipeline::effect_pipeline::{
 use crate::gpu::pipeline::format_pipelines::{
     FormatPipelines, PassPipelines, PipelineCensus, Programs,
 };
+use crate::gpu::pipeline::image_pipeline::image_form::ImageForm;
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
-use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{
     self, QuadBinding, QuadExtras, QuadPass, QuadPipeline, QuadRun,
 };
@@ -107,6 +107,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::quad_form::QuadForm;
 use crate::renderer::repaint_scissors::{PartialScissors, RepaintScissors};
 use glam::UVec2;
 use rustc_hash::FxHashMap;
@@ -665,9 +666,15 @@ impl WgpuBackend {
                         .programs
                         .quad
                         .taken()
-                        .with(QuadDraw::Form(QuadForm::Solid)),
+                        .with(QuadDraw::Form(QuadForm::BoxSolid)),
                     meshes: !buffer.meshes.is_empty(),
-                    images: !buffer.images.is_empty(),
+                    images: {
+                        let mut forms = [false; 3];
+                        for image in buffer.images.instance() {
+                            forms[ImageForm::of(image.flags) as usize] = true;
+                        }
+                        forms
+                    },
                     curves: !buffer.curves.is_empty(),
                     rasters: !buffer.texts.is_empty() || !buffer.icons.is_empty(),
                 },
@@ -936,10 +943,11 @@ impl WgpuBackend {
                 pipeline: draw
                     .fmt
                     .for_pass(StencilMode::Off)
-                    .quad(QuadDraw::Form(QuadForm::Solid)),
+                    .quad(QuadDraw::Form(QuadForm::BoxSolid)),
                 gradient_bind_group: &self.gradient.bind_group,
             },
             viewport: draw.viewport,
+            vertices: self.programs.quad.form_vertices(QuadForm::BoxSolid),
         }
     }
 
@@ -1084,7 +1092,7 @@ impl WgpuBackend {
                 // Through the recorder, so the viewport is pushed before the draw; else the clear
                 // quad reads stale immediates (zero on a partial pass's first PreClear) and
                 // clears nothing.
-                let solid = ctx.pipelines.quad(QuadDraw::Form(QuadForm::Solid));
+                let solid = ctx.pipelines.quad(QuadDraw::Form(QuadForm::BoxSolid));
                 self.programs.quad.draw_clear(ctx.rec, quad(solid));
             }),
             RenderStep::SetScissor(r) => {
@@ -1140,9 +1148,10 @@ impl WgpuBackend {
                         ),
                         PaintTier::Image => self.programs.image.draw_batch(
                             ctx.rec,
-                            ctx.pipelines.image(),
+                            |form| ctx.pipelines.image(form),
                             ImageBatch {
                                 ids: buffer.images.id(),
+                                instances: buffer.images.instance(),
                                 items: items(),
                             },
                             textures,
@@ -1159,6 +1168,7 @@ impl WgpuBackend {
                             ctx.pipelines.stencil(),
                             EffectBatch {
                                 effects: buffer.effects.effect(),
+                                instances: buffer.effects.instance(),
                                 items: items(),
                                 groups: &effect_groups,
                                 backdrops: self.backdrops.group(),
@@ -1356,6 +1366,19 @@ pub(crate) mod internals {
         /// grid is compared with. Builds every format's pipelines again.
         pub(crate) fn disable_shadow_grid(&mut self) {
             self.programs.quad.disable_shadow_grid();
+            self.rebuild_pipelines();
+        }
+
+        /// Draw every box, circle and triangle as one quad that measures its distance at each
+        /// pixel instead of its template: the reference the template is compared with. Builds
+        /// every format's pipelines again.
+        pub(crate) fn disable_shape_template(&mut self) {
+            self.programs.quad.disable_shape_template();
+            self.rebuild_pipelines();
+        }
+
+        /// Build every format's pipelines again, after a reference switch.
+        fn rebuild_pipelines(&mut self) {
             let formats: Vec<TargetFormat> = self.pipelines.keys().copied().collect();
             self.pipelines.clear();
             for format in formats {

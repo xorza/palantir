@@ -27,6 +27,7 @@ mod packed_quad;
 mod paint_order;
 mod physical_map;
 mod polyline_scratch;
+mod quad_runs;
 mod rect_grid;
 pub(crate) mod session;
 mod stroke_bbox;

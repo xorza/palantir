@@ -3,10 +3,12 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::shape::geometry::shape_outline::ShapeOutline;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record::ShapeRecord;
@@ -65,7 +67,10 @@ impl Shapes {
     /// the base rect at full UV against the encoder's zero intrinsic size.
     pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) {
         let record = ShapeRecord::Image {
-            local_rect: None,
+            outline: ShapeOutline::Rect {
+                local_rect: None,
+                corners: Corners::ZERO,
+            },
             tint: RgbaF32::WHITE.to_f16(),
             source: ImageSource::GpuView { id, epoch },
             fit: ImageFit::Fill,

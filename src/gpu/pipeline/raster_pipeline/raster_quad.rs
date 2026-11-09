@@ -38,6 +38,33 @@ impl RasterQuad {
         u32::from(u) | ((kind as u32) << KIND_SHIFT) | (u32::from(v) << V_SHIFT)
     }
 
+    /// This quad's part inside the physical px from `min` to `max`, its atlas origin moved by the
+    /// texels cut off; `None` where none of it lies inside. A quad drawn at its raster's own size,
+    /// a texel a pixel, as a glyph is, so the cut is exact.
+    pub(crate) fn clipped(self, min: IVec2, max: IVec2) -> Option<Self> {
+        debug_assert_eq!(
+            self.size,
+            self.dim.as_uvec2(),
+            "a clipped quad is drawn at its raster's own size"
+        );
+        let lo = self.pos.max(min);
+        let hi = (self.pos + self.size.as_ivec2()).min(max);
+        if lo.x >= hi.x || lo.y >= hi.y {
+            return None;
+        }
+        let cut = (lo - self.pos).as_uvec2();
+        let size = (hi - lo).as_uvec2();
+        Some(Self {
+            pos: lo,
+            dim: size.as_u16vec2(),
+            size,
+            // `u` and `v` move by the cut, which stays inside the slot, so neither carries into
+            // the field past it.
+            uv_and_kind: self.uv_and_kind + cut.x + (cut.y << V_SHIFT),
+            color: self.color,
+        })
+    }
+
     pub(crate) const LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
         size_of::<Self>(),
         wgpu::VertexStepMode::Instance,
@@ -152,6 +179,7 @@ mod tests {
     use crate::gpu::pipeline::raster_pipeline::raster_quad::{
         FLAG_MASK, RasterQuad, U_BITS, U_MAX,
     };
+    use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::primitives::paint::content_type::ContentType;
 
     /// The three fields share one `u32`; `u` is taken at its range top to catch a mask one bit too wide.
@@ -180,5 +208,39 @@ mod tests {
         assert_eq!((p >> 15) & 1, 1);
         assert_eq!(p >> 16, 54321);
         assert_ne!(p & RasterQuad::DESATURATE, 0);
+    }
+
+    /// A quad keeps its part inside the clip, its atlas origin moved by the texels cut off: a
+    /// 10 × 8 glyph at (5, 4), atlas (100, 200), against a clip from (8, 6) to (12, 20) keeps
+    /// (8, 6), 4 × 6, at atlas (103, 202). A quad inside the clip stays as it was, one that touches
+    /// it only along an edge goes, and the content type rides through.
+    #[test]
+    fn a_clipped_quad_keeps_its_texels_inside() {
+        use glam::{IVec2, U16Vec2, UVec2};
+
+        let quad = RasterQuad {
+            pos: IVec2::new(5, 4),
+            dim: U16Vec2::new(10, 8),
+            size: UVec2::new(10, 8),
+            uv_and_kind: RasterQuad::pack_uv(100, 200, ContentType::Color),
+            color: RgbaF16::WHITE,
+        };
+        let cut = quad
+            .clipped(IVec2::new(8, 6), IVec2::new(12, 20))
+            .expect("the clip holds part of it");
+        assert_eq!(cut.pos, IVec2::new(8, 6));
+        assert_eq!(cut.dim, U16Vec2::new(4, 6));
+        assert_eq!(cut.size, UVec2::new(4, 6));
+        assert_eq!(
+            cut.uv_and_kind,
+            RasterQuad::pack_uv(103, 202, ContentType::Color)
+        );
+        let inside = quad.clipped(IVec2::ZERO, IVec2::splat(100)).unwrap();
+        assert_eq!(
+            (inside.pos, inside.dim, inside.size, inside.uv_and_kind),
+            (quad.pos, quad.dim, quad.size, quad.uv_and_kind)
+        );
+        assert!(quad.clipped(IVec2::new(15, 0), IVec2::splat(100)).is_none());
+        assert!(quad.clipped(IVec2::ZERO, IVec2::new(100, 4)).is_none());
     }
 }

@@ -29,6 +29,7 @@ use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, G
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -139,6 +140,7 @@ fn run_in(
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
     DrawImagePayload {
         rect,
+        shape: None,
         uv_min: Vec2::ZERO,
         uv_size: Vec2::ONE,
         tint: RgbaF32::WHITE.to_f16(),
@@ -310,8 +312,10 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawEffectPayload {
-            rect: r,
-            corners: Corners::ZERO,
+            outline: PlacedOutline::Rect {
+                rect: r,
+                corners: Corners::ZERO,
+            },
             spin: None,
             effect: EffectId(0),
             params: Span::new(0, 2),
@@ -328,6 +332,7 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawImagePayload {
             rect: r,
+            shape: None,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
             tint: RgbaF32::WHITE.to_f16(),

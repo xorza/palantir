@@ -20,23 +20,16 @@ var<immediate> imm: Immediates;
 
 // See `AA_HALF_WIDTH` in `primitives::paint::antialias`: the half-width of
 // the box filter every edge is antialiased with.
-const AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
-
-// Coverage, at a pixel centered `d` outside an edge (negative inside), of
-// the side the edge bounds: zero from `AA_HALF_WIDTH` out, full from
-// `AA_HALF_WIDTH` in.
-fn edge_coverage(d: f32) -> f32 {
-    return clamp((AA_HALF_WIDTH - d) / (2.0 * AA_HALF_WIDTH), 0.0, 1.0);
-}
+const PALANTIR_AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
 
 // Coverage, at a pixel centered `r` from a band's center line, of the band
 // reaching `core_half` to either side: the edge ramp, capped at the share
 // of the filter the band's whole width fills, since a band narrower than
 // the filter can never cover more of a pixel than its own width.
 fn band_coverage(core_half: f32, r: f32) -> f32 {
-    let filter_width = 2.0 * AA_HALF_WIDTH;
+    let filter_width = 2.0 * PALANTIR_AA_HALF_WIDTH;
     let plateau = clamp(2.0 * core_half / filter_width, 0.0, 1.0);
-    return clamp((core_half + AA_HALF_WIDTH - r) / filter_width, 0.0, plateau);
+    return clamp((core_half + PALANTIR_AA_HALF_WIDTH - r) / filter_width, 0.0, plateau);
 }
 
 // Rec. 709 luma. Both readers weigh colors that have already been
@@ -75,40 +68,6 @@ fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
     return vec4<f32>(rgb * alpha, alpha);
 }
 
-// A ramp parameter `t` in 0..1 as the texture coordinate of a LUT row
-// `width` texels wide. The bake puts texel `i` at `t = i / (width - 1)`,
-// so `t = 0` and `t = 1` must land on the first and last texel centers
-// and everything between on the matching point between two centers.
-fn lut_u(t: f32, width: f32) -> f32 {
-    return (t * (width - 1.0) + 0.5) / width;
-}
-
-// Premultiplied in, straight out — for a color that was interpolated
-// premultiplied (a gradient texel, a vertex color) and must meet a
-// straight-alpha multiply. A fully transparent color has no hue; it
-// comes back black.
-fn unpremultiply(c: vec4<f32>) -> vec4<f32> {
-    return vec4<f32>(select(vec3<f32>(0.0), c.rgb / c.a, c.a > 0.0), c.a);
-}
-
-// sRGB-encoded channels → linear light: the exact piecewise transfer
-// function of IEC 61966-2-1, the inverse of what the GPU applies at every
-// sRGB write, so a color authored as sRGB bytes reaches the screen as
-// those bytes. The CPU decodes with the same function.
-fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
-    let low = c / 12.92;
-    let high = pow((c + 0.055) / 1.055, vec3<f32>(2.4));
-    return select(high, low, c <= vec3<f32>(0.04045));
-}
-
-// Linear light → sRGB-encoded channels: the inverse of `srgb_to_linear`, the transfer the GPU
-// applies at an sRGB write.
-fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
-    let low = c * 12.92;
-    let high = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055;
-    return select(high, low, c <= vec3<f32>(0.0031308));
-}
-
 // `p` turned `rotation` radians about `center`. Exact at no turn, so an
 // unturned quad draws where it always has.
 fn turned(p: vec2<f32>, center: vec2<f32>, rotation: f32) -> vec2<f32> {
@@ -120,31 +79,8 @@ fn turned(p: vec2<f32>, center: vec2<f32>, rotation: f32) -> vec2<f32> {
     return center + vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
 }
 
-
-// Rounded-rect SDF centered at the origin: half-extents `b`,
-// per-corner radius `r = (tl, tr, br, bl)`. Quadrant-select picks the
-// corner radius by sign of `p` so each corner can differ.
-fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f32 {
-    let right  = step(0.0, p.x);
-    let bottom = step(0.0, p.y);
-    let r = mix(mix(radius.x, radius.y, right),
-                mix(radius.w, radius.z, right),
-                bottom);
-    let q = abs(p) - (b - vec2<f32>(r));
-    return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
-}
-
-
-// Corner-origin convenience: `p` measured from the top-left of a rect
-// of `size`. Forwards to the centered form.
-fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
-    let half = size * 0.5;
-    return sdf_rounded_box_centered(p - half, half, radius);
-}
-
-
 // RGBA, given the signed distance `d` (negative inside). `outer_aa =
-// edge_coverage(d)` is the coverage. With a border, the border covers the annulus
+// palantir_edge_coverage(d)` is the coverage. With a border, the border covers the annulus
 // between the outer edge and the edge inset by `border_width`, and the fill
 // covers the interior inside that inset. The two are *spatially disjoint*
 // within any pixel (border = `outer_aa - inner_aa`, fill = `inner_aa`), so they
@@ -155,9 +91,9 @@ fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
 // fill at fractional zoom; summing keeps total coverage at `outer_aa`. Shared
 // by the rounded-rect and triangle paths so they can't drift.
 fn composite(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
-    let outer_aa = edge_coverage(d);
+    let outer_aa = palantir_edge_coverage(d);
     if (border_width > 0.0) {
-        let inner_aa = edge_coverage(d + border_width);
+        let inner_aa = palantir_edge_coverage(d + border_width);
         let border_a = (outer_aa - inner_aa) * border_color.a;
         let fill_a   = inner_aa * fill.a;
         return premultiply(border_color.rgb, border_a) + premultiply(fill.rgb, fill_a);
@@ -175,10 +111,10 @@ fn composite(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32
 // (no outward AA): the shape is a mask laid exactly over content of
 // the same extent, so its outer boundary is never a visible edge.
 fn composite_outside(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
-    let outer_aa = edge_coverage(d);
+    let outer_aa = palantir_edge_coverage(d);
     let fill_a = (1.0 - outer_aa) * fill.a;
     if (border_width > 0.0) {
-        let inner_aa = edge_coverage(d + border_width);
+        let inner_aa = palantir_edge_coverage(d + border_width);
         let border_a = (outer_aa - inner_aa) * border_color.a;
         return premultiply(border_color.rgb, border_a) + premultiply(fill.rgb, fill_a);
     }

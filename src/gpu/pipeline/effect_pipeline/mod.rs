@@ -5,6 +5,8 @@
 use std::array;
 use std::mem::offset_of;
 
+use glam::Vec2;
+
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
 use crate::effect::contract::{BACKDROPS_GROUP, GRADIENTS_GROUP, IMAGES_GROUP};
@@ -14,6 +16,7 @@ use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
+use crate::gpu::pipeline::shape_template;
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
@@ -113,7 +116,7 @@ const BLEND: wgpu::BlendState = wgpu::BlendState {
     },
 };
 
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = [
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Float32x4,
@@ -144,6 +147,27 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = [
         5,
         wgpu::VertexFormat::Uint32,
         offset_of!(EffectInstance, flags),
+    ),
+    // The shape as the template takes it, two points a slot.
+    vertex_attr(
+        6,
+        wgpu::VertexFormat::Float32x4,
+        offset_of!(EffectInstance, points),
+    ),
+    vertex_attr(
+        7,
+        wgpu::VertexFormat::Float32x4,
+        offset_of!(EffectInstance, points) + 2 * size_of::<Vec2>(),
+    ),
+    vertex_attr(
+        8,
+        wgpu::VertexFormat::Float32,
+        offset_of!(EffectInstance, deep),
+    ),
+    vertex_attr(
+        9,
+        wgpu::VertexFormat::Float32,
+        offset_of!(EffectInstance, border_width),
     ),
 ];
 
@@ -180,7 +204,7 @@ pub(crate) fn build(
         vertex_entry: "palantir_vs",
         fragment_entry: "palantir_fs",
         vertex_buffers: &[Some(INSTANCE_LAYOUT)],
-        topology: wgpu::PrimitiveTopology::TriangleStrip,
+        topology: wgpu::PrimitiveTopology::TriangleList,
         blend: Some(BLEND),
         // Only the material path, which a backdrop effect alone holds, declares the dither.
         constants: match module.kind {
@@ -227,6 +251,7 @@ struct PipelinesCopy {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
     pub(crate) effects: &'a [EffectId],
+    pub(crate) instances: &'a [EffectInstance],
     pub(crate) items: Span,
     pub(crate) groups: &'a EffectImageGroups,
     pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
@@ -325,6 +350,7 @@ impl EffectPipeline {
         stencil: StencilMode,
         EffectBatch {
             effects,
+            instances,
             items,
             groups,
             backdrops,
@@ -336,8 +362,13 @@ impl EffectPipeline {
             .as_ref()
             .expect("a frame uploads before it draws");
         rec.vertex(0, &self.instances.buffer);
-        for run in Runs::new(items, |i| (effects[i as usize], self.images[i as usize])) {
-            let (effect, images) = run.key;
+        // A run draws one vertex count, so a triangle and a rect of one effect run apart.
+        let key = |i: u32| {
+            let i = i as usize;
+            (effects[i], self.images[i], instances[i].corner_count())
+        };
+        for run in Runs::new(items, key) {
+            let (effect, images, corners) = run.key;
             let images_group = if images.ids().is_empty() {
                 None
             } else {
@@ -358,7 +389,10 @@ impl EffectPipeline {
                 rec.group_once(BACKDROPS_GROUP, backdrops);
                 rec.group_once(GRADIENTS_GROUP, gradients);
             }
-            rec.draw(0..4, run.instances.u32_range());
+            rec.draw(
+                0..shape_template::vertices(corners),
+                run.instances.u32_range(),
+            );
         }
     }
 }

@@ -53,12 +53,13 @@ use glam::Vec2;
 ///
 /// - A rect takes an [`IntoPaint`], a [`Paint`] or a fill alone; an
 ///   [`EffectPaint`](crate::widget::EffectPaint); an [`ImagePaint`](crate::widget::ImagePaint);
-///   an [`IconPaint`](crate::widget::IconPaint). An image and an icon take a square-cornered rect
-///   that covers its inside, and an effect a rect that covers its inside: their pipelines clip to
-///   no other.
+///   an [`IconPaint`](crate::widget::IconPaint). An image takes a rect that covers its inside, its
+///   corners clipping it; an icon a square-cornered rect that covers its inside, and an effect a
+///   rect that covers its inside: their pipelines clip to no other.
 /// - A circle takes an `IntoPaint` as a round box and a [`Stroke`](crate::Stroke) as a closed
 ///   arc.
-/// - A triangle takes an `IntoPaint` of a solid fill and a border.
+/// - A triangle takes an `IntoPaint` of a fill, a border and a material, an `ImagePaint`, and an
+///   `EffectPaint`, which reads the triangle's covering rect and no corners.
 /// - A line, a Bézier, an arc and a polyline take a `Stroke`.
 /// - Text takes its color, a mesh its tint, each an [`RgbaF32`].
 pub trait PaintedBy<P>: sealed::DrawWith<P> {}

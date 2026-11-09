@@ -113,9 +113,11 @@ impl TextBackend {
                     },
                 );
             }
-            // A turned run is emitted as an unturned one, then turned whole.
-            if let Some(spin) = r.spin {
-                self.pass.turn_since(start, spin);
+            // A turned run is emitted as an unturned one, then turned whole; its batch's scissor
+            // clips it. An unturned one clips to its bounds here, so it batches with any run.
+            match r.spin {
+                Some(spin) => self.pass.turn_since(start, spin),
+                None => self.pass.clip_since(start, r.bounds),
             }
         }
     }

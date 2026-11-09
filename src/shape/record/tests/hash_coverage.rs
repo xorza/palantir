@@ -1,6 +1,7 @@
 //! The exhaustive pin: every named field on every shape either moves the
 //! hash or is listed as deliberately excluded.
 
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
@@ -192,11 +193,12 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             },
             fill,
             border: stroke,
+            material: None,
         })
     };
     let corners = [pt(0.0), pt(1.0), pt(2.0)];
     let natural = PointPlacement::NATURAL;
-    let base = tri(corners, 1.0, natural, white, stroke);
+    let base = tri(corners, 1.0, natural, solid, stroke);
     for (label, moved) in [
         ("a", [pt(9.0), pt(1.0), pt(2.0)]),
         ("b", [pt(0.0), pt(9.0), pt(2.0)]),
@@ -205,30 +207,60 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         moves(
             &format!("Quad/Triangle.corners.{label}"),
             &base,
-            &tri(moved, 1.0, natural, white, stroke),
+            &tri(moved, 1.0, natural, solid, stroke),
         );
     }
     moves(
         "Quad/Triangle.radius",
         &base,
-        &tri(corners, 2.0, natural, white, stroke),
+        &tri(corners, 2.0, natural, solid, stroke),
     );
     for (label, placement) in placements(rect) {
         moves(
             &format!("Quad/Triangle.placement.{label}"),
             &base,
-            &tri(corners, 1.0, placement, white, stroke),
+            &tri(corners, 1.0, placement, solid, stroke),
         );
     }
     moves(
         "Quad/Triangle.fill",
         &base,
-        &tri(corners, 1.0, natural, red, stroke),
+        &tri(corners, 1.0, natural, LoweredBrush::Solid(red), stroke),
+    );
+    let grad_tri = |fill| tri(corners, 1.0, natural, fill, stroke);
+    moves(
+        "Quad/Triangle.fill gradient hash",
+        &grad_tri(grad(0, 1)),
+        &grad_tri(grad(0, 2)),
+    );
+    excluded(
+        "Quad/Triangle.fill gradient id",
+        &grad_tri(grad(0, 1)),
+        &grad_tri(grad(5, 1)),
+    );
+    let ShapeRecord::Quad(QuadShape::Triangle {
+        geometry,
+        fill,
+        border,
+        ..
+    }) = base
+    else {
+        unreachable!("`tri` builds a triangle");
+    };
+    moves(
+        "Quad/Triangle.material",
+        &base,
+        &ShapeRecord::Quad(QuadShape::Triangle {
+            geometry,
+            fill,
+            border,
+            material: Some(LoweredMaterial::fixture(8.0)),
+        }),
     );
     moves(
         "Quad/Triangle.border",
         &base,
-        &tri(corners, 1.0, natural, white, stroke2),
+        &tri(corners, 1.0, natural, solid, stroke2),
     );
 
     let poly =
@@ -624,7 +656,10 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
 
     let image =
         |local_rect, tint, source, fit, min_filter, mag_filter, downsample| ShapeRecord::Image {
-            local_rect,
+            outline: ShapeOutline::Rect {
+                local_rect,
+                corners: Corners::ZERO,
+            },
             tint,
             source,
             fit,
@@ -658,6 +693,48 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageFilter::Linear,
             ImageDownsample::Single,
         ),
+    );
+    let ShapeRecord::Image {
+        tint,
+        source,
+        fit,
+        min_filter,
+        mag_filter,
+        downsample,
+        ..
+    } = base
+    else {
+        unreachable!("`image` builds an image record");
+    };
+    let outlined = |outline| ShapeRecord::Image {
+        outline,
+        tint,
+        source,
+        fit,
+        min_filter,
+        mag_filter,
+        downsample,
+    };
+    let triangle = |radius| {
+        ShapeOutline::Triangle(TriangleGeometry {
+            corners: [pt(0.0), pt(1.0), pt(2.0)],
+            radius,
+            placement: PointPlacement::NATURAL,
+        })
+    };
+    moves(
+        "Image.outline.corners",
+        &base,
+        &outlined(ShapeOutline::Rect {
+            local_rect: rect(0.0),
+            corners: Corners::all(4.0),
+        }),
+    );
+    moves("Image.outline.kind", &base, &outlined(triangle(1.0)));
+    moves(
+        "Image.outline.triangle",
+        &outlined(triangle(1.0)),
+        &outlined(triangle(2.0)),
     );
     moves(
         "Image.tint",

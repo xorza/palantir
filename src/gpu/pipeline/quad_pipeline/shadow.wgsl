@@ -1,7 +1,5 @@
-// Divide-by-zero guard on object-local axes (quad size, gradient
-// span, radial radius). Anything smaller than this rounds to "no
-// meaningful direction" — the gradient collapses to a fallback.
-const ZERO_EPS: f32 = 1e-6;
+// Drop and inset shadows: the closed-form blur of a rounded box, drawn as the cells of a grid
+// around a hole that paints nothing (`vs_shadow`, `fs_shadow`, `fs_shadow_tables`).
 
 // σ below which `filter_cdf` takes its σ = 0 limit, the bare pixel box.
 // The two differ by about σ there, far under an 8-bit step, and the
@@ -33,19 +31,12 @@ const CUTOUT_MIN_SIGMA: f32 = /*{CUTOUT_MIN_SIGMA}*/;
 // (`CutoutPlan::SHADED_NODES`, which prices shading against a table).
 const CUTOUT_NODES: u32 = /*{CUTOUT_NODES}*/;
 
-// Midpoint nodes of a corner cutout baked into a table (`fs_cutout_bake`):
-// twice `CUTOUT_NODES`, so the bake errs about a quarter of the shaded
-// form, 3e-4, beside the table's bilinear error of under 6e-4.
-const CUTOUT_BAKE_NODES: u32 = /*{CUTOUT_BAKE_NODES}*/;
-
 // A cutout table's texels per σ, both axes (`CutoutPlan`). At 10 its
 // bilinear error stays under 6e-4 of the exact cutout (measured at
 // σ = 0.25–16 against radii 4–40), under the shaded form's 0.0011.
 const CUTOUT_TEXELS_PER_SIGMA: f32 = /*{CUTOUT_TEXELS_PER_SIGMA}*/;
 
-// Side of the square cutout atlas in texels, and of the cell a table's
-// origin is a multiple of, both from `CutoutPlan`.
-const CUTOUT_ATLAS_SIZE: f32 = /*{CUTOUT_ATLAS_SIZE}*/;
+// Side of the cell a table's origin is a multiple of, from `CutoutPlan`.
 const CUTOUT_CELL: u32 = /*{CUTOUT_CELL}*/;
 
 // A corner with no table: its cutout is shaded (`corner_cutout`).
@@ -75,24 +66,13 @@ const FILTER_SERIES_MIN_SIGMA: f32 = /*{FILTER_SERIES_MIN_SIGMA}*/;
 
 // The σ from which `filter_pdf` takes its series: the box's mean of `φ`
 // around `v = u / σ` is `(φ(v) + (h²/6)·φ″(v) + (h⁴/120)·φ⁗(v) + …) / σ`,
-// with `h = AA_HALF_WIDTH / σ`, `φ″(v) = (v² − 1)·φ(v)` and `|φ⁗| ≤ 1.2`.
+// with `h = PALANTIR_AA_HALF_WIDTH / σ`, `φ″(v) = (v² − 1)·φ(v)` and `|φ⁗| ≤ 1.2`.
 // The difference of `Φ` at the box's ends errs about 3.5e-7 in f32 at every
 // σ, the dropped term `1e-2 · h⁴ / σ`; the series errs less from σ = 5
 // (2.0e-7 against 3.2e-7 there, 3e-9 against 3.8e-7 at σ = 16), and costs
 // one `exp` where the difference takes two and two reciprocals. Later than
 // `FILTER_SERIES_MIN_SIGMA`, whose difference loses more, as it grows with σ.
 const FILTER_PDF_SERIES_MIN_SIGMA: f32 = 5.0;
-
-// The paths `fs` takes, pinned per pipeline (`QuadForm`): the driver drops
-// the rest, so a solid rect's pipeline does not hold a gradient's or a
-// triangle's registers.
-override QUAD_FORM: u32;
-const QUAD_FORM_SOLID: u32 = /*{QUAD_FORM_SOLID}*/;
-const QUAD_FORM_GRADIENT: u32 = /*{QUAD_FORM_GRADIENT}*/;
-const QUAD_FORM_TRIANGLE: u32 = /*{QUAD_FORM_TRIANGLE}*/;
-
-// A `core` no point is inside: the fragment always takes its full form.
-const NO_SPAN: f32 = 1e30;
 
 // A cell's two triangles, as indices into `CORNERS`.
 const CELL_TRIANGLES = array<u32, 6>(0u, 1u, 2u, 2u, 1u, 3u);
@@ -107,31 +87,6 @@ const INV_SQRT_TAU: f32 = 0.39894228;
 // interpolated `local` carries.
 const SHADOW_CLIP_EPS: f32 = 1.0 / 255.0;
 
-// `fill_kind`'s fields: the family tag in the `FILL_TAG_MASK` bits and
-// the spread mode `SPREAD_SHIFT` up. Each flag bit is a constant below.
-const FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
-const SPREAD_SHIFT: u32 = /*{SPREAD_SHIFT}*/;
-const SPREAD_MASK: u32 = /*{SPREAD_MASK}*/;
-
-// Gradient kind tag, which the gradient form reads (`QuadForm::of`):
-//   linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
-//   radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
-//   conic  (sample LUT via `fill_axis = (cx, cy, start_angle, _)`)
-const BRUSH_KIND_LINEAR:       u32 = /*{BRUSH_KIND_LINEAR}*/;
-const BRUSH_KIND_RADIAL:       u32 = /*{BRUSH_KIND_RADIAL}*/;
-// Fragment fast path (`FillKind::FAST_BIT`). The composer sets it on a
-// solid, sharp, borderless quad whose rect is pixel-aligned — every
-// rasterized fragment is interior (SDF coverage exactly 1.0), so `fs`
-// returns the premultiplied fill directly.
-const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
-// Outside rect (`FillKind::OUTSIDE_BIT`) — inverted fill coverage. The fill
-// paints *outside* the rounded boundary (the corner wedges, out to the
-// quad edge), the border keeps its usual inner-edge annulus, and the
-// interior stays transparent. Cheap stand-in for rounded-corner
-// scissor clipping: draw content as plain rects, then paint this over
-// it with the surrounding background as `fill`. Only meaningful for the
-// rect path (solid and the gradients).
-const FILL_FLAG_OUTSIDE: u32 = /*{FILL_FLAG_OUTSIDE}*/;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
 // `fill` is the shadow color, `radius` is the source rect's corner
 // radii, `size` is the paint bbox, and
@@ -139,47 +94,8 @@ const FILL_FLAG_OUTSIDE: u32 = /*{FILL_FLAG_OUTSIDE}*/;
 //   - Drop:  paint bbox = (source + offset).inflated(SHADOW_REACH_SIGMAS·σ + max(spread, 0)).
 //   - Inset: paint bbox = source. Spread shrinks the "hole" rect
 //            inside the shader.
-const BRUSH_KIND_SHADOW_DROP:  u32 = /*{BRUSH_KIND_SHADOW_DROP}*/;
-const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
-// Rounded-triangle SDF. `fill` is the solid fill; the three corner points
-// ride the reused instance lanes — `radius.xy = a`, `radius.zw = b`,
-// `fill_axis.xy = c` — stored as unorm16 shares of the quad's size, which
-// `vs` turns into `local` (0..size) coords; `fill_axis.z` is the corner
-// radius, f16 like every other lane. The border uses the usual
-// `border_color`/`border_width`.
-const BRUSH_KIND_TRIANGLE:     u32 = /*{BRUSH_KIND_TRIANGLE}*/;
-// Spread mode, only meaningful for gradients.
-// `Pad` is the fallback below rather than a constant of its own.
-const SPREAD_REPEAT:  u32 = /*{SPREAD_REPEAT}*/;
-const SPREAD_REFLECT: u32 = /*{SPREAD_REFLECT}*/;
-const TAU: f32 = 6.2831853;
-
-struct VertexOut {
-    @builtin(position) clip:         vec4<f32>,
-    @location(0)       local:        vec2<f32>,
-    // Everything below is per-instance: identical at every vertex.
-    // `flat` skips plane-equation setup + per-fragment interpolation and
-    // avoids f32 drift across large quads.
-    @location(1) @interpolate(flat) size:         vec2<f32>,
-    @location(2) @interpolate(flat) fill:         vec4<f32>,
-    @location(3) @interpolate(flat) radius:       vec4<f32>,
-    @location(4) @interpolate(flat) border_color: vec4<f32>,
-    @location(5) @interpolate(flat) border_width: f32,
-    @location(6) @interpolate(flat) fill_kind:    u32,
-    @location(7) @interpolate(flat) fill_lut_row: u32,
-    @location(8) @interpolate(flat) fill_axis:    vec4<f32>,
-    // Precomputed `1.0 / max(size, ZERO_EPS)` so `eval_fill`'s gradient
-    // path multiplies per-fragment instead of dividing (solid fills and the
-    // shadow / triangle paths don't read it).
-    @location(9) @interpolate(flat) inv_size:     vec2<f32>,
-    // `(lo.x, lo.y, hi.x, hi.y)` in `local`: the rounded rect's interior,
-    // past every corner's arc and the border's inner edge by
-    // `AA_HALF_WIDTH`, where `composite` is the fill (`fs`). Empty where the
-    // shape has no such interior.
-    @location(10) @interpolate(flat) core: vec4<f32>,
-    // Nonzero for a turned quad, whose quad edge is no pixel edge (`fs`).
-    @location(11) @interpolate(flat) turned: u32,
-};
+const PALANTIR_FILL_SHADOW_DROP:  u32 = /*{FILL_SHADOW_DROP}*/;
+const PALANTIR_FILL_SHADOW_INSET: u32 = /*{FILL_SHADOW_INSET}*/;
 
 // What a shadow's fragments read: `vs_shadow`'s geometry, worked out once
 // per vertex. Every position is in pixels, and a fragment takes its own as
@@ -189,7 +105,7 @@ struct VertexOut {
 struct ShadowOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) @interpolate(flat) fill: vec4<f32>,
-    // `BRUSH_KIND_SHADOW_DROP` or `BRUSH_KIND_SHADOW_INSET`.
+    // `PALANTIR_FILL_SHADOW_DROP` or `PALANTIR_FILL_SHADOW_INSET`.
     @location(1) @interpolate(flat) kind: u32,
     @location(2) @interpolate(flat) sigma: f32,
     // The box whose blur the shadow paints (`ShadowBox`).
@@ -213,38 +129,16 @@ struct ShadowOut {
     @location(11) @interpolate(flat) turn: vec4<f32>,
 };
 
-// The instance attributes every quad pipeline reads.
-struct QuadIn {
-    @location(0) pos:          vec2<f32>,
-    @location(1) size:         vec2<f32>,
-    @location(2) fill_packed:  vec2<u32>,
-    @location(3) radius_packed: vec2<u32>,
-    @location(4) border_color_packed: vec2<u32>,
-    @location(5) border_width: f32,
-    @location(6) fill_kind:    u32,
-    @location(7) fill_lut_row: u32,
-    @location(8) fill_axis_packed: vec2<u32>,
-    // A paint animation's turn about the quad's center, in radians; 0 for
-    // none. The quad's own frame is unturned: `local`, the SDF and the
-    // fill read it, and only the drawn corners turn.
-    @location(10) rotation:    f32,
-};
-
-@vertex
-fn vs(@builtin(vertex_index) vi: u32, quad: QuadIn) -> VertexOut {
-    return quad_vertex(vi, quad);
-}
-
 // `vs` for the shadow pipeline, which also binds the per-instance cutout
 // tables (`CutoutTables`). A shadow draws as the eight cells of a 3×3
 // grid around a hole that paints nothing, six vertices each
 // (`QuadPipeline::draw_shadows`).
 //
 // A drop shadow's hole is its source inset by its largest radius and
-// `AA_HALF_WIDTH`: at every pixel center there the source SDF is at most
-// `−AA_HALF_WIDTH`, so the clip in `shadow_pixel` zeroes it, and skipping it
+// `PALANTIR_AA_HALF_WIDTH`: at every pixel center there the source SDF is at most
+// `−PALANTIR_AA_HALF_WIDTH`, so the clip in `shadow_pixel` zeroes it, and skipping it
 // changes no pixel. Its four edge cells stop short of the hole too, a pixel
-// past `AA_HALF_WIDTH` inside the source: between the corners the source's
+// past `PALANTIR_AA_HALF_WIDTH` inside the source: between the corners the source's
 // edge is straight, so the same clip zeroes the band they leave. An inset
 // shadow's hole is its core (`ShadowOut::core`), where the blurred box
 // covers everything and the shadow is zero by its form. A hole that is
@@ -268,10 +162,10 @@ fn vs_shadow(
     let bounds = shaded_bounds(quad.pos, quad.size, quad.fill_kind, quad.rotation);
     let half = quad.size * 0.5;
     let center = quad.pos + half;
-    let kind = quad.fill_kind & FILL_TAG_MASK;
+    let kind = quad.fill_kind & PALANTIR_FILL_TAG_MASK;
     let sb = shadow_box(kind, half, q.radius, q.fill_axis);
     let sigma = q.fill_axis.z;
-    let reach = SHADOW_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+    let reach = SHADOW_REACH_SIGMAS * sigma + PALANTIR_AA_HALF_WIDTH;
     let r = sb.radius;
     let core_lo = -sb.half + vec2<f32>(max(r.x, r.w), max(r.x, r.y)) + vec2<f32>(reach);
     let core_hi = sb.half - vec2<f32>(max(r.y, r.z), max(r.w, r.z)) - vec2<f32>(reach);
@@ -283,10 +177,10 @@ fn vs_shadow(
     // `offset` back from its center.
     var source_center = center;
     var source_half = half;
-    if (kind == BRUSH_KIND_SHADOW_DROP) {
+    if (kind == PALANTIR_FILL_SHADOW_DROP) {
         source_half = shadow_source_half(half, q.fill_axis);
         source_center = center - q.fill_axis.xy;
-        let inset = max(max(q.radius.x, q.radius.y), max(q.radius.z, q.radius.w)) + AA_HALF_WIDTH;
+        let inset = max(max(q.radius.x, q.radius.y), max(q.radius.z, q.radius.w)) + PALANTIR_AA_HALF_WIDTH;
         hole_lo = source_center - source_half + vec2<f32>(inset);
         hole_hi = source_center + source_half - vec2<f32>(inset);
     }
@@ -300,8 +194,8 @@ fn vs_shadow(
     var ys = array<f32, 4>(bounds.lo.y, inner_lo.y, inner_hi.y, bounds.hi.y);
     var edge_lo = inner_lo;
     var edge_hi = inner_hi;
-    if (kind == BRUSH_KIND_SHADOW_DROP && quad.rotation == 0.0) {
-        let deep = vec2<f32>(AA_HALF_WIDTH + 1.0);
+    if (kind == PALANTIR_FILL_SHADOW_DROP && quad.rotation == 0.0) {
+        let deep = vec2<f32>(PALANTIR_AA_HALF_WIDTH + 1.0);
         edge_lo = clamp(source_center - source_half + deep, bounds.lo, inner_lo);
         edge_hi = clamp(source_center + source_half - deep, inner_hi, bounds.hi);
     }
@@ -343,18 +237,6 @@ fn vs_shadow(
     return out;
 }
 
-// The pixel-center extent the quad shader shades for a quad: its rect
-// grown to every pixel center within `AA_HALF_WIDTH` of it, out to whole
-// pixels, since its coverage reaches that far and the rasterizer only
-// shades a pixel whose center is inside what it draws. A rect on pixel
-// boundaries does not grow. A outside rect is a mask over content of its
-// own extent and paints its fill outside the shape, so it stays at its
-// rect. `Quad::shaded_rect` is the same extent on the CPU.
-struct Bounds {
-    lo: vec2<f32>,
-    hi: vec2<f32>,
-};
-
 // `p` turned back by `turn` (`ShadowOut::turn`), the inverse of `turned`.
 fn unturned(p: vec2<f32>, turn: vec4<f32>) -> vec2<f32> {
     if (turn.w == 0.0) {
@@ -362,76 +244,6 @@ fn unturned(p: vec2<f32>, turn: vec4<f32>) -> vec2<f32> {
     }
     let v = p - turn.xy;
     return turn.xy + vec2<f32>(turn.z * v.x + turn.w * v.y, turn.z * v.y - turn.w * v.x);
-}
-
-// Every pixel center within `AA_HALF_WIDTH` of the rect; an outside rect's is a
-// hard cut, drawn at its rect. A turned quad's frame is not the pixel grid,
-// so it reaches `AA_HALF_WIDTH` past each edge there instead, a distance the
-// rotation keeps, and an outside rect's edge fades with it (`fs`).
-fn shaded_bounds(pos: vec2<f32>, size: vec2<f32>, fill_kind: u32, rotation: f32) -> Bounds {
-    var b = Bounds(pos, pos + size);
-    if (rotation != 0.0) {
-        b.lo -= vec2<f32>(AA_HALF_WIDTH);
-        b.hi += vec2<f32>(AA_HALF_WIDTH);
-    } else if ((fill_kind & FILL_FLAG_OUTSIDE) == 0u) {
-        b.lo = floor(b.lo - vec2<f32>(AA_HALF_WIDTH - 0.5));
-        b.hi = ceil(b.hi + vec2<f32>(AA_HALF_WIDTH - 0.5));
-    }
-    return b;
-}
-
-// Four f16 lanes packed two to a `u32`, in lane order.
-fn unpack_f16x4(packed: vec2<u32>) -> vec4<f32> {
-    return vec4<f32>(unpack2x16float(packed.x), unpack2x16float(packed.y));
-}
-
-fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
-    let size = quad.size;
-    let fill_kind = quad.fill_kind;
-    // `(tl, tr, br, bl)`, the `Corners` lane order; the axis lanes as the top of this file lays
-    // them out per fill kind.
-    let radius = unpack_f16x4(quad.radius_packed);
-    let fill_axis = unpack_f16x4(quad.fill_axis_packed);
-    let bounds = shaded_bounds(quad.pos, size, fill_kind, quad.rotation);
-    let corner = select(bounds.lo, bounds.hi, CORNERS[vi] > vec2<f32>(0.5));
-
-    var corner_lanes = radius;
-    var axis_lanes = fill_axis;
-    if ((fill_kind & FILL_TAG_MASK) == BRUSH_KIND_TRIANGLE) {
-        // Corner points as unorm16 shares of the quad: an f16 lane steps
-        // a whole pixel above 1024 px, a share of the quad steps
-        // `size / 65535` at any size.
-        corner_lanes = vec4<f32>(
-            unpack2x16unorm(quad.radius_packed.x) * size,
-            unpack2x16unorm(quad.radius_packed.y) * size,
-        );
-        axis_lanes = vec4<f32>(unpack2x16unorm(quad.fill_axis_packed.x) * size, fill_axis.zw);
-    }
-
-    var out: VertexOut;
-    // Only the drawn corner turns: `local` stays in the quad's own frame.
-    out.clip         = clip_from_px(turned(corner, quad.pos + size * 0.5, quad.rotation));
-    out.local        = corner - quad.pos;
-    out.size         = size;
-    out.fill         = unpack_f16x4(quad.fill_packed);
-    out.radius       = corner_lanes;
-    out.border_color = unpack_f16x4(quad.border_color_packed);
-    out.border_width = quad.border_width;
-    out.fill_kind    = fill_kind;
-    out.fill_lut_row = quad.fill_lut_row;
-    out.fill_axis    = axis_lanes;
-    out.inv_size     = 1.0 / max(size, vec2<f32>(ZERO_EPS));
-    out.core         = vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN);
-    out.turned       = u32(quad.rotation != 0.0);
-    // Inside the quad by the largest radius, no corner's arc reaches; by the
-    // border and `AA_HALF_WIDTH`, its inner edge's coverage is 1. An outside
-    // rect paints outside its shape, and a triangle's lanes are not radii.
-    let outside = (fill_kind & FILL_FLAG_OUTSIDE) != 0u;
-    if (!outside && (fill_kind & FILL_TAG_MASK) != BRUSH_KIND_TRIANGLE) {
-        let inset = max(max(max(radius.x, radius.y), max(radius.z, radius.w)), quad.border_width + AA_HALF_WIDTH);
-        out.core = vec4<f32>(vec2<f32>(inset), size - vec2<f32>(inset));
-    }
-    return out;
 }
 
 // CSS `box-shadow` spread on each radius: `max(r + s, 0)` for `s < 0`;
@@ -459,86 +271,6 @@ fn fit_radii(r: vec4<f32>, half: vec2<f32>) -> vec4<f32> {
     let ratios = select(vec4<f32>(1.0), sides / max(sums, vec4<f32>(1e-30)), sums > vec4<f32>(0.0));
     let f = min(1.0, min(min(ratios.x, ratios.y), min(ratios.z, ratios.w)));
     return r * f;
-}
-
-// Signed distance to the triangle (a, b, c) — negative inside, positive
-// outside (Inigo Quilez's `sdTriangle`). `s` folds in the winding sign so
-// the result is correctly signed for either orientation; subtracting a
-// radius from the caller rounds all three corners uniformly.
-//
-// A degenerate triangle — collinear corners, or coincident ones — has no
-// inside. Its winding sign is 0, so `d.y` is 0 everywhere; a sign taken
-// from `d.y` would make the distance 0 everywhere, and a radius would
-// then fill the whole quad. So `d.y == 0` reads as outside, which on a
-// proper triangle happens only on an edge, where the distance is 0
-// either way. A zero-length edge divides 0 by 0 in its projection; the
-// floor keeps that finite, and the edge's zero vector then makes the
-// projection's value irrelevant.
-fn sdf_triangle(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>) -> f32 {
-    let e0 = b - a; let e1 = c - b; let e2 = a - c;
-    let v0 = p - a; let v1 = p - b; let v2 = p - c;
-    let pq0 = v0 - e0 * clamp(dot(v0, e0) / max(dot(e0, e0), 1e-30), 0.0, 1.0);
-    let pq1 = v1 - e1 * clamp(dot(v1, e1) / max(dot(e1, e1), 1e-30), 0.0, 1.0);
-    let pq2 = v2 - e2 * clamp(dot(v2, e2) / max(dot(e2, e2), 1e-30), 0.0, 1.0);
-    let s = sign(e0.x * e2.y - e0.y * e2.x);
-    let d = min(min(
-        vec2<f32>(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),
-        vec2<f32>(dot(pq1, pq1), s * (v1.x * e1.y - v1.y * e1.x))),
-        vec2<f32>(dot(pq2, pq2), s * (v2.x * e2.y - v2.y * e2.x)));
-    let dist = sqrt(d.x);
-    return select(dist, -dist, d.y > 0.0);
-}
-
-// Apply the user-selected spread mode to a parametric `t`. The `Pad`
-// clamp is kept here rather than left to the sampler's clamp
-// addressing, so the contract holds whatever the sampler is set to.
-fn apply_spread(t: f32, mode: u32) -> f32 {
-    if (mode == SPREAD_REPEAT) {
-        return fract(t);
-    }
-    if (mode == SPREAD_REFLECT) {
-        return abs(fract(t * 0.5) - 0.5) * 2.0;
-    }
-    // Pad, the remaining mode.
-    return clamp(t, 0.0, 1.0);
-}
-
-// The gradient's color at the fragment, its axis in the quad's own 0..1 frame.
-fn eval_fill(in: VertexOut) -> vec4<f32> {
-    let kind = in.fill_kind & FILL_TAG_MASK;
-    let spread  = (in.fill_kind >> SPREAD_SHIFT) & SPREAD_MASK;
-    let local01 = in.local * in.inv_size;
-    var t01: f32 = 0.0;
-    if (kind == BRUSH_KIND_LINEAR) {
-        let axis = in.fill_axis.xy;
-        let t0   = in.fill_axis.z;
-        let t1   = in.fill_axis.w;
-        let raw  = dot(local01, axis);
-        let span = t1 - t0;
-        let span_safe = select(1.0, span, abs(span) > ZERO_EPS);
-        t01 = (raw - t0) / span_safe;
-    } else if (kind == BRUSH_KIND_RADIAL) {
-        // `t = 1` on the ellipse the radius vector spans.
-        let center = in.fill_axis.xy;
-        let radius = in.fill_axis.zw;
-        let rx = select(1.0, radius.x, abs(radius.x) > ZERO_EPS);
-        let ry = select(1.0, radius.y, abs(radius.y) > ZERO_EPS);
-        let d  = (local01 - center) / vec2<f32>(rx, ry);
-        t01 = length(d);
-    } else {
-        // Conic, the remaining kind (`QuadForm::of`): clockwise on screen, as y points down.
-        // `+ 1.0` lifts atan2's negative half before `fract`.
-        let center      = in.fill_axis.xy;
-        let start_angle = in.fill_axis.z;
-        let p           = local01 - center;
-        let theta       = atan2(p.y, p.x);
-        t01 = fract((theta - start_angle) / TAU + 1.0);
-    }
-    let t = apply_spread(t01, spread);
-    // `in.fill` multiplies the straight sample, channel by channel. It is
-    // white for every gradient, with its alpha scaled by a paint
-    // animation's fade. See `BrushSource::gpu_fill`.
-    return gradient_lut(t, in.fill_lut_row) * in.fill;
 }
 
 // `erf` approximation (Abramowitz & Stegun 7.1.26 form, max error
@@ -572,13 +304,13 @@ fn normal_cdf_integral(v: f32) -> f32 {
 }
 
 // The CDF at `u` of what one pixel sees of a blurred edge: a Gaussian of
-// `sigma` convolved with the pixel box of half-width `AA_HALF_WIDTH`. So
+// `sigma` convolved with the pixel box of half-width `PALANTIR_AA_HALF_WIDTH`. So
 // `filter_cdf(e - x, σ)` is the coverage, at a pixel centered on `x`, of
 // the blurred half-line below `e`. At σ = 0 it is the box alone, the same
 // ramp the unblurred shapes are drawn with.
 fn filter_cdf(u: f32, sigma: f32) -> f32 {
     if (sigma <= BLUR_EPS) {
-        return edge_coverage(-u);
+        return palantir_edge_coverage(-u);
     }
     if (sigma >= FILTER_SERIES_MIN_SIGMA) {
         return filter_cdf_series(u, sigma);
@@ -587,16 +319,16 @@ fn filter_cdf(u: f32, sigma: f32) -> f32 {
 }
 
 // `filter_cdf` as the difference of `∫Φ` at the box's two ends,
-// `(u ± AA_HALF_WIDTH) / σ`. Exact, but the two ends are near `u / σ`
+// `(u ± PALANTIR_AA_HALF_WIDTH) / σ`. Exact, but the two ends are near `u / σ`
 // apiece and their difference is scaled by `σ`, so in f32 it loses about
 // `8e-7 · σ`: 3.5e-6 at σ = 4, 1.3e-5 at σ = 16.
 fn filter_cdf_difference(u: f32, sigma: f32) -> f32 {
     let inv = 1.0 / sigma;
-    return sigma / (2.0 * AA_HALF_WIDTH)
-        * (normal_cdf_integral((u + AA_HALF_WIDTH) * inv) - normal_cdf_integral((u - AA_HALF_WIDTH) * inv));
+    return sigma / (2.0 * PALANTIR_AA_HALF_WIDTH)
+        * (normal_cdf_integral((u + PALANTIR_AA_HALF_WIDTH) * inv) - normal_cdf_integral((u - PALANTIR_AA_HALF_WIDTH) * inv));
 }
 
-// `filter_cdf` as a series in `h = AA_HALF_WIDTH / σ`: the box's mean of
+// `filter_cdf` as a series in `h = PALANTIR_AA_HALF_WIDTH / σ`: the box's mean of
 // `Φ` around `v = u / σ` is `Φ(v) + (h²/6)·φ′(v) + (h⁴/120)·φ‴(v) + …`,
 // with `φ′(v) = −v·φ(v)` and `|φ‴| ≤ 0.55`. The term it drops is under
 // `4.6e-3 · h⁴`, 1.1e-6 at σ = 4 and falling as `σ⁻⁴`, and nothing in it
@@ -606,7 +338,7 @@ fn filter_cdf_difference(u: f32, sigma: f32) -> f32 {
 fn filter_cdf_series(u: f32, sigma: f32) -> f32 {
     let inv = 1.0 / sigma;
     let v = u * inv;
-    let h = AA_HALF_WIDTH * inv;
+    let h = PALANTIR_AA_HALF_WIDTH * inv;
     let gauss = exp(-0.5 * v * v);
     return normal_cdf_given(v, gauss) - (h * h / 6.0) * v * INV_SQRT_TAU * gauss;
 }
@@ -629,11 +361,11 @@ fn filter_pdf(u: f32, sigma: f32) -> f32 {
     let inv = 1.0 / sigma;
     if (sigma >= FILTER_PDF_SERIES_MIN_SIGMA) {
         let v = u * inv;
-        let h = AA_HALF_WIDTH * inv;
+        let h = PALANTIR_AA_HALF_WIDTH * inv;
         return INV_SQRT_TAU * exp(-0.5 * v * v) * (1.0 + (h * h / 6.0) * (v * v - 1.0)) * inv;
     }
-    return (normal_cdf((u + AA_HALF_WIDTH) * inv) - normal_cdf((u - AA_HALF_WIDTH) * inv))
-        / (2.0 * AA_HALF_WIDTH);
+    return (normal_cdf((u + PALANTIR_AA_HALF_WIDTH) * inv) - normal_cdf((u - PALANTIR_AA_HALF_WIDTH) * inv))
+        / (2.0 * PALANTIR_AA_HALF_WIDTH);
 }
 
 // One corner's cutout: the filter's weight over the `r`×`r` square at the
@@ -828,7 +560,7 @@ fn blurred_corner(p: vec2<f32>, center: vec2<f32>, r: f32, side: vec2<f32>, sigm
 // From σ = `CUTOUT_MIN_SIGMA` up, the corners are cut out instead
 // (`cutout_box_coverage`).
 fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32, cutouts: vec4<u32>) -> f32 {
-    let reach = SHADOW_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+    let reach = SHADOW_REACH_SIGMAS * sigma + PALANTIR_AA_HALF_WIDTH;
     if (sigma >= CUTOUT_MIN_SIGMA) {
         return cutout_box_coverage(p, half, radius, sigma, reach, cutouts);
     }
@@ -841,56 +573,6 @@ fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma:
         + blurred_corner(p, radius.xx - half, radius.x, vec2<f32>(-1.0, -1.0), sigma, reach)
         + blurred_corner(p, vec2<f32>(half.x - radius.y, radius.y - half.y), radius.y, vec2<f32>(1.0, -1.0), sigma, reach);
     return clamp(right + left + corners, 0.0, 1.0);
-}
-
-// Composite an SDF shape's fill + inner-edge border into premultiplied linear
-@fragment
-fn fs(in: VertexOut) -> @location(0) vec4<f32> {
-    if (QUAD_FORM == QUAD_FORM_TRIANGLE) {
-        // Three corner centers (in `local` 0..size coords) + corner radius ride
-        // the reused instance lanes. `sdf_triangle - radius` gives the rounded
-        // shape, whose edges lie on the sharp triangle's; `composite` applies
-        // the same coverage AA + inner border as the rounded-rect path, so a
-        // triangle gets crisp AA + rounded corners with no MSAA and no
-        // tessellation. Solid fill only (no gradient lanes).
-        let ta = in.radius.xy;
-        let tb = in.radius.zw;
-        let tc = in.fill_axis.xy;
-        let corner_r = in.fill_axis.z;
-        let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
-        return composite(td, in.fill, in.border_color, in.border_width);
-    }
-    // Uniform per instance (`fill_kind` is flat), so whole wavefronts
-    // inside one quad take a single side of this branch.
-    if (QUAD_FORM == QUAD_FORM_SOLID && (in.fill_kind & FILL_FLAG_FAST) != 0u) {
-        return premultiply(in.fill.rgb, in.fill.a);
-    }
-    var fill = in.fill;
-    if (QUAD_FORM == QUAD_FORM_GRADIENT) {
-        fill = eval_fill(in);
-    }
-    return shade_rect(in, fill);
-}
-
-// A rounded rect of `fill` under the instance's border. A point past
-// `border_width + AA_HALF_WIDTH` inside the shape is the fill, without the
-// distance: both coverages are 1 and the border's share 0.
-fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
-    if (all(in.local > in.core.xy) && all(in.local < in.core.zw)) {
-        return premultiply(fill.rgb, fill.a);
-    }
-    let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    if ((in.fill_kind & FILL_FLAG_OUTSIDE) != 0u) {
-        var cover = composite_outside(d, fill, in.border_color, in.border_width);
-        if (in.turned != 0u) {
-            // Turned, the quad edge no longer lies on content of its own
-            // extent, so it is a visible edge and fades as any edge does.
-            let e = abs(in.local - in.size * 0.5) - in.size * 0.5;
-            cover *= edge_coverage(e.x) * edge_coverage(e.y);
-        }
-        return cover;
-    }
-    return composite(d, fill, in.border_color, in.border_width);
 }
 
 // The box whose blur a shadow paints, relative to its quad's center, with
@@ -907,7 +589,7 @@ struct ShadowBox {
 
 fn shadow_box(kind: u32, half: vec2<f32>, radius: vec4<f32>, fill_axis: vec4<f32>) -> ShadowBox {
     let spread = fill_axis.w;
-    if (kind == BRUSH_KIND_SHADOW_DROP) {
+    if (kind == PALANTIR_FILL_SHADOW_DROP) {
         // CSS's radius rule for a spread, fitted to the shadow's own box,
         // as the inset hole's are.
         let shadow_half = max(shadow_source_half(half, fill_axis) + vec2<f32>(spread), vec2<f32>(0.0));
@@ -958,7 +640,7 @@ fn tabled_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32,
     if (all(inside)) {
         return 1.0;
     }
-    let reach = SHADOW_REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+    let reach = SHADOW_REACH_SIGMAS * sigma + PALANTIR_AA_HALF_WIDTH;
     var span = vec2<f32>(1.0);
     if (!inside.x) {
         span.x = reached_span(p.x, half.x, sigma, reach);
@@ -992,7 +674,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
     let frag = unturned(frag_px(in.clip), in.turn);
     var px = ShadowPixel(frag - in.box_center, 0.0);
     let s = frag - in.source_center;
-    if (in.kind == BRUSH_KIND_SHADOW_DROP) {
+    if (in.kind == PALANTIR_FILL_SHADOW_DROP) {
         // CSS clips an outer shadow inside the box that casts it
         // (Backgrounds 3 §7.1.1). Only where the source's own coverage is
         // full: the fill drawn over its edge pixels then blends with the
@@ -1001,11 +683,11 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
         // distance is positive, which the clip passes, so the distance is
         // taken only inside it.
         if (any(abs(s) >= in.source_half)
-            || edge_coverage(sdf_rounded_box_centered(s, in.source_half, in.source_radius)) < 1.0 - SHADOW_CLIP_EPS) {
+            || palantir_edge_coverage(palantir_sdf_rounded_box_centered(s, in.source_half, in.source_radius)) < 1.0 - SHADOW_CLIP_EPS) {
             px.source = 1.0;
         }
     }
-    if (in.kind == BRUSH_KIND_SHADOW_INSET) {
+    if (in.kind == PALANTIR_FILL_SHADOW_INSET) {
         // Inset shadow: the source is the paint bbox, and the box is the
         // hole, the source deflated by `spread` per side and shifted by
         // `offset` (the light source moves in that direction → shadow
@@ -1017,7 +699,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
         // Inset never paints outside the source, and across the source's
         // edge it takes the same coverage ramp the source's fill does, so
         // the two meet without a staircase on a rounded corner.
-        px.source = edge_coverage(sdf_rounded_box_centered(s, in.source_half, in.source_radius));
+        px.source = palantir_edge_coverage(palantir_sdf_rounded_box_centered(s, in.source_half, in.source_radius));
     }
     return px;
 }
@@ -1025,7 +707,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
 // A shadow pixel's color at `cov`, the coverage of its box: a drop shadow
 // paints it, an inset one its complement, both as far as the source lets.
 fn shadow_paint(in: ShadowOut, px: ShadowPixel, cov: f32) -> vec4<f32> {
-    let inset = in.kind == BRUSH_KIND_SHADOW_INSET;
+    let inset = in.kind == PALANTIR_FILL_SHADOW_INSET;
     return premultiply(in.fill.rgb, in.fill.a * px.source * select(cov, 1.0 - cov, inset));
 }
 
@@ -1056,63 +738,4 @@ fn fs_shadow_tables(in: ShadowOut) -> @location(0) vec4<f32> {
     }
     let cov = tabled_coverage(px.p, in.box_half, in.box_radius, in.sigma, in.cutouts, in.core);
     return shadow_paint(in, px, cov);
-}
-
-// Stencil mask-write: `discard` outside the rounded shape so those
-// pixels skip the post-fragment stencil op (Replace) entirely, leaving
-// stencil at 0 outside the rounded region. The color write_mask is
-// empty in the mask pipeline, so the returned vec4 is dropped — only
-// the stencil side effect matters. Hard threshold at SDF = 0 (no AA on
-// the mask edge): the panel's painted rounded background already AA's
-// the visible boundary; the stencil mask just controls which children
-// pixels survive, and a 1-pixel hard inner edge sits behind the AA rim
-// where it's invisible.
-@fragment
-fn fs_mask(in: VertexOut) -> @location(0) vec4<f32> {
-    let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    if (d > 0.0) {
-        discard;
-    }
-    return vec4<f32>(0.0);
-}
-
-// One cutout table for `fs_cutout_bake` (`CutoutPlan::BakeTable`): where
-// it goes in the atlas (`cutout_lookup`'s packing) and its `(r, σ)`.
-struct BakeIn {
-    @location(0) table: u32,
-    @location(1) r:     f32,
-    @location(2) sigma: f32,
-    // The texels of the table to bake, from `lo` up to `hi`.
-    @location(3) lo:    vec2<u32>,
-    @location(4) hi:    vec2<u32>,
-};
-
-struct BakeOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) @interpolate(flat) table: u32,
-    @location(1) @interpolate(flat) r:     f32,
-    @location(2) @interpolate(flat) sigma: f32,
-};
-
-// The texels of the table the frame bakes, from `lo` up to `hi` of its
-// square of the atlas, one fragment per texel.
-@vertex
-fn vs_cutout_bake(@builtin(vertex_index) vi: u32, bake: BakeIn) -> BakeOut {
-    let texel = vec2<f32>(cutout_origin(bake.table) + select(bake.lo, bake.hi, CORNERS[vi] > vec2<f32>(0.5)));
-    var out: BakeOut;
-    out.clip = vec4<f32>(texel.x / CUTOUT_ATLAS_SIZE * 2.0 - 1.0, 1.0 - texel.y / CUTOUT_ATLAS_SIZE * 2.0, 0.0, 1.0);
-    out.table = bake.table;
-    out.r = bake.r;
-    out.sigma = bake.sigma;
-    return out;
-}
-
-// The cutout at the `q` this texel stands for (`cutout_lookup`), with
-// `CUTOUT_BAKE_NODES`.
-@fragment
-fn fs_cutout_bake(in: BakeOut) -> @location(0) vec4<f32> {
-    let texel = vec2<f32>(vec2<u32>(in.clip.xy) - cutout_origin(in.table));
-    let reach = SHADOW_REACH_SIGMAS * in.sigma + AA_HALF_WIDTH;
-    let q = texel * (in.sigma / CUTOUT_TEXELS_PER_SIGMA) - vec2<f32>(reach);
-    return vec4<f32>(corner_cutout(q, in.r, in.sigma, reach, CUTOUT_BAKE_NODES), 0.0, 0.0, 0.0);
 }

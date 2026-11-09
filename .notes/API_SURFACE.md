@@ -3391,6 +3391,7 @@ widget::EffectPaint
             pub const fn reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
 
 widget::GlyphFont
     struct GlyphFont: Clone, Copy, Debug, PartialEq
@@ -3427,6 +3428,7 @@ widget::ImagePaint
         pub const fn downsample(self, downsample: ImageDownsample) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
         impl PaintedBy<ImagePaint> for RectShape
+        impl PaintedBy<ImagePaint> for TriangleShape
 
 widget::IntoPaint
     trait IntoPaint: ToPaint
@@ -3628,11 +3630,12 @@ widget::ThemeSlot
         fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }
 
 widget::TriangleShape
-    struct TriangleShape: Clone, Debug
+    struct TriangleShape: Clone, Debug, PaintedBy<ImagePaint>
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
         pub const fn radius(self, radius: f32) -> Self
         impl<P: IntoPaint> PaintedBy<P> for TriangleShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
 
 widget::Widget
     struct Widget: Configure, Debug, ThemeDefaults (blanket)

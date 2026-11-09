@@ -70,14 +70,18 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
                 Vec2::new(5.0, 8.0),
             ],
             radius: 0.0,
-            fill: fill.to_f16(),
+            fill: BrushSource::Solid(fill.to_f16()),
             border,
         });
         assert!(
             matches!(tp.geometry, QuadGeometry::Triangle { .. }),
             "case {label}: triangle must carry triangle geometry",
         );
-        assert_eq!(tp.fill.kind, FillKind::TRIANGLE, "case {label}");
+        assert_eq!(
+            tp.fill.kind,
+            FillKind::SOLID.with_triangle(),
+            "case {label}"
+        );
 
         assert_eq!(tp.border.color, rp.border.color, "case {label}");
         assert_eq!(

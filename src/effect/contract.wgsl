@@ -5,9 +5,10 @@
 struct EffectInput {
     // The pixel's center from the effect rect's top-left.
     pos: vec2<f32>,
-    // The effect rect's size.
+    // The effect rect's size: a triangle's covering rect.
     size: vec2<f32>,
-    // The rect's corner radii: top-left, top-right, bottom-right, bottom-left.
+    // The rect's corner radii: top-left, top-right, bottom-right, bottom-left; zero for a
+    // triangle, whose coverage palantir applies.
     corners: vec4<f32>,
     // Seconds into the pass of the shape's paint animation; 0 without one.
     time: f32,

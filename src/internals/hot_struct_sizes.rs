@@ -140,7 +140,7 @@ const PINS: &[Pin] = &[
     pin::<PanelExtras>("scene::PanelExtras", 20, 4),
     pin::<Node>("scene::Node", 104, 4),
     // A rect's shadow and material, 18 and 40 of them, set the row's size.
-    pin::<ShapeRecord>("shape::ShapeRecord", 128, 8),
+    pin::<ShapeRecord>("shape::ShapeRecord", 136, 8),
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
     // 40 of them the material: its effect, its input's words and their hash, its σ, lens and bounds.
     pin::<ChromeRow>("scene::ChromeRow", 104, 8),
@@ -210,13 +210,13 @@ const PINS: &[Pin] = &[
     pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
     pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 72, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 80, 4),
-    pin::<DrawImagePayload>("payload::DrawImagePayload", 88, 8),
+    pin::<DrawImagePayload>("payload::DrawImagePayload", 120, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
-    pin::<Quad>("renderer::Quad", 64, 4),
+    pin::<Quad>("renderer::Quad", 100, 4),
     pin::<CurveInstance>("renderer::CurveInstance", 76, 4),
     pin::<MeshInstance>("renderer::MeshInstance", 32, 4),
-    pin::<ImageInstance>("renderer::ImageInstance", 48, 4),
+    pin::<ImageInstance>("renderer::ImageInstance", 108, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
     pin::<RasterQuad>("raster_pipeline::RasterQuad", 32, 4),
     pin::<SpunRasterQuad>("raster_pipeline::SpunRasterQuad", 48, 4),
@@ -224,7 +224,7 @@ const PINS: &[Pin] = &[
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
     pin::<TextDrawRow>("renderer::TextDrawRow", 88, 8),
     pin::<IconDrawRow>("renderer::IconDrawRow", 52, 4),
-    pin::<ImageDrawRow>("renderer::ImageDrawRow", 56, 8),
+    pin::<ImageDrawRow>("renderer::ImageDrawRow", 120, 8),
     pin::<MeshDrawRow>("renderer::MeshDrawRow", 48, 4),
 ];
 

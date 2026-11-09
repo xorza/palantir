@@ -35,6 +35,7 @@ pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
 pub(crate) mod mesh_draw_row;
 pub(crate) mod paint_tier;
+pub(crate) mod quad_form;
 pub(crate) mod render_target_draw;
 pub(crate) mod rounded_clip;
 pub(crate) mod row_spin;

@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::{self, AA_HALF_WIDTH};
@@ -34,10 +35,53 @@ pub(crate) struct Quad {
     /// A paint animation's turn about the rect's center, in radians; `0` for none. `rect` and
     /// every lane above stay in the quad's own unturned frame.
     pub(crate) rotation: f32,
+    /// A closed shape's sharp corners from `rect.min`, clockwise on screen: a box's
+    /// `(tl, tr, br, bl)`, a triangle's three points grown by its radius, its fourth unused. With
+    /// `corners`' radii, what the template's vertex stage builds the shape from
+    /// (`quad_pipeline/template.wgsl`), with no branch per kind of shape.
+    pub(crate) points: [Vec2; 4],
+    /// How far inside every edge the shape's medial axis stops its interior: half a box's shorter
+    /// side, a triangle's inradius past its growth.
+    pub(crate) deep: f32,
 }
 
 impl Quad {
-    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/shader.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; an outside rect is drawn at its rect. A turned quad, outside or not, grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the whole pixels around that turned about the rect's center.
+    /// A box over `rect`: its points the rect's corners and its depth half its shorter side, every
+    /// other lane at its default.
+    pub(crate) fn of_rect(rect: Rect) -> Self {
+        Self {
+            rect,
+            points: Self::box_points(rect.size),
+            deep: Self::box_deep(rect.size),
+            ..Self::default()
+        }
+    }
+
+    /// The corners of a box of `size` from its top-left, `(tl, tr, br, bl)`.
+    pub(crate) const fn box_points(size: Size) -> [Vec2; 4] {
+        [
+            Vec2::ZERO,
+            Vec2::new(size.w, 0.0),
+            Vec2::new(size.w, size.h),
+            Vec2::new(0.0, size.h),
+        ]
+    }
+
+    /// Half the shorter side of a box of `size`, where its medial axis stops its interior.
+    pub(crate) const fn box_deep(size: Size) -> f32 {
+        0.5 * size.w.min(size.h)
+    }
+
+    /// Whether the shape is described: a box's points are its rect's corners, as the template
+    /// draws a box from them; a triangle and a shadow describe their own.
+    pub(crate) fn shape_is_described(&self) -> bool {
+        self.fill_kind.is_shadow()
+            || self.fill_kind.is_triangle()
+            || (self.points == Self::box_points(self.rect.size)
+                && self.deep == Self::box_deep(self.rect.size))
+    }
+
+    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/quad.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; an outside rect is drawn at its rect. A turned quad, outside or not, grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the whole pixels around that turned about the rect's center.
     pub(crate) fn shaded_rect(&self) -> Rect {
         if self.rotation == 0.0 {
             if self.fill_kind.is_outside() {

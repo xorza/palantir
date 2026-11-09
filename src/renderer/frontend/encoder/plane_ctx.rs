@@ -4,6 +4,7 @@ use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
@@ -22,7 +23,9 @@ use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
-use crate::renderer::frontend::payload::draw_backdrop_payload::DrawBackdropPayload;
+use crate::renderer::frontend::payload::draw_backdrop_payload::{
+    BackdropOutline, DrawBackdropPayload,
+};
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::{
     DrawEffectPayload, EffectCaptureDraw,
@@ -36,6 +39,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::{
 };
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
+use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
@@ -147,9 +151,11 @@ fn paint_backdrop(paint: RectPaint, look: BackdropLook, out: &mut impl PaintSink
     let RectPaint { quad, spin, alpha } = paint;
     out.draw(
         DrawBackdropPayload {
-            coverage: quad.coverage,
-            rect: quad.rect,
-            corners: quad.corners,
+            outline: BackdropOutline::Rect {
+                coverage: quad.coverage,
+                rect: quad.rect,
+                corners: quad.corners,
+            },
             spin,
             fill: quad.fill.gpu_fill(),
             fill_axis: quad.fill.fill_axis(),
@@ -394,18 +400,45 @@ impl PlaneCtx<'_, '_> {
                     geometry,
                     fill,
                     border,
+                    material,
                 } => {
                     let Some(placed) = geometry.place(owner_rect.size) else {
                         return;
                     };
-                    // Placed in the logical placement, as a rect is. Solid fill only: the reused quad lanes have no room for a gradient.
-                    let triangle = DrawQuadPayload::triangle(TriangleQuad {
-                        points: placed.centers.map(|q| owner_rect.min + q),
-                        radius: placed.radius,
-                        fill: *fill,
-                        border: *border,
-                    });
-                    out.draw(triangle.turned(spin), alpha);
+                    // Placed in the logical placement, as a rect is.
+                    let points = placed.centers.map(|q| owner_rect.min + q);
+                    let fill = self.brush_source(*fill);
+                    let site = BackdropSite {
+                        owner: id,
+                        origin: BackdropOrigin::Shape,
+                        shape_idx,
+                    };
+                    if let Some(look) = self.backdrop_look(site, *material) {
+                        out.draw(
+                            DrawBackdropPayload {
+                                outline: BackdropOutline::Triangle {
+                                    points,
+                                    radius: placed.radius,
+                                },
+                                spin,
+                                fill: fill.gpu_fill(),
+                                fill_axis: fill.fill_axis(),
+                                border: border.normalized(),
+                                material: look.material,
+                                opacity: 1.0,
+                                read: look.read,
+                            },
+                            alpha,
+                        );
+                    } else {
+                        let triangle = DrawQuadPayload::triangle(TriangleQuad {
+                            points,
+                            radius: placed.radius,
+                            fill,
+                            border: *border,
+                        });
+                        out.draw(triangle.turned(spin), alpha);
+                    }
                 }
             },
             ShapeRecord::Text {
@@ -528,8 +561,7 @@ impl PlaneCtx<'_, '_> {
             // the cascade lists not lies outside every clip.
             ShapeRecord::Effect {
                 backdrop,
-                local_rect,
-                corners,
+                outline,
                 effect,
                 params,
                 images,
@@ -556,10 +588,12 @@ impl PlaneCtx<'_, '_> {
                     }),
                     None => None,
                 };
+                let Some(outline) = PlacedOutline::place(*outline, owner_rect) else {
+                    return;
+                };
                 out.draw(
                     DrawEffectPayload {
-                        rect: owner_rect.resolve_local(*local_rect),
-                        corners: *corners,
+                        outline,
                         spin,
                         effect: *effect,
                         params: *params,
@@ -591,7 +625,7 @@ impl PlaneCtx<'_, '_> {
                 );
             }
             ShapeRecord::Image {
-                local_rect,
+                outline,
                 tint,
                 source,
                 fit,
@@ -599,7 +633,16 @@ impl PlaneCtx<'_, '_> {
                 mag_filter,
                 downsample,
             } => {
-                let base = owner_rect.resolve_local(*local_rect);
+                // The rect the image fits in, and the shape that clips it, where one does.
+                let Some(placed) = PlacedOutline::place(*outline, owner_rect) else {
+                    return;
+                };
+                let base = placed.bounds();
+                // Square corners clip nothing past the image's own rect.
+                let shape = match placed {
+                    PlacedOutline::Rect { corners, .. } if corners == Corners::ZERO => None,
+                    _ => Some(placed),
+                };
                 // Either source carries its texture id; a `GpuView` also names its owner, whose
                 // callback the backend finds in the window's `GpuViews`, and the epoch telling
                 // the backend whether the target is current.
@@ -639,6 +682,7 @@ impl PlaneCtx<'_, '_> {
                 out.draw(
                     DrawImagePayload {
                         rect,
+                        shape,
                         uv_min,
                         uv_size,
                         tint: *tint,

@@ -14,6 +14,7 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
+use crate::shape::geometry::shape_outline::ShapeOutline;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
@@ -326,9 +327,26 @@ impl PaintRectCtx<'_> {
                         ),
                         shape_clip,
                     ),
+                    // A triangle clips its image and its effect: bounded as a triangle quad is.
+                    ShapeRecord::Image {
+                        outline: ShapeOutline::Triangle(geometry),
+                        ..
+                    }
+                    | ShapeRecord::Effect {
+                        outline: ShapeOutline::Triangle(geometry),
+                        ..
+                    } => match geometry.place(layout_rect.size) {
+                        Some(placed) => clip_screen(
+                            shape
+                                .to_screen(spun_if_animated(placed.bbox, idx), None)
+                                .inflated(AA_HALF_WIDTH / display_scale),
+                            shape_clip,
+                        ),
+                        None => Rect::ZERO,
+                    },
                     // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::Natural`.
                     ShapeRecord::Image {
-                        local_rect,
+                        outline: ShapeOutline::Rect { local_rect, .. },
                         source,
                         fit,
                         ..
@@ -342,7 +360,10 @@ impl PaintRectCtx<'_> {
                     ),
                     // The rect, grown by the physical antialiasing reach its stages draw, as a
                     // triangle's is.
-                    ShapeRecord::Effect { local_rect, .. } => clip_screen(
+                    ShapeRecord::Effect {
+                        outline: ShapeOutline::Rect { local_rect, .. },
+                        ..
+                    } => clip_screen(
                         shape
                             .to_screen(
                                 spun_if_animated(owner_local.resolve_local(*local_rect), idx),

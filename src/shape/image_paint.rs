@@ -6,11 +6,17 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::PaintedBy;
 use crate::shape::draw::Draw;
+use crate::shape::geometry::shape_outline::ShapeOutline;
+use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
+use crate::shape::triangle::TriangleShape;
 
-/// A registered [`ImageHandle`] painted over a [`RectShape`]
-/// ([`Ui::add_shape`](crate::Ui::add_shape)), as Skia's `SkImageShader` fills a shape.
+/// A registered [`ImageHandle`] painted over a [`RectShape`] or a [`TriangleShape`]
+/// ([`Ui::add_shape`](crate::Ui::add_shape)), as Skia's `SkImageShader` fills a shape. The image
+/// fits the rect, a triangle's covering rect, by its [`ImageFit`], and the shape clips it, as
+/// CSS's `border-radius` clips an `object-fit` image: a contained image shows nothing past its own
+/// rect.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ImagePaint {
@@ -79,17 +85,41 @@ impl ImagePaint {
 
 impl PaintedBy<ImagePaint> for RectShape {}
 
-/// An image over a rect, square-cornered and covering its inside.
+/// An image over a rect covering its inside, its corners rounding it.
 impl sealed::DrawWith<ImagePaint> for RectShape {
     /// # Panics
     ///
-    /// Unless the rect is square-cornered and covers its inside, which an image's pipeline draws.
+    /// Unless the rect covers its inside, which an image's pipeline draws.
     #[track_caller]
     fn check(&self, _paint: &ImagePaint) {
-        self.assert_plain("an image");
+        self.assert_inside("an image");
     }
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
-        Draw::Image { rect: self, paint }
+        Draw::Image {
+            outline: ShapeOutline::Rect {
+                local_rect: self.local_rect,
+                corners: self.corners,
+            },
+            paint,
+        }
+    }
+}
+
+impl PaintedBy<ImagePaint> for TriangleShape {}
+
+/// An image over a triangle, fit to its covering rect and clipped to it.
+impl sealed::DrawWith<ImagePaint> for TriangleShape {
+    fn check(&self, _paint: &ImagePaint) {}
+
+    fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
+        Draw::Image {
+            outline: ShapeOutline::Triangle(TriangleGeometry {
+                corners: self.corners,
+                radius: self.radius,
+                placement: self.placement,
+            }),
+            paint,
+        }
     }
 }

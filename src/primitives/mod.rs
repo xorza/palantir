@@ -210,3 +210,4 @@ pub(crate) mod paint;
 pub(crate) mod preference;
 pub(crate) mod reduction;
 pub(crate) mod text;
+pub(crate) mod wgsl;

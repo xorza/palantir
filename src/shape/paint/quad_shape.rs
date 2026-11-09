@@ -3,7 +3,6 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::shape::geometry::box_geometry::BoxGeometry;
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -27,13 +26,14 @@ pub(crate) enum QuadShape {
         shadow: LoweredShadow,
         material: Option<LoweredMaterial>,
     },
-    /// Filled or bordered rounded triangle as an analytic SDF, solid fills only, its corners
-    /// placed against the owner where it is drawn ([`TriangleGeometry::place`]).
+    /// Filled or bordered rounded triangle, its corners placed against the owner where it is
+    /// drawn ([`TriangleGeometry::place`]), with its material, which makes it a backdrop as a
+    /// box's does.
     Triangle {
         geometry: TriangleGeometry,
-        /// Solid linear-RGB fill, straight alpha.
-        fill: RgbaF16,
+        fill: LoweredBrush,
         border: LoweredBorder,
+        material: Option<LoweredMaterial>,
     },
 }
 
@@ -79,7 +79,8 @@ impl NanCheck for QuadShape {
                 geometry,
                 fill,
                 border,
-            } => geometry.has_nan() || fill.has_nan() || border.has_nan(),
+                material,
+            } => geometry.has_nan() || fill.has_nan() || border.has_nan() || material.has_nan(),
         }
     }
 }

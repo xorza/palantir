@@ -49,7 +49,7 @@
 // coverage in the extension zone.
 //
 // Shader contract: straight-alpha linear in, premultiplied linear out
-// — same as mesh_pipeline/shader.wgsl / quad_pipeline/shader.wgsl. The pipeline uses
+// — same as mesh_pipeline/shader.wgsl / quad_pipeline/quad.wgsl. The pipeline uses
 // PREMULTIPLIED_ALPHA_BLENDING.
 
 // A ramp fill reads the gradient LUT (`gradient.wgsl`); the curve's `t` is
@@ -80,8 +80,8 @@ const KIND_JOIN_MITER: u32 = /*{KIND_JOIN_MITER}*/;
 
 // Solid is the fill this falls through to, so only the ramp tag is
 // pinned, with the bits of `fill_kind` that hold the tag.
-const FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
-const BRUSH_KIND_RAMP: u32 = /*{BRUSH_KIND_RAMP}*/;
+const PALANTIR_FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
+const PALANTIR_FILL_RAMP: u32 = /*{FILL_RAMP}*/;
 
 // `VsOut.flags` bits — the per-instance predicates the fragment
 // actually branches on, packed once in `vs` so they ride one flat
@@ -133,7 +133,7 @@ struct VsOut {
     // because Butt doesn't extend.
     @location(1) cap_t: f32,
     // Half the stroke's own width, physical px, which `band_coverage`
-    // reads; the strip reaches `AA_HALF_WIDTH` past it.
+    // reads; the strip reaches `PALANTIR_AA_HALF_WIDTH` past it.
     @location(2) @interpolate(flat) core_half: f32,
     // Stroke color, premultiplied, lerped `color0 → color1` along `t`
     // for strips (constant when both lanes are equal). Multiplies the
@@ -239,7 +239,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     let section = vid / 2u;
     let side = select(-1.0, 1.0, (vid & 1u) != 0u);
     let core_half = max(in.width * 0.5, 0.0);
-    let half_w = core_half + AA_HALF_WIDTH;
+    let half_w = core_half + PALANTIR_AA_HALF_WIDTH;
 
     var out: VsOut;
     out.core_half = core_half;
@@ -250,7 +250,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.jv0 = vec4<f32>(0.0);
     out.jv1 = vec4<f32>(0.0);
     out.color = premultiply(in.color0.rgb, in.color0.a);
-    var flags = select(0u, FLAG_RAMP_FILL, (in.fill_kind & FILL_TAG_MASK) == BRUSH_KIND_RAMP);
+    var flags = select(0u, FLAG_RAMP_FILL, (in.fill_kind & PALANTIR_FILL_TAG_MASK) == PALANTIR_FILL_RAMP);
     var phys: vec2<f32>;
 
     if (in.kind >= KIND_JOIN_ROUND) {
@@ -381,7 +381,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
             let s = select(1.0, -1.0, perp_dot(d_a, d_b) > 0.0);
             let d_bev = s * dot(rel, nsum) / len
                 - in.core_half * (0.5 * len);
-            coverage = min(coverage, edge_coverage(d_bev));
+            coverage = min(coverage, palantir_edge_coverage(d_bev));
         }
     } else {
         // Body (cap_t == 0) and Square cap (cap_t > 0, no rounding)
@@ -409,12 +409,12 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
             coverage = 0.0;
         }
     }
-    var rgba = unpremultiply(in.color);
+    var rgba = palantir_unpremultiply(in.color);
     if ((in.flags & FLAG_RAMP_FILL) != 0u) {
         // The stroke color multiplies the sample, channel by channel —
         // the same rule as a mesh tint, on the straight colors. See
         // `GpuFill::curve`.
-        rgba = gradient_lut(in.curve_t, in.lut_row) * rgba;
+        rgba = palantir_gradient_lut(in.curve_t, in.lut_row) * rgba;
     }
     let a = rgba.a * coverage;
     return premultiply(rgba.rgb, a);

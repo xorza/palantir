@@ -497,23 +497,26 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
 }
 
 /// An inset shadow takes its source's own edge ramp: with its hole closed by
-/// the spread it matches a fill of its color pixel for pixel, partly covered
-/// corner pixels included.
+/// the spread it matches a fill of its color to one 8-bit level, partly
+/// covered corner pixels included. The shadow measures its source at each
+/// pixel center, and the fill interpolates the same distance across its
+/// template's triangles, whose f32 rounding moves a faint edge a level.
 #[test]
 fn an_inset_shadow_shares_its_source_edge_ramp() {
     let source = Rect::new(40.5, 40.25, 100.0, 80.0);
     let filled = render(CLEAR, |ui| {
         ui.add_shape(Shape::rect().at(source).corners(14.0), INK);
     });
-    goldens::assert_same(
-        "shadow_inset_edge",
-        &render_shadow(
-            source,
-            14.0,
-            Shadow::drop(INK, Vec2::ZERO, 3.0).with_spread(60.0).inset(),
-        ),
-        &filled,
+    let shadow = render_shadow(
+        source,
+        14.0,
+        Shadow::drop(INK, Vec2::ZERO, 3.0).with_spread(60.0).inset(),
     );
+    let most = channel_deltas(&shadow, &filled).max().unwrap();
+    if most > 1 {
+        goldens::assert_same("shadow_inset_edge", &shadow, &filled);
+    }
+    assert!(most <= 1, "a channel moved {most} levels");
 }
 
 /// A drop shadow's quad holds every pixel its coverage reaches.

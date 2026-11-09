@@ -54,9 +54,8 @@ impl MaskPlan {
                     let start = self.quads.len() as u32;
                     for clip in &buffer.rounded_clips[chain.range()] {
                         self.quads.push(Quad {
-                            rect: clip.mask_rect,
                             corners: clip.corners,
-                            ..Default::default()
+                            ..Quad::of_rect(clip.mask_rect)
                         });
                     }
                     let staged = Span::new(start, chain.len);

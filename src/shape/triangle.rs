@@ -3,7 +3,6 @@
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
-use crate::primitives::paint::brush::Brush;
 use crate::shape::draw::Draw;
 use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::sealed;
@@ -12,8 +11,10 @@ use glam::Vec2;
 
 /// A triangle, its corners logical px from its rect's top-left, with optional uniform corner
 /// rounding: the owner's arranged rect or [`Self::at`] a rect of its own, its corners fit into it
-/// by [`Self::fit`]. A [`Paint`](crate::Paint) of a solid fill and a border covers it
-/// ([`Ui::add_shape`](crate::Ui::add_shape)): the quad lanes it packs into hold no gradient.
+/// by [`Self::fit`]. A [`Paint`](crate::Paint) of a fill, a border and a material covers it
+/// ([`Ui::add_shape`](crate::Ui::add_shape)), or an [`ImagePaint`](crate::widget::ImagePaint); a
+/// gradient fill spans the bounding box of the rounded triangle, as SVG's `objectBoundingBox`
+/// spans a shape's, and an image fits it.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct TriangleShape {
@@ -65,23 +66,16 @@ impl TriangleShape {
 
 impl<P: IntoPaint> PaintedBy<P> for TriangleShape {}
 
-/// A triangle of `P`: its solid fill and its border.
+/// A triangle of `P`: its fill, its border and its material.
 impl<P: IntoPaint> sealed::DrawWith<P> for TriangleShape {
     /// # Panics
     ///
-    /// Unless the paint holds its kinds, its fill is solid, and it has no shadow or material,
-    /// which a triangle draws none of.
+    /// Unless the paint holds its kinds and has no shadow, which a triangle casts none of.
     #[track_caller]
     fn check(&self, paint: &P) {
         let paint = paint.to_paint();
         paint.validate();
-        assert!(
-            matches!(paint.fill, Brush::Solid(_)),
-            "a triangle's fill is solid: {:?}",
-            paint.fill
-        );
         assert!(paint.shadow.is_noop(), "a triangle casts no shadow");
-        assert!(paint.material.is_none(), "a triangle wears no material");
     }
 
     fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {

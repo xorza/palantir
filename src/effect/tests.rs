@@ -663,7 +663,9 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
         case 0u: { return effect_over(params.color); }
         case 1u: { return effect_add(params.color); }
         case 2u: { return effect_multiply(params.color); }
-        default: { return effect_screen(params.color); }
+        case 3u: { return effect_screen(params.color); }
+        // A probe of the input: its size over 80 and its first corner, opaque.
+        default: { return effect_over(vec4<f32>(input.size / 80.0, input.corners.x, 1.0)); }
     }
 }
 ";
@@ -734,6 +736,85 @@ fn each_blend_paints_its_exact_value() {
             assert!(
                 got[lane].abs_diff(want[lane]) <= 1,
                 "blend {mode}: got {got:?}, want {want:?}"
+            );
+        }
+    }
+}
+
+/// A triangle clips its effect: the triangle (0, 0), (40, 40), (0, 40) under the over blend of
+/// `c = (0.4, 0.2, 0.1, 0.5)` paints `(0.5, 0.4, 0.4)` at (8, 32), inside it, and leaves the ground
+/// `(0.2, 0.4, 0.6)` at (32, 8), inside its covering rect but past its edge. Its effect reads its
+/// covering rect and no corners: the probe over the triangle (40, 0), (80, 40), (40, 40) rounded
+/// by 1 paints `(w / 80, w / 80, 0)` at (48, 32), where a rect of corners 1 would read 1 in blue.
+/// Its corners' centers lie 1 inside both edges: (41, 1 + √2) at the 45° corner, (79 − √2, 39)
+/// at the other, (41, 39) at the right angle, so the rounded shape covers `w = 40 − √2` a side.
+/// A rect of the same effect after them, (80, 0, 40 × 40), runs apart, as it draws four corners'
+/// vertices, and paints the over blend at (112, 8), where a triangle's would leave the ground.
+#[test]
+fn a_triangle_clips_its_effect() {
+    let got = painted(
+        |ui| {
+            ui.add_shape(
+                Shape::triangle(Vec2::ZERO, Vec2::new(40.0, 40.0), Vec2::new(0.0, 40.0)),
+                EffectPaint::new(
+                    BLEND,
+                    Blend {
+                        color: [0.4, 0.2, 0.1, 0.5],
+                        mode: 0,
+                        pad0: 0,
+                        pad1: 0,
+                        pad2: 0,
+                    },
+                ),
+            );
+            ui.add_shape(
+                Shape::triangle(
+                    Vec2::new(40.0, 0.0),
+                    Vec2::new(80.0, 40.0),
+                    Vec2::new(40.0, 40.0),
+                )
+                .radius(1.0_f32),
+                EffectPaint::new(
+                    BLEND,
+                    Blend {
+                        color: [0.0; 4],
+                        mode: 4,
+                        pad0: 0,
+                        pad1: 0,
+                        pad2: 0,
+                    },
+                ),
+            );
+            ui.add_shape(
+                Shape::rect().at(Rect::new(80.0, 0.0, 40.0, 40.0)),
+                EffectPaint::new(
+                    BLEND,
+                    Blend {
+                        color: [0.4, 0.2, 0.1, 0.5],
+                        mode: 0,
+                        pad0: 0,
+                        pad1: 0,
+                        pad2: 0,
+                    },
+                ),
+            );
+        },
+        &[(8, 32), (32, 8), (48, 32), (112, 8)],
+    );
+    let want = [
+        bytes(RgbaF32::new(0.5, 0.4, 0.4, 1.0)),
+        bytes(RgbaF32::new(0.2, 0.4, 0.6, 1.0)),
+        {
+            let side = (40.0 - std::f32::consts::SQRT_2) / 80.0;
+            bytes(RgbaF32::new(side, side, 0.0, 1.0))
+        },
+        bytes(RgbaF32::new(0.5, 0.4, 0.4, 1.0)),
+    ];
+    for (got, want) in got.iter().zip(&want) {
+        for lane in 0..4 {
+            assert!(
+                got[lane].abs_diff(want[lane]) <= 1,
+                "got {got:?}, want {want:?}"
             );
         }
     }

@@ -14,6 +14,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
+use glam::Vec2;
 
 /// What a backdrop reads: what is painted under it, by the ticket the backdrop ledger wrote for it,
 /// or the window's ground, while transparency is reduced, with no ticket.
@@ -23,13 +24,24 @@ pub(crate) enum BackdropDraw {
     Ground,
 }
 
-/// A material's box covering `coverage` of `rect`, showing what it reads through `material` under
-/// its fill, a color or a gradient, and its border over the whole box, faded to `opacity`.
+/// The shape a material covers, in logical px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum BackdropOutline {
+    /// A rounded rect covering `coverage` of itself.
+    Rect {
+        coverage: Coverage,
+        rect: Rect,
+        corners: Corners,
+    },
+    /// A triangle placed as a triangle quad is: its corner centers, dilated by `radius`.
+    Triangle { points: [Vec2; 3], radius: f32 },
+}
+
+/// A material's shape, showing what it reads through `material` under its fill, a color or a
+/// gradient, and its border over the whole shape, faded to `opacity`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawBackdropPayload {
-    pub(crate) coverage: Coverage,
-    pub(crate) rect: Rect,
-    pub(crate) corners: Corners,
+    pub(crate) outline: BackdropOutline,
     /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
     pub(crate) fill: GpuFill,
@@ -44,19 +56,41 @@ pub(crate) struct DrawBackdropPayload {
 }
 
 impl DrawBackdropPayload {
-    /// The rect as a quad packs it, which the backdrop's effect instance takes its rect, corners,
-    /// turn and border width from, so it lies on the pixels a rect of it does.
+    /// The shape as a quad packs it, which the backdrop's effect instance takes its rect, shape,
+    /// turn and border width from, so it lies on the pixels a quad of it does.
     pub(crate) fn geometry(&self) -> DrawQuadPayload {
-        let kind = match self.coverage {
-            Coverage::Inside => FillKind::SOLID,
-            Coverage::Outside => FillKind::SOLID.with_outside(),
+        let (geometry, kind) = match self.outline {
+            BackdropOutline::Rect {
+                coverage,
+                rect,
+                corners,
+            } => (
+                QuadGeometry::Rect {
+                    rect,
+                    corners,
+                    spin: self.spin,
+                },
+                match coverage {
+                    Coverage::Inside => FillKind::SOLID,
+                    Coverage::Outside => FillKind::SOLID.with_outside(),
+                },
+            ),
+            BackdropOutline::Triangle {
+                points: [a, b, c],
+                radius,
+            } => (
+                QuadGeometry::Triangle {
+                    a,
+                    b,
+                    c,
+                    radius,
+                    spin: self.spin,
+                },
+                FillKind::SOLID.with_triangle(),
+            ),
         };
         DrawQuadPayload {
-            geometry: QuadGeometry::Rect {
-                rect: self.rect,
-                corners: self.corners,
-                spin: self.spin,
-            },
+            geometry,
             fill: GpuFill {
                 color: self.fill.color,
                 kind,
@@ -87,7 +121,13 @@ impl PaintPayload for DrawBackdropPayload {
     /// animation's alpha reads it.
     #[inline]
     fn is_noop(&self) -> bool {
-        self.rect.is_paint_empty() || is_invisible(self.opacity)
+        let empty = match self.outline {
+            BackdropOutline::Rect { rect, .. } => rect.is_paint_empty(),
+            // Its covering rect exists only after transform, and `TriangleShape::is_noop` filters
+            // degenerates, as a triangle quad's.
+            BackdropOutline::Triangle { .. } => false,
+        };
+        empty || is_invisible(self.opacity)
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

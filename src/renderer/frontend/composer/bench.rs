@@ -33,7 +33,7 @@ use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, DrawBackdropPayload,
+    BackdropDraw, BackdropOutline, DrawBackdropPayload,
 };
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
@@ -351,9 +351,11 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
     let footprint = URect::covering(rect.inflated(PlaneBackdrop::reach(plan, 0)));
     cmds.draw(
         DrawBackdropPayload {
-            coverage: Coverage::Inside,
-            rect,
-            corners: Corners::ZERO,
+            outline: BackdropOutline::Rect {
+                coverage: Coverage::Inside,
+                rect,
+                corners: Corners::ZERO,
+            },
             spin: None,
             fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
             fill_axis: FillAxis::ZERO,
@@ -424,6 +426,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
         DrawImagePayload {
             rect,
+            shape: None,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
             tint: RgbaF32::WHITE.to_f16(),

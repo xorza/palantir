@@ -482,6 +482,12 @@ pub(crate) mod internals {
             self.device.backend_mut().disable_shadow_grid();
         }
 
+        /// Draws every box, circle and triangle as one quad instead of its template; the visual
+        /// suite's reference.
+        pub fn disable_shape_template(&mut self) {
+            self.device.backend_mut().disable_shape_template();
+        }
+
         /// Whether the shared backend has built a pipeline set for `format`.
         pub fn has_format_pipelines(&self, format: TargetFormat) -> bool {
             self.device.backend().has_format_pipelines(format)

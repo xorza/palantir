@@ -19,13 +19,13 @@ use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::composer::packed_quad::PackedQuad;
+use crate::renderer::frontend::composer::packed_quad::{PackedQuad, TemplateShape};
 use crate::renderer::frontend::composer::paint_order::{Lane, Ordering, TextClip};
 use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, DrawBackdropPayload,
+    BackdropDraw, BackdropOutline, DrawBackdropPayload,
 };
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
@@ -35,6 +35,7 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
@@ -238,15 +239,27 @@ impl PaintSink for ComposeSession<'_> {
             instance: EffectInstance {
                 rect: packed.rect.physical,
                 corners: packed.corners.to_array(),
+                points: packed.points,
+                deep: packed.deep,
+                border_width: packed.border_width,
                 time: 0.0,
                 opacity,
                 scale,
                 rotation: packed.rotation,
                 params: material.params,
                 backdrop_idx,
-                flags: match p.coverage {
-                    Coverage::Inside => EffectInstance::MATERIAL,
-                    Coverage::Outside => EffectInstance::MATERIAL | EffectInstance::OUTSIDE,
+                flags: match p.outline {
+                    BackdropOutline::Rect {
+                        coverage: Coverage::Inside,
+                        ..
+                    } => EffectInstance::MATERIAL,
+                    BackdropOutline::Rect {
+                        coverage: Coverage::Outside,
+                        ..
+                    } => EffectInstance::MATERIAL | EffectInstance::OUTSIDE,
+                    BackdropOutline::Triangle { .. } => {
+                        EffectInstance::MATERIAL | EffectInstance::TRIANGLE
+                    }
                 },
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -351,115 +364,31 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
-    #[expect(
-        clippy::cast_sign_loss,
-        reason = "every value is clamped to a non-negative range before the cast"
-    )]
     fn image(&mut self, p: DrawImagePayload) {
-        let view = p.view;
-        // A turned image snaps to no pixel, and moves its center about the pivot as a quad does.
-        let ScaledRect {
-            physical: physical_rect,
-            urect: image_urect,
-        } = match p.spin {
-            None => self.lowering().scaled_rect(p.rect),
-            Some(spin) => {
-                let exact = self
-                    .lowering()
-                    .scaled_rect_with(p.rect, EdgeRounding::Exact)
-                    .physical;
-                self.lowering().turned_rect(exact, spin)
-            }
-        };
-        if self
-            .ordering()
-            .admit(Lane::Tier(PaintTier::Image), image_urect)
-            .is_none()
-        {
-            return;
+        match p.shape {
+            None => self.plain_image(p),
+            Some(shape) => self.shaped_image(p, shape),
         }
-        // A `GpuView` draws over only its visible part, since that is all its target holds; a
-        // turned one draws whole, as its visible part is not a rect of its own.
-        let seen = view
-            .filter(|_| p.spin.is_none())
-            .and_then(|_| self.seen(physical_rect));
-        let composite = seen.unwrap_or(physical_rect);
-        let mut instance = ImageInstance {
-            rect: composite,
-            uv_min: p.uv_min,
-            uv_size: p.uv_size,
-            tint: p.tint,
-            flags: p.flags,
-            rotation: p.spin.map_or(0.0, |spin| spin.angle),
-            ..bytemuck::Zeroable::zeroed()
-        };
-        // A `GpuView` also needs its off-screen target painted. Sized to what is on
-        // screen, not the rect: layout may return a rect larger than the surface, and
-        // following it would allocate and draw discarded pixels.
-        if let Some(view) = view {
-            // A recorder with no device has no ceiling.
-            let max = self
-                .composer
-                .texture_limit
-                .max_dimension()
-                .map_or(u32::MAX, NonZeroU32::get);
-            let cap = i64::from(max);
-            let whole = physical_rect.size;
-            // The cap is measured against the whole view so the downsample does not change as the
-            // view scrolls (it would shimmer).
-            let downsample = (max as f32 / whole.w.max(whole.h)).min(1.0);
-            let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
-            // Floored at zero, unlike a size: a target needs a pixel, and a corner may be the
-            // origin.
-            let at = |v: f32| ((v * downsample).floor() as i64).clamp(0, cap) as u32;
-            let (used, offset) = match seen {
-                Some(seen) => (seen.size, seen.min - physical_rect.min),
-                None => (whole, Vec2::ZERO),
-            };
-            // The window lands inside the view by arithmetic, not a clamp: origin rounds
-            // down and size rounds up, so `offset + used <= full`. Pinned by
-            // `compose_gpu_view_caps_wide_and_tall_targets_uniformly`.
-            let target = RenderTargetDraw {
-                id: p.handle,
-                used: UVec2::new(px(used.w), px(used.h)),
-                full: UVec2::new(px(whole.w), px(whole.h)),
-                offset: UVec2::new(at(offset.x), at(offset.y)),
-                raster_factor: self.composer.transform.physical_scale() * downsample,
-                owner: view.owner,
-                epoch: view.epoch,
-            };
-            // The target holds `used` in the top-left of its capacity; the rest is slack.
-            let crop = target.used.as_vec2() / target.capacity().as_vec2();
-            instance.uv_min *= crop;
-            instance.uv_size *= crop;
-            instance.flags = instance.flags.union(ImageFlags::CLAMP_TO_UV);
-            self.out.frame_targets.push(target);
-        }
-        self.out.images.push(ImageDrawRow {
-            // Only the registration id: the encoder already resolved fit into `rect` + UV. The
-            // view's off-screen paint is scheduled above, in `frame_targets`.
-            id: p.handle,
-            instance,
-        });
     }
 
     /// An effect over the rect a quad of it would shade, packed as one: snapped, or moved and
     /// turned about its center by a paint animation's turn, whose edges snap to no pixel.
     fn effect(&mut self, p: DrawEffectPayload) {
+        let lowering = self.lowering();
+        let scale = lowering.transform.physical_scale();
+        let outline = TemplateShape::placed(p.outline, p.spin, &lowering);
+        let shape_flags = match p.outline {
+            PlacedOutline::Rect { .. } => 0,
+            PlacedOutline::Triangle { .. } => EffectInstance::TRIANGLE,
+        };
         let scaled = match p.spin {
-            None => self.lowering().scaled_rect(p.rect),
-            Some(spin) => {
-                let exact = self
-                    .lowering()
-                    .scaled_rect_with(p.rect, EdgeRounding::Exact);
-                self.lowering().turned_rect(exact.physical, spin)
-            }
+            None => ScaledRect::from_physical(outline.rect, lowering.display.physical),
+            Some(spin) => lowering.turned_rect(outline.rect, spin),
         };
         let physical = scaled.physical;
         let Some(visible) = self.ordering().cull(scaled.urect) else {
             return;
         };
-        let scale = self.composer.transform.physical_scale();
         // A backdrop is listed before it is ordered, so its own paint is not among what it shares a
         // break past.
         let backdrop_idx = match p.backdrop {
@@ -501,7 +430,10 @@ impl PaintSink for ComposeSession<'_> {
             images: p.images,
             instance: EffectInstance {
                 rect: physical,
-                corners: p.corners.fit_to(physical.size, scale).to_array(),
+                corners: outline.corners.to_array(),
+                points: outline.points,
+                deep: outline.deep,
+                flags: shape_flags,
                 time: p.time,
                 opacity: p.opacity,
                 scale,
@@ -634,7 +566,9 @@ impl PaintSink for ComposeSession<'_> {
             scale: geometry::snap_text_scale(self.composer.transform.scale()),
             spin,
         };
-        let clip = if bounds == unclipped {
+        // An unturned run's glyphs clip to its bounds where the text backend emits them
+        // (`RasterPass::clip_since`), so only a turned one needs a scissor of its own bounds.
+        let clip = if bounds == unclipped || spin.is_none() {
             TextClip::Whole
         } else {
             TextClip::Cut
@@ -644,6 +578,155 @@ impl PaintSink for ComposeSession<'_> {
 }
 
 impl ComposeSession<'_> {
+    /// An image clipped to `shape`: its quad is the shape's rect, snapped, or moved and turned
+    /// about its center as a quad's is, with the image's uv carried over the whole rect and its
+    /// own rect relative to the quad.
+    fn shaped_image(&mut self, p: DrawImagePayload, shape: PlacedOutline) {
+        debug_assert!(p.view.is_none(), "a `GpuView` composites a plain image");
+        let lowering = self.lowering();
+        let outline = TemplateShape::placed(shape, p.spin, &lowering);
+        // The image's rect lies on the pixels its shape's does.
+        let edges = TemplateShape::edges(shape, p.spin, &lowering);
+        let flags = match shape {
+            PlacedOutline::Rect { .. } => ImageFlags::SHAPED,
+            PlacedOutline::Triangle { .. } => ImageFlags::SHAPED.union(ImageFlags::TRIANGLE),
+        };
+        let image = lowering.scaled_rect_with(p.rect, edges).physical;
+        let scaled = match p.spin {
+            None => ScaledRect::from_physical(outline.rect, lowering.display.physical),
+            Some(spin) => lowering.turned_rect(outline.rect, spin),
+        };
+        if image.is_paint_empty()
+            || self
+                .ordering()
+                .admit(Lane::Tier(PaintTier::Image), scaled.urect)
+                .is_none()
+        {
+            return;
+        }
+        let size = Vec2::from(outline.rect.size);
+        let lo = image.min - outline.rect.min;
+        let hi = lo + Vec2::from(image.size);
+        let uv_per_px = p.uv_size / Vec2::from(image.size);
+        let reach = |inside: bool, at: f32, out: f32| if inside { at } else { out };
+        self.out.images.push(ImageDrawRow {
+            id: p.handle,
+            instance: ImageInstance {
+                rect: scaled.physical,
+                uv_min: p.uv_min - lo * uv_per_px,
+                uv_size: size * uv_per_px,
+                tint: p.tint,
+                flags: p.flags.union(flags),
+                rotation: p.spin.map_or(0.0, |spin| spin.angle),
+                points: outline.points,
+                corners: outline.corners,
+                deep: outline.deep,
+                decal_min: Vec2::new(
+                    reach(lo.x > 0.0, lo.x, -f32::MAX),
+                    reach(lo.y > 0.0, lo.y, -f32::MAX),
+                ),
+                decal_max: Vec2::new(
+                    reach(hi.x < size.x, hi.x, f32::MAX),
+                    reach(hi.y < size.y, hi.y, f32::MAX),
+                ),
+                ..bytemuck::Zeroable::zeroed()
+            },
+        });
+    }
+
+    /// An image its own rect bounds: one quad over it.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "every value is clamped to a non-negative range before the cast"
+    )]
+    fn plain_image(&mut self, p: DrawImagePayload) {
+        let view = p.view;
+        // A turned image snaps to no pixel, and moves its center about the pivot as a quad does.
+        let ScaledRect {
+            physical: physical_rect,
+            urect: image_urect,
+        } = match p.spin {
+            None => self.lowering().scaled_rect(p.rect),
+            Some(spin) => {
+                let exact = self
+                    .lowering()
+                    .scaled_rect_with(p.rect, EdgeRounding::Exact)
+                    .physical;
+                self.lowering().turned_rect(exact, spin)
+            }
+        };
+        if self
+            .ordering()
+            .admit(Lane::Tier(PaintTier::Image), image_urect)
+            .is_none()
+        {
+            return;
+        }
+        // A `GpuView` draws over only its visible part, since that is all its target holds; a
+        // turned one draws whole, as its visible part is not a rect of its own.
+        let seen = view
+            .filter(|_| p.spin.is_none())
+            .and_then(|_| self.seen(physical_rect));
+        let composite = seen.unwrap_or(physical_rect);
+        let mut instance = ImageInstance {
+            rect: composite,
+            uv_min: p.uv_min,
+            uv_size: p.uv_size,
+            tint: p.tint,
+            flags: p.flags,
+            rotation: p.spin.map_or(0.0, |spin| spin.angle),
+            ..bytemuck::Zeroable::zeroed()
+        };
+        // A `GpuView` also needs its off-screen target painted. Sized to what is on
+        // screen, not the rect: layout may return a rect larger than the surface, and
+        // following it would allocate and draw discarded pixels.
+        if let Some(view) = view {
+            // A recorder with no device has no ceiling.
+            let max = self
+                .composer
+                .texture_limit
+                .max_dimension()
+                .map_or(u32::MAX, NonZeroU32::get);
+            let cap = i64::from(max);
+            let whole = physical_rect.size;
+            // The cap is measured against the whole view so the downsample does not change as the
+            // view scrolls (it would shimmer).
+            let downsample = (max as f32 / whole.w.max(whole.h)).min(1.0);
+            let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
+            // Floored at zero, unlike a size: a target needs a pixel, and a corner may be the
+            // origin.
+            let at = |v: f32| ((v * downsample).floor() as i64).clamp(0, cap) as u32;
+            let (used, offset) = match seen {
+                Some(seen) => (seen.size, seen.min - physical_rect.min),
+                None => (whole, Vec2::ZERO),
+            };
+            // The window lands inside the view by arithmetic, not a clamp: origin rounds
+            // down and size rounds up, so `offset + used <= full`. Pinned by
+            // `compose_gpu_view_caps_wide_and_tall_targets_uniformly`.
+            let target = RenderTargetDraw {
+                id: p.handle,
+                used: UVec2::new(px(used.w), px(used.h)),
+                full: UVec2::new(px(whole.w), px(whole.h)),
+                offset: UVec2::new(at(offset.x), at(offset.y)),
+                raster_factor: self.composer.transform.physical_scale() * downsample,
+                owner: view.owner,
+                epoch: view.epoch,
+            };
+            // The target holds `used` in the top-left of its capacity; the rest is slack.
+            let crop = target.used.as_vec2() / target.capacity().as_vec2();
+            instance.uv_min *= crop;
+            instance.uv_size *= crop;
+            instance.flags = instance.flags.union(ImageFlags::CLAMP_TO_UV);
+            self.out.frame_targets.push(target);
+        }
+        self.out.images.push(ImageDrawRow {
+            // Only the registration id: the encoder already resolved fit into `rect` + UV. The
+            // view's off-screen paint is scheduled above, in `frame_targets`.
+            id: p.handle,
+            instance,
+        });
+    }
+
     /// Push `p`, packed as `packed`, with `lut_row` its gradient row or its backdrop's row.
     fn push_quad(&mut self, p: &DrawQuadPayload, packed: &PackedQuad, lut_row: LutRow) {
         // Fragment fast path: a solid, sharp, borderless, pixel-aligned quad has
@@ -665,6 +748,8 @@ impl ComposeSession<'_> {
             fill_lut_row: lut_row,
             fill_axis: packed.fill_axis,
             rotation: packed.rotation,
+            points: packed.points,
+            deep: packed.deep,
         });
     }
 

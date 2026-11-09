@@ -130,6 +130,7 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
         sink.draw(
             DrawImagePayload {
                 rect,
+                shape: None,
                 uv_min: Vec2::ZERO,
                 uv_size: Vec2::ONE,
                 tint: RgbaF32::WHITE.to_f16(),
@@ -169,6 +170,7 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
 fn the_gate_sees_the_faded_payload() {
     let draw = || DrawImagePayload {
         rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+        shape: None,
         uv_min: Vec2::ZERO,
         uv_size: Vec2::ONE,
         tint: RgbaF32::WHITE.to_f16(),

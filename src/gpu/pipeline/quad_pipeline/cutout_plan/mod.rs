@@ -1,6 +1,6 @@
 //! Which shadow corners get a baked cutout table this frame, and where in the atlas each goes.
 //!
-//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`, at the cells [`CutoutPlacements`] keeps for its key across frames and windows, and the atlas keeps what it baked, so a table a frame needs again is not baked again (`CutoutTables`).
+//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shadow.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`, at the cells [`CutoutPlacements`] keeps for its key across frames and windows, and the atlas keeps what it baked, so a table a frame needs again is not baked again (`CutoutTables`).
 //!
 //! A key gets a table only when its corners' shown area costs more to shade ([`CutoutPlan::SHADED_NODES`] per pixel) than to bake ([`CutoutPlan::BAKED_NODES`] per texel, `(10 / σ)²` texels per pixel). A frame bakes only the texels its repainted pixels read ([`BakeTable`]).
 //!

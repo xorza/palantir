@@ -56,6 +56,70 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     }
 }
 
+/// A rect's corners reach the image payload as the shape that clips it: its rect, the one the
+/// image fits in, and its radii. A contained 2×2 image in (0, 0, 100 × 50) is (25, 0, 50 × 50);
+/// square corners clip nothing, so that image carries no shape. A sharp triangle (0, 0), (40, 0),
+/// (0, 20) fits its image in its covering rect, (0, 0, 40 × 20), so contained at (10, 0, 20 × 20),
+/// and carries its corners.
+#[test]
+fn an_image_carries_the_shape_that_clips_it() {
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::paint::image::{Image, ImageFit};
+    use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
+    use crate::shape::Shape;
+
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    let handle = h
+        .ui()
+        .load_image(&Image::from_srgba8(UVec2::new(2, 2), vec![255; 16]).unwrap())
+        .unwrap();
+    let at = Rect::new(0.0, 0.0, 100.0, 50.0);
+    h.frame(|ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for corners in [Corners::all(6.0), Corners::ZERO] {
+                    ui.add_shape(
+                        Shape::rect().at(at).corners(corners),
+                        ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
+                    );
+                }
+                ui.add_shape(
+                    Shape::triangle(Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)),
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
+                );
+            });
+    });
+
+    let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 200.0, 200.0)));
+    assert_eq!(cmds.kinds(), ["Image"; 3]);
+    let images: Vec<_> = cmds
+        .calls
+        .iter()
+        .map(|call| call.as_image().unwrap())
+        .collect();
+    for image in &images[..2] {
+        assert_eq!(image.rect, Rect::new(25.0, 0.0, 50.0, 50.0));
+    }
+    assert_eq!(
+        images[0].shape,
+        Some(PlacedOutline::Rect {
+            rect: at,
+            corners: Corners::all(6.0),
+        })
+    );
+    assert_eq!(images[1].shape, None);
+    assert_eq!(images[2].rect, Rect::new(10.0, 0.0, 20.0, 20.0));
+    assert_eq!(
+        images[2].shape,
+        Some(PlacedOutline::Triangle {
+            points: [Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)],
+            radius: 0.0,
+        })
+    );
+}
+
 /// The cascade bounds an image by the rect the encoder draws under every fit, so an `ImageFit::Natural` image overflowing its node is damaged and culled where it paints. A 200×100 image in a 100×100 node at (40, 40), no transform or clip.
 #[test]
 fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
@@ -195,4 +259,49 @@ fn an_arc_of_no_sweep_paints_its_dot_in_the_ramp_start() {
         unreachable!("`as_rect` keeps rect geometry");
     };
     assert_eq!(rect, Rect::new(18.0, 8.0, 4.0, 4.0));
+}
+
+/// The cascade bounds a triangle's image as it bounds the triangle in a color: the triangle clips
+/// the image, whatever its fit. The triangle (0, 0), (40, 0), (0, 20) in a node at (40, 40) covers
+/// (40, 40, 40 × 20), grown by half a pixel of antialiasing at scale 1.
+#[test]
+fn the_cascade_bounds_a_triangles_image_as_its_triangle() {
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::image::{Image, ImageFit};
+    use crate::shape::Shape;
+
+    let mut h = Harness::mono(UVec2::new(300, 300));
+    let handle = h
+        .ui()
+        .load_image(&Image::from_srgba8(UVec2::new(2, 2), vec![255; 16]).unwrap())
+        .unwrap();
+    let triangle = || Shape::triangle(Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0));
+    h.frame(|ui| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("frame"))
+                    .at((40.0, 40.0))
+                    .size(100.0)
+                    .show(ui, |ui| {
+                        ui.add_shape(
+                            triangle(),
+                            ImagePaint::new(handle.clone()).fit(ImageFit::Natural),
+                        );
+                        ui.add_shape(triangle(), RgbaF32::WHITE);
+                    });
+            });
+    });
+    let mut rows = Vec::new();
+    h.ui().cascade().owned_paints(h.ui().forest(), &mut rows);
+    let screens: Vec<Rect> = rows
+        .iter()
+        .filter(|row| row.owner == WidgetId::from_hash("frame"))
+        .map(|row| row.screen)
+        .collect();
+    let bound = Rect::new(39.5, 39.5, 41.0, 21.0);
+    assert_eq!(screens, [bound, bound]);
 }

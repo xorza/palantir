@@ -5,6 +5,7 @@
     reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
 )]
 
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -39,4 +40,16 @@ pub(crate) struct ImageInstance {
     pub(crate) flags: ImageFlags,
     /// A paint animation's turn about `rect`'s center, in radians; `0` for none.
     pub(crate) rotation: f32,
+    /// A shaped image's ([`ImageFlags::SHAPED`]) clipping shape as the shape template reads it,
+    /// as `Quad::points` holds a box's: the corners of `rect` relative to its min, clockwise.
+    /// Unread on a plain image.
+    pub(crate) points: [Vec2; 4],
+    /// The clipping shape's corner radii, physical px.
+    pub(crate) corners: Corners,
+    /// How deep the clipping shape's interior reaches (`Quad::deep`).
+    pub(crate) deep: f32,
+    /// The image's own rect relative to `rect.min`, past which a shaped image shows nothing. An
+    /// edge on or past the shape's is out of reach (`f32::MAX`), so it fades with the shape's.
+    pub(crate) decal_min: Vec2,
+    pub(crate) decal_max: Vec2,
 }

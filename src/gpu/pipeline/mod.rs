@@ -1,5 +1,5 @@
-//! The render pipelines, one directory per pipeline beside its `shader.wgsl`,
-//! and the recipe, prelude and shader assembly they share.
+//! The render pipelines, one directory per pipeline beside its WGSL (`shader.wgsl`, or one file a
+//! concern where a pipeline holds several), and the recipe, prelude and shader assembly they share.
 
 pub(crate) mod blit_pipeline;
 pub(crate) mod clip_stencil;
@@ -15,6 +15,7 @@ pub(crate) mod quad_pipeline;
 pub(crate) mod raster_pipeline;
 pub(crate) mod runs;
 pub(crate) mod shader_body;
+pub(crate) mod shape_template;
 pub(crate) mod stencil_variant;
 pub(crate) mod viewport_push;
 

@@ -8,11 +8,13 @@
 - rich text edit
 - md viewer
 - optimal resolve strategies
-- genrate shape geometry in vertex shader to simplify fragment
 - box material?
-- materials for other shapes
 - Draw::Effect - do we need it if we have box?
 - Brush::Linear add conveninet ctors
+- instead of stencil mask generate geometry, drop stentil at all
+- flag whether to reduce fps on lowpower
+- material for texts and strokes?
+- remove image shape
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
@@ -28,3 +30,5 @@ Under reduced transparency
     - With Nothing, the material is dropped. The fill paints as a plain translucent fill, and the border stays.
 
 - measure one glass shader with its spectrum branch on V3D (`gpu/backdrop`, "One glass")
+- measure the f32 corner points of a closed shape on V3D (`Quad` 64 → 100 B, step `3c010b1d1`)
+- bench step `3c010b1d1` against its parent: `atomic/main_pass/gpu/*`, `integration/frame/gpu/*`

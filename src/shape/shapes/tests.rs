@@ -174,6 +174,64 @@ fn image_dimensions_above_u16_survive_lowering() {
     assert_eq!(size, UVec2::new(WIDTH, 1));
 }
 
+/// An image keeps its rect's corners or its triangle in the record, which clip it; a rect that
+/// covers its outside stays refused, as the image pipeline clips to no side.
+#[test]
+fn an_image_keeps_the_shape_that_clips_it() {
+    use crate::internals::panic_probe;
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::geometry::coverage::Coverage;
+    use crate::shape::geometry::point_placement::PointPlacement;
+    use crate::shape::geometry::shape_outline::ShapeOutline;
+    use crate::shape::geometry::triangle_geometry::TriangleGeometry;
+    use crate::shape::sealed::DrawWith;
+
+    let mut shapes = Shapes::default();
+    let mut store = RecordStore::default();
+    let paint_of = |side| ImagePaint::new(handle(side));
+    let rounded = Shape::rect().corners(Corners::new(1.0, 2.0, 3.0, 4.0));
+    let paint = paint_of(4);
+    rounded.check(&paint);
+    assert_eq!(add(&mut shapes, (rounded, paint), &mut store), Some(0));
+    let ShapeRecord::Image { outline, .. } = shapes.records[0] else {
+        panic!("an image lowers to an image record");
+    };
+    assert_eq!(
+        outline,
+        ShapeOutline::Rect {
+            local_rect: None,
+            corners: Corners::new(1.0, 2.0, 3.0, 4.0),
+        }
+    );
+    // A triangle takes an image, its geometry kept for the draw to place; one of no area paints
+    // nothing.
+    let corners = [Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0)];
+    let triangle = Shape::triangle(corners[0], corners[1], corners[2]).radius(1.0);
+    triangle.check(&paint_of(4));
+    assert_eq!(
+        add(&mut shapes, (triangle, paint_of(4)), &mut store),
+        Some(1)
+    );
+    let ShapeRecord::Image { outline, .. } = shapes.records[1] else {
+        panic!("a triangle's image lowers to an image record");
+    };
+    assert_eq!(
+        outline,
+        ShapeOutline::Triangle(TriangleGeometry {
+            corners,
+            radius: 1.0,
+            placement: PointPlacement::NATURAL,
+        })
+    );
+    let flat = Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::new(2.0, 0.0));
+    assert_eq!(add(&mut shapes, (flat, paint_of(4)), &mut store), None);
+    panic_probe::assert_panics_with("an image paints the inside of its rect", || {
+        Shape::rect()
+            .coverage(Coverage::Outside)
+            .check(&ImagePaint::new(handle(4)));
+    });
+}
+
 /// Inputs a builder checks never reach the record gate: each panics with its
 /// kind's rule on entry. Gradient geometry most of all, as it interns behind a
 /// `GradientId` the gate cannot see.

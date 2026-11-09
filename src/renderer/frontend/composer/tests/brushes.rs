@@ -22,6 +22,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
+use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
@@ -129,6 +130,7 @@ fn compose_emits_image_batch_for_drawimage() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+                    shape: None,
                     uv_min: Vec2::ZERO,
                     uv_size: Vec2::ONE,
                     tint: RgbaF32::WHITE.to_f16(),
@@ -394,6 +396,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                    shape: None,
                     uv_min: Vec2::new(0.25, 0.0),
                     uv_size: Vec2::new(0.5, 1.0),
                     tint: RgbaF32::WHITE.to_f16(),
@@ -420,6 +423,7 @@ fn compose_forwards_flags_and_repeat_uv() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                    shape: None,
                     uv_min: Vec2::ZERO,
                     uv_size: Vec2::ONE,
                     tint: RgbaF32::WHITE.to_f16(),
@@ -434,6 +438,7 @@ fn compose_forwards_flags_and_repeat_uv() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                    shape: None,
                     uv_min: Vec2::ZERO,
                     uv_size: Vec2::new(3.0, 2.0),
                     tint: RgbaF32::WHITE.to_f16(),
@@ -448,6 +453,7 @@ fn compose_forwards_flags_and_repeat_uv() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                    shape: None,
                     uv_min: Vec2::ZERO,
                     uv_size: Vec2::ONE,
                     tint: RgbaF32::WHITE.to_f16(),
@@ -486,6 +492,7 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(40.0, 40.0, 20.0, 10.0),
+                    shape: None,
                     uv_min: Vec2::ZERO,
                     uv_size: Vec2::ONE,
                     tint: RgbaF32::WHITE.to_f16(),
@@ -545,8 +552,10 @@ fn an_effect_lands_as_one_physical_row() {
         |b, _arena| {
             b.draw(
                 DrawEffectPayload {
-                    rect: Rect::new(5.0, 6.0, 10.0, 8.0),
-                    corners: Corners::new(4.0, 6.0, 6.0, 4.0),
+                    outline: PlacedOutline::Rect {
+                        rect: Rect::new(5.0, 6.0, 10.0, 8.0),
+                        corners: Corners::new(4.0, 6.0, 6.0, 4.0),
+                    },
                     spin: None,
                     effect: EffectId(3),
                     params: Span::new(12, 8),

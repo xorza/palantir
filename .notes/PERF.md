@@ -169,6 +169,20 @@ new run.
 
 ## Rejected
 
+- **Shape templates, the rest of the plan** (fanless, ABBA):
+  - the template in the effect stage: with no coverage math at all, `backdrop_frame/gpu`'s
+    frosted and glass frames move within ±1 %, as the effect's blur and lens are its fragment;
+  - an opaque interior pass: every quad without blending, edges wrong, takes the template's main
+    pass 149 → 137 µs and its frame 490 → 481 µs, −2 %, the ceiling a depth attachment and a
+    depth state in every pipeline would buy;
+  - one arc segment a corner: −1.2 % on the main pass, near the floor, and a 41 % overshoot
+    ring on a large circle;
+  - the region and the ring radius packed into one varying: −0.6 %; an interior zigzag in place
+    of the fan: no change;
+  - the clip mask and the strokes as templates: no bench on this GPU draws a rounded clip or
+    enough strokes, and the curve pipeline's batch timer needs the in-pass timestamps Metal
+    lacks; the strokes' join seams moved 235 levels in an earlier try.
+
 - **Shadows: the blur's reciprocals per instance**, handed on flat from `vs_shadow`: bit-exact,
   nothing gained (board 17.11 → 17.08 ms, fanless +2.0 %). The SFU does not bound the tabled shadows.
 - **Shadows: fewer `vs_shadow` invocations** through an index buffer over the cells' 24 corners:
@@ -248,6 +262,16 @@ new run.
   SIMD8 and SIMD16 forms spill nothing, and one texel load serves a mask glyph either way.
 
 ## Decisions
+
+- **Shape templates** (fanless, ABBA, `atomic/main_pass/gpu/scrolling` and
+  `integration/frame/gpu/scrolling`): a box, a circle and a triangle draw as a vertex-stage
+  template (`vs_template`), 221 → 146 µs and 577 → 483 µs. On this GPU the quads' fragments are
+  half the main pass: a fragment that returns its fill at once took it to 116 µs, where the AMD
+  iGPU timed the quads as raster. The cost follows the varyings a fragment reads: the template
+  sharing the reference's varyings plus its own three took 315 µs, a 3 × 3 grid of the same 311,
+  the grid with one varying added 178; the template's own 13 scalars 180 µs, its colors packed
+  as f16 149, and a vertex stage with no indexed arrays, which spilled 240 bytes, 146. On the
+  showcase page the hull saves 0.2 % of the quads' 2.4 MP and the bands and rings are 3 % of it.
 
 - **A chrome is checked in one branch-free test** (`5ab2bdeef`). Each part's lane checks
   gather into one array compare and the f16 sign test is SWAR; the asserts that name the broken
@@ -335,7 +359,8 @@ new run.
 
 ## Open
 
-- **A depth-ordered opaque pass on Apple GPUs** (run 10): with no quad blending the fanless's
+- **A depth-ordered opaque pass on Apple GPUs** (run 10; since the shape templates, see
+  "Rejected"): with no quad blending the fanless's
   `frame/gpu/scrolling` ran 12.4 % faster and its main pass 19.6 % (diagnostic); the handheld, windows
   and local moved within their floors. Realizing it exactly takes each opaque quad's core drawn
   first with a depth value, so the later draws, the quad's own blended edge among them, skip the

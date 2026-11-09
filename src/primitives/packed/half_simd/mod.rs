@@ -86,12 +86,6 @@ impl F16x4 {
         self.0[lane]
     }
 
-    /// Wrap four raw lane words. Lanes are f16 except a triangle quad's corner points, which are unorm16 (decoded by `fill_kind`).
-    #[inline(always)]
-    pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
-        Self(bits)
-    }
-
     /// `lanes` packed as they are: a lane that does not [fit](Self::fits_lane) packs to
     /// infinity, for a check of the packed lanes to refuse.
     #[inline]
@@ -202,6 +196,18 @@ impl hash::Hash for F16x4 {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.as_u64());
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::primitives::packed::half_simd::F16x4;
+
+    impl F16x4 {
+        /// Wrap four raw lane words, to test the lane predicates at chosen bit patterns.
+        pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
+            Self(bits)
+        }
     }
 }
 

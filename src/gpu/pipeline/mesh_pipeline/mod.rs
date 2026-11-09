@@ -87,6 +87,8 @@ impl MeshPipeline {
             target,
             VariantRecipe {
                 label: "palantir.mesh.pipeline",
+                vertex_entry: "vs",
+                fragment_entry: "fs",
                 vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },

@@ -2,8 +2,8 @@
 
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
-use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::quad_form::QuadForm;
 
 /// The pipeline a quad instance draws through, and so what it binds: a form of `fs`, or a
 /// shadow's entry, which also reads the cutout tables.
@@ -15,10 +15,12 @@ pub(crate) enum QuadDraw {
 
 impl QuadDraw {
     /// Every draw, in [`Self::idx`] order.
-    pub(crate) const ALL: [Self; 6] = [
-        Self::Form(QuadForm::Solid),
-        Self::Form(QuadForm::Gradient),
-        Self::Form(QuadForm::Triangle),
+    pub(crate) const ALL: [Self; 8] = [
+        Self::Form(QuadForm::BoxSolid),
+        Self::Form(QuadForm::BoxGradient),
+        Self::Form(QuadForm::BoxOutside),
+        Self::Form(QuadForm::TriangleSolid),
+        Self::Form(QuadForm::TriangleGradient),
         Self::Shadow(ShadowEntry::General),
         Self::Shadow(ShadowEntry::Tables),
         Self::Shadow(ShadowEntry::TablesWide),
@@ -28,9 +30,9 @@ impl QuadDraw {
     pub(crate) const fn idx(self) -> u32 {
         match self {
             Self::Form(form) => form as u32,
-            Self::Shadow(ShadowEntry::General) => 3,
-            Self::Shadow(ShadowEntry::Tables) => 4,
-            Self::Shadow(ShadowEntry::TablesWide) => 5,
+            Self::Shadow(ShadowEntry::General) => 5,
+            Self::Shadow(ShadowEntry::Tables) => 6,
+            Self::Shadow(ShadowEntry::TablesWide) => 7,
         }
     }
 
@@ -118,6 +120,16 @@ pub(crate) enum ShadowCells {
     Grid,
     #[cfg(feature = "internals")]
     Whole,
+}
+
+/// How a box, a circle or a triangle draws: as its template, the regions where its distance has
+/// a closed form (`vs_template`), or as one quad over its bounds that measures the distance at
+/// each pixel, the reference the template is compared with, which only internals pick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShapeCells {
+    Template,
+    #[cfg(feature = "internals")]
+    OneQuad,
 }
 
 /// Write each of `quads`' draws into `draws`: a shadow through its `entries` row, every one

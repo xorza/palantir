@@ -6,9 +6,12 @@
 //! and [`GpuViewTargets`]. Both build against one binding shape, so a view
 //! composite binds like an image.
 
+pub(crate) mod image_form;
+
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::image_pipeline::image_form::ImageForm;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
@@ -16,22 +19,26 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::pipeline::shape_template;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::wgsl;
 use crate::renderer::render_buffer::image_draw_row::ImageInstance;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::mem::offset_of;
 
-/// One batch of image draws: the frame's per-draw texture column and this
-/// batch's slice of it. `items` is the same [`Span`] that indexes the instance
+/// One batch of image draws: the frame's per-draw texture and instance columns and this
+/// batch's slice of them. `items` is the same [`Span`] that indexes the instance
 /// buffer, so textures and instances can't come from different batches.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ImageBatch<'a> {
     pub(crate) ids: &'a [TextureId],
+    pub(crate) instances: &'a [ImageInstance],
     pub(crate) items: Span,
 }
 
@@ -63,7 +70,11 @@ impl ImagePipeline {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.image.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[],
+        includes: &[
+            include_str!("paint.wgsl"),
+            wgsl::SHAPE_TEMPLATE,
+            include_str!("shaped.wgsl"),
+        ],
         constants: SHADER_CONSTANTS,
     };
 
@@ -85,29 +96,50 @@ impl ImagePipeline {
         }
     }
 
-    /// Build the base and stencil-test color pipelines against `format`, the only
+    /// Build `form`'s base and stencil-test color pipelines against `format`, the only
     /// format-dependent image objects. Called by `FormatPipelines` per format.
-    pub(super) fn ensure(&self, variant: &mut StencilVariant, gpu: &Gpu, target: VariantTarget) {
-        self.family.ensure(
-            variant,
-            gpu,
-            target,
-            VariantRecipe {
+    pub(super) fn ensure(
+        &self,
+        variant: &mut StencilVariant,
+        gpu: &Gpu,
+        target: VariantTarget,
+        form: ImageForm,
+    ) {
+        let recipe = match form {
+            ImageForm::Plain => VariantRecipe {
                 label: "palantir.image.pipeline",
+                vertex_entry: "vs",
+                fragment_entry: "fs",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
-        );
+            ImageForm::RoundedRect => VariantRecipe {
+                label: "palantir.image.pipeline.rounded_rect",
+                vertex_entry: "vs_rounded_rect",
+                fragment_entry: "fs_shaped",
+                vertex_buffers: &[Some(INSTANCE_LAYOUT)],
+                topology: wgpu::PrimitiveTopology::TriangleList,
+            },
+            ImageForm::Triangle => VariantRecipe {
+                label: "palantir.image.pipeline.triangle",
+                vertex_entry: "vs_triangle",
+                fragment_entry: "fs_shaped",
+                vertex_buffers: &[Some(INSTANCE_LAYOUT)],
+                topology: wgpu::PrimitiveTopology::TriangleList,
+            },
+        };
+        self.family.ensure(variant, gpu, target, recipe);
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
         self.family.upload(ctx, instances);
     }
 
-    /// Draw one image batch through `pipeline`. `ids` is the frame's per-draw texture column and
-    /// `items` selects this batch's slice (see [`ImageBatch`]).
+    /// Draw one image batch, each draw through its form's pipeline of `pipelines`. `ids` is the
+    /// frame's per-draw texture column and `items` selects this batch's slice (see
+    /// [`ImageBatch`]).
     ///
-    /// Adjacent draws sharing a texture collapse into one `set_bind_group` +
+    /// Adjacent draws sharing a form and a texture collapse into one `set_bind_group` +
     /// instanced `draw` (see [`Runs`]).
     ///
     /// An **absent id is skipped** silently: its owning
@@ -115,23 +147,32 @@ impl ImagePipeline {
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        pipeline: &'a Pipeline,
-        ImageBatch { ids, items }: ImageBatch<'_>,
+        pipelines: impl Fn(ImageForm) -> &'a Pipeline,
+        ImageBatch {
+            ids,
+            instances,
+            items,
+        }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
-        rec.pipeline(pipeline);
         rec.vertex(0, self.family.instances());
-        for run in Runs::new(items, |i| ids[i as usize]) {
-            let Some(bind_group) = textures.bind_group(run.key) else {
+        let key = |i: u32| {
+            let i = i as usize;
+            (ImageForm::of(instances[i].flags), ids[i])
+        };
+        for run in Runs::new(items, key) {
+            let (form, id) = run.key;
+            let Some(bind_group) = textures.bind_group(id) else {
                 continue;
             };
+            rec.pipeline(pipelines(form));
             rec.group_once(0, bind_group);
-            rec.draw(0..4, run.instances.u32_range());
+            rec.draw(0..form.vertices(), run.instances.u32_range());
         }
     }
 }
 
-const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 7] = [
+const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Float32x2,
@@ -168,7 +209,39 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 7] = [
         wgpu::VertexFormat::Float32,
         offset_of!(ImageInstance, rotation),
     ),
+    // A shaped image's clipping shape, two points a slot, as the quad instance packs them.
+    vertex_attr(
+        7,
+        wgpu::VertexFormat::Float32x4,
+        offset_of!(ImageInstance, points),
+    ),
+    vertex_attr(
+        8,
+        wgpu::VertexFormat::Float32x4,
+        offset_of!(ImageInstance, points) + 2 * size_of::<Vec2>(),
+    ),
+    vertex_attr(
+        9,
+        wgpu::VertexFormat::Float16x4,
+        offset_of!(ImageInstance, corners),
+    ),
+    vertex_attr(
+        10,
+        wgpu::VertexFormat::Float32,
+        offset_of!(ImageInstance, deep),
+    ),
+    // `decal_min` then `decal_max`, adjacent, as one `(min, max)`.
+    vertex_attr(
+        11,
+        wgpu::VertexFormat::Float32x4,
+        offset_of!(ImageInstance, decal_min),
+    ),
 ];
+
+const _: () = assert!(
+    offset_of!(ImageInstance, decal_max)
+        == offset_of!(ImageInstance, decal_min) + size_of::<Vec2>()
+);
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
     size_of::<ImageInstance>(),
@@ -184,6 +257,7 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", ImageFlags::TAPS_MEAN.bits()),
     ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", ImageFlags::TAPS_PEAK.bits()),
     ShaderConstant::uint("IMG_FLAG_CLAMP_TO_UV", ImageFlags::CLAMP_TO_UV.bits()),
+    shape_template::CONSTANT,
 ];
 
 #[cfg(feature = "internals")]

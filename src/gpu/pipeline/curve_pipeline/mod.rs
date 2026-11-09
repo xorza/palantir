@@ -22,6 +22,7 @@ use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::wgsl;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::{CurveInstance, SEGMENTS_PER_INSTANCE};
 use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -65,7 +66,7 @@ impl CurvePipeline {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.curve.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[GRADIENT],
+        includes: &[GRADIENT, wgsl::GRADIENT_LUT],
         constants: SHADER_CONSTANTS,
     };
 
@@ -102,6 +103,8 @@ impl CurvePipeline {
             target,
             VariantRecipe {
                 label: "palantir.curve.pipeline",
+                vertex_entry: "vs",
+                fragment_entry: "fs",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
@@ -217,7 +220,7 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("KIND_JOIN_BEVEL", CurveKind::JOIN_BEVEL.bits()),
     ShaderConstant::uint("KIND_JOIN_MITER", CurveKind::JOIN_MITER.bits()),
     ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
-    ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
+    ShaderConstant::uint("FILL_RAMP", FillKind::TAG_RAMP),
 ];
 
 #[cfg(test)]

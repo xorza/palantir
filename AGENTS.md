@@ -259,8 +259,17 @@ driver serves that command alone; the drive table's `version` names it
   a box's paint is any `IntoPaint`, a `Paint` or a fill alone. Refused: a `.paint(p)` setter on
   each shape, which keeps paint in the builder; a bound on the `(shape, paint)` tuple, which
   rustdoc shows as one blanket impl; Vello's separate `fill` and `stroke` calls, which split a
-  box's one draw. A pair the pipeline cannot draw panics at `add_shape`: a triangle's gradient, a
-  polyline's ramp, an image's corners.
+  box's one draw. A pair the pipeline cannot draw panics at `add_shape`: a triangle's shadow, a
+  polyline's ramp, an icon's corners.
+- **A shape clips its image**, as CSS's `border-radius` clips an `object-fit` image: the image
+  fits the rect, a triangle's covering rect, and a contained one shows nothing past its own rect,
+  its edge faded there. A plain image keeps its one quad. Refused: the corners rounding the fitted
+  image, as SwiftUI's `clipShape` after `aspectRatio` does, which a triangle's image could not
+  follow.
+- **A gradient spans its shape's bounds**, turned with the shape: a box's rect, a triangle's
+  rounded outline's bounding box, as SVG's `objectBoundingBox` spans a shape's. Refused: the
+  owner's rect, which a triangle placed inside it does not fill; the screen's frame, which a turn
+  leaves behind.
 - **An animation goes on the added shape.** `add_shape` returns the `AddedShape`, or `None` where
   the pair paints nothing, and its `animate` animates the shape at paint time. Refused:
   `add_shape_animated`, a second signature of one call; an `AddedShape` for a pair that paints
@@ -277,6 +286,44 @@ driver serves that command alone; the drive table's `version` names it
   stroke thickness does not; `Cover` paints past the rect, which a clip crops. Refused: fractions
   of the rect, as SwiftUI's `path(in:)` builds them, which each glyph drawn to the pixel would
   divide by its size. `ImageFit` keeps its own set, as an image tiles and crops.
+- **A box, a circle and a triangle draw as a template the vertex stage builds**, a shaped image,
+  a material and an app effect alike, as Skia's
+  `FillRRectOp` and Graphite's `AnalyticRRectRenderStep` do: per corner a ring, per edge a band,
+  and an interior, each holding a closed form of the shape's distance, so an interior fragment
+  returns its fill, a band interpolates its distance and a ring measures one length. Its fragment
+  reads only its form's varyings, its colors packed as f16: on an Apple GPU a fragment pays for
+  each varying it reads (`.notes/PERF.md`, "Shape templates"). The one-quad SDF form stays as
+  the reference the visual suite compares with. Refused: arcs cut into chords, as Impeller cuts
+  circles, which errs by its tolerance and grows with the radius; MSAA, which changes every
+  pipeline's antialiasing; mesh shaders, experimental in wgpu and on no GL device.
+- **A closed shape is a sharp convex polygon and a radius at each corner, worked out on the
+  CPU**: up to four points in f32, relative to the instance's origin, as f16 loses a position past
+  2048 px, and four radii in f16. A rect is its four corners, a circle a square with half its side
+  at each, a triangle its three points pushed out by its radius. The vertex stage takes each
+  edge's normal from its two points, one path for every kind. Refused: a kind tag the vertex
+  stage branches on; normals in the instance, 16 B for arithmetic the vertex stage does for free
+  (`.notes/PERF.md`, "the vertex stage costs nothing measurable on V3D").
+- **Coverage is geometry, paint a function the fragment calls.** The template hands each
+  fragment its region and distance; the paint, a solid, a gradient (`quad_paint`), an image
+  (`image_paint`), a material or an app effect, is one function of the point. A pipeline is one
+  geometry and one paint, pinned per form (`QuadForm`, `ImageForm`, named shape then paint), as
+  Skia Graphite pairs a RenderStep with a paint key and WebRender a quad with a pattern.
+  Refused: every paint behind one dynamic branch, which VideoCore's register count refused (54
+  temporaries for all forms, 22 for a solid); a pipeline per shape kind.
+- **Antialiasing is an interpolated distance**, clamped in the fragment, or one `length` in a
+  corner's ring. Refused: coverage as a vertex attribute, exact on straight edges only, which
+  overshot a large circle by 41 % at one segment a corner; MSAA.
+- **Shared WGSL has one copy, under the `palantir_` prefix** the effect contract reserves, in
+  `primitives::wgsl`, so the quad, image and effect stages read the same text, concatenated
+  through `ShaderBody::includes`. Refused: `naga_oil` and WESL, a dependency each for an include
+  order a list of files already states.
+- **A draw call joins what it can.** A text run's glyphs clip to its bounds on the CPU, so a run
+  a clip cuts batches with any other; a turned one keeps a scissor of its own. A closing group's
+  quads join one run per form, a quad looking back up to 10 quads past ones it does not overlap,
+  as WebRender's `batch_lookback_count`. Measured: a showcase page from 7 to 38 draws to 5 to 22
+  (`.notes/research/2026-11-10-draw-calls.md`). Refused: a clip rect in each glyph instance, 8 B a
+  glyph; sorting by pipeline with a depth buffer, as Graphite does, a depth attachment in every
+  pipeline for a −2 % ceiling (`.notes/PERF.md`).
 - **A material reaches under the border, in one draw.** The material and its fill, a color or a
   gradient, cover the whole box, and the border lies over them, as CSS's background and
   `backdrop-filter` cover the border box. One effect stage draws every use of an effect: a
@@ -287,9 +334,14 @@ driver serves that command alone; the drive table's `version` names it
 - **The covered side is the shape's**: `Coverage::{Inside, Outside}` on `RectShape`, as Skia's
   inverse fill types belong to the path. Refused: a second constructor of one geometry; a flag
   setter.
-- **Images, icons and effects are paints of a rect**, as Skia's `SkImageShader` and SwiftUI's
+- **Images, icons and effects are paints of a shape**: an image and an effect of a rect or a
+  triangle, an icon of a rect, as Skia's `SkImageShader` and SwiftUI's
   `ImagePaint` fill a shape. Refused: a `Brush::Image`, as a brush is saved in theme files and
   tweened, which a handle cannot be; an effect as a shape kind with a rect of its own.
+- **A triangle's effect reads its covering rect and no corners**; palantir clips it to the
+  triangle, as the CSS Paint API hands a worklet its box alone and Skia's and Flutter's shaders get
+  no shape. Refused: an edge distance in `EffectInput`, which every effect would pay for in the
+  interior, where the template computes none.
 
 ### Argument shapes
 

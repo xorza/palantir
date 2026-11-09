@@ -9,6 +9,7 @@ use crate::renderer::frontend::composer::backdrop_break::BackdropBreak;
 use crate::renderer::frontend::composer::clip_stack::{ClipFrame, ClipStack};
 use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;
 use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
+use crate::renderer::frontend::composer::quad_runs::QuadRuns;
 use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::BackdropSource;
@@ -47,6 +48,8 @@ pub(super) struct PaintOrder {
     cursors: GroupCursors,
     /// Solid-opaque occluders in the open group, and the sweep dropping earlier quads they cover.
     occlusion: OcclusionPruner,
+    /// The reorder that joins the closing group's quads into one run per draw where it can.
+    runs: QuadRuns,
     /// The last break the main pass takes for a backdrop, and what is painted after it.
     backdrop_break: BackdropBreak,
 }
@@ -80,7 +83,8 @@ struct OpenBatch {
     clip: TextClip,
 }
 
-/// Whether an ancestor clip cuts a text run's unclipped extent.
+/// Whether an ancestor clip cuts a turned text run's unclipped extent, which its batch's scissor
+/// alone clips; an unturned run clips its own glyphs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TextClip {
     Whole,
@@ -270,6 +274,9 @@ impl Ordering<'_> {
     pub(super) fn flush(&mut self) {
         let order = &mut *self.order;
         order.occlusion.prune(self.out, order.cursors.quads);
+        order
+            .runs
+            .join(&mut self.out.quads[order.cursors.quads as usize..]);
         let q_end = self.out.quads.len() as u32;
         let t_end = self.out.texts.len() as u32;
         let higher_end = PaintTier::ALL.map(|tier| self.out.draws_len(tier));
@@ -429,12 +436,14 @@ pub(crate) mod internals {
                 higher_kinds,
                 cursors: _,
                 occlusion,
+                runs,
                 backdrop_break: _,
             } = self;
             open_grid.scratch_bytes()
                 + closed_grid.scratch_bytes()
                 + higher_kinds.scratch_bytes()
                 + occlusion.scratch_bytes()
+                + runs.scratch_bytes()
         }
 
         /// The cover-containment tests the occlusion pruner ran.

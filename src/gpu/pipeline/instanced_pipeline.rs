@@ -41,6 +41,8 @@ pub(crate) struct VariantTarget {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VariantRecipe<'a> {
     pub(crate) label: &'static str,
+    pub(crate) vertex_entry: &'static str,
+    pub(crate) fragment_entry: &'static str,
     pub(crate) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub(crate) topology: wgpu::PrimitiveTopology,
 }
@@ -67,6 +69,8 @@ impl<I: bytemuck::Pod> InstancedPipeline<I> {
             gpu,
             target.mode,
             &PipelineRecipe {
+                vertex_entry: recipe.vertex_entry,
+                fragment_entry: recipe.fragment_entry,
                 vertex_buffers: recipe.vertex_buffers,
                 topology: recipe.topology,
                 ..PipelineRecipe::color(recipe.label, &self.shader, &self.layout, target.format)

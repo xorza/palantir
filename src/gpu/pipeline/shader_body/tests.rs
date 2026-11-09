@@ -15,7 +15,9 @@ fn specialization_replaces_every_typed_marker() {
             ShaderConstant::float("B", 0.5),
         ],
     );
-    let prelude = PRELUDE.replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"));
+    let prelude = PRELUDE
+        .concat()
+        .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"));
     assert_eq!(
         result,
         format!("{prelude}const A: u32 = 7u; const B: f32 = 0.5;"),
@@ -35,7 +37,7 @@ fn every_shader_file_is_walked() {
     let walked: HashSet<&str> = SHADERS
         .iter()
         .flat_map(|body| body.includes.iter().copied().chain([body.wgsl]))
-        .chain([PRELUDE])
+        .chain(PRELUDE)
         .collect();
     let mut dirs = vec![PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -65,16 +67,16 @@ fn every_pinned_shader_constant_is_read() {
     for body in SHADERS {
         body.parse();
     }
+    // A body is one shader: a constant one of its files pins, another may read.
     let sources = SHADERS
         .iter()
-        .flat_map(|body| {
-            body.includes
-                .iter()
-                .chain([&body.wgsl])
-                .map(|&wgsl| (body.label, wgsl))
+        .map(|body| {
+            let source: String = body.includes.iter().copied().chain([body.wgsl]).collect();
+            (body.label, source)
         })
-        .chain([("prelude", PRELUDE)]);
+        .chain([("prelude", PRELUDE.concat())]);
     for (file, source) in sources {
+        let source = source.as_str();
         let code = strip_comments(source);
         assert_eq!(
             source.lines().filter_map(pinned_const_name).count(),
@@ -134,7 +136,7 @@ fn only_the_shadow_entries_reach_the_blur_integral() {
         );
     }
     assert!(
-        reaches("fs").contains("sdf_rounded_rect"),
+        reaches("fs").contains("palantir_sdf_rounded_rect"),
         "the call scan finds nothing"
     );
 }

@@ -20,6 +20,7 @@ use crate::shape::curve::CurveShape;
 use crate::shape::effect_paint::ErasedEffectPaint;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::box_geometry::BoxGeometry;
+use crate::shape::geometry::shape_outline::ShapeOutline;
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::mesh::MeshShape;
@@ -64,16 +65,18 @@ pub(crate) enum Draw<'a> {
         shape: &'a MeshShape<'a>,
         tint: RgbaF32,
     },
+    /// An image over a rect or a triangle.
     Image {
-        rect: &'a RectShape,
+        outline: ShapeOutline,
         paint: &'a ImagePaint,
     },
     Icon {
         rect: &'a RectShape,
         paint: &'a IconPaint,
     },
+    /// An app's effect over a rect or a triangle.
     Effect {
-        rect: &'a RectShape,
+        outline: ShapeOutline,
         paint: ErasedEffectPaint<'a>,
     },
 }

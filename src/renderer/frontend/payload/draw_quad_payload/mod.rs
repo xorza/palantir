@@ -6,7 +6,6 @@ use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -29,10 +28,10 @@ pub(crate) enum QuadGeometry {
         corners: Corners,
         spin: Option<Spin>,
     },
-    /// Logical-px corner points and rounding. The composer turns the points
-    /// by `spin`, folds the push-transform, scales to physical px, derives the
-    /// covering AABB (points inflated by `radius + AA fringe`) and packs the
-    /// points into the `corners` / `fill_axis` lanes.
+    /// Logical-px corner points and rounding. The composer folds the
+    /// push-transform, scales to physical px, derives the covering rect (the
+    /// points' bounds inflated by `radius`), which a gradient spans, and turns
+    /// it by `spin`, as it turns a rect.
     Triangle {
         a: Vec2,
         b: Vec2,
@@ -50,8 +49,7 @@ pub(crate) enum QuadGeometry {
 /// gradients. `fill_lut_row` is the gradient atlas row, or
 /// [`LutRow::FALLBACK`]. `fill_axis` is the gradient geometry, or for a
 /// shadow `(0, 0, σ, spread)` (drop) / `(offset.x, offset.y, σ, spread)`
-/// (inset) in logical px, scaled to physical by the composer. A triangle's
-/// is overwritten by the composer.
+/// (inset) in logical px, scaled to physical by the composer.
 ///
 /// `fill` is the solid color (the tint for a shadow); for a gradient it
 /// multiplies the atlas row's color. `RgbaF16` saves 8 B per payload over
@@ -62,9 +60,8 @@ pub(crate) struct DrawQuadPayload {
     pub(crate) fill: GpuFill,
     /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no border exactly.
     pub(crate) border: LoweredBorder,
-    /// The reused four-lane geometry slot: gradient axis, shadow `(offset, σ,
-    /// spread)`, or unread for a triangle. Outside [`GpuFill`] because only
-    /// this tier has one.
+    /// The reused four-lane geometry slot: gradient axis or shadow `(offset,
+    /// σ, spread)`. Outside [`GpuFill`] because only this tier has one.
     pub(crate) fill_axis: FillAxis,
 }
 
@@ -80,12 +77,12 @@ pub(crate) struct RectQuad {
 }
 
 /// What [`DrawQuadPayload::triangle`] lowers: three logical-px corner centers
-/// in `points`, dilated by `radius`, with a solid fill and a border.
+/// in `points`, dilated by `radius`, with its fill brush and a border.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TriangleQuad {
     pub(crate) points: [Vec2; 3],
     pub(crate) radius: f32,
-    pub(crate) fill: RgbaF16,
+    pub(crate) fill: BrushSource,
     pub(crate) border: LoweredBorder,
 }
 
@@ -169,6 +166,8 @@ impl DrawQuadPayload {
             fill,
             border,
         } = q;
+        let mut lanes = fill.gpu_fill();
+        lanes.kind = lanes.kind.with_triangle();
         Self {
             geometry: QuadGeometry::Triangle {
                 a,
@@ -177,14 +176,9 @@ impl DrawQuadPayload {
                 radius,
                 spin: None,
             },
-            fill: GpuFill {
-                color: fill,
-                kind: FillKind::TRIANGLE,
-                // The composer overwrites both reused lanes from the points.
-                lut_row: LutRow::FALLBACK,
-            },
+            fill: lanes,
             border: border.normalized(),
-            fill_axis: FillAxis::ZERO,
+            fill_axis: fill.fill_axis(),
         }
     }
 

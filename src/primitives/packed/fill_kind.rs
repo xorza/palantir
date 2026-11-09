@@ -8,10 +8,11 @@ use bytemuck::{Pod, Zeroable};
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching paint-payload
 /// fields: **bits 0..8** the family tag (one of the `TAG_*`, via
 /// [`Self::tag`]), **bits 8..16** the `Spread` discriminant (gradient tags only),
-/// **bit 16** [`Self::FAST_BIT`], **bit 17** [`Self::OUTSIDE_BIT`].
+/// **bit 16** [`Self::FAST_BIT`], **bit 17** [`Self::OUTSIDE_BIT`], **bit 18**
+/// [`Self::TRIANGLE_BIT`].
 /// `repr(transparent)` over `u32` so the wire layout is a plain vertex attribute.
 ///
-/// Every number here is substituted into `quad_pipeline/shader.wgsl` rather than
+/// Every number here is substituted into the quad shader (`quad_pipeline/*.wgsl`) rather than
 /// mirrored by hand; `every_pinned_shader_constant_is_read` fails if the shader
 /// stops comparing against one.
 #[repr(transparent)]
@@ -23,7 +24,7 @@ impl FillKind {
     pub(crate) const SPREAD_SHIFT: u32 = 8;
     pub(crate) const SPREAD_MASK: u32 = 0xFF;
 
-    /// The family tags, each substituted into the shader as a `BRUSH_KIND_*`; the
+    /// The family tags, each substituted into the shader as a `PALANTIR_FILL_*`; the
     /// only place any is written.
     pub(crate) const TAG_SOLID: u32 = 0;
     pub(crate) const TAG_LINEAR: u32 = 1;
@@ -31,8 +32,7 @@ impl FillKind {
     pub(crate) const TAG_CONIC: u32 = 3;
     pub(crate) const TAG_SHADOW_DROP: u32 = 4;
     pub(crate) const TAG_SHADOW_INSET: u32 = 5;
-    pub(crate) const TAG_TRIANGLE: u32 = 6;
-    pub(crate) const TAG_RAMP: u32 = 7;
+    pub(crate) const TAG_RAMP: u32 = 6;
 
     #[inline]
     pub(crate) const fn tag(self) -> u32 {
@@ -76,10 +76,6 @@ impl FillKind {
     /// and clips to the source rect.
     pub(crate) const SHADOW_INSET: Self = Self(Self::TAG_SHADOW_INSET);
 
-    /// Rounded-triangle SDF marker: the corner points ride in the reused `corners`
-    /// + `fill_axis` lanes as `(a.x,a.y,b.x,b.y)` / `(c.x,c.y,radius,_)`.
-    pub(crate) const TRIANGLE: Self = Self(Self::TAG_TRIANGLE);
-
     /// Curve-ramp marker, read by the curve pipeline only; the atlas row rides in
     /// `fill_lut_row`, so there is no axis or spread.
     pub(crate) const RAMP: Self = Self(Self::TAG_RAMP);
@@ -117,6 +113,22 @@ impl FillKind {
         self.0 & Self::OUTSIDE_BIT != 0
     }
 
+    /// Bit 18: a rounded triangle, three of `Quad::points` where a box has four, which the
+    /// template's corner count and the form follow; the tag still names its paint. Read as
+    /// `FILL_FLAG_TRIANGLE`. Like the outside bit, it keeps the quad out of the checks that
+    /// compare `fill_kind == FillKind::SOLID`, as a triangle covers no rect.
+    pub(crate) const TRIANGLE_BIT: u32 = 1 << 18;
+
+    #[inline]
+    pub(crate) const fn with_triangle(self) -> Self {
+        Self(self.0 | Self::TRIANGLE_BIT)
+    }
+
+    #[inline]
+    pub(crate) const fn is_triangle(self) -> bool {
+        self.0 & Self::TRIANGLE_BIT != 0
+    }
+
     /// True iff this marks a shadow draw; blur extends past the stored rect, so
     /// shadows are never dropped by the occlusion-prune sweep.
     #[inline]
@@ -131,6 +143,20 @@ const _: () = {
     assert!(FillKind::TAG_RAMP <= FillKind::TAG_MASK);
     assert!(Spread::Reflect as u32 <= FillKind::SPREAD_MASK);
     let spread_bits = FillKind::SPREAD_MASK << FillKind::SPREAD_SHIFT;
-    assert!(spread_bits & (FillKind::FAST_BIT | FillKind::OUTSIDE_BIT) == 0);
-    assert!(FillKind::FAST_BIT & FillKind::OUTSIDE_BIT == 0);
+    let flags = [
+        FillKind::FAST_BIT,
+        FillKind::OUTSIDE_BIT,
+        FillKind::TRIANGLE_BIT,
+    ];
+    let mut i = 0;
+    while i < flags.len() {
+        assert!(spread_bits & flags[i] == 0);
+        assert!(flags[i].is_power_of_two());
+        let mut j = i + 1;
+        while j < flags.len() {
+            assert!(flags[i] & flags[j] == 0);
+            j += 1;
+        }
+        i += 1;
+    }
 };

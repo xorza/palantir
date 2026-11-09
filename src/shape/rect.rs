@@ -68,6 +68,13 @@ impl RectShape {
             self.corners == Corners::ZERO,
             "{what} paints a square-cornered rect"
         );
+        self.assert_inside(what);
+    }
+
+    /// Panic unless the rect covers its inside, as `what`'s pipeline, which clips to no side,
+    /// draws.
+    #[track_caller]
+    pub(crate) fn assert_inside(&self, what: &str) {
         assert!(
             self.coverage == Coverage::Inside,
             "{what} paints the inside of its rect"

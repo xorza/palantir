@@ -102,7 +102,7 @@ struct SpunOut {
 }
 
 // A turned quad. Its texels no longer sit on pixels, so it always takes the
-// filtered path; it reaches `AA_HALF_WIDTH` past each drawn edge in its own
+// filtered path; it reaches `PALANTIR_AA_HALF_WIDTH` past each drawn edge in its own
 // frame, where a rotation keeps distances, and the texel coordinate runs on
 // with it, clamped to the raster's slot by `taps`.
 @vertex
@@ -113,7 +113,7 @@ fn vs_spun(in: SpunIn) -> SpunOut {
 
     let corner = vec2<f32>(f32(in.idx & 1u), f32((in.idx >> 1u) & 1u));
     let size = vec2<f32>(in.size);
-    let drawn = corner * size + (corner * 2.0 - 1.0) * AA_HALF_WIDTH;
+    let drawn = corner * size + (corner * 2.0 - 1.0) * PALANTIR_AA_HALF_WIDTH;
     let p = vec2<f32>(in.pos) + drawn - in.pivot;
     let turned = in.pivot + vec2<f32>(in.rotor.x * p.x - in.rotor.y * p.y, in.rotor.y * p.x + in.rotor.x * p.y);
 
@@ -170,12 +170,12 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     return premultiply(rgb, s.a) * in.color.a;
 }
 
-// A turned quad: filtered as a resampled one, faded over `AA_HALF_WIDTH`
+// A turned quad: filtered as a resampled one, faded over `PALANTIR_AA_HALF_WIDTH`
 // past each of its turned edges.
 @fragment
 fn fs_spun(in: SpunOut) -> @location(0) vec4<f32> {
     let d = abs(in.local) - in.half_size;
-    let fade = edge_coverage(d.x) * edge_coverage(d.y);
+    let fade = palantir_edge_coverage(d.x) * palantir_edge_coverage(d.y);
     return resampled(VertexOut(in.position, in.color, in.flags, in.texel, in.texel_rect)) * fade;
 }
 

@@ -32,7 +32,7 @@ fn each_group_draws_its_quads_in_one_step() {
             FillKind::SHADOW_DROP,
             FillKind::SHADOW_INSET,
             FillKind::SHADOW_DROP,
-            FillKind::TRIANGLE,
+            FillKind::SOLID.with_triangle(),
         ],
     );
     let quads: Vec<RenderStep> = plain_steps(&buffer)

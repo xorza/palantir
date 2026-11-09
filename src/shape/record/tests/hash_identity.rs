@@ -1,6 +1,7 @@
 //! Shapes that must hash apart, and the spans that must not count.
 
 use crate::common::hash;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::EPS;
@@ -43,8 +44,9 @@ fn quad_shapes_hash_apart() {
             radius: 0.0,
             placement: PointPlacement::NATURAL,
         },
-        fill: RgbaF32::WHITE.to_f16(),
+        fill: LoweredBrush::Solid(RgbaF32::WHITE.to_f16()),
         border: stroke,
+        material: None,
     });
     let sharp = BoxOutline::Rect(Corners::ZERO);
     let mut seen = Vec::new();
@@ -148,7 +150,10 @@ fn shape_mesh_hash_excludes_span_offsets() {
 #[test]
 fn image_source_hashes_apart_by_source() {
     let image = |source| ShapeRecord::Image {
-        local_rect: None,
+        outline: ShapeOutline::Rect {
+            local_rect: None,
+            corners: Corners::ZERO,
+        },
         tint: RgbaF32::WHITE.to_f16(),
         source,
         fit: ImageFit::Fill,
@@ -213,7 +218,10 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
                 min_filter: ImageFilter,
                 mag_filter: ImageFilter| {
         ShapeRecord::Image {
-            local_rect: None,
+            outline: ShapeOutline::Rect {
+                local_rect: None,
+                corners: Corners::ZERO,
+            },
             tint: tint.to_f16(),
             source: ImageSource::Texture {
                 id,

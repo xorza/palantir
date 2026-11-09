@@ -15,6 +15,9 @@ use crate::primitives::effect::effect_params::{EffectParam, ParamType};
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::brush::gradient::Spread;
+use crate::primitives::wgsl::{
+    ARC_SEGMENTS, COLOR, COVERAGE, GRADIENT_FILL, GRADIENT_LUT, SHAPE_TEMPLATE,
+};
 
 /// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's
 /// text, as WGSL declarations hold in any order, so a position in a parse error reads in the app's
@@ -83,6 +86,9 @@ pub(crate) const OUTSIDE_FLAG: u32 = 1;
 /// material path.
 pub(crate) const MATERIAL_FLAG: u32 = 2;
 
+/// An instance's flag for a triangle, three of its points, where a rect has four.
+pub(crate) const TRIANGLE_FLAG: u32 = 4;
+
 /// The group a material's box reads the gradient atlas through, past the backdrops.
 pub(crate) const GRADIENTS_GROUP: u32 = 3;
 
@@ -118,8 +124,10 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         KindId::Backdrop => material(),
     };
     let full = format!(
-        "{ENABLE}{wgsl}\n{contract}{}{material}",
-        wrapper(kind, params_struct.as_deref(), params.fields)
+        "{ENABLE}{wgsl}\n{contract}{}{}{}{material}",
+        wrapper(kind, params_struct.as_deref(), params.fields),
+        COVERAGE,
+        SHAPE_TEMPLATE.replace("/*{ARC_SEGMENTS}*/", &format!("{ARC_SEGMENTS}u")),
     );
     let full = parse_and_validate(
         full,
@@ -226,13 +234,15 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
         .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
         .replace("/*{MATERIAL}*/", &format!("{MATERIAL_FLAG}u"))
         .replace("/*{OUTSIDE}*/", &format!("{OUTSIDE_FLAG}u"))
+        .replace("/*{TRIANGLE}*/", &format!("{TRIANGLE_FLAG}u"))
         .replace("/*{PARAMS}*/", &read)
         .replace("/*{BACKDROP_SET}*/", set)
         .replace("/*{CALL}*/", call)
         .replace("/*{MATERIAL_BRANCH}*/", branch)
 }
 
-/// The material path with the fill kinds the quad shader reads put in.
+/// The material path with the WGSL it shares with the pipelines, the fill kinds the quad shader
+/// reads put in.
 fn material() -> String {
     [
         ("FILL_TAG_MASK", FillKind::TAG_MASK),
@@ -245,9 +255,10 @@ fn material() -> String {
         ("SPREAD_REFLECT", Spread::Reflect as u32),
     ]
     .into_iter()
-    .fold(MATERIAL.to_owned(), |text, (marker, value)| {
-        text.replace(&format!("/*{{{marker}}}*/"), &format!("{value}u"))
-    })
+    .fold(
+        [MATERIAL, COLOR, GRADIENT_LUT, GRADIENT_FILL].concat(),
+        |text, (marker, value)| text.replace(&format!("/*{{{marker}}}*/"), &format!("{value}u")),
+    )
 }
 
 /// The WGSL that reads `field` from the instance's words, starting at `at`.

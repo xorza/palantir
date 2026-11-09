@@ -25,7 +25,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::float_hash::{self, FloatHash};
-use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::LineCap;
@@ -39,6 +38,7 @@ use crate::shape::effect_paint::ErasedEffectPaint;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::BoxGeometry;
+use crate::shape::geometry::shape_outline::ShapeOutline;
 use crate::shape::geometry::triangle_geometry::{self, TriangleGeometry};
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
@@ -48,7 +48,7 @@ use crate::shape::mesh::MeshShape;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::paint::lowered_material::MaterialRead;
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
@@ -140,15 +140,15 @@ impl RecordStore {
     pub(crate) fn record(&mut self, draw: Draw<'_>, resolve: Resolve<'_>) -> Option<ShapeRecord> {
         match draw {
             Draw::Box { geometry, paint } => self.record_box(geometry, &paint, resolve),
-            Draw::Triangle { shape, paint } => self.record_triangle(shape, &paint),
+            Draw::Triangle { shape, paint } => self.record_triangle(shape, &paint, resolve),
             Draw::Curve { shape, stroke } => self.record_curve(shape, stroke),
             Draw::Arc { geometry, stroke } => self.record_arc(geometry, stroke),
             Draw::Polyline { shape, stroke } => self.record_polyline(shape, stroke),
             Draw::Text { shape, color } => self.record_text(shape, color),
             Draw::Mesh { shape, tint } => self.record_mesh(shape, tint),
-            Draw::Image { rect, paint } => self.record_image(rect, paint),
+            Draw::Image { outline, paint } => self.record_image(outline, paint),
             Draw::Icon { rect, paint } => self.record_icon(rect, paint),
-            Draw::Effect { rect, paint } => self.record_effect(rect, paint, resolve),
+            Draw::Effect { outline, paint } => self.record_effect(outline, paint, resolve),
         }
     }
 
@@ -187,34 +187,46 @@ impl RecordStore {
         }))
     }
 
-    /// The record of `shape` in `paint`; `None` where it paints nothing.
+    /// The record of `shape` in `paint`, its material resolved in `resolve`; `None` where it
+    /// paints nothing.
     ///
     /// The corners keep their placement, which resolves where the triangle is drawn
     /// ([`TriangleGeometry::place`]); a triangle of no area drops here, as no fit gives it one. A
     /// rect of no size keeps it: `Natural` only moves the corners by the rect's corner, and a
     /// scaling fit collapses it where it is placed.
-    fn record_triangle(&self, shape: &TriangleShape, paint: &Paint) -> Option<ShapeRecord> {
+    fn record_triangle(
+        &mut self,
+        shape: &TriangleShape,
+        paint: &Paint,
+        resolve: Resolve<'_>,
+    ) -> Option<ShapeRecord> {
         let TriangleShape {
             corners,
             radius,
             placement,
         } = *shape;
-        let Brush::Solid(fill) = paint.fill else {
-            unreachable!("`check` holds a triangle's fill solid");
-        };
-        if (fill.is_noop() && paint.border.is_noop())
+        let read = paint.material.as_ref().and_then(|material| {
+            MaterialRead::resolve(material, resolve.effects, resolve.reductions)
+        });
+        if (paint.fill.is_noop() && paint.border.is_noop() && read.is_none())
             || triangle_geometry::area_is_paint_empty(corners)
         {
             return None;
         }
+        let material = paint
+            .material
+            .as_ref()
+            .zip(read)
+            .map(|(authored, read)| LoweredMaterial::lower(self, authored, read));
         Some(ShapeRecord::Quad(QuadShape::Triangle {
             geometry: TriangleGeometry {
                 corners,
                 radius,
                 placement,
             },
-            fill: fill.to_f16(),
+            fill: lower::brush(self, &paint.fill),
             border: LoweredBorder::lower(paint.border),
+            material,
         }))
     }
 
@@ -383,13 +395,9 @@ impl RecordStore {
         })
     }
 
-    /// The record of `paint` over `rect`; `None` where it paints nothing.
-    fn record_image(&self, rect: &RectShape, paint: &ImagePaint) -> Option<ShapeRecord> {
-        let RectShape {
-            local_rect,
-            corners: _,
-            coverage: _,
-        } = *rect;
+    /// The record of `paint` over `outline`; `None` where it paints nothing: a rect of no size, a
+    /// triangle of no area, which no fit gives one, or an invisible tint.
+    fn record_image(&self, outline: ShapeOutline, paint: &ImagePaint) -> Option<ShapeRecord> {
         let ImagePaint {
             handle,
             fit,
@@ -400,11 +408,11 @@ impl RecordStore {
         } = paint;
         let (fit, min_filter, mag_filter, downsample, tint) =
             (*fit, *min_filter, *mag_filter, *downsample, *tint);
-        if local_rect.is_some_and(Rect::is_paint_empty) || tint.is_noop() {
+        if outline.is_paint_empty() || tint.is_noop() {
             return None;
         }
         Some(ShapeRecord::Image {
-            local_rect,
+            outline,
             tint: tint.to_f16(),
             source: ImageSource::Texture {
                 id: handle.id(),
@@ -443,7 +451,7 @@ impl RecordStore {
         })
     }
 
-    /// The record of `paint` over `rect`, its name resolved in `resolve`, its parameters and
+    /// The record of `paint` over `outline`, its name resolved in `resolve`, its parameters and
     /// images copied here; `None` where it paints nothing.
     ///
     /// # Panics
@@ -453,15 +461,10 @@ impl RecordStore {
     #[track_caller]
     fn record_effect(
         &mut self,
-        rect: &RectShape,
+        outline: ShapeOutline,
         paint: ErasedEffectPaint<'_>,
         resolve: Resolve<'_>,
     ) -> Option<ShapeRecord> {
-        let RectShape {
-            local_rect,
-            corners,
-            coverage: _,
-        } = *rect;
         let ErasedEffectPaint {
             name,
             kind,
@@ -482,8 +485,7 @@ impl RecordStore {
             name.name.as_str(),
             resolved.image_slots,
         );
-        if local_rect.is_some_and(Rect::is_paint_empty)
-            || (reduced && reduced_transparency == ReducedBackdrop::Nothing)
+        if outline.is_paint_empty() || (reduced && reduced_transparency == ReducedBackdrop::Nothing)
         {
             return None;
         }
@@ -512,8 +514,7 @@ impl RecordStore {
         }
         Some(ShapeRecord::Effect {
             backdrop,
-            local_rect,
-            corners,
+            outline,
             effect,
             params: self.stage_effect_params(params),
             images: self.stage_effect_images(images.iter().flatten()),

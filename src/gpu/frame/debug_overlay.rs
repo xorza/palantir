@@ -38,6 +38,8 @@ const DIM_ALPHA: f32 = 0.4;
 pub(crate) struct OverlayDraw<'a> {
     pub(crate) binding: QuadBinding<'a>,
     pub(crate) viewport: ViewportPush,
+    /// The vertices the solid pipeline draws each quad with.
+    pub(crate) vertices: u32,
 }
 
 impl<'a> OverlayDraw<'a> {
@@ -51,7 +53,7 @@ impl<'a> OverlayDraw<'a> {
     ) {
         self.binding.bind(pass, buffer);
         self.viewport.push_into(pass);
-        pass.draw(0..4, instances);
+        pass.draw(0..self.vertices, instances);
     }
 }
 
@@ -60,9 +62,8 @@ impl<'a> OverlayDraw<'a> {
 /// stays bright.
 pub(crate) fn dim_quad(viewport: Vec2) -> Quad {
     Quad {
-        rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
         fill: RgbaF32::new(0.0, 0.0, 0.0, DIM_ALPHA).to_f16(),
-        ..Default::default()
+        ..Quad::of_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y))
     }
 }
 
@@ -85,11 +86,10 @@ impl DebugOverlay {
         let border_color = DAMAGE_OVERLAY_COLOR.to_f16();
         let border_width = DAMAGE_OVERLAY_BORDER_WIDTH * scale;
         let outline = |rect: Rect| Quad {
-            rect,
             fill: RgbaF16::TRANSPARENT,
             border_color,
             border_width,
-            ..Default::default()
+            ..Quad::of_rect(rect)
         };
         self.outlines.clear();
         match damage {

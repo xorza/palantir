@@ -1,19 +1,17 @@
 //! One effect draw.
 
 use crate::common::span::Span;
-use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
+use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::spin::Spin;
 
-/// An effect over a rounded rect in the logical frame; `params` indexes the window's
+/// An effect over a rounded rect or a triangle in the logical frame; `params` indexes the window's
 /// [`RecordStore`](crate::shape::record_store::RecordStore) parameter words.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawEffectPayload {
-    pub(crate) rect: Rect,
-    pub(crate) corners: Corners,
+    pub(crate) outline: PlacedOutline,
     /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
     pub(crate) effect: EffectId,
@@ -45,10 +43,15 @@ impl PaintPayload for DrawEffectPayload {
         }
     }
 
-    /// Paints nothing over an empty rect or at no opacity.
+    /// Paints nothing over an empty rect or at no opacity. A triangle is never empty here: its
+    /// covering rect exists only after transform, and its record filters degenerates.
     #[inline]
     fn is_noop(&self) -> bool {
-        self.rect.is_paint_empty() || self.opacity <= 0.0
+        let empty = match self.outline {
+            PlacedOutline::Rect { rect, .. } => rect.is_paint_empty(),
+            PlacedOutline::Triangle { .. } => false,
+        };
+        empty || self.opacity <= 0.0
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

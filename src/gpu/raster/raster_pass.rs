@@ -14,6 +14,7 @@ use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas, RasterAtlasConfig};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
@@ -196,6 +197,22 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         );
         self.starts.push(self.instances.len() as u32);
         self.cut_starts.push(self.cuts.len() as u32);
+    }
+
+    /// Clip the quads emitted from `start` on to `bounds`, each to its part inside them
+    /// ([`RasterQuad::clipped`]), dropping one wholly outside, so a run a clip cuts needs no
+    /// scissor of its own.
+    pub(super) fn clip_since(&mut self, start: usize, bounds: URect) {
+        let min = bounds.min.as_ivec2();
+        let max = (bounds.min + bounds.size).as_ivec2();
+        let mut kept = start;
+        for at in start..self.instances.len() {
+            if let Some(quad) = self.instances[at].clipped(min, max) {
+                self.instances[kept] = quad;
+                kept += 1;
+            }
+        }
+        self.instances.truncate(kept);
     }
 
     /// Move the quads emitted from `start` on into the turned buffer, each turned by `spin`. They

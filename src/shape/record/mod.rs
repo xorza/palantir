@@ -3,7 +3,6 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
@@ -21,6 +20,7 @@ use crate::primitives::text::recorded_text::RecordedText;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
+use crate::shape::geometry::shape_outline::ShapeOutline;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
@@ -142,9 +142,10 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: ContentHash,
     },
-    /// Textured rectangle: a registered image or a `GpuView` target, per [`ImageSource`]. `local_rect = None` paints the owner's rect, `Some(r)` paints `r` owner-relative. `tint` multiplies in linear-RGB premultiplied space.
+    /// A registered image or a `GpuView` target, per [`ImageSource`], fit to its outline's rect
+    /// and clipped to the outline. `tint` multiplies in linear-RGB premultiplied space.
     Image {
-        local_rect: Option<Rect>,
+        outline: ShapeOutline,
         tint: RgbaF16,
         source: ImageSource,
         fit: ImageFit,
@@ -168,8 +169,7 @@ pub(crate) enum ShapeRecord {
     Effect {
         /// What a backdrop effect reads under it; `None` for a color effect.
         backdrop: Option<EffectBackdrop>,
-        local_rect: Option<Rect>,
-        corners: Corners,
+        outline: ShapeOutline,
         effect: EffectId,
         params: Span,
         /// Into `RecordStore::effect_images`.
@@ -231,14 +231,20 @@ impl TextAnchor {
 }
 
 impl ShapeRecord {
-    /// What the record reads as a backdrop over the pixels before it: a rect's material or a
-    /// backdrop effect's, each where it captures; `None` for every other record.
+    /// What the record reads as a backdrop over the pixels before it: a box's or a triangle's
+    /// material or a backdrop effect's, each where it captures; `None` for every other record.
     pub(crate) const fn backdrop_reader(&self) -> Option<BackdropReader> {
         match self {
-            Self::Quad(QuadShape::Box {
-                material: Some(material),
-                ..
-            }) if material.captures() => Some(BackdropReader::Material(*material)),
+            Self::Quad(
+                QuadShape::Box {
+                    material: Some(material),
+                    ..
+                }
+                | QuadShape::Triangle {
+                    material: Some(material),
+                    ..
+                },
+            ) if material.captures() => Some(BackdropReader::Material(*material)),
             Self::Effect {
                 backdrop: Some(EffectBackdrop::Capture(capture)),
                 ..
@@ -281,10 +287,12 @@ impl ShapeRecord {
                         geometry,
                         fill,
                         border,
+                        material,
                     } => {
                         geometry.hash_into(&mut h);
-                        fill.hash(&mut h);
+                        hash_brush(*fill, &mut h);
                         border.hash_into(&mut h);
+                        material.hash(&mut h);
                     }
                 }
             }
@@ -343,7 +351,7 @@ impl ShapeRecord {
             // view composite apart; the shared placement fields are hashed once, around
             // the split.
             Self::Image {
-                local_rect,
+                outline,
                 tint,
                 source,
                 fit,
@@ -351,7 +359,7 @@ impl ShapeRecord {
                 mag_filter,
                 downsample,
             } => {
-                hash_optional_rect(*local_rect, &mut h);
+                outline.hash_into(&mut h);
                 tint.hash(&mut h);
                 mem::discriminant(source).hash(&mut h);
                 match source {
@@ -405,16 +413,14 @@ impl ShapeRecord {
             // `content_hash` folds the effect and its parameter words, which live in the
             // `RecordStore`; the span is frame-local.
             Self::Effect {
-                local_rect,
-                corners,
+                outline,
                 content_hash,
                 backdrop: _,
                 effect: _,
                 params: _,
                 images: _,
             } => {
-                hash_optional_rect(*local_rect, &mut h);
-                corners.hash(&mut h);
+                outline.hash_into(&mut h);
                 content_hash.hash(&mut h);
             }
             // Geometry + style are hashed inline (every input lives on the record).
@@ -549,11 +555,8 @@ impl NanCheck for ShapeRecord {
                 ..
             } => placement.has_nan() || tint.has_nan() || bbox.has_nan(),
             Self::Image {
-                local_rect,
-                tint,
-                fit,
-                ..
-            } => local_rect.has_nan() || tint.has_nan() || fit.has_nan(),
+                outline, tint, fit, ..
+            } => outline.has_nan() || tint.has_nan() || fit.has_nan(),
             Self::Icon {
                 local_rect, tint, ..
             } => local_rect.has_nan() || tint.has_nan(),
@@ -577,7 +580,7 @@ impl NanCheck for ShapeRecord {
                 stroke,
                 ..
             } => local_rect.has_nan() || start_angle.is_nan() || sweep.is_nan() || stroke.has_nan(),
-            Self::Effect { local_rect, .. } => local_rect.has_nan(),
+            Self::Effect { outline, .. } => outline.has_nan(),
         }
     }
 }

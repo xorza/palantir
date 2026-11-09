@@ -3,11 +3,19 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use crate::primitives::wgsl;
 
-/// Concatenated ahead of every shader body, so shared vocabulary has one definition.
-const PRELUDE: &str = include_str!("../prelude.wgsl");
+/// Concatenated ahead of every shader body, so shared vocabulary has one definition: the
+/// pipelines' own prelude, then the WGSL they share with the effect modules.
+const PRELUDE: [&str; 4] = [
+    include_str!("../prelude.wgsl"),
+    wgsl::COVERAGE,
+    wgsl::COLOR,
+    wgsl::SDF,
+];
 
-/// The gradient group's bindings and its LUT read, for the shaders that bind it.
+/// The gradient group's bindings, for the shaders that bind it, before the LUT read they share
+/// with the effect modules.
 pub(crate) const GRADIENT: &str = include_str!("../gradient.wgsl");
 
 /// A shader body a pipeline family owns: its WGSL, its label, and the numbers it takes from the
@@ -86,7 +94,7 @@ const PRELUDE_CONSTANTS: [ShaderConstant; 1] =
     [ShaderConstant::float("AA_HALF_WIDTH", AA_HALF_WIDTH)];
 
 fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
-    let mut specialized = format!("{PRELUDE}{body}");
+    let mut specialized = format!("{}{body}", PRELUDE.concat());
     for &constant in PRELUDE_CONSTANTS.iter().chain(constants) {
         let marker = format!("/*{{{}}}*/", constant.marker);
         assert_eq!(

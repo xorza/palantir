@@ -10,16 +10,18 @@ use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::packed::fill_axis::FillAxis;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::tests::support::{
-    draw, draw_marked, params, run, survivor_calls, text,
+    draw, draw_marked, effect, params, run, survivor_calls, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, DrawBackdropPayload,
+    BackdropDraw, BackdropOutline, DrawBackdropPayload,
 };
+use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, TriangleQuad};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{
     BackdropCapture, BackdropRead, BackdropRow, BackdropSource,
@@ -29,7 +31,7 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 /// The ticket of backdrop `i` at `rect` and σ `sigma`, at scale 1, as the ledger writes it: its
 /// footprint the rect grown by the plan's reach and a pixel.
@@ -57,9 +59,11 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> BackdropTicket {
 fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: BackdropTicket, alpha: f32) {
     buf.draw(
         DrawBackdropPayload {
-            coverage: Coverage::Inside,
-            rect,
-            corners: Corners::ZERO,
+            outline: BackdropOutline::Rect {
+                coverage: Coverage::Inside,
+                rect,
+                corners: Corners::ZERO,
+            },
             spin: None,
             fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
             fill_axis: FillAxis::ZERO,
@@ -270,7 +274,9 @@ fn a_backdrop_shares_the_last_break_when_nothing_since_touches_it() {
 
 /// A material over the ground, while transparency is reduced, lists a row of the ground over its
 /// own rect: it holds no capture, breaks no group, and its effect row reads that row through its
-/// material's effect, between the quads around it in one group.
+/// material's effect, between the quads around it in one group. Its instance holds its shape as
+/// the template takes it: the 40 × 20 rect's corners, its depth half the short side, 10, and its
+/// border's width, 3, which the template keeps out of its interior.
 #[test]
 fn a_material_over_the_ground_breaks_nothing() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
@@ -279,13 +285,15 @@ fn a_material_over_the_ground_breaks_nothing() {
             draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
             b.draw(
                 DrawBackdropPayload {
-                    coverage: Coverage::Inside,
-                    rect,
-                    corners: Corners::ZERO,
+                    outline: BackdropOutline::Rect {
+                        coverage: Coverage::Inside,
+                        rect,
+                        corners: Corners::ZERO,
+                    },
                     spin: None,
                     fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
                     fill_axis: FillAxis::ZERO,
-                    border: LoweredBorder::NONE,
+                    border: LoweredBorder::lower(Border::new(RgbaF32::WHITE, 3.0)),
                     material: LoweredMaterial::fixture(4.0),
                     opacity: 1.0,
                     read: BackdropDraw::Ground,
@@ -306,4 +314,96 @@ fn a_material_over_the_ground_breaks_nothing() {
         (EffectId(0), EffectInstance::MATERIAL)
     );
     assert_eq!(buf.effects.instance()[0].backdrop_idx, 0);
+    let instance = buf.effects.instance()[0];
+    assert_eq!(
+        instance.points,
+        [
+            Vec2::ZERO,
+            Vec2::new(40.0, 0.0),
+            Vec2::new(40.0, 20.0),
+            Vec2::new(0.0, 20.0)
+        ]
+    );
+    assert_eq!(instance.deep, 10.0);
+    assert_eq!(instance.border_width, 3.0);
+}
+
+/// An app's effect holds its shape as the template takes it, its rect's corners at scale 2, its
+/// depth half the short side, and no border: (5, 5, 30 × 10) is (10, 10, 60 × 20).
+#[test]
+fn an_effect_holds_its_shape_for_the_template() {
+    let buf = run(
+        |b, _| effect(b, Rect::new(5.0, 5.0, 30.0, 10.0)),
+        &params(2.0, UVec2::new(200, 200)),
+    );
+    let instance = buf.effects.instance()[0];
+    assert_eq!(instance.rect, Rect::new(10.0, 10.0, 60.0, 20.0));
+    assert_eq!(
+        instance.points,
+        [
+            Vec2::ZERO,
+            Vec2::new(60.0, 0.0),
+            Vec2::new(60.0, 20.0),
+            Vec2::new(0.0, 20.0)
+        ]
+    );
+    assert_eq!(instance.deep, 10.0);
+    assert_eq!(instance.border_width, 0.0);
+}
+
+/// A triangle's material packs its shape as a triangle quad does, and its instance flags the
+/// triangle, so the effect stage builds three corners: (5, 5), (25, 5), (5, 15) with radius 1 at
+/// scale 2 cover (8, 8) to (52, 32).
+#[test]
+fn a_triangles_material_packs_as_its_triangle() {
+    let points = [
+        Vec2::new(5.0, 5.0),
+        Vec2::new(25.0, 5.0),
+        Vec2::new(5.0, 15.0),
+    ];
+    let buf = run(
+        |b, _| {
+            b.draw(
+                DrawBackdropPayload {
+                    outline: BackdropOutline::Triangle {
+                        points,
+                        radius: 1.0,
+                    },
+                    spin: None,
+                    fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
+                    fill_axis: FillAxis::ZERO,
+                    border: LoweredBorder::NONE,
+                    material: LoweredMaterial::fixture(4.0),
+                    opacity: 1.0,
+                    read: BackdropDraw::Ground,
+                },
+                1.0,
+            );
+            b.draw(
+                DrawQuadPayload::triangle(TriangleQuad {
+                    points,
+                    radius: 1.0,
+                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+                    border: LoweredBorder::NONE,
+                }),
+                1.0,
+            );
+        },
+        &params(2.0, UVec2::new(200, 200)),
+    );
+    let instance = buf.effects.instance()[0];
+    let quad = buf.quads[0];
+    assert_eq!(
+        instance.flags,
+        EffectInstance::MATERIAL | EffectInstance::TRIANGLE
+    );
+    assert_eq!(instance.corner_count(), 3);
+    assert_eq!(
+        instance.rect,
+        Rect::from_min_max(Vec2::new(8.0, 8.0), Vec2::new(52.0, 32.0))
+    );
+    assert_eq!(instance.rect, quad.rect);
+    assert_eq!(instance.points, quad.points);
+    assert_eq!(instance.deep, quad.deep);
+    assert_eq!(instance.corners, quad.corners.to_array());
 }

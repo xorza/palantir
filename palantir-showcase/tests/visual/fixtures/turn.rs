@@ -5,8 +5,8 @@ use palantir::glam::{UVec2, Vec2};
 
 use palantir::widget::{GlyphFont, Mesh, PaintAnimation, Shape};
 use palantir::{
-    Border, Configure, Corners, Image, ImageFit, LinearGradient, Panel, Rect, RgbaF32, Shadow,
-    Sizing, Ui, WidgetId,
+    Border, Configure, Corners, Image, ImageFit, LinearGradient, Panel, RadialGradient, Rect,
+    RgbaF32, Shadow, Sizing, Ui, WidgetId,
 };
 
 use std::rc::Rc;
@@ -61,6 +61,45 @@ fn a_turned_triangle_and_mesh_match_golden() {
             });
             owner(ui, "mesh", |ui| {
                 if let Some(shape) = ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE) {
+                    shape.animate(thirty_degrees());
+                }
+            });
+        });
+    });
+}
+
+/// Pin: a triangle's gradient spans the rounded triangle's bounds and turns with it. A linear
+/// gradient on a sharp triangle and a radial one on a rounded bordered triangle, each still, then
+/// the linear one turned 30°, its bands turned with its edges.
+#[test]
+fn triangle_gradients_match_golden() {
+    let triangle = || {
+        Shape::triangle(
+            Vec2::new(15.0, 80.0),
+            Vec2::new(85.0, 80.0),
+            Vec2::new(50.0, 15.0),
+        )
+    };
+    let linear = LinearGradient::two_stop(0.0, RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15));
+    let radial = RadialGradient::two_stop(
+        Vec2::splat(0.5),
+        Vec2::splat(0.5),
+        RgbaF32::hex(0xfacc15),
+        RgbaF32::hex(0x2563eb),
+    );
+    GoldenName::TriangleGradients.assert_scene(UVec2::new(320, 120), |ui| {
+        Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
+            owner(ui, "linear", |ui| {
+                ui.add_shape(triangle(), linear.clone());
+            });
+            owner(ui, "radial", |ui| {
+                ui.add_shape(
+                    triangle().radius(10.0_f32),
+                    Paint::from(radial.clone()).with_border(Border::new(RgbaF32::WHITE, 3.0)),
+                );
+            });
+            owner(ui, "turned", |ui| {
+                if let Some(shape) = ui.add_shape(triangle(), linear.clone()) {
                     shape.animate(thirty_degrees());
                 }
             });
@@ -188,6 +227,97 @@ fn turned_images_match_golden() {
         });
     });
     GoldenName::TurnedImages.assert_matches(&capture.image);
+}
+
+/// Pin: a rect's corners clip its image. A 2×2 four-color image stretched under corners of 12, a
+/// contained one in a wider rounded rect, which shows nothing past its own square, its sides faded
+/// there, and the stretched one turned 30°, its corners turned with it.
+#[test]
+fn rounded_images_match_golden() {
+    let texels = [
+        [230, 70, 60, 255],
+        [60, 160, 230, 255],
+        [250, 210, 60, 255],
+        [80, 200, 110, 255],
+    ];
+    let image = Image::from_srgba8(UVec2::new(2, 2), texels.concat()).unwrap();
+    let mut h = VisualRig::new();
+    let handle = h.host.ui().load_image(&image).unwrap();
+    let source = Rect::new(20.0, 30.0, 60.0, 40.0);
+    let rounded = Shape::rect().at(source).corners(Corners::all(12.0));
+    let capture = h.size(UVec2::new(340, 120)).settled_frame(0, |ui| {
+        Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
+            owner(ui, "fill", |ui| {
+                ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(ImageFit::Fill));
+            });
+            owner(ui, "contain", |ui| {
+                ui.add_shape(
+                    rounded,
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
+                );
+            });
+            owner(ui, "turned", |ui| {
+                if let Some(shape) =
+                    ui.add_shape(rounded, ImagePaint::new(handle.clone()).fit(ImageFit::Fill))
+                {
+                    shape.animate(thirty_degrees());
+                }
+            });
+        });
+    });
+    GoldenName::RoundedImages.assert_matches(&capture.image);
+}
+
+/// Pin: a triangle clips its image, which fits its covering rect. A 2×2 four-color image stretched
+/// over a rounded triangle, contained in a wide one, which shows nothing past the image's own
+/// square, and the stretched one turned 30°, the image turned with it.
+#[test]
+fn triangle_images_match_golden() {
+    let texels = [
+        [230, 70, 60, 255],
+        [60, 160, 230, 255],
+        [250, 210, 60, 255],
+        [80, 200, 110, 255],
+    ];
+    let image = Image::from_srgba8(UVec2::new(2, 2), texels.concat()).unwrap();
+    let mut h = VisualRig::new();
+    let handle = h.host.ui().load_image(&image).unwrap();
+    let rounded = Shape::triangle(
+        Vec2::new(15.0, 80.0),
+        Vec2::new(85.0, 80.0),
+        Vec2::new(50.0, 15.0),
+    )
+    .radius(8.0_f32);
+    let wide = Shape::triangle(
+        Vec2::new(5.0, 70.0),
+        Vec2::new(95.0, 70.0),
+        Vec2::new(50.0, 30.0),
+    );
+    let capture = h.size(UVec2::new(340, 120)).settled_frame(0, |ui| {
+        Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
+            owner(ui, "fill", |ui| {
+                ui.add_shape(
+                    rounded.clone(),
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                );
+            });
+            owner(ui, "contain", |ui| {
+                ui.add_shape(
+                    wide.clone(),
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
+                );
+            });
+            owner(ui, "turned", |ui| {
+                if let Some(shape) = ui.add_shape(
+                    rounded.clone(),
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                ) {
+                    shape.animate(thirty_degrees());
+                }
+            });
+        });
+    });
+    GoldenName::TriangleImages.assert_matches(&capture.image);
 }
 
 /// Pin: a label and a two-color icon, each turned 30° about its owner's center. The glyphs turn

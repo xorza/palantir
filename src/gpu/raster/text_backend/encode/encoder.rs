@@ -116,7 +116,8 @@ impl TextEncoder {
             });
         }
 
-        // Partially visible or atlas-starved runs re-encode each frame; replaying a full template under narrower bounds is safe (the scissor clips).
+        // Partially visible or atlas-starved runs re-encode each frame; replaying a full template
+        // under narrower bounds is safe, as the run clips to them (`RasterPass::clip_since`).
         let coverage = if culled || starved {
             EncodeCoverage::Partial
         } else {
