@@ -16,7 +16,8 @@ commits on master. The last commit makes the tree identical to `89b0c79dd`.
 - **Each step is green.** Each step runs the full gate (`cargo fmt --all` and the eight `gate-*`
   aliases) and `cargo drive surface`. A step that fails gets its fix in that same step. The next
   tree checkout absorbs the fix.
-- **The end is exact.** After step 10, `git diff 89b0c79dd` is empty.
+- **The end is exact.** After step 10, `git diff 89b0c79dd` shows only the fixes that the
+  status lists.
 - **Removed from history:** `.notes/shape-paint-proposal.md`. `ebf25775c` adds it and
   `f410241e4` deletes it, so no step adds it.
 
@@ -118,5 +119,9 @@ to 9 did not.
 
 ## Status
 
-Step 1 is staged on master and not committed. `git diff --cached -M` shows it. The full gate
-and `cargo drive surface` pass on it.
+- Step 1 is on master as `449ad9f83`. That commit also holds this file. Step 10 deletes it, as a
+  proposal goes when its work lands.
+- Step 2 is staged on master and not committed. The full gate and `cargo drive surface` pass on
+  it. It also renames the overlay "backdrop" that `89b0c79dd` left in `modal/tests.rs`,
+  `widget_core/configure.rs` and the overlays page. Steps 3 to 10 keep these fixes, so the end
+  tree is `89b0c79dd` with them.

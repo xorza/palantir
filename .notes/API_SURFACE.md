@@ -3222,11 +3222,11 @@ widget::Authored
         pub const fn visibility(&self) -> Visibility
         pub const fn clip(&self) -> Option<ClipMode>
 
-widget::Backdrop
-    enum Backdrop: Clone, Copy, Debug
+widget::Barrier
+    enum Barrier: Clone, Copy, Debug
         None
         Root(ClickOutside)
-        Barrier(WidgetId, ClickOutside)
+        Surface(WidgetId, ClickOutside)
 
 widget::Caret
     struct Caret: Clone, Copy, Debug, PartialEq
@@ -3409,7 +3409,7 @@ widget::OverlaySpec
     struct OverlaySpec: Clone, Copy, Debug
         pub layer: Layer
         pub anchor: Option<Anchor>
-        pub backdrop: Backdrop
+        pub barrier: Barrier
 
 widget::PaintAnimation
     struct PaintAnimation: Clone, Copy, Debug

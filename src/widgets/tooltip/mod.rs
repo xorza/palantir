@@ -17,7 +17,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
+use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use std::rc::Rc;
@@ -186,12 +186,12 @@ impl<'a> Tooltip<'a> {
                 .default_id(bubble_id)
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
-            // `Backdrop::None`: a tooltip annotates, and a claim recorded every
+            // `Barrier::None`: a tooltip annotates, and a claim recorded every
             // frame would cut off every plane below.
             let spec = OverlaySpec {
                 layer: Layer::Tooltip,
                 anchor: Some(anchor),
-                backdrop: Backdrop::None,
+                barrier: Barrier::None,
             };
             let scope = OverlayScope::claim(ui, spec, &mut bubble);
             let _ = scope.record(ui, |ui| {

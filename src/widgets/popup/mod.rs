@@ -18,7 +18,7 @@ use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
+use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use glam::Vec2;
 use std::rc::Rc;
@@ -117,14 +117,14 @@ impl<'a> Popup<'a> {
         let anchor = anchor.map(|anchor| Self::landed(ui, id, anchor, margin));
         let barrier_id = Self::barrier_id(id);
         // Takes the pointer and the keys from lower layers together, or neither.
-        let backdrop = match click_outside {
-            Some(click_outside) => Backdrop::Barrier(barrier_id, click_outside),
-            None => Backdrop::None,
+        let barrier = match click_outside {
+            Some(click_outside) => Barrier::Surface(barrier_id, click_outside),
+            None => Barrier::None,
         };
         let spec = OverlaySpec {
             layer,
             anchor,
-            backdrop,
+            barrier,
         };
         let scope = OverlayScope::claim(ui, spec, &mut widget);
 

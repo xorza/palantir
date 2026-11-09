@@ -1,4 +1,4 @@
-//! The centered dialog and its input-blocking backdrop.
+//! The centered dialog and its input-blocking barrier.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -15,12 +15,12 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
+use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
-/// A centered dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
-/// The backdrop or Esc closes it as [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed)
+/// A centered dialog over a dimming, input-blocking barrier in [`Layer::Modal`].
+/// The barrier or Esc closes it as [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed)
 /// unless [`Self::click_outside`] blocks them; a [`Ui::close_overlay`] in the body closes it from inside.
 ///
 /// On the frame it opens, focus moves to its first Tab stop, however it was opened, as
@@ -82,7 +82,7 @@ impl<'a> Modal<'a> {
         self
     }
 
-    /// What a press on the backdrop and Esc do: [`ClickOutside::Dismiss`], the default, closes it
+    /// What a press on the barrier and Esc do: [`ClickOutside::Dismiss`], the default, closes it
     /// as [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed); [`ClickOutside::Block`]
     /// swallows both and stays open, for a dialog the user must answer, as a confirmation of
     /// unsaved work is. A modal always blocks the layers below it; a [`Popup`](crate::Popup) is
@@ -92,7 +92,7 @@ impl<'a> Modal<'a> {
         self
     }
 
-    /// Records the backdrop and the panel with `body` inside.
+    /// Records the barrier and the panel with `body` inside.
     pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayResponse<R> {
         let root_id = self.widget.resolve(ui);
 
@@ -119,7 +119,7 @@ impl<'a> Modal<'a> {
         let spec = OverlaySpec {
             layer: Layer::Modal,
             anchor: None,
-            backdrop: Backdrop::Root(self.click_outside),
+            barrier: Barrier::Root(self.click_outside),
         };
         let scope = OverlayScope::claim(ui, spec, &mut root);
         if scope.opened() {

@@ -188,7 +188,7 @@ fn modal_section(ui: &mut Ui, k: Kit, s: &mut State, look: &Appearance) {
                 ui,
                 k,
                 "A modal dims the window and takes every pointer. Escape or a click on the \
-                 backdrop closes it, and Tab stays inside it — see the focus & keyboard page \
+                 barrier closes it, and Tab stays inside it — see the focus & keyboard page \
                  for the focus side.",
             );
             support::well(ui, k, |ui| {

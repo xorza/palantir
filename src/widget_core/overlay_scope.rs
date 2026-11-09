@@ -15,10 +15,10 @@ use crate::widget_core::widget::Widget;
 
 /// What stands between an overlay's body and the layers below it, and what a press on it and
 /// Escape do. Pointer and keys are one decision: an overlay takes both or neither, and one that
-/// takes them says what a press outside does, so no backdrop passes a press through and no
+/// takes them says what a press outside does, so no barrier passes a press through and no
 /// overlay without one blocks it.
 #[derive(Clone, Copy, Debug)]
-pub enum Backdrop {
+pub enum Barrier {
     /// Nothing. The overlay annotates rather than interrupts: it wants the layer
     /// for paint order and flip-to-fit placement; the host underneath stays live, and a press
     /// outside or Escape reaches it.
@@ -26,18 +26,18 @@ pub enum Backdrop {
     /// The overlay's own root, recorded by the caller (a modal dims the surface and
     /// absorbs stray pointer events here).
     Root(ClickOutside),
-    /// A full-surface barrier [`OverlayScope::record`] lays down under this id ahead of the
-    /// body, as Flutter's `ModalBarrier`; a *placed* overlay cannot nest its body in its
-    /// backdrop, as placement flips it to fit.
-    Barrier(WidgetId, ClickOutside),
+    /// A barrier over the whole surface that [`OverlayScope::record`] lays down under this id
+    /// ahead of the body, as Flutter's `ModalBarrier`; a *placed* overlay cannot nest its body in
+    /// its barrier, as placement flips it to fit.
+    Surface(WidgetId, ClickOutside),
 }
 
-impl Backdrop {
-    /// What a press on the backdrop and Escape do; `None` with no backdrop to press.
+impl Barrier {
+    /// What a press on the barrier and Escape do; `None` with no barrier to press.
     const fn click_outside(self) -> Option<ClickOutside> {
         match self {
             Self::None => None,
-            Self::Root(click_outside) | Self::Barrier(_, click_outside) => Some(click_outside),
+            Self::Root(click_outside) | Self::Surface(_, click_outside) => Some(click_outside),
         }
     }
 }
@@ -52,7 +52,7 @@ pub struct OverlaySpec {
     /// `None` takes the layer's default: the surface origin, whole surface available.
     pub anchor: Option<Anchor>,
     /// What stands between the body and the layers below it, and what a press on it does.
-    pub backdrop: Backdrop,
+    pub barrier: Barrier,
 }
 
 /// One overlay's turn on a layer, from stamping its root until it closes.
@@ -76,26 +76,26 @@ pub struct OverlayScope {
 
 impl OverlayScope {
     /// Claim `spec.layer` for `root`, stamping it as the node taking its layer's key
-    /// scope when there is a backdrop, which cuts every plane below off the keyboard and the
+    /// scope when there is a barrier, which cuts every plane below off the keyboard and the
     /// pointer streams; the owner is the root's resolved id. Every
     /// class but [`KeyFilter::FOCUS`] is taken, so a popup under a modal does not
     /// dismiss on the same Escape; `FOCUS` stays out so Tab walks the overlay's own
     /// stops.
     ///
-    /// A light-dismiss overlay a modal cancels this pass records collapsed, with no backdrop
+    /// A light-dismiss overlay a modal cancels this pass records collapsed, with no barrier
     /// and no claim, so its last pass paints nothing and takes no input, and it reports
     /// [`OverlayClose::Dismissed`].
     pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
         let owner = root.resolve(ui);
         let opened = ui.response_for(owner).rect.is_none();
-        let dismissible = matches!(spec.backdrop, Backdrop::Barrier(_, ClickOutside::Dismiss));
+        let dismissible = matches!(spec.barrier, Barrier::Surface(_, ClickOutside::Dismiss));
         let cancelled = dismissible && Self::cancelled(ui, owner);
         if dismissible && !opened && !cancelled {
             ui.overlays().note_recorded(owner);
         }
         if cancelled {
             root.configure().collapsed();
-        } else if spec.backdrop.click_outside().is_some() {
+        } else if spec.barrier.click_outside().is_some() {
             root.configure()
                 .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS))
                 .blocks_below();
@@ -119,9 +119,9 @@ impl OverlayScope {
         self.opened
     }
 
-    /// Lay the backdrop down, record `body` into the claimed layer, and report the overlay's
+    /// Lay the barrier down, record `body` into the claimed layer, and report the overlay's
     /// frame: whether it opened, and how it closed. A [`Ui::close_overlay`] in the body closes it
-    /// as [`OverlayClose::Requested`], which wins; else a press on the backdrop or Escape under
+    /// as [`OverlayClose::Requested`], which wins; else a press on the barrier or Escape under
     /// [`ClickOutside::Dismiss`] closes it as [`OverlayClose::Dismissed`], and so does a
     /// [`Modal`](crate::Modal) that opened after a light-dismiss overlay and not inside it
     /// (`OverlayStack`).
@@ -137,9 +137,9 @@ impl OverlayScope {
         let OverlaySpec {
             layer,
             anchor,
-            backdrop,
+            barrier,
         } = self.spec;
-        if let Backdrop::Barrier(id, _) = backdrop
+        if let Barrier::Surface(id, _) = barrier
             && !self.cancelled
         {
             ui.layer(layer).show(|ui| {
@@ -150,7 +150,7 @@ impl OverlayScope {
                     .show(ui, None, |_| {});
             });
         }
-        let dismisses = backdrop.click_outside() == Some(ClickOutside::Dismiss);
+        let dismisses = barrier.click_outside() == Some(ClickOutside::Dismiss);
         ui.overlays().enter(self.owner, self.opened);
         let scope = ui.layer(layer);
         let scope = match anchor {
@@ -165,7 +165,7 @@ impl OverlayScope {
         });
         let requested = ui.overlays().leave();
         let dismissed =
-            self.cancelled || (dismisses && (escape_pressed || self.backdrop_clicked(ui)));
+            self.cancelled || (dismisses && (escape_pressed || self.barrier_clicked(ui)));
         OverlayResponse {
             id: self.owner,
             opened: self.opened,
@@ -174,14 +174,14 @@ impl OverlayScope {
         }
     }
 
-    /// Whether a press landed on the backdrop rather than the body; all four
+    /// Whether a press landed on the barrier rather than the body; all four
     /// pointer interactions are absorbed, so a secondary press counts (see
     /// `ResponseState::any_clicked`).
-    fn backdrop_clicked(&self, ui: &Ui) -> bool {
-        let id = match self.spec.backdrop {
-            Backdrop::None => return false,
-            Backdrop::Root(_) => self.owner,
-            Backdrop::Barrier(id, _) => id,
+    fn barrier_clicked(&self, ui: &Ui) -> bool {
+        let id = match self.spec.barrier {
+            Barrier::None => return false,
+            Barrier::Root(_) => self.owner,
+            Barrier::Surface(id, _) => id,
         };
         ui.response_for(id).any_clicked()
     }
@@ -191,7 +191,7 @@ impl OverlayScope {
     /// a cascade a frame old, so merely ceasing to record would keep owning input one more frame
     /// and swallow the click where it was. Takes `self`, so the claim is spent.
     pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R> {
-        if response.closed() && self.spec.backdrop.click_outside().is_some() {
+        if response.closed() && self.spec.barrier.click_outside().is_some() {
             ui.withdraw_input_scope(self.owner);
         }
         response
@@ -209,11 +209,11 @@ mod tests {
     use crate::widget_core::click_outside::ClickOutside;
     use crate::widget_core::configure::Configure;
     use crate::widget_core::overlay_response::{OverlayClose, OverlayResponse};
-    use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
+    use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
     use crate::widget_core::widget::Widget;
     use glam::UVec2;
 
-    /// A custom overlay over a root backdrop, its body closing through `Ui::close_overlay` when
+    /// A custom overlay over a root barrier, its body closing through `Ui::close_overlay` when
     /// `close`.
     fn overlay(ui: &mut Ui, click_outside: ClickOutside, close: bool) -> OverlayResponse<()> {
         let mut root = Widget::zstack()
@@ -222,7 +222,7 @@ mod tests {
         let spec = OverlaySpec {
             layer: Layer::Modal,
             anchor: None,
-            backdrop: Backdrop::Root(click_outside),
+            barrier: Barrier::Root(click_outside),
         };
         let scope = OverlayScope::claim(ui, spec, &mut root);
         scope.record(ui, |ui| {

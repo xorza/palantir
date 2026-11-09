@@ -45,13 +45,13 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
     assert_eq!(tree.bounds(panel.node).min_size, Size::ZERO);
 }
 
-/// A modal takes no placement, so the layer default makes the backdrop cover the screen; the root
+/// A modal takes no placement, so the layer default makes its barrier cover the screen; the root
 /// paints the scrim. The theme's dims in half-clear black with no filter; a color passed in dims
 /// in that color, as `Scrim::from` it; a blurred scrim paints its tint over the window seen
 /// through its filter; and under reduced transparency the blurred scrim drops its filter and
 /// keeps its tint, half clear through the sRGB byte its fallback stores, not made opaque.
 #[test]
-fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
+fn the_barrier_root_covers_the_whole_surface_in_the_scrim() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
     let id = WidgetId::from_hash("modal-full-surface");
     let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
@@ -81,17 +81,17 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
             .show(ui, |_| {});
         });
 
-        let backdrop = h.node_of(id).expect("modal backdrop recorded");
-        assert_eq!(backdrop.plane.layer, Layer::Modal);
+        let barrier = h.node_of(id).expect("modal barrier recorded");
+        assert_eq!(barrier.plane.layer, Layer::Modal);
         assert_eq!(
-            h.ui().plane_layout(Layer::Modal).rect[backdrop.node.idx()],
+            h.ui().plane_layout(Layer::Modal).rect[barrier.node.idx()],
             Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
         );
         let row = h
             .ui()
             .tree(Layer::Modal)
-            .chrome(backdrop.node)
-            .expect("the backdrop paints a scrim");
+            .chrome(barrier.node)
+            .expect("the barrier paints a scrim");
         let want = tint.to_f16();
         assert!(
             matches!(row.fill, ShapeBrush::Solid(fill) if fill == want),
@@ -102,23 +102,23 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
     }
 }
 
-/// What one frame of [`a_backdrop_click_or_escape_dismisses_unless_blocked`] reports.
+/// What one frame of [`a_barrier_click_or_escape_dismisses_unless_blocked`] reports.
 #[derive(Clone, Copy, Debug)]
-struct BackdropPass {
+struct BarrierPass {
     under_clicked: bool,
     dismissed: bool,
 }
 
-/// A click on the backdrop and Esc each dismiss the modal under `Dismiss`, the default, and
-/// neither does under `Block`; the button under it hears nothing either way, as the backdrop
+/// A click on the barrier and Esc each dismiss the modal under `Dismiss`, the default, and
+/// neither does under `Block`; the button under it hears nothing either way, as the barrier
 /// covers the window and takes every pointer.
 #[test]
-fn a_backdrop_click_or_escape_dismisses_unless_blocked() {
+fn a_barrier_click_or_escape_dismisses_unless_blocked() {
     for (click_outside, dismisses) in [(ClickOutside::Dismiss, true), (ClickOutside::Block, false)]
     {
         for by_escape in [false, true] {
             let under = WidgetId::from_hash("under-the-modal");
-            let mut record = |ui: &mut Ui| BackdropPass {
+            let mut record = |ui: &mut Ui| BarrierPass {
                 under_clicked: Button::new().id(under).label("under").show(ui).clicked(),
                 dismissed: Modal::new()
                     .id(WidgetId::from_hash("modal"))

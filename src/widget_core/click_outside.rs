@@ -1,8 +1,8 @@
 //! What a click outside an overlay does to it.
 
 /// What a press outside an overlay's body, and Escape, do to an overlay that holds the input
-/// of the layers below: its [`Backdrop`](crate::widget::Backdrop) swallows outside presses, and
-/// its layer takes the whole key scope. An overlay with no backdrop holds none, so presses and
+/// of the layers below: its [`Barrier`](crate::widget::Barrier) swallows outside presses, and
+/// its layer takes the whole key scope. An overlay with no barrier holds none, so presses and
 /// keys reach `Main` and nothing dismisses it, as a toast's do; a [`Popup`](crate::Popup) is one
 /// with `click_outside(None)`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

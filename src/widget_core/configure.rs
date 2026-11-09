@@ -46,7 +46,7 @@ pub trait Configure: Sized {
     /// not mixed with the parent. Otherwise prefer [`Self::id_salt`].
     ///
     /// Set after [`Widget::resolve`], it replaces the resolved identity; [`crate::Modal`]
-    /// uses this to move its configuration under a child of its backdrop's id.
+    /// uses this to move its configuration under a child of its barrier's id.
     #[inline]
     #[must_use]
     fn id(mut self, id: WidgetId) -> Self {
