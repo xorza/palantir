@@ -70,8 +70,10 @@ impl Scene {
                             );
                             if i == 0 {
                                 ui.add_shape(Shape::rect().at(OVER), self.over);
-                                if self.blink {
-                                    ui.add_shape_animated(blink_shape(), RgbaF32::WHITE, blink());
+                                if self.blink
+                                    && let Some(shape) = ui.add_shape(blink_shape(), RgbaF32::WHITE)
+                                {
+                                    shape.animate(blink());
                                 }
                             }
                         });
@@ -211,7 +213,9 @@ fn a_clipped_blink_before_a_pane_leaves_it() {
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .clip_rect()
                     .show(ui, |ui| {
-                        ui.add_shape_animated(blink_shape(), RgbaF32::WHITE, blink());
+                        if let Some(shape) = ui.add_shape(blink_shape(), RgbaF32::WHITE) {
+                            shape.animate(blink());
+                        }
                     });
                 Panel::canvas()
                     .id(WidgetId::from_hash(("pane", 0)))

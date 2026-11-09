@@ -24,7 +24,8 @@ use crate::shape::paint::quad_shape::{PlacedBox, QuadShape};
 use crate::shape::paint::triangle_geometry::PlacedTriangle;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{LowerShape, Resolve};
+use crate::shape::record_store::Resolve;
+use crate::shape::sealed::DrawWith;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -34,18 +35,21 @@ use glam::Vec2;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::ptr;
 
-/// The record `pair` lowers to in `store`, under full reductions and no effects.
-fn lower_in(store: &mut RecordStore, pair: impl LowerShape) -> Option<ShapeRecord> {
+/// The record `store` records for a shape and its paint, under full reductions and no effects.
+fn lower_in<S: DrawWith<P>, P>(
+    store: &mut RecordStore,
+    (shape, paint): (S, P),
+) -> Option<ShapeRecord> {
     let effects = EffectRegistry::default();
     let resolve = Resolve {
         effects: &effects,
         reductions: Reductions::FULL,
     };
-    pair.lower(resolve, store)
+    store.record(shape.draw(&paint), resolve)
 }
 
-/// The record `pair` lowers to in a store of its own.
-fn lower(pair: impl LowerShape) -> Option<ShapeRecord> {
+/// The record a shape and its paint lower to in a store of its own.
+fn lower<S: DrawWith<P>, P>(pair: (S, P)) -> Option<ShapeRecord> {
     lower_in(&mut RecordStore::default(), pair)
 }
 

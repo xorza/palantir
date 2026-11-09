@@ -1,7 +1,7 @@
 //! The per-tree registry of paint-only animations, whose per-shape contract is
 //! [`crate::shape::paint_animation`].
 //!
-//! Widgets register one via `Ui::add_shape_animated`; the encoder samples it at
+//! Widgets register one via `AddedShape::animate`; the encoder samples it at
 //! paint time and folds the [`PaintMod`] into the shape's brush.
 //! `Cascade::min_paint_animation_wake` (called by `WindowFrames::frame`) feeds the
 //! `next_wake` of each one that shows on the surface to the wake queue, so

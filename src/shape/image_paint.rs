@@ -1,15 +1,13 @@
 //! [`ImagePaint`]: a registered image over a rect. Lowers to `ShapeRecord::Image`.
 
 use crate::image_registry::image_handle::ImageHandle;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
-use crate::shape::paint::image_source::ImageSource;
-use crate::shape::record::ShapeRecord;
-use crate::shape::record_store::RecordStore;
+use crate::shape::PaintedBy;
+use crate::shape::draw::Draw;
 use crate::shape::rect::RectShape;
-use crate::shape::sealed::{self, Resolve};
+use crate::shape::sealed;
 
 /// A registered [`ImageHandle`] painted over a [`RectShape`]
 /// ([`Ui::add_shape`](crate::Ui::add_shape)), as Skia's `SkImageShader` fills a shape.
@@ -79,47 +77,19 @@ impl ImagePaint {
     }
 }
 
+impl PaintedBy<ImagePaint> for RectShape {}
+
 /// An image over a rect, square-cornered and covering its inside.
-impl sealed::LowerShape for (RectShape, ImagePaint) {
+impl sealed::DrawWith<ImagePaint> for RectShape {
     /// # Panics
     ///
     /// Unless the rect is square-cornered and covers its inside, which an image's pipeline draws.
     #[track_caller]
-    fn validate(&self) {
-        self.0.assert_plain("an image");
+    fn check(&self, _paint: &ImagePaint) {
+        self.assert_plain("an image");
     }
 
-    fn lower(self, _resolve: Resolve<'_>, _store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (
-            RectShape {
-                local_rect,
-                corners: _,
-                coverage: _,
-            },
-            ImagePaint {
-                handle,
-                fit,
-                min_filter,
-                mag_filter,
-                downsample,
-                tint,
-            },
-        ) = self;
-        if local_rect.is_some_and(Rect::is_paint_empty) || tint.is_noop() {
-            return None;
-        }
-        Some(ShapeRecord::Image {
-            local_rect,
-            tint: tint.to_f16(),
-            source: ImageSource::Texture {
-                id: handle.id(),
-                size: handle.size(),
-                generation: handle.generation(),
-            },
-            fit,
-            min_filter,
-            mag_filter,
-            downsample,
-        })
+    fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
+        Draw::Image { rect: self, paint }
     }
 }

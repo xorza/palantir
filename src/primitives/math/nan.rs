@@ -3,7 +3,7 @@
 //! A NaN reaching paint poisons bboxes, cull and damage, and the frame comes out missing rather than broken. [`NanCheck`] stops it at two gates, each where the inputs are still in hand:
 //!
 //!
-//! - **Shapes.** `Shapes::add` refuses to record an authored shape carrying a NaN.
+//! - **Shapes.** `Shapes::push` refuses to record an authored shape carrying a NaN.
 //! - **Chrome.** `lower::chrome` sanitizes each `Chrome` field rather than dropping the row, which a rounded clip's stencil mask needs.
 //!
 //! Impls are `O(1)`, so both gates run in release too. Bulk inputs (polyline points, mesh vertices) are covered by their `bbox` under the AABB NaN contract ([`Aabb`](crate::primitives::geometry::rect::aabb::Aabb)).

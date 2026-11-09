@@ -16,7 +16,7 @@ use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::LowerShape as _;
+use crate::shape::sealed::DrawWith as _;
 
 /// `material` lowered through effect 0, capturing, with its input staged in a store of its own.
 fn lowered(material: &Material) -> LoweredMaterial {
@@ -121,7 +121,7 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
     ] {
         for entry in ["rect", "chrome"] {
             let panic = std::panic::catch_unwind(|| match entry {
-                "rect" => (Shape::rect(), Paint::NONE.with_material(material)).validate(),
+                "rect" => Shape::rect().check(&Paint::NONE.with_material(material)),
                 _ => Chrome::NONE.with_material(material).validate(),
             })
             .expect_err(entry);
@@ -147,7 +147,7 @@ fn a_material_reads_the_ground_or_nothing_while_transparency_is_reduced() {
     };
     let blur = Material::blur(4.0);
     let id = effects
-        .resolve(EffectName::BLUR, Reductions::FULL)
+        .resolve(EffectName::BLUR.typed(), Reductions::FULL)
         .expect("the stock blur paints")
         .id;
     assert_eq!(id.0, 2);

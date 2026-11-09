@@ -88,11 +88,12 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             DemoCell::new("aurora")
                 .size(CELL * 2.0, CELL * 0.6)
                 .show(ui, k, |ui| {
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::rect().corners(Corners::all(10.0)),
                         EffectPaint::new(AURORA, sky(k)),
-                        looping(AURORA_LOOP_S),
-                    );
+                    ) {
+                        shape.animate(looping(AURORA_LOOP_S));
+                    }
                 });
         });
 
@@ -252,7 +253,7 @@ fn ring(ui: &mut Ui, k: Kit) {
     let side = inner - 2.0 * (RING_REACH + 16.0);
     let card = Rect::new((inner - side) / 2.0, (inner - side) / 2.0, side, side);
     let radius = 16.0;
-    ui.add_shape_animated(
+    if let Some(shape) = ui.add_shape(
         Shape::rect().at(Rect::new(
             card.min.x - RING_REACH,
             card.min.y - RING_REACH,
@@ -270,8 +271,9 @@ fn ring(ui: &mut Ui, k: Kit) {
                 pad0: 0.0,
             },
         ),
-        looping(RING_LOOP_S),
-    );
+    ) {
+        shape.animate(looping(RING_LOOP_S));
+    }
     ui.add_shape(
         Shape::rect().at(card).corners(Corners::all(radius)),
         k.t.raised,
@@ -300,7 +302,7 @@ fn water(ui: &mut Ui, k: Kit) {
         k.t.ink,
     );
     let pane = Rect::new(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
-    ui.add_shape_animated(
+    if let Some(shape) = ui.add_shape(
         Shape::rect().at(pane).corners(Corners::all(20.0)),
         EffectPaint::new(
             WATER,
@@ -313,8 +315,9 @@ fn water(ui: &mut Ui, k: Kit) {
             },
         )
         .reach(WATER_AMPLITUDE),
-        looping(WATER_LOOP_S),
-    );
+    ) {
+        shape.animate(looping(WATER_LOOP_S));
+    }
 }
 
 #[cfg(test)]

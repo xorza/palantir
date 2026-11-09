@@ -4,14 +4,13 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::interned_str::InternedStr;
-use crate::shape::record::ShapeRecord;
-use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{self, Resolve};
+use crate::shape::PaintedBy;
+use crate::shape::draw::Draw;
+use crate::shape::sealed;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
-use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
 
@@ -23,7 +22,7 @@ pub struct TextShape {
     /// `None`: the encoder places the glyph bbox in the owner's padded inner rect via `align`. `Some(origin)`: the widget owns positioning (bbox origin is `owner.min + origin`, `align`'s placement axes ignored), as TextEdit does for scroll offsets.
     pub(crate) local_origin: Option<Vec2>,
     pub(crate) text: InternedStr,
-    /// The face and metrics to shape in, one named type mirrored by [`ShapeRecord::Text`].
+    /// The face and metrics to shape in, one named type mirrored by [`ShapeRecord::Text`](crate::shape::record::ShapeRecord::Text).
     pub(crate) font: GlyphFont,
     pub(crate) wrap: TextWrap,
     /// Visual placement and cache-key discriminator: the encoder places the bbox by both axes (only when `local_origin = None`), and layout threads `align.halign()` into cosmic's `set_align` and the text cache key.
@@ -84,40 +83,22 @@ impl TextShape {
     }
 }
 
+impl PaintedBy<RgbaF32> for TextShape {}
+
 /// A text run inked in a color.
-impl sealed::LowerShape for (TextShape, RgbaF32) {
+impl sealed::DrawWith<RgbaF32> for TextShape {
     /// # Panics
     ///
     /// Unless the ink is a [color](crate::widget::domain::color).
     #[track_caller]
-    fn validate(&self) {
-        let _ = domain::color(self.1);
+    fn check(&self, color: &RgbaF32) {
+        let _ = domain::color(*color);
     }
 
-    /// Empty text or an unusable face shapes nothing, as the two public text queries answer too.
-    /// A transparent color does not drop the run: text is the one shape layout reads, so the run
-    /// still sizes its node, and the emit gate drops its ink.
-    fn lower(self, _resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (
-            TextShape {
-                local_origin,
-                text,
-                font,
-                wrap,
-                align,
-            },
-            color,
-        ) = self;
-        if text.is_empty() || !font.metrics_valid() {
-            return None;
+    fn draw<'a>(&'a self, color: &'a RgbaF32) -> Draw<'a> {
+        Draw::Text {
+            shape: self,
+            color: *color,
         }
-        Some(ShapeRecord::Text {
-            local_origin,
-            text: store.text.record(text),
-            color: color.to_f16(),
-            font: ShapingFont::new(font, store.families()),
-            wrap,
-            align,
-        })
     }
 }

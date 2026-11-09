@@ -270,7 +270,7 @@ fn blinking_text(ui: &mut Ui, text: &str) {
     let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
     widget.record(ui, None, |ui| {
         let text = ui.intern(text);
-        ui.add_shape_animated(
+        if let Some(shape) = ui.add_shape(
             Shape::text(
                 text,
                 GlyphFont {
@@ -281,13 +281,16 @@ fn blinking_text(ui: &mut Ui, text: &str) {
             .wrap(TextWrap::SingleLine)
             .align(Align::default()),
             RgbaF32::WHITE,
-            PaintAnimation::alpha(0.0, 1.0)
-                .with_started_at(HALF)
-                .with_period(HALF * 2)
-                .with_steps(2)
-                .with_repeat(PaintRepeat::Settle(Duration::MAX))
-                .with_curve(curves::square),
-        );
+        ) {
+            shape.animate(
+                PaintAnimation::alpha(0.0, 1.0)
+                    .with_started_at(HALF)
+                    .with_period(HALF * 2)
+                    .with_steps(2)
+                    .with_repeat(PaintRepeat::Settle(Duration::MAX))
+                    .with_curve(curves::square),
+            );
+        }
     });
 }
 

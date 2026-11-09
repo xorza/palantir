@@ -173,7 +173,7 @@ BoundNum
         F64(&'a mut f64)
 
 Brush
-    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, Lerp, PartialEq, Serialize
+    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, IntoPaint, Lerp, PartialEq, Serialize
         Solid(RgbaF32)
         Linear(LinearGradient)
         Radial(RadialGradient)
@@ -1003,6 +1003,7 @@ Gradient
         impl<'de, G> Deserialize<'de> where G: Deserialize<'de>
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
+        impl<G: GradientGeometry + Clone> IntoPaint for Gradient<G> where Paint: From<Self>
         impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>, Paint: From<Gradient<G>>
         impl<G: GradientGeometry> From<Gradient<G>> for Paint where Brush: From<Gradient<G>>
         impl<G: GradientGeometry> Hash for Gradient<G>
@@ -1697,7 +1698,7 @@ PLATFORM
     const PLATFORM: Platform
 
 Paint
-    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<RgbaF32>, Lerp, PartialEq, Serialize
+    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<RgbaF32>, IntoPaint, Lerp, PartialEq, Serialize
         pub fill: Brush
         pub border: Border
         pub shadow: Shadow
@@ -2081,7 +2082,7 @@ ResponseState
         pub fn press_fraction(&self, band: f32) -> Option<Vec2>
 
 RgbaF32
-    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, Lerp, ParamValue, PartialEq, Pod, Serialize, Zeroable
+    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, IntoPaint, Lerp, ParamValue, PartialEq, Pod, Serialize, Zeroable
         pub r: f32
         pub g: f32
         pub b: f32
@@ -2103,6 +2104,8 @@ RgbaF32
         impl From<RgbaF32> for Brush
         impl From<RgbaF32> for Chrome
         impl From<RgbaF32> for Paint
+        impl PaintedBy<RgbaF32> for MeshShape<'_>
+        impl PaintedBy<RgbaF32> for TextShape
 
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
@@ -2460,6 +2463,10 @@ Stroke
         pub const fn with_cap(self, cap: LineCap) -> Self
         pub const fn with_join(self, join: LineJoin) -> Self
         pub fn is_noop(&self) -> bool
+        impl PaintedBy<Stroke> for ArcShape
+        impl PaintedBy<Stroke> for CircleShape
+        impl PaintedBy<Stroke> for CurveShape
+        impl PaintedBy<Stroke> for PolylineShape<'_>
 
 StrokeSteps
     struct StrokeSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -2942,7 +2949,7 @@ Ui
         pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig)
         pub fn gpu_pass_stats(&self) -> &GpuPassStats
         pub fn is_window_open(&self, token: WindowToken) -> bool
-        pub fn add_shape<S, P>(&mut self, shape: S, paint: P) where (S, P): Lower
+        pub fn add_shape<S: PaintedBy<P>, P>(&mut self, shape: S, paint: P) -> Option<AddedShape<'_>>
         pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
         pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge>
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
@@ -2955,7 +2962,6 @@ Ui
         pub fn fmt(&mut self, args: Arguments<'_>) -> InternedStr
         pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr
         pub fn text(&self, text: InternedStr) -> &str
-        pub fn add_shape_animated<S, P>(&mut self, shape: S, paint: P, animation: PaintAnimation) where (S, P): Lower
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
         pub fn close_overlay(&mut self)
         pub fn withdraw_input_scope(&mut self, id: WidgetId)
@@ -3220,6 +3226,10 @@ widget::Activation
         Button
         Toggle
 
+widget::AddedShape
+    struct AddedShape<'u>: Debug
+        pub fn animate(self, animation: PaintAnimation)
+
 widget::Animatable
     trait Animatable: Lerp + Clone + PartialEq + 'static
         fn sub(&self, other: &Self) -> Self
@@ -3254,7 +3264,7 @@ widget::AnimationSlot
         pub const fn new(name: &'static str) -> Self
 
 widget::ArcShape
-    struct ArcShape: Clone, Copy, Debug
+    struct ArcShape: Clone, Copy, Debug, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
 
 widget::Authored
@@ -3295,8 +3305,9 @@ widget::Caret
         pub line_height: f32
 
 widget::CircleShape
-    struct CircleShape: Clone, Copy, Debug
+    struct CircleShape: Clone, Copy, Debug, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
+        impl<P: IntoPaint> PaintedBy<P> for CircleShape
 
 widget::Configurator
     struct Configurator<'a>: Debug
@@ -3365,7 +3376,7 @@ widget::CubicBezier
         pub p3: Vec2
 
 widget::CurveShape
-    struct CurveShape: Clone, Copy, Debug
+    struct CurveShape: Clone, Copy, Debug, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
 
@@ -3379,6 +3390,7 @@ widget::EffectPaint
             pub const fn reach(self, px: f32) -> Self
             pub const fn reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
 
 widget::GlyphFont
     struct GlyphFont: Clone, Copy, Debug, PartialEq
@@ -3404,6 +3416,7 @@ widget::IconPaint
         pub const fn fit(self, fit: Fit) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
         pub const fn desaturate(self, desaturate: bool) -> Self
+        impl PaintedBy<IconPaint> for RectShape
 
 widget::ImagePaint
     struct ImagePaint: Clone, Debug
@@ -3413,6 +3426,10 @@ widget::ImagePaint
         pub const fn mag_filter(self, mag_filter: ImageFilter) -> Self
         pub const fn downsample(self, downsample: ImageDownsample) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
+        impl PaintedBy<ImagePaint> for RectShape
+
+widget::IntoPaint
+    trait IntoPaint: ToPaint
 
 widget::Lerp
     trait Lerp: Sized
@@ -3421,10 +3438,6 @@ widget::Lerp
 
 widget::LookPlan
     struct LookPlan: Debug
-
-widget::Lower
-    trait Lower: LowerShape
-        impl<T: LowerShape> Lower for T
 
 widget::Mesh
     struct Mesh: Clone, Debug, Default
@@ -3440,7 +3453,7 @@ widget::Mesh
         pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self
 
 widget::MeshShape
-    struct MeshShape<'a>: Clone, Debug
+    struct MeshShape<'a>: Clone, Debug, PaintedBy<RgbaF32>
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
 
@@ -3511,13 +3524,16 @@ widget::PaintTiming
         pub repeat: PaintRepeat
         pub steps: PaintSteps
 
+widget::PaintedBy
+    trait PaintedBy<P>: DrawWith<P>
+
 widget::PlacedGlyph
     struct PlacedGlyph: Clone, Copy, Debug
         pub raster_key: GlyphRasterKey
         pub physical: IVec2
 
 widget::PolylineShape
-    struct PolylineShape<'a>: Clone, Debug
+    struct PolylineShape<'a>: Clone, Debug, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
         pub const fn per_point(self, colors: &'a [RgbaF32]) -> Self
@@ -3538,10 +3554,12 @@ widget::RasterImage
         pub data: &'a [u8]
 
 widget::RectShape
-    struct RectShape: Clone, Copy, Debug
+    struct RectShape: Clone, Copy, Debug, PaintedBy<IconPaint>, PaintedBy<ImagePaint>
         pub const fn at(self, rect: Rect) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
         pub const fn coverage(self, coverage: Coverage) -> Self
+        impl<P: IntoPaint> PaintedBy<P> for RectShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
 
 widget::Shape
     struct Shape: Clone, Copy, Debug
@@ -3578,7 +3596,7 @@ widget::TextRun
         pub max_width: Option<f32>
 
 widget::TextShape
-    struct TextShape: Clone, Debug
+    struct TextShape: Clone, Debug, PaintedBy<RgbaF32>
         pub const fn at_origin(self, origin: Vec2) -> Self
         pub const fn wrap(self, wrap: TextWrap) -> Self
         pub const fn align(self, a: Align) -> Self
@@ -3614,6 +3632,7 @@ widget::TriangleShape
         pub const fn radius(self, radius: f32) -> Self
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
+        impl<P: IntoPaint> PaintedBy<P> for TriangleShape
 
 widget::Widget
     struct Widget: Configure, Debug, ThemeDefaults (blanket)

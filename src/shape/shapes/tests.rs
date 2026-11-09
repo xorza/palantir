@@ -12,14 +12,15 @@ use crate::primitives::paint::image::{Image, ImageFit};
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
+use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::polyline::PolylineShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{LowerShape, Resolve};
+use crate::shape::record_store::Resolve;
+use crate::shape::sealed::DrawWith;
 use crate::shape::shapes::Shapes;
-use crate::shape::{Lower, Shape};
 use glam::UVec2;
 use glam::Vec2;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -478,20 +479,25 @@ fn thin() -> Stroke {
     Stroke::new(RgbaF32::WHITE, 1.0)
 }
 
-/// Check `pair` as [`Ui::add_shape`](crate::Ui::add_shape) does.
+/// Check a shape and its paint as [`Ui::add_shape`](crate::Ui::add_shape) does.
 #[track_caller]
-fn check(pair: &impl LowerShape) {
-    pair.validate();
+fn check<S: DrawWith<P>, P>((shape, paint): &(S, P)) {
+    shape.check(paint);
 }
 
-/// Add `pair` to `shapes`, under full reductions and no effects.
-fn add(shapes: &mut Shapes, pair: impl Lower, store: &mut RecordStore) -> Option<u32> {
+/// Add a shape and its paint to `shapes`, under full reductions and no effects.
+fn add<S: DrawWith<P>, P>(
+    shapes: &mut Shapes,
+    (shape, paint): (S, P),
+    store: &mut RecordStore,
+) -> Option<u32> {
     let effects = EffectRegistry::default();
     let resolve = Resolve {
         effects: &effects,
         reductions: Reductions::FULL,
     };
-    shapes.add(pair, resolve, store)
+    let record = store.record(shape.draw(&paint), resolve)?;
+    Some(shapes.push(record))
 }
 
 /// A shadow the crate derives past the lanes, as an animated chrome's tween overshoots, saturates

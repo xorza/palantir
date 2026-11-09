@@ -95,7 +95,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
 }
 
 /// A NaN stroke width normalizes away like any non-painting width, uniformly
-/// for every quad shape. `Shapes::add` catches it loudly at authoring; this
+/// for every quad shape. `Shapes::push` catches it loudly at authoring; this
 /// pins the release-side fallback end to end: no NaN reaches the GPU, on
 /// either geometry.
 #[test]

@@ -98,15 +98,16 @@ fn a_turned_pane_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect()
                         .at(Rect::new(40.0, 40.0, 120.0, 80.0))
                         .corners(Corners::all(12.0)),
                     Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.15))
                         .with_border(Border::new(RgbaF32::WHITE, 2.0))
                         .with_material(Material::blur(8.0)),
-                    PaintAnimation::turn(1.0 / 12.0, 1.0 / 12.0),
-                );
+                ) {
+                    shape.animate(PaintAnimation::turn(1.0 / 12.0, 1.0 / 12.0));
+                }
             });
     });
 }

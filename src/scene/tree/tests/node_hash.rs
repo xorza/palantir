@@ -513,8 +513,14 @@ fn a_paint_animation_moves_the_node_hash() {
                 let line = Shape::line(Vec2::new(0.0, 10.0), Vec2::new(40.0, 10.0));
                 let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
                 match animation {
-                    Some(animation) => ui.add_shape_animated(line, stroke, animation),
-                    None => ui.add_shape(line, stroke),
+                    Some(animation) => {
+                        if let Some(shape) = ui.add_shape(line, stroke) {
+                            shape.animate(animation);
+                        }
+                    }
+                    None => {
+                        ui.add_shape(line, stroke);
+                    }
                 }
             })
             .response

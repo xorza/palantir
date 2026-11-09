@@ -1,23 +1,20 @@
 //! [`EffectPaint`]: an effect of either kind over a rect. Lowers to `ShapeRecord::Effect`.
 
 use std::fmt;
-use std::hash::Hasher as _;
 
-use crate::common::content_hash::ContentHash;
-use crate::common::hash::Hasher;
 use crate::effect::MAX_IMAGE_SLOTS;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind, KindId};
-use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_name::{EffectName, TypedName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::geometry::coverage::Coverage;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
-use crate::shape::record::{EffectBackdrop, EffectPane, ShapeRecord};
-use crate::shape::record_store::RecordStore;
+use crate::shape::PaintedBy;
+use crate::shape::draw::Draw;
+use crate::shape::record::EffectPane;
 use crate::shape::rect::RectShape;
-use crate::shape::sealed::{self, Resolve};
+use crate::shape::sealed;
 
 /// An app-written effect over a [`RectShape`] ([`Ui::add_shape`](crate::Ui::add_shape)), with one
 /// instance of its parameters: a color effect ([`Self::new`] of a color effect's name), or a
@@ -31,7 +28,7 @@ use crate::shape::sealed::{self, Resolve};
 /// something under its [reach](Self::reach) changes, as a material's is.
 ///
 /// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
-/// [`Ui::add_shape_animated`](crate::Ui::add_shape_animated), [`PaintAnimation::clock`] when only
+/// [`AddedShape::animate`](crate::widget::AddedShape::animate), [`PaintAnimation::clock`] when only
 /// the time moves; a turn turns it about its owner's center, as a quad turns. While motion or
 /// power use is reduced it paints the alternative its source names for it
 /// ([`ReducedPaint`](crate::ReducedPaint)); while transparency is reduced, a backdrop effect does
@@ -48,15 +45,6 @@ pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     reduced_transparency: ReducedBackdrop,
     /// The images bound, in slot order, each slot past the last `None`.
     images: [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
-}
-
-/// What a backdrop effect reads this record; a color effect reads neither.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Reads {
-    /// What is painted under it, captured.
-    Capture,
-    /// The window's ground, while transparency is reduced.
-    Ground,
 }
 
 impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
@@ -138,91 +126,58 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectPaint<U, K> {
     }
 }
 
-/// An effect over a rect, which bounds it by its corners and covers its inside.
-impl<U: EffectParams, K: EffectKind> sealed::LowerShape for (RectShape, EffectPaint<U, K>) {
-    const CAN_BE_PANE: bool = matches!(K::ID, KindId::Backdrop);
-    const READS_TIME: bool = true;
+impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape {}
 
+/// An effect over a rect, which bounds it by its corners and covers its inside.
+impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for RectShape {
     /// # Panics
     ///
     /// Unless the rect covers its inside, which an effect's pipeline draws.
     #[track_caller]
-    fn validate(&self) {
+    fn check(&self, _paint: &EffectPaint<U, K>) {
         assert!(
-            self.0.coverage == Coverage::Inside,
+            self.coverage == Coverage::Inside,
             "an effect paints the inside of its rect"
         );
     }
 
-    #[track_caller]
-    fn lower(self, resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (
-            RectShape {
-                local_rect,
-                corners,
-                coverage: _,
-            },
-            EffectPaint {
-                name,
-                params,
-                pane,
-                reduced_transparency,
-                images,
-            },
-        ) = self;
-        let reduced =
-            matches!(K::ID, KindId::Backdrop) && resolve.reductions.transparency.is_reduced();
-        // Resolved and checked in every mode and before the empty test, so a logic error panics
-        // whatever is reduced and wherever it lies.
-        let resolved = resolve.effects.resolve(name, resolve.reductions)?;
-        let bound = images.iter().flatten().count();
-        assert!(
-            bound == usize::from(resolved.image_slots),
-            "`{}` paints an effect that binds {} images, and the paint binds {bound}",
-            name.name(),
-            resolved.image_slots,
-        );
-        if local_rect.is_some_and(Rect::is_paint_empty)
-            || (reduced && reduced_transparency == ReducedBackdrop::Nothing)
-        {
-            return None;
+    fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
+        Draw::Effect {
+            rect: self,
+            paint: paint.erased(),
         }
-        let reads = if reduced {
-            Reads::Ground
-        } else {
-            Reads::Capture
-        };
-        let effect = resolved.id;
-        let bytes = bytemuck::bytes_of(&params);
-        let mut h = Hasher::new();
-        h.write_u32(effect.0);
-        h.pod_slice(bytes);
-        // Each image by its id and generation, so an update repaints as an image's does.
-        for image in images.iter().flatten() {
-            h.write_u64(image.id().0);
-            h.write_u32(image.generation());
-        }
-        let backdrop = matches!(K::ID, KindId::Backdrop).then_some(match reads {
-            Reads::Capture => EffectBackdrop::Capture(pane),
-            Reads::Ground => EffectBackdrop::Ground,
-        });
-        match backdrop {
-            Some(EffectBackdrop::Capture(pane)) => {
-                h.write_u8(1);
-                h.write_u32(pane.sigma.to_bits());
-                h.write_u32(pane.reach.to_bits());
-            }
-            Some(EffectBackdrop::Ground) => h.write_u8(2),
-            None => {}
-        }
-        Some(ShapeRecord::Effect {
-            backdrop,
-            local_rect,
-            corners,
-            effect,
-            params: store.stage_effect_params(bytes),
-            images: store.stage_effect_images(images.iter().flatten()),
-            content_hash: ContentHash::finish(&h),
-        })
     }
+}
+
+impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
+    /// This paint with its types erased: its name typed at run time, its parameters as bytes.
+    fn erased(&self) -> ErasedEffectPaint<'_> {
+        let Self {
+            name,
+            params,
+            pane,
+            reduced_transparency,
+            images,
+        } = self;
+        ErasedEffectPaint {
+            name: name.typed(),
+            kind: K::ID,
+            params: bytemuck::bytes_of(params),
+            pane: *pane,
+            reduced_transparency: *reduced_transparency,
+            images,
+        }
+    }
+}
+
+/// An [`EffectPaint`] with its parameter type and kind erased, as a [`Draw`] holds it, so its
+/// lowering compiles once.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ErasedEffectPaint<'a> {
+    pub(crate) name: TypedName,
+    pub(crate) kind: KindId,
+    pub(crate) params: &'a [u8],
+    pub(crate) pane: EffectPane,
+    pub(crate) reduced_transparency: ReducedBackdrop,
+    pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
 }

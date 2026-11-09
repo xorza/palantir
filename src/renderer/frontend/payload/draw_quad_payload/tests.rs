@@ -22,7 +22,7 @@ use glam::Vec2;
 /// stroke becomes [`LoweredBorder::NONE`]; others pass verbatim.
 ///
 /// NaN normalizes away like any non-painting width: catching it loudly is
-/// the `has_nan` screen's job at `Shapes::add`, so here it fails safe,
+/// the `has_nan` screen's job at `Shapes::push`, so here it fails safe,
 /// identically for every shape.
 ///
 /// Pins the exact normalized stroke per case, and that

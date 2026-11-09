@@ -89,14 +89,14 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                     let line = Shape::line(Vec2::new(10.0, 20.0), Vec2::new(70.0, 20.0));
                     let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
                     if k.spin {
-                        ui.add_shape_animated(
-                            line,
-                            stroke,
-                            PaintAnimation::turn(0.0, 1.0)
-                                .with_started_at(Duration::ZERO)
-                                .with_period(Duration::from_secs(4))
-                                .with_repeat(PaintRepeat::Forever),
-                        );
+                        if let Some(shape) = ui.add_shape(line, stroke) {
+                            shape.animate(
+                                PaintAnimation::turn(0.0, 1.0)
+                                    .with_started_at(Duration::ZERO)
+                                    .with_period(Duration::from_secs(4))
+                                    .with_repeat(PaintRepeat::Forever),
+                            );
+                        }
                     } else {
                         ui.add_shape(line, stroke);
                     }

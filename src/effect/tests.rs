@@ -624,7 +624,9 @@ fn a_name_used_with_other_types_panics() {
         r#speed: 0.0,
     };
     assert_panics_with("no effect is loaded under `ring`", || {
-        h.frame(|ui| ui.add_shape(Shape::rect(), EffectPaint::new(RING, params)));
+        h.frame(|ui| {
+            ui.add_shape(Shape::rect(), EffectPaint::new(RING, params));
+        });
     });
 
     let untyped_thin: EffectName<()> = EffectName::named("thin ring").unwrap();
@@ -757,7 +759,7 @@ fn each_blend_paints_its_exact_value() {
 fn the_ripples_paint_their_exact_values() {
     let press = |effect, time_ms: u64, released: f32| {
         move |ui: &mut Ui| {
-            ui.add_shape_animated(
+            if let Some(shape) = ui.add_shape(
                 Shape::rect().at(Rect::new(0.0, 0.0, 160.0, 40.0)),
                 EffectPaint::new(
                     effect,
@@ -773,10 +775,13 @@ fn the_ripples_paint_their_exact_values() {
                         pad1: 0.0,
                     },
                 ),
-                PaintAnimation::clock()
-                    .with_repeat(PaintRepeat::Held)
-                    .with_period(Duration::from_millis(time_ms)),
-            );
+            ) {
+                shape.animate(
+                    PaintAnimation::clock()
+                        .with_repeat(PaintRepeat::Held)
+                        .with_period(Duration::from_millis(time_ms)),
+                );
+            }
         }
     };
     let ground = bytes(RgbaF32::new(0.2, 0.4, 0.6, 1.0));
@@ -826,7 +831,7 @@ fn the_ripples_paint_their_exact_values() {
 fn the_sparkles_take_the_highlight() {
     let sparkle = |highlight: RgbaF32| {
         move |ui: &mut Ui| {
-            ui.add_shape_animated(
+            if let Some(shape) = ui.add_shape(
                 Shape::rect().at(Rect::new(0.0, 0.0, 160.0, 40.0)),
                 EffectPaint::new(
                     EffectName::SPARKLE,
@@ -842,10 +847,13 @@ fn the_sparkles_take_the_highlight() {
                         pad1: 0.0,
                     },
                 ),
-                PaintAnimation::clock()
-                    .with_repeat(PaintRepeat::Held)
-                    .with_period(Duration::from_millis(180)),
-            );
+            ) {
+                shape.animate(
+                    PaintAnimation::clock()
+                        .with_repeat(PaintRepeat::Held)
+                        .with_period(Duration::from_millis(180)),
+                );
+            }
         }
     };
     let every: Vec<(u32, u32)> = (0..40)
@@ -1041,7 +1049,9 @@ fn an_effect_reads_its_time_each_frame_and_wakes_while_it_moves() {
         .with_repeat(PaintRepeat::Forever);
     let record = |ui: &mut Ui| {
         ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE));
-        ui.add_shape_animated(Shape::rect(), EffectPaint::new(BLEND, BLUE), looping);
+        if let Some(shape) = ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE)) {
+            shape.animate(looping);
+        }
     };
     let mut h = blend_window();
     for (at, time, wake) in [
@@ -1060,7 +1070,9 @@ fn an_effect_reads_its_time_each_frame_and_wakes_while_it_moves() {
     }
 
     let mut still = blend_window();
-    let report = still.frame(|ui| ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE)));
+    let report = still.frame(|ui| {
+        ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE));
+    });
     assert_eq!(report.repaint_at, None, "a still effect asks for no frame");
 }
 
@@ -1080,17 +1092,23 @@ fn reduced_motion_holds_a_decorative_effect() {
     let mut h = blend_window();
     h.set_system_motion_reduced(true);
     let record = |ui: &mut Ui| {
-        ui.add_shape_animated(Shape::rect(), EffectPaint::new(BLEND, BLUE), looping);
-        ui.add_shape_animated(Shape::rect(), EffectPaint::new(BLEND, BLUE), once);
+        if let Some(shape) = ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE)) {
+            shape.animate(looping);
+        }
+        if let Some(shape) = ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE)) {
+            shape.animate(once);
+        }
     };
     let report = h.at(ms(500)).frame(record);
     assert_eq!(report.repaint_at, None);
     let times: Vec<f32> = effect_draws(&h).iter().map(|&(_, time)| time).collect();
     assert_eq!(times, [0.0, 2.0]);
 
-    let report = h
-        .at(ms(500))
-        .frame(|ui| ui.add_shape_animated(Shape::rect(), EffectPaint::new(BLEND, BLUE), progress));
+    let report = h.at(ms(500)).frame(|ui| {
+        if let Some(shape) = ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE)) {
+            shape.animate(progress);
+        }
+    });
     assert_eq!(report.repaint_at, Some(ms(500)));
     assert_eq!(effect_draws(&h), [(app(0), 0.5)]);
 
@@ -1158,7 +1176,11 @@ fn an_effect_that_cannot_paint_panics() {
     h.set_system_power_reduced(true);
     assert_panics_with(
         "no effect is loaded under `missing`, the power-saver alternative of `blend`",
-        || h.frame(|ui| ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE))),
+        || {
+            h.frame(|ui| {
+                ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE));
+            })
+        },
     );
     let untyped: EffectName<()> = EffectName::named("missing").unwrap();
     let plain = "fn effect(input: EffectInput) -> EffectOutput { return EffectOutput(); }";
@@ -1166,13 +1188,17 @@ fn an_effect_that_cannot_paint_panics() {
         .load_effect(untyped, EffectSource::new(plain))
         .unwrap();
     assert_panics_with("effect `missing` was loaded as", || {
-        h.frame(|ui| ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE)))
+        h.frame(|ui| {
+            ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE));
+        })
     });
 
     let mut h = blend_window();
     assert_panics_with("drives no channel", || {
         h.frame(|ui| {
-            ui.add_shape_animated(Shape::rect(), RgbaF32::WHITE, PaintAnimation::clock());
+            if let Some(shape) = ui.add_shape(Shape::rect(), RgbaF32::WHITE) {
+                shape.animate(PaintAnimation::clock());
+            }
         })
     });
 }
@@ -1198,7 +1224,9 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
         .with_period(Duration::from_secs(2))
         .with_repeat(PaintRepeat::Forever);
     h.at(Duration::from_millis(1500)).prime(2, |ui| {
-        ui.add_shape_animated(Shape::rect(), EffectPaint::new(BLEND, BLUE), looping);
+        if let Some(shape) = ui.add_shape(Shape::rect(), EffectPaint::new(BLEND, BLUE)) {
+            shape.animate(looping);
+        }
     });
     assert_eq!(
         h.read_back().get_pixel(8, 8).0,
@@ -1216,11 +1244,12 @@ fn a_moving_effect_damages_its_rect_alone() {
         .with_period(Duration::from_secs(2))
         .with_repeat(PaintRepeat::Forever);
     let record = |ui: &mut Ui| {
-        ui.add_shape_animated(
+        if let Some(shape) = ui.add_shape(
             Shape::rect().at(Rect::new(2.0, 2.0, 6.0, 6.0)),
             EffectPaint::new(BLEND, BLUE),
-            looping,
-        );
+        ) {
+            shape.animate(looping);
+        }
         ui.add_shape(
             Shape::rect().at(Rect::new(10.0, 10.0, 4.0, 4.0)),
             EffectPaint::new(BLEND, BLUE),
@@ -1544,13 +1573,17 @@ fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced()
             .collect()
     };
     let paint = || EffectPaint::new(SHIFT, SHARP).blur(2.0);
-    h.frame(|ui| ui.add_shape(Shape::rect(), paint()));
+    h.frame(|ui| {
+        ui.add_shape(Shape::rect(), paint());
+    });
     assert!(matches!(
         reads(&h).as_slice(),
         [Some(BackdropDraw::Capture(_))]
     ));
     h.set_system_transparency_reduced(true);
-    h.frame(|ui| ui.add_shape(Shape::rect(), paint()));
+    h.frame(|ui| {
+        ui.add_shape(Shape::rect(), paint());
+    });
     assert_eq!(reads(&h), [Some(BackdropDraw::Ground)]);
     h.frame(|ui| {
         ui.add_shape(
@@ -1661,7 +1694,9 @@ fn each_reduction_paints_its_alternative_in_order() {
             .unwrap();
     }
     let painted = |h: &mut Harness| {
-        h.frame(|ui| ui.add_shape(Shape::rect(), EffectPaint::new(base, BLUE)));
+        h.frame(|ui| {
+            ui.add_shape(Shape::rect(), EffectPaint::new(base, BLUE));
+        });
         effect_draws(h)[0].0
     };
     assert_eq!(painted(&mut h), app(0));
@@ -1685,7 +1720,11 @@ fn each_reduction_paints_its_alternative_in_order() {
         .unwrap();
     assert_panics_with(
         "no effect is loaded under `gone`, the reduced-motion alternative of `base`",
-        || h.frame(|ui| ui.add_shape(Shape::rect(), EffectPaint::new(base, BLUE))),
+        || {
+            h.frame(|ui| {
+                ui.add_shape(Shape::rect(), EffectPaint::new(base, BLUE));
+            })
+        },
     );
 }
 
@@ -1750,11 +1789,12 @@ fn a_turn_turns_an_effect_as_a_quad() {
     let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
     h.prime(2, |ui: &mut Ui| {
         ui.add_shape(Shape::rect(), ground);
-        ui.add_shape_animated(
+        if let Some(shape) = ui.add_shape(
             Shape::rect().at(Rect::new(0.0, 14.0, 32.0, 4.0)),
             EffectPaint::new(BLEND, BLUE),
-            PaintAnimation::turn(0.25, 0.25),
-        );
+        ) {
+            shape.animate(PaintAnimation::turn(0.25, 0.25));
+        }
     });
     let image = h.read_back();
     assert_eq!(
@@ -1819,11 +1859,12 @@ fn a_turned_backdrop_effect_reads_through_its_turn() {
             Shape::rect().at(Rect::new(0.0, 16.0, 32.0, 16.0)),
             RgbaF32::new(0.0, 0.0, 1.0, 1.0),
         );
-        ui.add_shape_animated(
+        if let Some(shape) = ui.add_shape(
             Shape::rect().at(Rect::new(0.0, 14.0, 32.0, 4.0)),
             EffectPaint::new(SHIFT, SHARP),
-            PaintAnimation::turn(0.25, 0.25),
-        );
+        ) {
+            shape.animate(PaintAnimation::turn(0.25, 0.25));
+        }
     });
     assert_eq!(
         h.read_back().get_pixel(16, 28).0,

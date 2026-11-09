@@ -252,12 +252,19 @@ driver serves that command alone; the drive table's `version` names it
 
 ### Shapes and paint
 
-- **`Ui::add_shape(shape, paint)`.** Each shape takes the paints its pipeline draws, checked by the
-  sealed `Lower` bound on the pair, as Skia's `drawRRect(rrect, paint)`, Flutter's `Canvas` and
-  SwiftUI's `Shape` with a `ShapeStyle` do. Refused: a `.paint(p)` setter on each shape, which
-  keeps paint in the builder; Vello's separate `fill` and `stroke` calls, which split a box's one
-  draw. A pair the pipeline cannot draw panics at `add_shape`: a triangle's gradient, a
+- **`Ui::add_shape(shape, paint)`.** Geometry and paint are two arguments, as Skia's
+  `drawRRect(rrect, paint)`, Flutter's `Canvas`, Compose's `DrawScope`, iced's `Frame::fill` and
+  SwiftUI's `GraphicsContext.fill` take them. Each shape takes the paints its pipeline draws
+  through the sealed `PaintedBy<P>` bound, one impl per pair, so rustdoc lists each shape's paints;
+  a box's paint is any `IntoPaint`, a `Paint` or a fill alone. Refused: a `.paint(p)` setter on
+  each shape, which keeps paint in the builder; a bound on the `(shape, paint)` tuple, which
+  rustdoc shows as one blanket impl; Vello's separate `fill` and `stroke` calls, which split a
+  box's one draw. A pair the pipeline cannot draw panics at `add_shape`: a triangle's gradient, a
   polyline's ramp, an image's corners.
+- **An animation goes on the added shape.** `add_shape` returns the `AddedShape`, or `None` where
+  the pair paints nothing, and its `animate` animates the shape at paint time. Refused:
+  `add_shape_animated`, a second signature of one call; an `AddedShape` for a pair that paints
+  nothing, whose `animate` would reach no shape; a `Result`, as painting nothing is no failure.
 - **A shape lays out in a rect.** Every shape fills the owner's arranged rect or `.at(rect)`, as
   WPF's `Rectangle` and `Ellipse` fill their slot and SwiftUI's shapes take the rect they are
   offered; a circle is the largest one centered in it and an arc runs on that circle, as Compose's

@@ -53,7 +53,9 @@ fn scene(
                     Before::Speck => {
                         ui.add_shape(Shape::rect().at(SPECK), RgbaF32::srgb(1.0, 0.2, 0.1));
                     }
-                    Before::Veil => ui.add_shape(Shape::rect().at(VEIL), CLEAR),
+                    Before::Veil => {
+                        ui.add_shape(Shape::rect().at(VEIL), CLEAR);
+                    }
                 }
                 if let Some(under) = under {
                     ui.add_shape(Shape::rect().at(Rect::new(24.0, 16.0, 8.0, 8.0)), under);

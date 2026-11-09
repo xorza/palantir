@@ -216,7 +216,9 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     let bar = size.min_element() * 0.12;
     for (w, h) in [(arm, bar), (bar, arm)] {
         let rect = Rect::new((size.x - w) / 2.0, (size.y - h) / 2.0, w, h);
-        ui.add_shape_animated(Shape::rect().at(rect), RgbaF32::WHITE, spin);
+        if let Some(shape) = ui.add_shape(Shape::rect().at(rect), RgbaF32::WHITE) {
+            shape.animate(spin);
+        }
     }
 }
 

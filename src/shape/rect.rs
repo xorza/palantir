@@ -3,11 +3,10 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
-use crate::shape::lower;
+use crate::shape::draw::Draw;
 use crate::shape::paint::quad_shape::{BoxGeometry, BoxOutline};
-use crate::shape::record::ShapeRecord;
-use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{self, IntoPaint, Resolve};
+use crate::shape::sealed;
+use crate::shape::{IntoPaint, PaintedBy};
 
 /// A rounded rect: the owner's arranged rect or [`Self::at`] a rect of its own, its corner radii,
 /// and the side of its boundary it covers. A [`Paint`](crate::Paint), an effect, an image or an icon covers it
@@ -76,29 +75,28 @@ impl RectShape {
     }
 }
 
-/// A box of `P`: its fill, border, shadow and material over the rect.
-impl<P: IntoPaint> sealed::LowerShape for (RectShape, P) {
-    const CAN_BE_PANE: bool = true;
+impl<P: IntoPaint> PaintedBy<P> for RectShape {}
 
+/// A box of `P`: its fill, border, shadow and material over the rect.
+impl<P: IntoPaint> sealed::DrawWith<P> for RectShape {
     #[track_caller]
-    fn validate(&self) {
-        self.1.clone().into().validate();
+    fn check(&self, paint: &P) {
+        paint.to_paint().validate();
     }
 
-    fn lower(self, resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (
-            RectShape {
+    fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
+        let Self {
+            local_rect,
+            corners,
+            coverage,
+        } = *self;
+        Draw::Box {
+            geometry: BoxGeometry {
                 local_rect,
-                corners,
+                outline: BoxOutline::Rect(corners),
                 coverage,
             },
-            paint,
-        ) = self;
-        let geometry = BoxGeometry {
-            local_rect,
-            outline: BoxOutline::Rect(corners),
-            coverage,
-        };
-        lower::paint_box(resolve, store, geometry, &paint.into())
+            paint: paint.to_paint(),
+        }
     }
 }

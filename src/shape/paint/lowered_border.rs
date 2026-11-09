@@ -40,7 +40,7 @@ impl LoweredBorder {
     }
 
     /// Collapses a no-op border to [`Self::NONE`], so `DrawQuadPayload::is_noop` can test the border by color alone.
-    /// A NaN width normalizes away like any non-painting width; catching it loudly is `Shapes::add`'s job.
+    /// A NaN width normalizes away like any non-painting width; catching it loudly is `Shapes::push`'s job.
     #[inline]
     pub(crate) const fn normalized(self) -> Self {
         if self.is_noop() { Self::NONE } else { self }

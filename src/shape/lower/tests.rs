@@ -28,8 +28,9 @@ use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
+use crate::shape::record_store::Resolve;
 use crate::shape::record_store::recorded_gradients::GradientId;
-use crate::shape::sealed::{LowerShape, Resolve};
+use crate::shape::sealed::DrawWith as _;
 use crate::widget_core::widget::Widget;
 use glam::UVec2;
 use glam::Vec2;
@@ -167,7 +168,7 @@ fn a_material_lowers_as_it_reads() {
             effects: &effects,
             reductions,
         };
-        (Shape::rect(), frosted.paint.clone()).lower(resolve, store)
+        store.record(Shape::rect().draw(&frosted.paint), resolve)
     };
     for (reductions, captures) in [(Reductions::FULL, true), (reduced, false)] {
         let Some(ShapeRecord::Quad(QuadShape::Box { fill, material, .. })) =

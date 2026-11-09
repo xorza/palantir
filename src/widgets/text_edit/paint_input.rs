@@ -62,18 +62,19 @@ impl PaintInput<'_> {
         widget.record(ui, Some(&self.chrome), |ui| {
             block.record(ui, None, |ui| {
                 for rect in self.selection_rects {
-                    match self.preedit_underline {
-                        None => ui.add_shape(Shape::rect().at(*rect), self.selection_color),
-                        Some(width) => ui.add_shape(
-                            Shape::rect().at(Rect::new(
+                    let (at, color) = match self.preedit_underline {
+                        None => (*rect, self.selection_color),
+                        Some(width) => (
+                            Rect::new(
                                 rect.min.x,
                                 rect.min.y + rect.size.h - width,
                                 rect.size.w,
                                 width,
-                            )),
+                            ),
                             self.text_color,
                         ),
-                    }
+                    };
+                    ui.add_shape(Shape::rect().at(at), color);
                 }
 
                 let (display, color) = if self.text.is_empty() {
@@ -104,9 +105,10 @@ impl PaintInput<'_> {
                         caret.pos.line_height,
                     );
                     let shape = Shape::rect().at(rect);
-                    match caret.animation {
-                        Some(animation) => ui.add_shape_animated(shape, caret.color, animation),
-                        None => ui.add_shape(shape, caret.color),
+                    if let Some(added) = ui.add_shape(shape, caret.color)
+                        && let Some(animation) = caret.animation
+                    {
+                        added.animate(animation);
                     }
                 }
             });

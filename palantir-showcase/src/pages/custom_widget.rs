@@ -10,7 +10,7 @@ use palantir::LineCap;
 use palantir::LineJoin;
 use palantir::Stroke;
 use palantir::glam::Vec2;
-use palantir::widget::{Configurator, PolylineShape, Shape, Widget};
+use palantir::widget::{AddedShape, Configurator, PolylineShape, Shape, Widget};
 use palantir::{
     Align, Chrome, Configure, Corners, DragValue, Key, Panel, Response, RgbaF32, Sense, Sizing,
     Text, Ui, VAlign, WidgetId, fmt,
@@ -145,7 +145,14 @@ fn surface(ui: &mut Ui, k: Kit) {
             "last frame's hover, press and click",
         ),
         (
-            api!(Ui::add_shape as fn(&mut Ui, PolylineShape<'static>, Stroke)),
+            api!(
+                Ui::add_shape
+                    as for<'u> fn(
+                        &'u mut Ui,
+                        PolylineShape<'static>,
+                        Stroke,
+                    ) -> Option<AddedShape<'u>>
+            ),
             "paint custom geometry — the ± glyphs",
         ),
         (

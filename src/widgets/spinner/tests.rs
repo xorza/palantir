@@ -395,11 +395,11 @@ fn a_spinner_turns_under_reduced_motion_and_decoration_does_not() {
                 .id(WidgetId::from_hash("decor"))
                 .size(10.0)
                 .show(ui, |ui| {
-                    ui.add_shape_animated(
-                        Shape::rect(),
-                        RgbaF32::WHITE,
-                        PaintAnimation::turn(0.0, 1.0).with_repeat(PaintRepeat::Forever),
-                    );
+                    if let Some(shape) = ui.add_shape(Shape::rect(), RgbaF32::WHITE) {
+                        shape.animate(
+                            PaintAnimation::turn(0.0, 1.0).with_repeat(PaintRepeat::Forever),
+                        );
+                    }
                 });
         });
     });

@@ -15,15 +15,14 @@ use crate::scene::per_plane::PerPlane;
 use crate::scene::plane::Plane;
 use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
+use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationEntry;
-use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
-use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::scene::tree::{NodeChrome, Tree};
-use crate::shape::Lower;
+use crate::shape::draw::Draw;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::Resolve;
+use crate::shape::record_store::Resolve;
 use crate::text::family_keys::FamilyKeys;
 
 /// One arena per [`Plane`]; recording dispatches to `trees[cur_plane]`.
@@ -202,16 +201,11 @@ impl Forest {
         self.scratch.iter().any(|s| !s.open_frames.is_empty())
     }
 
-    /// Lowers `shape`, its names resolved in `resolve`, appends it to the active tree's shape
-    /// buffer, and registers `animation` against it where there is one. Nothing is pushed if the
-    /// shape paints nothing; no animation entry if the node is effectively invisible.
+    /// Record `draw` into the active node, its names resolved in `resolve`: the record store
+    /// records it, and the active tree takes the record ([`Tree::push_shape`]). `None`, and nothing pushed, where it
+    /// paints nothing.
     #[track_caller]
-    pub(crate) fn add_shape<S: Lower>(
-        &mut self,
-        shape: S,
-        resolve: Resolve<'_>,
-        animation: Option<PaintAnimation>,
-    ) {
+    pub(crate) fn add_draw(&mut self, draw: Draw<'_>, resolve: Resolve<'_>) -> Option<AddedSlot> {
         let plane = self.cur_plane();
         self.assert_node_open(plane, "add_shape");
         let tree = &mut self.trees[plane];
@@ -219,43 +213,37 @@ impl Forest {
             .open_frames
             .last_mut()
             .expect("`assert_node_open` above found an open frame");
-        let Some(shape_idx) = tree.shapes.add(shape, resolve, &mut self.record_store) else {
-            return;
+        let record = self.record_store.record(draw, resolve)?;
+        let shape_idx = tree.push_shape(record, frame);
+        let slot = AddedSlot {
+            plane,
+            shape_idx,
+            row: frame.paint_rows,
+            node: frame.node,
+            invisible: frame.inherited.invisible,
         };
-        Self::note_pane::<S>(tree, frame, shape_idx);
-        if let Some(animation) = animation {
-            tree.shapes.fold_paint_animation(shape_idx, &animation);
-            // The paint row is charged either way.
-            if !frame.inherited.invisible {
-                tree.paint_animations.push_entry(PaintAnimationEntry {
-                    animation,
-                    shape_idx,
-                    row: frame.paint_rows,
-                    node: frame.node,
-                });
-            }
-        }
         frame.paint_rows += 1;
+        Some(slot)
     }
 
-    /// List shape `shape_idx`, of kind `S`, among the tree's panes when it is one and paints. A kind
-    /// that cannot be a pane reads nothing, and its record is checked to agree.
-    fn note_pane<S: Lower>(tree: &mut Tree, frame: &OpenFrame, shape_idx: u32) {
-        let is_pane = || tree.shapes.records[shape_idx as usize].is_pane();
-        if !S::CAN_BE_PANE {
-            debug_assert!(
-                !is_pane(),
-                "a {} lowered to a pane, but its kind says it cannot be one",
-                std::any::type_name::<S>()
-            );
-            return;
-        }
-        if !frame.inherited.invisible && is_pane() {
-            tree.panes.push(PaneEntry {
-                node: frame.node,
+    /// Animate the shape in `slot` at paint time: its hash takes `animation`, so the change reads
+    /// as one, and the tree lists it unless its node is effectively invisible.
+    pub(crate) fn animate(&mut self, slot: AddedSlot, animation: PaintAnimation) {
+        let AddedSlot {
+            plane,
+            shape_idx,
+            row,
+            node,
+            invisible,
+        } = slot;
+        let tree = &mut self.trees[plane];
+        tree.shapes.fold_paint_animation(shape_idx, &animation);
+        if !invisible {
+            tree.paint_animations.push_entry(PaintAnimationEntry {
+                animation,
                 shape_idx,
-                origin: PaneOrigin::Shape,
-                row: frame.paint_rows,
+                row,
+                node,
             });
         }
     }
@@ -348,6 +336,18 @@ impl Forest {
             .last()
             .map(|f| tree.records.widget_id()[f.node.idx()])
     }
+}
+
+/// Where [`Forest::add_draw`] put a shape: what [`Forest::animate`] needs to animate it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AddedSlot {
+    plane: Plane,
+    shape_idx: u32,
+    /// The shape's paint row in its owner's span.
+    row: u32,
+    node: NodeId,
+    /// Whether the owner is effectively invisible, which lists no animation.
+    invisible: bool,
 }
 
 #[cfg(test)]

@@ -102,7 +102,9 @@ fn pane(ui: &mut Ui, at: Rect, icon: IconPaint) {
         .id_salt(("pane", at.min.x as i32, at.min.y as i32))
         .at(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
-        .show(ui, |ui| ui.add_shape(Shape::rect(), icon));
+        .show(ui, |ui| {
+            ui.add_shape(Shape::rect(), icon);
+        });
 }
 
 /// A tintable icon reaches the framebuffer as coverage times the tint, filling

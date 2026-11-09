@@ -11,10 +11,11 @@ use palantir::LineJoin;
 use palantir::Paint;
 use palantir::Stroke;
 use palantir::glam::{UVec2, Vec2};
+use palantir::widget::AddedShape;
 use palantir::widget::IconPaint;
 use palantir::widget::ImagePaint;
 use palantir::widget::{
-    AnimationRequest, GlyphFont, Mesh, MotionRole, PaintAnimation, PaintRepeat, RectShape, Shape,
+    AnimationRequest, GlyphFont, Mesh, MotionRole, PaintAnimation, PaintRepeat, Shape,
 };
 use palantir::{
     Align, Animated, AnimationSpec, Block, Border, Button, Chrome, Configure, Corners, Easing, Fit,
@@ -151,10 +152,7 @@ impl TurnSources {
 fn turn(ui: &mut Ui, k: Kit) {
     let sources = TurnSources::load(ui);
     Section::new("Turn")
-        .apis(&[
-            api!(Ui::add_shape_animated as fn(&mut Ui, RectShape, RgbaF32, PaintAnimation)),
-            api!(PaintAnimation::turn),
-        ])
+        .apis(&[api!(AddedShape::animate), api!(PaintAnimation::turn)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -184,30 +182,33 @@ fn turn(ui: &mut Ui, k: Kit) {
                     });
                 };
                 cell(ui, "rect", &mut |ui| {
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::rect().at(source).corners(Corners::all(10.0)),
                         Paint::from(k.swatch.teal).with_border(Border::new(RgbaF32::WHITE, 2.0)),
-                        spin,
-                    );
+                    ) {
+                        shape.animate(spin);
+                    }
                 });
                 cell(ui, "shadow", &mut |ui| {
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::rect().at(source).corners(Corners::all(6.0)),
                         Paint::NONE.with_shadow(Shadow::drop(
                             RgbaF32::BLACK,
                             Vec2::new(6.0, 6.0),
                             6.0,
                         )),
-                        spin,
-                    );
-                    ui.add_shape_animated(
+                    ) {
+                        shape.animate(spin);
+                    }
+                    if let Some(shape) = ui.add_shape(
                         Shape::rect().at(source).corners(Corners::all(6.0)),
                         k.swatch.orange,
-                        spin,
-                    );
+                    ) {
+                        shape.animate(spin);
+                    }
                 });
                 cell(ui, "triangle", &mut |ui| {
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::triangle(
                             Vec2::new(15.0, 80.0),
                             Vec2::new(85.0, 80.0),
@@ -215,40 +216,47 @@ fn turn(ui: &mut Ui, k: Kit) {
                         )
                         .radius(6.0_f32),
                         k.swatch.violet,
-                        spin,
-                    );
+                    ) {
+                        shape.animate(spin);
+                    }
                 });
                 cell(ui, "mesh", &mut |ui| {
-                    ui.add_shape_animated(Shape::mesh(&mesh), RgbaF32::WHITE, spin);
+                    if let Some(shape) = ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE) {
+                        shape.animate(spin);
+                    }
                 });
                 cell(ui, "dot", &mut |ui| {
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::line(Vec2::splat(50.0), Vec2::splat(50.0)),
                         Stroke::new(k.swatch.teal, 30.0).with_cap(LineCap::Square),
-                        spin,
-                    );
+                    ) {
+                        shape.animate(spin);
+                    }
                 });
                 cell(ui, "image", &mut |ui| {
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::rect().at(source),
                         ImagePaint::new(sources.image.handle().clone()).fit(ImageFit::Fill),
-                        spin,
-                    );
+                    ) {
+                        shape.animate(spin);
+                    }
                 });
                 cell(ui, "text", &mut |ui| {
                     let label = ui.intern("Turning");
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::text(label, GlyphFont::new(18.0)).at_origin(Vec2::new(18.0, 40.0)),
                         k.t.ink,
-                        spin,
-                    );
+                    ) {
+                        shape.animate(spin);
+                    }
                 });
                 cell(ui, "icon", &mut |ui| {
-                    ui.add_shape_animated(
+                    if let Some(shape) = ui.add_shape(
                         Shape::rect().at(Rect::new(25.0, 25.0, 50.0, 50.0)),
                         IconPaint::new(sources.icon).fit(Fit::Fill),
-                        spin,
-                    );
+                    ) {
+                        shape.animate(spin);
+                    }
                 });
             });
         });

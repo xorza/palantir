@@ -27,7 +27,8 @@ use crate::scene::tree::NodeChrome;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
-use crate::shape::sealed::Resolve;
+use crate::shape::record_store::Resolve;
+use crate::shape::sealed::DrawWith as _;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::shaped_text::ShapedText;
 use crate::text::shaper::TextShaper;
@@ -225,11 +226,8 @@ impl NodeRecorder<'_> {
                 effects: &EffectRegistry::default(),
                 reductions: Reductions::default(),
             };
-            rec.forest.add_shape(
-                (Shape::text(text, font).wrap(run.wrap), RgbaF32::WHITE),
-                resolve,
-                None,
-            );
+            let shape = Shape::text(text, font).wrap(run.wrap);
+            rec.forest.add_draw(shape.draw(&RgbaF32::WHITE), resolve);
         });
     }
 

@@ -2,11 +2,10 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::stroke::Stroke;
-use crate::shape::lower;
+use crate::shape::PaintedBy;
+use crate::shape::draw::Draw;
 use crate::shape::paint::arc_geometry::ArcGeometry;
-use crate::shape::record::ShapeRecord;
-use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{self, Resolve};
+use crate::shape::sealed;
 
 /// An arc of the largest circle centered in the owner's arranged rect, or [`Self::at`] a rect of
 /// its own, from its start angle turning by its sweep, as Compose's `drawArc` runs on its rect's
@@ -42,26 +41,28 @@ impl ArcShape {
     }
 }
 
-impl sealed::LowerShape for (ArcShape, Stroke) {
+impl PaintedBy<Stroke> for ArcShape {}
+
+/// An arc drawn with a [`Stroke`].
+impl sealed::DrawWith<Stroke> for ArcShape {
     #[track_caller]
-    fn validate(&self) {
-        self.1.validate();
+    fn check(&self, stroke: &Stroke) {
+        stroke.validate();
     }
 
-    fn lower(self, _resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (
-            ArcShape {
+    fn draw<'a>(&'a self, stroke: &'a Stroke) -> Draw<'a> {
+        let Self {
+            local_rect,
+            start_angle,
+            sweep,
+        } = *self;
+        Draw::Arc {
+            geometry: ArcGeometry {
                 local_rect,
                 start_angle,
                 sweep,
             },
             stroke,
-        ) = self;
-        let arc = ArcGeometry {
-            local_rect,
-            start_angle,
-            sweep,
-        };
-        lower::arc(store, arc, stroke)
+        }
     }
 }

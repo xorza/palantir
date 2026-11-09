@@ -46,7 +46,7 @@ fn a_turned_triangle_and_mesh_match_golden() {
     GoldenName::TurnedTriangleAndMesh.assert_scene(UVec2::new(220, 120), |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "triangle", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::triangle(
                         Vec2::new(15.0, 80.0),
                         Vec2::new(85.0, 80.0),
@@ -55,11 +55,14 @@ fn a_turned_triangle_and_mesh_match_golden() {
                     .radius(8.0_f32),
                     Paint::from(RgbaF32::srgb(0.2, 0.5, 1.0))
                         .with_border(Border::new(RgbaF32::WHITE, 3.0)),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "mesh", |ui| {
-                ui.add_shape_animated(Shape::mesh(&mesh), RgbaF32::WHITE, thirty_degrees());
+                if let Some(shape) = ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE) {
+                    shape.animate(thirty_degrees());
+                }
             });
         });
     });
@@ -76,64 +79,72 @@ fn turned_quads_match_golden() {
     GoldenName::TurnedQuads.assert_scene(UVec2::new(670, 120), |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "rounded", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source).corners(Corners::all(10.0)),
                     Paint::from(RgbaF32::srgb(0.2, 0.5, 1.0))
                         .with_border(Border::new(RgbaF32::WHITE, 3.0)),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "gradient", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
                     LinearGradient::two_stop(0.0, RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "drop", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source).corners(Corners::all(6.0)),
                     Paint::NONE.with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(8.0, 8.0), 6.0)),
-                    thirty_degrees(),
-                );
-                ui.add_shape_animated(
+                ) {
+                    shape.animate(thirty_degrees());
+                }
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source).corners(Corners::all(6.0)),
                     RgbaF32::srgb(0.85, 0.85, 0.85),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "inset", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source).corners(Corners::all(6.0)),
                     RgbaF32::srgb(0.85, 0.85, 0.85),
-                    thirty_degrees(),
-                );
-                ui.add_shape_animated(
+                ) {
+                    shape.animate(thirty_degrees());
+                }
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source).corners(Corners::all(6.0)),
                     Paint::NONE.with_shadow(
                         Shadow::drop(RgbaF32::BLACK, Vec2::new(6.0, 6.0), 5.0).inset(),
                     ),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "dot", |ui| {
                 let stroke = Border::new(RgbaF32::srgb(1.0, 0.85, 0.2), 30.0);
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::line(Vec2::new(50.0, 50.0), Vec2::new(50.0, 50.0)),
                     Stroke::new(stroke.color, stroke.width).with_cap(LineCap::Square),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "window", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect()
                         .at(source)
                         .corners(Corners::all(14.0))
                         .coverage(Coverage::Outside),
                     Paint::from(RgbaF32::srgb(0.2, 0.5, 1.0))
                         .with_border(Border::new(RgbaF32::WHITE, 2.0)),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
         });
     });
@@ -157,21 +168,23 @@ fn turned_images_match_golden() {
     let capture = h.size(UVec2::new(230, 120)).settled_frame(0, |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "fill", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
                     ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "tile", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
                     ImagePaint::new(handle.clone()).fit(ImageFit::Tile {
                         offset: Vec2::ZERO,
                         scale: Vec2::splat(3.0),
                     }),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
         });
     });
@@ -189,18 +202,20 @@ fn a_turned_label_and_icon_match_golden() {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "label", |ui| {
                 let label = ui.intern("Turned");
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::text(label, GlyphFont::new(20.0)).at_origin(Vec2::new(18.0, 38.0)),
                     RgbaF32::WHITE,
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
             owner(ui, "icon", |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::rect().at(Rect::new(25.0, 25.0, 50.0, 50.0)),
                     IconPaint::new(icons.by_name("halves").expect("fixture icon")).fit(Fit::Fill),
-                    thirty_degrees(),
-                );
+                ) {
+                    shape.animate(thirty_degrees());
+                }
             });
         });
     });

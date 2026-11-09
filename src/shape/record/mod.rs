@@ -252,7 +252,7 @@ impl ShapeRecord {
         self.pane().is_some()
     }
 
-    /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::add`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
+    /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::push`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
     ///
     /// The schedule is `discriminant → per-variant fields` at every nesting level (`mem::discriminant`, so it cannot drift from the enum). Nothing is persisted, so variants can be added or reordered freely. `Polyline` and `Mesh` hand over a `content_hash` their lowering computed, as their payload bytes live in the `RecordStore` this never sees.
     pub(crate) fn content_hash(&self) -> ContentHash {
@@ -523,7 +523,7 @@ fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
     }
 }
 
-/// **The backstop behind the shape setters' checks**: `Shapes::add` debug-asserts this on each lowered record.
+/// **The backstop behind the shape setters' checks**: `Shapes::push` debug-asserts this on each lowered record.
 ///
 /// An assertion, not a check: by here a gradient sits behind a `GradientId` and a triangle's `radius` went through `radius.max(0.0)`, so a clean record proves nothing. Bulk inputs arrive as a `bbox` under the AABB NaN contract.
 impl NanCheck for ShapeRecord {

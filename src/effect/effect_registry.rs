@@ -13,7 +13,7 @@ use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
 use crate::effect::stock;
 use crate::primitives::effect::effect_kind::{EffectKind, EffectTypes};
-use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_name::{EffectName, TypedName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::inline_name::InlineName;
@@ -248,7 +248,7 @@ impl EffectRegistry {
     #[track_caller]
     pub(crate) fn want<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) {
         let id = self
-            .id_of(name)
+            .id_of(name.typed())
             .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name()));
         let Some(store) = &self.store else {
             return;
@@ -275,7 +275,7 @@ impl EffectRegistry {
     ///
     /// When it was loaded with another parameter type or kind.
     pub(crate) fn contains<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) -> bool {
-        self.id_of(name).is_some()
+        self.id_of(name.typed()).is_some()
     }
 
     /// The effect a shape that names `name` paints, whose id it records: the effect loaded under
@@ -289,14 +289,14 @@ impl EffectRegistry {
     /// or one is loaded with another parameter type or kind: a shape that names an effect nothing
     /// loaded is a logic error, as painting nothing would be quietly wrong.
     #[track_caller]
-    pub(crate) fn resolve<U: EffectParams, K: EffectKind>(
+    pub(crate) fn resolve(
         &self,
-        name: EffectName<U, K>,
+        name: TypedName,
         reductions: Reductions,
     ) -> Option<ResolvedEffect> {
         let id = self
             .id_of(name)
-            .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name()));
+            .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name.as_str()));
         let effects = self.effects.borrow();
         let resolved = |id: EffectId| ResolvedEffect {
             id,
@@ -322,13 +322,13 @@ impl EffectRegistry {
                         "no effect is loaded under `{}`, the {} alternative of `{}`",
                         other.as_str(),
                         by.name(),
-                        name.name()
+                        name.name.as_str()
                     )
                 });
                 assert_types(
                     other.as_str(),
                     effects.loaded[other_id.idx()].types,
-                    EffectTypes::of::<U, K>(),
+                    name.types,
                 );
                 Some(resolved(other_id))
             }
@@ -336,13 +336,13 @@ impl EffectRegistry {
     }
 
     #[track_caller]
-    fn id_of<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) -> Option<EffectId> {
+    fn id_of(&self, name: TypedName) -> Option<EffectId> {
         let effects = self.effects.borrow();
-        let id = *effects.ids.get(&name.inline())?;
+        let id = *effects.ids.get(&name.name)?;
         assert_types(
-            name.name(),
+            name.name.as_str(),
             effects.loaded[id.idx()].types,
-            EffectTypes::of::<U, K>(),
+            name.types,
         );
         Some(id)
     }

@@ -350,7 +350,9 @@ mod tests {
             [false, false, false, true, false, false, true]
         );
 
-        let mut blue = |ui: &mut Ui| ui.add_shape(Shape::rect(), EffectPaint::new(BLUE, ()));
+        let mut blue = |ui: &mut Ui| {
+            ui.add_shape(Shape::rect(), EffectPaint::new(BLUE, ()));
+        };
         host.frame(target.as_target(), &mut blue);
         assert_eq!(store(&host), [false, false, false, true, false, true, true]);
         assert_eq!(target.read_back().get_pixel(4, 4).0, [0, 0, 255, 255]);
@@ -390,7 +392,9 @@ mod tests {
             theme
         };
         let mut nothing = |_: &mut Ui| {};
-        let mut fill = |ui: &mut Ui| ui.add_shape(Shape::rect(), RgbaF32::WHITE);
+        let mut fill = |ui: &mut Ui| {
+            ui.add_shape(Shape::rect(), RgbaF32::WHITE);
+        };
 
         let (mut host, target) = host();
         host.ui_mut()

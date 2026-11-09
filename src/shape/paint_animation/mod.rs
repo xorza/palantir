@@ -117,7 +117,7 @@ pub struct PaintTiming {
 ///
 /// Sampled by the encoder, so the recorded subtree is byte-identical every frame and its layout cache entry survives, unlike [`Ui::animate`](crate::Ui::animate) with [`Ui::request_repaint`](crate::Ui::request_repaint).
 ///
-/// Hand one to [`Ui::add_shape_animated`](crate::Ui::add_shape_animated).
+/// Hand one to [`AddedShape::animate`](crate::widget::AddedShape::animate).
 /// ```
 /// # use palantir::Easing;
 /// # use palantir::widget::{PaintAnimation, PaintRepeat, curves};

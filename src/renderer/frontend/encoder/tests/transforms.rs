@@ -59,21 +59,30 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
                             .with_period(Duration::from_secs_f32(TAU / 1.0))
                             .with_repeat(PaintRepeat::Forever);
                         match spun {
-                            Spun::Polyline => ui.add_shape_animated(
-                                Shape::polyline(&[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)]),
-                                Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-                                turn,
-                            ),
-                            Spun::Arc => ui.add_shape_animated(
-                                Shape::arc(arc.start_angle, arc.sweep).at(Rect::new(
-                                    arc.center.x - arc.radius,
-                                    arc.center.y - arc.radius,
-                                    2.0 * arc.radius,
-                                    2.0 * arc.radius,
-                                )),
-                                Stroke::new(RgbaF32::WHITE, 2.0),
-                                turn,
-                            ),
+                            Spun::Polyline => {
+                                if let Some(shape) = ui.add_shape(
+                                    Shape::polyline(&[
+                                        Vec2::new(10.0, 10.0),
+                                        Vec2::new(70.0, 30.0),
+                                    ]),
+                                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                                ) {
+                                    shape.animate(turn);
+                                }
+                            }
+                            Spun::Arc => {
+                                if let Some(shape) = ui.add_shape(
+                                    Shape::arc(arc.start_angle, arc.sweep).at(Rect::new(
+                                        arc.center.x - arc.radius,
+                                        arc.center.y - arc.radius,
+                                        2.0 * arc.radius,
+                                        2.0 * arc.radius,
+                                    )),
+                                    Stroke::new(RgbaF32::WHITE, 2.0),
+                                ) {
+                                    shape.animate(turn);
+                                }
+                            }
                         }
                     });
             });

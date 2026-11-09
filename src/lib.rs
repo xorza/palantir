@@ -202,8 +202,6 @@ pub mod widget {
     pub use crate::primitives::math::lerp::Lerp;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
-    /// The bound on [`Ui::add_shape`](crate::Ui::add_shape); sealed.
-    pub use crate::shape::Lower;
     pub use crate::shape::Shape;
     pub use crate::shape::arc::ArcShape;
     pub use crate::shape::circle::CircleShape;
@@ -222,6 +220,7 @@ pub mod widget {
     pub use crate::shape::rect::RectShape;
     pub use crate::shape::text::TextShape;
     pub use crate::shape::triangle::TriangleShape;
+    pub use crate::shape::{IntoPaint, PaintedBy};
     pub use crate::text::glyph_font::GlyphFont;
     pub use crate::text::glyphs::TextGlyphs;
     pub use crate::text::glyphs::glyph_line::GlyphLine;
@@ -231,6 +230,7 @@ pub mod widget {
     pub use crate::text::run::TextRun;
     pub use crate::theme::look::look_plan::LookPlan;
     pub use crate::theme::look::theme_slot::ThemeSlot;
+    pub use crate::ui::added_shape::AddedShape;
     pub use crate::widget_core::activation::Activation;
     pub use crate::widget_core::configurator::Configurator;
     pub use crate::widget_core::configure::ThemeDefaults;

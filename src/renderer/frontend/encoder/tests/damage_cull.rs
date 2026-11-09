@@ -188,16 +188,19 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                             .at(pos)
                             .size(20.0)
                             .show(ui, |ui| {
-                                ui.add_shape_animated(
+                                if let Some(shape) = ui.add_shape(
                                     Shape::rect().at(Rect::new(0.0, 0.0, 20.0, 20.0)),
                                     RgbaF32::WHITE,
-                                    PaintAnimation::alpha(0.0, 1.0)
-                                        .with_started_at(started_at)
-                                        .with_period(HALF * 2)
-                                        .with_steps(2)
-                                        .with_repeat(PaintRepeat::Settle(Duration::MAX))
-                                        .with_curve(curves::square),
-                                );
+                                ) {
+                                    shape.animate(
+                                        PaintAnimation::alpha(0.0, 1.0)
+                                            .with_started_at(started_at)
+                                            .with_period(HALF * 2)
+                                            .with_steps(2)
+                                            .with_repeat(PaintRepeat::Settle(Duration::MAX))
+                                            .with_curve(curves::square),
+                                    );
+                                }
                             });
                     }
                 });

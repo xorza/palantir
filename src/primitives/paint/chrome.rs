@@ -144,7 +144,7 @@ impl Chrome {
 }
 
 /// Either part can carry a NaN; `lower::chrome` screens it, as a `Chrome` never passes through
-/// `Shapes::add`.
+/// `Shapes::push`.
 impl NanCheck for Chrome {
     fn has_nan(&self) -> bool {
         self.corners.has_nan() || self.paint.has_nan()

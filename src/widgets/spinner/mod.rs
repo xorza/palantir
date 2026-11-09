@@ -111,16 +111,19 @@ impl<'a> Spinner<'a> {
                     2.0 * radius,
                     2.0 * radius,
                 );
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::arc(0.0, sweep).at(circle),
                     Stroke::new(color, width)
                         .with_ramp(comet())
                         .with_cap(LineCap::Round),
-                    PaintAnimation::turn(0.0, 1.0)
-                        .with_period(period)
-                        .with_repeat(PaintRepeat::Forever)
-                        .with_motion(MotionRole::Essential),
-                );
+                ) {
+                    shape.animate(
+                        PaintAnimation::turn(0.0, 1.0)
+                            .with_period(period)
+                            .with_repeat(PaintRepeat::Forever)
+                            .with_motion(MotionRole::Essential),
+                    );
+                }
             })
             .response
     }

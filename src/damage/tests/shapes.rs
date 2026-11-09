@@ -304,31 +304,44 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
                                 .with_period(Duration::from_secs_f32(TAU / 1.0))
                                 .with_repeat(PaintRepeat::Forever);
                             match kind {
-                                Kind::Line => ui.add_shape_animated(
-                                    Shape::polyline(&[lo, hi]),
-                                    Stroke::new(RED, 1.0),
-                                    turn,
-                                ),
-                                Kind::Triangle => ui.add_shape_animated(
-                                    Shape::triangle(lo, hi, corner),
-                                    RED,
-                                    turn,
-                                ),
-                                Kind::Mesh => {
-                                    ui.add_shape_animated(Shape::mesh(&mesh), RgbaF32::WHITE, turn);
+                                Kind::Line => {
+                                    if let Some(shape) = ui.add_shape(
+                                        Shape::polyline(&[lo, hi]),
+                                        Stroke::new(RED, 1.0),
+                                    ) {
+                                        shape.animate(turn);
+                                    }
                                 }
-                                Kind::Rect => ui.add_shape_animated(
-                                    Shape::rect().at(Rect::from_min_max(lo, hi)),
-                                    RED,
-                                    turn,
-                                ),
+                                Kind::Triangle => {
+                                    if let Some(shape) =
+                                        ui.add_shape(Shape::triangle(lo, hi, corner), RED)
+                                    {
+                                        shape.animate(turn);
+                                    }
+                                }
+                                Kind::Mesh => {
+                                    if let Some(shape) =
+                                        ui.add_shape(Shape::mesh(&mesh), RgbaF32::WHITE)
+                                    {
+                                        shape.animate(turn);
+                                    }
+                                }
+                                Kind::Rect => {
+                                    if let Some(shape) = ui.add_shape(
+                                        Shape::rect().at(Rect::from_min_max(lo, hi)),
+                                        RED,
+                                    ) {
+                                        shape.animate(turn);
+                                    }
+                                }
                                 Kind::Text => {
                                     let label = ui.intern("abcdef");
-                                    ui.add_shape_animated(
+                                    if let Some(shape) = ui.add_shape(
                                         Shape::text(label, GlyphFont::new(20.0)).at_origin(lo),
                                         RgbaF32::WHITE,
-                                        turn,
-                                    );
+                                    ) {
+                                        shape.animate(turn);
+                                    }
                                 }
                             }
                         });

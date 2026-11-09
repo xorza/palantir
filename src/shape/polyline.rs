@@ -1,21 +1,16 @@
 //! The polyline builder and its per-vertex or per-segment color source.
 
-use crate::common::content_hash::ContentHash;
-use crate::common::hash::Hasher;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain;
-use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
+use crate::shape::PaintedBy;
+use crate::shape::draw::Draw;
 use crate::shape::paint::point_placement::PointPlacement;
-use crate::shape::record::{ColorMode, ShapeRecord};
-use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{self, Resolve};
+use crate::shape::sealed;
 use glam::Vec2;
-use std::hash::Hasher as _;
-use std::slice;
 
 /// A polyline through its points, logical px from its rect's top-left: the owner's arranged rect
 /// or [`Self::at`] a rect of its own, its points fit into it by [`Self::fit`]. One color for every
@@ -136,7 +131,7 @@ const fn check_tints(colors: &[RgbaF32], stroke: RgbaF32) {
 impl PolylineColors<'_> {
     /// Whether the colors fit `points_len` points, as [`PolylineShape::per_point`] and
     /// [`PolylineShape::per_segment`] assert.
-    const fn matches(&self, points_len: usize) -> bool {
+    pub(crate) const fn matches(&self, points_len: usize) -> bool {
         match self {
             PolylineColors::Single => true,
             PolylineColors::PerPoint(colors) => colors.len() == points_len,
@@ -146,17 +141,18 @@ impl PolylineColors<'_> {
 }
 
 /// A polyline drawn with a [`Stroke`], its colors per point or per segment times the stroke's.
-impl sealed::LowerShape for (PolylineShape<'_>, Stroke) {
+impl PaintedBy<Stroke> for PolylineShape<'_> {}
+
+impl sealed::DrawWith<Stroke> for PolylineShape<'_> {
     /// # Panics
     ///
     /// Unless the stroke holds its kinds and draws no ramp, and each vertex color times the
     /// stroke's color is a color.
     #[track_caller]
-    fn validate(&self) {
-        let (shape, stroke) = self;
+    fn check(&self, stroke: &Stroke) {
         stroke.validate();
         assert!(stroke.ramp.is_none(), "a polyline draws no ramp");
-        match shape.colors {
+        match self.colors {
             PolylineColors::Single => {}
             PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
                 check_tints(colors, stroke.color);
@@ -164,69 +160,10 @@ impl sealed::LowerShape for (PolylineShape<'_>, Stroke) {
         }
     }
 
-    fn lower(self, _resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (
-            PolylineShape {
-                points,
-                colors,
-                bbox,
-                placement,
-            },
+    fn draw<'d>(&'d self, stroke: &'d Stroke) -> Draw<'d> {
+        Draw::Polyline {
+            shape: self,
             stroke,
-        ) = self;
-        let Stroke {
-            width,
-            color,
-            ramp: _,
-            cap,
-            join,
-        } = stroke;
-        let invisible = match colors {
-            PolylineColors::Single => false,
-            PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
-                colors.iter().all(|color| color.is_noop())
-            }
-        };
-        if stroke.is_noop() || points.len() < 2 || invisible {
-            return None;
         }
-        let (mode, color_slice): (ColorMode, &[RgbaF32]) = match &colors {
-            PolylineColors::Single => (ColorMode::Single, slice::from_ref(&RgbaF32::WHITE)),
-            PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
-            PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
-        };
-
-        // Dropped above under two points, and the color setters checked the count.
-        debug_assert!(
-            points.len() >= 2,
-            "polyline with < 2 points reached lowering"
-        );
-        debug_assert!(colors.matches(points.len()));
-        let staged = store.stage_polyline(points, color_slice, color);
-        let lowered_colors = &store.polyline_colors[staged.colors.range()];
-
-        let mut h = Hasher::new();
-        for &point in points {
-            point.hash_visual(&mut h);
-        }
-        h.pod_slice(lowered_colors);
-        let style = (u64::from(float_hash::canon_bits(width)) << 24)
-            | ((mode as u64) << 16)
-            | ((cap as u64) << 8)
-            | (join as u64);
-        h.write_u64(style);
-        let content_hash = ContentHash::finish(&h);
-
-        Some(ShapeRecord::Polyline {
-            width,
-            color_mode: mode,
-            cap,
-            join,
-            points: staged.points,
-            colors: staged.colors,
-            bbox,
-            placement,
-            content_hash,
-        })
     }
 }

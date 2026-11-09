@@ -4,6 +4,7 @@
 //! It records through `Node` and shapes, never through a widget, so the recorder sits below the
 //! authoring layer.
 
+pub(crate) mod added_shape;
 pub(crate) mod app;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -86,10 +87,9 @@ use crate::scene::node::id_recipe::IdRecipe;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
 use crate::scene::tree::NodeChrome;
-use crate::shape::Lower;
+use crate::shape::PaintedBy;
 use crate::shape::paint::lowered_material::MaterialRead;
-use crate::shape::paint_animation::PaintAnimation;
-use crate::shape::sealed::{LowerShape as _, Resolve};
+use crate::shape::record_store::Resolve;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
 use crate::text::font_source::FontSource;
@@ -98,6 +98,7 @@ use crate::text::run::TextRun;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::error::ThemeEffectError;
+use crate::ui::added_shape::AddedShape;
 use crate::ui::app::RecordPass;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
@@ -830,28 +831,54 @@ impl Ui {
     }
 
     /// Attach `shape` to the active node, covered by `paint`: each shape takes the paints its
-    /// pipeline draws ([`Lower`]). Direct text counts toward layout only on a leaf;
-    /// container-owned text is an overlay shaped against the container's padded width.
+    /// pipeline draws, listed as [`PaintedBy`]'s implementors. Direct text counts toward layout
+    /// only on a leaf; container-owned text is an overlay shaped against the container's padded
+    /// width. The added shape, `None` where the pair paints nothing, can still be animated at paint
+    /// time ([`AddedShape::animate`]).
+    ///
+    /// The shape checks `paint`, the two become one draw, and the frame's record store records it
+    /// into the node, or drops it where it paints nothing: a transparent paint, a rect of no size,
+    /// empty text.
     ///
     /// # Panics
     ///
-    /// When `paint` holds a value outside its kind, as [`Paint::validate`](crate::Paint) says, or
-    /// draws what the shape's pipeline cannot, as [`Lower`] lists; when it is an
+    /// When `paint` holds a value outside its kind, as [`Paint`](crate::Paint) lists, or draws
+    /// what the shape's pipeline cannot, as [`PaintedBy`] lists; when it is an
     /// [`EffectPaint`](crate::widget::EffectPaint) whose effect is not loaded, or loaded with
     /// other parameters or kind; while power is reduced, the same for the alternative it paints
     /// in place of it.
+    ///
+    /// ```
+    /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
+    /// # use palantir::{Rect, RgbaF32, Ui};
+    /// # use std::time::Duration;
+    /// # fn demo(ui: &mut Ui) {
+    /// let rect = Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0));
+    /// if let Some(shape) = ui.add_shape(rect, RgbaF32::WHITE) {
+    ///     shape.animate(
+    ///         PaintAnimation::alpha(0.4, 1.0)
+    ///             .with_period(Duration::from_secs(2))
+    ///             .with_repeat(PaintRepeat::Forever)
+    ///             .with_curve(curves::sine),
+    ///     );
+    /// }
+    /// # }
+    /// ```
     #[track_caller]
-    pub fn add_shape<S, P>(&mut self, shape: S, paint: P)
-    where
-        (S, P): Lower,
-    {
-        let pair = (shape, paint);
-        pair.validate();
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "a shape and a paint are builder values, taken by value as a builder is; the draw borrows them for the call"
+    )]
+    pub fn add_shape<S: PaintedBy<P>, P>(&mut self, shape: S, paint: P) -> Option<AddedShape<'_>> {
+        shape.check(&paint);
+        let draw = shape.draw(&paint);
+        let reads_time = draw.reads_time();
         let resolve = Resolve {
             effects: self.resources.effects(),
             reductions: self.frame_runtime.reductions,
         };
-        self.forest.add_shape(pair, resolve, None);
+        let slot = self.forest.add_draw(draw, resolve)?;
+        Some(AddedShape::new(self, slot, reads_time))
     }
 
     /// Load an icon set and get back an owning [`IconSet`]. Hold it: dropping the
@@ -1005,56 +1032,6 @@ impl Ui {
     #[must_use]
     pub fn text(&self, text: InternedStr) -> &str {
         self.forest.record_store.text.text(text)
-    }
-
-    /// Append `shape`, covered by `paint`, to the active node and animate it at paint time. The
-    /// recorded shape is identical every frame, so the widget never re-records. Drops silently
-    /// if the pair paints nothing. With motion reduced ([`Self::is_motion_reduced`]), a
-    /// decorative animation lands at once, as
-    /// [`MotionRole::Decorative`] says. An
-    /// [`EffectPaint`](crate::widget::EffectPaint) reads the animation's time.
-    ///
-    /// # Panics
-    ///
-    /// As [`Self::add_shape`]; when `animation` drives no channel and `paint` reads no time, so
-    /// nothing would move.
-    ///
-    /// ```
-    /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
-    /// # use palantir::{Rect, RgbaF32, Ui};
-    /// # use std::time::Duration;
-    /// # fn demo(ui: &mut Ui) {
-    /// ui.add_shape_animated(
-    ///     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-    ///     RgbaF32::WHITE,
-    ///     PaintAnimation::alpha(0.4, 1.0)
-    ///         .with_period(Duration::from_secs(2))
-    ///         .with_repeat(PaintRepeat::Forever)
-    ///         .with_curve(curves::sine),
-    /// );
-    /// # }
-    /// ```
-    #[track_caller]
-    pub fn add_shape_animated<S, P>(&mut self, shape: S, paint: P, animation: PaintAnimation)
-    where
-        (S, P): Lower,
-    {
-        let pair = (shape, paint);
-        assert!(
-            <(S, P)>::READS_TIME || animation.drives_channel(),
-            "a paint animation that drives no channel moves only an effect's time, and {pair:?} reads none"
-        );
-        pair.validate();
-        let animation = if self.is_motion_reduced() {
-            animation.reduced()
-        } else {
-            Some(animation)
-        };
-        let resolve = Resolve {
-            effects: self.resources.effects(),
-            reductions: self.frame_runtime.reductions,
-        };
-        self.forest.add_shape(pair, resolve, animation);
     }
 
     /// Open a side layer that paints above `Main`, escapes ancestor clip and

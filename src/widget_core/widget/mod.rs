@@ -595,13 +595,16 @@ fn draw_presses(ui: &mut Ui, id: WidgetId, chrome: Option<&Chrome>) {
             pad0: 0.0,
             pad1: 0.0,
         };
-        ui.add_shape_animated(
+        if let Some(shape) = ui.add_shape(
             Shape::rect().corners(corners),
             EffectPaint::new(press.effect, input),
-            PaintAnimation::clock()
-                .with_started_at(live.pressed_at)
-                .with_period(period),
-        );
+        ) {
+            shape.animate(
+                PaintAnimation::clock()
+                    .with_started_at(live.pressed_at)
+                    .with_period(period),
+            );
+        }
     }
     ui.set_state(id, presses);
 }

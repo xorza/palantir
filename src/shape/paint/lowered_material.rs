@@ -41,7 +41,7 @@ impl MaterialRead {
         effects: &EffectRegistry,
         reductions: Reductions,
     ) -> Option<Self> {
-        let resolved = effects.resolve(material.effect, reductions)?;
+        let resolved = effects.resolve(material.effect.typed(), reductions)?;
         debug_assert_eq!(
             resolved.image_slots, 0,
             "a material effect's load refuses image slots"

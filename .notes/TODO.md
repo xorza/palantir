@@ -10,6 +10,9 @@
 - optimal resolve strategies
 - genrate shape geometry in vertex shader to simplify fragment
 - box mavterial?
+- materials for other shapes
+- Draw::Effect - do we need it if we have box?
+- Brush::Linear add conveninet ctors
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows

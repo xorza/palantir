@@ -5,10 +5,10 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
+use crate::shape::PaintedBy;
+use crate::shape::draw::Draw;
 use crate::shape::paint::point_placement::PointPlacement;
-use crate::shape::record::ShapeRecord;
-use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{self, Resolve};
+use crate::shape::sealed;
 
 /// A colored triangle mesh, its vertices logical px from its rect's top-left: the owner's
 /// arranged rect or [`Self::at`] a rect of its own, its vertices fit into it by [`Self::fit`]. A
@@ -47,30 +47,22 @@ impl<'a> MeshShape<'a> {
     }
 }
 
+impl PaintedBy<RgbaF32> for MeshShape<'_> {}
+
 /// A mesh whose vertex colors a tint multiplies.
-impl sealed::LowerShape for (MeshShape<'_>, RgbaF32) {
+impl sealed::DrawWith<RgbaF32> for MeshShape<'_> {
     /// # Panics
     ///
     /// Unless the tint is a [color](crate::widget::domain::color).
     #[track_caller]
-    fn validate(&self) {
-        let _ = domain::color(self.1);
+    fn check(&self, tint: &RgbaF32) {
+        let _ = domain::color(*tint);
     }
 
-    /// Copies vertices and indices into the store and freezes the bbox and content hash.
-    fn lower(self, _resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (MeshShape { mesh, placement }, tint) = self;
-        if tint.is_noop() || mesh.is_noop() {
-            return None;
+    fn draw<'a>(&'a self, tint: &'a RgbaF32) -> Draw<'a> {
+        Draw::Mesh {
+            shape: self,
+            tint: *tint,
         }
-        let staged = store.stage_mesh(mesh);
-        Some(ShapeRecord::Mesh {
-            placement,
-            tint: tint.to_f16(),
-            vertices: staged.vertices,
-            idxs: staged.idxs,
-            bbox: mesh.bbox(),
-            content_hash: mesh.content_hash(),
-        })
     }
 }

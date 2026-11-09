@@ -104,23 +104,22 @@ showcase's and tests' `stroke` variables that hold a `Border`, and the derive do
 helpers become `cell`. Its tree is `89b0c79dd`'s, so this step also takes any hunk that steps 7
 to 9 did not.
 
-## After the split: the shape API
+## Step 5b: the shape API
 
-Decided: geometry and paint stay two arguments, as Skia's `drawRRect(rrect, paint)`, Flutter's
-`Canvas`, Compose's `DrawScope`, iced's `Frame::fill` and SwiftUI's `GraphicsContext.fill` take
-them. These commits follow step 10:
+Geometry and paint stay two arguments, as Skia's `drawRRect(rrect, paint)`, Flutter's `Canvas`,
+Compose's `DrawScope`, iced's `Frame::fill` and SwiftUI's `GraphicsContext.fill` take them. This
+commit follows step 5, so steps 6 to 10 no longer take an old tree: each applies its old commit's
+diff with `git apply -3` and resolves where 5b moved the code.
 
 - **A readable bound.** `add_shape<S: PaintedBy<P>, P>(shape: S, paint: P)`, a sealed trait with
-  one explicit impl per pair, so rustdoc lists the paints on each shape's page. The color, brush
-  and gradient shorthand on box shapes stays, as explicit impls. `Lower` and its tuple bound go.
-- **Animation chains.** `add_shape` returns an `AddedShape` with `animate(animation)`, and
-  `add_shape_animated` goes.
-- **A linear pipeline inside.** The pair converts into one non-generic `Draw`. Then the draw
-  resolves its effect names and reduced alternatives, a no-op draw drops, `RecordStore::record`
-  copies the payloads into the frame's arena and returns the fixed-size record, and the tree
-  pushes it. The trait consts `CAN_READ_BACKDROP` and `READS_TIME` become questions of the
-  `Draw`. The write to the store stays one step: an owning return value would allocate each
-  frame, and a borrowed one would need a second record type for the store to patch.
+  one impl per pair, so rustdoc lists the paints on each shape's page. A box's paint is any
+  `IntoPaint`: a `Paint`, or a color, brush or gradient as a fill. `Lower` and its tuple bound go.
+- **Animation goes on the added shape.** `add_shape` returns `Option<AddedShape>`, `None` where
+  the pair paints nothing, with `animate(animation)`, and `add_shape_animated` goes.
+- **One record path, in order.** The shape checks its paint, the pair becomes one non-generic
+  `Draw`, `RecordStore::record` lowers it through one match of `record_*` methods, and the forest
+  pushes the record and lists it among the panes in one step. `Resolve` moves out of the seal
+  into the record store, and `Draw::reads_time` replaces the trait consts.
 
 ## Risks
 

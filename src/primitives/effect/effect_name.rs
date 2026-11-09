@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 
 use serde::de;
 
-use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};
+use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind, EffectTypes};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::inline_name::InlineName;
 
@@ -44,12 +44,28 @@ impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
         self.name
     }
 
+    /// This name with its types as a run-time value.
+    pub(crate) fn typed(self) -> TypedName {
+        TypedName {
+            name: self.name,
+            types: EffectTypes::of::<U, K>(),
+        }
+    }
+
     const fn from_inline(name: InlineName) -> Self {
         Self {
             name,
             types: PhantomData,
         }
     }
+}
+
+/// An [`EffectName`] with its parameter type and kind as a run-time value, so code that resolves a
+/// name of any type compiles once.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TypedName {
+    pub(crate) name: InlineName,
+    pub(crate) types: EffectTypes,
 }
 
 impl<U: EffectParams, K: EffectKind> Clone for EffectName<U, K> {

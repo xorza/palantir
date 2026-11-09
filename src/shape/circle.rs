@@ -5,12 +5,11 @@ use std::f32::consts::TAU;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::stroke::Stroke;
-use crate::shape::lower;
+use crate::shape::draw::Draw;
 use crate::shape::paint::arc_geometry::ArcGeometry;
 use crate::shape::paint::quad_shape::{BoxGeometry, BoxOutline};
-use crate::shape::record::ShapeRecord;
-use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{self, IntoPaint, Resolve};
+use crate::shape::sealed;
+use crate::shape::{IntoPaint, PaintedBy};
 
 /// The largest circle centered in the owner's arranged rect, or [`Self::at`] a rect of its own,
 /// as SwiftUI's `Circle` fits the rect it is offered and WPF's `Ellipse` fills its slot. A
@@ -40,40 +39,46 @@ impl CircleShape {
     }
 }
 
-/// A round box of `P`.
-impl<P: IntoPaint> sealed::LowerShape for (CircleShape, P) {
-    const CAN_BE_PANE: bool = true;
+impl<P: IntoPaint> PaintedBy<P> for CircleShape {}
 
+/// A round box of `P`.
+impl<P: IntoPaint> sealed::DrawWith<P> for CircleShape {
     #[track_caller]
-    fn validate(&self) {
-        self.1.clone().into().validate();
+    fn check(&self, paint: &P) {
+        paint.to_paint().validate();
     }
 
-    fn lower(self, resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (CircleShape { local_rect }, paint) = self;
-        let geometry = BoxGeometry {
-            local_rect,
-            outline: BoxOutline::Circle,
-            coverage: Coverage::Inside,
-        };
-        lower::paint_box(resolve, store, geometry, &paint.into())
+    fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
+        let Self { local_rect } = *self;
+        Draw::Box {
+            geometry: BoxGeometry {
+                local_rect,
+                outline: BoxOutline::Circle,
+                coverage: Coverage::Inside,
+            },
+            paint: paint.to_paint(),
+        }
     }
 }
 
+impl PaintedBy<Stroke> for CircleShape {}
+
 /// A closed arc drawn with a [`Stroke`].
-impl sealed::LowerShape for (CircleShape, Stroke) {
+impl sealed::DrawWith<Stroke> for CircleShape {
     #[track_caller]
-    fn validate(&self) {
-        self.1.validate();
+    fn check(&self, stroke: &Stroke) {
+        stroke.validate();
     }
 
-    fn lower(self, _resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (CircleShape { local_rect }, stroke) = self;
-        let arc = ArcGeometry {
-            local_rect,
-            start_angle: 0.0,
-            sweep: TAU,
-        };
-        lower::arc(store, arc, stroke)
+    fn draw<'a>(&'a self, stroke: &'a Stroke) -> Draw<'a> {
+        let Self { local_rect } = *self;
+        Draw::Arc {
+            geometry: ArcGeometry {
+                local_rect,
+                start_angle: 0.0,
+                sweep: TAU,
+            },
+            stroke,
+        }
     }
 }

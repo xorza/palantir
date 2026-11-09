@@ -6,16 +6,11 @@ use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::vec2;
-use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::stroke::Stroke;
-use crate::shape::lower;
-use crate::shape::paint::bezier_geometry::BezierGeometry;
-use crate::shape::paint::curve_ramp::CurveRamp;
-use crate::shape::paint::lowered_stroke::LoweredStroke;
+use crate::shape::PaintedBy;
+use crate::shape::draw::Draw;
 use crate::shape::paint::point_placement::PointPlacement;
-use crate::shape::record::ShapeRecord;
-use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::{self, Resolve};
+use crate::shape::sealed;
 use glam::Vec2;
 
 #[derive(Clone, Copy, Debug)]
@@ -27,7 +22,7 @@ pub(crate) enum CurveGeometry {
 
 impl CurveGeometry {
     /// The one point a curve of no length sits at; `None` for a curve with length.
-    fn point(self) -> Option<Vec2> {
+    pub(crate) fn point(self) -> Option<Vec2> {
         match self {
             Self::Line { a, b } => vec2::approx_eq(a, b).then_some(a),
             Self::CubicBezier(CubicBezier { p0, p1, p2, p3 }) => {
@@ -41,7 +36,7 @@ impl CurveGeometry {
     }
 
     /// The cubic every geometry draws as: a line's thirds, a quadratic's degree elevation.
-    fn bezier(self) -> CubicBezier {
+    pub(crate) fn bezier(self) -> CubicBezier {
         match self {
             Self::Line { a, b } => {
                 let third = (b - a) / 3.0;
@@ -64,8 +59,8 @@ impl CurveGeometry {
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct CurveShape {
-    geometry: CurveGeometry,
-    placement: PointPlacement,
+    pub(crate) geometry: CurveGeometry,
+    pub(crate) placement: PointPlacement,
 }
 
 impl CurveShape {
@@ -95,42 +90,19 @@ impl CurveShape {
     }
 }
 
-impl sealed::LowerShape for (CurveShape, Stroke) {
+impl PaintedBy<Stroke> for CurveShape {}
+
+/// A line or a Bézier drawn with a [`Stroke`].
+impl sealed::DrawWith<Stroke> for CurveShape {
     #[track_caller]
-    fn validate(&self) {
-        self.1.validate();
+    fn check(&self, stroke: &Stroke) {
+        stroke.validate();
     }
 
-    /// The points keep their placement, which resolves where the curve is drawn
-    /// ([`BezierGeometry::place`]): a curve of no length paints its cap there, as a fit can move its
-    /// point. A butt cap on no length has no extent, so it drops here.
-    fn lower(self, _resolve: Resolve<'_>, store: &mut RecordStore) -> Option<ShapeRecord> {
-        let (
-            CurveShape {
-                geometry,
-                placement,
-            },
+    fn draw<'a>(&'a self, stroke: &'a Stroke) -> Draw<'a> {
+        Draw::Curve {
+            shape: self,
             stroke,
-        ) = self;
-        // The width and color enter through `LoweredStroke::lower`.
-        let Stroke {
-            width: _,
-            color: _,
-            ramp,
-            cap,
-            join: _,
-        } = stroke;
-        if stroke.is_noop() || (cap == LineCap::Butt && geometry.point().is_some()) {
-            return None;
         }
-        Some(ShapeRecord::Curve {
-            cap,
-            geometry: BezierGeometry {
-                bezier: geometry.bezier(),
-                placement,
-            },
-            stroke: LoweredStroke::lower(stroke),
-            ramp: ramp.map_or(CurveRamp::None, |ramp| lower::ramp(store, &ramp)),
-        })
     }
 }

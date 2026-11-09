@@ -19,6 +19,39 @@ use crate::widgets::block::Block;
 use glam::Vec2;
 use std::time::Duration;
 
+/// `add_shape` hands back the shape where the pair paints and `None` where it paints nothing, so
+/// no animation reaches a shape that was never recorded: a white rect and a text run paint; the
+/// same rect in a transparent fill, a rect of no width and empty text do not.
+#[test]
+fn add_shape_returns_none_where_the_pair_paints_nothing() {
+    let mut h = Harness::new(SURFACE);
+    let _ = h.frame(|ui| {
+        let rect = Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0));
+        let thin = Shape::rect().at(Rect::new(0.0, 0.0, 0.0, 8.0));
+        let font = GlyphFont::new(12.0);
+        let (label, empty) = (ui.intern("label"), ui.intern(""));
+        assert!(ui.add_shape(rect, RgbaF32::WHITE).is_some(), "a white rect");
+        assert!(
+            ui.add_shape(Shape::text(label, font), RgbaF32::WHITE)
+                .is_some(),
+            "a text run"
+        );
+        assert!(
+            ui.add_shape(rect, RgbaF32::TRANSPARENT).is_none(),
+            "a transparent fill"
+        );
+        assert!(
+            ui.add_shape(thin, RgbaF32::WHITE).is_none(),
+            "a rect of no width"
+        );
+        assert!(
+            ui.add_shape(Shape::text(empty, font), RgbaF32::WHITE)
+                .is_none(),
+            "empty text"
+        );
+    });
+}
+
 /// A fractional alpha survives the whole path (encoder sample, sink gate, payload color lane): opaque red with alpha lerping `0.0` → `1.0` over one second on a linear curve encodes a fill alpha of `0.5` at 500 ms. The crate's other animations answered only `0` or `1`.
 #[test]
 fn a_fractional_alpha_reaches_the_encoded_fill() {
@@ -27,11 +60,12 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
             .id(WidgetId::from_hash("faded"))
             .size(20.0)
             .show(ui);
-        ui.add_shape_animated(
+        if let Some(shape) = ui.add_shape(
             Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
             RgbaF32::srgb(1.0, 0.0, 0.0),
-            PaintAnimation::alpha(0.0, 1.0).with_period(Duration::from_secs(1)),
-        );
+        ) {
+            shape.animate(PaintAnimation::alpha(0.0, 1.0).with_period(Duration::from_secs(1)));
+        }
     };
 
     let mut h = Harness::mono(SURFACE);
@@ -61,27 +95,29 @@ fn a_turn_records_on_every_kind() {
             .id(WidgetId::from_hash("spun"))
             .size(20.0)
             .show(ui);
-        ui.add_shape_animated(
+        if let Some(shape) = ui.add_shape(
             Shape::line(Vec2::ZERO, Vec2::X * 8.0),
             Stroke::new(stroke.color, stroke.width),
-            quarter,
-        );
-        ui.add_shape_animated(
+        ) {
+            shape.animate(quarter);
+        }
+        if let Some(shape) = ui.add_shape(
             Shape::line(Vec2::ONE, Vec2::ONE),
             Stroke::new(stroke.color, stroke.width).with_cap(LineCap::Round),
-            quarter,
-        );
-        ui.add_shape_animated(
+        ) {
+            shape.animate(quarter);
+        }
+        if let Some(shape) = ui.add_shape(
             Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
             RgbaF32::WHITE,
-            quarter,
-        );
+        ) {
+            shape.animate(quarter);
+        }
         let label = ui.intern("turned");
-        ui.add_shape_animated(
-            Shape::text(label, GlyphFont::new(14.0)),
-            RgbaF32::WHITE,
-            quarter,
-        );
+        if let Some(shape) = ui.add_shape(Shape::text(label, GlyphFont::new(14.0)), RgbaF32::WHITE)
+        {
+            shape.animate(quarter);
+        }
     });
     let cmds = h.encode_paint();
     let turns: Vec<bool> = cmds
@@ -124,16 +160,18 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
             .id(WidgetId::from_hash("spun"))
             .size(20.0)
             .show(ui, |ui| {
-                ui.add_shape_animated(
+                if let Some(shape) = ui.add_shape(
                     Shape::triangle(Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(0.0, 10.0)),
                     RgbaF32::WHITE,
-                    quarter,
-                );
-                ui.add_shape_animated(
+                ) {
+                    shape.animate(quarter);
+                }
+                if let Some(shape) = ui.add_shape(
                     Shape::mesh(&mesh).at(Rect::new(4.0, 4.0, 8.0, 8.0)),
                     RgbaF32::WHITE,
-                    quarter,
-                );
+                ) {
+                    shape.animate(quarter);
+                }
             });
     });
     let cmds = h.encode_paint();

@@ -23,7 +23,9 @@ fn boxed(paint: Paint) -> impl FnMut(&mut Ui) {
         Panel::canvas()
             .id_salt("backdrop-fill")
             .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| ui.add_shape(Shape::rect().at(BOX), paint.clone()));
+            .show(ui, |ui| {
+                ui.add_shape(Shape::rect().at(BOX), paint.clone());
+            });
     }
 }
 

@@ -48,7 +48,9 @@ fn pane(ui: &mut Ui, at: Rect, image: ImagePaint) {
         .id_salt(("pane", at.min.x as i32))
         .at(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
-        .show(ui, |ui| ui.add_shape(Shape::rect(), image));
+        .show(ui, |ui| {
+            ui.add_shape(Shape::rect(), image);
+        });
 }
 
 /// `handle` stretched over its pane.

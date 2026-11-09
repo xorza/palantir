@@ -33,7 +33,7 @@
 //!
 //! 1. **Primitives** (`RgbaF32`, `Border`, `Shadow`, `Brush`, ...) answer
 //!    whether a value is invisible.
-//! 2. **Authoring shapes** (`Shape::is_noop` at `Shapes::add`;
+//! 2. **Authoring shapes** (a draw that paints nothing at `RecordStore::record`;
 //!    `Chrome::is_noop` at `Tree::open_node`) skip lowering work, which a
 //!    payload-level gate cannot, since the work has already happened.
 //! 3. **Lowered payloads** ([`PaintPayload::is_noop`], called from the

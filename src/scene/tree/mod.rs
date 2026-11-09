@@ -1,8 +1,8 @@
 //! Per-plane arena tree: SoA `records` column, sparse side tables, flat shape
 //! buffer, and subtree-rollup hashes for cross-frame caches.
 //!
-//! Noop filtering at this storage tier: `Shapes::add` drops `Shape::is_noop`
-//! shapes and `Tree::open_node` drops `Chrome::is_noop` chrome rows (policy in
+//! Noop filtering at this storage tier: `RecordStore::record` drops a draw that paints nothing,
+//! and `Tree::open_node` drops `Chrome::is_noop` chrome rows (policy in
 //! [`paint_sink`](crate::renderer::frontend::paint_sink)). Partial-noop chrome is
 //! dropped per emit downstream.
 
@@ -56,6 +56,7 @@ use crate::shape::lower;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
+use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::shapes::Shapes;
 use fixedbitset::FixedBitSet;
@@ -117,6 +118,22 @@ pub(crate) struct NodeChrome<'a> {
 }
 
 impl Tree {
+    /// Push `record`, recorded in `frame`, into the shape buffer, and list it among the panes when
+    /// it reads a backdrop and its node paints, returning its index.
+    pub(crate) fn push_shape(&mut self, record: ShapeRecord, frame: &OpenFrame) -> u32 {
+        let is_pane = record.is_pane();
+        let shape_idx = self.shapes.push(record);
+        if is_pane && !frame.inherited.invisible {
+            self.panes.push(PaneEntry {
+                node: frame.node,
+                shape_idx,
+                origin: PaneOrigin::Shape,
+                row: frame.paint_rows,
+            });
+        }
+        shape_idx
+    }
+
     /// Exclusive pre-order end for node `i`, grid flag stripped. This and
     /// [`Self::has_children`], [`Self::parent_of`] and [`Self::subtree_has_grid`] take
     /// flat indices, not [`NodeId`]s, since callers walk the pre-order array.
@@ -504,7 +521,7 @@ impl Tree {
             // here so layout columns carry the effective padding and the `LayoutCore`
             // hash invalidates `MeasureCache` when it shifts.
             cols.layout.padding = chrome.fold_padding(cols.layout.padding);
-            // Storage noop gate for chrome; mirrors `Shapes::add`.
+            // Storage noop gate for chrome; mirrors `RecordStore::record`.
             let needs_chrome_row = !chrome.is_noop()
                 || !ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
@@ -655,7 +672,6 @@ fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash 
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::scene::tree::*;
-    use crate::shape::record::ShapeRecord;
 
     impl Tree {
         /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
