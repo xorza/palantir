@@ -4,9 +4,9 @@ use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::line_style::LineCap;
-use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::paint::placed_stroke::PlacedStroke;
-use crate::shape::paint::point_placement::PointPlacement;
+use crate::shape::geometry::curve_basis::CurveBasis;
+use crate::shape::geometry::placed_stroke::PlacedStroke;
+use crate::shape::geometry::point_placement::PointPlacement;
 
 /// A cubic Bézier, its points logical px in its placement's rect, which a line and a quadratic lower
 /// to.

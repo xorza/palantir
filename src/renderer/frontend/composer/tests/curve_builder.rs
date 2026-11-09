@@ -10,7 +10,7 @@ use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::geometry::curve_basis::CurveBasis;
 use glam::Vec2;
 
 /// A cubic or an arc inside `bounds`, white, 2 px wide and unturned until a setter says otherwise,

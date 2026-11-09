@@ -13,7 +13,7 @@ use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::shape::paint::arc_geometry::ArcGeometry;
+use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::shape::record::ShapeRecord;
 use crate::theme::spinner::SpinnerTheme;

@@ -4,7 +4,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::shape::draw::Draw;
-use crate::shape::paint::quad_shape::{BoxGeometry, BoxOutline};
+use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::sealed;
 use crate::shape::{IntoPaint, PaintedBy};
 

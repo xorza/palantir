@@ -8,7 +8,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::PaintedBy;
 use crate::shape::draw::Draw;
-use crate::shape::paint::point_placement::PointPlacement;
+use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::sealed;
 use glam::Vec2;
 

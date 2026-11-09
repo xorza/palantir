@@ -2,7 +2,7 @@ use super::*;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
-use crate::shape::paint::quad_shape::PlacedBox;
+use crate::shape::geometry::box_geometry::PlacedBox;
 use glam::Vec2;
 
 /// The line (0, 0)–(9, 3) as a cubic on its thirds.

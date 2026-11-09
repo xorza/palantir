@@ -4,7 +4,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::PaintedBy;
 use crate::shape::draw::Draw;
-use crate::shape::paint::arc_geometry::ArcGeometry;
+use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::sealed;
 
 /// An arc of the largest circle centered in the owner's arranged rect, or [`Self::at`] a rect of

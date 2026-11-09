@@ -6,8 +6,8 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::line_style::LineCap;
-use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::paint::placed_stroke::PlacedStroke;
+use crate::shape::geometry::curve_basis::CurveBasis;
+use crate::shape::geometry::placed_stroke::PlacedStroke;
 use glam::Vec2;
 
 /// An arc of the largest circle centered in `local_rect`, the owner's arranged rect where `None`,

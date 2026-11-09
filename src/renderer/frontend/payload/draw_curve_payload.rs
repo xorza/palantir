@@ -5,7 +5,7 @@ use crate::primitives::paint::line_style::LineCap;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::geometry::curve_basis::CurveBasis;
 use glam::Vec2;
 
 /// Native GPU stroke payload, a cubic or an arc per [`CurveBasis`]. The composer adds `origin` and the push-transform stack, scales to physical px and pushes `CurveInstance`(s) onto `RenderBuffer.curves`. `bounds` is the owner-local centerline AABB, or the spin and pivot; the composer adds the stroke/cap/AA bound for culling.

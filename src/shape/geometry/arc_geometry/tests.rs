@@ -1,6 +1,6 @@
 use super::*;
 use crate::primitives::geometry::corners::Corners;
-use crate::shape::paint::quad_shape::PlacedBox;
+use crate::shape::geometry::box_geometry::PlacedBox;
 use std::f32::consts::PI;
 
 const OWNER: Size = Size::new(40.0, 20.0);

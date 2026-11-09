@@ -158,6 +158,8 @@ diff with `git apply -3` and resolves where 5b moved the code.
   code with the backdrop names (`reads_backdrop`, `backdrops`, `BackdropEntry`, `EffectCapture`).
   A review of it moved step 9's `InkBound::FillNotTranslucent` and its two test names into it,
   and named the material tests' and the reel's `filter` a `material` and the reel's "pane" a box.
-- Step 7 is staged on master and not committed: the review's renderer renames replayed by script
+- Step 7 is on master as `1451d3957`: the review's renderer renames replayed by script
   on the current tree, with the final tree's prose for the files only they touch, and "an outside
   rect" where `89b0c79dd` writes "a outside rect". The full gate passes.
+- Step 8 is staged on master and not committed: the geometry move replayed by script. The moved
+  files equal `89b0c79dd`'s. The full gate passes.

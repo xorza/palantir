@@ -13,7 +13,7 @@ use crate::primitives::paint::line_style::LineCap;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
-use crate::shape::paint::placed_stroke::PlacedStroke;
+use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};

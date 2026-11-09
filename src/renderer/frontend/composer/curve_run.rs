@@ -8,7 +8,7 @@ use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::geometry::curve_basis::CurveBasis;
 use glam::Vec2;
 
 /// A curve's instance in physical px, drawn as `n` sub-instances along its parameter.

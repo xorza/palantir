@@ -11,6 +11,7 @@ pub(crate) mod circle;
 pub(crate) mod curve;
 pub(crate) mod draw;
 pub(crate) mod effect_paint;
+pub(crate) mod geometry;
 pub(crate) mod icon_paint;
 pub(crate) mod image_paint;
 pub(crate) mod lower;

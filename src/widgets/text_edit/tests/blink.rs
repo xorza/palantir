@@ -7,7 +7,8 @@ use crate::widgets::text_edit::tests::*;
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     use crate::primitives::geometry::coverage::Coverage;
     use crate::scene::tree::iter::TreeItem;
-    use crate::shape::paint::quad_shape::{BoxGeometry, QuadShape};
+    use crate::shape::geometry::box_geometry::BoxGeometry;
+    use crate::shape::paint::quad_shape::QuadShape;
 
     let tree = ui.tree(Layer::Main);
     let now = ui.now();

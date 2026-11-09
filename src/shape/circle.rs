@@ -6,8 +6,8 @@ use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::draw::Draw;
-use crate::shape::paint::arc_geometry::ArcGeometry;
-use crate::shape::paint::quad_shape::{BoxGeometry, BoxOutline};
+use crate::shape::geometry::arc_geometry::ArcGeometry;
+use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::sealed;
 use crate::shape::{IntoPaint, PaintedBy};
 

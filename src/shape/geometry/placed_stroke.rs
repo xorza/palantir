@@ -3,8 +3,8 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::line_style::LineCap;
-use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::paint::quad_shape::{BoxOutline, PlacedBox};
+use crate::shape::geometry::box_geometry::{BoxOutline, PlacedBox};
+use crate::shape::geometry::curve_basis::CurveBasis;
 use glam::Vec2;
 
 /// What a native stroke draws in its owner, owner-local: one placement the cascade bounds and the

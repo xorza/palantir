@@ -11,7 +11,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
-use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};

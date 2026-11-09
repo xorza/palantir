@@ -5,7 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
 use crate::shape::draw::Draw;
-use crate::shape::paint::point_placement::PointPlacement;
+use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::sealed;
 use crate::shape::{IntoPaint, PaintedBy};
 use glam::Vec2;

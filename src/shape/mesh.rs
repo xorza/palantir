@@ -7,7 +7,7 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::PaintedBy;
 use crate::shape::draw::Draw;
-use crate::shape::paint::point_placement::PointPlacement;
+use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::sealed;
 
 /// A colored triangle mesh, its vertices logical px from its rect's top-left: the owner's

@@ -7,7 +7,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
-use crate::shape::paint::point_placement::PointPlacement;
+use crate::shape::geometry::point_placement::PointPlacement;
 use glam::Vec2;
 
 /// A triangle's corners, logical px in its placement's rect, and the radius that rounds them; the

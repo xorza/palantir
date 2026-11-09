@@ -6,7 +6,8 @@ use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::align::Align;
-use crate::shape::paint::quad_shape::{BoxGeometry, QuadShape};
+use crate::shape::geometry::box_geometry::BoxGeometry;
+use crate::shape::paint::quad_shape::QuadShape;
 use crate::theme::text_style::LINE_HEIGHT_FACTOR;
 use crate::widgets::text_edit::tests::*;
 
