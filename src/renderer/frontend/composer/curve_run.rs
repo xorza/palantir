@@ -20,8 +20,36 @@ pub(super) struct CurveRun {
 }
 
 impl CurveRun {
-    /// Lower `p`, `width_physical` wide, under `lowering`: its control points or arc in physical
-    /// px, and as many sub-instances as its length needs.
+    /// `p` with its turn applied to its basis, about its pivot relative to its origin: a cubic's
+    /// control points turned, as a Bézier is affine-invariant, an arc's center turned and its
+    /// angles shifted, as a circle stays one. The composer culls the turned basis by its bounds at
+    /// this frame's angle.
+    pub(super) fn turn(p: DrawCurvePayload) -> DrawCurvePayload {
+        let Some(spin) = p.spin else {
+            return p;
+        };
+        let spin = spin.relative_to(p.origin);
+        let rotor = spin.rotor();
+        let basis = match p.basis {
+            CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }) => {
+                let [p0, p1, p2, p3] = [p0, p1, p2, p3].map(|q| rotor.apply(q));
+                CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 })
+            }
+            CurveBasis::Arc(arc) => CurveBasis::Arc(CircularArc {
+                center: rotor.apply(arc.center),
+                start_angle: arc.start_angle + spin.angle,
+                ..arc
+            }),
+        };
+        DrawCurvePayload {
+            basis,
+            spin: None,
+            ..p
+        }
+    }
+
+    /// Lower `p`, turned already ([`Self::turn`]), `width_physical` wide, under `lowering`: its
+    /// control points or arc in physical px, and as many sub-instances as its length needs.
     pub(super) fn lower(
         p: &DrawCurvePayload,
         width_physical: f32,
@@ -30,8 +58,8 @@ impl CurveRun {
         let cap = p.cap;
         // Owner origin folds in here so the record stays owner-local. No snapping: it would warp
         // the traced shape.
+        debug_assert!(p.spin.is_none(), "a curve lowers turned");
         let to_physical = lowering.transform.physical_map(p.origin);
-        let spin = p.bounds.spin();
         let proto = CurveInstance {
             width: width_physical,
             color0: p.fill.color,
@@ -43,14 +71,7 @@ impl CurveRun {
         };
         match p.basis {
             CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }) => {
-                let mut ctrl = [p0, p1, p2, p3];
-                if let Some(spin) = spin {
-                    let rotor = spin.rotor();
-                    for q in &mut ctrl {
-                        *q = rotor.apply(*q);
-                    }
-                }
-                let ctrl = ctrl.map(|q| to_physical.point(q));
+                let ctrl = [p0, p1, p2, p3].map(|q| to_physical.point(q));
                 let [p0, p1, p2, p3] = ctrl;
                 // Adaptive sub-instance count from the control-polygon length, which bounds arc
                 // length from above (no faceting). Near-straight cubics use one instance: every
@@ -72,18 +93,13 @@ impl CurveRun {
                 Self { proto, n }
             }
             CurveBasis::Arc(arc) => {
-                let mut a1 = arc.end_angle();
+                let a1 = arc.end_angle();
                 let CircularArc {
-                    mut center,
+                    center,
                     radius,
-                    start_angle: mut a0,
+                    start_angle: a0,
                     ..
                 } = arc;
-                if let Some(spin) = spin {
-                    center = spin.rotor().apply(center);
-                    a0 += spin.angle;
-                    a1 += spin.angle;
-                }
                 // The transform is translate + uniform scale, so a circle stays a circle: transform
                 // the center, scale the radius.
                 let radius_physical = radius * lowering.transform.physical_scale();

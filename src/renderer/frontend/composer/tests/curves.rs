@@ -18,7 +18,6 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
@@ -542,33 +541,39 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     );
 }
 
+/// Pivot (50, 50) of the logical frame: a π/2 spin maps an offset (dx, dy) to (-dy, dx), so p0
+/// (70, 50) → (50, 70) and p3 (50, 30) → (70, 50). The same points held from an origin (20, 0),
+/// as the encoder hands a curve from its owner's position, turn about that same pivot, (30, 50)
+/// from the origin, to the same pixels.
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     use std::f32::consts::FRAC_PI_2;
-    // Pivot (50, 50): a π/2 spin maps an offset (dx, dy) to (-dy, dx), so p0 (70,
-    // 50) → (50, 70) and p3 (50, 30) → (70, 50).
-    let buf = run(
-        |b, _arena| {
-            CurveBuilder::cubic(
-                Rect::new(0.0, 0.0, 100.0, 100.0),
-                [
-                    Vec2::new(70.0, 50.0),
-                    Vec2::new(70.0, 40.0),
-                    Vec2::new(60.0, 30.0),
-                    Vec2::new(50.0, 30.0),
-                ],
-            )
-            .turned(FRAC_PI_2)
-            .draw(b);
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert!(!buf.curves.is_empty());
-    let ci = &buf.curves[0];
-    assert_eq!(ci.p0, Vec2::new(50.0, 70.0), "{:?}", ci.p0);
-    assert_eq!(ci.p1, Vec2::new(60.0, 70.0), "{:?}", ci.p1);
-    assert_eq!(ci.p2, Vec2::new(70.0, 60.0), "{:?}", ci.p2);
-    assert_eq!(ci.p3, Vec2::new(70.0, 50.0), "{:?}", ci.p3);
+    let points = [
+        Vec2::new(70.0, 50.0),
+        Vec2::new(70.0, 40.0),
+        Vec2::new(60.0, 30.0),
+        Vec2::new(50.0, 30.0),
+    ];
+    for origin in [Vec2::ZERO, Vec2::new(20.0, 0.0)] {
+        let buf = run(
+            |b, _arena| {
+                CurveBuilder::cubic(
+                    Rect::new(0.0, 0.0, 100.0, 100.0),
+                    points.map(|q| q - origin),
+                )
+                .origin(origin)
+                .turned(FRAC_PI_2)
+                .draw(b);
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        assert!(!buf.curves.is_empty());
+        let ci = &buf.curves[0];
+        assert_eq!(ci.p0, Vec2::new(50.0, 70.0), "{origin}: {:?}", ci.p0);
+        assert_eq!(ci.p1, Vec2::new(60.0, 70.0), "{origin}: {:?}", ci.p1);
+        assert_eq!(ci.p2, Vec2::new(70.0, 60.0), "{origin}: {:?}", ci.p2);
+        assert_eq!(ci.p3, Vec2::new(70.0, 50.0), "{origin}: {:?}", ci.p3);
+    }
 }
 
 #[test]
@@ -649,18 +654,25 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
     }
 }
 
-/// The composer turns each polyline point about its bounds' pivot before the ancestor
-/// transform: a centered horizontal segment from (15, 50) to (85, 50), turned a quarter about
-/// (50, 50), runs from (50, 15) to (50, 85).
+/// The composer turns each polyline point about its pivot in the logical frame before the
+/// ancestor transform: a centered horizontal segment from (15, 50) to (85, 50), turned a quarter
+/// about (50, 50), runs from (50, 15) to (50, 85), and so does the same segment held from an
+/// origin (10, 0), its points (5, 50) and (75, 50), as the encoder hands a polyline from its
+/// owner's position.
 #[test]
 fn compose_spins_polyline_about_bbox_center() {
     let points = [Vec2::new(15.0, 50.0), Vec2::new(85.0, 50.0)];
-    let aabb = |bounds: StrokeBounds| -> (Vec2, Vec2) {
+    let origin = Vec2::new(10.0, 0.0);
+    let held = points.map(|q| q - origin);
+    let aabb = |spin: Option<Spin>, points: &[Vec2], origin: Vec2| -> (Vec2, Vec2) {
         let buf = run(
             |b, store| {
-                TestPolyline::new(&points, 2.0)
-                    .bounds(bounds)
-                    .record(b, store);
+                let polyline = TestPolyline::new(points, 2.0).origin(origin);
+                match spin {
+                    Some(spin) => polyline.turned(spin),
+                    None => polyline,
+                }
+                .record(b, store);
             },
             &params(1.0, UVec2::new(200, 200)),
         );
@@ -668,16 +680,15 @@ fn compose_spins_polyline_about_bbox_center() {
         let ci = &buf.curves[0];
         (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
     };
-    let still = StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0));
-    let turned = StrokeBounds::Spun {
-        spin: Spin {
-            pivot: Vec2::splat(50.0),
-            angle: FRAC_PI_2,
-        },
-        radius: Vec2::splat(50.0).length(),
+    let turned = Spin {
+        pivot: Vec2::splat(50.0),
+        angle: FRAC_PI_2,
     };
-    assert_eq!(aabb(still), (points[0], points[1]));
-    assert_eq!(aabb(turned), (Vec2::new(50.0, 15.0), Vec2::new(50.0, 85.0)));
+    assert_eq!(aabb(None, &points, Vec2::ZERO), (points[0], points[1]));
+    let upright = (Vec2::new(50.0, 15.0), Vec2::new(50.0, 85.0));
+    assert_eq!(aabb(Some(turned), &points, Vec2::ZERO), upright);
+    assert_eq!(aabb(None, &held, origin), (points[0], points[1]));
+    assert_eq!(aabb(Some(turned), &held, origin), upright);
 }
 
 /// The gate *asserts* a polyline's geometry (`PaintPayload::check`) rather than gating on
@@ -694,7 +705,7 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
                 arena.polyline_points.push(Vec2::ZERO);
                 arena.polyline_colors.push(RgbaF32::WHITE.to_f16());
                 b.polyline(DrawPolylinePayload {
-                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 4.0, 4.0)),
+                    bbox: Rect::new(0.0, 0.0, 4.0, 4.0),
                     origin: Vec2::ZERO,
                     width: 2.0,
                     points: Span::new(0, points_len),
@@ -708,5 +719,66 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
             buf.curves.is_empty(),
             "points_len={points_len} emitted geometry"
         );
+    }
+}
+
+/// A turned stroke and a turned mesh are culled by their bounds at this frame's angle, not by the
+/// square they sweep. A thin level line from (60, 100) to (140, 100), turned a quarter about
+/// (100, 100), stands upright at x = 100 from y = 60 to 140. A clip at (60, 60)..(80, 80) lies
+/// inside the square it sweeps, (60, 60)..(140, 140), and misses the line, so neither the
+/// polyline, the cubic nor the mesh of it draws; a clip at (95, 60)..(105, 80) holds a piece of
+/// it, so each draws.
+#[test]
+fn a_turned_draw_is_culled_by_its_bound_at_its_angle() {
+    use crate::primitives::geometry::fit::FitMap;
+    use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+    use crate::renderer::render_buffer::curve_kind::CurveKind;
+
+    let turn = Spin {
+        pivot: Vec2::splat(100.0),
+        angle: FRAC_PI_2,
+    };
+    let points = [Vec2::new(60.0, 100.0), Vec2::new(140.0, 100.0)];
+    for (what, scissor, draws) in [
+        ("beside", Rect::new(60.0, 60.0, 20.0, 20.0), false),
+        ("across", Rect::new(95.0, 60.0, 10.0, 20.0), true),
+    ] {
+        let buf = run(
+            |b, store| {
+                clip(b, scissor);
+                TestPolyline::new(&points, 2.0)
+                    .turned(turn)
+                    .record(b, store);
+                CurveBuilder::cubic(
+                    Rect::new(60.0, 60.0, 80.0, 80.0),
+                    [
+                        Vec2::new(60.0, 100.0),
+                        Vec2::new(80.0, 100.0),
+                        Vec2::new(120.0, 100.0),
+                        Vec2::new(140.0, 100.0),
+                    ],
+                )
+                .turned(FRAC_PI_2)
+                .draw(b);
+                b.draw(
+                    DrawMeshPayload {
+                        bbox: Rect::new(60.0, 99.0, 80.0, 2.0),
+                        origin: Vec2::ZERO,
+                        fit: FitMap::IDENTITY,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        vertices: Span::new(0, 3),
+                        idxs: Span::new(0, 3),
+                        spin: Some(turn),
+                    },
+                    1.0,
+                );
+                b.pop_clip();
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        let drew = |kind: CurveKind| buf.curves.iter().any(|c| c.kind == kind);
+        assert_eq!(drew(CurveKind::SEGMENT), draws, "polyline {what}");
+        assert_eq!(drew(CurveKind::CUBIC), draws, "cubic {what}");
+        assert_eq!(!buf.meshes.is_empty(), draws, "mesh {what}");
     }
 }

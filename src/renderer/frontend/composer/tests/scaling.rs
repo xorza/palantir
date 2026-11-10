@@ -22,7 +22,7 @@ use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     clip, draw, params, params_unsnapped, run, text,
 };
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
@@ -720,7 +720,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
 
 /// A mesh at origin (4, 4), at display scale 2, its instance `x_axis`, `y_axis` and `translate`.
 /// Unturned and unfit: `(2, 0)`, `(0, 2)` and `2·(4, 4) = (8, 8)`. A quarter turn about the pivot
-/// `c = (6, 6)` maps `p` to `R(p − c) + c`, `R c = (−6, 6)`: the axes `2·(cos, sin) = (0, 2)` and
+/// (10, 10) of the logical frame, `c = (6, 6)` from the origin, maps `p` to `R(p − c) + c`, `R c = (−6, 6)`: the axes `2·(cos, sin) = (0, 2)` and
 /// `2·(−sin, cos) = (−2, 0)`, the translate `2·((4, 4) + c − R c) = 2·(16, 4) = (32, 8)`. The fit
 /// `p ↦ (1, 2) + (3, 0.5)·p` scales each axis, `(6, 0)` and `(0, 1)`, and moves the translate to
 /// `2·((4, 4) + (1, 2)) = (10, 12)`; turned as well, `R((1, 2) − c) + c = R(−5, −4) + c =
@@ -752,7 +752,7 @@ fn a_mesh_instance_fits_turns_and_scales_at_once() {
         [instance.x_axis, instance.y_axis, instance.translate]
     };
     let quarter = Some(Spin {
-        pivot: Vec2::new(6.0, 6.0),
+        pivot: Vec2::new(10.0, 10.0),
         angle: FRAC_PI_2,
     });
     let fit = FitMap {

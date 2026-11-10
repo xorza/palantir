@@ -2,24 +2,28 @@
 
 use crate::common::span::Span;
 use crate::primitives::geometry::fit::FitMap;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::record::ColorMode;
 use glam::Vec2;
 
 /// Stroked polyline payload; `width` is logical px. Points and colors live in the window's
 /// [`RecordStore`]; `colors` holds 1 (broadcast), `points.len` (per-point) or `points.len - 1`
 /// (per-segment), per `color_mode`. Points are as recorded; the composer fits them by `fit` into the
-/// owner-local frame, then applies `origin` and inflates `bounds`, already fitted, for stroke, cap,
-/// join and AA once in physical space.
+/// owner-local frame, turns them by `spin`, then applies `origin`; it culls by `bbox`, already
+/// fitted, turned and inflated for stroke, cap, join and AA once in physical space.
 ///
 /// [`RecordStore`]: crate::shape::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawPolylinePayload {
-    pub(crate) bounds: StrokeBounds,
+    /// The fitted points' owner-local bounds, kept as a scan of the points is O(n).
+    pub(crate) bbox: Rect,
     pub(crate) origin: Vec2,
+    /// A paint animation's turn.
+    pub(crate) spin: Option<Spin>,
     pub(crate) fit: FitMap,
     pub(crate) width: f32,
     pub(crate) points: Span,
@@ -57,6 +61,10 @@ impl PaintPayload for DrawPolylinePayload {
     #[inline]
     fn is_noop(&self) -> bool {
         self.is_degenerate() || is_invisible(self.alpha)
+    }
+
+    fn spin_mut(&mut self) -> &mut Option<Spin> {
+        &mut self.spin
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

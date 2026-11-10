@@ -30,12 +30,6 @@ impl<P> DrawClosedPayload<P> {
             paint,
         }
     }
-
-    /// This draw turned by `spin`.
-    pub(crate) const fn turned(mut self, spin: Option<Spin>) -> Self {
-        self.spin = spin;
-        self
-    }
 }
 
 /// What covers a closed shape in a [`DrawClosedPayload`]: it fades, says whether it paints over
@@ -66,6 +60,10 @@ impl<P: ClosedPaintPayload> PaintPayload for DrawClosedPayload<P> {
     #[inline]
     fn is_noop(&self) -> bool {
         self.paint.is_noop(self.geometry)
+    }
+
+    fn spin_mut(&mut self) -> &mut Option<Spin> {
+        &mut self.spin
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

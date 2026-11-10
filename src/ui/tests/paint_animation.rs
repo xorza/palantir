@@ -121,7 +121,7 @@ fn a_turn_records_on_every_kind() {
         .calls
         .iter()
         .filter_map(|call| match call {
-            PaintCall::Curve(p) => Some(p.bounds.spin().is_some()),
+            PaintCall::Curve(p) => Some(p.spin.is_some()),
             PaintCall::Fill(p) => {
                 Some(matches!(p.geometry, PlacedClosed::Box { .. }) && p.spin.is_some())
             }

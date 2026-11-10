@@ -33,7 +33,7 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
@@ -225,7 +225,8 @@ pub(super) struct TestPolyline<'a> {
     mode: ColorMode,
     cap: LineCap,
     join: LineJoin,
-    bounds: Option<StrokeBounds>,
+    spin: Option<Spin>,
+    origin: Vec2,
 }
 
 impl<'a> TestPolyline<'a> {
@@ -237,7 +238,8 @@ impl<'a> TestPolyline<'a> {
             mode: ColorMode::Single,
             cap: LineCap::Butt,
             join: LineJoin::Miter,
-            bounds: None,
+            spin: None,
+            origin: Vec2::ZERO,
         }
     }
 
@@ -257,10 +259,15 @@ impl<'a> TestPolyline<'a> {
         Self { join, ..self }
     }
 
-    /// The cull bound and the turn, which a turned stroke carries in place of its points' box.
-    pub(super) const fn bounds(self, bounds: StrokeBounds) -> Self {
+    /// Its points relative to `origin`, as the encoder hands them from the owner's position.
+    pub(super) const fn origin(self, origin: Vec2) -> Self {
+        Self { origin, ..self }
+    }
+
+    /// Turned by `spin`, its pivot in the logical frame, as the encoder turns a stroke.
+    pub(super) const fn turned(self, spin: Spin) -> Self {
         Self {
-            bounds: Some(bounds),
+            spin: Some(spin),
             ..self
         }
     }
@@ -274,7 +281,8 @@ impl<'a> TestPolyline<'a> {
             mode,
             cap,
             join,
-            bounds,
+            spin,
+            origin,
         } = self;
         let p_start = store.polyline_points.len() as u32;
         store.polyline_points.extend_from_slice(points);
@@ -282,20 +290,18 @@ impl<'a> TestPolyline<'a> {
         store
             .polyline_colors
             .extend(colors.iter().map(|&c| c.to_f16()));
-        let bounds = bounds.unwrap_or_else(|| {
-            let mut lo = points[0];
-            let mut hi = points[0];
-            for &p in points {
-                lo = lo.min(p);
-                hi = hi.max(p);
-            }
-            StrokeBounds::Still(Rect::from_min_max(lo, hi))
-        });
+        let mut lo = points[0];
+        let mut hi = points[0];
+        for &p in points {
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
         b.draw(
             DrawPolylinePayload {
                 alpha: 1.0,
-                bounds,
-                origin: Vec2::ZERO,
+                bbox: Rect::from_min_max(lo, hi),
+                origin,
+                spin,
                 fit: FitMap::IDENTITY,
                 width,
                 points: Span::new(p_start, points.len() as u32),

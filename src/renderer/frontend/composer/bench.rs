@@ -43,7 +43,6 @@ use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePaylo
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
@@ -84,8 +83,8 @@ impl ComposeBench {
         for _ in 0..curve_count {
             cmds.draw(
                 DrawCurvePayload {
-                    bounds: StrokeBounds::Still(Rect::new(16.0, 63.0, 96.0, 2.0)),
                     origin: Vec2::ZERO,
+                    spin: None,
                     basis: CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(16.0, 64.0),
                         p1: Vec2::new(48.0, 64.0),
@@ -303,8 +302,9 @@ impl QuadCase {
                 cmds.draw(
                     DrawPolylinePayload {
                         alpha: 1.0,
-                        bounds: StrokeBounds::Still(Rect::new(0.0, Self::CELL, width, Self::CELL)),
+                        bbox: Rect::new(0.0, Self::CELL, width, Self::CELL),
                         origin: Vec2::ZERO,
+                        spin: None,
                         fit: FitMap::IDENTITY,
                         width: 2.0,
                         points: Span::new(p_start, count as u32),

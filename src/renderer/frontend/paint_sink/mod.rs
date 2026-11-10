@@ -63,6 +63,7 @@ use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePaylo
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::spin::Spin;
 
 /// Sink for one frame's lowered paint operations, in authoring order. The
 /// required methods are what a sink implements; the provided [`Self::draw`]
@@ -106,16 +107,18 @@ pub(crate) trait PaintSink {
     /// Paint an effect over a box or a triangle: an app's paint, or a box's material.
     fn effect(&mut self, payload: DrawClosedPayload<ClosedEffect>);
 
-    /// The gate the encoder paints through: fade `payload` by `alpha` (a paint animation's
-    /// opacity, `1.0` when still), drop it where it paints nothing, else hand it to the method of
-    /// its kind. A parameter, so an encoder arm cannot forget to fade.
+    /// The gate the encoder paints through: fade and turn `payload` by `animation`, a paint
+    /// animation's opacity and turn this frame, drop it where it paints nothing, else hand it to
+    /// the method of its kind. A parameter, so an encoder arm cannot forget to fade or to turn.
+    /// An `f32` is a fade alone.
     #[inline]
-    fn draw(&mut self, payload: impl PaintPayload, alpha: f32)
+    fn draw(&mut self, payload: impl PaintPayload, animation: impl Into<DrawAnimation>)
     where
         Self: Sized,
     {
+        let DrawAnimation { alpha, spin } = animation.into();
         payload.check();
-        let payload = payload.faded(alpha);
+        let payload = payload.faded(alpha).turned(spin);
         if payload.is_noop() {
             return;
         }
@@ -123,11 +126,48 @@ pub(crate) trait PaintSink {
     }
 }
 
-/// A lowered draw: it fades, says whether it paints, and names the [`PaintSink`] method that
-/// takes it, so one gate ([`PaintSink::draw`]) serves every kind.
+/// What a paint animation does to one draw this frame, as the gate ([`PaintSink::draw`]) applies
+/// it: its opacity, `1.0` when still, and its turn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct DrawAnimation {
+    pub(crate) alpha: f32,
+    pub(crate) spin: Option<Spin>,
+}
+
+impl DrawAnimation {
+    /// No fade and no turn.
+    pub(crate) const STILL: Self = Self {
+        alpha: 1.0,
+        spin: None,
+    };
+}
+
+/// A fade alone, as a draw no paint animation turns takes it.
+impl From<f32> for DrawAnimation {
+    fn from(alpha: f32) -> Self {
+        Self { alpha, spin: None }
+    }
+}
+
+/// A lowered draw: it fades, turns, says whether it paints, and names the [`PaintSink`] method
+/// that takes it, so one gate ([`PaintSink::draw`]) serves every kind.
 pub(crate) trait PaintPayload: Sized {
     /// This draw with its alpha scaled by `by`.
     fn faded(self, by: f32) -> Self;
+
+    /// The draw's turn, which [`Self::turned`] sets.
+    fn spin_mut(&mut self) -> &mut Option<Spin>;
+
+    /// This draw turned by `spin`; unchanged by `None`. A draw turns once.
+    #[inline]
+    fn turned(mut self, spin: Option<Spin>) -> Self {
+        if let Some(spin) = spin {
+            let slot = self.spin_mut();
+            debug_assert!(slot.is_none(), "a draw turns once: {slot:?}");
+            *slot = Some(spin);
+        }
+        self
+    }
 
     /// Whether it paints nothing, the one correctness gate (module docs, tier 3).
     fn is_noop(&self) -> bool;

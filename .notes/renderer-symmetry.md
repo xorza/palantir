@@ -18,8 +18,8 @@ and an effect hold their shape.
 | B2 Records and payloads | done, `a6efe204a` |
 | B10 Backdrop bound | done |
 | B3 Packer | done |
-| B4 Turns | next |
-| B5 Wire | to do |
+| B4 Turns | done |
+| B5 Wire | next |
 | B6 Keys | to do |
 | B7 Effect forms | to do |
 | B8a Material composite | to do, a bug |
@@ -233,24 +233,27 @@ makes these one, and keeps the pipelines above.
   CSS's `background-repeat: no-repeat` lays an image in its box. Every image draw carries its
   shape, and the composer draws one quad over the image's rect where the shape is a
   square-cornered box, which cuts nothing past it. Landed in B2.
-- **[part: curve and polyline in B4] A spin belongs to the draw, never to its geometry.** It is a paint animation's turn of the
+- **[done] A spin belongs to the draw, never to its geometry.** It is a paint animation's turn of the
   whole draw, so every payload holds `spin: Option<Spin>` beside its shape, a curve's and a
   polyline's too. Refused: a spin inside `QuadGeometry`'s variants (gone in B1) or inside
   `StrokeBounds`.
-- **[B4] A turn reaches every draw through the gate, as a fade does.** `PaintSink::draw(payload,
-  PaintMod { alpha, spin })`, and `PaintPayload::turned` beside `faded`, so no encoder arm can
-  forget to turn. Refused: a turn passed by hand in each arm.
-- **[B4] One pivot frame, the encoder's logical frame.** `Spin::about_owner` loses its `origin`
+- **[done] A turn reaches every draw through the gate, as a fade does.** `PaintSink::draw(payload,
+  DrawAnimation { alpha, spin })`, and `PaintPayload::turned` beside `faded`, so no encoder arm can
+  forget to turn; an `f32` is a fade alone, the draw of chrome and of most tests. A draw turns once.
+  Refused: a turn passed by hand in each arm; `PaintMod`, the cursor's sample, which holds the
+  rotation and the time, not the pivot a draw turns about.
+- **[done] One pivot frame, the encoder's logical frame.** `Spin::about_owner` loses its `origin`
   parameter; a payload with an `origin` (mesh, curve, polyline) subtracts it where it turns its own
   points. Refused: a pivot whose frame depends on the payload, two readings of one field.
-- **[B4] The composer culls a turned draw by its bound at this frame's angle; the cascade keeps the
-  swept one.** The cull asks whether the draw paints in this frame's damage, which the turned
+- **[done] The composer culls a turned draw by its bound at this frame's angle; the cascade keeps
+  the swept one.** The cull asks whether the draw paints in this frame's damage, which the turned
   bound answers: a rect's turned bound, a curve's turned control points or arc, which the composer
   turns already. The cascade's paint rect must hold across an animation's frames, which the swept
   square (`spun_cover`) does. Refused: the swept square in the composer, as meshes and strokes use
   it now, which admits draws that paint nothing in the damage; `StrokeBounds`, a cull bound stored
-  where the composer derives it from the geometry. Cost: the polyline keeps its record's `bbox` in
-  its geometry, as a scan of its points is O(n).
+  where the composer derives it from the geometry: a curve's from its turned basis. Cost: the
+  polyline keeps its record's `bbox` in its payload, as a scan of its points is O(n), and grows
+  from 72 to 84 B with its turn beside it; a curve shrinks from 88 to 84 B.
 - **[part: closed shapes done; strokes in B9] One enum per family and stage, over a struct per kind that owns its math.** Record:
   `ClosedGeometry { Box(BoxGeometry), Triangle(TriangleGeometry) }`, and `StrokeGeometry {
   Bezier(BezierGeometry), Arc(ArcGeometry), Polyline { … } }`. Placed: `PlacedClosed { Box {
@@ -317,8 +320,8 @@ The visual suite and the composer's captured streams prove it.
    lanes, which a fill and a shadow each write.
 3. [x] **B3 Packer**, done. `TemplateShape::of` and `turned` for every closed draw, a fill's, an
    image's, an effect's and a shadow's box; `PackedQuad` goes.
-4. [ ] **B4 Turns.** `PaintMod` through the gate, one pivot frame, the turned cull bound in the
-   composer; `StrokeBounds` goes.
+4. [x] **B4 Turns**, done. `DrawAnimation` through the gate, one pivot frame, the turned cull
+   bound in the composer; `StrokeBounds` goes.
 5. [ ] **B5 Wire.** `ShapeHeader` in Rust and WGSL; one reader replaces `instance_shape`,
    `shaped_vertex` and the reader in `palantir_vs`.
 6. [ ] **B6 Keys.** `ShapeForm`, `FillKind` as a brush tag, the key column for quads, `FAST_BIT` out.

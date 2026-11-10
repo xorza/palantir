@@ -234,3 +234,57 @@ fn the_gate_sees_the_faded_payload() {
     };
     assert_eq!(payload.alpha, 0.5);
 }
+
+/// The gate turns what it fades: a draw handed a turn reaches the sink with it, a polyline's
+/// alike, and a fade alone, an `f32`, leaves a draw as it was turned, still or not.
+#[test]
+fn the_gate_turns_the_payload() {
+    use crate::renderer::frontend::paint_sink::DrawAnimation;
+    use crate::renderer::frontend::payload::spin::Spin;
+
+    let turn = Spin {
+        pivot: Vec2::new(2.0, 2.0),
+        angle: 0.5,
+    };
+    let image = DrawClosedPayload::new(
+        PlacedClosed::inside(PlacedBox {
+            rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+            corners: Corners::ZERO,
+        }),
+        ClosedImage {
+            rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: RgbaF32::WHITE.to_f16(),
+            handle: TextureId(7),
+            flags: ImageFlags::NONE,
+            view: None,
+        },
+    );
+    let line = DrawPolylinePayload {
+        points: Span::new(0, 2),
+        width: 1.0,
+        alpha: 1.0,
+        ..Default::default()
+    };
+
+    let mut sink = PaintCapture::default();
+    let animation = DrawAnimation {
+        alpha: 1.0,
+        spin: Some(turn),
+    };
+    sink.draw(image, animation);
+    sink.draw(line, animation);
+    sink.draw(image, 1.0);
+    sink.draw(image.turned(Some(turn)), 1.0);
+    let spins: Vec<_> = sink
+        .calls
+        .iter()
+        .map(|call| match call {
+            PaintCall::Image(p) => p.spin,
+            PaintCall::Polyline(p) => p.spin,
+            other => panic!("unexpected call {other:?}"),
+        })
+        .collect();
+    assert_eq!(spins, [Some(turn), Some(turn), None, Some(turn)]);
+}

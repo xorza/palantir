@@ -6,7 +6,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
@@ -16,13 +15,13 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// A spun shape's payload bounds are the rotation-invariant square about the owner-box center
-/// c = (40, 20) (box 80×40) holding the swept centerline bbox; the pivot is carried, not inferred.
-/// Polyline r = √(30² + 10²) ≈ 31.6228; arc bbox (40,20)..(60,30), r = √(20² + 10²). Arc lanes stay
-/// owner-local and unrotated; the composer spins them.
+/// A turned stroke's payload carries its turn about the owner's center in the encoder's logical
+/// frame, as every payload does, and its geometry owner-local and unturned: the composer turns it.
+/// The owner, 80 × 40, sits 30 px right of a spacer, so its center is (70, 20), where the
+/// owner-local frame would read (40, 20). The polyline keeps its points' box (10, 10)..(70, 30),
+/// and the arc its basis.
 #[test]
-fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
-    use crate::display::Display;
+fn a_turned_strokes_payload_carries_its_pivot_in_the_logical_frame() {
     use crate::internals::paint_capture::PaintCall;
     use crate::shape::Shape;
     use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
@@ -40,16 +39,16 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
         start_angle: 0.0,
         sweep: PI,
     };
-    let c = Vec2::new(40.0, 20.0);
-    for (spun, half_extent) in [
-        (Spun::Polyline, 30.0_f32.libm_hypot(10.0)),
-        (Spun::Arc, 20.0_f32.libm_hypot(10.0)),
-    ] {
-        let display = Display::from_physical(UVec2::new(200, 200), 1.0);
-        let mut h = Harness::mono(display.physical);
+    let center = Vec2::new(70.0, 20.0);
+    for spun in [Spun::Polyline, Spun::Arc] {
+        let mut h = Harness::mono(UVec2::new(200, 200));
         // 1 s at 1 rad/s samples a rotation of 1 rad, so the encoder takes the spin branch.
         h.at(Duration::from_secs(1)).frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("spacer"))
+                    .size((Sizing::fixed(30.0), Sizing::fixed(40.0)))
+                    .show(ui);
                 Panel::zstack()
                     .id(WidgetId::from_hash("spin_owner"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
@@ -58,62 +57,43 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
                             .with_started_at(Duration::ZERO)
                             .with_period(Duration::from_secs_f32(TAU / 1.0))
                             .with_repeat(PaintRepeat::Forever);
-                        match spun {
-                            Spun::Polyline => {
-                                if let Some(shape) = ui.add_shape(
-                                    Shape::polyline(&[
-                                        Vec2::new(10.0, 10.0),
-                                        Vec2::new(70.0, 30.0),
-                                    ]),
-                                    Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
-                                ) {
-                                    shape.animate(turn);
-                                }
-                            }
-                            Spun::Arc => {
-                                if let Some(shape) = ui.add_shape(
-                                    Shape::arc(arc.start_angle, arc.sweep).at(Rect::new(
-                                        arc.center.x - arc.radius,
-                                        arc.center.y - arc.radius,
-                                        2.0 * arc.radius,
-                                        2.0 * arc.radius,
-                                    )),
-                                    Stroke::new(RgbaF32::WHITE, 2.0),
-                                ) {
-                                    shape.animate(turn);
-                                }
-                            }
-                        }
+                        let shape = match spun {
+                            Spun::Polyline => ui.add_shape(
+                                Shape::polyline(&[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)]),
+                                Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 1.0),
+                            ),
+                            Spun::Arc => ui.add_shape(
+                                Shape::arc(arc.start_angle, arc.sweep).at(Rect::new(
+                                    arc.center.x - arc.radius,
+                                    arc.center.y - arc.radius,
+                                    2.0 * arc.radius,
+                                    2.0 * arc.radius,
+                                )),
+                                Stroke::new(RgbaF32::WHITE, 2.0),
+                            ),
+                        };
+                        shape.expect("the stroke paints").animate(turn);
                     });
             });
         });
         let cmds = h.encode_paint();
-        let bounds = match (spun, cmds.calls.as_slice()) {
-            (Spun::Polyline, [PaintCall::Polyline(p)]) => p.bounds,
+        let spin = match (spun, cmds.calls.as_slice()) {
+            (Spun::Polyline, [PaintCall::Polyline(p)]) => {
+                assert_eq!(p.bbox, Rect::new(10.0, 10.0, 60.0, 20.0), "owner-local box");
+                assert_eq!(p.origin, Vec2::new(30.0, 0.0));
+                p.spin
+            }
             (Spun::Arc, [PaintCall::Curve(p)]) => {
-                assert_eq!(p.basis, CurveBasis::Arc(arc), "the lanes stay owner-local");
-                p.bounds
+                assert_eq!(p.basis, CurveBasis::Arc(arc), "the basis stays owner-local");
+                assert_eq!(p.origin, Vec2::new(30.0, 0.0));
+                p.spin
             }
             _ => panic!("{spun:?}: expected one draw, got {:?}", cmds.kinds()),
         };
-        let spin = bounds.spin().expect("spin must sample a non-zero rotation");
-        assert_eq!(spin.pivot, c, "{spun:?} pivot {:?}", spin.pivot);
-        assert!(spin.angle != 0.0, "{spun:?}");
-        let cull = bounds.cull_rect();
-        let square = Rect::new(
-            c.x - half_extent,
-            c.y - half_extent,
-            2.0 * half_extent,
-            2.0 * half_extent,
-        );
-        assert_eq!(cull, square, "{spun:?}");
+        let spin = spin.expect("the turn samples a non-zero rotation");
+        assert_eq!(spin.pivot, center, "{spun:?}");
+        assert_eq!(spin.angle, 1.0, "{spun:?}");
     }
-    // The polyline's far endpoint rotated 90° about c stays inside its
-    // square, and outside the owner box.
-    let p_rot = c + Vec2::new(-10.0, 30.0);
-    let r = 30.0_f32.libm_hypot(10.0);
-    assert!(Rect::new(c.x - r, c.y - r, 2.0 * r, 2.0 * r).contains(p_rot));
-    assert!(!Rect::new(0.0, 0.0, 80.0, 40.0).contains(p_rot));
 }
 
 /// `Panel::transform` applies to the panel's body (direct shapes and child subtrees), not its chrome.

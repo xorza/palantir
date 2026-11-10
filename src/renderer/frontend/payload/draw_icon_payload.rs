@@ -39,6 +39,10 @@ impl PaintPayload for DrawIconPayload {
         self.rect.is_paint_empty() || self.tint.is_noop()
     }
 
+    fn spin_mut(&mut self) -> &mut Option<Spin> {
+        &mut self.spin
+    }
+
     fn paint(self, sink: &mut impl PaintSink) {
         sink.icon(self);
     }

@@ -49,6 +49,10 @@ impl PaintPayload for DrawMeshPayload {
             || self.tint.is_noop()
     }
 
+    fn spin_mut(&mut self) -> &mut Option<Spin> {
+        &mut self.spin
+    }
+
     fn paint(self, sink: &mut impl PaintSink) {
         sink.mesh(self);
     }

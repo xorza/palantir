@@ -315,7 +315,10 @@ impl PaintSink for ComposeSession<'_> {
         // like polyline's AA fringe: overlap-test false negatives reorder paint. Mesh
         // skips snapping, so it cannot use `scaled_rect`.
         let to_physical = self.composer.transform.physical_map(p.origin);
-        let bbox = p.spin.map_or(p.bbox, |spin| p.bbox.spun_cover(spin.pivot));
+        // The vertices are relative to `origin`, and so the pivot they turn about; the cull takes
+        // the bound at this frame's angle.
+        let spin = p.spin.map(|spin| spin.relative_to(p.origin));
+        let bbox = spin.map_or(p.bbox, |spin| p.bbox.turned_cover(spin.pivot, spin.angle));
         let physical = to_physical.bbox(bbox);
         let fringe = Vec2::splat(AA_HALF_WIDTH);
         let mesh_urect = geometry::urect_from_physical(
@@ -336,10 +339,8 @@ impl PaintSink for ComposeSession<'_> {
         // `o + S·pos`, and a turn about the pivot `c` maps that to `R(o + S·pos - c) + c`, so the
         // instance takes `s·R·S` as its linear part and `s·(R(o - c) + c)` into its translate.
         let scale_physical = self.composer.transform.physical_scale();
-        let rotor = p
-            .spin
-            .map_or(Vec2::X, |spin| Vec2::libm_from_angle(spin.angle));
-        let pivot = p.spin.map_or(Vec2::ZERO, |spin| spin.pivot);
+        let rotor = spin.map_or(Vec2::X, |spin| Vec2::libm_from_angle(spin.angle));
+        let pivot = spin.map_or(Vec2::ZERO, |spin| spin.pivot);
         let x_axis = rotor * (scale_physical * p.fit.scale.x);
         let y_axis = rotor.perp() * (scale_physical * p.fit.scale.y);
         let translate = to_physical.point(rotor.rotate(p.fit.offset - pivot) + pivot);
@@ -515,12 +516,13 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn curve(&mut self, p: DrawCurvePayload) {
+        let p = CurveRun::turn(p);
         let transform = self.composer.transform.cur();
         let width_physical = p.width * self.composer.transform.physical_scale();
         let cap = p.cap;
         let bbox_urect = StrokeBbox {
             transform,
-            bbox: p.bounds.cull_rect(),
+            bbox: p.basis.bbox(),
             origin: p.origin,
             width_physical,
             cap,
@@ -548,10 +550,13 @@ impl PaintSink for ComposeSession<'_> {
         let width_physical = p.width * self.composer.transform.physical_scale();
 
         // Inflated physical AABB, culled once and ordered once it proves to emit. Inflating by
-        // the stroke fringe means the cull never trims reachable pixels.
+        // the stroke fringe means the cull never trims reachable pixels. The points are relative
+        // to `origin`, and so the pivot they turn about; the cull takes their bound at this
+        // frame's angle.
+        let spin = p.spin.map(|spin| spin.relative_to(p.origin));
         let bbox = StrokeBbox {
             transform,
-            bbox: p.bounds.cull_rect(),
+            bbox: spin.map_or(p.bbox, |spin| p.bbox.turned_cover(spin.pivot, spin.angle)),
             origin: p.origin,
             width_physical,
             cap,
@@ -569,7 +574,7 @@ impl PaintSink for ComposeSession<'_> {
         // Physical px with the owner origin folded in. No snapping: it would shift thin lines
         // off-axis.
         let to_physical = self.composer.transform.physical_map(p.origin);
-        let rotor = p.bounds.spin().map(Spin::rotor);
+        let rotor = spin.map(Spin::rotor);
         let kept = self.composer.polyline.keep(src_points.iter().map(|&q| {
             let q = p.fit.apply(q);
             to_physical.point(rotor.map_or(q, |rotor| rotor.apply(q)))

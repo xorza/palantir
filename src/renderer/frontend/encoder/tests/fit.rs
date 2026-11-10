@@ -244,7 +244,7 @@ fn a_polyline_fits_its_owner_where_it_is_drawn() {
             scale: Vec2::new(4.0, 2.0),
         }
     );
-    assert_eq!(p.bounds.cull_rect(), Rect::new(0.0, 0.0, 40.0, 20.0));
+    assert_eq!(p.bbox, Rect::new(0.0, 0.0, 40.0, 20.0));
 }
 
 /// An arc of no sweep paints its round cap as a disc in the stroke color times its ramp at the

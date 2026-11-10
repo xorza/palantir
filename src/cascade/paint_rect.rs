@@ -192,7 +192,9 @@ impl PaintRectCtx<'_> {
             None => {}
         }
 
-        // The owner-local bound a shape is damaged against: its own bound, or the square that bound sweeps under a rotating paint anim (what the composer culls against). No angle is read.
+        // The owner-local bound a shape is damaged against: its own bound, or the square that
+        // bound sweeps under a rotating paint anim, which holds at every angle; the composer culls
+        // by the bound at this frame's. No angle is read.
         let spun_if_animated = |bbox: Rect, shape_idx: u32| {
             if tree.paint_animations.rotates(shape_idx) {
                 bbox.spun_cover(layout_rect.spin_pivot())

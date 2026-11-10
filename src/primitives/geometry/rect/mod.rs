@@ -233,7 +233,8 @@ impl Rect {
         Self::from_min_max(center - reach, center + reach)
     }
 
-    /// The square this rect covers at every rotation about `pivot`; angle-free, so composer culling and cascade damage agree.
+    /// The square this rect covers at every rotation about `pivot`; angle-free, so a cascade
+    /// bound holds over every frame of a turning paint animation.
     #[inline]
     pub(crate) fn spun_cover(self, pivot: Vec2) -> Self {
         Self::square_about(pivot, self.spun_radius(pivot))

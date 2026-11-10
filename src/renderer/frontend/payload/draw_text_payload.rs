@@ -38,6 +38,10 @@ impl PaintPayload for DrawTextPayload {
         self.rect.is_paint_empty() || self.color.is_noop()
     }
 
+    fn spin_mut(&mut self) -> &mut Option<Spin> {
+        &mut self.spin
+    }
+
     fn paint(self, sink: &mut impl PaintSink) {
         sink.text(self);
     }

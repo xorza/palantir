@@ -25,12 +25,6 @@ impl DrawShadowPayload {
             shadow,
         }
     }
-
-    /// This draw turned by `spin`.
-    pub(crate) const fn turned(mut self, spin: Option<Spin>) -> Self {
-        self.spin = spin;
-        self
-    }
 }
 
 impl PaintPayload for DrawShadowPayload {
@@ -59,6 +53,10 @@ impl PaintPayload for DrawShadowPayload {
             self.source.rect.inflated(self.shadow.geometry().halo())
         };
         covered.is_paint_empty() || self.shadow.is_noop()
+    }
+
+    fn spin_mut(&mut self) -> &mut Option<Spin> {
+        &mut self.spin
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

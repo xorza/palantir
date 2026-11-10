@@ -4,17 +4,21 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::paint::line_style::LineCap;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use glam::Vec2;
 
-/// Native GPU stroke payload, a cubic or an arc per [`CurveBasis`]. The composer adds `origin` and the push-transform stack, scales to physical px and pushes `CurveInstance`(s) onto `RenderBuffer.curves`. `bounds` is the owner-local centerline AABB, or the spin and pivot; the composer adds the stroke/cap/AA bound for culling.
+/// Native GPU stroke payload, a cubic or an arc per [`CurveBasis`], owner-local. The composer turns
+/// it by `spin`, culls it by its turned centerline's bounds grown by the stroke, cap and AA, adds
+/// `origin` and the push-transform stack, scales to physical px and pushes `CurveInstance`(s) onto
+/// `RenderBuffer.curves`.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) basis: CurveBasis,
-    /// Cull bound plus the spin, if any. The composer rotates about the pivot exactly: a Bézier by affine invariance, a circle by moving its center and shifting both angles.
-    pub(crate) bounds: StrokeBounds,
     pub(crate) origin: Vec2,
+    /// A paint animation's turn. The composer turns the basis about the pivot exactly: a Bézier by
+    /// affine invariance, a circle by moving its center and shifting both angles.
+    pub(crate) spin: Option<Spin>,
     /// Solid or ramp; [`GpuFill::curve`] makes no other kind. A curve reads no gradient geometry lane, so [`GpuFill`] is its whole paint.
     pub(crate) fill: GpuFill,
     pub(crate) width: f32,
@@ -47,6 +51,10 @@ impl PaintPayload for DrawCurvePayload {
             return true;
         }
         self.fill.is_noop()
+    }
+
+    fn spin_mut(&mut self) -> &mut Option<Spin> {
+        &mut self.spin
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

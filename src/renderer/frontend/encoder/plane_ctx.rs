@@ -18,7 +18,7 @@ use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
-use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::paint_sink::{DrawAnimation, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
@@ -37,7 +37,6 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::tree::Tree;
 use crate::scene::tree::backdrop_entry::BackdropOrigin;
@@ -56,7 +55,6 @@ use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
-use crate::shape::paint_animation::paint_mod::PaintMod;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -111,14 +109,13 @@ struct NativeStroke {
 }
 
 /// A closed shape's fill as one paint call draws it: the shape in the logical frame, its lowered
-/// paint, where its backdrop is recorded, a paint animation's turn and its opacity.
+/// paint, where its backdrop is recorded, and what its paint animation does to it this frame.
 #[derive(Clone, Copy, Debug)]
 struct FillItem {
     geometry: PlacedClosed,
     paint: LoweredPaint,
     site: BackdropSite,
-    spin: Option<Spin>,
-    alpha: f32,
+    animation: DrawAnimation,
 }
 
 /// Where a backdrop is recorded: by its owner, as its chrome or its shape at `shape_idx`.
@@ -163,8 +160,7 @@ impl PlaneCtx<'_, '_> {
                     material,
                 },
             site,
-            spin,
-            alpha,
+            animation,
         } = item;
         let fill = self.brush_source(fill);
         let backdrop = self.backdrop_look(site, material);
@@ -185,40 +181,37 @@ impl PlaneCtx<'_, '_> {
                         .corners
                         .inner(placed.rect.size, Spacing::saturating([width; 4])),
                 };
-                Some(DrawShadowPayload::new(source, shadow).turned(spin))
+                Some(DrawShadowPayload::new(source, shadow))
             }
             // The box's rect, as `compute_paint_rect` and `LoweredPaint::bbox_local` mirror.
-            PlacedClosed::Box { placed, .. } => {
-                Some(DrawShadowPayload::new(placed, shadow).turned(spin))
-            }
+            PlacedClosed::Box { placed, .. } => Some(DrawShadowPayload::new(placed, shadow)),
             PlacedClosed::Triangle(_) => {
                 debug_assert!(shadow.is_noop(), "a triangle casts no shadow");
                 None
             }
         };
         if let Some(shadow) = shadow.filter(|_| !inset) {
-            out.draw(shadow, alpha);
+            out.draw(shadow, animation);
         }
         match backdrop {
             Some(look) => out.draw(
                 DrawClosedPayload::new(
                     geometry,
                     ClosedEffect::material(look.material, look.read, fill, border),
-                )
-                .turned(spin),
-                alpha,
+                ),
+                animation,
             ),
             None => out.draw(
-                DrawClosedPayload::new(geometry, ClosedFill::new(fill, border)).turned(spin),
-                alpha,
+                DrawClosedPayload::new(geometry, ClosedFill::new(fill, border)),
+                animation,
             ),
         }
         if let Some(shadow) = shadow.filter(|_| inset) {
-            out.draw(shadow, alpha);
+            out.draw(shadow, animation);
         }
     }
 
-    /// Draw `native` in `owner_rect`, faded and turned by `paint_mod`: its curve on the curve
+    /// Draw `native` in `owner_rect`, faded and turned by `animation`: its curve on the curve
     /// pipeline, owner-local, the basis crossing verbatim so cull, spin and sub-instance sizing
     /// stay one code path; or its cap's dot as a box, in the stroke color times the ramp at its
     /// start.
@@ -226,7 +219,7 @@ impl PlaneCtx<'_, '_> {
         &mut self,
         native: NativeStroke,
         owner_rect: Rect,
-        paint_mod: PaintMod,
+        animation: DrawAnimation,
         out: &mut impl PaintSink,
     ) {
         let NativeStroke {
@@ -244,13 +237,13 @@ impl PlaneCtx<'_, '_> {
                 out.draw(
                     DrawCurvePayload {
                         basis,
-                        bounds: StrokeBounds::new(owner_rect, basis.bbox(), paint_mod.rotation),
                         origin: owner_rect.min,
+                        spin: None,
                         fill: GpuFill::curve(stroke.color, ramp_row),
                         width: stroke.width,
                         cap,
                     },
-                    paint_mod.alpha,
+                    animation,
                 );
             }
             PlacedStroke::Dot(PlacedBox { rect, corners }) => {
@@ -264,14 +257,12 @@ impl PlaneCtx<'_, '_> {
                     rect: owner_rect.resolve_local(Some(rect)),
                     corners,
                 });
-                let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
                 out.draw(
                     DrawClosedPayload::new(
                         dot,
                         ClosedFill::new(BrushSource::Solid(color), LoweredBorder::NONE),
-                    )
-                    .turned(spin),
-                    paint_mod.alpha,
+                    ),
+                    animation,
                 );
             }
             PlacedStroke::Nothing => {}
@@ -345,16 +336,17 @@ impl PlaneCtx<'_, '_> {
             "a NaN reached the encoder past the shape setters' checks: {shape:?}",
         );
         let shaped = runs.shaped(shape, self.layout);
-        // Early-out so a shape animated to nothing doesn't pay for its geometry; `paint_mod.rotation` rides the stroke arms via `StrokeBounds`.
+        // Early-out so a shape animated to nothing doesn't pay for its geometry.
         let paint_mod = self.paint_animation_cursor.sample(shape_idx, self.now);
         if is_invisible(paint_mod.alpha) {
             return;
         }
-        let alpha = paint_mod.alpha;
         let owner_rect = self.layout.rect[id.idx()];
-        // The turn for payloads placed in the logical placement; a payload with an origin of its own
-        // takes `Spin::about_owner` with that origin.
-        let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
+        // The gate fades and turns every draw of the shape by it, about the owner's center.
+        let animation = DrawAnimation {
+            alpha: paint_mod.alpha,
+            spin: Spin::about_owner(owner_rect, paint_mod.rotation),
+        };
         match shape {
             ShapeRecord::Closed { geometry, paint } => {
                 let Some(placed) = geometry.place(owner_rect) else {
@@ -371,8 +363,7 @@ impl PlaneCtx<'_, '_> {
                             geometry: placed,
                             paint: *paint,
                             site,
-                            spin,
-                            alpha,
+                            animation,
                         },
                         out,
                     ),
@@ -433,9 +424,8 @@ impl PlaneCtx<'_, '_> {
                                     flags,
                                     view,
                                 },
-                            )
-                            .turned(spin),
-                            alpha,
+                            ),
+                            animation,
                         );
                     }
                     ClosedPaint::Icon {
@@ -449,9 +439,9 @@ impl PlaneCtx<'_, '_> {
                             icon: handle.icon,
                             tint: *tint,
                             desaturate: *desaturate,
-                            spin,
+                            spin: None,
                         },
-                        alpha,
+                        animation,
                     ),
                     // An effect fades, turns and reads its time with its paint animation. A
                     // backdrop effect the cascade lists not lies outside every clip.
@@ -487,9 +477,8 @@ impl PlaneCtx<'_, '_> {
                                     opacity: 1.0,
                                     time: paint_mod.time,
                                 },
-                            )
-                            .turned(spin),
-                            alpha,
+                            ),
+                            animation,
                         );
                     }
                 }
@@ -523,9 +512,9 @@ impl PlaneCtx<'_, '_> {
                         ink: shaped.extent.ink,
                         color: *color,
                         text: ShapedTextRef::new(key, text),
-                        spin,
+                        spin: None,
                     },
-                    alpha,
+                    animation,
                 );
             }
             ShapeRecord::Polyline {
@@ -542,12 +531,9 @@ impl PlaneCtx<'_, '_> {
                 let fit = placement.map(*bbox, owner_rect.size);
                 out.draw(
                     DrawPolylinePayload {
-                        bounds: StrokeBounds::new(
-                            owner_rect,
-                            fit.apply_rect(*bbox),
-                            paint_mod.rotation,
-                        ),
+                        bbox: fit.apply_rect(*bbox),
                         origin: owner_rect.min,
+                        spin: None,
                         fit,
                         width: *width,
                         points: *points,
@@ -557,7 +543,7 @@ impl PlaneCtx<'_, '_> {
                         join: *join,
                         alpha: 1.0,
                     },
-                    alpha,
+                    animation,
                 );
             }
             ShapeRecord::Mesh {
@@ -577,9 +563,9 @@ impl PlaneCtx<'_, '_> {
                         tint: *tint,
                         vertices: *vertices,
                         idxs: *idxs,
-                        spin: Spin::about_owner(owner_rect, owner_rect.min, paint_mod.rotation),
+                        spin: None,
                     },
-                    alpha,
+                    animation,
                 );
             }
             ShapeRecord::Curve {
@@ -594,7 +580,7 @@ impl PlaneCtx<'_, '_> {
                     stroke: *stroke,
                     ramp: *ramp,
                 };
-                self.paint_native_stroke(native, owner_rect, paint_mod, out);
+                self.paint_native_stroke(native, owner_rect, animation, out);
             }
             ShapeRecord::Arc {
                 cap,
@@ -608,7 +594,7 @@ impl PlaneCtx<'_, '_> {
                     stroke: *stroke,
                     ramp: *ramp,
                 };
-                self.paint_native_stroke(native, owner_rect, paint_mod, out);
+                self.paint_native_stroke(native, owner_rect, animation, out);
             }
         }
     }
@@ -658,8 +644,7 @@ impl PlaneCtx<'_, '_> {
                         origin: BackdropOrigin::Chrome,
                         shape_idx: self.tree.records.shape_span()[id.idx()].start,
                     },
-                    spin: None,
-                    alpha: 1.0,
+                    animation: DrawAnimation::STILL,
                 },
                 out,
             );

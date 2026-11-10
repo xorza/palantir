@@ -5,25 +5,33 @@ use crate::primitives::math::libm_ext::LibmVec2;
 use glam::Vec2;
 
 /// Logical px, as the encoder places a payload: the composer maps it to a draw row's
-/// [`RowSpin`](crate::renderer::render_buffer::row_spin::RowSpin).
+/// [`RowSpin`](crate::renderer::render_buffer::row_spin::RowSpin). One frame for every payload:
+/// one with an `origin` of its own turns its points about [`Self::relative_to`] that origin.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Spin {
-    /// The owner box's center, relative to the payload's `origin`; in the encoder's logical frame
-    /// for a payload with no origin.
+    /// The owner box's center, in the encoder's logical frame.
     pub(crate) pivot: Vec2,
     /// Radians, applied to each point before the ancestor transform.
     pub(crate) angle: f32,
 }
 
 impl Spin {
-    /// The turn `rotation` radians about `owner_rect`'s center, for a payload whose points are
-    /// relative to `origin`; `None` when there is no turn.
+    /// The turn `rotation` radians about `owner_rect`'s center; `None` when there is no turn.
     #[inline]
-    pub(crate) fn about_owner(owner_rect: Rect, origin: Vec2, rotation: f32) -> Option<Self> {
+    pub(crate) fn about_owner(owner_rect: Rect, rotation: f32) -> Option<Self> {
         (rotation != 0.0).then(|| Self {
-            pivot: (owner_rect.min - origin) + owner_rect.spin_pivot(),
+            pivot: owner_rect.min + owner_rect.spin_pivot(),
             angle: rotation,
         })
+    }
+
+    /// This turn with its pivot relative to `origin`, for points a payload holds from it.
+    #[inline]
+    pub(crate) fn relative_to(self, origin: Vec2) -> Self {
+        Self {
+            pivot: self.pivot - origin,
+            ..self
+        }
     }
 
     /// Rotation with `sin`/`cos` computed once, since callers turn many points.

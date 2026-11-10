@@ -248,8 +248,9 @@ fn button_hover_and_unhover_damage_cover_only_the_button() {
     }
 }
 
-/// A turning shape of each kind that turns is damaged against the square its bound sweeps,
-/// matching what the composer culls against, so `extend_predamaged` covers every angle.
+/// A turning shape of each kind that turns is damaged against the square its bound sweeps, which
+/// holds the bound the composer culls by at every angle, so `extend_predamaged` covers every
+/// angle.
 ///
 /// Fixture: 80x40 owner, pivot (40,20). Each shape spans (10,10)-(70,30): a line between those
 /// corners, a triangle and a mesh with one vertex on each, a rect, and six mono glyphs 10 wide at
