@@ -17,7 +17,7 @@ use crate::gpu::pipeline::instanced_pipeline::{
 };
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
-use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
+use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -66,7 +66,7 @@ impl CurvePipeline {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.curve.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[GRADIENT, wgsl::GRADIENT_LUT],
+        includes: &[wgsl::GRADIENT, wgsl::GRADIENT_LUT],
         constants: SHADER_CONSTANTS,
     };
 

@@ -21,7 +21,7 @@ use crate::gpu::pipeline::quad_pipeline::quad_draw::{
     QuadDraw, QuadDraws, ShadowCells, ShapeCells,
 };
 use crate::gpu::pipeline::runs::Runs;
-use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
+use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::shape_template;
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -244,7 +244,7 @@ impl QuadPipeline {
         label: "palantir.quad.shader",
         wgsl: include_str!("quad.wgsl"),
         includes: &[
-            GRADIENT,
+            wgsl::GRADIENT,
             wgsl::GRADIENT_LUT,
             wgsl::GRADIENT_FILL,
             include_str!("paint.wgsl"),

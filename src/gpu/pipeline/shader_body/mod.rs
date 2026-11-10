@@ -14,10 +14,6 @@ const PRELUDE: [&str; 4] = [
     wgsl::SDF,
 ];
 
-/// The gradient group's bindings, for the shaders that bind it, before the LUT read they share
-/// with the effect modules.
-pub(crate) const GRADIENT: &str = include_str!("../gradient.wgsl");
-
 /// A shader body a pipeline family owns: its WGSL, its label, and the numbers it takes from the
 /// Rust types that own them. Every shader is built through [`Self::module`], so the prelude
 /// precedes all and an unsubstituted marker panics rather than compiling with a comment where a
