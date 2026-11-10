@@ -18,6 +18,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
@@ -144,8 +145,20 @@ fn a_material_lowers_as_it_reads() {
     let id = EffectId(3);
     let mut store = RecordStore::default();
     for (read, captures) in [
-        (Some(MaterialRead::Capture(id)), Some(true)),
-        (Some(MaterialRead::Ground(id)), Some(false)),
+        (
+            Some(MaterialRead {
+                effect: id,
+                mode: BackdropMode::Capture,
+            }),
+            Some(true),
+        ),
+        (
+            Some(MaterialRead {
+                effect: id,
+                mode: BackdropMode::Ground,
+            }),
+            Some(false),
+        ),
         (None, None),
     ] {
         let row = chrome(&mut store, &frosted, Border::NONE, read);
@@ -295,10 +308,10 @@ fn chrome_lowering_keeps_an_authored_field() {
     let hashes: Vec<_> = variants
         .iter()
         .map(|(label, authored)| {
-            let read = authored
-                .paint
-                .material
-                .map(|_| MaterialRead::Capture(EffectId(2)));
+            let read = authored.paint.material.map(|_| MaterialRead {
+                effect: EffectId(2),
+                mode: BackdropMode::Capture,
+            });
             (
                 *label,
                 chrome(&mut store, authored, Border::NONE, read).hash,

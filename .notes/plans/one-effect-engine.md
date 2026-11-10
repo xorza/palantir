@@ -35,11 +35,12 @@ Each step lands on its own, with the gate green, and its own commit.
 reductions, and `MaterialRead::resolve` and `RecordStore::record_effect` each decide
 `ReducedBackdrop::Nothing` and `Ground` for themselves.
 
-- One record-level type for the read, beside the resolved `EffectId`, and one function that
-  resolves it from the reductions and the paint's `ReducedBackdrop`. `LoweredMaterial` and
-  `ShapeRecord::EffectPaint` both hold it.
-- Tests: one table over transparency reduced or not × `Ground` or `Nothing` × material or effect
-  paint, each case's exact read; the existing reduced-transparency tests of both pass unchanged.
+- Done: one `BackdropMode` (`Capture | Ground`) and one resolve, `ReducedBackdrop::mode`, which a
+  material's `MaterialRead` (now its effect and its mode) and `record_effect` both take. The
+  effect record still carries its capture in `EffectBackdrop::Capture`, as the material keeps its
+  σ and lens apart: step 2 gives both one capture and one `EffectBackdrop`.
+- Tests: a table over the choice × the setting in `reduced_backdrop.rs`; the material's and the
+  backdrop effect's reduced-transparency tests pass unchanged.
 
 ### 2. One capture
 

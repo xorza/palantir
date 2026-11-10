@@ -9,7 +9,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_input::MaterialInput;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+use crate::primitives::paint::material::reduced_backdrop::{BackdropMode, ReducedBackdrop};
 use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::reduction::{Reduction, Reductions};
@@ -21,7 +21,14 @@ use crate::shape::sealed::DrawWith as _;
 /// `material` lowered through effect 0, capturing, with its input staged in a store of its own.
 fn lowered(material: &Material) -> LoweredMaterial {
     let mut store = RecordStore::default();
-    LoweredMaterial::lower(&mut store, material, MaterialRead::Capture(EffectId(0)))
+    LoweredMaterial::lower(
+        &mut store,
+        material,
+        MaterialRead {
+            effect: EffectId(0),
+            mode: BackdropMode::Capture,
+        },
+    )
 }
 
 /// The constructors name their stock effects and set exactly their own fields, each `with_*` its
@@ -153,16 +160,25 @@ fn a_material_reads_the_ground_or_nothing_while_transparency_is_reduced() {
     assert_eq!(id.0, 2);
     assert_eq!(
         MaterialRead::resolve(&blur, &effects, Reductions::FULL),
-        Some(MaterialRead::Capture(id))
+        Some(MaterialRead {
+            effect: id,
+            mode: BackdropMode::Capture
+        })
     );
     assert_eq!(
         MaterialRead::resolve(&blur, &effects, reduced),
-        Some(MaterialRead::Ground(id))
+        Some(MaterialRead {
+            effect: id,
+            mode: BackdropMode::Ground
+        })
     );
     let dim = blur.with_reduced_transparency(ReducedBackdrop::Nothing);
     assert_eq!(
         MaterialRead::resolve(&dim, &effects, Reductions::FULL),
-        Some(MaterialRead::Capture(id))
+        Some(MaterialRead {
+            effect: id,
+            mode: BackdropMode::Capture
+        })
     );
     assert_eq!(MaterialRead::resolve(&dim, &effects, reduced), None);
     // A name nothing loaded panics in every mode, a use that paints nothing included.
@@ -241,7 +257,14 @@ fn a_material_coerces_into_its_kinds_where_it_paints() {
         reduced_transparency: ReducedBackdrop::Ground,
     };
     let mut store = RecordStore::default();
-    let lowered = LoweredMaterial::lower(&mut store, &past, MaterialRead::Capture(EffectId(0)));
+    let lowered = LoweredMaterial::lower(
+        &mut store,
+        &past,
+        MaterialRead {
+            effect: EffectId(0),
+            mode: BackdropMode::Capture,
+        },
+    );
     assert_eq!(lowered.sigma(), 0.0);
     assert_eq!(lowered.min_luminance(), 0.0);
     let start = lowered.params as usize;

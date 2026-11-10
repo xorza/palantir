@@ -10,25 +10,22 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens_optics::LensOptics;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::reduction::Reductions;
 use crate::shape::record_store::RecordStore;
 
 /// What a box's material reads this record, as the reductions decide it, with the effect the
 /// registry resolved its name to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum MaterialRead {
-    /// What is painted under the box, captured and blurred: a backdrop.
-    Capture(EffectId),
-    /// The window's ground, its clear color, while transparency is reduced: no capture, no blur
-    /// and no backdrop.
-    Ground(EffectId),
+pub(crate) struct MaterialRead {
+    pub(crate) effect: EffectId,
+    pub(crate) mode: BackdropMode,
 }
 
 impl MaterialRead {
     /// What `material` reads under `reductions`, its effect resolved in `effects`; `None` where it
     /// paints nothing: an alternative of nothing for reduced motion or power, or
-    /// [`ReducedBackdrop::Nothing`] while transparency is reduced, where the box's fill paints as
+    /// [`ReducedBackdrop::Nothing`](crate::ReducedBackdrop::Nothing) while transparency is reduced, where the box's fill paints as
     /// it is.
     ///
     /// # Panics
@@ -46,14 +43,11 @@ impl MaterialRead {
             resolved.image_slots, 0,
             "a material effect's load refuses image slots"
         );
-        let reduced = reductions.transparency.is_reduced();
-        if reduced && material.reduced_transparency == ReducedBackdrop::Nothing {
-            return None;
-        }
-        Some(if reduced {
-            Self::Ground(resolved.id)
-        } else {
-            Self::Capture(resolved.id)
+        Some(Self {
+            effect: resolved.id,
+            mode: material
+                .reduced_transparency
+                .mode(reductions.transparency)?,
         })
     }
 }
@@ -126,14 +120,12 @@ impl LoweredMaterial {
 
     /// The effect it paints through.
     pub(crate) const fn effect(self) -> EffectId {
-        match self.read {
-            MaterialRead::Capture(effect) | MaterialRead::Ground(effect) => effect,
-        }
+        self.read.effect
     }
 
     /// Whether it reads what is painted under the box, a backdrop the cascade lists.
     pub(crate) const fn captures(self) -> bool {
-        matches!(self.read, MaterialRead::Capture(_))
+        matches!(self.read.mode, BackdropMode::Capture)
     }
 
     /// How far past the box, in physical px, its lens reads under `scale` physical px per logical
@@ -205,6 +197,7 @@ impl NanCheck for LoweredMaterial {
 pub(crate) mod internals {
     use crate::primitives::identity::effect_id::EffectId;
     use crate::primitives::packed::half_simd::F16x4;
+    use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
     use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 
     impl LoweredMaterial {
@@ -212,7 +205,10 @@ pub(crate) mod internals {
         /// lens or bound, and no input staged.
         pub(crate) fn fixture(sigma: f32) -> Self {
             Self {
-                read: MaterialRead::Capture(EffectId(0)),
+                read: MaterialRead {
+                    effect: EffectId(0),
+                    mode: BackdropMode::Capture,
+                },
                 params: 0,
                 input_hash: 0,
                 sigma: half::f16::from_f32(sigma).to_bits(),

@@ -28,7 +28,7 @@ use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::LineCap;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
@@ -471,8 +471,6 @@ impl RecordStore {
             reduced_transparency,
             images,
         } = paint;
-        let reduced =
-            matches!(kind, KindId::Backdrop) && resolve.reductions.transparency.is_reduced();
         // Resolved and checked in every mode and before the empty test, so a logic error panics
         // whatever is reduced and wherever it lies.
         let resolved = resolve.effects.resolve(name, resolve.reductions)?;
@@ -483,9 +481,16 @@ impl RecordStore {
             name.name.as_str(),
             resolved.image_slots,
         );
-        if geometry.is_paint_empty()
-            || (reduced && reduced_transparency == ReducedBackdrop::Nothing)
-        {
+        let backdrop = match kind {
+            KindId::Color => None,
+            KindId::Backdrop => Some(
+                match reduced_transparency.mode(resolve.reductions.transparency)? {
+                    BackdropMode::Capture => EffectBackdrop::Capture(capture),
+                    BackdropMode::Ground => EffectBackdrop::Ground,
+                },
+            ),
+        };
+        if geometry.is_paint_empty() {
             return None;
         }
         let effect = resolved.id;
@@ -497,11 +502,6 @@ impl RecordStore {
             h.write_u64(image.id().0);
             h.write_u32(image.generation());
         }
-        let backdrop = matches!(kind, KindId::Backdrop).then_some(if reduced {
-            EffectBackdrop::Ground
-        } else {
-            EffectBackdrop::Capture(capture)
-        });
         match backdrop {
             Some(EffectBackdrop::Capture(capture)) => {
                 h.write_u8(1);
