@@ -17,7 +17,7 @@ pub enum MotionRole {
     /// target, a single paint pass paints its end value
     /// ([`PaintRepeat::Held`](crate::widget::PaintRepeat::Held)) and a repeating one paints as if
     /// unanimated. Under reduced power with motion that follows the system a transition snaps, and
-    /// a paint loop runs on at its 30 Hz.
+    /// a paint loop runs on, at 30 Hz where the frame rate is reduced.
     #[default]
     Decorative,
     /// Motion essential to what the content says, which runs whatever the preference: a spinner's

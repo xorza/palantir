@@ -44,8 +44,8 @@
 //!     press after the frame's command key, waits for the next frame, so [`Harness::click`] is a
 //!     press frame then a release frame. [`Harness::frame`] runs the frames held input owes first
 //!     and answers from the last; [`Harness::step`] runs one.
-//! 13. **Reduced power spaces the frames.** While [`Ui::is_power_reduced`](crate::Ui::is_power_reduced)
-//!     holds, a frame starts no sooner than the last one's
+//! 13. **A reduced frame rate spaces the frames.** While
+//!     [`Ui::is_frame_rate_reduced`](crate::Ui::is_frame_rate_reduced) holds, a frame starts no sooner than the last one's
 //!     [`earliest_repaint_at`](crate::FrameReport::earliest_repaint_at): the clock moves to it, so
 //!     input fed inside the interval paints at its end, as on the desktop.
 //!

@@ -30,4 +30,10 @@ pub struct UiPreferences {
     /// Whether power use is reduced, from every window's next frame
     /// ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)).
     pub power: Preference<Reduction>,
+    /// Whether the frame rate is reduced, from every window's next frame
+    /// ([`Ui::is_frame_rate_reduced`](crate::Ui::is_frame_rate_reduced)); `System` reduces it
+    /// under reduced [`Self::power`], as WebKit and Chrome cap their frame rate in a power-saver
+    /// mode, and an app whose motion must stay smooth picks full, as a native app picks its own
+    /// rate (Apple's `CADisplayLink.preferredFrameRateRange`).
+    pub frame_rate: Preference<Reduction>,
 }

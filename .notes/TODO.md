@@ -10,7 +10,6 @@
 - optimal resolve strategies
 - box material?
 - Brush::Linear add conveninet ctors
-- flag whether to reduce fps on lowpower
 - material for texts and strokes?
 - outside effects in four rects
 

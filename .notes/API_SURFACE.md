@@ -2921,6 +2921,7 @@ Ui
         pub const fn is_transparency_reduced(&self) -> bool
         pub fn system_transparency_reduced(&self) -> bool
         pub const fn is_power_reduced(&self) -> bool
+        pub const fn is_frame_rate_reduced(&self) -> bool
         pub fn system_power_reduced(&self) -> bool
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
         pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
@@ -3007,6 +3008,7 @@ UiPreferences
         pub motion: Preference<Reduction>
         pub transparency: Preference<Reduction>
         pub power: Preference<Reduction>
+        pub frame_rate: Preference<Reduction>
 
 UnmetRequirements
     enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq

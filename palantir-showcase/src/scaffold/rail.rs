@@ -136,15 +136,15 @@ impl Nav {
     }
 }
 
-/// The tour's four preferences, each a grid row of its name beside a [`Segmented`] track: the
-/// scheme, motion, transparency and power. The names' column hugs the longest, so the tracks share
+/// The tour's five preferences, each a grid row of its name beside a [`Segmented`] track: the
+/// scheme, motion, transparency, power and frame rate. The names' column hugs the longest, so the tracks share
 /// both edges. A press sets one for every window. Here alone, apart from the pages, so no demo
 /// reads as one of them.
 pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
     Grid::new()
         .id_salt("preferences")
         .cols([Track::HUG, Track::FILL])
-        .rows([Track::HUG; 4])
+        .rows([Track::HUG; 5])
         .gap(NAME_GAP)
         .line_gap(M.space.sm)
         .size((Sizing::FILL, Sizing::HUG))
@@ -203,11 +203,24 @@ fn preference_rows(ui: &mut Ui, track: &Segmented) {
         held.power,
         follows_reduction(ui.system_power_reduced()),
     );
+    let frame_rate = track.row(
+        ui,
+        4,
+        "Frame rate",
+        REDUCE,
+        held.frame_rate,
+        if ui.is_power_reduced() {
+            "Follows the power, 30 Hz now"
+        } else {
+            "Follows the power, full now"
+        },
+    );
     ui.set_preferences(UiPreferences {
         scheme,
         motion,
         transparency,
         power,
+        frame_rate,
     });
 }
 

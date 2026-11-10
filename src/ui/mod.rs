@@ -408,10 +408,8 @@ impl Ui {
 
     /// Whether this frame runs with power use reduced: [`UiPreferences::power`] resolved against
     /// [`Self::system_power_reduced`] at the frame's start, so no frame mixes two, and a move
-    /// records every window again. Then every host starts a frame at most at 30 Hz, on whole
-    /// refresh periods, input frames included
-    /// ([`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at)),
-    /// transparency reduces and every [`Self::animate`] and theme transition snaps where its
+    /// records every window again. Then the [frame rate](Self::is_frame_rate_reduced) and
+    /// transparency reduce and every [`Self::animate`] and theme transition snaps where its
     /// preference follows the system, paint loops run on, and an app
     /// reads it to swap to cheaper paint, as Apple asks an app to reduce its activity in Low Power
     /// Mode (<https://developer.apple.com/documentation/foundation/processinfo/islowpowermodeenabled>).
@@ -419,6 +417,16 @@ impl Ui {
     #[inline]
     pub const fn is_power_reduced(&self) -> bool {
         self.frame_runtime.reductions.power.is_reduced()
+    }
+
+    /// Whether this frame runs with the frame rate reduced: [`UiPreferences::frame_rate`] resolved
+    /// against [`Self::is_power_reduced`] at the frame's start, so no frame mixes two. Then every
+    /// host starts a frame at most at 30 Hz, on whole refresh periods, input frames included
+    /// ([`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at)), and paint
+    /// loops run at that rate. App-global.
+    #[inline]
+    pub const fn is_frame_rate_reduced(&self) -> bool {
+        self.frame_runtime.frame_rate.is_reduced()
     }
 
     /// Whether the system's power-saver mode is on, whatever the preference: macOS Low Power Mode,

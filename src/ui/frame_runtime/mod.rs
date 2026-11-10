@@ -128,8 +128,11 @@ pub(crate) struct FrameRuntime {
     /// Whether this frame's value transitions run or snap, fixed with [`Self::reductions`]
     /// ([`AppSettings::transitions`](crate::ui::resources::app_settings::AppSettings::transitions)).
     pub(super) transitions: Reduction,
-    /// The Ui time of the next frame's slot on the reduced-power grid, which this frame's report
-    /// hands the host; `None` while power is full.
+    /// Whether this frame starts at most at 30 Hz, fixed with [`Self::reductions`]
+    /// ([`AppSettings::frame_rate`](crate::ui::resources::app_settings::AppSettings::frame_rate)).
+    pub(super) frame_rate: Reduction,
+    /// The Ui time of the next frame's slot on the reduced frame-rate grid, which this frame's
+    /// report hands the host; `None` while the frame rate is full.
     pub(super) earliest_repaint_at: Option<Duration>,
 }
 
@@ -259,25 +262,25 @@ impl FrameRuntime {
         self.render_frame_id += 1;
     }
 
-    /// Take this frame's slot on the reduced-power grid, and hold the next a
-    /// [`time::reduced_power_interval`] after it, so no frame starts sooner, as a game loop's frame
+    /// Take this frame's slot on the reduced frame-rate grid, and hold the next a
+    /// [`time::reduced_frame_interval`] after it, so no frame starts sooner, as a game loop's frame
     /// limiter schedules each frame from the last one's target. A frame at most a
-    /// [`time::reduced_power_slack`] before the held slot takes it, so the grid keeps whole refresh
+    /// [`time::reduced_frame_slack`] before the held slot takes it, so the grid keeps whole refresh
     /// periods through a timer's jitter. A later frame starts the grid again at its own time, as the
     /// limiter drops its schedule after a stall, and so does a sooner one, which a host that ignored
     /// the slot ran, so the grid never runs ahead of the clock. Refused: spacing each frame from the
     /// last one's start, which a frame woken a slack early to meet its vsync shortens: 1.5 periods
     /// at 60 Hz, 40 Hz where the swapchain does not block.
-    pub(super) fn take_power_slot(&mut self) {
+    pub(super) fn take_frame_slot(&mut self) {
         let now = self.stamp.time;
         let refresh = self.stamp.display.refresh_millihertz;
-        let slack = time::reduced_power_slack(refresh);
-        self.earliest_repaint_at = self.reductions.power.is_reduced().then(|| {
+        let slack = time::reduced_frame_slack(refresh);
+        self.earliest_repaint_at = self.frame_rate.is_reduced().then(|| {
             let slot = self
                 .earliest_repaint_at
                 .filter(|&held| (held.saturating_sub(slack)..=held).contains(&now))
                 .unwrap_or(now);
-            slot + time::reduced_power_interval(refresh)
+            slot + time::reduced_frame_interval(refresh)
         });
     }
 

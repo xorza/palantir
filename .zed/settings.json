@@ -1,3 +1,20 @@
 {
-    "file_scan_exclusions": ["**/target", "..."]
+    "file_scan_exclusions": ["**/target", "..."],
+    "lsp": {
+        "rust-analyzer": {
+            "initialization_options": {
+                "cargo": {
+                    "features": "all",
+                    "allTargets": true,
+                    // Its own target dir, so a check never waits on the gate's build lock nor
+                    // throws away the gate's artifacts with other flags.
+                    "targetDir": true
+                },
+                "check": {
+                    "allTargets": true,
+                    "features": "all"
+                }
+            }
+        }
+    }
 }

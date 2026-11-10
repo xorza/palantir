@@ -113,6 +113,39 @@ fn reduced_power_spaces_frames_by_whole_refresh_periods() {
     assert_eq!(h.frame(|_| {}).earliest_repaint_at, None);
 }
 
+/// The frame-rate pick decides the cap apart from the power: a pick of full under the saver mode
+/// starts every frame at once while power stays reduced, and reports no slot; a pick of less at
+/// full power spaces frames by 2 periods of 60 Hz, 33_333_333 ns.
+#[test]
+fn the_frame_rate_pick_decides_the_cap_apart_from_the_power() {
+    let frame_rate = |h: &mut Harness, frame_rate| {
+        let preferences = UiPreferences {
+            frame_rate,
+            ..h.ui().preferences()
+        };
+        h.ui_mut().set_preferences(preferences);
+    };
+    let mut h = reduced_at(60_000);
+    frame_rate(&mut h, Preference::Fixed(Reduction::Full));
+    assert_eq!(frame_times(&mut h, 3), [Duration::ZERO; 3]);
+    assert!(h.ui().is_power_reduced());
+    assert!(!h.ui().is_frame_rate_reduced());
+    assert_eq!(h.frame(|_| {}).earliest_repaint_at, None);
+
+    let mut h = Harness::builder(SURFACE)
+        .mono()
+        .refresh_millihertz(60_000)
+        .build();
+    frame_rate(&mut h, Preference::Fixed(Reduction::Reduced));
+    let interval = Duration::from_nanos(33_333_333);
+    assert_eq!(
+        frame_times(&mut h, 3),
+        [Duration::ZERO, interval, interval * 2]
+    );
+    assert!(!h.ui().is_power_reduced());
+    assert!(h.ui().is_frame_rate_reduced());
+}
+
 /// Input that arrives inside the interval paints at its end: a hover fed 10 ms after a frame at 0
 /// lands in the frame at 2 periods of 60 Hz, 33_333_333 ns, which sees it. A frame asked for
 /// after an idle 100 ms runs at once and starts the grid again from its own time.

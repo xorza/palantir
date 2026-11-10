@@ -417,13 +417,14 @@ impl Shell {
 
     /// The picks the tour opens with: full motion, transparency and power use whatever the system
     /// asks, so each page shows its effects whole until a person picks less on the rail; the
-    /// scheme follows the system. Each entry point sets them on its `Ui`, as an app sets the picks
+    /// scheme follows the system, and the frame rate the power. Each entry point sets them on its `Ui`, as an app sets the picks
     /// it saved.
     pub const PREFERENCES: UiPreferences = UiPreferences {
         scheme: Preference::System,
         motion: Preference::Fixed(Reduction::Full),
         transparency: Preference::Fixed(Reduction::Full),
         power: Preference::Fixed(Reduction::Full),
+        frame_rate: Preference::System,
     };
 
     /// The tour on the page at `page`, an index into `Self::page_labels`, its item scrolled into
@@ -954,6 +955,7 @@ mod tests {
                 motion: Preference::System,
                 transparency: Preference::Fixed(Reduction::Reduced),
                 power: Preference::System,
+                frame_rate: Preference::System,
             }
         );
 
@@ -973,6 +975,7 @@ mod tests {
                 motion: Preference::Fixed(Reduction::Reduced),
                 transparency: Preference::Fixed(Reduction::Reduced),
                 power: Preference::System,
+                frame_rate: Preference::System,
             }
         );
     }

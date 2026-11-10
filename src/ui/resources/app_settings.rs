@@ -125,8 +125,8 @@ impl AppSettings {
 
     /// Whether value transitions run whole or snap: reduced with motion, and under reduced power
     /// where the motion preference follows the system, so a state change costs one frame; a pick
-    /// of full motion by hand wins. Paint loops follow motion alone, and run on at reduced power's
-    /// 30 Hz. Resolved beside [`Self::reductions`], and a frame fixes both at its start.
+    /// of full motion by hand wins. Paint loops follow motion alone, and run on at the reduced
+    /// frame rate ([`Self::frame_rate`]). Resolved beside [`Self::reductions`], and a frame fixes both at its start.
     pub(crate) const fn transitions(&self) -> Reduction {
         let system = self.system_reductions();
         self.preferences().motion.resolve(Reduction::of(
@@ -134,8 +134,15 @@ impl AppSettings {
         ))
     }
 
+    /// Whether every window starts a frame at most at 30 Hz: the frame-rate preference resolved
+    /// against the power use, so `System` caps it under reduced power and a pick by hand wins.
+    /// Resolved beside [`Self::reductions`], and a frame fixes both at its start.
+    pub(crate) const fn frame_rate(&self) -> Reduction {
+        self.preferences().frame_rate.resolve(self.power())
+    }
+
     /// The power use the preference and the system's report resolve to, which
-    /// [`Self::reductions`] and [`Self::transitions`] both follow.
+    /// [`Self::reductions`], [`Self::transitions`] and [`Self::frame_rate`] follow.
     const fn power(&self) -> Reduction {
         self.preferences()
             .power
@@ -226,6 +233,7 @@ mod tests {
                     motion: Preference::Fixed(Reduction::Full),
                     transparency: Preference::System,
                     power: Preference::System,
+                    frame_rate: Preference::System,
                 })
             },
             &|s| {
@@ -292,36 +300,92 @@ mod tests {
         );
     }
 
-    /// Reduced power reduces transparency, and snaps transitions, where their preference follows
-    /// the system, whichever side reduced the power; a pick by hand of either wins, full power
-    /// leaves them to the system, and paint motion never follows power. Each row: the system's
-    /// power, the power, motion and transparency picks, then the transitions, motion and
-    /// transparency that run, the system asking for neither.
+    /// Reduced power reduces transparency and the frame rate, and snaps transitions, where their
+    /// preference follows the system, whichever side reduced the power; a pick by hand of any wins,
+    /// full power leaves motion and transparency to the system, and paint motion never follows
+    /// power. Each row: the system's power, the power, motion, transparency and frame-rate picks,
+    /// then the transitions, motion, transparency and frame rate that run, the system asking for
+    /// neither motion nor transparency.
     #[test]
     fn reduced_power_reduces_what_follows_the_system() {
         use Preference::{Fixed, System};
         use Reduction::{Full, Reduced};
         let rows = [
-            (Full, System, System, System, Full, Full, Full),
-            (Reduced, System, System, System, Reduced, Full, Reduced),
-            (Full, Fixed(Reduced), System, System, Reduced, Full, Reduced),
-            (Reduced, Fixed(Full), System, System, Full, Full, Full),
-            (Reduced, System, Fixed(Full), System, Full, Full, Reduced),
-            (Reduced, System, System, Fixed(Full), Reduced, Full, Full),
-            (Full, System, Fixed(Reduced), System, Reduced, Reduced, Full),
-        ];
-        for (
-            row,
             (
-                system_power,
-                power,
-                motion,
-                transparency,
-                transitions,
-                want_motion,
-                want_transparency,
+                Full,
+                System,
+                System,
+                System,
+                System,
+                [Full, Full, Full, Full],
             ),
-        ) in rows.into_iter().enumerate()
+            (
+                Reduced,
+                System,
+                System,
+                System,
+                System,
+                [Reduced, Full, Reduced, Reduced],
+            ),
+            (
+                Full,
+                Fixed(Reduced),
+                System,
+                System,
+                System,
+                [Reduced, Full, Reduced, Reduced],
+            ),
+            (
+                Reduced,
+                Fixed(Full),
+                System,
+                System,
+                System,
+                [Full, Full, Full, Full],
+            ),
+            (
+                Reduced,
+                System,
+                Fixed(Full),
+                System,
+                System,
+                [Full, Full, Reduced, Reduced],
+            ),
+            (
+                Reduced,
+                System,
+                System,
+                Fixed(Full),
+                System,
+                [Reduced, Full, Full, Reduced],
+            ),
+            (
+                Full,
+                System,
+                Fixed(Reduced),
+                System,
+                System,
+                [Reduced, Reduced, Full, Full],
+            ),
+            (
+                Reduced,
+                System,
+                System,
+                System,
+                Fixed(Full),
+                [Reduced, Full, Reduced, Full],
+            ),
+            (
+                Full,
+                System,
+                System,
+                System,
+                Fixed(Reduced),
+                [Full, Full, Full, Reduced],
+            ),
+        ];
+        for (row, (system_power, power, motion, transparency, frame_rate, want)) in
+            rows.into_iter().enumerate()
         {
             let settings = AppSettings::default();
             settings.set_system_reductions(Reductions {
@@ -334,9 +398,16 @@ mod tests {
                 motion,
                 transparency,
                 power,
+                frame_rate,
             });
             let reductions = settings.reductions();
+            let [transitions, want_motion, want_transparency, want_frame_rate] = want;
             assert_eq!(settings.transitions(), transitions, "row {row} transitions");
+            assert_eq!(
+                settings.frame_rate(),
+                want_frame_rate,
+                "row {row} frame rate"
+            );
             assert_eq!(reductions.motion, want_motion, "row {row} motion");
             assert_eq!(
                 reductions.transparency, want_transparency,

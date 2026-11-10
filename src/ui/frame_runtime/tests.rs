@@ -306,12 +306,12 @@ fn wakes_past_the_cap_fold_without_firing_late() {
     );
 }
 
-/// The reduced-power grid at 60 Hz, interval 33_333_333 ns and slack 8_333_333 ns: a first frame
+/// The reduced frame-rate grid at 60 Hz, interval 33_333_333 ns and slack 8_333_333 ns: a first frame
 /// at 10 ms holds the next slot an interval on. A frame at the slot, or a slack before it, takes
 /// it, so the next slot is two intervals from the first frame. A frame 1 ns sooner than that, or
-/// one past the slot, starts the grid again at its own time. Full power holds no slot.
+/// one past the slot, starts the grid again at its own time. A full frame rate holds no slot.
 #[test]
-fn a_frame_takes_its_reduced_power_slot_within_the_slack() {
+fn a_frame_takes_its_reduced_frame_rate_slot_within_the_slack() {
     let ns = Duration::from_nanos;
     let interval = ns(33_333_333);
     let slack = ns(8_333_333);
@@ -321,17 +321,14 @@ fn a_frame_takes_its_reduced_power_slot_within_the_slack() {
     };
     let first = Duration::from_millis(10);
     let slot = first + interval;
-    let at = |held: Option<Duration>, time: Duration, power: Reduction| {
+    let at = |held: Option<Duration>, time: Duration, frame_rate: Reduction| {
         let mut runtime = FrameRuntime {
             stamp: FrameStamp::new(display, time),
-            reductions: Reductions {
-                power,
-                ..Reductions::FULL
-            },
+            frame_rate,
             earliest_repaint_at: held,
             ..FrameRuntime::default()
         };
-        runtime.take_power_slot();
+        runtime.take_frame_slot();
         runtime.earliest_repaint_at
     };
     for (label, held, time, want) in [
@@ -358,5 +355,9 @@ fn a_frame_takes_its_reduced_power_slot_within_the_slack() {
     ] {
         assert_eq!(at(held, time, Reduction::Reduced), want, "{label}");
     }
-    assert_eq!(at(Some(slot), slot, Reduction::Full), None, "full power");
+    assert_eq!(
+        at(Some(slot), slot, Reduction::Full),
+        None,
+        "a full frame rate"
+    );
 }

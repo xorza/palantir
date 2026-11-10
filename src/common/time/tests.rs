@@ -24,7 +24,7 @@ fn coalesce_dt_is_one_refresh_interval() {
 /// 24 Hz. Each is N × 1e12 / mHz ns, truncated: 2e12 / 59_940 = 33_366_700.03. An unknown or zero
 /// rate is 1e9 / 30 ns. The slack is half the coalesce window.
 #[test]
-fn the_reduced_power_interval_is_whole_refresh_periods() {
+fn the_reduced_frame_interval_is_whole_refresh_periods() {
     for (millihertz, nanos) in [
         (Some(59_940), 33_366_700),
         (Some(60_000), 33_333_333),
@@ -36,7 +36,7 @@ fn the_reduced_power_interval_is_whole_refresh_periods() {
         (Some(0), 33_333_333),
     ] {
         assert_eq!(
-            reduced_power_interval(millihertz),
+            reduced_frame_interval(millihertz),
             Duration::from_nanos(nanos),
             "{millihertz:?} mHz"
         );
@@ -47,7 +47,7 @@ fn the_reduced_power_interval_is_whole_refresh_periods() {
         (None, 4_166_666),
     ] {
         assert_eq!(
-            reduced_power_slack(millihertz),
+            reduced_frame_slack(millihertz),
             Duration::from_nanos(nanos),
             "{millihertz:?} mHz"
         );

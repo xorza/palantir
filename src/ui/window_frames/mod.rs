@@ -255,6 +255,7 @@ impl WindowFrames {
         // Before the theme moves on, so a transition it starts reads this frame's motion.
         self.ui.frame_runtime.reductions = self.ui.resources.settings().reductions();
         self.ui.frame_runtime.transitions = self.ui.resources.settings().transitions();
+        self.ui.frame_runtime.frame_rate = self.ui.resources.settings().frame_rate();
         self.ui.advance_theme();
         if let Some(themes) = self.ui.window_theme.take_replaced() {
             let effects = self.ui.resources.effects();
@@ -263,7 +264,7 @@ impl WindowFrames {
                 theme.material_effects(|name| effects.want(name));
             }
         }
-        self.ui.frame_runtime.take_power_slot();
+        self.ui.frame_runtime.take_frame_slot();
         self.ui
             .frame_runtime
             .tick_text_clock(self.ui.resources.text());

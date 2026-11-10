@@ -104,7 +104,7 @@ pub(super) struct Window {
     pub(super) next: FramePresent,
     /// The wall-clock instant before which the window starts no frame, from the last frame's
     /// [`FrameReport::earliest_repaint_at`](crate::FrameReport::earliest_repaint_at) less a
-    /// [`time::reduced_power_slack`]; `None` while power is full.
+    /// [`time::reduced_frame_slack`]; `None` while the frame rate is full.
     earliest_redraw_at: Option<Instant>,
     pub(super) close_requested: bool,
     levels: AppliedLevels,
@@ -400,7 +400,7 @@ impl Window {
                 .remote
                 .after_frame(self.frames.ui(), &frame.report, app.is_busy());
             let ran_app = frame.report.processing.ran_app();
-            let slack = time::reduced_power_slack(facts.refresh_millihertz);
+            let slack = time::reduced_frame_slack(facts.refresh_millihertz);
             self.earliest_redraw_at = frame
                 .report
                 .earliest_repaint_at

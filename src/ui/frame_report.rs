@@ -44,7 +44,7 @@ pub struct FrameReport {
     /// Absolute Ui-time deadline at which the host should wake and run another frame; `None` for no scheduled wake. Set by [`crate::Ui::request_repaint_after`] and by a paint animation's next step.
     pub repaint_at: Option<Duration>,
     /// Absolute Ui-time before which the host starts no next frame, whatever asks for it; `None`
-    /// while power is full ([`Ui::is_power_reduced`](crate::Ui::is_power_reduced)). It falls on a
+    /// while the frame rate is full ([`Ui::is_frame_rate_reduced`](crate::Ui::is_frame_rate_reduced)). It falls on a
     /// grid of whole refresh periods at or above 1/30 s, so frames run at most at 30 Hz and land on
     /// a vsync. A host on a real clock may start the frame up to half a refresh period sooner, or
     /// 1/240 s where the rate is unknown, so it presents at the vsync of that time.
