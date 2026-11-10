@@ -26,20 +26,22 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
-/// The layouts every effect's pipeline builds over: the frame group, which holds the gradient
-/// atlas a material's box reads, the images at [`IMAGES_GROUP`] for an effect that binds any, a
-/// backdrop effect's backdrop results at [`BACKDROPS_GROUP`], the parameter words at
-/// [`WORDS_GROUP`], and the immediates every pipeline declares.
+/// The device effects build on, and the layouts every effect's pipeline builds over: the frame
+/// group, which holds the gradient atlas a material's box reads, the images at [`IMAGES_GROUP`]
+/// for an effect that binds any, a backdrop effect's backdrop results at [`BACKDROPS_GROUP`], the
+/// parameter words at [`WORDS_GROUP`], and the immediates every pipeline declares.
 #[derive(Debug)]
-pub(crate) struct EffectLayouts {
-    group: wgpu::BindGroupLayout,
+pub(crate) struct EffectDevice {
+    gpu: Gpu,
+    /// The parameter words' group layout.
+    pub(crate) group: wgpu::BindGroupLayout,
     /// A color effect's, at each count of image slots from 0.
     color: [wgpu::PipelineLayout; MAX_IMAGE_SLOTS as usize + 1],
     /// A backdrop effect's, at each count of image slots from 0.
     backdrop: [wgpu::PipelineLayout; MAX_IMAGE_SLOTS as usize + 1],
 }
 
-impl EffectLayouts {
+impl EffectDevice {
     pub(crate) fn new(gpu: &Gpu, binding: &TextureBinding) -> Self {
         let group = gpu
             .device
@@ -80,6 +82,7 @@ impl EffectLayouts {
             )
         });
         Self {
+            gpu: gpu.clone(),
             group,
             color,
             backdrop,
@@ -171,65 +174,73 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 );
 
 /// What one of an effect's pipelines is built for: the effect and form `key` names, from `module`,
-/// against `format`.
+/// against `format`, the halves of its [`ClipVariant`] `halves` names.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectTarget<'a> {
     pub(crate) module: &'a EffectModule,
     pub(crate) key: EffectKey,
     pub(crate) format: wgpu::TextureFormat,
+    pub(crate) halves: &'a [Clipping],
 }
 
-/// The pipeline `target` names, over the layout of its kind and image slots, both halves of its
-/// [`ClipVariant`]: its one stage pinned to its form, which for a backdrop effect also draws a
-/// material's box and dithers that result before an 8-bit sRGB target stores it.
-///
-/// # Panics
-///
-/// For a [`ShapeForm::Rect`], as an effect draws its shape's template.
-pub(crate) fn build(gpu: &Gpu, layouts: &EffectLayouts, target: EffectTarget<'_>) -> ClipVariant {
-    let EffectTarget {
-        module,
-        key: EffectKey { effect, form },
-        format,
-    } = target;
-    assert!(
-        form != ShapeForm::Rect,
-        "an effect draws its shape's template"
-    );
-    let pinned = |on: bool| f64::from(u8::from(on));
-    let shape = [(TRIANGLE_OVERRIDE, pinned(form == ShapeForm::Triangle))];
-    let backdrop = [
-        shape[0],
-        (
-            "PALANTIR_DITHER_SRGB8",
-            pinned(format.is_srgb() && format.target_pixel_byte_cost() == Some(4)),
-        ),
-    ];
-    // Only the material path, which a backdrop effect alone holds, declares the dither.
-    let constants: &[(&str, f64)] = match module.kind {
-        KindId::Color => &shape,
-        KindId::Backdrop => &backdrop,
-    };
-    let label = format!("palantir.effect.{}.{form:?}", effect.0);
-    let shader = gpu
-        .device
-        .create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(&label),
-            source: wgpu::ShaderSource::Wgsl(module.text.as_str().into()),
-        });
-    let recipe = PipelineRecipe {
-        vertex_entry: "palantir_vs",
-        fragment_entry: "palantir_fs",
-        vertex_buffers: &[Some(INSTANCE_LAYOUT)],
-        topology: wgpu::PrimitiveTopology::TriangleList,
-        blend: Some(BLEND),
-        constants,
-        ..PipelineRecipe::color(&label, &shader, layouts.pipeline(module), format)
-    };
-    let mut pipelines = ClipVariant::NONE;
-    pipelines.ensure(gpu, Clipping::Off, &recipe);
-    pipelines.ensure(gpu, Clipping::On, &recipe);
-    pipelines
+impl EffectDevice {
+    /// Build the halves of `variant` that `target` names and it lacks, from one shader module,
+    /// over the layout of its kind and image slots: its one stage pinned to its form, which for a
+    /// backdrop effect also draws a material's box and dithers that result before an 8-bit sRGB
+    /// target stores it.
+    ///
+    /// # Panics
+    ///
+    /// For a [`ShapeForm::Rect`], as an effect draws its shape's template.
+    pub(crate) fn ensure(&self, variant: &mut ClipVariant, target: EffectTarget<'_>) {
+        let EffectTarget {
+            module,
+            key: EffectKey { effect, form },
+            format,
+            halves,
+        } = target;
+        assert!(
+            form != ShapeForm::Rect,
+            "an effect draws its shape's template"
+        );
+        if halves.iter().all(|&clipping| variant.is_built(clipping)) {
+            return;
+        }
+        let pinned = |on: bool| f64::from(u8::from(on));
+        let shape = [(TRIANGLE_OVERRIDE, pinned(form == ShapeForm::Triangle))];
+        let backdrop = [
+            shape[0],
+            (
+                "PALANTIR_DITHER_SRGB8",
+                pinned(format.is_srgb() && format.target_pixel_byte_cost() == Some(4)),
+            ),
+        ];
+        // Only the material path, which a backdrop effect alone holds, declares the dither.
+        let constants: &[(&str, f64)] = match module.kind {
+            KindId::Color => &shape,
+            KindId::Backdrop => &backdrop,
+        };
+        let label = format!("palantir.effect.{}.{form:?}", effect.0);
+        let shader = self
+            .gpu
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(&label),
+                source: wgpu::ShaderSource::Wgsl(module.text.as_str().into()),
+            });
+        let recipe = PipelineRecipe {
+            vertex_entry: "palantir_vs",
+            fragment_entry: "palantir_fs",
+            vertex_buffers: &[Some(INSTANCE_LAYOUT)],
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            blend: Some(BLEND),
+            constants,
+            ..PipelineRecipe::color(&label, &shader, self.pipeline(module), format)
+        };
+        for &clipping in halves {
+            variant.ensure(&self.gpu, clipping, &recipe);
+        }
+    }
 }
 
 /// One frame's effects: their instances, their parameter words, the group the words bind
@@ -329,7 +340,7 @@ impl EffectPipeline {
                     .device
                     .create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("palantir.effect.bg"),
-                        layout: &read.attached.layouts.group,
+                        layout: &read.attached.device.group,
                         entries: &[wgpu::BindGroupEntry {
                             binding: 0,
                             resource: self.words.buffer.as_entire_binding(),
@@ -413,7 +424,8 @@ pub(crate) struct EffectStores<'a> {
 #[cfg(test)]
 mod tests {
     use crate::effect::contract::{self, ContractSpec, ParamsLayout};
-    use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts, EffectTarget};
+    use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
+    use crate::gpu::pipeline::effect_pipeline::{EffectDevice, EffectTarget};
     use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::internals::panic_probe;
@@ -422,11 +434,13 @@ mod tests {
     use crate::renderer::render_buffer::effect_draw_row::EffectKey;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
 
-    /// Build `forms` of one effect of `kind`, in order.
-    fn build(kind: KindId, forms: &[ShapeForm]) {
+    /// A color and a backdrop effect each build the halves of a box and of a triangle a target
+    /// names, the clipless half first and the clipped one after it; a rect's one quad is refused.
+    #[test]
+    fn an_effect_builds_the_half_its_target_names() {
         let gpu = headless_test_gpu();
-        let layouts = EffectLayouts::new(&gpu, &TextureBinding::new(&gpu));
-        let spec = ContractSpec {
+        let device = EffectDevice::new(&gpu, &TextureBinding::new(&gpu));
+        let spec = |kind| ContractSpec {
             kind,
             params: ParamsLayout {
                 fields: &[],
@@ -434,37 +448,34 @@ mod tests {
             },
             image_slots: 0,
         };
-        let module = contract::check(
-            "fn effect(input: EffectInput) -> EffectOutput {
-                return effect_over(vec4<f32>(1.0));
-            }",
-            spec,
-        )
-        .unwrap();
-        for &form in forms {
-            effect_pipeline::build(
-                &gpu,
-                &layouts,
-                EffectTarget {
-                    module: &module,
-                    key: EffectKey {
-                        effect: EffectId(0),
-                        form,
-                    },
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                },
-            );
-        }
-    }
-
-    /// A color and a backdrop effect each build a box and a triangle, then refuse a rect's one
-    /// quad.
-    #[test]
-    fn an_effect_builds_its_template_forms_and_refuses_the_rect() {
         for kind in [KindId::Color, KindId::Backdrop] {
-            build(kind, &[ShapeForm::Box, ShapeForm::Triangle]);
+            let module = contract::check(
+                "fn effect(input: EffectInput) -> EffectOutput {
+                    return effect_over(vec4<f32>(1.0));
+                }",
+                spec(kind),
+            )
+            .unwrap();
+            let target = |form, halves| EffectTarget {
+                module: &module,
+                key: EffectKey {
+                    effect: EffectId(0),
+                    form,
+                },
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                halves,
+            };
+            for form in [ShapeForm::Box, ShapeForm::Triangle] {
+                let mut variant = ClipVariant::NONE;
+                device.ensure(&mut variant, target(form, &[Clipping::Off]));
+                assert!(variant.is_built(Clipping::Off), "{kind:?} {form:?}");
+                assert!(!variant.is_built(Clipping::On), "{kind:?} {form:?}");
+                device.ensure(&mut variant, target(form, &[Clipping::Off, Clipping::On]));
+                assert!(variant.is_built(Clipping::On), "{kind:?} {form:?}");
+            }
             panic_probe::assert_panics_with("an effect draws its shape's template", || {
-                build(kind, &[ShapeForm::Rect]);
+                let mut rect = ClipVariant::NONE;
+                device.ensure(&mut rect, target(ShapeForm::Rect, &[Clipping::Off]));
             });
         }
     }

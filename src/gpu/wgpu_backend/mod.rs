@@ -846,7 +846,8 @@ impl WgpuBackend {
             },
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
-        self.effect_store.prepare(buffer.effects.key());
+        self.effect_store
+            .prepare(buffer.effects.key(), clipping(buffer));
         self.programs.effect.upload(
             &mut ctx,
             EffectStores {

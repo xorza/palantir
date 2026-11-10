@@ -34,7 +34,7 @@ source of that rule.
 
 ### Inconsistencies
 
-- **Effect pipelines skip the census and build both clip halves at once.** Every other family
+- **[fixed in item 1] Effect pipelines skip the census and build both clip halves at once.** Every other family
   builds the half a frame binds on the first frame whose census asks for it (`ClipVariant`'s doc:
   "Refused: both built up front"); `effect_pipeline::build` calls `ensure` for `Off` and `On`
   together, and `WgpuEffectStore` builds per format on its own schedule. An app with no rounded
@@ -120,12 +120,11 @@ The pipelines that remain apart are apart for a measured reason, and none should
 In order of value per cost. Each refactor moves no golden; the visual suite and the composer's
 captured streams prove it.
 
-1. **Effect pipelines on the census.** `PipelineCensus` names the frame's `EffectKey`s, and an
-   effect's `ClipVariant` builds the half the frame binds, as every family's does; the store keeps
-   its warm-up of the box form's clipless half at a want, which the press reaches before any
-   clip. Refused: both halves at the want, which compiles a program a clipless app never binds;
-   building at the first press, which stutters (`WgpuEffectStore`'s doc). Test: a frame with no
-   rounded clip builds no clipped effect half, and one with a clip builds it.
+1. [x] **Effect pipelines on the census**, done. A want builds a form's clipless half; the first
+   frame whose draws name a rounded clip builds the clipped half of every wanted form at once
+   (`WgpuEffectStore::prepare` takes the frame's `Clipping`), so a press inside a clip reaches a
+   built pipeline after that frame. `EffectDevice::ensure` builds one half; the decision lives in
+   `WgpuEffectStore`'s doc. Test: `the_clipped_half_waits_for_a_frame_with_a_rounded_clip`.
 2. **Effects drawn through `PassPipelines`.** `PassPipelines::effect(key)` reads the format's
    effect pipelines from the store's borrow held for the pass, and `EffectPipeline` drops its
    copy and its revision check. Every family's `draw_batch` then takes `PassPipelines`. Refused:

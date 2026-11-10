@@ -66,6 +66,14 @@ impl ClipVariant {
         }
     }
 
+    /// Whether the half `clipping` binds is built.
+    pub(crate) const fn is_built(&self, clipping: Clipping) -> bool {
+        match clipping {
+            Clipping::Off => self.off.is_some(),
+            Clipping::On => self.on.is_some(),
+        }
+    }
+
     /// The pipeline a frame of `clipping` binds, which its census built.
     pub(crate) const fn get(&self, clipping: Clipping) -> &Pipeline {
         let built = match clipping {
@@ -75,20 +83,5 @@ impl ClipVariant {
         built
             .as_ref()
             .expect("the frame's census builds every pipeline it binds")
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
-
-    impl ClipVariant {
-        /// Whether the half `clipping` binds is built.
-        pub(crate) const fn is_built(&self, clipping: Clipping) -> bool {
-            match clipping {
-                Clipping::Off => self.off.is_some(),
-                Clipping::On => self.on.is_some(),
-            }
-        }
     }
 }
