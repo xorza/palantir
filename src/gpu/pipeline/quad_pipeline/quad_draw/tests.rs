@@ -3,7 +3,7 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{self, QuadDraw, ShadowCells};
 use crate::gpu::pipeline::runs::{Run, Runs};
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
 /// One draw per quad: a shadow takes its entry, or the general one drawn whole, a fill its

@@ -33,7 +33,7 @@ use crate::primitives::wgsl;
 use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_row::QuadRow;
+use crate::renderer::render_buffer::quad_draw_row::QuadDrawRow;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
@@ -364,7 +364,7 @@ impl QuadPipeline {
     pub(crate) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        quads: &Soa<QuadRow>,
+        quads: &Soa<QuadDrawRow>,
         cutouts: &CutoutPlan,
         extras: QuadExtras<'_>,
     ) {

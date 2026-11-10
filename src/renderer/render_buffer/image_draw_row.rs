@@ -20,7 +20,7 @@ use soa_rs::Soars;
 pub(crate) struct ImageDrawRow {
     pub(crate) id: TextureId,
     /// The geometry the draw takes, which picks its pipeline.
-    pub(crate) form: ShapeForm,
+    pub(crate) key: ShapeForm,
     pub(crate) instance: ImageInstance,
 }
 

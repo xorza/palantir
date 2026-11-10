@@ -5,7 +5,7 @@ use crate::common::counters::TestOnly;
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::frontend::composer::tile_index::{TILE_SIZE, TileIndex, TileSpan};
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 

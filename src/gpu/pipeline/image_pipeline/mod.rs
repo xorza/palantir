@@ -28,13 +28,13 @@ use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::mem::offset_of;
 
-/// One batch of image draws: the frame's per-draw texture and form columns and this
+/// One batch of image draws: the frame's per-draw texture and pipeline-key columns and this
 /// batch's slice of them. `items` is the same [`Span`] that indexes the instance
 /// buffer, so textures and instances can't come from different batches.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ImageBatch<'a> {
     pub(crate) ids: &'a [TextureId],
-    pub(crate) forms: &'a [ShapeForm],
+    pub(crate) keys: &'a [ShapeForm],
     pub(crate) items: Span,
 }
 
@@ -146,11 +146,11 @@ impl ImagePipeline {
         &'a self,
         rec: &mut PassRecorder<'a>,
         pipelines: impl Fn(ShapeForm) -> &'a Pipeline,
-        ImageBatch { ids, forms, items }: ImageBatch<'_>,
+        ImageBatch { ids, keys, items }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
         rec.vertex(0, self.family.instances());
-        let key = |i: u32| (forms[i as usize], ids[i as usize]);
+        let key = |i: u32| (keys[i as usize], ids[i as usize]);
         for run in Runs::new(items, key) {
             let (form, id) = run.key;
             let Some(bind_group) = textures.bind_group(id) else {

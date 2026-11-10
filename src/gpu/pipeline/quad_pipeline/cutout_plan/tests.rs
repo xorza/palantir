@@ -11,7 +11,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::FillForm;
-use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
@@ -41,10 +41,10 @@ fn inset_shadow(size: Size, radius: f32, sigma: f32) -> ShadowQuad {
 }
 
 /// The quad stream of `shadows`, in order.
-fn stream(shadows: &[ShadowQuad]) -> Soa<QuadRow> {
+fn stream(shadows: &[ShadowQuad]) -> Soa<QuadDrawRow> {
     shadows
         .iter()
-        .map(|&shadow| QuadRow {
+        .map(|&shadow| QuadDrawRow {
             key: QuadKey::Shadow,
             instance: Quad::from(shadow),
         })
@@ -52,8 +52,8 @@ fn stream(shadows: &[ShadowQuad]) -> Soa<QuadRow> {
 }
 
 /// A box fill's row, which no plan reads.
-fn fill() -> QuadRow {
-    QuadRow {
+fn fill() -> QuadDrawRow {
+    QuadDrawRow {
         key: QuadKey::Fill(FillForm::BOX_SOLID),
         instance: Quad::default(),
     }
@@ -81,7 +81,7 @@ impl Planner {
 
     fn build_rows(
         &mut self,
-        quads: &Soa<QuadRow>,
+        quads: &Soa<QuadDrawRow>,
         repaint: &RepaintScissors,
         viewport: UVec2,
     ) -> Census {
@@ -112,7 +112,7 @@ fn plan_in(quads: &[ShadowQuad], viewport: UVec2) -> Planner {
 }
 
 /// The rows `quads` planned as a full repaint of a `viewport`, with baking on.
-fn plan_rows(quads: &Soa<QuadRow>, viewport: UVec2) -> Planner {
+fn plan_rows(quads: &Soa<QuadDrawRow>, viewport: UVec2) -> Planner {
     let mut plan = Planner {
         plan: CutoutPlan::new(CutoutMode::Bake),
         placements: CutoutPlacements::default(),

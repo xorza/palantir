@@ -15,7 +15,7 @@ use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
@@ -186,7 +186,7 @@ pub(super) fn buf_with_batches(
 ) -> RenderBuffer {
     let mut buffer = RenderBuffer::new();
     for _ in 0..4 {
-        buffer.quads.push(QuadRow {
+        buffer.quads.push(QuadDrawRow {
             key: QuadKey::Fill(FillForm::BOX_SOLID),
             instance: dummy_quad(),
         });

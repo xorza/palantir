@@ -32,7 +32,7 @@ use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
@@ -162,7 +162,7 @@ fn compose_emits_image_batch_for_drawimage() {
         },
         &params(2.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.images.form(), [ShapeForm::Rect], "one plain image draw");
+    assert_eq!(buf.images.key(), [ShapeForm::Rect], "one plain image draw");
     assert_eq!(buf.batches(PaintTier::Image).len(), 1, "one image batch");
     assert_eq!(buf.batches(PaintTier::Image)[0].items, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));

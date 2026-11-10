@@ -3,7 +3,7 @@
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::renderer::render_buffer::fill_form::FillForm;
-use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 
 /// The pipeline a quad instance draws through, and so what it binds: a fill's form, or a
 /// shadow's entry, which also reads the cutout tables.

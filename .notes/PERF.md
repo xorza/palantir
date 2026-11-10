@@ -437,8 +437,17 @@ an older number here reads as a share, not a time.
 - The quad keys (`adb0e9bae`) against their parent on the composer's CPU cases,
   `atomic/composer/cpu/*`.
 - The effect pipelines per shape form (`76abc89e6`) against its parent: `atomic/main_pass/gpu/*`,
-  `integration/frame/gpu/*`, `integration/backdrop_frame/gpu/*`. Its base worktree and both bench
-  binaries are in `tmp/b7/`.
+  `integration/frame/gpu/*`, `integration/backdrop_frame/gpu/*`.
 - The one stroke payload, 84 → 104 B a stroke draw, on `atomic/composer/cpu/curves/*` and
   `atomic/composer/cpu/quads/polyline/*`.
 - The hot structs, for packing (`internals::hot_struct_sizes`).
+- The renderer audit's batching items (`.notes/renderer-audit.md`, 7 to 9), each built only once
+  its bench approves it:
+  - Quad runs joined again on `QuadDraw` in the backend, so a shadow's cutout entry splits no run
+    its key joins: the Shadows page's 15 runs toward 11, against `atomic/composer/cpu/quads/*` and
+    `integration/frame/gpu/*`, which pay a second reorder of each group's quads, corner tables
+    and entries.
+  - Icons in the raster lane, batched across groups as text is: the draws on the Icons and Dock
+    pages and a toolbar of icons in clipped groups.
+  - Opaque images occluding the quads under them: a full-bleed photo over cards, on the AMD
+    iGPU's main pass.

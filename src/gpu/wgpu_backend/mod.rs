@@ -669,7 +669,7 @@ impl WgpuBackend {
                     meshes: !buffer.meshes.is_empty(),
                     images: {
                         let mut forms = [false; ShapeForm::ALL.len()];
-                        for &form in buffer.images.form() {
+                        for &form in buffer.images.key() {
                             forms[form as usize] = true;
                         }
                         forms
@@ -1112,7 +1112,7 @@ impl WgpuBackend {
                             |form| pipelines.image(form),
                             ImageBatch {
                                 ids: buffer.images.id(),
-                                forms: buffer.images.form(),
+                                keys: buffer.images.key(),
                                 items: items(),
                             },
                             textures,

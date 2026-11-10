@@ -34,7 +34,7 @@ use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
@@ -96,7 +96,7 @@ impl Workload {
         let mut buffer = RenderBuffer::new();
         buffer.display = Display::from_physical(UVec2::splat(VIEWPORT), 1.0);
         for _ in 0..groups {
-            buffer.quads.push(QuadRow {
+            buffer.quads.push(QuadDrawRow {
                 key: QuadKey::Fill(FillForm::BOX_SOLID),
                 instance: Quad::default(),
             });

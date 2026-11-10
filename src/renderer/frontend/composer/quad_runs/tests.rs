@@ -2,7 +2,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::renderer::frontend::composer::quad_runs::QuadRuns;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
 const SOLID: QuadKey = QuadKey::Fill(FillForm::BOX_SOLID);

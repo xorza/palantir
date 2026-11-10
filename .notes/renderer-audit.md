@@ -61,7 +61,7 @@ source of that rule.
 - **[fixed in item 5] A template's vertex count is asked three ways.** `QuadPipeline::form_vertices`,
   `ImagePipeline::form_vertices` and the effect's inline `shape_template::vertices(form.corner_count())`
   each derive it from a `ShapeForm`.
-- **Row names and key fields differ by family.** `QuadRow { key }`, `EffectDrawRow { key }`,
+- **[fixed in item 10] Row names and key fields differ by family.** `QuadRow { key }`, `EffectDrawRow { key }`,
   `ImageDrawRow { form }` beside its texture id, `MeshDrawRow`, `IconDrawRow`, `TextDrawRow`, and
   the curves a bare `Vec<CurveInstance>`. Two names for the stream row (`*Row`, `*DrawRow`), and
   the image's pipeline key is a field named for its type, not its role.
@@ -152,26 +152,27 @@ captured streams prove it.
    `PipelineRecipe` over `InstancedPipeline::recipe(label, format)` with struct update and
    ensure their `ClipVariant` with it, as the quad and the raster do; `InstancedPipeline::ensure`,
    which would only hand the recipe on, goes with it.
-7. **Join quad runs on the draw.** The backend re-runs the look-back join on `QuadDraw` after the
+7. [deferred] **Join quad runs on the draw.** The backend re-runs the look-back join on `QuadDraw` after the
    cutout plan picks the entries (the composer's join on `QuadKey` stays for the occlusion prune
    and the CPU bench). Gate: the Shadows page's 15 runs drop toward 11, and
    `atomic/composer/cpu/quads/*` and `integration/frame/gpu/*` hold. Refused: the entry decided in
    the composer, which would move the cutout plan, a backend's knowledge of its atlas, into the
    frontend.
-8. **Icons in the raster lane.** An unturned icon's quad clips to its visible rect on the CPU as a
+8. [deferred] **Icons in the raster lane.** An unturned icon's quad clips to its visible rect on the CPU as a
    glyph does, and icons batch across groups as text does, each tenant its own batch stream, so
    `PaintTier::Icon` goes. Gate: draws on the Icons and Dock pages, and a toolbar fixture of icons
    in clipped groups. Cost: icon and text batches order against each other, which the lane's one
    batch state must track. As WebRender batches its image and text primitives in one list with a
    look-back.
-9. **Opaque images occlude quads.** `ImageHandle` keeps whether its texels are opaque, which the
+9. [deferred] **Opaque images occlude quads.** `ImageHandle` keeps whether its texels are opaque, which the
    upload learns, and a plain opaque image (sharp box, `Fit` covering its rect, no tint alpha)
    records its rect as an opaque cover. Gate: a fixture of a full-bleed photo over cards; the AMD
    iGPU's main pass. Refused until measured: an overdraw saving no page shows.
-10. **Rows named alike.** `QuadRow` and the `*DrawRow`s take one suffix, and the image's
-    pipeline field is named `key` like the quad's and the effect's.
+10. [x] **Rows named alike**, done. `QuadRow` is `QuadDrawRow`, as every other stream row is a
+    `*DrawRow`, and the image's pipeline field is `key` like the quad's and the effect's, its
+    batch column `ImageBatch::keys` like `EffectBatch::keys`.
 11. **The stale docs** of `RenderStep::TierBatch` and `TextDrawRow::bounds` say what the code
     does.
 
 Items 1 to 6, 10 and 11 are refactors with no visible change; 7 and 8 change draw counts and need
-their gates; 9 waits for a workload.
+their gates; 9 waits for a workload. 7 to 9 wait for the bench session (`PERF.md`, "To measure").

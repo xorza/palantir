@@ -34,7 +34,7 @@ use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::geometry::box_geometry::PlacedBox;
@@ -925,7 +925,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
             },
             &params(2.0, UVec2::new(200, 200)),
         );
-        assert_eq!(buf.images.form(), [ShapeForm::Box]);
+        assert_eq!(buf.images.key(), [ShapeForm::Box]);
         buf.images.instance()[0]
     };
     let contained = shaped(Rect::new(17.5, 5.0, 25.0, 25.0), None);
@@ -1028,7 +1028,7 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
         },
         &params(2.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.images.form(), [ShapeForm::Triangle]);
+    assert_eq!(buf.images.key(), [ShapeForm::Triangle]);
     let image = buf.images.instance()[0];
     let quad = buf.quads.instance()[0];
     assert_eq!(

@@ -14,7 +14,7 @@ use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
 use crate::renderer::render_buffer::mesh_draw_row::MeshDrawRow;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_row::QuadRow;
+use crate::renderer::render_buffer::quad_draw_row::QuadDrawRow;
 use crate::renderer::render_buffer::render_target_draw::{FrameViews, RenderTargetDraw};
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
@@ -36,7 +36,7 @@ pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
 pub(crate) mod mesh_draw_row;
 pub(crate) mod paint_tier;
-pub(crate) mod quad_row;
+pub(crate) mod quad_draw_row;
 pub(crate) mod render_target_draw;
 pub(crate) mod rounded_clip;
 pub(crate) mod row_spin;
@@ -49,7 +49,7 @@ pub(crate) mod text_draw_row;
 #[derive(Debug)]
 pub(crate) struct RenderBuffer {
     /// The quad stream, SoA: each instance beside its pipeline's key.
-    pub(crate) quads: Soa<QuadRow>,
+    pub(crate) quads: Soa<QuadDrawRow>,
     pub(crate) texts: Vec<TextDrawRow>,
     /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::mesh_vertices`](crate::shape::record_store::RecordStore::mesh_vertices) and `mesh_idxs`; each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
     pub(crate) meshes: Soa<MeshDrawRow>,

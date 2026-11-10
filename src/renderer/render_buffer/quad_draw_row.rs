@@ -15,7 +15,7 @@ use soa_rs::Soars;
 /// `write_buffer`, and read `rows.key()` for each instance's pipeline.
 #[derive(Soars, Clone, Copy, Debug)]
 #[soa_derive(Debug)]
-pub(crate) struct QuadRow {
+pub(crate) struct QuadDrawRow {
     /// The pipeline the instance draws through, set once by the composer.
     pub(crate) key: QuadKey,
     /// A fill's [`Quad`], or a shadow's [`ShadowQuad`](crate::renderer::shadow_quad::ShadowQuad)
@@ -24,7 +24,8 @@ pub(crate) struct QuadRow {
 }
 
 /// What a quad of the stream draws: a fill through its form, or a shadow, whose entry the
-/// backend picks from the cutout plan it alone holds. As `ImageDrawRow::form` keys an image.
+/// backend picks from the cutout plan it alone holds. As
+/// [`ImageDrawRow::key`](crate::renderer::render_buffer::image_draw_row::ImageDrawRow::key) keys an image.
 /// Refused: the key as bits of the instance's paint word, which the backend read back at upload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum QuadKey {
@@ -48,7 +49,7 @@ impl QuadKey {
 mod tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-    use crate::renderer::render_buffer::quad_row::QuadKey;
+    use crate::renderer::render_buffer::quad_draw_row::QuadKey;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
     use crate::renderer::render_buffer::shape_header::ShapeHeader;
 

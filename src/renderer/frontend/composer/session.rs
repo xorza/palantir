@@ -50,7 +50,7 @@ use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
 use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -585,7 +585,7 @@ impl ComposeSession<'_> {
         let clip = self.clip_chain(visible);
         self.out.images.push(ImageDrawRow {
             id: p.paint.handle,
-            form,
+            key: form,
             instance: ImageInstance {
                 header: shape.header(clip),
                 uv_min: p.paint.uv_min - lo * uv_per_px,
@@ -692,14 +692,14 @@ impl ComposeSession<'_> {
             // Only the registration id: the encoder already resolved fit into `rect` + UV. The
             // view's off-screen paint is scheduled above, in `frame_targets`.
             id: p.paint.handle,
-            form: ShapeForm::Rect,
+            key: ShapeForm::Rect,
             instance,
         });
     }
 
     /// Push `instance`, a quad of the stream that draws through `key`.
     fn push_quad(&mut self, key: QuadKey, instance: Quad) {
-        self.out.quads.push(QuadRow { key, instance });
+        self.out.quads.push(QuadDrawRow { key, instance });
     }
 
     /// List `row`, a backdrop over the window's ground, which takes no capture and breaks no

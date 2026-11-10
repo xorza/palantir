@@ -7,7 +7,7 @@ use crate::gpu::frame::schedule::tests::support::{
 };
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
 const SOLID: QuadKey = QuadKey::Fill(FillForm::BOX_SOLID);
@@ -18,7 +18,7 @@ fn with_kinds(mut buffer: RenderBuffer, keys: &[QuadKey]) -> RenderBuffer {
     let instance = buffer.quads.instance()[0];
     buffer.quads.clear();
     for &key in keys {
-        buffer.quads.push(QuadRow { key, instance });
+        buffer.quads.push(QuadDrawRow { key, instance });
     }
     buffer
 }

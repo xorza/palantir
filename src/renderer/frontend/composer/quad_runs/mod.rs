@@ -1,7 +1,7 @@
 //! [`QuadRuns`]: a closing group's quads reordered so each draw's quads lie together.
 
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 
 /// Reorders a group's quads so each joins the last run of its key that lies within
 /// [`Self::LOOKBACK`] of the end, where no quad after that run overlaps it: a quad keeps its paint
