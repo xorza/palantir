@@ -351,7 +351,7 @@ impl CutoutPlan {
                 continue;
             };
             let sigma = shadow.sigma();
-            let shaded = QuadKey::Shadow.shaded_rect(&shadow.header);
+            let shaded = shadow.header.shaded_rect();
             let mut codes = CornerTables::NONE.0;
             let mut tabled = true;
             for (code, corner) in codes.iter_mut().zip(&corners) {
@@ -527,7 +527,7 @@ impl CutoutPlan {
     fn census_shadow(shadow: &ShadowQuad, viewport: Rect) -> Option<CensusShadow> {
         let corners = Self::cutout_corners(shadow)?;
         let sigma = shadow.sigma();
-        let shaded = QuadKey::Shadow.shaded_rect(&shadow.header);
+        let shaded = shadow.header.shaded_rect();
         let uses = corners.map(|corner| KeyUse {
             key: CutoutKey::new(corner.r, sigma),
             area: corner.shown_area(shaded, viewport),

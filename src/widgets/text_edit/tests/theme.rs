@@ -1,4 +1,3 @@
-use crate::primitives::geometry::coverage::Coverage;
 use crate::shape::geometry::box_geometry::BoxGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::lower::LoweredPaint;
@@ -382,10 +381,7 @@ fn no_selection_paints_no_highlight_rect() {
             matches!(
                 s,
                 ShapeRecord::Closed {
-                    geometry: ClosedGeometry::Box(BoxGeometry {
-                        coverage: Coverage::Inside,
-                        ..
-                    }),
+                    geometry: ClosedGeometry::Box(BoxGeometry { .. }),
                     paint: ClosedPaint::Fill(LoweredPaint { .. })
                 }
             )
@@ -430,7 +426,6 @@ fn shift_end_paints_selection_highlight() {
             ShapeRecord::Closed {
                 geometry:
                     ClosedGeometry::Box(BoxGeometry {
-                        coverage: Coverage::Inside,
                         local_rect: Some(r),
                         ..
                     }),
@@ -483,7 +478,6 @@ fn line_height_override_changes_caret_rect_height() {
                 ShapeRecord::Closed {
                     geometry:
                         ClosedGeometry::Box(BoxGeometry {
-                            coverage: Coverage::Inside,
                             local_rect: Some(rect),
                             ..
                         }),

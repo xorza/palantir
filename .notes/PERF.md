@@ -389,9 +389,9 @@ an older number here reads as a share, not a time.
   up to 0.39 % of the peak.
 - **Glass chrome keeps the lens's whole reach**: the cascade keeps no chrome lift, so
   `LensOptics::margin` reads no narrowest side for it.
-- **A triangle's glass and an outside box's keep the lens's whole reach**: `LensOptics::margin`
-  bounds a sample by a rounded rect's chords, which a triangle's corner and an outside region
-  break. A bound of their own would take the capture back to what they read.
+- **A triangle's glass keeps the lens's whole reach**: `LensOptics::margin` bounds a sample by a
+  rounded rect's chords, which a triangle's corner breaks. A bound of its own would take the
+  capture back to what it reads.
 - **A direct frame still copies its captures**: no sampled swapchain on Metal or DX12
   (Rejected). Skipping every copy took the fanless 5 to 12 % off the frames that capture.
 - **A backdrop's break test reads one bounding box** of what was painted since the break, so an

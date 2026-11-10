@@ -2,7 +2,6 @@
 //! hash or is listed as deliberately excluded.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::texture_id::TextureId;
@@ -55,11 +54,10 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let rect = |r| Some(Rect::new(r, 0.0, 4.0, 4.0));
     let pt = |x| Vec2::new(x, 0.0);
 
-    let quad_box = |coverage, local_rect, outline, fill, stroke| ShapeRecord::Closed {
+    let quad_box = |local_rect, outline, fill, stroke| ShapeRecord::Closed {
         geometry: ClosedGeometry::Box(BoxGeometry {
             local_rect,
             outline,
-            coverage,
         }),
         paint: ClosedPaint::Fill(LoweredPaint {
             fill,
@@ -69,22 +67,16 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         }),
     };
     let rounded = BoxOutline::Rect(Corners::all(2.0));
-    let base = quad_box(Coverage::Inside, rect(0.0), rounded, solid, stroke);
-    moves(
-        "Quad/Box.coverage",
-        &base,
-        &quad_box(Coverage::Outside, rect(0.0), rounded, solid, stroke),
-    );
+    let base = quad_box(rect(0.0), rounded, solid, stroke);
     moves(
         "Quad/Box.local_rect",
         &base,
-        &quad_box(Coverage::Inside, rect(1.0), rounded, solid, stroke),
+        &quad_box(rect(1.0), rounded, solid, stroke),
     );
     moves(
         "Quad/Box.outline corners",
         &base,
         &quad_box(
-            Coverage::Inside,
             rect(0.0),
             BoxOutline::Rect(Corners::all(3.0)),
             solid,
@@ -94,37 +86,18 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     // A circle carries no corners, so the outline's kind alone tells it from a sharp rect.
     moves(
         "Quad/Box.outline circle",
-        &quad_box(
-            Coverage::Inside,
-            rect(0.0),
-            BoxOutline::Rect(Corners::ZERO),
-            solid,
-            stroke,
-        ),
-        &quad_box(
-            Coverage::Inside,
-            rect(0.0),
-            BoxOutline::Circle,
-            solid,
-            stroke,
-        ),
+        &quad_box(rect(0.0), BoxOutline::Rect(Corners::ZERO), solid, stroke),
+        &quad_box(rect(0.0), BoxOutline::Circle, solid, stroke),
     );
     moves(
         "Quad/Box.fill",
         &base,
-        &quad_box(
-            Coverage::Inside,
-            rect(0.0),
-            rounded,
-            LoweredBrush::Solid(red),
-            stroke,
-        ),
+        &quad_box(rect(0.0), rounded, LoweredBrush::Solid(red), stroke),
     );
     let box_with = |shadow: Shadow, material| ShapeRecord::Closed {
         geometry: ClosedGeometry::Box(BoxGeometry {
             local_rect: rect(0.0),
             outline: rounded,
-            coverage: Coverage::Inside,
         }),
         paint: ClosedPaint::Fill(LoweredPaint {
             fill: solid,
@@ -174,14 +147,14 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     moves(
         "Quad/Box.border",
         &base,
-        &quad_box(Coverage::Inside, rect(0.0), rounded, solid, stroke2),
+        &quad_box(rect(0.0), rounded, solid, stroke2),
     );
     // A gradient's content hash rides in its brush; its frame-local id does not move the hash.
     let grad = |id, hash| LoweredBrush::Gradient {
         id: GradientId(id),
         hash: ContentHash::from_u64(hash),
     };
-    let grad_box = |fill| quad_box(Coverage::Inside, rect(0.0), rounded, fill, stroke);
+    let grad_box = |fill| quad_box(rect(0.0), rounded, fill, stroke);
     moves(
         "Quad/Box.fill gradient hash",
         &grad_box(grad(0, 1)),
@@ -639,7 +612,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             geometry: ClosedGeometry::Box(BoxGeometry {
                 local_rect,
                 outline: BoxOutline::Rect(Corners::ZERO),
-                coverage: Coverage::Inside,
             }),
             paint: ClosedPaint::Image {
                 tint,
@@ -717,7 +689,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &shaped(ClosedGeometry::Box(BoxGeometry {
             local_rect: rect(0.0),
             outline: BoxOutline::Rect(Corners::all(4.0)),
-            coverage: Coverage::Inside,
         })),
     );
     moves(
@@ -726,16 +697,6 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &shaped(ClosedGeometry::Box(BoxGeometry {
             local_rect: rect(0.0),
             outline: BoxOutline::Circle,
-            coverage: Coverage::Inside,
-        })),
-    );
-    moves(
-        "ImagePaint.geometry.coverage",
-        &base,
-        &shaped(ClosedGeometry::Box(BoxGeometry {
-            local_rect: rect(0.0),
-            outline: BoxOutline::Rect(Corners::ZERO),
-            coverage: Coverage::Outside,
         })),
     );
     moves("ImagePaint.geometry.kind", &base, &shaped(triangle(1.0)));

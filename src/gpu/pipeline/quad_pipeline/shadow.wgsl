@@ -174,7 +174,7 @@ fn vs_shadow(
     let rotation = shape.inradius_rotation.y;
     let radius = shape.radius;
     let geometry = unpack_f16x4(shadow.geometry_packed);
-    let bounds = shaded_bounds(pos, size, false, rotation);
+    let bounds = shaded_bounds(pos, size, rotation);
     let half = size * 0.5;
     let center = pos + half;
     let kind = shadow.kind;

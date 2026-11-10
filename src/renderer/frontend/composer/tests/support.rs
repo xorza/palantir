@@ -147,7 +147,7 @@ fn run_in(
 /// sampling, its view owned by one widget at epoch 0.
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawClosedPayload<ClosedImage> {
     DrawClosedPayload::new(
-        PlacedClosed::inside(PlacedBox {
+        PlacedClosed::Box(PlacedBox {
             rect,
             corners: Corners::ZERO,
         }),
@@ -337,7 +337,7 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawClosedPayload {
-            geometry: PlacedClosed::inside(PlacedBox {
+            geometry: PlacedClosed::Box(PlacedBox {
                 rect: r,
                 corners: Corners::ZERO,
             }),
@@ -359,7 +359,7 @@ pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawClosedPayload {
-            geometry: PlacedClosed::inside(PlacedBox {
+            geometry: PlacedClosed::Box(PlacedBox {
                 rect: r,
                 corners: Corners::ZERO,
             }),

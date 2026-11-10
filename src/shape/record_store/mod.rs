@@ -21,7 +21,6 @@ use crate::effect::effect_registry::EffectRegistry;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::is_invisible;
@@ -341,10 +340,6 @@ impl RecordStore {
         } = paint;
         let (fit, min_filter, mag_filter, downsample, tint) =
             (*fit, *min_filter, *mag_filter, *downsample, *tint);
-        debug_assert!(
-            geometry.covers_inside(),
-            "an image's pair covers its inside: {geometry:?}"
-        );
         if geometry.is_paint_empty() || tint.is_noop() {
             return None;
         }
@@ -375,11 +370,10 @@ impl RecordStore {
                 geometry,
                 ClosedGeometry::Box(BoxGeometry {
                     outline: BoxOutline::Rect(Corners::ZERO),
-                    coverage: Coverage::Inside,
                     ..
                 })
             ),
-            "an icon's pair is a square-cornered rect that covers its inside: {geometry:?}"
+            "an icon's pair is a square-cornered rect: {geometry:?}"
         );
         if geometry.is_paint_empty() || tint.is_noop() {
             return None;
@@ -431,10 +425,6 @@ impl RecordStore {
                 capture,
             )),
         };
-        debug_assert!(
-            geometry.covers_inside(),
-            "an effect's pair covers its inside: {geometry:?}"
-        );
         if geometry.is_paint_empty() {
             return None;
         }

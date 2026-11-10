@@ -1,6 +1,4 @@
-//! Filled shape primitives: triangles, meshes and a rect covering its outside
-//! (`Coverage::Outside`), the inverted-fill corner mask standing in for a rounded clip over content
-//! that keeps no clip of its own.
+//! Filled shape primitives: triangles and meshes.
 #![expect(
     clippy::disallowed_methods,
     reason = "a demo of the crate, whose frames owe no two systems the same bits"
@@ -11,9 +9,8 @@ use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::Paint;
 use palantir::glam::Vec2;
-use palantir::widget::Coverage;
-use palantir::widget::{Mesh, RectShape, Shape};
-use palantir::{Border, LinearGradient, RgbaF32, Ui, WidgetId};
+use palantir::widget::{Mesh, Shape};
+use palantir::{Border, RgbaF32, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
@@ -49,22 +46,6 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 DemoCell::new("single triangle").show(ui, k, |ui| mesh_triangle(ui, k));
                 DemoCell::new("star — centroid fan").show(ui, k, |ui| polygon_star(ui, k));
                 DemoCell::new("per-vertex gradient").show(ui, k, |ui| gradient_quad(ui, k));
-            });
-        });
-
-    Section::new("Outside coverage")
-        .apis(&[api!(RectShape::coverage), api!(type Coverage)])
-        .show(ui, k, |ui| {
-            support::note(
-                ui,
-                k,
-                "An inverted rounded-rect fill: it paints the corner wedges and \
-                 leaves the window alone, which looks like a rounded clip over \
-                 content that keeps no clip of its own.",
-            );
-            support::tiles(ui, |ui| {
-                DemoCell::new("corner mask over content").show(ui, k, |ui| window_mask(ui, k));
-                DemoCell::new("anatomy — translucent fill").show(ui, k, |ui| window_anatomy(ui, k));
             });
         });
 }
@@ -168,27 +149,6 @@ fn gradient_quad(ui: &mut Ui, k: Kit) {
         m.triangle(tl, tr, br);
         m.triangle(tl, br, bl);
     });
-}
-
-/// The headline use: rounded corners over content that keeps no clip; the windowed rect fills the corner wedges
-/// with the tile background and strokes the boundary over a plain unclipped gradient.
-fn window_mask(ui: &mut Ui, k: Kit) {
-    ui.add_shape(
-        Shape::rect(),
-        LinearGradient::two_stop(FRAC_PI_2, RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)),
-    );
-    ui.add_shape(
-        Shape::rect().corners(18.0).coverage(Coverage::Outside),
-        Paint::from(k.t.ground).with_border(Border::new(k.swatch.teal, 2.0)),
-    );
-}
-
-/// A translucent fill exposes the geometry: only the corner wedges outside the rounded boundary are covered.
-fn window_anatomy(ui: &mut Ui, k: Kit) {
-    ui.add_shape(
-        Shape::rect().corners(28.0).coverage(Coverage::Outside),
-        Paint::from(k.swatch.orange.with_alpha(0.75)).with_border(Border::new(k.swatch.lime, 4.0)),
-    );
 }
 
 /// The live triangle's knobs.

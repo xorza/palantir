@@ -3,6 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::paint::antialias::{self, AA_HALF_WIDTH};
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
@@ -65,5 +66,56 @@ impl ShapeHeader {
     pub(crate) fn is_box(&self) -> bool {
         self.points == Self::box_points(self.rect.size)
             && self.inradius == Self::box_inradius(self.rect.size)
+    }
+
+    /// The whole pixels a quad pipeline shades for a quad of this header, a fill's or a shadow's: `shaded_bounds` in
+    /// `quad_pipeline/quad.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]. A
+    /// turned quad grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the
+    /// whole pixels around that turned about the rect's center.
+    pub(crate) fn shaded_rect(&self) -> Rect {
+        let Self { rect, rotation, .. } = *self;
+        if rotation == 0.0 {
+            let grow = Vec2::splat(AA_HALF_WIDTH - 0.5);
+            return Rect::from_min_max((rect.min - grow).floor(), (rect.max() + grow).ceil());
+        }
+        let turned = antialias::turned_reach(rect, rotation);
+        Rect::from_min_max(turned.min.floor(), turned.max().ceil())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::geometry::rect::Rect;
+    use crate::renderer::render_buffer::shape_header::ShapeHeader;
+
+    /// A rect on pixel boundaries shades itself; otherwise every pixel its edges cross:
+    /// (10.25, 3)..(20.5, 8) is columns 10..21, rows 3..8.
+    #[test]
+    fn a_quad_shades_the_pixels_its_edges_cross() {
+        let shaded = |rect: Rect| {
+            ShapeHeader {
+                rect,
+                ..ShapeHeader::default()
+            }
+            .shaded_rect()
+        };
+        let aligned = Rect::new(10.0, 3.0, 11.0, 5.0);
+        assert_eq!(shaded(aligned), aligned);
+        assert_eq!(shaded(Rect::new(10.25, 3.0, 10.25, 5.0)), aligned);
+    }
+
+    /// A turned quad shades the whole pixels around its turned bound, grown by the AA half width in
+    /// its own frame even on whole-pixel edges. (10, 10)..(30, 20) grown 0.5 is 21 x 11, which
+    /// turned 30° about its center (20, 15) reaches `10.5·cos + 5.5·sin = 11.84` across and
+    /// `10.5·sin + 5.5·cos = 10.01` down, so (8.16, 4.99)..(31.84, 25.01), out to whole pixels
+    /// (8, 4)..(32, 26). Without the growth it would be (8, 5)..(32, 25).
+    #[test]
+    fn a_turned_quad_shades_the_pixels_around_its_turned_bound() {
+        let header = ShapeHeader {
+            rect: Rect::new(10.0, 10.0, 20.0, 10.0),
+            rotation: std::f32::consts::FRAC_PI_6,
+            ..ShapeHeader::default()
+        };
+        assert_eq!(header.shaded_rect(), Rect::new(8.0, 4.0, 24.0, 22.0));
     }
 }

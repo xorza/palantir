@@ -115,14 +115,14 @@ fn an_image_carries_the_shape_that_clips_it() {
     }
     assert_eq!(
         images[0].geometry,
-        PlacedClosed::inside(PlacedBox {
+        PlacedClosed::Box(PlacedBox {
             rect: at,
             corners: Corners::all(6.0),
         })
     );
     assert_eq!(
         images[1].geometry,
-        PlacedClosed::inside(PlacedBox {
+        PlacedClosed::Box(PlacedBox {
             rect: at,
             corners: Corners::ZERO,
         })
@@ -139,7 +139,7 @@ fn an_image_carries_the_shape_that_clips_it() {
     assert_eq!(images[3].paint.rect, square);
     assert_eq!(
         images[3].geometry,
-        PlacedClosed::inside(PlacedBox {
+        PlacedClosed::Box(PlacedBox {
             rect: square,
             corners: Corners::all(25.0),
         })

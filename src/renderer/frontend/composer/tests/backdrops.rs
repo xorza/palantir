@@ -4,7 +4,6 @@ use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -79,7 +78,7 @@ fn material(
 
 /// The box at `rect`, square-cornered, covering its inside.
 const fn sharp(rect: Rect) -> PlacedClosed {
-    PlacedClosed::inside(PlacedBox {
+    PlacedClosed::Box(PlacedBox {
         rect,
         corners: Corners::ZERO,
     })
@@ -375,8 +374,8 @@ fn an_effect_holds_its_shape_for_the_template() {
 
 /// A triangle's material packs its shape as a triangle quad does, and its key takes the
 /// triangle's form, so the effect stage builds three corners: (5, 5), (25, 5), (5, 15) with radius
-/// 1 at scale 2 cover (8, 8) to (52, 32). A material's box that covers its outside, drawn after it,
-/// takes the outside form, with the same material flag.
+/// 1 at scale 2 cover (8, 8) to (52, 32). A material's rounded box, drawn after it, takes the box's
+/// form, with the same material flag.
 #[test]
 fn a_materials_key_takes_its_shapes_form() {
     let points = [
@@ -412,13 +411,10 @@ fn a_materials_key_takes_its_shapes_form() {
             );
             b.draw(
                 material(
-                    PlacedClosed::Box {
-                        placed: PlacedBox {
-                            rect: Rect::new(60.0, 5.0, 20.0, 20.0),
-                            corners: Corners::all(4.0),
-                        },
-                        coverage: Coverage::Outside,
-                    },
+                    PlacedClosed::Box(PlacedBox {
+                        rect: Rect::new(60.0, 5.0, 20.0, 20.0),
+                        corners: Corners::all(4.0),
+                    }),
                     EffectCaptureDraw::Ground,
                     LoweredBorder::NONE,
                 ),
@@ -435,7 +431,7 @@ fn a_materials_key_takes_its_shapes_form() {
             .iter()
             .map(|key| key.form)
             .collect::<Vec<_>>(),
-        [ShapeForm::Triangle, ShapeForm::BoxOutside]
+        [ShapeForm::Triangle, ShapeForm::Box]
     );
     assert_eq!(
         buf.effects

@@ -193,7 +193,7 @@ fn a_turned_quad_orders_against_its_fringe() {
         &params(1.0, UVec2::new(100, 100)),
     );
     assert_eq!(
-        buf.quads.key()[0].shaded_rect(&buf.quads.instance()[0].header),
+        buf.quads.instance()[0].header.shaded_rect(),
         Rect::new(8.0, 4.0, 24.0, 22.0)
     );
     assert_eq!(buf.groups.len(), 2, "the quad flushes past the image");
@@ -241,7 +241,7 @@ fn a_quad_orders_by_the_pixels_it_shades() {
             &params_unsnapped(1.0, UVec2::new(100, 100)),
         );
         assert_eq!(
-            buf.quads.key()[0].shaded_rect(&buf.quads.instance()[0].header),
+            buf.quads.instance()[0].header.shaded_rect(),
             Rect::new(10.0, 0.0, if width == 10.0 { 10.0 } else { 11.0 }, 10.0)
         );
         assert_eq!(buf.groups.len(), groups, "width {width}");

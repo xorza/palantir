@@ -71,15 +71,5 @@ fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
         return premultiply(fill.rgb, fill.a);
     }
     let d = palantir_sdf_rounded_rect(in.local, in.size, in.radius);
-    if (form_is_outside()) {
-        var cover = palantir_composite_outside(d, fill, in.border_color, in.border_width);
-        if (in.turned != 0u) {
-            // Turned, the quad edge no longer lies on content of its own
-            // extent, so it is a visible edge and fades as any edge does.
-            let e = abs(in.local - in.size * 0.5) - in.size * 0.5;
-            cover *= palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y);
-        }
-        return cover;
-    }
     return palantir_composite(d, fill, in.border_color, in.border_width);
 }

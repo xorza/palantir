@@ -94,7 +94,7 @@ impl OcclusionPruner {
                     write += end - read;
                     break;
                 }
-                let shaded = key.shaded_rect(&quads[read].header);
+                let shaded = quads[read].header.shaded_rect();
                 let covered = if indexed {
                     self.indexed_covers(shaded, cursor)
                 } else {

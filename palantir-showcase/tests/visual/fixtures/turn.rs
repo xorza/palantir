@@ -17,7 +17,6 @@ use crate::visual_rig::VisualRig;
 use palantir::LineCap;
 use palantir::Paint;
 use palantir::Stroke;
-use palantir::widget::Coverage;
 use palantir::widget::IconPaint;
 use palantir::widget::ImagePaint;
 
@@ -109,9 +108,8 @@ fn triangle_gradients_match_golden() {
 
 /// Pin: each quad kind turned 30° about its owner's center. A rounded rect with a border, a
 /// gradient rect whose axis turns with it, a drop shadow with its offset turned with the source,
-/// an inset shadow, a square dot, the cap a curve of no length paints, and a bordered window
-/// whose outer edge fades as any turned edge does. A light fill marks each shadow's source, so the
-/// turned shadow shows against it.
+/// an inset shadow, and a square dot, the cap a curve of no length paints. A light fill marks each
+/// shadow's source, so the turned shadow shows against it.
 #[test]
 fn turned_quads_match_golden() {
     let source = Rect::new(20.0, 30.0, 60.0, 40.0);
@@ -168,18 +166,6 @@ fn turned_quads_match_golden() {
                 if let Some(shape) = ui.add_shape(
                     Shape::line(Vec2::new(50.0, 50.0), Vec2::new(50.0, 50.0)),
                     Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 30.0).with_cap(LineCap::Square),
-                ) {
-                    shape.animate(thirty_degrees());
-                }
-            });
-            owner(ui, "window", |ui| {
-                if let Some(shape) = ui.add_shape(
-                    Shape::rect()
-                        .at(source)
-                        .corners(Corners::all(14.0))
-                        .coverage(Coverage::Outside),
-                    Paint::from(RgbaF32::srgb(0.2, 0.5, 1.0))
-                        .with_border(Border::new(RgbaF32::WHITE, 2.0)),
                 ) {
                     shape.animate(thirty_degrees());
                 }

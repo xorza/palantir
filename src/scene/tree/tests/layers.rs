@@ -6,7 +6,6 @@
 )]
 
 use crate::host::harness::Harness;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::sense::Sense;
@@ -250,7 +249,6 @@ fn mid_recording_popup_keeps_trees_independent() {
             ShapeRecord::Closed {
                 geometry:
                     ClosedGeometry::Box(BoxGeometry {
-                        coverage: Coverage::Inside,
                         local_rect: Some(r),
                         ..
                     }),

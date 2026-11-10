@@ -2,7 +2,6 @@
 
 use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -97,7 +96,6 @@ fn interleaved_shapes_record_correct_order() {
             ShapeRecord::Closed {
                 geometry:
                     ClosedGeometry::Box(BoxGeometry {
-                        coverage: Coverage::Inside,
                         local_rect: Some(rect),
                         ..
                     }),

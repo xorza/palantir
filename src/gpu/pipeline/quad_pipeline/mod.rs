@@ -56,8 +56,6 @@ const fn draw_label(draw: QuadDraw) -> &'static str {
 const FILL_LABELS: [&str; FillForm::ALL.len()] = [
     "palantir.quad.pipeline.box_solid",
     "palantir.quad.pipeline.box_gradient",
-    "palantir.quad.pipeline.box_outside_solid",
-    "palantir.quad.pipeline.box_outside_gradient",
     "palantir.quad.pipeline.triangle_solid",
     "palantir.quad.pipeline.triangle_gradient",
 ];
@@ -539,7 +537,6 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("FILL_RADIAL", FillKind::TAG_RADIAL),
     ShaderConstant::uint("SHADOW_DROP", ShadowKind::DROP.bits()),
     ShaderConstant::uint("SHADOW_INSET", ShadowKind::INSET.bits()),
-    ShaderConstant::uint("SHAPE_FORM_BOX_OUTSIDE", ShapeForm::BoxOutside as u32),
     ShaderConstant::uint("SHAPE_FORM_TRIANGLE", ShapeForm::Triangle as u32),
     ShaderConstant::uint("FILL_BRUSH_GRADIENT", FillBrush::Gradient as u32),
     shape_template::CONSTANT,
@@ -649,7 +646,6 @@ mod tests {
         for form in FillForm::ALL {
             let shape = match form.shape() {
                 ShapeForm::Box => "box",
-                ShapeForm::BoxOutside => "box_outside",
                 ShapeForm::Triangle => "triangle",
                 ShapeForm::Rect => unreachable!("no fill draws a rect"),
             };

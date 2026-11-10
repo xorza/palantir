@@ -169,7 +169,7 @@ impl PlaneCtx<'_, '_> {
         // it.
         let inset = shadow.inset();
         let shadow = match geometry {
-            PlacedClosed::Box { placed, .. } if inset => {
+            PlacedClosed::Box(placed) if inset => {
                 let width = border.width;
                 let padding_box = Rect {
                     min: Vec2::ZERO,
@@ -185,7 +185,7 @@ impl PlaneCtx<'_, '_> {
                 Some(DrawShadowPayload::new(source, shadow))
             }
             // The box's rect, as `compute_paint_rect` and `LoweredPaint::bbox_local` mirror.
-            PlacedClosed::Box { placed, .. } => Some(DrawShadowPayload::new(placed, shadow)),
+            PlacedClosed::Box(placed) => Some(DrawShadowPayload::new(placed, shadow)),
             PlacedClosed::Triangle(_) => {
                 debug_assert!(shadow.is_noop(), "a triangle casts no shadow");
                 None
@@ -273,7 +273,7 @@ impl PlaneCtx<'_, '_> {
                         .tinted(self.gradients.ramp(id).color_at(0.0))
                         .to_f16(),
                 };
-                let dot = PlacedClosed::inside(PlacedBox {
+                let dot = PlacedClosed::Box(PlacedBox {
                     rect: owner_rect.resolve_local(Some(rect)),
                     corners,
                 });
@@ -597,7 +597,7 @@ impl PlaneCtx<'_, '_> {
         let chrome = self.tree.chrome(id);
 
         if let Some(chrome) = chrome {
-            let geometry = PlacedClosed::inside(PlacedBox {
+            let geometry = PlacedClosed::Box(PlacedBox {
                 rect,
                 corners: chrome.corners,
             });

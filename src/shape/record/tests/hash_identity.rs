@@ -2,7 +2,6 @@
 
 use crate::common::hash;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::effect_id::EffectId;
@@ -25,18 +24,17 @@ use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
-/// Same fill, a different covered side or outline, and a box and a triangle share
+/// Same fill, a different outline, and a box and a triangle share
 /// [`ShapeRecord::Closed`]'s discriminant, so `ClosedGeometry`'s own must separate them and each
 /// shape's fields must reach the hasher. A collision makes damage diff skip a repaint.
 #[test]
 fn quad_shapes_hash_apart() {
     let fill = LoweredBrush::Solid(RgbaF32::WHITE.to_f16());
     let stroke = LoweredBorder::lower(Border::new(RgbaF32::BLACK, 2.0));
-    let quad_box = |coverage, outline| ShapeRecord::Closed {
+    let quad_box = |outline| ShapeRecord::Closed {
         geometry: ClosedGeometry::Box(BoxGeometry {
             local_rect: None,
             outline,
-            coverage,
         }),
         paint: ClosedPaint::Fill(LoweredPaint {
             fill,
@@ -59,12 +57,11 @@ fn quad_shapes_hash_apart() {
         }),
     };
     let sharp = BoxOutline::Rect(Corners::ZERO);
-    // An effect over the inside box, which its paint's discriminant keeps apart from the fill.
+    // An effect over the box, which its paint's discriminant keeps apart from the fill.
     let effect = ShapeRecord::Closed {
         geometry: ClosedGeometry::Box(BoxGeometry {
             local_rect: None,
             outline: sharp,
-            coverage: Coverage::Inside,
         }),
         paint: ClosedPaint::Effect {
             backdrop: None,
@@ -76,9 +73,8 @@ fn quad_shapes_hash_apart() {
     };
     let mut seen = Vec::new();
     for (label, record) in [
-        ("inside", quad_box(Coverage::Inside, sharp)),
-        ("outside", quad_box(Coverage::Outside, sharp)),
-        ("circle", quad_box(Coverage::Inside, BoxOutline::Circle)),
+        ("rect", quad_box(sharp)),
+        ("circle", quad_box(BoxOutline::Circle)),
         ("triangle", triangle),
         ("effect", effect),
     ] {
@@ -175,7 +171,6 @@ fn image_source_hashes_apart_by_source() {
         geometry: ClosedGeometry::Box(BoxGeometry {
             local_rect: None,
             outline: BoxOutline::Rect(Corners::ZERO),
-            coverage: Coverage::Inside,
         }),
         paint: ClosedPaint::Image {
             tint: RgbaF32::WHITE.to_f16(),
@@ -246,7 +241,6 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
             geometry: ClosedGeometry::Box(BoxGeometry {
                 local_rect: None,
                 outline: BoxOutline::Rect(Corners::ZERO),
-                coverage: Coverage::Inside,
             }),
             paint: ClosedPaint::Image {
                 tint: tint.to_f16(),

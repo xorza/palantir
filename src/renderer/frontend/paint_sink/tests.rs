@@ -156,7 +156,7 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
         let mut sink = PaintCapture::default();
         sink.draw(
             DrawClosedPayload {
-                geometry: PlacedClosed::inside(PlacedBox {
+                geometry: PlacedClosed::Box(PlacedBox {
                     rect,
                     corners: Corners::ZERO,
                 }),
@@ -201,7 +201,7 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
 #[test]
 fn the_gate_sees_the_faded_payload() {
     let draw = || DrawClosedPayload {
-        geometry: PlacedClosed::inside(PlacedBox {
+        geometry: PlacedClosed::Box(PlacedBox {
             rect: Rect::new(0.0, 0.0, 4.0, 4.0),
             corners: Corners::ZERO,
         }),
@@ -264,7 +264,7 @@ fn the_gate_turns_the_payload() {
         angle: 0.5,
     };
     let image = DrawClosedPayload::new(
-        PlacedClosed::inside(PlacedBox {
+        PlacedClosed::Box(PlacedBox {
             rect: Rect::new(0.0, 0.0, 4.0, 4.0),
             corners: Corners::ZERO,
         }),

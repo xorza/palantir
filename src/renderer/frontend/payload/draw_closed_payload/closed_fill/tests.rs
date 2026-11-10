@@ -1,5 +1,4 @@
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -21,7 +20,7 @@ use glam::Vec2;
 
 /// The box (0, 0)..(10, 10), square-cornered, covering its inside.
 fn square() -> PlacedClosed {
-    PlacedClosed::inside(PlacedBox {
+    PlacedClosed::Box(PlacedBox {
         rect: Rect::new(0.0, 0.0, 10.0, 10.0),
         corners: Corners::ZERO,
     })
@@ -85,7 +84,7 @@ fn a_fill_paints_nothing_over_an_empty_box() {
         BrushSource::Solid(RgbaF32::WHITE.to_f16()),
         LoweredBorder::NONE,
     );
-    let empty = PlacedClosed::inside(PlacedBox {
+    let empty = PlacedClosed::Box(PlacedBox {
         rect: Rect::new(4.0, 4.0, 0.0, 10.0),
         corners: Corners::ZERO,
     });
@@ -143,24 +142,16 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
     );
 }
 
-/// Only a solid fill over the inside of a box can cover its rect whole. Each other fill differs
-/// from that one draw in one respect: an outside rect's hole, a triangle's corners and a
-/// gradient's stops each leave part of the rect uncovered or unknown.
+/// Only a solid fill over a box can cover its rect whole. Each other fill differs from that one
+/// draw in one respect: a triangle's corners and a gradient's stops each leave part of the rect
+/// uncovered or unknown.
 #[test]
-fn only_a_solid_inside_box_is_a_solid_box() {
+fn only_a_solid_box_is_a_solid_box() {
     let solid = ClosedFill::new(
         BrushSource::Solid(RgbaF32::WHITE.to_f16()),
         LoweredBorder::NONE,
     );
-    let PlacedClosed::Box { placed, .. } = square() else {
-        unreachable!("a square is a box");
-    };
     assert!(DrawClosedPayload::new(square(), solid).is_solid_box());
-    let outside = PlacedClosed::Box {
-        placed,
-        coverage: Coverage::Outside,
-    };
-    assert!(!DrawClosedPayload::new(outside, solid).is_solid_box());
     let gradient = ClosedFill::new(
         BrushSource::Gradient(ResolvedGradient {
             axis: FillAxis::ZERO,

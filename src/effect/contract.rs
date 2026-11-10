@@ -88,10 +88,6 @@ pub(crate) const MATERIAL_FLAG: u32 = 1;
 /// points, where a box has four.
 pub(crate) const TRIANGLE_OVERRIDE: &str = "PALANTIR_TRIANGLE";
 
-/// The override constant that pins a pipeline to a material's box that covers outside its rounded
-/// rect.
-pub(crate) const OUTSIDE_OVERRIDE: &str = "PALANTIR_OUTSIDE";
-
 /// The group an effect's parameter words bind at, past the backdrops.
 pub(crate) const WORDS_GROUP: u32 = 3;
 

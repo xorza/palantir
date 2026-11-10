@@ -2,7 +2,6 @@
 
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
@@ -20,7 +19,6 @@ use glam::Vec2;
 /// full alpha.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct QuadBuilder {
-    coverage: Coverage,
     rect: Rect,
     corners: Corners,
     fill: BrushSource,
@@ -31,19 +29,12 @@ pub(super) struct QuadBuilder {
 impl QuadBuilder {
     pub(super) fn new(rect: Rect) -> Self {
         Self {
-            coverage: Coverage::Inside,
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
             border: Border::NONE,
             spin: None,
         }
-    }
-
-    /// A rect covering its outside, whose interior is a hole.
-    pub(super) fn outside(mut self) -> Self {
-        self.coverage = Coverage::Outside;
-        self
     }
 
     /// Turned by `angle` radians about the rect's center.
@@ -80,13 +71,10 @@ impl QuadBuilder {
     pub(super) fn draw(self, buf: &mut PaintCapture) {
         buf.draw(
             DrawClosedPayload::new(
-                PlacedClosed::Box {
-                    placed: PlacedBox {
-                        rect: self.rect,
-                        corners: self.corners,
-                    },
-                    coverage: self.coverage,
-                },
+                PlacedClosed::Box(PlacedBox {
+                    rect: self.rect,
+                    corners: self.corners,
+                }),
                 ClosedFill::new(self.fill, LoweredBorder::lower(self.border)),
             )
             .turned(self.spin),

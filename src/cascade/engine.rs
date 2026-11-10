@@ -20,7 +20,6 @@ use crate::common::hash::Hasher;
 use crate::common::non_max::NonMaxU32;
 use crate::common::tracy;
 use crate::layout::plane_layout::PlaneLayout;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -37,7 +36,6 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
 use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
-use crate::shape::geometry::box_geometry::BoxGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::closed_paint::ClosedPaint;
@@ -688,21 +686,16 @@ impl TreeSource<'_> {
     /// shape's paint rect, its drop shadow's halo in it, which the test of a clip compares with
     /// the same bound lifted; the side is the box's own, as a shadow is no part of the backdrop.
     /// `None` for a turning or clipped backdrop, whose screen rect is not its own; for chrome,
-    /// whose lift this walk does not keep; and for a triangle or a box covering its outside, as
-    /// the lens bounds its reads by a rounded rect's chords, no shorter along an inward normal than
-    /// its narrowest side (`LensOptics::margin`), which a triangle's corner and an outside region
-    /// break.
+    /// whose lift this walk does not keep; and for a triangle, as the lens bounds its reads by a
+    /// rounded rect's chords, no shorter along an inward normal than its narrowest side
+    /// (`LensOptics::margin`), which a triangle's corner breaks.
     fn narrowest_side(self, entry: &BackdropEntry, rect: Rect, shape_scale: f32) -> Option<f32> {
         let Self { tree, layout, .. } = self;
         if entry.origin != BackdropOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
             return None;
         }
         let ShapeRecord::Closed {
-            geometry:
-                geometry @ ClosedGeometry::Box(BoxGeometry {
-                    coverage: Coverage::Inside,
-                    ..
-                }),
+            geometry: geometry @ ClosedGeometry::Box(_),
             paint: ClosedPaint::Fill(paint),
         } = &tree.shapes.records[entry.shape_idx as usize]
         else {

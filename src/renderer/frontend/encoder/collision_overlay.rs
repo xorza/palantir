@@ -25,7 +25,7 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
             let screen = entry.transform.apply_rect(rect);
             out.draw(
                 DrawClosedPayload::new(
-                    PlacedClosed::inside(PlacedBox {
+                    PlacedClosed::Box(PlacedBox {
                         rect: screen,
                         corners: Corners::ZERO,
                     }),

@@ -109,14 +109,13 @@ fn palantir_arc_dir(na: vec2<f32>, nb: vec2<f32>, f: f32) -> vec2<f32> {
 // two triangles that share a point compute it from the same arithmetic and the same inputs, and
 // the rasterizer shades each pixel along their shared edge once.
 //   - `PALANTIR_POINT_OUTER`, `j` in `0..=PALANTIR_ARC_SEGMENTS + 1`: the outer chain of corner
-//     `k`, `outset` past its arc. The ends lie on the two normals; between them the vertices of
-//     the polygon that circumscribes the arc, or the sharp corner of an outside rect, which paints
-//     out to it.
+//     `k`, `PALANTIR_AA_HALF_WIDTH` past its arc. The ends lie on the two normals; between them
+//     the vertices of the polygon that circumscribes the arc.
 //   - `PALANTIR_POINT_INNER`, `j` in `0..=PALANTIR_ARC_SEGMENTS`: the inner chain, inscribed in
 //     the arc `depth` inside the shape, or the arc's center where the corner is not that deep.
 //   - `PALANTIR_POINT_DEEP`: where the two edges' lines `depth` inside the shape meet, or the
 //     medial axis where the shape is not that deep.
-fn palantir_template_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, outset: f32, depth: f32, outside: bool) -> vec2<f32> {
+fn palantir_template_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, depth: f32) -> vec2<f32> {
     let segments = f32(PALANTIR_ARC_SEGMENTS);
     // The sharp corner's direction from the arc's center, scaled so the corner sits a unit
     // depth past both edges' lines.
@@ -127,15 +126,12 @@ fn palantir_template_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, 
     if (kind == PALANTIR_POINT_INNER) {
         return k.c + max(k.r - depth, 0.0) * palantir_arc_dir(k.na, k.nb, f32(j) / segments);
     }
-    let reach = k.r + outset;
+    let reach = k.r + PALANTIR_AA_HALF_WIDTH;
     if (j == 0u) {
         return k.c + reach * k.na;
     }
     if (j == PALANTIR_ARC_SEGMENTS + 1u) {
         return k.c + reach * k.nb;
-    }
-    if (outside) {
-        return k.c + reach * m;
     }
     let half_step = 0.5 * acos(clamp(dot(k.na, k.nb), -1.0, 1.0)) / segments;
     return k.c + (reach / cos(half_step)) * palantir_arc_dir(k.na, k.nb, (f32(j) - 0.5) / segments);
@@ -163,9 +159,8 @@ struct PalantirTemplateVertex {
     ring_r: f32,
 };
 
-// Vertex `vi` of the template of `s`, whose border is `border_width` wide. An outside rect paints out
-// to its rect, `outset` 0, and draws no interior, which it leaves transparent.
-fn palantir_template_vertex(s: PalantirShape, vi: u32, border_width: f32, outset: f32, outside: bool) -> PalantirTemplateVertex {
+// Vertex `vi` of the template of `s`, whose border is `border_width` wide.
+fn palantir_template_vertex(s: PalantirShape, vi: u32, border_width: f32) -> PalantirTemplateVertex {
     let depth = border_width + PALANTIR_AA_HALF_WIDTH;
     let tri = vi / 3u;
     let at = vi % 3u;
@@ -209,15 +204,9 @@ fn palantir_template_vertex(s: PalantirShape, vi: u32, border_width: f32, outset
         i = fan / (PALANTIR_ARC_SEGMENTS + 1u);
         j = fan % (PALANTIR_ARC_SEGMENTS + 1u);
         kind = select(PALANTIR_POINT_DEEP, PALANTIR_POINT_INNER, palantir_shape_corner(s, i).r >= depth);
-        if (outside) {
-            // No interior: every vertex on one point.
-            kind = PALANTIR_POINT_INNER;
-            i = 0u;
-            j = 0u;
-        }
     }
     let k = palantir_shape_corner(s, i);
-    out.pos = palantir_template_point(k, s.inradius, kind, j, outset, depth, outside);
+    out.pos = palantir_template_point(k, s.inradius, kind, j, depth);
     out.ring_r = k.r;
     if (out.region == PALANTIR_REGION_RING) {
         out.geo = out.pos - k.c;

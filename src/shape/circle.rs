@@ -2,7 +2,6 @@
 
 use std::f32::consts::TAU;
 
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::draw::ClosedPaintRef;
@@ -29,12 +28,11 @@ impl CircleShape {
         Self { local_rect: None }
     }
 
-    /// The round box this circle lays out, covering its inside.
+    /// The round box this circle lays out.
     pub(crate) const fn geometry(&self) -> BoxGeometry {
         BoxGeometry {
             local_rect: self.local_rect,
             outline: BoxOutline::Circle,
-            coverage: Coverage::Inside,
         }
     }
 

@@ -123,7 +123,7 @@ fn a_turn_records_on_every_kind() {
         .filter_map(|call| match call {
             PaintCall::Stroke(p) => Some(p.spin.is_some()),
             PaintCall::Fill(p) => {
-                Some(matches!(p.geometry, PlacedClosed::Box { .. }) && p.spin.is_some())
+                Some(matches!(p.geometry, PlacedClosed::Box(_)) && p.spin.is_some())
             }
             PaintCall::Text(p) => Some(p.spin.is_some()),
             _ => None,
@@ -178,7 +178,7 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
         .find_map(|call| match call {
             PaintCall::Fill(p) => match p.geometry {
                 PlacedClosed::Triangle(placed) => Some((placed.centers, p.spin)),
-                PlacedClosed::Box { .. } => None,
+                PlacedClosed::Box(_) => None,
             },
             _ => None,
         })

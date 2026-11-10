@@ -53,9 +53,8 @@ use glam::Vec2;
 ///
 /// - A rect takes an [`IntoPaint`], a [`Paint`] or a fill alone; an
 ///   [`EffectPaint`](crate::widget::EffectPaint); an [`ImagePaint`](crate::widget::ImagePaint);
-///   an [`IconPaint`](crate::widget::IconPaint). An image takes a rect that covers its inside, its
-///   corners clipping it; an icon a square-cornered rect that covers its inside, and an effect a
-///   rect that covers its inside: their pipelines clip to no other.
+///   an [`IconPaint`](crate::widget::IconPaint). An image's rect clips it by its corners; an icon
+///   takes a square-cornered rect, as its pipeline clips to no corners.
 /// - A circle takes an `IntoPaint` as a round box, a [`Stroke`](crate::Stroke) as a closed arc,
 ///   an `ImagePaint` fit to its square, and an `EffectPaint`, which reads its square and its
 ///   corners.
@@ -141,7 +140,7 @@ pub struct Shape;
 
 impl Shape {
     /// The owner's arranged rect, or [`RectShape::at`] a rect of its own; square-cornered until
-    /// [`RectShape::corners`], covering its inside until [`RectShape::coverage`].
+    /// [`RectShape::corners`].
     pub const fn rect() -> RectShape {
         RectShape::new()
     }

@@ -43,10 +43,7 @@ impl TemplateShape {
     #[inline(always)]
     pub(super) fn of(placed: PlacedClosed, spin: Option<Spin>, lowering: &Lowering<'_>) -> Self {
         match placed {
-            PlacedClosed::Box {
-                placed: PlacedBox { rect, corners },
-                ..
-            } => {
+            PlacedClosed::Box(PlacedBox { rect, corners }) => {
                 let rect = lowering.scaled_rect_with(rect, Self::edges(placed, spin, lowering));
                 let corners =
                     corners.fit_to(rect.physical.size, lowering.transform.physical_scale());
@@ -67,7 +64,7 @@ impl TemplateShape {
         geometry: ShadowGeometry,
         lowering: &Lowering<'_>,
     ) -> Self {
-        let source = Self::of(PlacedClosed::inside(p.source), p.spin, lowering);
+        let source = Self::of(PlacedClosed::Box(p.source), p.spin, lowering);
         if p.shadow.inset() {
             return source.turned(p.spin, lowering);
         }
@@ -92,7 +89,7 @@ impl TemplateShape {
         lowering: &Lowering<'_>,
     ) -> EdgeRounding {
         match (placed, spin) {
-            (PlacedClosed::Box { .. }, None) => lowering.display.edge_rounding(),
+            (PlacedClosed::Box(_), None) => lowering.display.edge_rounding(),
             _ => EdgeRounding::Exact,
         }
     }

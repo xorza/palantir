@@ -37,11 +37,9 @@ pub(crate) struct FillForm {
 
 impl FillForm {
     /// Every fill form, in [`Self::idx`] order.
-    pub(crate) const ALL: [Self; 6] = [
+    pub(crate) const ALL: [Self; 4] = [
         Self::new(ShapeForm::Box, FillBrush::Solid),
         Self::new(ShapeForm::Box, FillBrush::Gradient),
-        Self::new(ShapeForm::BoxOutside, FillBrush::Solid),
-        Self::new(ShapeForm::BoxOutside, FillBrush::Gradient),
         Self::new(ShapeForm::Triangle, FillBrush::Solid),
         Self::new(ShapeForm::Triangle, FillBrush::Gradient),
     ];

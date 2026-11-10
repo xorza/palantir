@@ -117,7 +117,7 @@ impl ClosedPaintPayload for ClosedEffect {
     #[inline]
     fn is_noop(&self, geometry: PlacedClosed) -> bool {
         let empty = match geometry {
-            PlacedClosed::Box { placed, .. } => placed.rect.is_paint_empty(),
+            PlacedClosed::Box(placed) => placed.rect.is_paint_empty(),
             PlacedClosed::Triangle(_) => false,
         };
         empty || is_invisible(self.opacity)

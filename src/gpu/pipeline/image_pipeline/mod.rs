@@ -126,7 +126,6 @@ impl ImagePipeline {
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
-            ShapeForm::BoxOutside => panic!("an image paints inside its shape"),
         };
         self.family.ensure(variant, gpu, target, recipe);
     }
@@ -136,7 +135,6 @@ impl ImagePipeline {
         match form {
             ShapeForm::Rect => 4,
             ShapeForm::Box | ShapeForm::Triangle => shape_template::vertices(form.corner_count()),
-            ShapeForm::BoxOutside => panic!("an image paints inside its shape"),
         }
     }
 

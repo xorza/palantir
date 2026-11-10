@@ -14,7 +14,7 @@ use crate::shape::geometry::closed_geometry::PlacedClosed;
 /// A plain rectangle draw: a fill over a box.
 pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawClosedPayload<ClosedFill>> {
     match call {
-        PaintCall::Fill(p) if matches!(p.geometry, PlacedClosed::Box { .. }) => Some(p),
+        PaintCall::Fill(p) if matches!(p.geometry, PlacedClosed::Box(_)) => Some(p),
         _ => None,
     }
 }
@@ -98,10 +98,7 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
 #[track_caller]
 pub(super) fn quad_rect(p: &DrawClosedPayload<ClosedFill>) -> Rect {
     match p.geometry {
-        PlacedClosed::Box {
-            placed: PlacedBox { rect, .. },
-            ..
-        } => rect,
+        PlacedClosed::Box(PlacedBox { rect, .. }) => rect,
         PlacedClosed::Triangle(_) => panic!("expected box geometry, got a triangle"),
     }
 }

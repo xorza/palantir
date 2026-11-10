@@ -2,7 +2,6 @@
 
 use crate::primitives::geometry::size::Size;
 
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::align::Align;
@@ -105,7 +104,6 @@ fn shape_origins(ui: &Ui, node: NodeId) -> Origins {
             ShapeRecord::Closed {
                 geometry:
                     ClosedGeometry::Box(BoxGeometry {
-                        coverage: Coverage::Inside,
                         local_rect: Some(r),
                         ..
                     }),
@@ -366,12 +364,7 @@ fn selection_rects_offset_matches_text() {
         .shapes_of(block)
         .find_map(|s| match s {
             ShapeRecord::Closed {
-                geometry:
-                    ClosedGeometry::Box(BoxGeometry {
-                        coverage: Coverage::Inside,
-                        local_rect,
-                        ..
-                    }),
+                geometry: ClosedGeometry::Box(BoxGeometry { local_rect, .. }),
                 paint: ClosedPaint::Fill(LoweredPaint { .. }),
             } => *local_rect,
             _ => None,

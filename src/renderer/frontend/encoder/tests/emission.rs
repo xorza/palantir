@@ -3,7 +3,6 @@
 use crate::common::content_hash::ContentHash;
 use crate::host::harness::Harness;
 use crate::image_registry::texture_limit::TextureLimit;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -27,7 +26,6 @@ use crate::renderer::frontend::payload::draw_stroke_payload::StrokePath;
 use crate::renderer::gradient_atlas::tests::support::{distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 use crate::scene::layer::Layer;
-use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
@@ -189,10 +187,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::rect().corners(4.0), RgbaF32::srgb(1.0, 0.0, 0.0));
-            ui.add_shape(
-                Shape::rect().corners(6.0).coverage(Coverage::Outside),
-                RgbaF32::srgb(0.0, 1.0, 0.0),
-            );
+            ui.add_shape(Shape::rect().corners(6.0), RgbaF32::srgb(0.0, 1.0, 0.0));
             ui.add_shape(
                 Shape::line(Vec2::new(0.0, 0.0), Vec2::new(20.0, 0.0)),
                 Stroke::new(RgbaF32::srgb(1.0, 0.0, 0.0), 2.0),
@@ -228,18 +223,12 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         .calls
         .iter()
         .filter_map(|command| as_rect(command))
-        .map(|p| match p.geometry {
-            PlacedClosed::Box { coverage, .. } => (p.paint.fill.kind, coverage),
-            PlacedClosed::Triangle(_) => unreachable!("`as_rect` keeps box geometry"),
-        })
+        .map(|p| p.paint.fill.kind)
         .collect();
     assert_eq!(
         rect_kinds,
-        [
-            (FillKind::SOLID, Coverage::Inside),
-            (FillKind::SOLID, Coverage::Outside),
-        ],
-        "both rects fill solid, the outside one covering its outside",
+        [FillKind::SOLID, FillKind::SOLID],
+        "both rects fill solid",
     );
     // A Line rides the GPU curve pipeline as a degenerate cubic, never a polyline.
     assert_eq!(cmds.kinds(), ["Fill", "Fill", "Stroke", "Stroke"]);

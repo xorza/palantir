@@ -18,9 +18,6 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_row::QuadKey;
-use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use glam::UVec2;
@@ -126,13 +123,6 @@ fn a_later_opaque_cover_drops_what_it_holds() {
             quad(full).border(translucent(60.0)),
             true,
         ),
-        // Its interior is a hole, so even a viewport-wide one covers nothing.
-        (
-            "a outside rect covers nothing",
-            quad(inner),
-            quad(Rect::new(0.0, 0.0, 200.0, 200.0)).outside(),
-            false,
-        ),
     ];
     for (label, under, over, pruned) in cases {
         let buf = run(
@@ -151,23 +141,6 @@ fn a_later_opaque_cover_drops_what_it_holds() {
         };
         assert_eq!(composed, expected, "{label}");
     }
-    let outside = run(
-        |b, _| {
-            QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
-                .outside()
-                .draw(b);
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        outside.quads.key(),
-        [QuadKey::Fill(FillForm::new(
-            ShapeForm::BoxOutside,
-            FillBrush::Solid
-        ))],
-        "the outside side rides through to the quad's key",
-    );
-    assert_eq!(outside.quads.instance()[0].fill_kind, FillKind::SOLID);
 }
 
 /// The unsnapped occluder (10.25, 10.25)..(110.25, 110.25) covers only (10.75, 10.75)..(109.75, 109.75), its half-pixel ramp inset. An under quad goes only if every pixel it shades is inside that, and its own ramp reaches past its rect:

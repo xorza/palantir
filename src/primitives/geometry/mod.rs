@@ -4,7 +4,6 @@
 pub(crate) mod arrow;
 pub(crate) mod circular_arc;
 pub(crate) mod corners;
-pub(crate) mod coverage;
 pub(crate) mod cubic_bezier;
 pub(crate) mod fit;
 pub(crate) mod mesh;

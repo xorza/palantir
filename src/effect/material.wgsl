@@ -2,7 +2,7 @@
 // shows over what it reads, held within the material's luminance bounds, under the box's fill,
 // dithered where an 8-bit sRGB target stores it, over the whole box with the box's border laid
 // over it, as CSS's background and `backdrop-filter` cover the border box; over the rounded rect
-// a quad of the box would shade, turned and outside as one. The backdrop's slot holds the bounds,
+// a quad of the box would shade, turned as one. The backdrop's slot holds the bounds,
 // the fill and the border, faded by a paint animation.
 
 // Whether the target stores 8 bits a channel through the sRGB curve, which a material dithers its
@@ -57,33 +57,17 @@ fn palantir_material(v: PalantirVarying, local: vec2<f32>, input: EffectInput, o
         c = palantir_srgb_to_linear(max(palantir_linear_to_srgb(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
     }
     // Premultiplied, so the clip scales the shade and leaves what is under as over composites it.
-    let shaded = palantir_material_shade(v, local, backdrop, vec4<f32>(c, opacity))
+    let shaded = palantir_material_shade(v, backdrop, vec4<f32>(c, opacity))
         * palantir_clip_coverage(v.clip.xy + palantir_imm.frag_origin, v.chain);
     return PalantirOut(shaded, vec4<f32>(1.0 - shaded.a));
 }
 
 // The shape of `fill` under the slot's border, as a quad's `fs_template` shades it: the template's
 // interior, past the border and the antialiasing reach, is the fill without the distance.
-fn palantir_material_shade(v: PalantirVarying, local: vec2<f32>, backdrop: PalantirBackdrop, fill: vec4<f32>) -> vec4<f32> {
+fn palantir_material_shade(v: PalantirVarying, backdrop: PalantirBackdrop, fill: vec4<f32>) -> vec4<f32> {
     if (v.region == PALANTIR_REGION_INTERIOR) {
         return vec4<f32>(fill.rgb * fill.a, fill.a);
     }
-    let size = v.rect.zw;
     let d = palantir_template_distance(v.region, v.geo, v.ring_r);
-    if (PALANTIR_OUTSIDE) {
-        var cover = palantir_composite_outside(
-            d,
-            fill,
-            backdrop.border_color,
-            backdrop.border_width,
-        );
-        if (v.clock.w != 0.0) {
-            // Turned, the rect edge no longer lies on content of its own extent, so it is a
-            // visible edge and fades as any edge does.
-            let e = abs(local - size * 0.5) - size * 0.5;
-            cover *= palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y);
-        }
-        return cover;
-    }
     return palantir_composite(d, fill, backdrop.border_color, backdrop.border_width);
 }

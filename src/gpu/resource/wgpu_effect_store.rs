@@ -22,8 +22,8 @@ use crate::renderer::render_buffer::shape_form::ShapeForm;
 /// `ShaderVariantCollection.WarmUp`, Unreal's PSO precaching). Refused: building at the load or the
 /// theme set, which a later one replaces for nothing; building at the first press, which stutters,
 /// the reason Flutter wrote Impeller; building on a worker, which shows an effect late; every form
-/// at a want, three pipelines where a press and a material draw a box. Cost: an effect's first
-/// triangle, or a material's first box that covers its outside, builds at the frame that draws it.
+/// at a want, two pipelines where a press and a material draw a box. Cost: an effect's first
+/// triangle builds at the frame that draws it.
 /// A wanted form stays built, for every format and every device after.
 ///
 /// Built before any device, as the registry every recorder clones holds it from the start; the

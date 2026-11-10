@@ -3363,11 +3363,6 @@ widget::ContentType
         Mask = 0
         Color = 1
 
-widget::Coverage
-    enum Coverage: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
-        Inside = 0
-        Outside = 1
-
 widget::CubicBezier
     struct CubicBezier: Clone, Copy, Debug, From<QuadraticBezier>, PartialEq
         pub p0: Vec2
@@ -3561,7 +3556,6 @@ widget::RectShape
     struct RectShape: Clone, Copy, Debug, PaintedBy<IconPaint>, PaintedBy<ImagePaint>
         pub const fn at(self, rect: Rect) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
-        pub const fn coverage(self, coverage: Coverage) -> Self
         impl<P: IntoPaint> PaintedBy<P> for RectShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
 

@@ -41,14 +41,14 @@ impl QuadRuns {
             let end = self.keys.len();
             let mut slot = end;
             if self.keys.last().is_some_and(|&last| last != key) {
-                let shaded = key.shaded_rect(&quad.header);
+                let shaded = quad.header.shaded_rect();
                 for back in (end.saturating_sub(Self::LOOKBACK)..end).rev() {
                     if self.keys[back] == key {
                         slot = back + 1;
                         break;
                     }
                     let earlier = &quads[self.order[back] as usize].header;
-                    if self.keys[back].shaded_rect(earlier).intersects(shaded) {
+                    if earlier.shaded_rect().intersects(shaded) {
                         break;
                     }
                 }

@@ -905,7 +905,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
             |b, _| {
                 b.draw(
                     DrawClosedPayload {
-                        geometry: PlacedClosed::inside(PlacedBox {
+                        geometry: PlacedClosed::Box(PlacedBox {
                             rect: Rect::new(5.0, 5.0, 50.0, 25.0),
                             corners: Corners::all(4.0),
                         }),
@@ -1091,7 +1091,7 @@ fn an_image_edge_on_its_shape_leaves_the_fade_to_the_shape() {
         assert_eq!(image.decal_min, Vec2::splat(-f32::MAX), "triangle {i}");
         assert_eq!(image.decal_max, Vec2::splat(f32::MAX), "triangle {i}");
     }
-    let shape = PlacedClosed::inside(PlacedBox {
+    let shape = PlacedClosed::Box(PlacedBox {
         rect: Rect::new(5.0, 5.0, 50.0, 25.0),
         corners: Corners::all(4.0),
     });

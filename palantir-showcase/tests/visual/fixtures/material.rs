@@ -13,7 +13,6 @@ use palantir_showcase::support::Kits;
 use crate::golden_name::GoldenName;
 use crate::visual_rig::FIXTURE_PALETTE;
 use palantir::Paint;
-use palantir::widget::Coverage;
 
 /// Stripes of three colors and widths, and two lines of text over them, filling `size`.
 fn backdrop_scene(ui: &mut Ui, size: UVec2) {
@@ -35,9 +34,8 @@ fn backdrop_scene(ui: &mut Ui, size: UVec2) {
 }
 
 /// Pin: materials over stripes and text, left to right: a plain blur, a frosted material under a
-/// translucent fill (saturated and grained), a rounded material with a border, a material covering
-/// its outside, which blurs around its hole, a material over a material, and a material cut by the
-/// surface's edge, whose blur mirrors there.
+/// translucent fill (saturated and grained), a rounded material with a border, a material over a
+/// material, and a material cut by the surface's edge, whose blur mirrors there.
 #[test]
 fn materials_match_golden() {
     let size = UVec2::new(640, 120);
@@ -63,13 +61,6 @@ fn materials_match_golden() {
                     Paint::NONE
                         .with_border(Border::new(RgbaF32::WHITE, 2.0))
                         .with_material(Material::blur(8.0)),
-                );
-                ui.add_shape(
-                    Shape::rect()
-                        .at(Rect::new(310.0, 20.0, 90.0, 80.0))
-                        .corners(Corners::all(24.0))
-                        .coverage(Coverage::Outside),
-                    Paint::NONE.with_material(Material::blur(8.0)),
                 );
                 ui.add_shape(
                     Shape::rect().at(Rect::new(410.0, 20.0, 90.0, 80.0)),

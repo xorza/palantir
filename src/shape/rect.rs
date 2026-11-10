@@ -1,7 +1,6 @@
 //! [`RectShape`]: a rounded rect, the geometry a box, an image, an icon and an effect fill.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::shape::draw::ClosedPaintRef;
 use crate::shape::draw::Draw;
@@ -10,15 +9,14 @@ use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::sealed;
 use crate::shape::{IntoPaint, PaintedBy};
 
-/// A rounded rect: the owner's arranged rect or [`Self::at`] a rect of its own, its corner radii,
-/// and the side of its boundary it covers. A [`Paint`](crate::Paint), an effect, an image or an icon covers it
+/// A rounded rect: the owner's arranged rect or [`Self::at`] a rect of its own, and its corner
+/// radii. A [`Paint`](crate::Paint), an effect, an image or an icon covers it
 /// ([`Ui::add_shape`](crate::Ui::add_shape)).
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct RectShape {
     pub(crate) local_rect: Option<Rect>,
     pub(crate) corners: Corners,
-    pub(crate) coverage: Coverage,
 }
 
 impl RectShape {
@@ -26,7 +24,6 @@ impl RectShape {
         Self {
             local_rect: None,
             corners: Corners::ZERO,
-            coverage: Coverage::Inside,
         }
     }
 
@@ -56,39 +53,21 @@ impl RectShape {
         self
     }
 
-    /// Cover `coverage`, the inside of the boundary by default.
-    pub const fn coverage(mut self, coverage: Coverage) -> Self {
-        self.coverage = coverage;
-        self
-    }
-
-    /// The box this rect lays out: its rect, its corners and the side it covers.
+    /// The box this rect lays out: its rect and its corners.
     pub(crate) const fn geometry(&self) -> BoxGeometry {
         BoxGeometry {
             local_rect: self.local_rect,
             outline: BoxOutline::Rect(self.corners),
-            coverage: self.coverage,
         }
     }
 
-    /// Panic unless the rect is square-cornered and covers its inside, as `what`'s pipeline,
-    /// which clips to neither corners nor a side, draws.
+    /// Panic unless the rect is square-cornered, as `what`'s pipeline, which clips to no corners,
+    /// draws.
     #[track_caller]
     pub(crate) fn assert_plain(&self, what: &str) {
         assert!(
             self.corners == Corners::ZERO,
             "{what} paints a square-cornered rect"
-        );
-        self.assert_inside(what);
-    }
-
-    /// Panic unless the rect covers its inside, as `what`'s pipeline, which clips to no side,
-    /// draws.
-    #[track_caller]
-    pub(crate) fn assert_inside(&self, what: &str) {
-        assert!(
-            self.coverage == Coverage::Inside,
-            "{what} paints the inside of its rect"
         );
     }
 }

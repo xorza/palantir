@@ -142,7 +142,7 @@ fn compose_emits_image_batch_for_drawimage() {
         |b, _arena| {
             b.draw(
                 DrawClosedPayload {
-                    geometry: PlacedClosed::inside(PlacedBox {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(10.0, 20.0, 30.0, 40.0),
                         corners: Corners::ZERO,
                     }),
@@ -412,7 +412,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
         |b, _arena| {
             b.draw(
                 DrawClosedPayload {
-                    geometry: PlacedClosed::inside(PlacedBox {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(0.0, 0.0, 100.0, 100.0),
                         corners: Corners::ZERO,
                     }),
@@ -444,7 +444,7 @@ fn compose_forwards_flags_and_repeat_uv() {
             // Plain draw: no flags.
             b.draw(
                 DrawClosedPayload {
-                    geometry: PlacedClosed::inside(PlacedBox {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         corners: Corners::ZERO,
                     }),
@@ -464,7 +464,7 @@ fn compose_forwards_flags_and_repeat_uv() {
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
             b.draw(
                 DrawClosedPayload {
-                    geometry: PlacedClosed::inside(PlacedBox {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         corners: Corners::ZERO,
                     }),
@@ -484,7 +484,7 @@ fn compose_forwards_flags_and_repeat_uv() {
             // The two nearest-filter bits ride through together.
             b.draw(
                 DrawClosedPayload {
-                    geometry: PlacedClosed::inside(PlacedBox {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
                         corners: Corners::ZERO,
                     }),
@@ -528,7 +528,7 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
         |b, _| {
             b.draw(
                 DrawClosedPayload {
-                    geometry: PlacedClosed::inside(PlacedBox {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(40.0, 40.0, 20.0, 10.0),
                         corners: Corners::ZERO,
                     }),
@@ -598,7 +598,7 @@ fn an_effect_lands_as_one_physical_row() {
         |b, _arena| {
             b.draw(
                 DrawClosedPayload {
-                    geometry: PlacedClosed::inside(PlacedBox {
+                    geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(5.0, 6.0, 10.0, 8.0),
                         corners: Corners::new(4.0, 6.0, 6.0, 4.0),
                     }),

@@ -134,15 +134,9 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectPaint<U, K> {
 
 impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape {}
 
-/// An effect over a rect, which bounds it by its corners and covers its inside.
+/// An effect over a rect, which bounds it by its corners.
 impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for RectShape {
-    /// # Panics
-    ///
-    /// Unless the rect covers its inside, which an effect's pipeline draws.
-    #[track_caller]
-    fn check(&self, _paint: &EffectPaint<U, K>) {
-        self.assert_inside("an effect");
-    }
+    fn check(&self, _paint: &EffectPaint<U, K>) {}
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
         Draw::Closed {

@@ -60,11 +60,11 @@ impl IconPaint {
 
 impl PaintedBy<IconPaint> for RectShape {}
 
-/// An icon over a rect, square-cornered and covering its inside.
+/// An icon over a rect, square-cornered.
 impl sealed::DrawWith<IconPaint> for RectShape {
     /// # Panics
     ///
-    /// Unless the rect is square-cornered and covers its inside, which an icon's pipeline draws.
+    /// Unless the rect is square-cornered, which an icon's pipeline draws.
     #[track_caller]
     fn check(&self, _paint: &IconPaint) {
         self.assert_plain("an icon");

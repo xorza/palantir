@@ -7,9 +7,7 @@ use std::mem::offset_of;
 
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
-use crate::effect::contract::{
-    BACKDROPS_GROUP, IMAGES_GROUP, OUTSIDE_OVERRIDE, TRIANGLE_OVERRIDE, WORDS_GROUP,
-};
+use crate::effect::contract::{BACKDROPS_GROUP, IMAGES_GROUP, TRIANGLE_OVERRIDE, WORDS_GROUP};
 use crate::effect::effect_store::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
@@ -187,8 +185,7 @@ pub(crate) struct EffectTarget<'a> {
 ///
 /// # Panics
 ///
-/// For a [`ShapeForm::Rect`], as an effect draws its shape's template, and for a color effect's
-/// [`ShapeForm::BoxOutside`], as only a material's box covers its outside.
+/// For a [`ShapeForm::Rect`], as an effect draws its shape's template.
 pub(crate) fn build(gpu: &Gpu, layouts: &EffectLayouts, target: EffectTarget<'_>) -> ClipVariant {
     let EffectTarget {
         module,
@@ -200,13 +197,9 @@ pub(crate) fn build(gpu: &Gpu, layouts: &EffectLayouts, target: EffectTarget<'_>
         "an effect draws its shape's template"
     );
     let pinned = |on: bool| f64::from(u8::from(on));
-    let shape = [
-        (TRIANGLE_OVERRIDE, pinned(form == ShapeForm::Triangle)),
-        (OUTSIDE_OVERRIDE, pinned(form == ShapeForm::BoxOutside)),
-    ];
+    let shape = [(TRIANGLE_OVERRIDE, pinned(form == ShapeForm::Triangle))];
     let backdrop = [
         shape[0],
-        shape[1],
         (
             "PALANTIR_DITHER_SRGB8",
             pinned(format.is_srgb() && format.target_pixel_byte_cost() == Some(4)),
@@ -214,13 +207,7 @@ pub(crate) fn build(gpu: &Gpu, layouts: &EffectLayouts, target: EffectTarget<'_>
     ];
     // Only the material path, which a backdrop effect alone holds, declares the dither.
     let constants: &[(&str, f64)] = match module.kind {
-        KindId::Color => {
-            assert!(
-                form != ShapeForm::BoxOutside,
-                "a color effect paints inside its shape"
-            );
-            &shape
-        }
+        KindId::Color => &shape,
         KindId::Backdrop => &backdrop,
     };
     let label = format!("palantir.effect.{}.{form:?}", effect.0);
@@ -429,6 +416,7 @@ mod tests {
     use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts, EffectTarget};
     use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::internals::panic_probe;
     use crate::primitives::effect::effect_kind::KindId;
     use crate::primitives::identity::effect_id::EffectId;
     use crate::renderer::render_buffer::effect_draw_row::EffectKey;
@@ -469,29 +457,15 @@ mod tests {
         }
     }
 
-    /// A color effect builds a box and a triangle, then refuses a box that covers its outside,
-    /// which only a material's box takes.
+    /// A color and a backdrop effect each build a box and a triangle, then refuse a rect's one
+    /// quad.
     #[test]
-    #[should_panic(expected = "a color effect paints inside its shape")]
-    fn a_color_effect_refuses_the_outside_form() {
-        build(
-            KindId::Color,
-            &[ShapeForm::Box, ShapeForm::Triangle, ShapeForm::BoxOutside],
-        );
-    }
-
-    /// A backdrop effect builds all three template forms, then refuses a rect's one quad.
-    #[test]
-    #[should_panic(expected = "an effect draws its shape's template")]
-    fn an_effect_refuses_the_rect_form() {
-        build(
-            KindId::Backdrop,
-            &[
-                ShapeForm::Box,
-                ShapeForm::BoxOutside,
-                ShapeForm::Triangle,
-                ShapeForm::Rect,
-            ],
-        );
+    fn an_effect_builds_its_template_forms_and_refuses_the_rect() {
+        for kind in [KindId::Color, KindId::Backdrop] {
+            build(kind, &[ShapeForm::Box, ShapeForm::Triangle]);
+            panic_probe::assert_panics_with("an effect draws its shape's template", || {
+                build(kind, &[ShapeForm::Rect]);
+            });
+        }
     }
 }

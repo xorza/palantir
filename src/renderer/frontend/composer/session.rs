@@ -388,10 +388,9 @@ impl PaintSink for ComposeSession<'_> {
     /// one quad over that rect; any other shape draws its template.
     fn image(&mut self, p: DrawClosedPayload<ClosedImage>) {
         match p.geometry {
-            PlacedClosed::Box {
-                placed: PlacedBox { corners, .. },
-                ..
-            } if corners == Corners::ZERO => self.plain_image(p),
+            PlacedClosed::Box(PlacedBox { corners, .. }) if corners == Corners::ZERO => {
+                self.plain_image(p);
+            }
             _ => self.shaped_image(p),
         }
     }
@@ -452,12 +451,6 @@ impl PaintSink for ComposeSession<'_> {
             None => 0,
         };
         let form = ShapeForm::of(&p.geometry);
-        if form.is_outside() {
-            debug_assert!(
-                p.paint.stage.is_some(),
-                "only a material's box covers its outside"
-            );
-        }
         let flags = if p.paint.stage.is_some() {
             EffectInstance::MATERIAL
         } else {

@@ -2,7 +2,6 @@
 
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::float_hash::FloatHash;
@@ -12,12 +11,11 @@ use std::hash::{Hash as _, Hasher as _};
 
 /// Where a box lies: `local_rect = None` lays it out in the owner's arranged rect, `Some(r)` in
 /// owner-relative coords, in the slot it was pushed in, under the owner's clip but outside its pan
-/// transform; its outline in that rect, and the side of it it covers.
+/// transform; and its outline in that rect.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BoxGeometry {
     pub(crate) local_rect: Option<Rect>,
     pub(crate) outline: BoxOutline,
-    pub(crate) coverage: Coverage,
 }
 
 impl BoxGeometry {
@@ -34,9 +32,7 @@ impl BoxGeometry {
         let Self {
             local_rect,
             outline,
-            coverage,
         } = self;
-        h.write_u8(coverage as u8);
         local_rect.hash_visual(h);
         outline.hash_into(h);
     }

@@ -89,20 +89,20 @@ mod tests {
     use crate::renderer::render_buffer::effect_draw_row::EffectKey;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
 
-    /// A key's slot is its effect's run of four forms at its form: effect 2's triangle at
-    /// `2 · 4 + 3 = 11`, its rect at 8; and the slot reads back to the key.
+    /// A key's slot is its effect's run of three forms at its form: effect 2's triangle at
+    /// `2 · 3 + 2 = 8`, its rect at 6; and the slot reads back to the key.
     #[test]
     fn a_key_takes_its_effects_run_at_its_form() {
         let key = |effect, form| EffectKey {
             effect: EffectId(effect),
             form,
         };
-        assert_eq!(key(2, ShapeForm::Triangle).slot(), 11);
-        assert_eq!(key(2, ShapeForm::Rect).slot(), 8);
-        assert_eq!(key(0, ShapeForm::BoxOutside).slot(), 2);
-        for slot in 0..12 {
+        assert_eq!(key(2, ShapeForm::Triangle).slot(), 8);
+        assert_eq!(key(2, ShapeForm::Rect).slot(), 6);
+        assert_eq!(key(0, ShapeForm::Triangle).slot(), 2);
+        for slot in 0..9 {
             assert_eq!(EffectKey::of_slot(slot).slot(), slot);
         }
-        assert_eq!(EffectKey::of_slot(5), key(1, ShapeForm::Box));
+        assert_eq!(EffectKey::of_slot(4), key(1, ShapeForm::Box));
     }
 }

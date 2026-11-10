@@ -16,12 +16,9 @@ const PALANTIR_AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
 // `EffectInstance::flags`'s bit for a material's box.
 const PALANTIR_MATERIAL: u32 = /*{MATERIAL}*/;
 
-// The shape form the pipeline draws (`ShapeForm`), pinned as two constants, so the template's
-// vertex decode folds its corner count and the driver drops the side the form does not take: a
-// triangle, three of the instance's points; and a material's box that covers outside its rounded
-// rect. Both off draw a box that covers its inside.
+// The shape form the pipeline draws (`ShapeForm`), pinned as a constant, so the template's vertex
+// decode folds its corner count: a triangle, three of the instance's points, or a box.
 override PALANTIR_TRIANGLE: bool;
-override PALANTIR_OUTSIDE: bool;
 
 // One instance past its shape (`PalantirShapeIn`): its clock (`time`, `opacity`, `scale`), the word
 // its parameters start at, a backdrop effect's backdrop, its flags, and the border width a
@@ -56,16 +53,14 @@ struct PalantirOut {
 }
 
 // The shape's template (`palantir_template_vertex`), as a quad's is drawn: a ring per corner, a
-// band per edge and an interior, reaching the antialiasing reach past the shape; a rect covering
-// its outside stops at its rect, as it lies over content of its own extent, and draws no interior.
+// band per edge and an interior, reaching the antialiasing reach past the shape.
 @vertex
 fn palantir_vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, instance: PalantirInstance) -> PalantirVarying {
     let pos = shape.rect.xy;
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
     let s = palantir_shape_of(shape, select(4u, 3u, PALANTIR_TRIANGLE));
-    let outset = select(PALANTIR_AA_HALF_WIDTH, 0.0, PALANTIR_OUTSIDE && rotation == 0.0);
-    let t = palantir_template_vertex(s, vi, instance.border_width, outset, PALANTIR_OUTSIDE);
+    let t = palantir_template_vertex(s, vi, instance.border_width);
     let px = palantir_turned(pos + t.pos, pos + size * 0.5, rotation);
     let ndc = px * (vec2<f32>(2.0, -2.0) / palantir_imm.viewport_size) + vec2<f32>(-1.0, 1.0);
     return PalantirVarying(

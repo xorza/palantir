@@ -1,7 +1,6 @@
 use crate::effect::effect_registry::EffectRegistry;
 use crate::image_registry::ImageRegistry;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
@@ -175,13 +174,10 @@ fn image_dimensions_above_u16_survive_lowering() {
     assert_eq!(size, UVec2::new(WIDTH, 1));
 }
 
-/// An image keeps its rect's corners, its circle or its triangle in the record, which clip it; a
-/// rect that covers its outside stays refused, as the image pipeline clips to no side.
+/// An image keeps its rect's corners, its circle or its triangle in the record, which clip it.
 #[test]
 fn an_image_keeps_the_shape_that_clips_it() {
-    use crate::internals::panic_probe;
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::geometry::coverage::Coverage;
     use crate::shape::geometry::box_geometry::BoxGeometry;
     use crate::shape::geometry::box_geometry::BoxOutline;
     use crate::shape::geometry::closed_geometry::ClosedGeometry;
@@ -208,7 +204,6 @@ fn an_image_keeps_the_shape_that_clips_it() {
         ClosedGeometry::Box(BoxGeometry {
             local_rect: None,
             outline: BoxOutline::Rect(Corners::new(1.0, 2.0, 3.0, 4.0)),
-            coverage: Coverage::Inside,
         })
     );
     // A triangle takes an image, its geometry kept for the draw to place; one of no area paints
@@ -254,16 +249,10 @@ fn an_image_keeps_the_shape_that_clips_it() {
         ClosedGeometry::Box(BoxGeometry {
             local_rect: Some(at),
             outline: BoxOutline::Circle,
-            coverage: Coverage::Inside,
         })
     );
     let empty = Shape::circle().at(Rect::new(1.0, 2.0, 0.0, 4.0));
     assert_eq!(add(&mut shapes, (empty, paint_of(4)), &mut store), None);
-    panic_probe::assert_panics_with("an image paints the inside of its rect", || {
-        Shape::rect()
-            .coverage(Coverage::Outside)
-            .check(&ImagePaint::new(handle(4)));
-    });
 }
 
 /// Inputs a builder checks never reach the record gate: each panics with its
@@ -462,9 +451,7 @@ fn builders_refuse_what_they_check() {
         || check(&(Shape::rect().at(Rect::new(0.0, N, 8.0, 8.0)), Paint::NONE)),
         || {
             check(&(
-                Shape::rect()
-                    .at(Rect::new(f32::INFINITY, 0.0, 8.0, 8.0))
-                    .coverage(Coverage::Outside),
+                Shape::rect().at(Rect::new(f32::INFINITY, 0.0, 8.0, 8.0)),
                 Paint::NONE,
             ));
         },

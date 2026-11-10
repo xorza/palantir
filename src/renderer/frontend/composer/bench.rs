@@ -411,7 +411,7 @@ impl ClipCase {
 fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
         DrawClosedPayload::new(
-            PlacedClosed::inside(PlacedBox {
+            PlacedClosed::Box(PlacedBox {
                 rect,
                 corners: Corners::ZERO,
             }),
@@ -448,7 +448,7 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
     };
     cmds.draw(
         DrawClosedPayload::new(
-            PlacedClosed::inside(PlacedBox {
+            PlacedClosed::Box(PlacedBox {
                 rect,
                 corners: Corners::ZERO,
             }),
@@ -507,7 +507,7 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
 fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
         DrawClosedPayload {
-            geometry: PlacedClosed::inside(PlacedBox {
+            geometry: PlacedClosed::Box(PlacedBox {
                 rect,
                 corners: Corners::ZERO,
             }),

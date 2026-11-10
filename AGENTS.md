@@ -241,8 +241,8 @@ driver serves that command alone; the drive table's `version` names it
   for a box, `Stroke` for a line, a color for text, a tint for a mesh, `ImagePaint`, `IconPaint`,
   `EffectPaint`. *Fill* is a box's brush, over its material where it has one; *brush* a color or a
   gradient. *Border* is a box's edge, inside its rect; *stroke* a line's paint, centered on its
-  path. *Tint* multiplies what an image, an icon or a mesh shows, and nothing else. *Coverage* is
-  the side of its boundary a shape covers; *fit* how a point shape or an icon fills its rect.
+  path. *Tint* multiplies what an image, an icon or a mesh shows, and nothing else. *Fit* is how
+  a point shape or an icon fills its rect.
   Refused: "tint" for a material's fill, "stroke" for a box's edge.
 - **`Chrome` is a node's box**: its corners and its `Paint`, the one value of a node's box and a
   modal's scrim, as Compose's `background(brush, shape)` takes the shape beside the brush and
@@ -386,9 +386,11 @@ driver serves that command alone; the drive table's `version` names it
   border over it, which counted the band twice, 0.75 for an opaque pixel half covered; the
   gradient as a quad above the material, a second draw and a break in the run of material draws;
   a material stage compiled apart, a second pipeline per effect.
-- **The covered side is the shape's**: `Coverage::{Inside, Outside}` on `RectShape`, as Skia's
-  inverse fill types belong to the path. Refused: a second constructor of one geometry; a flag
-  setter.
+- **A shape covers its inside**: a rounded clip cuts content to a rounded rect
+  (`palantir_clip_coverage`), so no shape paints the outside of its boundary. Refused: Skia's
+  inverse fill types as a `Coverage` on `RectShape`, a mask of a rect's corners laid over content
+  that kept no clip, which the rounded clip replaced, and which cost a fill and an effect form of
+  their own, an outside branch in the template and an outside composite.
 - **Images, icons and effects are paints of a shape**: an image and an effect of a rect, a
   circle or a triangle, an icon of a rect, as Skia's `SkImageShader` and SwiftUI's
   `ImagePaint` fill a shape. Refused: a `Brush::Image`, as a brush is saved in theme files and

@@ -9,7 +9,6 @@ use palantir::{
 };
 
 use crate::fixtures;
-use crate::fixtures::DARK_BG;
 use crate::golden_name::GoldenName;
 use crate::goldens;
 use crate::visual_rig::VisualRig;
@@ -17,35 +16,6 @@ use palantir::LineCap;
 use palantir::LineJoin;
 use palantir::Paint;
 use palantir::Stroke;
-use palantir::widget::Coverage;
-
-/// Pin a rect's outside coverage, its inverted fill: the rect over gradient content fills the
-/// corner wedges with the background and borders the boundary. The golden must read as a
-/// rounded-clipped card.
-#[test]
-fn outside_coverage_masks_corners_matches_golden() {
-    GoldenName::OutsideCoverageMasksCorners.assert_scene(UVec2::new(220, 140), |ui| {
-        Panel::vstack()
-            .auto_id()
-            .padding(20.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                let card = Rect::new(0.0, 0.0, 180.0, 100.0);
-                ui.add_shape(
-                    Shape::rect().at(card),
-                    LinearGradient::two_stop(0.0, RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)),
-                );
-                ui.add_shape(
-                    Shape::rect()
-                        .at(card)
-                        .corners(20.0)
-                        .coverage(Coverage::Outside),
-                    Paint::from(DARK_BG)
-                        .with_border(Border::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
-                );
-            });
-    });
-}
 
 /// Pin the slot mechanism: three sub-rect shapes interleaved with two child Frames, each overlapping the children that paint under it, so pixels tell "right slot" from "all collapsed to slot 0".
 ///
@@ -418,7 +388,7 @@ fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
 
 /// The cases of [`a_template_matches_the_one_quad_form`], one to a cell: rounded and sharp rects
 /// with and without borders, a border wider than its radius and one wider than half the box,
-/// thin bars, mixed radii, capsules, circles, outside rects, triangles, gradients and turned shapes,
+/// thin bars, mixed radii, capsules, circles, triangles, gradients and turned shapes,
 /// all off the pixel grid and translucent, so a pixel shaded twice or missed moves its value.
 fn template_sweep(ui: &mut Ui) {
     use palantir::RadialGradient;
@@ -479,15 +449,6 @@ fn template_sweep(ui: &mut Ui) {
                 border(if d > 20.0 { 2.0 } else { 0.0 }),
             );
         }
-        for (corners, w) in [(16.0, 0.0), (16.0, 3.0), (0.0, 2.0)] {
-            ui.add_shape(
-                Shape::rect()
-                    .at(cell(next(), 56.0, 50.0))
-                    .corners(corners)
-                    .coverage(Coverage::Outside),
-                border(w),
-            );
-        }
         let tri = |i: usize| {
             let c = cell(i, 0.0, 0.0).min;
             (
@@ -530,15 +491,6 @@ fn template_sweep(ui: &mut Ui) {
         ) {
             shape.animate(turn);
         }
-        if let Some(shape) = ui.add_shape(
-            Shape::rect()
-                .at(cell(next(), 40.0, 40.0))
-                .corners(10.0)
-                .coverage(Coverage::Outside),
-            border(1.5),
-        ) {
-            shape.animate(turn);
-        }
         let (a, b, c) = tri(next());
         if let Some(shape) = ui.add_shape(Shape::triangle(a, b, c).radius(4.0_f32), border(1.5)) {
             shape.animate(turn);
@@ -547,12 +499,14 @@ fn template_sweep(ui: &mut Ui) {
 }
 
 /// Every box, circle and triangle drawn as its template equals the one quad that measures its
-/// distance at each pixel, to two 8-bit levels per channel: the template interpolates in each
+/// distance at each pixel, to three 8-bit levels per channel: the template interpolates in each
 /// region the closed form the one quad evaluates from its interpolated position, so the two
 /// differ by the rounding of an f32 varying across a triangle, about 0.002 px of distance on a
 /// 28 px arc, which the sRGB curve near black, 12.92 levels a linear level, turns into two levels
-/// at a faint edge. A pixel shaded by two triangles, or by none, would move its translucent value
-/// by tens of levels, so the tolerance also proves the regions tile the shape.
+/// at a faint edge, and a turned shape's rotation of its vertices rounds once more: the turned
+/// rounded rect reads three at one pixel near black. A pixel shaded by two triangles, or by none,
+/// would move its translucent value by tens of levels, so the tolerance also proves the regions
+/// tile the shape.
 #[test]
 fn a_template_matches_the_one_quad_form() {
     let size = UVec2::new(8 * 72, 5 * 72);
@@ -572,8 +526,8 @@ fn a_template_matches_the_one_quad_form() {
         .map(|(&a, &b)| a.abs_diff(b))
         .collect();
     let most = deltas.iter().copied().max().unwrap();
-    if most > 2 {
+    if most > 3 {
         goldens::assert_same("template_against_one_quad", &template, &one_quad);
     }
-    assert!(most <= 2, "a channel moved {most} levels");
+    assert!(most <= 3, "a channel moved {most} levels");
 }

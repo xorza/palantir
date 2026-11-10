@@ -5,7 +5,6 @@ use crate::widgets::text_edit::tests::*;
 /// samples visible now. On a focused, unselected editor the caret is the only
 /// rounded rect with `local_rect: Some(...)`.
 fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
-    use crate::primitives::geometry::coverage::Coverage;
     use crate::scene::tree::iter::TreeItem;
     use crate::shape::geometry::box_geometry::BoxGeometry;
     use crate::shape::geometry::closed_geometry::ClosedGeometry;
@@ -26,7 +25,6 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
                 s,
                 ShapeRecord::Closed {
                     geometry: ClosedGeometry::Box(BoxGeometry {
-                        coverage: Coverage::Inside,
                         local_rect: Some(_),
                         ..
                     }),

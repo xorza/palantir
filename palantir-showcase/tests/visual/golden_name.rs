@@ -80,7 +80,6 @@ golden_names! {
     MaterialTurned => "material_turned",
     Materials => "materials",
     ModalDialog => "modal_dialog",
-    OutsideCoverageMasksCorners => "outside_coverage_masks_corners",
     PolylineBevelJoin => "polyline_bevel_join",
     PolylineGradient => "polyline_gradient",
     PolylineRoundCaps => "polyline_round_caps",

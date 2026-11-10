@@ -15,8 +15,8 @@ pub(crate) const CLIP_DEPTH_BITS: u32 = 8;
 
 /// `palantir_edge_coverage`.
 pub(crate) const ANTIALIAS: &str = include_str!("antialias.wgsl");
-/// A box's fill and border over its edge, `palantir_composite` and its outside twin, which a quad
-/// and a material shade alike; it reads [`ANTIALIAS`].
+/// A box's fill and border over its edge, `palantir_composite`, which a quad and a material shade
+/// alike; it reads [`ANTIALIAS`].
 pub(crate) const COMPOSITE: &str = include_str!("composite.wgsl");
 /// The sRGB transfers and `palantir_unpremultiply`.
 pub(crate) const COLOR: &str = include_str!("color.wgsl");

@@ -1,6 +1,5 @@
 use crate::effect::effect_registry::EffectRegistry;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::mesh::Mesh;
@@ -325,18 +324,9 @@ fn triangle_rounding_keeps_the_edges() {
 #[test]
 fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
-    let rect_shape = Shape::rect()
-        .at(rect)
-        .corners(6.0)
-        .coverage(Coverage::Outside);
+    let rect_shape = Shape::rect().at(rect).corners(6.0);
     assert_eq!(rect_shape.local_rect, Some(rect));
     assert_eq!(rect_shape.corners.to_array(), [6.0; 4]);
-    assert_eq!(rect_shape.coverage, Coverage::Outside);
-    assert_eq!(
-        Shape::rect().coverage,
-        Coverage::Inside,
-        "inside by default"
-    );
 
     // Every point shape takes its rect and its fit into one placement.
     let placed = PointPlacement {

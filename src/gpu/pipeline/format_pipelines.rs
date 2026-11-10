@@ -26,7 +26,7 @@ pub(crate) struct FormatPipelines {
     format: wgpu::TextureFormat,
     pub(crate) quad: QuadVariants,
     pub(crate) mesh: ClipVariant,
-    /// Indexed by [`ShapeForm`]; an image draws no [`ShapeForm::BoxOutside`].
+    /// Indexed by [`ShapeForm`].
     pub(crate) image: [ClipVariant; ShapeForm::ALL.len()],
     pub(crate) curve: ClipVariant,
     /// The pipelines of **both** raster tenants: glyph and icon quads share one shader and layout,
@@ -73,7 +73,7 @@ impl PipelineCensus {
                 QuadDraw::Fill(FillForm::new(ShapeForm::Triangle, FillBrush::Solid)),
             ]),
             meshes: true,
-            images: [true, false, false, false],
+            images: [true, false, false],
             curves: true,
             rasters: true,
         }

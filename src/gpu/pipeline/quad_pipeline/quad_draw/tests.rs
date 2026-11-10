@@ -84,7 +84,7 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
     assert_eq!(draws[0], solid, "a form does not move with the grid");
 }
 
-/// Each draw's index is its place in `ALL`: the six fill forms, then the three shadow entries, so
+/// Each draw's index is its place in `ALL`: the four fill forms, then the three shadow entries, so
 /// each pipeline slot and each bit of a `QuadDraws` is one draw's.
 #[test]
 fn each_draw_indexes_its_place() {
@@ -92,7 +92,7 @@ fn each_draw_indexes_its_place() {
         assert_eq!(draw.idx() as usize, at, "{draw:?}");
     }
     assert_eq!(
-        QuadDraw::ALL[6..],
+        QuadDraw::ALL[4..],
         [
             QuadDraw::Shadow(ShadowEntry::General),
             QuadDraw::Shadow(ShadowEntry::Tables),

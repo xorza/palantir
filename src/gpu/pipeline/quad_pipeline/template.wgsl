@@ -17,15 +17,13 @@ struct TemplateOut {
     @location(3) @interpolate(flat) fill_packed: vec2<u32>,
     @location(4) @interpolate(flat) border_color_packed: vec2<u32>,
     @location(5) @interpolate(flat) border_width: f32,
-    // The quad's own frame, which a gradient and a turned outside rect's edge read.
+    // The quad's own frame, which a gradient reads.
     @location(6) local: vec2<f32>,
     @location(7) @interpolate(flat) fill_kind: u32,
     @location(8) @interpolate(flat) fill_lut_row: u32,
     @location(9) @interpolate(flat) fill_axis: vec4<f32>,
     @location(10) @interpolate(flat) inv_size: vec2<f32>,
-    // A turned outside rect's size, whose edge fades as any edge does; zero otherwise.
-    @location(11) @interpolate(flat) turned_size: vec2<f32>,
-    @location(12) @interpolate(flat) chain: u32,
+    @location(11) @interpolate(flat) chain: u32,
 };
 
 // `vs` for a box, a circle or a triangle drawn as its template: the regions where the shape's
@@ -37,12 +35,8 @@ fn vs_template(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: Qua
     let pos = shape.rect.xy;
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
-    let outside = form_is_outside();
     let s = palantir_shape_of(shape, select(4u, 3u, form_is_triangle()));
-    // An outside rect over content of its own extent stops at its rect; turned, its edge is visible
-    // and fades as any edge does, so it reaches past it too.
-    let outset = select(PALANTIR_AA_HALF_WIDTH, 0.0, outside && rotation == 0.0);
-    let v = palantir_template_vertex(s, vi, quad.border_width, outset, outside);
+    let v = palantir_template_vertex(s, vi, quad.border_width);
     var out: TemplateOut;
     out.region = v.region;
     out.geo = v.geo;
@@ -55,7 +49,6 @@ fn vs_template(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: Qua
     out.fill_lut_row = q.fill_lut_row;
     out.fill_axis = q.fill_axis;
     out.inv_size = q.inv_size;
-    out.turned_size = select(vec2<f32>(0.0), size, outside && rotation != 0.0);
     out.chain = shape.chain;
     out.clip = clip_from_px(turned(pos + v.pos, pos + size * 0.5, rotation));
     return out;
@@ -82,13 +75,5 @@ fn template_color(in: TemplateOut) -> vec4<f32> {
     }
     let border_color = unpack_f16x4(in.border_color_packed);
     let d = palantir_template_distance(in.region, in.geo, in.ring_r);
-    if (form_is_outside()) {
-        var cover = palantir_composite_outside(d, fill, border_color, in.border_width);
-        if (in.turned_size.x > 0.0) {
-            let e = abs(in.local - in.turned_size * 0.5) - in.turned_size * 0.5;
-            cover *= palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y);
-        }
-        return cover;
-    }
     return palantir_composite(d, fill, border_color, in.border_width);
 }

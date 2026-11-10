@@ -1,6 +1,5 @@
 //! [`ClosedFill`]: a box's or a triangle's fill and border.
 
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -60,7 +59,7 @@ impl ClosedPaintPayload for ClosedFill {
     #[inline]
     fn is_noop(&self, geometry: PlacedClosed) -> bool {
         let empty = match geometry {
-            PlacedClosed::Box { placed, .. } => placed.rect.is_paint_empty(),
+            PlacedClosed::Box(placed) => placed.rect.is_paint_empty(),
             PlacedClosed::Triangle(_) => false,
         };
         empty || (self.fill.is_noop() && self.border.is_noop())
@@ -72,17 +71,11 @@ impl ClosedPaintPayload for ClosedFill {
 }
 
 impl DrawClosedPayload<ClosedFill> {
-    /// Whether this is a solid fill over the inside of a box: the one draw whose covered rect
-    /// can be whole, which the clear fold and the occlusion prune read.
-    /// An outside rect's hole, a triangle's corners and a gradient's stops cover no rect whole.
+    /// Whether this is a solid fill over a box: the one draw whose covered rect can be whole,
+    /// which the clear fold and the occlusion prune read. A triangle's corners and a gradient's
+    /// stops cover no rect whole.
     pub(crate) fn is_solid_box(&self) -> bool {
-        matches!(
-            self.geometry,
-            PlacedClosed::Box {
-                coverage: Coverage::Inside,
-                ..
-            }
-        ) && self.paint.fill.kind == FillKind::SOLID
+        matches!(self.geometry, PlacedClosed::Box(_)) && self.paint.fill.kind == FillKind::SOLID
     }
 }
 

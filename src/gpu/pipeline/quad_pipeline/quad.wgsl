@@ -6,22 +6,12 @@
 // registers.
 override SHAPE_FORM: u32;
 override FILL_BRUSH: u32;
-const SHAPE_FORM_BOX_OUTSIDE: u32 = /*{SHAPE_FORM_BOX_OUTSIDE}*/;
 const SHAPE_FORM_TRIANGLE: u32 = /*{SHAPE_FORM_TRIANGLE}*/;
 const FILL_BRUSH_GRADIENT: u32 = /*{FILL_BRUSH_GRADIENT}*/;
 
 // Whether the pipeline's form draws a triangle, three of the instance's points.
 fn form_is_triangle() -> bool {
     return SHAPE_FORM == SHAPE_FORM_TRIANGLE;
-}
-
-// Whether the pipeline's form is an outside rect (`ShapeForm::BoxOutside`): inverted fill
-// coverage. The fill paints *outside* the rounded boundary (the corner wedges, out to the quad
-// edge), the border keeps its usual inner-edge annulus, and the interior stays transparent. Cheap
-// stand-in for rounded-corner scissor clipping: draw content as plain rects, then paint this over
-// it with the surrounding background as `fill`.
-fn form_is_outside() -> bool {
-    return SHAPE_FORM == SHAPE_FORM_BOX_OUTSIDE;
 }
 
 // A `core` no point is inside: the fragment always takes its full form.
@@ -50,10 +40,8 @@ struct VertexOut {
     // `PALANTIR_AA_HALF_WIDTH`, where `palantir_composite` is the fill (`fs`). Empty where the
     // shape has no such interior.
     @location(10) @interpolate(flat) core: vec4<f32>,
-    // Nonzero for a turned quad, whose quad edge is no pixel edge (`fs`).
-    @location(11) @interpolate(flat) turned: u32,
     // The rounded clips that cut the quad (`ClipChain`).
-    @location(12) @interpolate(flat) chain: u32,
+    @location(11) @interpolate(flat) chain: u32,
 };
 
 // The instance attributes every quad pipeline reads past its shape (`PalantirShapeIn`).
@@ -70,24 +58,21 @@ struct QuadIn {
 // grown to every pixel center within `PALANTIR_AA_HALF_WIDTH` of it, out to whole
 // pixels, since its coverage reaches that far and the rasterizer only
 // shades a pixel whose center is inside what it draws. A rect on pixel
-// boundaries does not grow. A outside rect is a mask over content of its
-// own extent and paints its fill outside the shape, so it stays at its
-// rect. `QuadKey::shaded_rect` is the same extent on the CPU.
+// boundaries does not grow. `ShapeHeader::shaded_rect` is the same extent on the CPU.
 struct Bounds {
     lo: vec2<f32>,
     hi: vec2<f32>,
 };
 
-// Every pixel center within `PALANTIR_AA_HALF_WIDTH` of the rect; an outside rect's is a
-// hard cut, drawn at its rect. A turned quad's frame is not the pixel grid,
-// so it reaches `PALANTIR_AA_HALF_WIDTH` past each edge there instead, a distance the
-// rotation keeps, and an outside rect's edge fades with it (`fs`).
-fn shaded_bounds(pos: vec2<f32>, size: vec2<f32>, outside: bool, rotation: f32) -> Bounds {
+// Every pixel center within `PALANTIR_AA_HALF_WIDTH` of the rect. A turned quad's frame is not the
+// pixel grid, so it reaches `PALANTIR_AA_HALF_WIDTH` past each edge there instead, a distance the
+// rotation keeps.
+fn shaded_bounds(pos: vec2<f32>, size: vec2<f32>, rotation: f32) -> Bounds {
     var b = Bounds(pos, pos + size);
     if (rotation != 0.0) {
         b.lo -= vec2<f32>(PALANTIR_AA_HALF_WIDTH);
         b.hi += vec2<f32>(PALANTIR_AA_HALF_WIDTH);
-    } else if (!outside) {
+    } else {
         b.lo = floor(b.lo - vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
         b.hi = ceil(b.hi + vec2<f32>(PALANTIR_AA_HALF_WIDTH - 0.5));
     }
@@ -110,7 +95,7 @@ fn quad_vertex(vi: u32, shape: PalantirShapeIn, quad: QuadIn) -> VertexOut {
     // axis lanes as the top of this file lays them out per fill kind.
     let radius = shape.radius;
     let fill_axis = unpack_f16x4(quad.fill_axis_packed);
-    let bounds = shaded_bounds(pos, size, form_is_outside(), rotation);
+    let bounds = shaded_bounds(pos, size, rotation);
     let corner = select(bounds.lo, bounds.hi, CORNERS[vi] > vec2<f32>(0.5));
 
     var out: VertexOut;
@@ -127,12 +112,11 @@ fn quad_vertex(vi: u32, shape: PalantirShapeIn, quad: QuadIn) -> VertexOut {
     out.fill_axis    = fill_axis;
     out.inv_size     = 1.0 / max(size, vec2<f32>(PALANTIR_ZERO_EPS));
     out.core         = vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN);
-    out.turned       = u32(rotation != 0.0);
     out.chain        = shape.chain;
     // Inside the quad by the largest radius, no corner's arc reaches; by the
-    // border and `PALANTIR_AA_HALF_WIDTH`, its inner edge's coverage is 1. An outside
-    // rect paints outside its shape, and a triangle's rect is not its shape.
-    if (!form_is_outside() && !form_is_triangle()) {
+    // border and `PALANTIR_AA_HALF_WIDTH`, its inner edge's coverage is 1. A triangle's rect is
+    // not its shape.
+    if (!form_is_triangle()) {
         let inset = max(max(max(radius.x, radius.y), max(radius.z, radius.w)), quad.border_width + PALANTIR_AA_HALF_WIDTH);
         out.core = vec4<f32>(vec2<f32>(inset), size - vec2<f32>(inset));
     }

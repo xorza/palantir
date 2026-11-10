@@ -86,15 +86,9 @@ impl ImagePaint {
 
 impl PaintedBy<ImagePaint> for RectShape {}
 
-/// An image over a rect covering its inside, its corners rounding it.
+/// An image over a rect, its corners rounding it.
 impl sealed::DrawWith<ImagePaint> for RectShape {
-    /// # Panics
-    ///
-    /// Unless the rect covers its inside, which an image's pipeline draws.
-    #[track_caller]
-    fn check(&self, _paint: &ImagePaint) {
-        self.assert_inside("an image");
-    }
+    fn check(&self, _paint: &ImagePaint) {}
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
         Draw::Closed {

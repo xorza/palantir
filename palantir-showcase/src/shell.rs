@@ -294,7 +294,7 @@ const PAGES: &[Page] = &[
     Page {
         group: Group::Paint,
         label: "Shapes",
-        blurb: "SDF triangles, raw meshes, and the windowed rect.",
+        blurb: "SDF triangles and raw meshes.",
         keys: &[],
         flow: Flow::Scroll,
         source: source!(shapes),
@@ -849,8 +849,8 @@ mod tests {
     }
 
     /// A query finds a page by its label or its blurb, ASCII case ignored and other letters as
-    /// they are: "WINDOW" finds App & windows by its label and Shapes by "windowed rect" in its
-    /// blurb; "béz" finds Strokes' "béziers"; the empty query finds every page.
+    /// they are: "WINDOW" finds App & windows by its label, "MESH" Shapes by "meshes" in its blurb;
+    /// "béz" finds Strokes' "béziers"; the empty query finds every page.
     #[test]
     fn a_query_finds_pages_by_label_or_blurb() {
         let found = |query: &str| -> Vec<&str> {
@@ -861,7 +861,8 @@ mod tests {
                 .collect()
         };
         assert_eq!(found("").len(), PAGES.len());
-        assert_eq!(found("WINDOW"), ["Shapes", "App & windows"]);
+        assert_eq!(found("WINDOW"), ["App & windows"]);
+        assert_eq!(found("MESH"), ["Shapes"]);
         assert_eq!(found("grad"), ["Gradients"]);
         assert_eq!(found("béz"), ["Strokes"]);
         assert_eq!(found("BÉZ"), Vec::<&str>::new(), "only ASCII letters fold");
@@ -895,29 +896,21 @@ mod tests {
         h.key(Shortcut::ctrl('K'));
         settle(&mut h, &mut shell);
         assert_eq!(h.ui().focus(), Some(WidgetId::from_hash(SEARCH)));
-        h.type_text("window");
+        h.type_text("image");
         h.key(Key::Enter);
         settle(&mut h, &mut shell);
-        assert_eq!(label(&shell), "Shapes", "Enter opens the first page found");
+        assert_eq!(label(&shell), "Images", "Enter opens the first page found");
         assert_eq!(
             h.ui().focus(),
-            Some(PAGES[13].item_id()),
+            Some(PAGES[20].item_id()),
             "and focuses its item"
         );
         h.key(alt(Key::ArrowDown));
         settle(&mut h, &mut shell);
-        assert_eq!(
-            label(&shell),
-            "App & windows",
-            "the next found, past the rest"
-        );
+        assert_eq!(label(&shell), "GPU view", "the next found, past the rest");
         h.key(alt(Key::ArrowDown));
         settle(&mut h, &mut shell);
-        assert_eq!(
-            label(&shell),
-            "App & windows",
-            "nothing past the last found"
-        );
+        assert_eq!(label(&shell), "GPU view", "nothing past the last found");
 
         h.key(Shortcut::ctrl('K'));
         settle(&mut h, &mut shell);
