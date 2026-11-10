@@ -2,7 +2,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
+use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -38,16 +38,6 @@ pub(crate) struct VariantTarget {
     pub(crate) clipping: Clipping,
 }
 
-/// How a family's pipelines differ from [`PipelineRecipe::color`].
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct VariantRecipe<'a> {
-    pub(crate) label: &'static str,
-    pub(crate) vertex_entry: &'static str,
-    pub(crate) fragment_entry: &'static str,
-    pub(crate) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
-    pub(crate) topology: wgpu::PrimitiveTopology,
-}
-
 impl<I: bytemuck::Pod> InstancedPipeline<I> {
     pub(crate) fn new(gpu: &Gpu, spec: InstancedSpec<'_>) -> Self {
         Self {
@@ -57,26 +47,14 @@ impl<I: bytemuck::Pod> InstancedPipeline<I> {
         }
     }
 
-    /// Build the half of `variant` `target` binds, `recipe` against its format, where it is not
-    /// built: the only format-dependent objects of the family.
-    pub(crate) fn ensure(
+    /// The family's color pipeline for `format`, over its shader and layout, which a family
+    /// overrides what it varies of with struct update.
+    pub(crate) const fn recipe(
         &self,
-        variant: &mut ClipVariant,
-        gpu: &Gpu,
-        target: VariantTarget,
-        recipe: VariantRecipe<'_>,
-    ) {
-        variant.ensure(
-            gpu,
-            target.clipping,
-            &PipelineRecipe {
-                vertex_entry: recipe.vertex_entry,
-                fragment_entry: recipe.fragment_entry,
-                vertex_buffers: recipe.vertex_buffers,
-                topology: recipe.topology,
-                ..PipelineRecipe::color(recipe.label, &self.shader, &self.layout, target.format)
-            },
-        );
+        label: &'static str,
+        format: wgpu::TextureFormat,
+    ) -> PipelineRecipe<'_> {
+        PipelineRecipe::color(label, &self.shader, &self.layout, format)
     }
 
     /// Upload this frame's `instances`.

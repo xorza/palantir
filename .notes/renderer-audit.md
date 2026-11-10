@@ -72,7 +72,7 @@ source of that rule.
 
 ### Unnecessary abstractions
 
-- **`VariantRecipe` is a second spelling of `PipelineRecipe`.** It carries five of
+- **[fixed in item 6] `VariantRecipe` is a second spelling of `PipelineRecipe`.** It carries five of
   `PipelineRecipe`'s fields for `InstancedPipeline::ensure`, which copies them into a
   `PipelineRecipe::color(..)`; the quad and effect families write the `PipelineRecipe` directly
   with struct update. "One way to do each thing" (user rules).
@@ -148,8 +148,10 @@ captured streams prove it.
 5. [x] **One template vertex count**, done. `shape_template::vertices(ShapeForm)` (4 for `Rect`,
    the template's count for the others); the three callers go through it, and
    `ImagePipeline::form_vertices` and `ShapeForm::corner_count` go.
-6. **`VariantRecipe` goes.** `InstancedPipeline::ensure` takes a `PipelineRecipe` built from
-   `InstancedPipeline::recipe(label, format)`, as the quad and the effect build theirs.
+6. [x] **`VariantRecipe` goes**, done. The mesh, image and curve families write a
+   `PipelineRecipe` over `InstancedPipeline::recipe(label, format)` with struct update and
+   ensure their `ClipVariant` with it, as the quad and the raster do; `InstancedPipeline::ensure`,
+   which would only hand the recipe on, goes with it.
 7. **Join quad runs on the draw.** The backend re-runs the look-back join on `QuadDraw` after the
    cutout plan picks the entries (the composer's join on `QuadKey` stays for the occlusion prune
    and the CPU bench). Gate: the Shadows page's 15 runs drop toward 11, and

@@ -10,11 +10,9 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
-use crate::gpu::pipeline::instanced_pipeline::{
-    InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
-};
+use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantTarget};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
+use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::shape_template;
@@ -104,30 +102,31 @@ impl ImagePipeline {
         target: VariantTarget,
         form: ShapeForm,
     ) {
+        let instance = [Some(INSTANCE_LAYOUT)];
         let recipe = match form {
-            ShapeForm::Rect => VariantRecipe {
-                label: "palantir.image.pipeline",
-                vertex_entry: "vs",
-                fragment_entry: "fs",
-                vertex_buffers: &[Some(INSTANCE_LAYOUT)],
+            ShapeForm::Rect => PipelineRecipe {
+                vertex_buffers: &instance,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..self.family.recipe("palantir.image.pipeline", target.format)
             },
-            ShapeForm::Box => VariantRecipe {
-                label: "palantir.image.pipeline.box",
+            ShapeForm::Box => PipelineRecipe {
                 vertex_entry: "vs_box",
                 fragment_entry: "fs_shaped",
-                vertex_buffers: &[Some(INSTANCE_LAYOUT)],
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                vertex_buffers: &instance,
+                ..self
+                    .family
+                    .recipe("palantir.image.pipeline.box", target.format)
             },
-            ShapeForm::Triangle => VariantRecipe {
-                label: "palantir.image.pipeline.triangle",
+            ShapeForm::Triangle => PipelineRecipe {
                 vertex_entry: "vs_triangle",
                 fragment_entry: "fs_shaped",
-                vertex_buffers: &[Some(INSTANCE_LAYOUT)],
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                vertex_buffers: &instance,
+                ..self
+                    .family
+                    .recipe("palantir.image.pipeline.triangle", target.format)
             },
         };
-        self.family.ensure(variant, gpu, target, recipe);
+        variant.ensure(gpu, target.clipping, &recipe);
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {

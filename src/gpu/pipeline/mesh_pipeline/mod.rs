@@ -8,11 +8,9 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
-use crate::gpu::pipeline::instanced_pipeline::{
-    InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
-};
+use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantTarget};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
+use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -77,16 +75,12 @@ impl MeshPipeline {
 
     /// Build the half of the color pipeline `target` binds, the only format-dependent mesh object. Called by `FormatPipelines` per format.
     pub(super) fn ensure(&self, variant: &mut ClipVariant, gpu: &Gpu, target: VariantTarget) {
-        self.family.ensure(
-            variant,
+        variant.ensure(
             gpu,
-            target,
-            VariantRecipe {
-                label: "palantir.mesh.pipeline",
-                vertex_entry: "vs",
-                fragment_entry: "fs",
+            target.clipping,
+            &PipelineRecipe {
                 vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..self.family.recipe("palantir.mesh.pipeline", target.format)
             },
         );
     }
