@@ -1,5 +1,6 @@
 //! A main pass and what it has bound, so each draw sets only the state that changed.
 
+use crate::diagnostics::gpu_pass_stats::PassCounts;
 use crate::gpu::debug_marker;
 use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
@@ -96,6 +97,7 @@ pub(crate) struct PassRecorder<'a, S: PassState = wgpu::RenderPass<'a>> {
     groups: [Option<&'a S::Group>; GROUP_SLOTS],
     buffers: [Option<&'a S::Buffer>; BUFFER_SLOTS],
     index: Option<IndexBinding<'a, S::Buffer>>,
+    counts: PassCounts,
 }
 
 #[derive(Debug)]
@@ -115,7 +117,13 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
             groups: [None; GROUP_SLOTS],
             buffers: [None; BUFFER_SLOTS],
             index: None,
+            counts: PassCounts::ZERO,
         }
+    }
+
+    /// The calls recorded so far, after the elision.
+    pub(crate) const fn counts(&self) -> PassCounts {
+        self.counts
     }
 
     /// Bind `pipeline`, built over `layout`, unless it is bound, and push the viewport again when
@@ -124,6 +132,7 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
         if !same(self.pipeline, pipeline) {
             self.pass.set_pipeline(pipeline);
             self.pipeline = Some(pipeline);
+            self.counts.pipelines += 1;
         }
         if self.layout != Some(layout) {
             self.pass.push_viewport(self.viewport);
@@ -137,6 +146,7 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
         if !same(*slot, group) {
             self.pass.set_bind_group(index, group);
             *slot = Some(group);
+            self.counts.groups += 1;
         }
     }
 
@@ -145,6 +155,7 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
     pub(crate) fn group_once(&mut self, index: u32, group: &S::Group) {
         self.pass.set_bind_group(index, group);
         self.groups[index as usize] = None;
+        self.counts.groups += 1;
     }
 
     /// Bind the whole of `buffer` at vertex slot `slot`, unless it is bound there.
@@ -171,14 +182,17 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
     /// Clip the draws that follow to `rect`, in the pass's target pixels.
     pub(crate) fn scissor(&mut self, rect: URect) {
         self.pass.set_scissor_rect(rect);
+        self.counts.scissors += 1;
     }
 
     pub(crate) fn stencil_reference(&mut self, reference: u32) {
         self.pass.set_stencil_reference(reference);
+        self.counts.stencil_refs += 1;
     }
 
     pub(crate) fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>) {
         self.pass.draw(vertices, instances);
+        self.counts.draws += 1;
     }
 
     pub(crate) fn draw_indexed(
@@ -188,6 +202,7 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
         instances: Range<u32>,
     ) {
         self.pass.draw_indexed(indices, base_vertex, instances);
+        self.counts.draws += 1;
     }
 
     /// The pass, for the calls that bind nothing a draw reads: timestamps and debug groups.

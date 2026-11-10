@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::{env, fs, process};
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::internals::headless_test_gpu;
+use palantir::internals::{headless_test_gpu, main_pass_draws};
 use palantir::{
     Action, AgentWindow, ColorScheme, Depth, Harness, Key, Locator, Palette, PointerButton, Rect,
     Shortcut, ShortcutMods, SystemScale, ZoomFactor,
@@ -434,4 +434,38 @@ fn every_page_draws_in_light() {
 #[test]
 fn every_page_draws_in_dark() {
     draws_every_page(ColorScheme::Dark);
+}
+
+/// The draws of each page that clips to a rounded rect, at the bench window's logical size,
+/// repainted whole by a resize of 2 px, as `.notes/research/2026-11-10-draw-calls.md` counts them:
+/// a change to how a rounded clip draws moves these. At scale 1, which draws what scale 2 does
+/// over a quarter of the pixels.
+#[test]
+fn rounded_clip_pages_draw_their_counts() {
+    let gpu = headless_test_gpu();
+    let size = UVec2::new(1280, 720);
+    let mut h = Harness::builder(size)
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    let mut counts = Vec::new();
+    for (page, label) in Shell::page_labels().enumerate() {
+        if !matches!(label, "Tabs" | "Dock" | "Clip & transform" | "Motion") {
+            continue;
+        }
+        h.resize(size);
+        let mut shell = Shell::open(page);
+        h.session(&mut shell).settle().unwrap();
+        h.resize(size + UVec2::new(2, 0));
+        h.session(&mut shell).settle().unwrap();
+        counts.push((label, main_pass_draws(h.ui())));
+    }
+    assert_eq!(
+        counts,
+        [
+            ("Tabs", 22),
+            ("Dock", 22),
+            ("Clip & transform", 17),
+            ("Motion", 20)
+        ]
+    );
 }

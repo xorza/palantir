@@ -26,6 +26,7 @@ pub(crate) mod scratch_report;
 pub(crate) mod size_trio;
 
 use crate::text;
+use crate::ui::Ui;
 
 /// The bench device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for
 /// benches outside the crate, which share its adapter check and its devices.
@@ -41,3 +42,9 @@ pub use crate::text::internals::SHAPED_BUFFER_RING_FRAMES;
 
 /// The raster-scale quantum, so the allocation suite's scale ramp steps one rung a frame.
 pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;
+
+/// The draws the main pass of `ui`'s window recorded on its last painted frame, after the
+/// recorder's elision: what a change to batching moves.
+pub fn main_pass_draws(ui: &Ui) -> u32 {
+    ui.gpu_pass_stats().last_pass_counts().draws
+}

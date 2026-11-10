@@ -1,3 +1,4 @@
+use crate::diagnostics::gpu_pass_stats::PassCounts;
 use crate::gpu::pipeline::pass_recorder::{PassRecorder, PassState};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::primitives::geometry::urect::URect;
@@ -151,5 +152,23 @@ fn a_switch_sets_only_what_changed() {
             Call::Index(34)
         ],
         "an index buffer read as another format is bound again",
+    );
+
+    // A scissor and a stencil reference take no elision here: the schedule dedupes them.
+    rec.scissor(URect::new(0, 0, 8, 8));
+    rec.scissor(URect::new(0, 0, 8, 8));
+    rec.stencil_reference(1);
+    rec.draw_indexed(0..3, 0, 0..1);
+    // Pipelines 1, 2, 3, 4, 1 and 5; groups 20, 21, 22 and 20 again; the draw and the indexed one.
+    assert_eq!(
+        rec.counts(),
+        PassCounts {
+            draws: 2,
+            pipelines: 6,
+            groups: 4,
+            scissors: 2,
+            stencil_refs: 1,
+        },
+        "the counts are the calls the pass took"
     );
 }

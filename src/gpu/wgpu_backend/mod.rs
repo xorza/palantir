@@ -53,7 +53,7 @@
 //! publishes any earlier frame that landed.
 
 use crate::common::tracy;
-use crate::diagnostics::gpu_pass_stats::BatchKind;
+use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -281,6 +281,13 @@ struct MainPass<'a> {
     scissors: &'a RepaintScissors,
     /// Whether `color` is a damage canvas, which the viewport moves the surface onto.
     canvas: bool,
+}
+
+/// What recording a frame's main pass cost the host, and the calls it recorded.
+#[derive(Clone, Copy, Debug)]
+struct MainPassRecord {
+    cpu: Duration,
+    counts: PassCounts,
 }
 
 /// One pass of the main pass, as the frame's plan sets it ([`PassStep::Main`]).
@@ -574,7 +581,7 @@ impl WgpuBackend {
             "a view of the target exactly where a pass writes it"
         );
         self.ensure_pipelines(format, stencil, buffer);
-        let main_pass_cpu = self.run_steps(
+        let main_pass = self.run_steps(
             FrameSteps {
                 draw: FrameDraw {
                     fmt: &self.pipelines[&format],
@@ -614,7 +621,8 @@ impl WgpuBackend {
         self.gpu.queue.submit(iter::once(encoder.finish()));
         // Every frame, timing on or off, as it costs two `Instant::now()` calls.
         let stats = submission.stats;
-        stats.record_main_pass_cpu(main_pass_cpu);
+        stats.record_main_pass_cpu(main_pass.cpu);
+        stats.record_pass_counts(main_pass.counts);
         if let Some(t) = timings {
             t.after_submit(&self.gpu, stats);
         }
@@ -676,8 +684,13 @@ impl WgpuBackend {
             );
     }
 
-    /// Record the passes [`FramePasses`] planned, and return the CPU time of the main pass.
-    fn run_steps(&self, steps: FrameSteps<'_, '_>, encoder: &mut wgpu::CommandEncoder) -> Duration {
+    /// Record the passes [`FramePasses`] planned, and return what recording the main pass cost and
+    /// the calls it recorded.
+    fn run_steps(
+        &self,
+        steps: FrameSteps<'_, '_>,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> MainPassRecord {
         let FrameSteps {
             draw,
             main,
@@ -688,6 +701,7 @@ impl WgpuBackend {
         } = steps;
         let mut started = None;
         let mut main_pass_cpu = None;
+        let mut counts = PassCounts::ZERO;
         for &step in self.passes.steps() {
             match step {
                 PassStep::Dim => self.run_dim_pass(draw, main.color_view, encoder),
@@ -699,7 +713,7 @@ impl WgpuBackend {
                     if segment.opens() {
                         started = Some(Instant::now());
                     }
-                    self.run_main_segment(
+                    counts.add(self.run_main_segment(
                         draw,
                         SegmentPass {
                             main,
@@ -709,7 +723,7 @@ impl WgpuBackend {
                             timings: timings.as_deref_mut(),
                         },
                         encoder,
-                    );
+                    ));
                     if segment.closes() {
                         let started = started.expect("a main pass opens before it closes");
                         main_pass_cpu = Some(started.elapsed());
@@ -764,7 +778,10 @@ impl WgpuBackend {
                 }
             }
         }
-        main_pass_cpu.expect("every frame closes its main pass")
+        MainPassRecord {
+            cpu: main_pass_cpu.expect("every frame closes its main pass"),
+            counts,
+        }
     }
 
     /// The belt-routed upload phase of one [`Self::submit`].
@@ -958,7 +975,7 @@ impl WgpuBackend {
         draw: FrameDraw<'_>,
         segment_pass: SegmentPass<'_, '_>,
         encoder: &mut wgpu::CommandEncoder,
-    ) {
+    ) -> PassCounts {
         tracy::zone!();
         let SegmentPass {
             main,
@@ -1061,6 +1078,7 @@ impl WgpuBackend {
         if let Some(t) = timings {
             t.segment_end(&mut rec, segment);
         }
+        rec.counts()
     }
 
     /// Dispatch each step of `schedule` ([`Schedule::for_each_step`]) to the pass; ordering lives

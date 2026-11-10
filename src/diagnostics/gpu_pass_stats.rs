@@ -108,6 +108,37 @@ pub(crate) struct BackdropTimes {
     pub(crate) blurs: Option<Duration>,
 }
 
+/// The calls the last frame's main pass recorded, summed over the passes it breaks into, each
+/// counted where the recorder issued it after eliding a repeat: what a change to batching moves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PassCounts {
+    pub(crate) draws: u32,
+    pub(crate) pipelines: u32,
+    pub(crate) groups: u32,
+    pub(crate) scissors: u32,
+    pub(crate) stencil_refs: u32,
+}
+
+impl PassCounts {
+    /// No call.
+    pub(crate) const ZERO: Self = Self {
+        draws: 0,
+        pipelines: 0,
+        groups: 0,
+        scissors: 0,
+        stencil_refs: 0,
+    };
+
+    /// Add `other`'s calls to these.
+    pub(crate) const fn add(&mut self, other: Self) {
+        self.draws += other.draws;
+        self.pipelines += other.pipelines;
+        self.groups += other.groups;
+        self.scissors += other.scissors;
+        self.stencil_refs += other.stencil_refs;
+    }
+}
+
 /// A window's latest GPU sample, each value `None` until the first readback that sets it. A
 /// clone is a snapshot.
 #[derive(Clone, Copy, Debug, Default)]
@@ -118,6 +149,7 @@ pub struct GpuPassStats {
     copy_out: Option<Duration>,
     backdrops: BackdropTimes,
     main_pass_cpu: Option<Duration>,
+    pass_counts: PassCounts,
 }
 
 impl GpuPassStats {
@@ -162,6 +194,19 @@ impl GpuPassStats {
 
     pub(crate) const fn record_main_pass_cpu(&mut self, time: Duration) {
         self.main_pass_cpu = Some(time);
+    }
+
+    /// The calls the last frame's main pass recorded; zero before the first frame that painted.
+    #[cfg_attr(
+        not(feature = "internals"),
+        expect(dead_code, reason = "the tests and benches of batching read it")
+    )]
+    pub(crate) const fn last_pass_counts(&self) -> PassCounts {
+        self.pass_counts
+    }
+
+    pub(crate) const fn record_pass_counts(&mut self, counts: PassCounts) {
+        self.pass_counts = counts;
     }
 
     pub(crate) const fn record_kind(&mut self, kind: BatchKind, time: Duration) {
