@@ -34,6 +34,7 @@ use crate::primitives::packed::half_simd;
 use crate::renderer::frontend;
 use crate::renderer::frontend::composer;
 use crate::renderer::gradient_atlas;
+use crate::renderer::render_buffer::rounded_clip;
 use crate::scene::tree::paint_animations;
 use crate::widgets::{color_field, text_edit};
 use crate::{animation, damage, gpu, input, layout, text, ui};
@@ -66,6 +67,7 @@ pub fn run<S: Scene>(c: &mut Criterion) {
     gpu::resource::bench::atomic(c, &backends);
     gpu::resource::shelf_packer::bench::atomic(c);
     raster_atlas::bench::atomic(c, &backends);
+    rounded_clip::bench::atomic(c, &backends);
     schedule::bench::atomic(c);
     text_backend::bench::atomic(c, &backends);
     text_edit::bench::atomic(c);
@@ -76,6 +78,7 @@ pub fn run<S: Scene>(c: &mut Criterion) {
     damage::bench::integration(c);
     damage::bench::policy::<S>(c, &backends);
     ui::bench::integration::<S>(c, &backends);
+    rounded_clip::bench::integration(c, &backends);
     frontend::bench::integration(c);
     measure_cache::bench::integration(c);
 }

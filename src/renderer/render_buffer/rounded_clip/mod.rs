@@ -9,3 +9,6 @@ pub(crate) struct RoundedClip {
     pub(crate) mask_rect: Rect,
     pub(crate) corners: Corners,
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod bench;

@@ -6,7 +6,8 @@
 //! The composer's replay of recorded paint into draw groups and batches, at a
 //! typical and a heavy draw count: curves alone, the higher-kind tiers (meshes,
 //! images, text) where overlap decides whether a batch closes, and the quad
-//! lane: plain, clipped, under rounded clips, pruned, as backdrops, and a polyline.
+//! lane: plain, clipped, under rounded clips, pruned, as backdrops, and a polyline; and the
+//! rounded clip's arms, a quad, a text run and an image a cell.
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
@@ -332,6 +333,77 @@ impl QuadCase {
     }
 }
 
+/// The clip scene's arms (`rounded_clip::bench`) over recorded paint: per cell a quad, a text run
+/// and an image under the cell's clips.
+#[derive(Clone, Copy, Debug, IntoStaticStr, VariantArray)]
+#[strum(serialize_all = "snake_case")]
+enum ClipCase {
+    /// A rect clip a cell, the control.
+    Rect,
+    /// A rounded clip a cell, its draws inset past every arc.
+    Inside,
+    /// A rounded clip a cell, its draws crossing every arc.
+    Edge,
+    /// Three rounded clips a cell, none holding the next, its draws crossing every arc.
+    Nested,
+}
+
+impl ClipCase {
+    const COLS: u32 = 64;
+    const CELL: f32 = 32.0;
+    const RADIUS: f32 = 6.0;
+    /// How far a nested clip steps in, losing as much radius: its rect grown by a pixel crosses
+    /// the outer arc.
+    const NEST_STEP: f32 = 1.0;
+
+    const fn depth(self) -> usize {
+        match self {
+            Self::Rect | Self::Inside | Self::Edge => 1,
+            Self::Nested => 3,
+        }
+    }
+
+    fn fixture(self, count: usize) -> ComposeBench {
+        assert!(count > 0);
+        let mut cmds = PaintCapture::default();
+        let rows = (count as u32).div_ceil(Self::COLS);
+        let viewport = UVec2::new(Self::COLS, rows) * Self::CELL as u32;
+        for i in 0..count {
+            let at = Vec2::new(
+                (i as u32 % Self::COLS) as f32 * Self::CELL,
+                (i as u32 / Self::COLS) as f32 * Self::CELL,
+            );
+            let mut clip = Rect::new(at.x, at.y, Self::CELL, Self::CELL);
+            let mut radius = Self::RADIUS;
+            for _ in 0..self.depth() {
+                cmds.push_clip(PushClipPayload {
+                    rect: clip,
+                    corners: match self {
+                        Self::Rect => Corners::ZERO,
+                        Self::Inside | Self::Edge | Self::Nested => Corners::all(radius),
+                    },
+                });
+                clip = clip.deflated(Self::NEST_STEP);
+                radius -= Self::NEST_STEP;
+            }
+            let inset = match self {
+                Self::Inside => Self::RADIUS,
+                Self::Rect | Self::Edge | Self::Nested => 0.0,
+            };
+            let content = Rect::new(at.x, at.y, Self::CELL, Self::CELL).deflated(inset);
+            push_quad(&mut cmds, content);
+            push_text(&mut cmds, content);
+            push_image(&mut cmds, content);
+            for _ in 0..self.depth() {
+                cmds.pop_clip();
+            }
+        }
+        let mut bench = ComposeBench::new(PaintCapture::default(), viewport);
+        bench.cmds = cmds;
+        bench
+    }
+}
+
 fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
         DrawQuadPayload::rect(RectQuad {
@@ -444,8 +516,8 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
 }
 
 /// `atomic/composer/cpu/curves/alone/<count>`,
-/// `atomic/composer/cpu/higher_kind_overlap/<case>/<count>` and
-/// `atomic/composer/cpu/quads/<case>/<count>`: one replay of recorded paint into draw groups and
+/// `atomic/composer/cpu/higher_kind_overlap/<case>/<count>`,
+/// `atomic/composer/cpu/quads/<case>/<count>` and `atomic/composer/cpu/clips/<case>/<count>`: one replay of recorded paint into draw groups and
 /// batches, what it leaves checked first. Per draw.
 pub(crate) fn atomic(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "composer", Scale::Sample);
@@ -496,6 +568,23 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 assert_eq!(
                     [drawn, out.groups.len(), out.backdrops.len()],
                     case.expected(count),
+                    "{label}/{count}"
+                );
+                b.iter(|| black_box(fixture.compose()));
+            });
+        }
+    }
+    for &case in ClipCase::VARIANTS {
+        let label: &'static str = case.into();
+        for count in DRAW_COUNTS {
+            group.throughput(Throughput::Elements(count as u64));
+            group.bench_function(Backend::Cpu.case(&format!("clips/{label}/{count}")), |b| {
+                let mut fixture = case.fixture(count);
+                fixture.compose();
+                let out = &fixture.rig.out;
+                assert_eq!(
+                    [out.quads.len(), out.texts.len(), out.images.len()],
+                    [count; 3],
                     "{label}/{count}"
                 );
                 b.iter(|| black_box(fixture.compose()));

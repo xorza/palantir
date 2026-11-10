@@ -5,6 +5,7 @@
 //! Every arm is a pair painting the same content, one paying per item and one paying once; the difference is the headroom for a change that collapses bind / draw / state-set count.
 //!
 //! - `groups/per_item` vs `groups/single`: N clipped cells (a `DrawGroup` each) against N unclipped rects folded into one group and draw.
+//! - `rounded/per_item` vs `groups/per_item`: the same cells under rounded clips, whose rect fills the cell past its arcs; what a rounded clip adds to a rect clip's group.
 //! - `images/distinct` vs `images/shared`: N textures against one. `distinct` is the control that must not regress.
 //! - `text/per_group` vs `text/single`: N clipped text cells, each run cut by its cell's clip on the CPU so all join one batch, against N unclipped runs in one batch: what the cut costs the pass, its group per cell besides.
 //!
@@ -19,8 +20,11 @@ use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
 use crate::shape::Shape;
@@ -43,6 +47,8 @@ const PHYSICAL: UVec2 = UVec2::new(512, 512);
 const GRID: usize = 16;
 const ITEMS: usize = GRID * GRID;
 const CELL: f32 = PHYSICAL.x as f32 / GRID as f32;
+/// A cell's radius, which a rounded clip takes from its chrome.
+const CELL_RADIUS: f32 = 8.0;
 const TEXEL: u32 = 8;
 /// Text-arm run content. Must shape wider than `CELL` so a clipped cell cuts it in X, which the run's glyphs take on the CPU. The default `SingleLine` overflows rather than wraps.
 const LABEL: &str = "Palantir record pass";
@@ -52,6 +58,7 @@ const WARMUP_FRAMES: usize = 64;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workload {
     GroupPerItem,
+    RoundedPerItem,
     SingleGroup,
     ImagesDistinct,
     ImagesShared,
@@ -60,8 +67,9 @@ enum Workload {
 }
 
 impl Workload {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::GroupPerItem,
+        Self::RoundedPerItem,
         Self::SingleGroup,
         Self::ImagesDistinct,
         Self::ImagesShared,
@@ -72,6 +80,7 @@ impl Workload {
     const fn label(self) -> &'static str {
         match self {
             Self::GroupPerItem => "groups/per_item",
+            Self::RoundedPerItem => "rounded/per_item",
             Self::SingleGroup => "groups/single",
             Self::ImagesDistinct => "images/distinct",
             Self::ImagesShared => "images/shared",
@@ -80,16 +89,23 @@ impl Workload {
         }
     }
 
-    /// Whether each cell clips. Only the per-item arms do: a clip gives each its own scissor (a `DrawGroup`) and cuts `LABEL` in X, which the run's glyphs take on the CPU. The image pair is unclipped so it differs only in `TextureId` repeats.
-    const fn clipped(self) -> bool {
-        matches!(self, Self::GroupPerItem | Self::TextPerGroup)
+    /// How each cell clips. Only the per-item arms do: a clip gives each its own scissor (a `DrawGroup`) and cuts `LABEL` in X, which the run's glyphs take on the CPU. The image pair is unclipped so it differs only in `TextureId` repeats.
+    const fn clip(self) -> ClipMode {
+        match self {
+            Self::GroupPerItem | Self::TextPerGroup => ClipMode::Rect,
+            Self::RoundedPerItem => ClipMode::Rounded,
+            Self::SingleGroup
+            | Self::ImagesDistinct
+            | Self::ImagesShared
+            | Self::TextSingleBatch => ClipMode::None,
+        }
     }
 
     /// The draw groups and text batches the arm's frame composes: a clipped cell is a group, an
     /// unclipped frame folds into one, every run joins one batch, and no text means no batch.
     const fn expected(self) -> Counts {
         let (groups, text_batches) = match self {
-            Self::GroupPerItem => (ITEMS, 0),
+            Self::GroupPerItem | Self::RoundedPerItem => (ITEMS, 0),
             Self::TextPerGroup => (ITEMS, 1),
             Self::SingleGroup | Self::ImagesDistinct | Self::ImagesShared => (1, 0),
             Self::TextSingleBatch => (1, 1),
@@ -159,14 +175,21 @@ impl Scene<'_> {
                     let cell = Panel::zstack()
                         .id_salt(("record-bench-cell", i))
                         .at(cell_origin(i))
-                        .size((Sizing::fixed(CELL), Sizing::fixed(CELL)));
-                    let cell = if workload.clipped() {
-                        cell.clip_rect()
+                        .size((Sizing::fixed(CELL), Sizing::fixed(CELL)))
+                        .clip(workload.clip());
+                    // A rounded clip takes its radii from the chrome.
+                    let cell = if workload.clip() == ClipMode::Rounded {
+                        cell.chrome(Chrome::rounded(
+                            RgbaF32::TRANSPARENT,
+                            Corners::all(CELL_RADIUS),
+                        ))
                     } else {
                         cell
                     };
                     cell.show(ui, |ui| match workload {
-                        Workload::GroupPerItem | Workload::SingleGroup => {
+                        Workload::GroupPerItem
+                        | Workload::RoundedPerItem
+                        | Workload::SingleGroup => {
                             ui.add_shape(Shape::rect().at(Rect::new(0.0, 0.0, CELL, CELL)), color);
                         }
                         Workload::ImagesDistinct | Workload::ImagesShared => {

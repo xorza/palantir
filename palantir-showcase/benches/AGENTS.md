@@ -22,8 +22,8 @@ per stage runs that stage alone over it, so a moved frame points at its stage.
 | damage | | `atomic/damage`, `integration/damage`, `integration/damage_policy` |
 | encode + compose | `atomic/encode` | `atomic/composer`, `atomic/rect_grid` |
 | paint, CPU | | `atomic/record_pass`, `atomic/schedule` |
-| paint, GPU | `atomic/main_pass`, `atomic/main_pass_batch` | `atomic/*_pipeline`, `atomic/*_atlas`, `atomic/backdrop_*` |
-| the frame | `integration/frame`, `integration/backdrop_frame` | |
+| paint, GPU | `atomic/main_pass`, `atomic/main_pass_batch` | `atomic/*_pipeline`, `atomic/*_atlas`, `atomic/backdrop_*`, `atomic/clip_pass`, `atomic/clip_pass_batch` |
+| the frame | `integration/frame`, `integration/backdrop_frame` | `integration/clip_frame` |
 
 `integration/frame` arms: `cached` (a still frame), `partial` and
 `alternating` (state changes), `scrolling` and `resizing` (whole repaints),
