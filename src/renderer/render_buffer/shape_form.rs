@@ -28,14 +28,6 @@ impl ShapeForm {
             PlacedClosed::Triangle(_) => Self::Triangle,
         }
     }
-
-    /// The corners of the form's polygon, which its template draws a ring and a band each of.
-    pub(crate) const fn corner_count(self) -> u32 {
-        match self {
-            Self::Rect | Self::Box => 4,
-            Self::Triangle => 3,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -48,7 +40,7 @@ mod tests {
     use crate::shape::geometry::triangle_geometry::PlacedTriangle;
     use glam::Vec2;
 
-    /// A box takes the box's form and a triangle its own; only a triangle has three corners.
+    /// A box takes the box's form and a triangle its own.
     #[test]
     fn a_shape_takes_its_kinds_form() {
         let placed = PlacedBox {
@@ -61,6 +53,5 @@ mod tests {
         });
         assert_eq!(ShapeForm::of(&PlacedClosed::Box(placed)), ShapeForm::Box);
         assert_eq!(ShapeForm::of(&triangle), ShapeForm::Triangle);
-        assert_eq!(ShapeForm::ALL.map(ShapeForm::corner_count), [4, 4, 3]);
     }
 }

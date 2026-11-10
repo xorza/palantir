@@ -130,14 +130,6 @@ impl ImagePipeline {
         self.family.ensure(variant, gpu, target, recipe);
     }
 
-    /// The vertices `form` draws each instance with: a strip of four, or its shape's template.
-    pub(crate) const fn form_vertices(form: ShapeForm) -> u32 {
-        match form {
-            ShapeForm::Rect => 4,
-            ShapeForm::Box | ShapeForm::Triangle => shape_template::vertices(form.corner_count()),
-        }
-    }
-
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
         self.family.upload(ctx, instances);
     }
@@ -167,7 +159,7 @@ impl ImagePipeline {
             };
             rec.pipeline(pipelines(form));
             rec.group_once(IMAGE_GROUP, bind_group);
-            rec.draw(0..Self::form_vertices(form), run.instances.u32_range());
+            rec.draw(0..shape_template::vertices(form), run.instances.u32_range());
         }
     }
 }
@@ -241,24 +233,3 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-
-#[cfg(test)]
-mod tests {
-    use crate::gpu::pipeline::image_pipeline::ImagePipeline;
-    use crate::renderer::render_buffer::shape_form::ShapeForm;
-
-    /// A plain image is a strip of four; a box's template is 4 rings of 5 triangles, 4 bands of
-    /// 4 and an interior fan of 10; a triangle's 3 rings, 3 bands and a fan of 7.
-    #[test]
-    fn each_form_draws_its_shapes_vertices() {
-        assert_eq!(ImagePipeline::form_vertices(ShapeForm::Rect), 4);
-        assert_eq!(
-            ImagePipeline::form_vertices(ShapeForm::Box),
-            3 * (20 + 16 + 10)
-        );
-        assert_eq!(
-            ImagePipeline::form_vertices(ShapeForm::Triangle),
-            3 * (15 + 12 + 7)
-        );
-    }
-}

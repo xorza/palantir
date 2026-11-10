@@ -196,7 +196,7 @@ impl QuadPipeline {
     /// The vertices `form` draws each instance with.
     pub(crate) const fn form_vertices(&self, form: FillForm) -> u32 {
         match self.shape_cells {
-            ShapeCells::Template => shape_template::vertices(form.shape().corner_count()),
+            ShapeCells::Template => shape_template::vertices(form.shape()),
             #[cfg(feature = "internals")]
             ShapeCells::OneQuad => 4,
         }

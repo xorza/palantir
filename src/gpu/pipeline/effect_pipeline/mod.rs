@@ -377,7 +377,7 @@ impl EffectPipeline {
                 rec.group_once(BACKDROPS_GROUP, backdrops);
             }
             rec.draw(
-                0..shape_template::vertices(key.form.corner_count()),
+                0..shape_template::vertices(key.form),
                 run.instances.u32_range(),
             );
         }

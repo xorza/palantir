@@ -58,7 +58,7 @@ source of that rule.
   (image), `palantir_material_shade` (material) and `palantir_fs` (effect), two with the
   composite and two with a bare coverage. The vertex half already has one copy,
   `palantir_template_vertex`.
-- **A template's vertex count is asked three ways.** `QuadPipeline::form_vertices`,
+- **[fixed in item 5] A template's vertex count is asked three ways.** `QuadPipeline::form_vertices`,
   `ImagePipeline::form_vertices` and the effect's inline `shape_template::vertices(form.corner_count())`
   each derive it from a `ShapeForm`.
 - **Row names and key fields differ by family.** `QuadRow { key }`, `EffectDrawRow { key }`,
@@ -143,10 +143,11 @@ captured streams prove it.
 4. [x] **One template fragment tail**, done. `palantir_template_coverage(region, geo, ring_r)` and
    `palantir_template_fill(region, geo, ring_r, fill, border, width)` in `shape_template.wgsl`;
    the four stages call them, the material's `palantir_material_shade` goes, and every effect
-   module includes `COMPOSITE`, which the template now reads. Refused: one function with a border of zero for the image and the
-   effect, which would pay the composite where no border is.
-5. **One template vertex count.** `shape_template::form_vertices(ShapeForm)` (4 for `Rect`, the
-   template's count for the others); the three callers go through it.
+   module includes `COMPOSITE`, which the template now reads. Refused: one function with a border
+   of zero for the image and the effect, which would pay the composite where no border is.
+5. [x] **One template vertex count**, done. `shape_template::vertices(ShapeForm)` (4 for `Rect`,
+   the template's count for the others); the three callers go through it, and
+   `ImagePipeline::form_vertices` and `ShapeForm::corner_count` go.
 6. **`VariantRecipe` goes.** `InstancedPipeline::ensure` takes a `PipelineRecipe` built from
    `InstancedPipeline::recipe(label, format)`, as the quad and the effect build theirs.
 7. **Join quad runs on the draw.** The backend re-runs the look-back join on `QuadDraw` after the

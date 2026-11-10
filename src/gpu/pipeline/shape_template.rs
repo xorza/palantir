@@ -6,6 +6,7 @@ use crate::gpu::pipeline::pipeline_recipe::vertex_attr;
 use crate::gpu::pipeline::shader_body::ShaderConstant;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::wgsl;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use glam::Vec2;
 use std::mem::offset_of;
@@ -14,9 +15,15 @@ use std::mem::offset_of;
 pub(crate) const CONSTANT: ShaderConstant =
     ShaderConstant::uint("ARC_SEGMENTS", wgsl::ARC_SEGMENTS);
 
-/// Vertices of a template of `corner_count` corners: each corner's ring, each edge's band, and the
-/// interior fan over every corner's inner chain (`palantir_template_vertex`).
-pub(crate) const fn vertices(corner_count: u32) -> u32 {
+/// The vertices `form` draws each instance with: a rect's strip of four, or the template of its
+/// polygon's corners, each corner's ring, each edge's band, and the interior fan over every
+/// corner's inner chain (`palantir_template_vertex`).
+pub(crate) const fn vertices(form: ShapeForm) -> u32 {
+    let corner_count = match form {
+        ShapeForm::Rect => return 4,
+        ShapeForm::Box => 4,
+        ShapeForm::Triangle => 3,
+    };
     let rings = corner_count * (2 * wgsl::ARC_SEGMENTS + 1);
     let bands = corner_count * 4;
     let interior = corner_count * (wgsl::ARC_SEGMENTS + 1) - 2;
@@ -67,3 +74,21 @@ const _: () = {
         offset_of!(ShapeHeader, rotation) == offset_of!(ShapeHeader, inradius) + size_of::<f32>()
     );
 };
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::pipeline::shape_template;
+    use crate::renderer::render_buffer::shape_form::ShapeForm;
+
+    /// A rect is a strip of four; a box's template is 4 rings of 5 triangles, 4 bands of 4 and an
+    /// interior fan of 10; a triangle's 3 rings, 3 bands and a fan of 7.
+    #[test]
+    fn each_form_draws_its_shapes_vertices() {
+        assert_eq!(shape_template::vertices(ShapeForm::Rect), 4);
+        assert_eq!(shape_template::vertices(ShapeForm::Box), 3 * (20 + 16 + 10));
+        assert_eq!(
+            shape_template::vertices(ShapeForm::Triangle),
+            3 * (15 + 12 + 7)
+        );
+    }
+}
