@@ -13,7 +13,6 @@
 - instead of stencil mask generate geometry, drop stentil at all
 - flag whether to reduce fps on lowpower
 - material for texts and strokes?
-- remove image shape
 - Draw::Effect - do we need it if we have box?
 
 - table widget: sortable header, virtual rows over a fixed row height
