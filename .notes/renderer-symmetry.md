@@ -13,11 +13,11 @@ and an effect hold their shape.
 
 | Batch | State |
 | --- | --- |
-| B0 Docs | next |
+| B0 Docs | done |
 | B1 Geometry | done, `acd517c11` |
 | B2 Records and payloads | done, `a6efe204a` |
-| B10 Backdrop bound | next, a bug |
-| B3 Packer | to do |
+| B10 Backdrop bound | done |
+| B3 Packer | next |
 | B4 Turns | to do |
 | B5 Wire | to do |
 | B6 Keys | to do |
@@ -53,13 +53,13 @@ deletes it from the log.
   reference, the SDF form the visual suite compares with, has no need of: the fast path is
   bit-identical to the SDF by its own comment. `record_opaque_cover` reads the alignment it already
   has.
-- **`.notes/PERF.md` names `QuadForm::BackdropLens` and `BackdropSpectrum`: B0.** Confirmed, and
+- **[fixed in B0] `.notes/PERF.md` names `QuadForm::BackdropLens` and `BackdropSpectrum`.** Confirmed, and
   worse than a stale name: the entry states a decision the code has reversed. Glass is the stock
   effect `effect/stock/glass.wgsl`, one program with its spectrum behind a branch, as the
   `gpu::backdrop` module doc says under "One glass", and its cost on V3D is not measured
   (`.notes/TODO.md`). Fix: the entry moves out of "Decisions" as superseded, its Pi numbers kept as
   the measurement of the form refused, and the open measurement goes under "Open".
-- **The `gpu::backdrop` module doc states a material form the code left: B0.** Found on the way.
+- **[fixed in B0] The `gpu::backdrop` module doc states a material form the code left.** Found on the way.
   Its "A material draws through its effect's material stages" says a backdrop effect compiles a
   second pair of stages for a material, lays a solid fill, and draws a gradient fill as its own
   quad above. The effect's one fragment stage branches on `PALANTIR_MATERIAL` (`effect/contract.rs`,
@@ -67,7 +67,8 @@ deletes it from the log.
   draw, as `AGENTS.md` decides ("A material reaches under the border, in one draw", which refuses
   both the quad and a stage compiled apart). Fix: the bullet states the branch and the one draw,
   and points at `AGENTS.md` for the refusals.
-- **`TreeSource::narrowest_side` measures a material box with its drop shadow's halo: B10.**
+- **[fixed in B10] `TreeSource::narrowest_side` measures a material box with its drop shadow's
+  halo.**
   Confirmed, and a bug past the measure: the backdrop's `rect` is its shape's paint rect, the box
   grown by its shadow's halo `h`, and the footprint is that rect grown by `LensOptics::margin` of
   its narrowest side. The margin falls one pixel for each pixel the narrowest side grows, while the
@@ -76,11 +77,15 @@ deletes it from the log.
   the composite clamps those reads to the footprint's edge. By the margin's arithmetic, a bezel of
   4 px, a lean of 20 and a box 10 px across need 16 px past the box (`4 + 20 − 10 + 1`, and a pixel
   for the bilinear read); a halo of 4 makes the side 18, its margin 8, and the footprint reaches
-  `4 + 8 = 12`. Not yet reproduced in a test; B10's test is that reproduction. Fix: a backdrop's rect is its shape's
-  own covering rect, lifted to the screen, not its paint row's (`ClosedGeometry::local_bounds`,
-  through the shape's lift and clip); the narrowest side and the footprint follow it. A shadow is
-  no part of a backdrop. Test: a glass box narrow enough that the margin is under the reach, with a
-  drop shadow, whose footprint holds the box's own margin, failing on the current rect.
+  `4 + 8 = 12`. Reproduced: `cascade::tests::backdrops::a_backdrops_lens_margin_is_its_own_shapes`
+  reads a margin of 11 where the box needs 19. Found with it: a triangle's glass took the
+  narrowest side of its covering rect, though the margin's bound holds for a rounded rect's
+  chords alone, which a triangle's corner breaks, as an outside region does. Fixed: the narrowest
+  side is the box's own, its shadow left out, and a triangle and an outside box keep the lens's
+  whole reach. The backdrop's rect stays its paint rect, which holds the box, so the footprint
+  holds the lens's reads. Cost: the footprint takes in the shadow's halo, a capture and a damage
+  larger than the backdrop; a rect of the box alone needs each node's shape lift and clip, which
+  the cascade keeps only as a scale (`PlaneCascade::shape_scales`). Open.
 
 ## Findings
 
@@ -293,11 +298,13 @@ makes these one, and keeps the pipelines above.
 
 ## Plan
 
-Each batch is a refactor that moves no golden, except B8a, B8b and B10, which fix what they say.
+Each batch is a refactor that moves no golden, except B8a and B8b, which fix what they say; B10
+moves only a capture's footprint.
 The visual suite and the composer's captured streams prove it.
 
-0. [ ] **B0 Docs.** The `PERF.md` glass entry moves to superseded, and the `gpu::backdrop` doc's
-   material bullet states the one stage's branch and the one draw.
+0. [x] **B0 Docs**, done. The `PERF.md` glass decision moves to Open, its spectrum buffer
+   staying a decision, and the `gpu::backdrop` doc's material bullet states the one stage's branch
+   and the one draw.
 
 1. [x] **B1 Geometry**, done. `ClosedGeometry` with coverage, `PlacedClosed` with coverage in
    every closed payload; spin out of `QuadGeometry`, which goes with `EffectGeometry`.
@@ -321,8 +328,9 @@ The visual suite and the composer's captured streams prove it.
    take the model D1 picks, and one copy serves both families.
 9. [ ] **B9 Strokes.** `StrokeGeometry`, `ShapeRecord::Stroke`, `DrawStrokePayload`; `ArcGeometry`
    and `BezierGeometry` go.
-10. [ ] **B10 Backdrop bound.** A backdrop's rect, narrowest side and footprint from its shape's
-    covering rect, its shadow left out, with a test; independent of the rest, and a bug, so early.
+10. [x] **B10 Backdrop bound**, done. The lens's narrowest side is the box's own, and a triangle
+    and an outside box keep the reach, with a test that reproduced the short footprint. The rect
+    without the shadow's halo stays open ("Issues this plan fixes").
 
 B6 and B7 change pipeline counts: a frame with a triangle effect builds a second pipeline of that
 effect. Bench `atomic/main_pass/gpu/*` and `integration/frame/gpu/*` against the parent before

@@ -315,13 +315,12 @@ new run.
   [Vulkan Guide, tile-based rendering](https://docs.vulkan.org/guide/latest/tile_based_rendering_best_practices.html),
   [Dawn render-pass-render-area](https://dawn.googlesource.com/dawn.git/+/refs/heads/main/docs/dawn/features/render_pass_render_area.md),
   ANGLE `vk_renderer.cpp` (`isTileBasedRenderer`), Mesa V3DV `v3dv_cmd_buffer.c`.
-- **Glass draws through pipelines of its own, and its spectrum's tables are a buffer**:
-  `QuadForm::BackdropLens` and `BackdropSpectrum`, which the `QUAD_FORM` constant prunes.
-  Refused: the lens behind a branch, whose registers V3D spilled on every backdrop; the tables as
-  WGSL constant arrays, which V3D indexes by a select over every entry. Pi glass frames −26 to
-  −41 %. The module doc of `gpu::backdrop` holds both.
+- **A lens's spectrum tables are a buffer**, which the backdrops' group binds. Refused: the tables
+  as WGSL constant arrays, which V3D indexes by a select over every entry. Measured together with
+  glass's pipelines of its own, since undone (Open, "One glass"): Pi glass frames −26 to −41 %.
 - **A glass backdrop's footprint holds what its lens reads, not its reach**: `LensOptics::margin`,
-  from the backdrop's narrowest side where the cascade knows it. Glass frames −5.6 to −10.6 % on the
+  from the backdrop's narrowest side where the cascade knows it, the box's own, its shadow left
+  out. Glass frames −5.6 to −10.6 % on the
   board, handheld and mac; one texel of 54 handheld frames moves by one f16 step at 1.
 
 - **The backbuffer reaches the target by a draw on Apple GPUs** (run 10). `BackbufferOut::Draw`
@@ -393,12 +392,21 @@ new run.
   geometry half's two table reads and the 152-byte copies.
 - **`FamilyKeys::key` and `TextSystem::refresh`** compare a 64-byte family name and each reused
   run's text every frame (`memcmp`, 1.2 % and 1.3 % on the fanless).
+- **One glass, its spectrum behind a branch** (`gpu::backdrop`, "One glass"): glass is the stock
+  effect `effect/stock/glass.wgsl`, one program with its lens's spectrum behind a branch. That
+  undid glass's pipelines of its own, `QuadForm::BackdropLens` and `BackdropSpectrum`, which had
+  refused the branch as V3D spilled its registers on every backdrop, and which measured Pi glass
+  frames −26 to −41 % together with the spectrum buffer (Decisions). Not measured on V3D since
+  (`.notes/TODO.md`).
 - **The glass pipeline spills on V3D**: 1410 instructions, 32:74 spills:fills, two threads.
 - **Glass's σ is the plan's most costly**: σ 4 physical runs the residual at level 0, 25 taps an
   axis; the bilinear pair at the 8 sub-texel bits the board and handheld report moves a pair's weight by
   up to 0.39 % of the peak.
 - **Glass chrome keeps the lens's whole reach**: the cascade keeps no chrome lift, so
   `LensOptics::margin` reads no narrowest side for it.
+- **A triangle's glass and an outside box's keep the lens's whole reach**: `LensOptics::margin`
+  bounds a sample by a rounded rect's chords, which a triangle's corner and an outside region
+  break. A bound of their own would take the capture back to what they read.
 - **A direct frame still copies its captures**: no sampled swapchain on Metal or DX12
   (Rejected). Skipping every copy took the fanless 5 to 12 % off the frames that capture.
 - **A backdrop's break test reads one bounding box** of what was painted since the break, so an

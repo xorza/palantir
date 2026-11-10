@@ -20,6 +20,7 @@ use crate::common::hash::Hasher;
 use crate::common::non_max::NonMaxU32;
 use crate::common::tracy;
 use crate::layout::plane_layout::PlaneLayout;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -36,6 +37,8 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
 use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
+use crate::shape::geometry::box_geometry::BoxGeometry;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::lowered_material::LoweredMaterial;
@@ -680,31 +683,44 @@ impl TreeSource<'_> {
         lc.backdrop_rows.sort_unstable();
     }
 
-    /// The narrowest side, in logical px, of a backdrop drawn whole at `rect` on the screen, which
-    /// a lens reads inside of: a shape's quad that no paint animation turns and no clip cuts.
-    /// `None` for a turning or clipped backdrop, whose screen rect is not its own, and for chrome,
-    /// whose lift this walk does not keep.
+    /// The narrowest side, in logical px, of a backdrop drawn whole on the screen, which a lens
+    /// reads inside of: a shape's box that no paint animation turns and no clip cuts. `rect` is the
+    /// shape's paint rect, its drop shadow's halo in it, which the test of a clip compares with
+    /// the same bound lifted; the side is the box's own, as a shadow is no part of the backdrop.
+    /// `None` for a turning or clipped backdrop, whose screen rect is not its own; for chrome,
+    /// whose lift this walk does not keep; and for a triangle or a box covering its outside, as
+    /// the lens bounds its reads by a rounded rect's chords, no shorter along an inward normal than
+    /// its narrowest side (`LensOptics::margin`), which a triangle's corner and an outside region
+    /// break.
     fn narrowest_side(self, entry: &BackdropEntry, rect: Rect, shape_scale: f32) -> Option<f32> {
         let Self { tree, layout, .. } = self;
         if entry.origin != BackdropOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
             return None;
         }
         let ShapeRecord::Closed {
-            geometry,
+            geometry:
+                geometry @ ClosedGeometry::Box(BoxGeometry {
+                    coverage: Coverage::Inside,
+                    ..
+                }),
             paint: ClosedPaint::Fill(paint),
         } = &tree.shapes.records[entry.shape_idx as usize]
         else {
             return None;
         };
-        let local = paint
-            .bbox_local(*geometry, layout.rect[entry.node.idx()].size)
-            .size;
-        let (w, h) = (local.w * shape_scale, local.h * shape_scale);
+        let owner_size = layout.rect[entry.node.idx()].size;
+        let painted = paint.bbox_local(*geometry, owner_size).size;
         // The lift and a clip that misses the backdrop round the size within a few f32 ulps; a clip
         // that cuts less than this lets a sample out by less than the pixel `PlaneBackdrop::reach`
         // rounds out.
         let whole = |screen: f32, lifted: f32| screen >= lifted * (1.0 - 1e-5);
-        (whole(rect.size.w, w) && whole(rect.size.h, h)).then_some(w.min(h))
+        if !(whole(rect.size.w, painted.w * shape_scale)
+            && whole(rect.size.h, painted.h * shape_scale))
+        {
+            return None;
+        }
+        let own = geometry.local_bounds(owner_size).size;
+        Some(own.w.min(own.h) * shape_scale)
     }
 }
 

@@ -45,16 +45,17 @@
 //!   and SwiftUI's `GlassEffectContainer` ask for, which lets a backdrop miss what another painted
 //!   under it; one capture for the union of the footprints, which copies and blurs the gap between
 //!   them.
-//! - **A material draws through its effect's material stages.** A box's material and an app's
+//! - **A material draws through its effect's material branch.** A box's material and an app's
 //!   backdrop effect draw through the effect pipeline, on one capture, ledger and atlas: one
-//!   backdrop path. A backdrop effect over `MaterialInput` compiles a second pair of stages
-//!   (`effect/material.wgsl`) beside its shape's: it calls the effect, holds what it shows within
-//!   the luminance bounds, lays the box's solid fill and border over it, dithers, and shades the
-//!   rect a quad of the box would, so the SDF, corners, border, AA, turn, window, rounded clips and
-//!   scissors hold as for any quad. A per-frame slot table carries each backdrop's atlas origin,
-//!   lattice, the bounds, the fill and the border (`MaterialLook`); a gradient fill draws as its
-//!   own quad above. Refused: a stage of palantir's own per look, a second form of one thing.
-//!   Cost: an opaque quad over a material no longer prunes it, as the occlusion pruner reads quads,
+//!   backdrop path. A backdrop effect's one fragment stage branches on `PALANTIR_MATERIAL`
+//!   (`effect/contract.rs`, `MATERIAL_BRANCH`) to `effect/material.wgsl` for a material's draw: it
+//!   calls the effect, holds what it shows within the luminance bounds, lays the box's fill, a
+//!   color or a gradient, and its border over it in the same draw, dithers, and shades the shape a
+//!   quad of the box would, so the corners, border, AA, turn, window, rounded clips and scissors
+//!   hold as for any quad. A per-frame slot table carries each backdrop's atlas origin, lattice,
+//!   the bounds, the fill and the border (`MaterialLook`). Refused: a stage of palantir's own per
+//!   look, a second form of one thing; and, as `AGENTS.md` ("A material reaches under the border,
+//!   in one draw") holds, the gradient as a quad above and a material stage compiled apart. Cost: an opaque quad over a material no longer prunes it, as the occlusion pruner reads quads,
 //!   so a covered material captures and blurs.
 //! - **One glass, with its spectrum behind a branch.** The stock glass reads the spectrum only
 //!   where its lens disperses. Cost, not yet measured: before, glass of one index and glass that
