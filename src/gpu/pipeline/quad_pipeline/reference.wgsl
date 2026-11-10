@@ -50,7 +50,8 @@ fn sdf_triangle(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>) -> f32 {
     return select(dist, -dist, d.y > 0.0);
 }
 
-// Composite an SDF shape's fill + inner-edge border into premultiplied linear
+// The one-quad form's fragment: the shape's SDF composites its fill and inner-edge border into
+// premultiplied linear.
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     // Uniform per instance (`fill_kind` is flat), so whole wavefronts

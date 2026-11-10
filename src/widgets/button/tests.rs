@@ -324,7 +324,7 @@ mod press {
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::pointer::PointerButton;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
+    use crate::shape::geometry::shape_outline::PlacedOutline;
     use crate::theme::Theme;
     use crate::theme::look::press_effect::PressEffect;
     use crate::ui::Ui;

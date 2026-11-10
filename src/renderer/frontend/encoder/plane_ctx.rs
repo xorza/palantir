@@ -39,7 +39,6 @@ use crate::renderer::frontend::payload::draw_quad_payload::{
 };
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
@@ -51,6 +50,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
+use crate::shape::geometry::shape_outline::PlacedOutline;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -588,7 +588,7 @@ impl PlaneCtx<'_, '_> {
                     }),
                     None => None,
                 };
-                let Some(outline) = PlacedOutline::place(*outline, owner_rect) else {
+                let Some(outline) = outline.place(owner_rect) else {
                     return;
                 };
                 out.draw(
@@ -634,12 +634,12 @@ impl PlaneCtx<'_, '_> {
                 downsample,
             } => {
                 // The rect the image fits in, and the shape that clips it, where one does.
-                let Some(placed) = PlacedOutline::place(*outline, owner_rect) else {
+                let Some(placed) = outline.place(owner_rect) else {
                     return;
                 };
                 let base = placed.bounds();
                 // Square corners clip nothing past the image's own rect.
-                let shape = match placed {
+                let outline = match placed {
                     PlacedOutline::Rect { corners, .. } if corners == Corners::ZERO => None,
                     _ => Some(placed),
                 };
@@ -682,7 +682,7 @@ impl PlaneCtx<'_, '_> {
                 out.draw(
                     DrawImagePayload {
                         rect,
-                        shape,
+                        outline,
                         uv_min,
                         uv_size,
                         tint: *tint,

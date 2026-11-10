@@ -26,7 +26,7 @@ struct VsIn {
     @location(7) points01:  vec4<f32>,
     @location(8) points23:  vec4<f32>,
     @location(9) corners:   vec4<f32>,
-    @location(10) deep:     f32,
+    @location(10) inradius: f32,
     @location(11) decal:    vec4<f32>,
 };
 

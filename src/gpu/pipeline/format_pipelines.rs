@@ -4,7 +4,6 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::effect_pipeline::EffectPipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
-use crate::gpu::pipeline::image_pipeline::image_form::ImageForm;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
 use crate::gpu::pipeline::pipeline_recipe::Pipeline;
@@ -12,6 +11,7 @@ use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
+use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::quad_form::QuadForm;
 
 /// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).

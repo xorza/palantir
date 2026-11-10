@@ -52,8 +52,8 @@ pub(crate) struct EffectInstance {
     /// The shape as the shape template takes it, as `Quad::points` holds a box's: the corners of
     /// `rect` relative to its min, clockwise.
     pub(crate) points: [Vec2; 4],
-    /// How deep the shape's interior reaches (`Quad::deep`).
-    pub(crate) deep: f32,
+    /// The shape's inradius (`Quad::inradius`).
+    pub(crate) inradius: f32,
     /// A material's border width, physical px, which the template keeps out of its interior; 0
     /// for an app's draw.
     pub(crate) border_width: f32,

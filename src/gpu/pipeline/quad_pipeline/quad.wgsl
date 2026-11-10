@@ -1,11 +1,6 @@
 // What every quad pipeline reads: the instance, the forms and fill kinds it carries, and the
 // vertex work the forms share (`quad_vertex`).
 
-// Divide-by-zero guard on object-local axes (quad size, gradient
-// span, radial radius). Anything smaller than this rounds to "no
-// meaningful direction" — the gradient collapses to a fallback.
-const PALANTIR_ZERO_EPS: f32 = 1e-6;
-
 // The paths a quad's fragment takes (`quad_paint`, `fs_template`, the reference `fs`), pinned per
 // pipeline (`QuadForm`): the driver drops the rest, so a solid rect's pipeline does not hold a
 // gradient's or a triangle's registers.
@@ -25,11 +20,7 @@ fn form_is_triangle() -> bool {
 const NO_SPAN: f32 = 1e30;
 
 // `fill_kind`'s fields: the family tag in the `PALANTIR_FILL_TAG_MASK` bits and
-// the spread mode `PALANTIR_SPREAD_SHIFT` up (`fill.wgsl`). Each flag bit is a constant below.
-const PALANTIR_FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
-
-// The solid fill's tag.
-const PALANTIR_FILL_SOLID:        u32 = /*{FILL_SOLID}*/;
+// the spread mode `PALANTIR_SPREAD_SHIFT` up (`gradient_fill.wgsl`). Each flag bit is a constant below.
 
 // Outside rect (`FillKind::OUTSIDE_BIT`) — inverted fill coverage. The fill
 // paints *outside* the rounded boundary (the corner wedges, out to the
@@ -60,7 +51,7 @@ struct VertexOut {
     @location(8) @interpolate(flat) fill_axis:    vec4<f32>,
     // Precomputed `1.0 / max(size, PALANTIR_ZERO_EPS)` so `quad_paint`'s gradient
     // path multiplies per-fragment instead of dividing (solid fills and the
-    // shadow / triangle paths don't read it).
+    // shadow path don't read it).
     @location(9) @interpolate(flat) inv_size:     vec2<f32>,
     // `(lo.x, lo.y, hi.x, hi.y)` in `local`: the rounded rect's interior,
     // past every corner's arc and the border's inner edge by
@@ -87,10 +78,10 @@ struct QuadIn {
     // fill read it, and only the drawn corners turn.
     @location(10) rotation:    f32,
     // The closed shape's sharp points from `pos`, clockwise on screen, two to a lane
-    // (`Quad::points`), and how far inside every edge its interior reaches (`Quad::deep`).
+    // (`Quad::points`), and its inradius (`Quad::inradius`).
     @location(11) points01:    vec4<f32>,
     @location(12) points23:    vec4<f32>,
-    @location(13) deep:        f32,
+    @location(13) inradius:    f32,
 };
 
 // The pixel-center extent the quad shader shades for a quad: its rect
@@ -153,7 +144,7 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     out.turned       = u32(quad.rotation != 0.0);
     // Inside the quad by the largest radius, no corner's arc reaches; by the
     // border and `PALANTIR_AA_HALF_WIDTH`, its inner edge's coverage is 1. An outside
-    // rect paints outside its shape, and a triangle's lanes are not radii.
+    // rect paints outside its shape, and a triangle's rect is not its shape.
     let outside = (fill_kind & FILL_FLAG_OUTSIDE) != 0u;
     if (!outside && (fill_kind & FILL_FLAG_TRIANGLE) == 0u) {
         let inset = max(max(max(radius.x, radius.y), max(radius.z, radius.w)), quad.border_width + PALANTIR_AA_HALF_WIDTH);

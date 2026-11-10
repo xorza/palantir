@@ -3,7 +3,7 @@
 //! One copy of each: a pipeline's prelude and an effect's module include the same text.
 
 /// `palantir_edge_coverage`.
-pub(crate) const COVERAGE: &str = include_str!("coverage.wgsl");
+pub(crate) const ANTIALIAS: &str = include_str!("antialias.wgsl");
 /// The sRGB transfers and `palantir_unpremultiply`.
 pub(crate) const COLOR: &str = include_str!("color.wgsl");
 /// The rounded rect's signed distance.

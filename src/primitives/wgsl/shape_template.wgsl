@@ -18,7 +18,7 @@ const PALANTIR_POINT_DEEP: u32 = 2u;
 
 // A shape as its template reads it: a convex polygon of `n` corners, 3 or 4, in the quad's own
 // frame, as the CPU describes it (`Quad::points`): sharp points clockwise on screen, a radius at
-// each, and how deep its interior reaches. Corner `i` is an arc of radius `r` about `c`, swept from
+// each, and its inradius, the deepest any point lies inside every edge. Corner `i` is an arc of radius `r` about `c`, swept from
 // `na`, the outward normal of the edge before it, to `nb`, the normal of the edge from corner `i` to
 // corner `i + 1`; a sharp corner has radius 0. Every kind of shape takes the one path: each corner
 // is worked out on its own from the instance, with no array a vertex indexes, which the Apple
@@ -31,8 +31,9 @@ struct PalantirShape {
     p3: vec2<f32>,
     // The radius at each point, `(tl, tr, br, bl)` for a box.
     radius: vec4<f32>,
-    // The depth past every edge where the medial axis stops the interior.
-    deep: f32,
+    // The radius of the largest circle inside the sharp polygon: no point lies deeper inside
+    // every edge.
+    inradius: f32,
 };
 
 struct PalantirCorner {
@@ -89,13 +90,13 @@ fn palantir_arc_dir(na: vec2<f32>, nb: vec2<f32>, f: f32) -> vec2<f32> {
 //     the arc `depth` inside the shape, or the arc's center where the corner is not that deep.
 //   - `PALANTIR_POINT_DEEP`: where the two edges' lines `depth` inside the shape meet, or the
 //     medial axis where the shape is not that deep.
-fn palantir_template_point(k: PalantirCorner, deep: f32, kind: u32, j: u32, outset: f32, depth: f32, outside: bool) -> vec2<f32> {
+fn palantir_template_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, outset: f32, depth: f32, outside: bool) -> vec2<f32> {
     let segments = f32(PALANTIR_ARC_SEGMENTS);
     // The sharp corner's direction from the arc's center, scaled so the corner sits a unit
     // depth past both edges' lines.
     let m = (k.na + k.nb) / (1.0 + dot(k.na, k.nb));
     if (kind == PALANTIR_POINT_DEEP) {
-        return k.c + max(k.r - depth, k.r - deep) * m;
+        return k.c + max(k.r - depth, k.r - inradius) * m;
     }
     if (kind == PALANTIR_POINT_INNER) {
         return k.c + max(k.r - depth, 0.0) * palantir_arc_dir(k.na, k.nb, f32(j) / segments);
@@ -190,7 +191,7 @@ fn palantir_template_vertex(s: PalantirShape, vi: u32, border_width: f32, outset
         }
     }
     let k = palantir_shape_corner(s, i);
-    out.pos = palantir_template_point(k, s.deep, kind, j, outset, depth, outside);
+    out.pos = palantir_template_point(k, s.inradius, kind, j, outset, depth, outside);
     out.ring_r = k.r;
     if (out.region == PALANTIR_REGION_RING) {
         out.geo = out.pos - k.c;

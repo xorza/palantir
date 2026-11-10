@@ -9,7 +9,7 @@ use crate::primitives::wgsl;
 /// pipelines' own prelude, then the WGSL they share with the effect modules.
 const PRELUDE: [&str; 4] = [
     include_str!("../prelude.wgsl"),
-    wgsl::COVERAGE,
+    wgsl::ANTIALIAS,
     wgsl::COLOR,
     wgsl::SDF,
 ];

@@ -426,7 +426,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
         DrawImagePayload {
             rect,
-            shape: None,
+            outline: None,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
             tint: RgbaF32::WHITE.to_f16(),

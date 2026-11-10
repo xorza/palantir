@@ -16,7 +16,7 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::wgsl::{
-    ARC_SEGMENTS, COLOR, COVERAGE, GRADIENT_FILL, GRADIENT_LUT, SHAPE_TEMPLATE,
+    ANTIALIAS, ARC_SEGMENTS, COLOR, GRADIENT_FILL, GRADIENT_LUT, SHAPE_TEMPLATE,
 };
 
 /// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's
@@ -126,7 +126,7 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
     let full = format!(
         "{ENABLE}{wgsl}\n{contract}{}{}{}{material}",
         wrapper(kind, params_struct.as_deref(), params.fields),
-        COVERAGE,
+        ANTIALIAS,
         SHAPE_TEMPLATE.replace("/*{ARC_SEGMENTS}*/", &format!("{ARC_SEGMENTS}u")),
     );
     let full = parse_and_validate(

@@ -47,8 +47,7 @@ use crate::shape::lower::LoweredPaint;
 use crate::shape::mesh::MeshShape;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
-use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
+use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
@@ -213,19 +212,21 @@ impl RecordStore {
         {
             return None;
         }
-        let material = paint
-            .material
-            .as_ref()
-            .zip(read)
-            .map(|(authored, read)| LoweredMaterial::lower(self, authored, read));
+        // `check` held the shadow a no-op.
+        let LoweredPaint {
+            fill,
+            border,
+            shadow: _,
+            material,
+        } = lower::lower_paint(self, paint, read);
         Some(ShapeRecord::Quad(QuadShape::Triangle {
             geometry: TriangleGeometry {
                 corners,
                 radius,
                 placement,
             },
-            fill: lower::brush(self, &paint.fill),
-            border: LoweredBorder::lower(paint.border),
+            fill,
+            border,
             material,
         }))
     }

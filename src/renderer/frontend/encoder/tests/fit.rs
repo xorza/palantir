@@ -65,8 +65,8 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
 fn an_image_carries_the_shape_that_clips_it() {
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::paint::image::{Image, ImageFit};
-    use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
     use crate::shape::Shape;
+    use crate::shape::geometry::shape_outline::PlacedOutline;
 
     let mut h = Harness::mono(UVec2::new(200, 200));
     let handle = h
@@ -103,16 +103,16 @@ fn an_image_carries_the_shape_that_clips_it() {
         assert_eq!(image.rect, Rect::new(25.0, 0.0, 50.0, 50.0));
     }
     assert_eq!(
-        images[0].shape,
+        images[0].outline,
         Some(PlacedOutline::Rect {
             rect: at,
             corners: Corners::all(6.0),
         })
     );
-    assert_eq!(images[1].shape, None);
+    assert_eq!(images[1].outline, None);
     assert_eq!(images[2].rect, Rect::new(10.0, 0.0, 20.0, 20.0));
     assert_eq!(
-        images[2].shape,
+        images[2].outline,
         Some(PlacedOutline::Triangle {
             points: [Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)],
             radius: 0.0,

@@ -31,6 +31,7 @@ mod quad_runs;
 mod rect_grid;
 pub(crate) mod session;
 mod stroke_bbox;
+mod template_shape;
 mod tile_index;
 mod transform_stack;
 

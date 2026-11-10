@@ -1,6 +1,14 @@
 // A gradient fill at a point of a shape's own 0..1 frame: the kind's parameter, spread, and the
-// LUT's color times the fill. The includer declares `PALANTIR_FILL_TAG_MASK` and
-// `PALANTIR_ZERO_EPS`, and includes `gradient_lut.wgsl`.
+// LUT's color times the fill. The includer includes `gradient_lut.wgsl`.
+
+// Divide-by-zero guard on object-local axes (a quad's size, a gradient's span, a radial
+// radius). Anything smaller rounds to "no meaningful direction", and the gradient collapses to a
+// fallback.
+const PALANTIR_ZERO_EPS: f32 = 1e-6;
+
+// `fill_kind`'s tag field, and the solid fill's tag, the one that reads no gradient.
+const PALANTIR_FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
+const PALANTIR_FILL_SOLID:    u32 = /*{FILL_SOLID}*/;
 
 // The gradient kinds' tags (`FillKind`), conic the one left when neither matches:
 //   linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)

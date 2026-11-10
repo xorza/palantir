@@ -4,8 +4,7 @@ use crate::primitives::packed::half_simd::F16x4;
 
 /// GPU-wire form of a gradient's axis: four f16 lanes (`[u16; 4]`, 8 B), laid out per variant: `[dir_x, dir_y, t0, t1]`
 /// linear, `[cx, cy, rx, ry]` radial, `[cx, cy, start_angle, _]` conic, `[offset.x, offset.y, σ, spread]` shadows.
-/// Pixel-valued lanes round by up to half an f16 step (¼ px below 1024, ½ below 2048, 1 below 4096). A triangle
-/// quad reuses the word (see `quad_pipeline/quad.wgsl`'s triangle notes).
+/// Pixel-valued lanes round by up to half an f16 step (¼ px below 1024, ½ below 2048, 1 below 4096).
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct FillAxis(F16x4);

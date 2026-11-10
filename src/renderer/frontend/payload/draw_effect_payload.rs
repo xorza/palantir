@@ -4,8 +4,8 @@ use crate::common::span::Span;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
-use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::shape::geometry::shape_outline::PlacedOutline;
 
 /// An effect over a rounded rect or a triangle in the logical frame; `params` indexes the window's
 /// [`RecordStore`](crate::shape::record_store::RecordStore) parameter words.

@@ -33,6 +33,7 @@ pub(crate) mod group_batch;
 pub(crate) mod icon_draw_row;
 pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
+pub(crate) mod image_form;
 pub(crate) mod mesh_draw_row;
 pub(crate) mod paint_tier;
 pub(crate) mod quad_form;

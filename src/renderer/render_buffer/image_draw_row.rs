@@ -10,6 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::renderer::render_buffer::image_form::ImageForm;
 use glam::Vec2;
 use soa_rs::Soars;
 
@@ -19,6 +20,8 @@ use soa_rs::Soars;
 #[soa_derive(Debug)]
 pub(crate) struct ImageDrawRow {
     pub(crate) id: TextureId,
+    /// The geometry the draw takes, which picks its pipeline.
+    pub(crate) form: ImageForm,
     pub(crate) instance: ImageInstance,
 }
 
@@ -40,16 +43,17 @@ pub(crate) struct ImageInstance {
     pub(crate) flags: ImageFlags,
     /// A paint animation's turn about `rect`'s center, in radians; `0` for none.
     pub(crate) rotation: f32,
-    /// A shaped image's ([`ImageFlags::SHAPED`]) clipping shape as the shape template reads it,
-    /// as `Quad::points` holds a box's: the corners of `rect` relative to its min, clockwise.
-    /// Unread on a plain image.
+    /// The clipping shape of an image of a box's or a triangle's [`ImageForm`], as the shape
+    /// template reads it, as `Quad::points` holds a box's: the corners of `rect` relative to its
+    /// min, clockwise. Unread on a plain image.
     pub(crate) points: [Vec2; 4],
     /// The clipping shape's corner radii, physical px.
     pub(crate) corners: Corners,
-    /// How deep the clipping shape's interior reaches (`Quad::deep`).
-    pub(crate) deep: f32,
+    /// The clipping shape's inradius (`Quad::inradius`).
+    pub(crate) inradius: f32,
     /// The image's own rect relative to `rect.min`, past which a shaped image shows nothing. An
-    /// edge on or past the shape's is out of reach (`f32::MAX`), so it fades with the shape's.
+    /// edge on the shape's, within the composer's slack, or past it is out of reach (`f32::MAX`),
+    /// so it fades with the shape's.
     pub(crate) decal_min: Vec2,
     pub(crate) decal_max: Vec2,
 }

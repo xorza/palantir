@@ -29,11 +29,11 @@ use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, G
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::shape::geometry::shape_outline::PlacedOutline;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::text::key::TextShapeKey;
@@ -140,7 +140,7 @@ fn run_in(
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
     DrawImagePayload {
         rect,
-        shape: None,
+        outline: None,
         uv_min: Vec2::ZERO,
         uv_size: Vec2::ONE,
         tint: RgbaF32::WHITE.to_f16(),
@@ -332,7 +332,7 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawImagePayload {
             rect: r,
-            shape: None,
+            outline: None,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
             tint: RgbaF32::WHITE.to_f16(),

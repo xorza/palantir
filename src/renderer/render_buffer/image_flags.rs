@@ -20,17 +20,6 @@ impl ImageFlags {
     /// Sample inside the UV rect alone: past it the texture is slack, as a clipped `GpuView`'s
     /// bucketed target holds. Only the plain bilinear path reads it, the one a view takes.
     pub(crate) const CLAMP_TO_UV: Self = Self(1 << 5);
-    /// Clipped to a shape: drawn as the shape template the instance describes
-    /// ([`ImageInstance::points`](crate::renderer::render_buffer::image_draw_row::ImageInstance::points)),
-    /// where a plain image is its rect's one quad.
-    pub(crate) const SHAPED: Self = Self(1 << 6);
-    /// A shaped image's shape is a triangle, three of its points, where a rect has four.
-    pub(crate) const TRIANGLE: Self = Self(1 << 7);
-
-    pub(crate) const fn contains(self, other: Self) -> bool {
-        self.0 & other.0 == other.0
-    }
-
     pub(crate) const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }

@@ -275,7 +275,7 @@ fn a_backdrop_shares_the_last_break_when_nothing_since_touches_it() {
 /// A material over the ground, while transparency is reduced, lists a row of the ground over its
 /// own rect: it holds no capture, breaks no group, and its effect row reads that row through its
 /// material's effect, between the quads around it in one group. Its instance holds its shape as
-/// the template takes it: the 40 × 20 rect's corners, its depth half the short side, 10, and its
+/// the template takes it: the 40 × 20 rect's corners, its inradius half the short side, 10, and its
 /// border's width, 3, which the template keeps out of its interior.
 #[test]
 fn a_material_over_the_ground_breaks_nothing() {
@@ -324,12 +324,12 @@ fn a_material_over_the_ground_breaks_nothing() {
             Vec2::new(0.0, 20.0)
         ]
     );
-    assert_eq!(instance.deep, 10.0);
+    assert_eq!(instance.inradius, 10.0);
     assert_eq!(instance.border_width, 3.0);
 }
 
 /// An app's effect holds its shape as the template takes it, its rect's corners at scale 2, its
-/// depth half the short side, and no border: (5, 5, 30 × 10) is (10, 10, 60 × 20).
+/// inradius half the short side, and no border: (5, 5, 30 × 10) is (10, 10, 60 × 20).
 #[test]
 fn an_effect_holds_its_shape_for_the_template() {
     let buf = run(
@@ -347,7 +347,7 @@ fn an_effect_holds_its_shape_for_the_template() {
             Vec2::new(0.0, 20.0)
         ]
     );
-    assert_eq!(instance.deep, 10.0);
+    assert_eq!(instance.inradius, 10.0);
     assert_eq!(instance.border_width, 0.0);
 }
 
@@ -404,6 +404,6 @@ fn a_triangles_material_packs_as_its_triangle() {
     );
     assert_eq!(instance.rect, quad.rect);
     assert_eq!(instance.points, quad.points);
-    assert_eq!(instance.deep, quad.deep);
+    assert_eq!(instance.inradius, quad.inradius);
     assert_eq!(instance.corners, quad.corners.to_array());
 }

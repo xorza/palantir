@@ -162,7 +162,7 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = [
     vertex_attr(
         8,
         wgpu::VertexFormat::Float32,
-        offset_of!(EffectInstance, deep),
+        offset_of!(EffectInstance, inradius),
     ),
     vertex_attr(
         9,
@@ -368,7 +368,7 @@ impl EffectPipeline {
             (effects[i], self.images[i], instances[i].corner_count())
         };
         for run in Runs::new(items, key) {
-            let (effect, images, corners) = run.key;
+            let (effect, images, corner_count) = run.key;
             let images_group = if images.ids().is_empty() {
                 None
             } else {
@@ -390,7 +390,7 @@ impl EffectPipeline {
                 rec.group_once(GRADIENTS_GROUP, gradients);
             }
             rec.draw(
-                0..shape_template::vertices(corners),
+                0..shape_template::vertices(corner_count),
                 run.instances.u32_range(),
             );
         }

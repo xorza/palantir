@@ -123,8 +123,8 @@ impl PaintPayload for DrawBackdropPayload {
     fn is_noop(&self) -> bool {
         let empty = match self.outline {
             BackdropOutline::Rect { rect, .. } => rect.is_paint_empty(),
-            // Its covering rect exists only after transform, and `TriangleShape::is_noop` filters
-            // degenerates, as a triangle quad's.
+            // Its covering rect exists only after transform, and its record and its placement
+            // drop a triangle of no area, as a triangle quad's.
             BackdropOutline::Triangle { .. } => false,
         };
         empty || is_invisible(self.opacity)

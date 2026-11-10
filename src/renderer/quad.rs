@@ -40,19 +40,19 @@ pub(crate) struct Quad {
     /// `corners`' radii, what the template's vertex stage builds the shape from
     /// (`quad_pipeline/template.wgsl`), with no branch per kind of shape.
     pub(crate) points: [Vec2; 4],
-    /// How far inside every edge the shape's medial axis stops its interior: half a box's shorter
-    /// side, a triangle's inradius past its growth.
-    pub(crate) deep: f32,
+    /// The radius of the largest circle inside the sharp polygon, the deepest any point lies inside
+    /// every edge: half a box's shorter side, a triangle's own inradius plus its growth.
+    pub(crate) inradius: f32,
 }
 
 impl Quad {
-    /// A box over `rect`: its points the rect's corners and its depth half its shorter side, every
+    /// A box over `rect`: its points the rect's corners and its inradius half its shorter side, every
     /// other lane at its default.
     pub(crate) fn of_rect(rect: Rect) -> Self {
         Self {
             rect,
             points: Self::box_points(rect.size),
-            deep: Self::box_deep(rect.size),
+            inradius: Self::box_inradius(rect.size),
             ..Self::default()
         }
     }
@@ -67,18 +67,19 @@ impl Quad {
         ]
     }
 
-    /// Half the shorter side of a box of `size`, where its medial axis stops its interior.
-    pub(crate) const fn box_deep(size: Size) -> f32 {
+    /// The inradius of a box of `size`: half its shorter side.
+    pub(crate) const fn box_inradius(size: Size) -> f32 {
         0.5 * size.w.min(size.h)
     }
 
-    /// Whether the shape is described: a box's points are its rect's corners, as the template
-    /// draws a box from them; a triangle and a shadow describe their own.
-    pub(crate) fn shape_is_described(&self) -> bool {
+    /// Whether the quad holds the shape the template draws: a box's points and inradius are its
+    /// rect's, as the template builds a box from them; a triangle holds its own, and a shadow
+    /// draws no template.
+    pub(crate) fn has_shape(&self) -> bool {
         self.fill_kind.is_shadow()
             || self.fill_kind.is_triangle()
             || (self.points == Self::box_points(self.rect.size)
-                && self.deep == Self::box_deep(self.rect.size))
+                && self.inradius == Self::box_inradius(self.rect.size))
     }
 
     /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/quad.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; an outside rect is drawn at its rect. A turned quad, outside or not, grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the whole pixels around that turned about the rect's center.

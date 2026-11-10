@@ -3,10 +3,10 @@
 use crate::primitives::packed::fill_kind::FillKind;
 
 /// The paths of the fragment stage (`quad_paint`, `fs_template`) a quad reaches, pinned per pipeline as `QUAD_FORM`, so a solid rect skips a gradient's register cost (VideoCore: 54 temporaries and two threads for all forms, 22 and four for solid).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 ///
 /// Named shape first, then paint: a box, a rect's or a circle's, or a triangle, under a solid or
 /// a gradient fill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QuadForm {
     /// A box, solid fill.
     BoxSolid = 0,

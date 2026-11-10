@@ -73,7 +73,6 @@ use crate::gpu::pipeline::effect_pipeline::{
 use crate::gpu::pipeline::format_pipelines::{
     FormatPipelines, PassPipelines, PipelineCensus, Programs,
 };
-use crate::gpu::pipeline::image_pipeline::image_form::ImageForm;
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
@@ -670,8 +669,8 @@ impl WgpuBackend {
                     meshes: !buffer.meshes.is_empty(),
                     images: {
                         let mut forms = [false; 3];
-                        for image in buffer.images.instance() {
-                            forms[ImageForm::of(image.flags) as usize] = true;
+                        for &form in buffer.images.form() {
+                            forms[form as usize] = true;
                         }
                         forms
                     },
@@ -1151,7 +1150,7 @@ impl WgpuBackend {
                             |form| ctx.pipelines.image(form),
                             ImageBatch {
                                 ids: buffer.images.id(),
-                                instances: buffer.images.instance(),
+                                forms: buffer.images.form(),
                                 items: items(),
                             },
                             textures,

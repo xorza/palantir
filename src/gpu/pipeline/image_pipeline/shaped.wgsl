@@ -18,9 +18,9 @@ struct ShapedOut {
     @location(8) @interpolate(flat) decal: vec4<f32>,
 };
 
-// A rounded rect's template (`ImageForm::RoundedRect`).
+// A box's template (`ImageForm::Box`).
 @vertex
-fn vs_rounded_rect(@builtin(vertex_index) vi: u32, in: VsIn) -> ShapedOut {
+fn vs_box(@builtin(vertex_index) vi: u32, in: VsIn) -> ShapedOut {
     return shaped_vertex(vi, in, 4u);
 }
 
@@ -39,7 +39,7 @@ fn shaped_vertex(vi: u32, in: VsIn, n: u32) -> ShapedOut {
     s.p2 = in.points23.xy;
     s.p3 = in.points23.zw;
     s.radius = in.corners;
-    s.deep = in.deep;
+    s.inradius = in.inradius;
     // No border: the image covers the whole shape.
     let v = palantir_template_vertex(s, vi, 0.0, PALANTIR_AA_HALF_WIDTH, false);
     var out: ShapedOut;

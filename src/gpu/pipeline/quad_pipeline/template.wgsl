@@ -36,7 +36,7 @@ fn instance_shape(quad: QuadIn, n: u32, radius: vec4<f32>) -> PalantirShape {
     s.p2 = quad.points23.xy;
     s.p3 = quad.points23.zw;
     s.radius = radius;
-    s.deep = quad.deep;
+    s.inradius = quad.inradius;
     return s;
 }
 

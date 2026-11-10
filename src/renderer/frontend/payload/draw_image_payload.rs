@@ -5,9 +5,9 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
-use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::shape::geometry::shape_outline::PlacedOutline;
 use glam::Vec2;
 
 /// Image draw payload: `rect` is the logical-px paint rect (`fit` and intrinsic size folded in),
@@ -17,7 +17,7 @@ pub(crate) struct DrawImagePayload {
     pub(crate) rect: Rect,
     /// The shape that clips the image, the rect it fits in or a triangle, or `None` for a plain
     /// image, which `rect` bounds alone.
-    pub(crate) shape: Option<PlacedOutline>,
+    pub(crate) outline: Option<PlacedOutline>,
     pub(crate) uv_min: Vec2,
     pub(crate) uv_size: Vec2,
     pub(crate) tint: RgbaF16,

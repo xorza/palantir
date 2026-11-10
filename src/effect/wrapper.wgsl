@@ -32,7 +32,7 @@ struct PalantirInstance {
     @location(5) flags: u32,
     @location(6) points01: vec4<f32>,
     @location(7) points23: vec4<f32>,
-    @location(8) deep: f32,
+    @location(8) inradius: f32,
     @location(9) border_width: f32,
 }
 
@@ -72,7 +72,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
     s.p2 = instance.points23.xy;
     s.p3 = instance.points23.zw;
     s.radius = instance.corners;
-    s.deep = instance.deep;
+    s.inradius = instance.inradius;
     let outset = select(PALANTIR_AA_HALF_WIDTH, 0.0, outside && rotation == 0.0);
     let t = palantir_template_vertex(s, vi, instance.border_width, outset, outside);
     let px = palantir_turned(pos + t.pos, pos + size * 0.5, rotation);

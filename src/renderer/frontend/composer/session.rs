@@ -19,10 +19,11 @@ use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::composer::packed_quad::{PackedQuad, TemplateShape};
+use crate::renderer::frontend::composer::packed_quad::PackedQuad;
 use crate::renderer::frontend::composer::paint_order::{Lane, Ordering, TextClip};
 use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
+use crate::renderer::frontend::composer::template_shape::TemplateShape;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
     BackdropDraw, BackdropOutline, DrawBackdropPayload,
@@ -35,7 +36,6 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
@@ -46,12 +46,14 @@ use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInsta
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
+use crate::shape::geometry::shape_outline::PlacedOutline;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::text;
@@ -240,7 +242,7 @@ impl PaintSink for ComposeSession<'_> {
                 rect: packed.rect.physical,
                 corners: packed.corners.to_array(),
                 points: packed.points,
-                deep: packed.deep,
+                inradius: packed.inradius,
                 border_width: packed.border_width,
                 time: 0.0,
                 opacity,
@@ -365,9 +367,9 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn image(&mut self, p: DrawImagePayload) {
-        match p.shape {
+        match p.outline {
             None => self.plain_image(p),
-            Some(shape) => self.shaped_image(p, shape),
+            Some(outline) => self.shaped_image(p, outline),
         }
     }
 
@@ -376,14 +378,14 @@ impl PaintSink for ComposeSession<'_> {
     fn effect(&mut self, p: DrawEffectPayload) {
         let lowering = self.lowering();
         let scale = lowering.transform.physical_scale();
-        let outline = TemplateShape::placed(p.outline, p.spin, &lowering);
+        let shape = TemplateShape::placed(p.outline, p.spin, &lowering);
         let shape_flags = match p.outline {
             PlacedOutline::Rect { .. } => 0,
             PlacedOutline::Triangle { .. } => EffectInstance::TRIANGLE,
         };
         let scaled = match p.spin {
-            None => ScaledRect::from_physical(outline.rect, lowering.display.physical),
-            Some(spin) => lowering.turned_rect(outline.rect, spin),
+            None => ScaledRect::from_physical(shape.rect, lowering.display.physical),
+            Some(spin) => lowering.turned_rect(shape.rect, spin),
         };
         let physical = scaled.physical;
         let Some(visible) = self.ordering().cull(scaled.urect) else {
@@ -430,9 +432,9 @@ impl PaintSink for ComposeSession<'_> {
             images: p.images,
             instance: EffectInstance {
                 rect: physical,
-                corners: outline.corners.to_array(),
-                points: outline.points,
-                deep: outline.deep,
+                corners: shape.corners.to_array(),
+                points: shape.points,
+                inradius: shape.inradius,
                 flags: shape_flags,
                 time: p.time,
                 opacity: p.opacity,
@@ -578,23 +580,30 @@ impl PaintSink for ComposeSession<'_> {
 }
 
 impl ComposeSession<'_> {
-    /// An image clipped to `shape`: its quad is the shape's rect, snapped, or moved and turned
+    /// How near its shape's edge, physical px, a shaped image's edge lies on it, so the shape
+    /// alone fades it: a decal there would fade the edge twice, down to a quarter at its middle.
+    /// The image's rect comes from the logical fit and the shape's from its own points, two f32
+    /// paths whose shared edges part by a few ulps, under 1/128 px for a coordinate below 2^16;
+    /// an image edge this far inside left open shows at most 4 of 255 levels of its clamped edge.
+    const DECAL_SLACK_PX: f32 = 1.0 / 64.0;
+
+    /// An image clipped to `outline`: its quad is the shape's rect, snapped, or moved and turned
     /// about its center as a quad's is, with the image's uv carried over the whole rect and its
     /// own rect relative to the quad.
-    fn shaped_image(&mut self, p: DrawImagePayload, shape: PlacedOutline) {
+    fn shaped_image(&mut self, p: DrawImagePayload, outline: PlacedOutline) {
         debug_assert!(p.view.is_none(), "a `GpuView` composites a plain image");
         let lowering = self.lowering();
-        let outline = TemplateShape::placed(shape, p.spin, &lowering);
+        let shape = TemplateShape::placed(outline, p.spin, &lowering);
         // The image's rect lies on the pixels its shape's does.
-        let edges = TemplateShape::edges(shape, p.spin, &lowering);
-        let flags = match shape {
-            PlacedOutline::Rect { .. } => ImageFlags::SHAPED,
-            PlacedOutline::Triangle { .. } => ImageFlags::SHAPED.union(ImageFlags::TRIANGLE),
+        let edges = TemplateShape::edges(outline, p.spin, &lowering);
+        let form = match outline {
+            PlacedOutline::Rect { .. } => ImageForm::Box,
+            PlacedOutline::Triangle { .. } => ImageForm::Triangle,
         };
         let image = lowering.scaled_rect_with(p.rect, edges).physical;
         let scaled = match p.spin {
-            None => ScaledRect::from_physical(outline.rect, lowering.display.physical),
-            Some(spin) => lowering.turned_rect(outline.rect, spin),
+            None => ScaledRect::from_physical(shape.rect, lowering.display.physical),
+            Some(spin) => lowering.turned_rect(shape.rect, spin),
         };
         if image.is_paint_empty()
             || self
@@ -604,31 +613,28 @@ impl ComposeSession<'_> {
         {
             return;
         }
-        let size = Vec2::from(outline.rect.size);
-        let lo = image.min - outline.rect.min;
+        let size = Vec2::from(shape.rect.size);
+        let lo = image.min - shape.rect.min;
         let hi = lo + Vec2::from(image.size);
         let uv_per_px = p.uv_size / Vec2::from(image.size);
-        let reach = |inside: bool, at: f32, out: f32| if inside { at } else { out };
+        let slack = Self::DECAL_SLACK_PX;
+        let from = |at: f32| if at > slack { at } else { -f32::MAX };
+        let to = |at: f32, end: f32| if at < end - slack { at } else { f32::MAX };
         self.out.images.push(ImageDrawRow {
             id: p.handle,
+            form,
             instance: ImageInstance {
                 rect: scaled.physical,
                 uv_min: p.uv_min - lo * uv_per_px,
                 uv_size: size * uv_per_px,
                 tint: p.tint,
-                flags: p.flags.union(flags),
+                flags: p.flags,
                 rotation: p.spin.map_or(0.0, |spin| spin.angle),
-                points: outline.points,
-                corners: outline.corners,
-                deep: outline.deep,
-                decal_min: Vec2::new(
-                    reach(lo.x > 0.0, lo.x, -f32::MAX),
-                    reach(lo.y > 0.0, lo.y, -f32::MAX),
-                ),
-                decal_max: Vec2::new(
-                    reach(hi.x < size.x, hi.x, f32::MAX),
-                    reach(hi.y < size.y, hi.y, f32::MAX),
-                ),
+                points: shape.points,
+                corners: shape.corners,
+                inradius: shape.inradius,
+                decal_min: Vec2::new(from(lo.x), from(lo.y)),
+                decal_max: Vec2::new(to(hi.x, size.x), to(hi.y, size.y)),
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -723,6 +729,7 @@ impl ComposeSession<'_> {
             // Only the registration id: the encoder already resolved fit into `rect` + UV. The
             // view's off-screen paint is scheduled above, in `frame_targets`.
             id: p.handle,
+            form: ImageForm::Plain,
             instance,
         });
     }
@@ -749,7 +756,7 @@ impl ComposeSession<'_> {
             fill_axis: packed.fill_axis,
             rotation: packed.rotation,
             points: packed.points,
-            deep: packed.deep,
+            inradius: packed.inradius,
         });
     }
 

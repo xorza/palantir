@@ -28,11 +28,12 @@ use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::TriangleQuad;
-use crate::renderer::frontend::payload::placed_outline::PlacedOutline;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::shape::geometry::shape_outline::PlacedOutline;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::stroke_bounds::StrokeJoints;
@@ -416,14 +417,14 @@ fn icons_batch_together_and_respect_tier_order() {
 }
 
 /// A triangle reaches the GPU as its points grown by its radius, from the covering quad's
-/// top-left in f32, clockwise on screen, a radius at each, and its depth: the template takes each
+/// top-left in f32, clockwise on screen, a radius at each, and its inradius: the template takes each
 /// corner's arc center back as the grown point less the radius along the corner's bisector, so the
 /// centers come back to the points within f32 rounding of a 3000 px quad.
 ///
 /// The points are given counterclockwise on screen, `(b − a) × (c − a) < 0`, so the quad swaps the
 /// last two. The covering quad is the points' bounds grown by the corner radius alone, since the
 /// shader grows every quad by its AA ramp: (13.3, 7.1) to (3013.7, 2950.6), less and plus 2. The
-/// depth is the inradius, `|cross| / perimeter`, plus the radius 2.
+/// inradius is the triangle's own, `|cross| / perimeter`, plus the radius 2.
 #[test]
 fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     let points = [
@@ -456,7 +457,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     let cross = (b - a).perp_dot(c - a);
     assert!(cross < 0.0, "given counterclockwise");
     let perimeter = (b - a).length() + (c - b).length() + (a - c).length();
-    assert_eq!(quad.deep, cross.abs() / perimeter + 2.0);
+    assert_eq!(quad.inradius, cross.abs() / perimeter + 2.0);
     // Clockwise, as the quad holds them: the last two swapped.
     let clockwise = [a, c, b];
     let grown: [Vec2; 3] = std::array::from_fn(|i| quad.rect.min + quad.points[i]);
@@ -530,7 +531,7 @@ fn a_turned_triangle_turns_its_quad_about_its_pivot() {
     );
     assert_eq!(turned.rotation, FRAC_PI_2);
     assert_eq!(turned.points, still.points);
-    assert_eq!(turned.deep, still.deep);
+    assert_eq!(turned.inradius, still.inradius);
 }
 
 /// A triangle's gradient reaches its quad as a rect's does: the kind with the triangle bit, the
@@ -812,7 +813,7 @@ fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
 /// contained image (17.5, 5, 25 × 25) is (35, 10, 50 × 50), 25 px in: one uv per 50 px, so the
 /// rect's uv starts 25 / 50 = 0.5 before the image's and spans 100 / 50 = 2 by 1. The decal is
 /// x 25 to 75, and y open, as the image's top and bottom lie on the shape's. Corners of 4 scale
-/// to 8, the depth is half the short side, 25. A turn moves no field but the rotation. An image
+/// to 8, the inradius is half the short side, 25. A turn moves no field but the rotation. An image
 /// the shape's own size keeps its uv and an open decal.
 #[test]
 fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
@@ -822,7 +823,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
                 b.draw(
                     DrawImagePayload {
                         rect: image,
-                        shape: Some(PlacedOutline::Rect {
+                        outline: Some(PlacedOutline::Rect {
                             rect: Rect::new(5.0, 5.0, 50.0, 25.0),
                             corners: Corners::all(4.0),
                         }),
@@ -839,7 +840,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
             },
             &params(2.0, UVec2::new(200, 200)),
         );
-        assert_eq!(buf.images.len(), 1);
+        assert_eq!(buf.images.form(), [ImageForm::Box]);
         buf.images.instance()[0]
     };
     let contained = shaped(Rect::new(17.5, 5.0, 25.0, 25.0), None);
@@ -848,7 +849,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
     assert_eq!(contained.uv_size, Vec2::new(2.0, 1.0));
     assert_eq!(contained.decal_min, Vec2::new(25.0, -f32::MAX));
     assert_eq!(contained.decal_max, Vec2::new(75.0, f32::MAX));
-    assert_eq!(contained.flags, ImageFlags::TILED.union(ImageFlags::SHAPED));
+    assert_eq!(contained.flags, ImageFlags::TILED);
     assert_eq!(contained.corners, Corners::all(8.0));
     assert_eq!(
         contained.points,
@@ -859,7 +860,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
             Vec2::new(0.0, 50.0)
         ]
     );
-    assert_eq!(contained.deep, 25.0);
+    assert_eq!(contained.inradius, 25.0);
     assert_eq!(contained.rotation, 0.0);
 
     // Turned about the shape's center, logical (30, 17.5), the quad stays and turns in the
@@ -897,7 +898,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
 
 /// A triangle's image packs its shape as a triangle quad does, unsnapped: at scale 2 the corners
 /// (5, 5), (25, 5), (5, 15) with radius 1 cover (8, 8) to (52, 32), and the image fills that
-/// rect, so its uv stays and its decal is open. Its flags name the triangle form.
+/// rect, so its uv stays and its decal is open. It draws through the triangle form.
 #[test]
 fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
     let points = [
@@ -910,7 +911,7 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(4.0, 4.0, 22.0, 12.0),
-                    shape: Some(PlacedOutline::Triangle {
+                    outline: Some(PlacedOutline::Triangle {
                         points,
                         radius: 1.0,
                     }),
@@ -936,6 +937,7 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
         },
         &params(2.0, UVec2::new(200, 200)),
     );
+    assert_eq!(buf.images.form(), [ImageForm::Triangle]);
     let image = buf.images.instance()[0];
     let quad = buf.quads[0];
     assert_eq!(
@@ -945,10 +947,73 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
     assert_eq!(image.rect, quad.rect);
     assert_eq!(image.points, quad.points);
     assert_eq!(image.corners, quad.corners);
-    assert_eq!(image.deep, quad.deep);
-    assert_eq!(image.flags, ImageFlags::SHAPED.union(ImageFlags::TRIANGLE));
+    assert_eq!(image.inradius, quad.inradius);
     assert_eq!(image.uv_min, Vec2::ZERO);
     assert_eq!(image.uv_size, Vec2::ONE);
     assert_eq!(image.decal_min, Vec2::splat(-f32::MAX));
+    assert_eq!(image.decal_max, Vec2::splat(f32::MAX));
+}
+
+/// An image edge on its shape's edge leaves the shape to fade it, and one inside it fades on its
+/// own. A triangle's image filling its bounds keeps an open decal at a scale of 1.25, where its
+/// rect, fit in logical px, and its shape's, from the scaled points, part by f32 rounding. A
+/// turned rect at scale 2, edges exact: an image 1/64 in on the left is 1/32 physical px in, past
+/// the slack, so its decal starts at 0.03125; 1/256 in on the right is 1/128 in, within it, so
+/// that side stays open, as do the top and bottom on the shape's.
+#[test]
+fn an_image_edge_on_its_shape_leaves_the_fade_to_the_shape() {
+    let draw = |rect: Rect, shape: PlacedOutline, spin: Option<Spin>, scale: f32| {
+        let buf = run(
+            |b, _| {
+                b.draw(
+                    DrawImagePayload {
+                        rect,
+                        outline: Some(shape),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(1),
+                        flags: ImageFlags::NONE,
+                        spin,
+                        view: None,
+                    },
+                    1.0,
+                );
+            },
+            &params(scale, UVec2::new(200, 200)),
+        );
+        buf.images.instance()[0]
+    };
+    for i in 0..16 {
+        let f = i as f32 * 0.137;
+        let shape = PlacedOutline::Triangle {
+            points: [
+                Vec2::new(5.1 + f, 5.3),
+                Vec2::new(25.7 + f, 5.9 + f),
+                Vec2::new(5.3, 15.1 + f),
+            ],
+            radius: 1.3 + f * 0.1,
+        };
+        let image = draw(shape.bounds(), shape, None, 1.25);
+        assert_eq!(image.decal_min, Vec2::splat(-f32::MAX), "triangle {i}");
+        assert_eq!(image.decal_max, Vec2::splat(f32::MAX), "triangle {i}");
+    }
+    let shape = PlacedOutline::Rect {
+        rect: Rect::new(5.0, 5.0, 50.0, 25.0),
+        corners: Corners::all(4.0),
+    };
+    let image = draw(
+        Rect::from_min_max(
+            Vec2::new(5.0 + 1.0 / 64.0, 5.0),
+            Vec2::new(55.0 - 1.0 / 256.0, 30.0),
+        ),
+        shape,
+        Some(Spin {
+            pivot: Vec2::new(30.0, 17.5),
+            angle: FRAC_PI_2,
+        }),
+        2.0,
+    );
+    assert_eq!(image.decal_min, Vec2::new(0.03125, -f32::MAX));
     assert_eq!(image.decal_max, Vec2::splat(f32::MAX));
 }

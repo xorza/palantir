@@ -7,7 +7,6 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind, KindId};
 use crate::primitives::effect::effect_name::{EffectName, TypedName};
 use crate::primitives::effect::effect_params::EffectParams;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::math::domain;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::shape::PaintedBy;
@@ -139,10 +138,7 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Rec
     /// Unless the rect covers its inside, which an effect's pipeline draws.
     #[track_caller]
     fn check(&self, _paint: &EffectPaint<U, K>) {
-        assert!(
-            self.coverage == Coverage::Inside,
-            "an effect paints the inside of its rect"
-        );
+        self.assert_inside("an effect");
     }
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {

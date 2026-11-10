@@ -12,12 +12,6 @@ override PALANTIR_DITHER_SRGB8: bool = false;
 // Rec. 709 luminance weights, over linear light.
 const PALANTIR_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 
-// `fill_kind`'s tag field and its solid tag, as the quad shader reads them; `gradient_fill.wgsl`
-// holds the gradients' tags and the spread.
-const PALANTIR_FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
-const PALANTIR_FILL_SOLID: u32 = /*{FILL_SOLID}*/;
-const PALANTIR_ZERO_EPS: f32 = 1e-6;
-
 // The gradient LUT atlas the quads read, so a gradient fill shades in this stage.
 @group(3) @binding(0) var palantir_gradient_tex: texture_2d<f32>;
 @group(3) @binding(1) var palantir_gradient_sampler: sampler;

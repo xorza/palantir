@@ -6,12 +6,9 @@
 //! and [`GpuViewTargets`]. Both build against one binding shape, so a view
 //! composite binds like an image.
 
-pub(crate) mod image_form;
-
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::image_pipeline::image_form::ImageForm;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
@@ -28,17 +25,18 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::wgsl;
 use crate::renderer::render_buffer::image_draw_row::ImageInstance;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::renderer::render_buffer::image_form::ImageForm;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::mem::offset_of;
 
-/// One batch of image draws: the frame's per-draw texture and instance columns and this
+/// One batch of image draws: the frame's per-draw texture and form columns and this
 /// batch's slice of them. `items` is the same [`Span`] that indexes the instance
 /// buffer, so textures and instances can't come from different batches.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ImageBatch<'a> {
     pub(crate) ids: &'a [TextureId],
-    pub(crate) instances: &'a [ImageInstance],
+    pub(crate) forms: &'a [ImageForm],
     pub(crate) items: Span,
 }
 
@@ -113,9 +111,9 @@ impl ImagePipeline {
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
-            ImageForm::RoundedRect => VariantRecipe {
-                label: "palantir.image.pipeline.rounded_rect",
-                vertex_entry: "vs_rounded_rect",
+            ImageForm::Box => VariantRecipe {
+                label: "palantir.image.pipeline.box",
+                vertex_entry: "vs_box",
                 fragment_entry: "fs_shaped",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -129,6 +127,15 @@ impl ImagePipeline {
             },
         };
         self.family.ensure(variant, gpu, target, recipe);
+    }
+
+    /// The vertices `form` draws each instance with: a strip of four, or its shape's template.
+    pub(crate) const fn form_vertices(form: ImageForm) -> u32 {
+        match form {
+            ImageForm::Plain => 4,
+            ImageForm::Box => shape_template::vertices(4),
+            ImageForm::Triangle => shape_template::vertices(3),
+        }
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
@@ -148,18 +155,11 @@ impl ImagePipeline {
         &'a self,
         rec: &mut PassRecorder<'a>,
         pipelines: impl Fn(ImageForm) -> &'a Pipeline,
-        ImageBatch {
-            ids,
-            instances,
-            items,
-        }: ImageBatch<'_>,
+        ImageBatch { ids, forms, items }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
         rec.vertex(0, self.family.instances());
-        let key = |i: u32| {
-            let i = i as usize;
-            (ImageForm::of(instances[i].flags), ids[i])
-        };
+        let key = |i: u32| (forms[i as usize], ids[i as usize]);
         for run in Runs::new(items, key) {
             let (form, id) = run.key;
             let Some(bind_group) = textures.bind_group(id) else {
@@ -167,7 +167,7 @@ impl ImagePipeline {
             };
             rec.pipeline(pipelines(form));
             rec.group_once(0, bind_group);
-            rec.draw(0..form.vertices(), run.instances.u32_range());
+            rec.draw(0..Self::form_vertices(form), run.instances.u32_range());
         }
     }
 }
@@ -228,7 +228,7 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
     vertex_attr(
         10,
         wgpu::VertexFormat::Float32,
-        offset_of!(ImageInstance, deep),
+        offset_of!(ImageInstance, inradius),
     ),
     // `decal_min` then `decal_max`, adjacent, as one `(min, max)`.
     vertex_attr(
@@ -262,3 +262,24 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::pipeline::image_pipeline::ImagePipeline;
+    use crate::renderer::render_buffer::image_form::ImageForm;
+
+    /// A plain image is a strip of four; a box's template is 4 rings of 5 triangles, 4 bands of
+    /// 4 and an interior fan of 10; a triangle's 3 rings, 3 bands and a fan of 7.
+    #[test]
+    fn each_form_draws_its_shapes_vertices() {
+        assert_eq!(ImagePipeline::form_vertices(ImageForm::Plain), 4);
+        assert_eq!(
+            ImagePipeline::form_vertices(ImageForm::Box),
+            3 * (20 + 16 + 10)
+        );
+        assert_eq!(
+            ImagePipeline::form_vertices(ImageForm::Triangle),
+            3 * (15 + 12 + 7)
+        );
+    }
+}

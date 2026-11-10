@@ -448,11 +448,11 @@ impl QuadPipeline {
         cutouts: &CutoutPlan,
         extras: QuadExtras<'_>,
     ) {
+        self.extras = ExtraSpans::lay(quads.len() as u32, extras, &mut self.tail);
         debug_assert!(
-            quads.iter().all(Quad::shape_is_described),
+            quads.iter().chain(&self.tail).all(Quad::has_shape),
             "a box quad left its points or its depth at their default (`Quad::of_rect`)"
         );
-        self.extras = ExtraSpans::lay(quads.len() as u32, extras, &mut self.tail);
         self.instance_buffer.upload_parts(ctx, &[quads, &self.tail]);
         self.taken = quad_draw::fill(&mut self.draws, quads, cutouts.entries(), self.shadow_cells);
     }
@@ -548,7 +548,7 @@ const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 13] = [
         wgpu::VertexFormat::Float32x4,
         offset_of!(Quad, points) + 2 * size_of::<Vec2>(),
     ),
-    vertex_attr(13, wgpu::VertexFormat::Float32, offset_of!(Quad, deep)),
+    vertex_attr(13, wgpu::VertexFormat::Float32, offset_of!(Quad, inradius)),
 ];
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
