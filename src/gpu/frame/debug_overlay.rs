@@ -1,7 +1,7 @@
 //! Debug-overlay quads: the full-viewport dim quad (before partial passes, when
 //! `DebugOverlayConfig::dim_undamaged`) and the damage-rect outline quads (after the
 //! backbuffer-to-surface copy, when `damage_rect`). Both ride the frame's quad stream and the
-//! quad pipeline's no-stencil base pipeline and bind group, passed in as an [`OverlayDraw`].
+//! quad pipeline's no-stencil base pipeline and the frame group, passed in as an [`OverlayDraw`].
 
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
@@ -32,8 +32,8 @@ const DAMAGE_OVERLAY_GAP: f32 = 1.0;
 /// 40% alpha leaves 60% of the underlying pixel per Partial frame.
 const DIM_ALPHA: f32 = 0.4;
 
-/// What every debug-overlay draw binds: the no-stencil solid quad pipeline with
-/// the gradient group, and the viewport.
+/// What every debug-overlay draw binds: the no-stencil solid quad pipeline with the frame group,
+/// and the viewport.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OverlayDraw<'a> {
     pub(crate) binding: QuadBinding<'a>,

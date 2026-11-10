@@ -1,5 +1,5 @@
 // User-image pipeline. Per-instance rect + tint; texture+sampler in
-// group 0, switched per draw by the backend. Four-corner quad emitted
+// the group past the frame group, switched per draw by the backend. Four-corner quad emitted
 // implicitly via `vertex_index` (TriangleStrip).
 //
 // Color pipeline: texture is `Rgba8UnormSrgb`, so the sampler decodes
@@ -9,8 +9,9 @@
 // alpha) is premultiplied in `image_paint` and the two multiply as premultiplied
 // values, matching the rest of the premultiplied-blend pipeline.
 
-@group(0) @binding(0) var tex:     texture_2d<f32>;
-@group(0) @binding(1) var tex_smp: sampler;
+const IMAGE_GROUP: u32 = /*{IMAGE_GROUP}*/;
+@group(IMAGE_GROUP) @binding(0) var tex:     texture_2d<f32>;
+@group(IMAGE_GROUP) @binding(1) var tex_smp: sampler;
 
 struct VsIn {
     // Per-instance.

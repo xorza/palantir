@@ -31,6 +31,7 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl;
+use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::quad_form::QuadForm;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
@@ -93,37 +94,22 @@ impl QuadVariants {
     }
 }
 
-/// A quad pipeline and the gradient group it reads at group 0, bound together
-/// with the instance stream before any quad draw.
+/// A quad pipeline and the frame group it reads, bound together with the instance stream in a
+/// pass of its own, which binds no frame group for it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct QuadBinding<'a> {
     pub(crate) pipeline: &'a Pipeline,
-    pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
+    pub(crate) frame_group: &'a wgpu::BindGroup,
 }
 
 impl<'a> QuadBinding<'a> {
-    /// Bind the pipeline, the gradient group and `buffer` as the instance stream, for a pass of one
+    /// Bind the pipeline, the frame group and `buffer` as the instance stream, for a pass of one
     /// draw, which has nothing bound to skip.
     pub(crate) fn bind(self, pass: &mut wgpu::RenderPass<'a>, buffer: &'a wgpu::Buffer) {
         pass.set_pipeline(&self.pipeline.pipeline);
-        pass.set_bind_group(0, self.gradient_bind_group, &[]);
+        pass.set_bind_group(FRAME_GROUP, self.frame_group, &[]);
         pass.set_vertex_buffer(0, buffer.slice(..));
     }
-
-    /// [`Self::bind`] in the main pass, through `rec`, which skips what is bound.
-    fn bind_through(self, rec: &mut PassRecorder<'a>, buffer: &'a wgpu::Buffer) {
-        rec.pipeline(self.pipeline);
-        rec.group(0, self.gradient_bind_group);
-        rec.vertex(0, buffer);
-    }
-}
-
-/// What every quad run of a pass reads: the pass's pipelines, of which a run picks its draw's,
-/// and the groups.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct QuadPass<'a> {
-    pub(crate) pipelines: PassPipelines<'a>,
-    pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
 }
 
 /// A run of quads of one [`QuadDraw`].
@@ -244,7 +230,7 @@ impl QuadPipeline {
         label: "palantir.quad.shader",
         wgsl: include_str!("quad.wgsl"),
         includes: &[
-            wgsl::GRADIENT,
+            wgsl::FRAME,
             wgsl::GRADIENT_LUT,
             wgsl::GRADIENT_FILL,
             include_str!("paint.wgsl"),
@@ -258,22 +244,28 @@ impl QuadPipeline {
         constants: SHADER_CONSTANTS,
     };
 
-    /// Bind `binding` over the instance stream and draw the frame's pre-clear quad. Under
+    /// Bind `pipeline` over the instance stream and draw the frame's pre-clear quad. Under
     /// [`Clipping::On`], the test at reference 0 matches every pixel and leaves the stencil
     /// intact.
-    pub(crate) fn draw_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
+    pub(crate) fn draw_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
         let at = self
             .extras
             .clear
             .expect("a frame that pre-clears uploads its clear quad");
         // Sets no stencil reference: the schedule dedupes `SetStencilRef` assuming no draw arm sets one, and the ref is already 0.
-        binding.bind_through(rec, &self.instance_buffer.buffer);
+        self.bind(rec, pipeline);
         rec.draw(0..self.form_vertices(QuadForm::BoxSolid), at..at + 1);
     }
 
     /// Bind a mask pipeline (stamp or clear) over the instance stream; the caller sets `stencil_reference` per draw.
-    pub(crate) fn bind_mask<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
-        binding.bind_through(rec, &self.instance_buffer.buffer);
+    pub(crate) fn bind_mask<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
+        self.bind(rec, pipeline);
+    }
+
+    /// Bind `pipeline` over the instance stream in the main pass, which holds the frame group.
+    fn bind<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
+        rec.pipeline(pipeline);
+        rec.vertex(0, &self.instance_buffer.buffer);
     }
 
     /// Draw the frame's mask `mask_idx`, which [`QuadExtras::masks`] held.
@@ -317,16 +309,16 @@ impl QuadPipeline {
             tail: Vec::new(),
             extras: ExtraSpans::default(),
             shader,
-            // Gradient atlas at group 0. One layout serves all pipelines; stencil state and fragment entry are not part of it.
+            // The frame group. One layout serves every form; stencil state and fragment entry are not part of it.
             pipeline_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.quad.pl",
-                &[Some(textures.layout())],
+                &[Some(textures.frame())],
             ),
             shadow_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.quad.shadow.pl",
-                &[Some(textures.layout()), Some(cutouts.layout())],
+                &[Some(textures.frame()), Some(cutouts.layout())],
             ),
             cutouts,
             shadow_cells: ShadowCells::Grid,
@@ -483,24 +475,20 @@ impl QuadPipeline {
         Runs::new(instances, |i| self.draws[i as usize])
     }
 
-    /// Bind the pipeline `run`'s draw picks over the instance buffer, with the groups the draw
-    /// reads, and draw it:
-    /// a shadow reads the cutout tables and draws the eight cells around its hole.
+    /// Bind the pipeline `run`'s draw picks of `pipelines` over the instance buffer, with the
+    /// groups the draw reads past the frame group, and draw it: a shadow reads the cutout tables
+    /// and draws the eight cells around its hole.
     pub(crate) fn draw_run<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        pass: QuadPass<'a>,
+        pipelines: PassPipelines<'a>,
         run: QuadRun,
     ) {
         let QuadRun { draw, instances } = run;
         if instances.len == 0 {
             return;
         }
-        QuadBinding {
-            pipeline: pass.pipelines.quad(draw),
-            gradient_bind_group: pass.gradient_bind_group,
-        }
-        .bind_through(rec, &self.instance_buffer.buffer);
+        self.bind(rec, pipelines.quad(draw));
         match draw {
             QuadDraw::Form(form) => rec.draw(0..self.form_vertices(form), instances.u32_range()),
             QuadDraw::Shadow(_) => {

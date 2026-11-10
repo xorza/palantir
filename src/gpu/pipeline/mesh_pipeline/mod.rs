@@ -20,6 +20,7 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshInstance};
 use std::mem::offset_of;
@@ -60,15 +61,15 @@ impl MeshPipeline {
     /// Format-independent mesh resources; pipelines come from
     /// [`Self::ensure`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
-    pub(crate) fn new(gpu: &Gpu) -> Self {
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
         Self {
             family: InstancedPipeline::new(
                 gpu,
                 InstancedSpec {
                     shader: Self::SHADER,
                     layout: "palantir.mesh.pl",
-                    // No bind groups: only the shared immediate region for the viewport.
-                    groups: &[],
+                    // The frame group, as every pipeline of the main pass takes it.
+                    groups: &[Some(textures.frame())],
                     instances: "palantir.mesh.instances",
                     capacity: 64,
                 },

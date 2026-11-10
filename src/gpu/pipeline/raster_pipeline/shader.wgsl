@@ -48,10 +48,11 @@ const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample color, not mask
 // just above the carried ones.
 const FLAG_RESAMPLE: u32 = FLAG_MASK + 1u;
 
-// Group(0) = the atlas textures. Every read is a `textureLoad` by texel,
+// The atlas textures, past the frame group. Every read is a `textureLoad` by texel,
 // so there is no sampler.
-@group(0) @binding(0) var mask_atlas: texture_2d<f32>;
-@group(0) @binding(1) var color_atlas: texture_2d<f32>;
+const ATLAS_GROUP: u32 = /*{ATLAS_GROUP}*/;
+@group(ATLAS_GROUP) @binding(0) var mask_atlas: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(1) var color_atlas: texture_2d<f32>;
 
 @vertex
 fn vs(in: VertexIn) -> VertexOut {

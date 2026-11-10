@@ -12,10 +12,6 @@ override PALANTIR_DITHER_SRGB8: bool = false;
 // Rec. 709 luminance weights, over linear light.
 const PALANTIR_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 
-// The gradient LUT atlas the quads read, so a gradient fill shades in this stage.
-@group(3) @binding(0) var palantir_gradient_tex: texture_2d<f32>;
-@group(3) @binding(1) var palantir_gradient_sampler: sampler;
-
 // The material's box at `local`, around `out`, what the effect shows there.
 fn palantir_material(v: PalantirVarying, local: vec2<f32>, input: EffectInput, out: EffectOutput) -> PalantirOut {
     let backdrop = palantir_backdrops[v.backdrop_idx];

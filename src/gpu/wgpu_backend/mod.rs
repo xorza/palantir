@@ -79,14 +79,13 @@ use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
-use crate::gpu::pipeline::quad_pipeline::{
-    self, QuadBinding, QuadExtras, QuadPass, QuadPipeline, QuadRun,
-};
+use crate::gpu::pipeline::quad_pipeline::{self, QuadBinding, QuadExtras, QuadPipeline, QuadRun};
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::render_owner_id::RenderOwnerId;
+use crate::gpu::resource::frame_group::FrameGroup;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -103,6 +102,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -129,7 +129,7 @@ pub(crate) struct WgpuBackend {
     staging: UploadStaging,
     /// The display frame every submit's per-frame scratch ages against.
     frames: DisplayFrames,
-    /// Shared gradient LUT atlas lent to the quad and curve pipelines.
+    /// Shared gradient LUT atlas, whose group is the frame group every color pipeline reads.
     gradient: GpuGradientAtlas,
     programs: Programs,
     /// The frame's backdrops: their captures, blurs and results.
@@ -144,9 +144,11 @@ pub(crate) struct WgpuBackend {
     icon: IconBackend,
     text: TextBackend,
     debug: DebugOverlay,
-    /// The group-0 layout and sampler every sampled texture binds through, so a group built for one
-    /// binds in every pipeline that samples any.
+    /// The layouts and sampler every sampled texture binds through, so a group built for one binds
+    /// in every pipeline that samples any.
     texture_binding: TextureBinding,
+    /// The frame group the main pass binds once: the gradient atlas.
+    frame_group: FrameGroup,
     /// Rounded-clip chains and mask quads, rebuilt on stencil frames only; retained to avoid
     /// allocation.
     mask_plan: MaskPlan,
@@ -361,15 +363,15 @@ impl WgpuBackend {
         let image_store = Rc::clone(resources.image_store);
         let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
-        let gradient =
-            GpuGradientAtlas::new(&gpu, resources.gradient_rows, texture_binding.clone());
+        let gradient = GpuGradientAtlas::new(&gpu, resources.gradient_rows);
+        let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), &gradient);
         let backdrops = Backdrops::new(&gpu, &texture_binding);
         let quad = QuadPipeline::new(&gpu, &texture_binding);
-        let mesh = MeshPipeline::new(&gpu);
+        let mesh = MeshPipeline::new(&gpu, &texture_binding);
         let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
         let curve = CurvePipeline::new(&gpu, &texture_binding);
-        let raster = RasterProgram::new(&gpu);
+        let raster = RasterProgram::new(&gpu, &texture_binding);
         let effect = EffectPipeline::new(&gpu);
         let blit = BlitPipeline::new(&gpu, &texture_binding);
         let text = TextBackend::new(&gpu, &raster, resources.text.clone());
@@ -409,6 +411,7 @@ impl WgpuBackend {
             text,
             debug,
             texture_binding,
+            frame_group,
             mask_plan: MaskPlan::default(),
             passes: FramePasses::default(),
             pipelines: FxHashMap::default(),
@@ -809,6 +812,7 @@ impl WgpuBackend {
         if let Some(rows) = gradients {
             self.gradient.upload(&mut ctx, rows);
         }
+        self.frame_group.update(ctx.gpu, &self.gradient);
 
         // Damage-rect overlay quads (debug): uploaded now, drawn last after the backbuffer copy.
         if let Some(damage) = overlay.damage {
@@ -956,7 +960,7 @@ impl WgpuBackend {
                     .fmt
                     .for_frame(Clipping::Off)
                     .quad(QuadDraw::Form(QuadForm::BoxSolid)),
-                gradient_bind_group: &self.gradient.bind_group,
+                frame_group: self.frame_group.group(),
             },
             viewport: draw.viewport,
             vertices: self.programs.quad.form_vertices(QuadForm::BoxSolid),
@@ -1046,8 +1050,10 @@ impl WgpuBackend {
                 1.0,
             );
         }
-        // One for the pass: what a scissor replay leaves bound stays bound for the next.
+        // One for the pass: what a scissor replay leaves bound stays bound for the next, the frame
+        // group first of all, which every pipeline of the pass reads at the same slot.
         let mut rec = PassRecorder::new(pass, draw.viewport.with_origin(draw.origin));
+        rec.group(FRAME_GROUP, self.frame_group.group());
         let clipping = if draw.masks.is_some() {
             Clipping::On
         } else {
@@ -1096,17 +1102,13 @@ impl WgpuBackend {
         // Read at a raster draw, as a frame that draws none builds no raster pipeline.
         let pipelines = ctx.pipelines;
         let raster = move || pipelines.raster();
-        let quad = |pipeline| QuadBinding {
-            pipeline,
-            gradient_bind_group: &self.gradient.bind_group,
-        };
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => ctx.batch(BatchKind::PreClear, |ctx| {
                 // Through the recorder, so the viewport is pushed before the draw; else the clear
                 // quad reads stale immediates (zero on a partial pass's first PreClear) and
                 // clears nothing.
                 let solid = ctx.pipelines.quad(QuadDraw::Form(QuadForm::BoxSolid));
-                self.programs.quad.draw_clear(ctx.rec, quad(solid));
+                self.programs.quad.draw_clear(ctx.rec, solid);
             }),
             RenderStep::SetScissor(r) => {
                 ctx.rec.scissor(URect {
@@ -1117,12 +1119,12 @@ impl WgpuBackend {
             RenderStep::SetStencilRef(v) => ctx.rec.stencil_reference(v),
             RenderStep::MaskStamp(mi) => ctx.batch(BatchKind::Mask, |ctx| {
                 let stamp = ctx.pipelines.mask_stamp();
-                self.programs.quad.bind_mask(ctx.rec, quad(stamp));
+                self.programs.quad.bind_mask(ctx.rec, stamp);
                 self.programs.quad.draw_mask(ctx.rec, mi);
             }),
             RenderStep::MaskClear(mi) => ctx.batch(BatchKind::Mask, |ctx| {
                 let clear = ctx.pipelines.mask_clear();
-                self.programs.quad.bind_mask(ctx.rec, quad(clear));
+                self.programs.quad.bind_mask(ctx.rec, clear);
                 self.programs.quad.draw_mask(ctx.rec, mi);
             }),
             RenderStep::Quads { range } => {
@@ -1130,10 +1132,7 @@ impl WgpuBackend {
                     ctx.batch(run.key.batch_kind(), |ctx| {
                         self.programs.quad.draw_run(
                             ctx.rec,
-                            QuadPass {
-                                pipelines: ctx.pipelines,
-                                gradient_bind_group: &self.gradient.bind_group,
-                            },
+                            ctx.pipelines,
                             QuadRun {
                                 draw: run.key,
                                 instances: run.instances,
@@ -1170,12 +1169,11 @@ impl WgpuBackend {
                             textures,
                         ),
                         PaintTier::Icon => self.icon.render_batch(ctx.rec, batch, raster()),
-                        PaintTier::Curve => self.programs.curve.draw_batch(
-                            ctx.rec,
-                            ctx.pipelines.curve(),
-                            &self.gradient.bind_group,
-                            items(),
-                        ),
+                        PaintTier::Curve => {
+                            self.programs
+                                .curve
+                                .draw_batch(ctx.rec, ctx.pipelines.curve(), items());
+                        }
                         PaintTier::Effect => self.programs.effect.draw_batch(
                             ctx.rec,
                             ctx.pipelines.clipping(),
@@ -1185,7 +1183,6 @@ impl WgpuBackend {
                                 items: items(),
                                 groups: &effect_groups,
                                 backdrops: self.backdrops.group(),
-                                gradients: &self.gradient.bind_group,
                             },
                         ),
                     }

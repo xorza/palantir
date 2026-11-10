@@ -242,6 +242,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
 /// device because growing a side allocates a texture.
 mod gpu {
     use super::*;
+    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
 
     /// A mask side that starts at 128² and tops out at 256², so one insert can
@@ -251,7 +252,7 @@ mod gpu {
     fn small_atlas(gpu: &Gpu) -> RasterAtlas<TestKey> {
         RasterAtlas::new(
             gpu,
-            &RasterProgram::new(gpu),
+            &RasterProgram::new(gpu, &TextureBinding::new(gpu)),
             RasterAtlasConfig {
                 label: "palantir.test",
                 initial_mask_px: 128,

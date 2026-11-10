@@ -89,6 +89,16 @@ impl ShaderConstant {
 const PRELUDE_CONSTANTS: [ShaderConstant; 1] =
     [ShaderConstant::float("AA_HALF_WIDTH", AA_HALF_WIDTH)];
 
+/// The constants the shared WGSL a body includes declares ([`wgsl::FRAME`]), substituted where a
+/// body includes it.
+const SHARED_CONSTANTS: [ShaderConstant; 1] =
+    [ShaderConstant::uint("FRAME_GROUP", wgsl::FRAME_GROUP)];
+
+/// `body` behind the prelude, each marker of `constants` and the prelude's replaced. A marker
+/// occurs once, so a shader names a group through a WGSL `const` the marker sets, then
+/// `@group(THE_CONST)`, as WGSL takes a const-expression there
+/// ([WGSL §12.1](https://www.w3.org/TR/WGSL/#attribute-group)). The shared WGSL's markers are
+/// replaced where a body includes it, so a body that leaves [`wgsl::FRAME`] out names neither.
 fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
     let mut specialized = format!("{}{body}", PRELUDE.concat());
     for &constant in PRELUDE_CONSTANTS.iter().chain(constants) {
@@ -97,6 +107,14 @@ fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
             specialized.matches(&marker).count(),
             1,
             "WGSL marker {marker} must occur exactly once",
+        );
+        specialized = specialized.replace(&marker, &constant.wgsl());
+    }
+    for constant in SHARED_CONSTANTS {
+        let marker = format!("/*{{{}}}*/", constant.marker);
+        assert!(
+            specialized.matches(&marker).count() <= 1,
+            "WGSL marker {marker} occurs at most once, in the shared WGSL a body includes once",
         );
         specialized = specialized.replace(&marker, &constant.wgsl());
     }

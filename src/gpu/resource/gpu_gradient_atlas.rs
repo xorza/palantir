@@ -1,9 +1,9 @@
-//! Device-side gradient LUT atlas, owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend)
-//! and lent to the quad and curve pipelines.
+//! Device-side gradient LUT atlas, owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend),
+//! whose group is the frame group every color pipeline reads at
+//! [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP).
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
-use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -20,17 +20,17 @@ const _: () = assert!(
     "gradient atlas row pitch must stay 256-aligned to stage rows as packed"
 );
 
-/// The texture the frontend's gradient atlas uploads into, and the bind group both pipelines
-/// consume. Format-independent.
+/// The texture the frontend's gradient atlas uploads into, which the frame group binds.
+/// Format-independent.
 #[derive(Debug)]
 pub(crate) struct GpuGradientAtlas {
     /// LUT atlas texture: 256 cols × N rows of `Rgba16Float` linear values (8-bit
     /// would band dark stops). [`Self::upload`] fills it and replaces it when the CPU atlas outgrew it.
     texture: wgpu::Texture,
-    /// The shared sampled-texture binding, kept to rebuild [`Self::bind_group`]; height-independent.
-    binding: TextureBinding,
-    /// Group-0 bind group for both pipelines.
-    pub(crate) bind_group: wgpu::BindGroup,
+    /// The view the frame group binds, made again with the texture.
+    view: wgpu::TextureView,
+    /// Counts the textures made, so the frame group sees a replaced one.
+    generation: u64,
 }
 
 /// Allocates the LUT atlas texture at `rows` rows; shaders read the height via `textureDimensions`.
@@ -65,22 +65,31 @@ pub(super) fn row_copies<'a>(
 
 impl GpuGradientAtlas {
     /// The texture at `rows` rows, the CPU atlas's height.
-    pub(crate) fn new(gpu: &Gpu, rows: u32, binding: TextureBinding) -> Self {
+    pub(crate) fn new(gpu: &Gpu, rows: u32) -> Self {
         let texture = create_texture(gpu, rows);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(gpu, &view, "palantir.gradient.bg");
-
         Self {
             texture,
-            binding,
-            bind_group,
+            view,
+            generation: 0,
         }
+    }
+
+    /// The view the frame group binds.
+    pub(crate) const fn view(&self) -> &wgpu::TextureView {
+        &self.view
+    }
+
+    /// Which texture [`Self::view`] views: it changes where the atlas grows.
+    pub(crate) const fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Syncs the LUT atlas to the GPU: the dirty `rows` stage once in the belt and copy one per
     /// run ([`GpuCtx::copy_rows`]), on the frame's encoder ahead of every pass. A grown atlas
-    /// replaces the texture and bind group first, and the new texture takes the old one's rows
-    /// by a copy on the GPU, as resident rows keep their ids. Called from `WgpuBackend::submit`.
+    /// replaces the texture and its view first, and the new texture takes the old one's rows
+    /// by a copy on the GPU, as resident rows keep their ids. Called from `WgpuBackend::submit`,
+    /// before the frame group binds the view.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, rows: FlushedRows<'_>) {
         if self.texture.height() != rows.total_rows {
             debug_assert!(
@@ -94,12 +103,10 @@ impl GpuGradientAtlas {
                 self.texture.size(),
             );
             self.texture = grown;
-            let view = self
+            self.view = self
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
-            self.bind_group = self
-                .binding
-                .bind_group(ctx.gpu, &view, "palantir.gradient.bg");
+            self.generation += 1;
         }
         ctx.copy_rows(row_copies(&self.texture, rows.runs, move |run| {
             rows.bytes(run)
@@ -110,7 +117,6 @@ impl GpuGradientAtlas {
 #[cfg(test)]
 mod tests {
     use crate::gpu::resource::gpu_gradient_atlas::{GpuGradientAtlas, ROW_PITCH};
-    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::gradient_atlas::bake::{self, LUT_ROW_TEXELS};
@@ -131,7 +137,7 @@ mod tests {
     fn a_grown_atlas_copies_the_rows_it_held() {
         let gpu = headless_test_gpu();
         let mut cpu = CpuGradientAtlas::default();
-        let mut atlas = GpuGradientAtlas::new(&gpu, cpu.capacity(), TextureBinding::new(&gpu));
+        let mut atlas = GpuGradientAtlas::new(&gpu, cpu.capacity());
         let filled = INITIAL_ATLAS_ROWS - 1;
         let rows: Vec<u32> = (0..filled)
             .map(|i| cpu.register(&distinct_grad(i).ramp).0)

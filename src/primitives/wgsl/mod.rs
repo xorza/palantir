@@ -2,16 +2,22 @@
 //! `palantir_` prefix the effect contract reserves, so an app's effect text cannot collide with it.
 //! One copy of each: a pipeline's prelude and an effect's module include the same text.
 
+/// The group of every color pipeline, an app effect's included, that the frame's shared resources
+/// bind through, the gradient atlas: first in each layout, as wgpu binds again from the first slot
+/// whose layout differs at a pipeline switch (`wgpu-core` 30.0.1, `command/bind.rs`,
+/// `update_expectations`), so the main pass binds it once. It sits here, beside [`FRAME`], as
+/// `effect` lies left of `renderer` and `gpu` in the module order and its contract reads it.
+pub(crate) const FRAME_GROUP: u32 = 0;
+
 /// `palantir_edge_coverage`.
 pub(crate) const ANTIALIAS: &str = include_str!("antialias.wgsl");
 /// The sRGB transfers and `palantir_unpremultiply`.
 pub(crate) const COLOR: &str = include_str!("color.wgsl");
 /// The rounded rect's signed distance.
 pub(crate) const SDF: &str = include_str!("sdf.wgsl");
-/// The gradient group's bindings, for the shaders that bind it, before the LUT read they share
-/// with the effect modules.
-pub(crate) const GRADIENT: &str = include_str!("gradient.wgsl");
-/// A read of the gradient LUT atlas, whose bindings the includer declares.
+/// The frame group's bindings, the gradient LUT atlas, with the marker `FRAME_GROUP`.
+pub(crate) const FRAME: &str = include_str!("frame.wgsl");
+/// A read of the gradient LUT atlas, whose bindings [`FRAME`] declares.
 pub(crate) const GRADIENT_LUT: &str = include_str!("gradient_lut.wgsl");
 /// A gradient fill's color at a point, with the spread and kind constants it reads.
 pub(crate) const GRADIENT_FILL: &str = include_str!("gradient_fill.wgsl");

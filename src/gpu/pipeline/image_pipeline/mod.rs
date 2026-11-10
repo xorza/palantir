@@ -86,7 +86,8 @@ impl ImagePipeline {
                 InstancedSpec {
                     shader: Self::SHADER,
                     layout: "palantir.image.pl",
-                    groups: &[Some(textures.layout())],
+                    // The frame group, then the image's texture.
+                    groups: &[Some(textures.frame()), Some(textures.layout())],
                     instances: "palantir.image.instances",
                     capacity: 16,
                 },
@@ -166,11 +167,14 @@ impl ImagePipeline {
                 continue;
             };
             rec.pipeline(pipelines(form));
-            rec.group_once(0, bind_group);
+            rec.group_once(IMAGE_GROUP, bind_group);
             rec.draw(0..Self::form_vertices(form), run.instances.u32_range());
         }
     }
 }
+
+/// The group an image's texture binds at, past the frame group.
+const IMAGE_GROUP: u32 = 1;
 
 const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
     vertex_attr(
@@ -251,6 +255,7 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 
 /// The numbers [`ImagePipeline::SHADER`] takes from the Rust types that own them.
 const SHADER_CONSTANTS: &[ShaderConstant] = &[
+    ShaderConstant::uint("IMAGE_GROUP", IMAGE_GROUP),
     ShaderConstant::uint("IMG_FLAG_TILED", ImageFlags::TILED.bits()),
     ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", ImageFlags::MIN_NEAREST.bits()),
     ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", ImageFlags::MAG_NEAREST.bits()),

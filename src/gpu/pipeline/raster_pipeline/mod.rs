@@ -14,7 +14,7 @@ use crate::gpu::pipeline::raster_pipeline::raster_quad::{
 };
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::resource::texture_binding::{self, Filtering};
+use crate::gpu::resource::texture_binding::{self, Filtering, TextureBinding};
 
 /// The two pipeline pairs one swapchain format draws raster quads with.
 #[derive(Debug)]
@@ -58,10 +58,14 @@ impl RasterProgram {
         constants: SHADER_CONSTANTS,
     };
 
-    pub(crate) fn new(gpu: &Gpu) -> Self {
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
         let layout = Self::create_layout(gpu);
-        let pipeline_layout =
-            pipeline_recipe::pipeline_layout(gpu, "palantir.raster.pl", &[Some(&layout)]);
+        // The frame group, then the atlas.
+        let pipeline_layout = pipeline_recipe::pipeline_layout(
+            gpu,
+            "palantir.raster.pl",
+            &[Some(textures.frame()), Some(&layout)],
+        );
         Self {
             shader: Self::SHADER.module(gpu),
             layout,
@@ -109,7 +113,8 @@ impl RasterProgram {
         );
     }
 
-    /// Group 0: mask at 0, color at 1, no sampler (the shader reads each texel by index).
+    /// The atlas group, [`ATLAS_GROUP`]: mask at 0, color at 1, no sampler (the shader reads each
+    /// texel by index).
     fn create_layout(gpu: &Gpu) -> wgpu::BindGroupLayout {
         gpu.device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -122,8 +127,12 @@ impl RasterProgram {
     }
 }
 
+/// The group an atlas binds at, past the frame group.
+pub(crate) const ATLAS_GROUP: u32 = 1;
+
 /// The numbers [`RasterProgram::SHADER`] takes from the Rust types that own them.
 const SHADER_CONSTANTS: &[ShaderConstant] = &[
+    ShaderConstant::uint("ATLAS_GROUP", ATLAS_GROUP),
     ShaderConstant::uint("U_BITS", U_BITS),
     ShaderConstant::uint("V_SHIFT", V_SHIFT),
     ShaderConstant::uint("FLAG_MASK", FLAG_MASK),

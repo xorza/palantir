@@ -24,7 +24,7 @@ use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::RasterProgram;
+use crate::gpu::pipeline::raster_pipeline::{ATLAS_GROUP, RasterProgram};
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
 use crate::gpu::raster::raster_atlas::bound_sides::BoundSides;
 use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
@@ -189,7 +189,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         if span.len == 0 {
             return;
         }
-        rec.group(0, self.bound.bind_group());
+        rec.group(ATLAS_GROUP, self.bound.bind_group());
         rec.vertex(0, vbuf);
         rec.draw(0..4, span.start..span.start + span.len);
     }

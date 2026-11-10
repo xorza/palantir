@@ -16,7 +16,7 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::wgsl::{
-    ANTIALIAS, ARC_SEGMENTS, COLOR, GRADIENT_FILL, GRADIENT_LUT, SHAPE_TEMPLATE,
+    ANTIALIAS, ARC_SEGMENTS, COLOR, FRAME, FRAME_GROUP, GRADIENT_FILL, GRADIENT_LUT, SHAPE_TEMPLATE,
 };
 
 /// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's
@@ -76,7 +76,7 @@ pub(crate) struct ParamsLayout {
     pub(crate) size: usize,
 }
 
-/// The group an effect's images bind at, past the parameter words at group 0.
+/// The group an effect's images bind at, past the frame group.
 pub(crate) const IMAGES_GROUP: u32 = 1;
 
 /// An instance's flag for a material's box that covers outside its rounded rect.
@@ -89,8 +89,8 @@ pub(crate) const MATERIAL_FLAG: u32 = 2;
 /// An instance's flag for a triangle, three of its points, where a rect has four.
 pub(crate) const TRIANGLE_FLAG: u32 = 4;
 
-/// The group a material's box reads the gradient atlas through, past the backdrops.
-pub(crate) const GRADIENTS_GROUP: u32 = 3;
+/// The group an effect's parameter words bind at, past the backdrops.
+pub(crate) const WORDS_GROUP: u32 = 3;
 
 /// The group a backdrop effect reads its backdrop's result through, past its images.
 pub(crate) const BACKDROPS_GROUP: u32 = 2;
@@ -128,7 +128,7 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         wrapper(kind, params_struct.as_deref(), params.fields),
         ANTIALIAS,
         SHAPE_TEMPLATE.replace("/*{ARC_SEGMENTS}*/", &format!("{ARC_SEGMENTS}u")),
-    );
+    ) + &frame();
     let full = parse_and_validate(
         full,
         Capabilities::default() | Capabilities::DUAL_SOURCE_BLENDING | Capabilities::IMMEDIATES,
@@ -232,6 +232,7 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
     };
     WRAPPER
         .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
+        .replace("/*{WORDS_GROUP}*/", &format!("{WORDS_GROUP}u"))
         .replace("/*{MATERIAL}*/", &format!("{MATERIAL_FLAG}u"))
         .replace("/*{OUTSIDE}*/", &format!("{OUTSIDE_FLAG}u"))
         .replace("/*{TRIANGLE}*/", &format!("{TRIANGLE_FLAG}u"))
@@ -239,6 +240,11 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
         .replace("/*{BACKDROP_SET}*/", set)
         .replace("/*{CALL}*/", call)
         .replace("/*{MATERIAL_BRANCH}*/", branch)
+}
+
+/// The frame group the pipelines bind, the gradient atlas, its marker put in.
+fn frame() -> String {
+    FRAME.replace("/*{FRAME_GROUP}*/", &format!("{FRAME_GROUP}u"))
 }
 
 /// The material path with the WGSL it shares with the pipelines, the fill kinds the quad shader

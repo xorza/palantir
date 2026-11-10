@@ -66,7 +66,7 @@ impl CurvePipeline {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.curve.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[wgsl::GRADIENT, wgsl::GRADIENT_LUT],
+        includes: &[wgsl::FRAME, wgsl::GRADIENT_LUT],
         constants: SHADER_CONSTANTS,
     };
 
@@ -86,8 +86,9 @@ impl CurvePipeline {
                 InstancedSpec {
                     shader: Self::SHADER,
                     layout: "palantir.curve.pl",
-                    // Gradient at group 0; the viewport rides the shared immediate region.
-                    groups: &[Some(textures.layout())],
+                    // The frame group, which holds the gradient atlas; the viewport rides the
+                    // shared immediate region.
+                    groups: &[Some(textures.frame())],
                     instances: "palantir.curve.instances",
                     capacity: 64,
                 },
@@ -115,20 +116,18 @@ impl CurvePipeline {
         self.family.upload(ctx, instances);
     }
 
-    /// Draw one curve group batch, `instances`, through `pipeline`, its gradients read through
-    /// `gradient_bind_group`.
+    /// Draw one curve group batch, `instances`, through `pipeline`, its gradients read through the
+    /// frame group.
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
         pipeline: &'a Pipeline,
-        gradient_bind_group: &'a wgpu::BindGroup,
         instances: Span,
     ) {
         if instances.len == 0 {
             return;
         }
         rec.pipeline(pipeline);
-        rec.group(0, gradient_bind_group);
         rec.vertex(0, self.family.instances());
         rec.index(&self.idx_buffer, wgpu::IndexFormat::Uint16);
         rec.draw_indexed(0..IDXS_PER_INSTANCE, 0, instances.u32_range());

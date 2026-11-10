@@ -23,9 +23,13 @@ use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, Rast
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
+use crate::gpu::resource::frame_group::FrameGroup;
+use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::shape::record_store::RecordStore;
 use crate::text::glyph_font::GlyphFont;
@@ -169,6 +173,7 @@ struct Batch<'a> {
 struct Fixture {
     backend: TextBackend,
     pipelines: RasterVariants,
+    frame: FrameGroup,
     belt: UploadStaging,
     store: RecordStore,
     runs: Vec<TextDrawRow>,
@@ -181,7 +186,10 @@ impl Fixture {
         let shaper = TextShaper::new();
         let mut store = RecordStore::default();
         let runs = make_runs(&mut store, &shaper);
-        let program = RasterProgram::new(&g.gpu);
+        let textures = TextureBinding::new(&g.gpu);
+        let program = RasterProgram::new(&g.gpu, &textures);
+        // The frame group the raster pipelines take first, which their glyphs read nothing of.
+        let frame = FrameGroup::new(&g.gpu, textures, &GpuGradientAtlas::new(&g.gpu, 1));
         let mut pipelines = RasterVariants::NONE;
         program.ensure(
             &mut pipelines,
@@ -194,6 +202,7 @@ impl Fixture {
         Self {
             backend: TextBackend::new(&g.gpu, &program, shaper),
             pipelines,
+            frame,
             belt: UploadStaging::new(&g.gpu.device, 1 << 20),
             store,
             runs,
@@ -260,6 +269,7 @@ impl Fixture {
                     origin: Vec2::ZERO,
                 },
             );
+            rec.group(FRAME_GROUP, self.frame.group());
             let pipelines = RasterPipelines {
                 flat: self.pipelines.flat.get(Clipping::Off),
                 spun: self.pipelines.spun.get(Clipping::Off),

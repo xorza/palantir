@@ -9,7 +9,7 @@ struct PalantirImmediates {
 var<immediate> palantir_imm: PalantirImmediates;
 
 // Every instance's parameters, as 32-bit words; an instance reads from its own offset.
-@group(0) @binding(0) var<storage, read> palantir_words: array<u32>;
+@group(/*{WORDS_GROUP}*/) @binding(0) var<storage, read> palantir_words: array<u32>;
 
 const PALANTIR_AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
 

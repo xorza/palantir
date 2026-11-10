@@ -4,6 +4,7 @@ mod gpu {
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::pipeline::raster_pipeline::RasterProgram;
     use crate::gpu::raster::icon_backend::IconBackend;
+    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::icons::icon_raster_key::IconRasterKey;
     use crate::icons::icon_registry::IconRegistry;
@@ -16,7 +17,11 @@ mod gpu {
 
     /// A backend over its own program; see the text suite's peer.
     fn icon_backend(gpu: &Gpu, icons: &IconRegistry) -> IconBackend {
-        IconBackend::new(gpu, &RasterProgram::new(gpu), icons.clone())
+        IconBackend::new(
+            gpu,
+            &RasterProgram::new(gpu, &TextureBinding::new(gpu)),
+            icons.clone(),
+        )
     }
 
     /// One tintable icon, so the raster lands on the mask side.

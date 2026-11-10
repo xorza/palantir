@@ -14,7 +14,7 @@ pub(crate) enum Filtering {
     Loaded,
 }
 
-/// The group-0 layout every sampled texture binds through, with its sampler: gradient LUT atlas, registered images, `GpuView` targets, and the backbuffer when drawn onto a no-copy target.
+/// The layout every sampled texture binds through, with its sampler: registered images, `GpuView` targets, and the backbuffer when drawn onto a no-copy target; and the layouts of the frame group, an effect's images and a backdrop's composite.
 ///
 /// Built once per device, by the host as it opens the backend, which hands a copy to the image store. `Clone` shares `wgpu`'s ref-counted handles, so every pipeline composes over the same layout and a group built for one binds in any.
 #[derive(Clone, Debug)]
@@ -30,6 +30,10 @@ pub(crate) struct TextureBinding {
     /// backdrop effect's alike: the results atlas, its sampler, the slot table and the spectrum a
     /// lens spreads.
     backdrops: wgpu::BindGroupLayout,
+    /// The frame group every color pipeline reads at
+    /// [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP): the gradient atlas and its sampler
+    /// (`primitives/wgsl/frame.wgsl`).
+    frame: wgpu::BindGroupLayout,
     /// Linear within a mip, nearest between, clamped on all axes. Safe because no user passes a coordinate outside `0..1`: the gradient shader applies [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t` first and the image shader `fract`s uv under `FLAG_TILED`. Nearest image filtering is a shader-side snap, so all filters ride this sampler.
     sampler: wgpu::Sampler,
 }
@@ -77,12 +81,42 @@ impl TextureBinding {
                     storage(3),
                 ],
             });
+        let frame = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.frame.bgl"),
+                entries: &[texture_entry(0, Filtering::Filtered), sampler_entry(1)],
+            });
         Self {
             layout,
             images,
             backdrops,
+            frame,
             sampler,
         }
+    }
+
+    /// The layout of the frame group.
+    pub(crate) const fn frame(&self) -> &wgpu::BindGroupLayout {
+        &self.frame
+    }
+
+    /// The frame group over the gradient atlas's `atlas` view.
+    pub(crate) fn frame_group(&self, gpu: &Gpu, atlas: &wgpu::TextureView) -> wgpu::BindGroup {
+        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("palantir.frame.bg"),
+            layout: &self.frame,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(atlas),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        })
     }
 
     /// The layout of the group a backdrop's composite reads its result through.
