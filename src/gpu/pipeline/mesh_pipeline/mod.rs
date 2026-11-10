@@ -12,13 +12,13 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshInstance};
@@ -80,7 +80,7 @@ impl MeshPipeline {
 
     /// Build the base and stencil-test color pipelines against `format`, the only
     /// format-dependent mesh objects. Called by `FormatPipelines` per format.
-    pub(super) fn ensure(&self, variant: &mut StencilVariant, gpu: &Gpu, target: VariantTarget) {
+    pub(super) fn ensure(&self, variant: &mut ClipVariant, gpu: &Gpu, target: VariantTarget) {
         self.family.ensure(
             variant,
             gpu,

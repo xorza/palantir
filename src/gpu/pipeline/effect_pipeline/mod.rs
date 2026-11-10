@@ -13,11 +13,11 @@ use crate::effect::contract::{BACKDROPS_GROUP, GRADIENTS_GROUP, IMAGES_GROUP};
 use crate::effect::effect_store::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shape_template;
-use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -186,7 +186,7 @@ pub(crate) fn build(
     module: &EffectModule,
     format: wgpu::TextureFormat,
     idx: usize,
-) -> StencilVariant {
+) -> ClipVariant {
     let label = format!("palantir.effect.{idx}");
     let shader = gpu
         .device
@@ -213,9 +213,9 @@ pub(crate) fn build(
         },
         ..PipelineRecipe::color(&label, &shader, layouts.pipeline(module), format)
     };
-    let mut pipelines = StencilVariant::NONE;
-    pipelines.ensure(gpu, StencilMode::Off, &recipe);
-    pipelines.ensure(gpu, StencilMode::Test, &recipe);
+    let mut pipelines = ClipVariant::NONE;
+    pipelines.ensure(gpu, Clipping::Off, &recipe);
+    pipelines.ensure(gpu, Clipping::On, &recipe);
     pipelines
 }
 
@@ -233,7 +233,7 @@ pub(crate) struct EffectPipeline {
     group_capacity: usize,
     /// What `pipelines` were copied at; `None` before the first upload.
     copied: Option<PipelinesCopy>,
-    pipelines: Vec<StencilVariant>,
+    pipelines: Vec<ClipVariant>,
     /// Each effect's kind, at its id, copied with `pipelines`.
     kinds: Vec<KindId>,
 }
@@ -347,7 +347,7 @@ impl EffectPipeline {
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        stencil: StencilMode,
+        clipping: Clipping,
         EffectBatch {
             effects,
             instances,
@@ -378,7 +378,7 @@ impl EffectPipeline {
                 Some(images_group)
             };
             let kind = self.kinds[effect.idx()];
-            rec.pipeline(self.pipelines[effect.idx()].select(stencil));
+            rec.pipeline(self.pipelines[effect.idx()].get(clipping));
             rec.group(0, group);
             if let Some(images_group) = images_group {
                 rec.group_once(IMAGES_GROUP, images_group);

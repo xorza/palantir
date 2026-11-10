@@ -2,9 +2,9 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 
 /// A drawing family that draws one frame's instances of `I`: their buffer, uploaded each frame,
@@ -30,11 +30,12 @@ pub(crate) struct InstancedSpec<'a> {
     pub(crate) capacity: usize,
 }
 
-/// What a pipeline is built for: the target's color format, and the pass's stencil attachment.
+/// What a pipeline is built for: the target's color format, and whether the frame clips to a
+/// rounded rect.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VariantTarget {
     pub(crate) format: wgpu::TextureFormat,
-    pub(crate) mode: StencilMode,
+    pub(crate) clipping: Clipping,
 }
 
 /// How a family's pipelines differ from [`PipelineRecipe::color`].
@@ -56,18 +57,18 @@ impl<I: bytemuck::Pod> InstancedPipeline<I> {
         }
     }
 
-    /// Build the half of `variant` a pass of `mode` binds, `recipe` against `format`, where it is
-    /// not built: the only format-dependent objects of the family.
+    /// Build the half of `variant` `target` binds, `recipe` against its format, where it is not
+    /// built: the only format-dependent objects of the family.
     pub(crate) fn ensure(
         &self,
-        variant: &mut StencilVariant,
+        variant: &mut ClipVariant,
         gpu: &Gpu,
         target: VariantTarget,
         recipe: VariantRecipe<'_>,
     ) {
         variant.ensure(
             gpu,
-            target.mode,
+            target.clipping,
             &PipelineRecipe {
                 vertex_entry: recipe.vertex_entry,
                 fragment_entry: recipe.fragment_entry,

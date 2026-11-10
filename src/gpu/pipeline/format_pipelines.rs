@@ -1,6 +1,7 @@
 //! [`FormatPipelines`]: every format-dependent `wgpu::RenderPipeline` for one swapchain format, so shaders, buffers and atlases stay format-independent and shared (an sRGB and an HDR window differ only in which set they bind).
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::effect_pipeline::EffectPipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
@@ -10,7 +11,6 @@ use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
-use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::quad_form::QuadForm;
 
@@ -25,10 +25,10 @@ use crate::renderer::render_buffer::quad_form::QuadForm;
 pub(crate) struct FormatPipelines {
     format: wgpu::TextureFormat,
     pub(crate) quad: QuadVariants,
-    pub(crate) mesh: StencilVariant,
+    pub(crate) mesh: ClipVariant,
     /// Indexed by [`ImageForm`].
-    pub(crate) image: [StencilVariant; 3],
-    pub(crate) curve: StencilVariant,
+    pub(crate) image: [ClipVariant; 3],
+    pub(crate) curve: ClipVariant,
     /// Base + stencil-test pipelines for **both** raster tenants: glyph and icon quads share one shader and group-0 layout, binding whichever atlas the step names. See [`RasterProgram`].
     pub(crate) raster: RasterVariants,
 }
@@ -51,7 +51,7 @@ pub(crate) struct Programs {
 /// the quad draws it takes, and the families it draws.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PipelineCensus {
-    pub(crate) stencil: StencilMode,
+    pub(crate) clipping: Clipping,
     pub(crate) quads: QuadDraws,
     pub(crate) meshes: bool,
     /// Images of each [`ImageForm`], indexed by it.
@@ -65,7 +65,7 @@ impl PipelineCensus {
     /// What nearly every frame draws, which a format's set is built with.
     fn common() -> Self {
         Self {
-            stencil: StencilMode::Off,
+            clipping: Clipping::Off,
             quads: QuadDraws::from([
                 QuadDraw::Form(QuadForm::BoxSolid),
                 QuadDraw::Form(QuadForm::BoxGradient),
@@ -84,9 +84,9 @@ impl FormatPipelines {
         let mut pipelines = Self {
             format,
             quad: QuadVariants::NONE,
-            mesh: StencilVariant::NONE,
-            image: [StencilVariant::NONE; 3],
-            curve: StencilVariant::NONE,
+            mesh: ClipVariant::NONE,
+            image: [ClipVariant::NONE; 3],
+            curve: ClipVariant::NONE,
             raster: RasterVariants::NONE,
         };
         pipelines.ensure(gpu, programs, PipelineCensus::common());
@@ -97,12 +97,12 @@ impl FormatPipelines {
     pub(crate) fn ensure(&mut self, gpu: &Gpu, programs: &Programs, census: PipelineCensus) {
         let target = VariantTarget {
             format: self.format,
-            mode: census.stencil,
+            clipping: census.clipping,
         };
         for draw in census.quads.iter() {
             programs.quad.ensure_draw(&mut self.quad, gpu, target, draw);
         }
-        if census.stencil == StencilMode::Test {
+        if census.clipping == Clipping::On {
             programs.quad.ensure_masks(&mut self.quad, gpu, self.format);
         }
         if census.meshes {
@@ -123,50 +123,54 @@ impl FormatPipelines {
         }
     }
 
-    /// These pipelines as a pass binds them: the stencil-test twins where the pass has the
-    /// rounded-clip attachment.
-    pub(crate) const fn for_pass(&self, stencil: StencilMode) -> PassPipelines<'_> {
-        PassPipelines { fmt: self, stencil }
+    /// These pipelines as a frame of `clipping` binds them: the stencil-test twins where its
+    /// passes have the rounded-clip attachment.
+    pub(crate) const fn for_frame(&self, clipping: Clipping) -> PassPipelines<'_> {
+        PassPipelines {
+            fmt: self,
+            clipping,
+        }
     }
 }
 
-/// A format's pipelines for one pass, each picked for its stencil attachment in one place.
+/// A format's pipelines for one frame, each picked for whether it clips to a rounded rect in one
+/// place.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PassPipelines<'a> {
     fmt: &'a FormatPipelines,
-    stencil: StencilMode,
+    clipping: Clipping,
 }
 
 impl<'a> PassPipelines<'a> {
     /// The pipeline a quad of `draw` draws through.
     pub(crate) const fn quad(self, draw: QuadDraw) -> &'a Pipeline {
-        self.fmt.quad.select(draw, self.stencil)
+        self.fmt.quad.get(draw, self.clipping)
     }
 
     pub(crate) const fn mesh(self) -> &'a Pipeline {
-        self.fmt.mesh.select(self.stencil)
+        self.fmt.mesh.get(self.clipping)
     }
 
     /// The pipeline an image of `form` draws through.
     pub(crate) const fn image(self, form: ImageForm) -> &'a Pipeline {
-        self.fmt.image[form as usize].select(self.stencil)
+        self.fmt.image[form as usize].get(self.clipping)
     }
 
     pub(crate) const fn curve(self) -> &'a Pipeline {
-        self.fmt.curve.select(self.stencil)
+        self.fmt.curve.get(self.clipping)
     }
 
     /// Both raster tenants' pipelines.
     pub(crate) const fn raster(self) -> RasterPipelines<'a> {
         RasterPipelines {
-            flat: self.fmt.raster.flat.select(self.stencil),
-            spun: self.fmt.raster.spun.select(self.stencil),
+            flat: self.fmt.raster.flat.get(self.clipping),
+            spun: self.fmt.raster.spun.get(self.clipping),
         }
     }
 
-    /// Whether the pass has the rounded-clip attachment, which picks an effect's pipeline.
-    pub(crate) const fn stencil(self) -> StencilMode {
-        self.stencil
+    /// Whether the frame clips to a rounded rect, which picks an effect's pipeline.
+    pub(crate) const fn clipping(self) -> Clipping {
+        self.clipping
     }
 
     /// The stencil-writing mask pipelines, which only a pass with the attachment binds.

@@ -66,6 +66,7 @@ use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
+use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::effect_pipeline::{
     EffectBatch, EffectPipeline, EffectStores, EffectUpload,
@@ -82,7 +83,6 @@ use crate::gpu::pipeline::quad_pipeline::{
     self, QuadBinding, QuadExtras, QuadPass, QuadPipeline, QuadRun,
 };
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
-use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -656,11 +656,7 @@ impl WgpuBackend {
                 &self.gpu,
                 &self.programs,
                 PipelineCensus {
-                    stencil: if stencil {
-                        StencilMode::Test
-                    } else {
-                        StencilMode::Off
-                    },
+                    clipping: if stencil { Clipping::On } else { Clipping::Off },
                     quads: self
                         .programs
                         .quad
@@ -941,7 +937,7 @@ impl WgpuBackend {
             binding: QuadBinding {
                 pipeline: draw
                     .fmt
-                    .for_pass(StencilMode::Off)
+                    .for_frame(Clipping::Off)
                     .quad(QuadDraw::Form(QuadForm::BoxSolid)),
                 gradient_bind_group: &self.gradient.bind_group,
             },
@@ -1035,14 +1031,14 @@ impl WgpuBackend {
         }
         // One for the pass: what a scissor replay leaves bound stays bound for the next.
         let mut rec = PassRecorder::new(pass, draw.viewport.with_origin(draw.origin));
-        let stencil = if draw.masks.is_some() {
-            StencilMode::Test
+        let clipping = if draw.masks.is_some() {
+            Clipping::On
         } else {
-            StencilMode::Off
+            Clipping::Off
         };
         let mut ctx = DrawCtx {
             draw,
-            pipelines: draw.fmt.for_pass(stencil),
+            pipelines: draw.fmt.for_frame(clipping),
             rec: &mut rec,
             timings: timings.as_deref_mut(),
         };
@@ -1164,7 +1160,7 @@ impl WgpuBackend {
                         ),
                         PaintTier::Effect => self.programs.effect.draw_batch(
                             ctx.rec,
-                            ctx.pipelines.stencil(),
+                            ctx.pipelines.clipping(),
                             EffectBatch {
                                 effects: buffer.effects.effect(),
                                 instances: buffer.effects.instance(),

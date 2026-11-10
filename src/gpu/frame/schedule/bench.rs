@@ -30,7 +30,7 @@ use crate::common::span::Span;
 use crate::display::Display;
 use crate::gpu::frame::schedule::GroupSpan;
 use crate::gpu::frame::schedule::internals::Walk;
-use crate::gpu::pipeline::stencil_variant::StencilMode;
+use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -78,10 +78,10 @@ impl Workload {
         }
     }
 
-    const fn stencil(self) -> StencilMode {
+    const fn clipping(self) -> Clipping {
         match self {
-            Self::RoundedChain => StencilMode::Test,
-            _ => StencilMode::Off,
+            Self::RoundedChain => Clipping::On,
+            _ => Clipping::Off,
         }
     }
 
@@ -112,7 +112,7 @@ impl Workload {
         let mut buffer = RenderBuffer::new();
         buffer.display = Display::from_physical(UVec2::splat(VIEWPORT), 1.0);
         buffer.quads = vec![Quad::default(); groups];
-        if self.stencil() == StencilMode::Test {
+        if self.clipping() == Clipping::On {
             buffer.rounded_clips = vec![RoundedClip {
                 mask_rect: Rect {
                     min: Vec2::ZERO,
@@ -121,7 +121,7 @@ impl Workload {
                 corners: Corners::all(4.0),
             }];
         }
-        let chain = if self.stencil() == StencilMode::Test {
+        let chain = if self.clipping() == Clipping::On {
             Span::new(0, 1)
         } else {
             Span::default()
@@ -168,9 +168,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
             group.bench_function(Backend::Cpu.case(&case), |b| {
                 let buffer = workload.fixture(groups);
                 let walk = Walk::new(&buffer);
-                let counts = walk.run(&buffer, None, workload.stencil());
+                let counts = walk.run(&buffer, None, workload.clipping());
                 assert_eq!(counts.scissors, workload.scissors(groups), "{case}");
-                b.iter(|| black_box(walk.run(&buffer, None, workload.stencil())));
+                b.iter(|| black_box(walk.run(&buffer, None, workload.clipping())));
             });
         }
     }
@@ -189,12 +189,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                     let mut scissors = 0;
                     for barrier in barriers.iter().copied().map(Some).chain([None]) {
                         scissors += walk
-                            .run_between(
-                                &buffer,
-                                None,
-                                StencilMode::Off,
-                                GroupSpan { from, barrier },
-                            )
+                            .run_between(&buffer, None, Clipping::Off, GroupSpan { from, barrier })
                             .scissors;
                         from = barrier.unwrap_or(from);
                     }

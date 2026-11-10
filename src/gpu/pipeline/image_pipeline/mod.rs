@@ -9,6 +9,7 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
@@ -17,7 +18,6 @@ use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::shape_template;
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
@@ -98,7 +98,7 @@ impl ImagePipeline {
     /// format-dependent image objects. Called by `FormatPipelines` per format.
     pub(super) fn ensure(
         &self,
-        variant: &mut StencilVariant,
+        variant: &mut ClipVariant,
         gpu: &Gpu,
         target: VariantTarget,
         form: ImageForm,

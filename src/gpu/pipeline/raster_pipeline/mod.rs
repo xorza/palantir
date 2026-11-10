@@ -6,6 +6,7 @@
 pub(crate) mod raster_quad;
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{
@@ -13,27 +14,26 @@ use crate::gpu::pipeline::raster_pipeline::raster_quad::{
 };
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 
 /// The two pipeline pairs one swapchain format draws raster quads with.
 #[derive(Debug)]
 pub(crate) struct RasterVariants {
     /// Unturned quads, drawn texel for texel.
-    pub(crate) flat: StencilVariant,
+    pub(crate) flat: ClipVariant,
     /// [`SpunRasterQuad`]s, turned and filtered.
-    pub(crate) spun: StencilVariant,
+    pub(crate) spun: ClipVariant,
 }
 
 impl RasterVariants {
     /// No pipeline built.
     pub(crate) const NONE: Self = Self {
-        flat: StencilVariant::NONE,
-        spun: StencilVariant::NONE,
+        flat: ClipVariant::NONE,
+        spun: ClipVariant::NONE,
     };
 }
 
-/// The pipelines one raster draw binds, picked for the pass's stencil mode.
+/// The pipelines one raster draw binds, picked for whether the frame clips to a rounded rect.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RasterPipelines<'a> {
     pub(crate) flat: &'a Pipeline,
@@ -73,13 +73,13 @@ impl RasterProgram {
         &self.layout
     }
 
-    /// Build the halves of `variants` a pass of `target`'s mode binds, against its format, where
+    /// Build the halves of `variants` `target` binds, against its format, where
     /// they are not built: the only format-dependent part here, for unturned quads, and for the
     /// [`SpunRasterQuad`]s a paint animation turns.
     pub(crate) fn ensure(&self, variants: &mut RasterVariants, gpu: &Gpu, target: VariantTarget) {
         variants.flat.ensure(
             gpu,
-            target.mode,
+            target.clipping,
             &PipelineRecipe {
                 vertex_buffers: &[Some(RasterQuad::LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -93,7 +93,7 @@ impl RasterProgram {
         );
         variants.spun.ensure(
             gpu,
-            target.mode,
+            target.clipping,
             &PipelineRecipe {
                 vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,

@@ -3,6 +3,7 @@
 
 pub(crate) mod blit_pipeline;
 pub(crate) mod clip_stencil;
+pub(crate) mod clip_variant;
 pub(crate) mod curve_pipeline;
 pub(crate) mod effect_pipeline;
 pub(crate) mod format_pipelines;
@@ -16,7 +17,6 @@ pub(crate) mod raster_pipeline;
 pub(crate) mod runs;
 pub(crate) mod shader_body;
 pub(crate) mod shape_template;
-pub(crate) mod stencil_variant;
 pub(crate) mod viewport_push;
 
 use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;

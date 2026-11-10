@@ -16,10 +16,10 @@ use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
-use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -188,7 +188,7 @@ impl Fixture {
             &g.gpu,
             VariantTarget {
                 format: TARGET_FORMAT.get(),
-                mode: StencilMode::Off,
+                clipping: Clipping::Off,
             },
         );
         Self {
@@ -261,8 +261,8 @@ impl Fixture {
                 },
             );
             let pipelines = RasterPipelines {
-                flat: self.pipelines.flat.select(StencilMode::Off),
-                spun: self.pipelines.spun.select(StencilMode::Off),
+                flat: self.pipelines.flat.get(Clipping::Off),
+                spun: self.pipelines.spun.get(Clipping::Off),
             };
             for idx in 0..batches.len() {
                 self.backend.render_batch(&mut rec, idx, pipelines);

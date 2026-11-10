@@ -512,7 +512,7 @@ impl BatchCursor {
 pub(crate) mod internals {
     use crate::gpu::frame::frame_passes::ColorLoad;
     use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
-    use crate::gpu::pipeline::stencil_variant::StencilMode;
+    use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::primitives::geometry::urect::URect;
     use crate::renderer::render_buffer::RenderBuffer;
 
@@ -550,9 +550,9 @@ pub(crate) mod internals {
             &self,
             buffer: &RenderBuffer,
             damage: Option<URect>,
-            stencil: StencilMode,
+            clipping: Clipping,
         ) -> WalkCounts {
-            self.run_between(buffer, damage, stencil, GroupSpan::ALL)
+            self.run_between(buffer, damage, clipping, GroupSpan::ALL)
         }
 
         /// [`Self::run`] over `groups`, as one pass of a main pass broken at a backdrop's barrier
@@ -561,13 +561,13 @@ pub(crate) mod internals {
             &self,
             buffer: &RenderBuffer,
             damage: Option<URect>,
-            stencil: StencilMode,
+            clipping: Clipping,
             groups: GroupSpan,
         ) -> WalkCounts {
             let mut counts = WalkCounts::default();
-            let masks = match stencil {
-                StencilMode::Off => None,
-                StencilMode::Test => Some(&self.plan),
+            let masks = match clipping {
+                Clipping::Off => None,
+                Clipping::On => Some(&self.plan),
             };
             let schedule = Schedule {
                 buffer,

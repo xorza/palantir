@@ -10,6 +10,7 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_stencil;
+use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::format_pipelines::PassPipelines;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
@@ -23,7 +24,6 @@ use crate::gpu::pipeline::quad_pipeline::quad_draw::{
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::shape_template;
-use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::rect::Rect;
@@ -58,7 +58,7 @@ const fn draw_label(draw: QuadDraw) -> &'static str {
 pub(crate) struct QuadVariants {
     /// Each draw's base and stencil-test twin, by [`QuadDraw::idx`]. The shadows read the baked
     /// cutouts ([`CutoutTables`]), apart from `fs` to keep the blur integral out of other quads.
-    draws: [StencilVariant; QuadDraw::ALL.len()],
+    draws: [ClipVariant; QuadDraw::ALL.len()],
     /// The stencil-writing masks, built on the first frame with a rounded clip.
     mask_stamp: Option<Pipeline>,
     mask_clear: Option<Pipeline>,
@@ -67,15 +67,15 @@ pub(crate) struct QuadVariants {
 impl QuadVariants {
     /// No pipeline built.
     pub(crate) const NONE: Self = Self {
-        draws: [StencilVariant::NONE; QuadDraw::ALL.len()],
+        draws: [ClipVariant::NONE; QuadDraw::ALL.len()],
         mask_stamp: None,
         mask_clear: None,
     };
 
-    /// The pipeline a quad of `draw` draws through in a pass of `stencil`, which the frame's
+    /// The pipeline a quad of `draw` draws through in a frame of `clipping`, which the frame's
     /// census built.
-    pub(crate) const fn select(&self, draw: QuadDraw, stencil: StencilMode) -> &Pipeline {
-        self.draws[draw.idx() as usize].select(stencil)
+    pub(crate) const fn get(&self, draw: QuadDraw, clipping: Clipping) -> &Pipeline {
+        self.draws[draw.idx() as usize].get(clipping)
     }
 
     /// The mask that stamps a rounded clip into the stencil, which the frame's census built.
@@ -259,7 +259,7 @@ impl QuadPipeline {
     };
 
     /// Bind `binding` over the instance stream and draw the frame's pre-clear quad. Under
-    /// [`StencilMode::Test`], the test at reference 0 matches every pixel and leaves the stencil
+    /// [`Clipping::On`], the test at reference 0 matches every pixel and leaves the stencil
     /// intact.
     pub(crate) fn draw_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
         let at = self
@@ -334,7 +334,7 @@ impl QuadPipeline {
         }
     }
 
-    /// Build the half of `draw`'s pipelines a pass of `target`'s mode binds, against its format,
+    /// Build the half of `draw`'s pipelines `target` binds, against its format,
     /// where it is not built: the only format-dependent quad objects; the atlas and buffers are
     /// reused.
     pub(super) fn ensure_draw(
@@ -344,7 +344,7 @@ impl QuadPipeline {
         target: VariantTarget,
         draw: QuadDraw,
     ) {
-        let VariantTarget { format, mode } = target;
+        let VariantTarget { format, clipping } = target;
         let instance = [Some(INSTANCE_LAYOUT)];
         let label = draw_label(draw);
         let variant = &mut variants.draws[draw.idx() as usize];
@@ -352,7 +352,7 @@ impl QuadPipeline {
             QuadDraw::Form(form) => {
                 variant.ensure(
                     gpu,
-                    mode,
+                    clipping,
                     &PipelineRecipe {
                         vertex_entry: match self.shape_cells {
                             ShapeCells::Template => "vs_template",
@@ -383,7 +383,7 @@ impl QuadPipeline {
                 };
                 variant.ensure(
                     gpu,
-                    mode,
+                    clipping,
                     &PipelineRecipe {
                         vertex_entry: "vs_shadow",
                         fragment_entry,
@@ -595,20 +595,20 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
     #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::QuadVariants;
     #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
     use crate::gpu::pipeline::quad_pipeline::quad_draw::{ShadowCells, ShapeCells};
-    #[cfg(test)]
-    use crate::gpu::pipeline::stencil_variant::StencilMode;
 
     #[cfg(test)]
     impl QuadVariants {
-        /// Whether the half of `draw`'s pipelines a pass of `mode` binds is built.
-        pub(crate) const fn is_built(&self, draw: QuadDraw, mode: StencilMode) -> bool {
-            self.draws[draw.idx() as usize].is_built(mode)
+        /// Whether the half of `draw`'s pipelines `clipping` binds is built.
+        pub(crate) const fn is_built(&self, draw: QuadDraw, clipping: Clipping) -> bool {
+            self.draws[draw.idx() as usize].is_built(clipping)
         }
 
         /// Whether the stencil-writing masks are built.

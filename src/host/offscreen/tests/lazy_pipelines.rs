@@ -1,8 +1,8 @@
 //! A format's pipelines, built on the first frame that draws through each.
 
+use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
-use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
@@ -81,12 +81,12 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
     let target = gpu.target("palantir.test.lazy_pipelines", UVec2::new(80, 80));
     let solid = QuadDraw::Form(QuadForm::BoxSolid);
     let shadow = QuadDraw::Shadow(ShadowEntry::General);
-    let built = |host: &OffscreenHost, draw: QuadDraw, mode: StencilMode| {
+    let built = |host: &OffscreenHost, draw: QuadDraw, clipping: Clipping| {
         host.device
             .backend()
             .format_pipelines(TargetFormat::RGBA8_SRGB)
             .quad
-            .is_built(draw, mode)
+            .is_built(draw, clipping)
     };
     let masks = |host: &OffscreenHost| {
         host.device
@@ -99,9 +99,9 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
     host.frame(target.as_target(), &mut |ui: &mut Ui| {
         record(ui, Scene::Plain);
     });
-    assert!(built(&host, solid, StencilMode::Off));
-    assert!(!built(&host, solid, StencilMode::Test), "no twin");
-    assert!(!built(&host, shadow, StencilMode::Off), "no shadow form");
+    assert!(built(&host, solid, Clipping::Off));
+    assert!(!built(&host, solid, Clipping::On), "no twin");
+    assert!(!built(&host, shadow, Clipping::Off), "no shadow form");
     assert!(!masks(&host), "no mask");
 
     host.frame(target.as_target(), &mut |ui: &mut Ui| {
@@ -113,14 +113,14 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
         ShadowEntry::TablesWide,
     ]
     .into_iter()
-    .any(|entry| built(&host, QuadDraw::Shadow(entry), StencilMode::Off));
+    .any(|entry| built(&host, QuadDraw::Shadow(entry), Clipping::Off));
     assert!(shadowed, "the shadow form it drew");
-    assert!(!built(&host, solid, StencilMode::Test), "still no twin");
+    assert!(!built(&host, solid, Clipping::On), "still no twin");
 
     host.frame(target.as_target(), &mut |ui: &mut Ui| {
         record(ui, Scene::Clipped);
     });
-    assert!(built(&host, solid, StencilMode::Test), "the solid twin");
+    assert!(built(&host, solid, Clipping::On), "the solid twin");
     assert!(masks(&host), "the masks");
-    assert!(!built(&host, shadow, StencilMode::Test), "no shadow twin");
+    assert!(!built(&host, shadow, Clipping::On), "no shadow twin");
 }

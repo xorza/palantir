@@ -6,8 +6,8 @@ use fixedbitset::FixedBitSet;
 
 use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts};
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::effect_id::EffectId;
 
@@ -57,13 +57,13 @@ pub(crate) struct AttachedEffects {
     formats: Vec<FormatEffects>,
 }
 
-/// Every pipeline one format draws effects with: each loaded effect's, [`StencilVariant::NONE`]
+/// Every pipeline one format draws effects with: each loaded effect's, [`ClipVariant::NONE`]
 /// where none is built.
 #[derive(Debug)]
 pub(crate) struct FormatEffects {
     format: wgpu::TextureFormat,
     /// At each effect's id.
-    pub(crate) effects: Vec<StencilVariant>,
+    pub(crate) effects: Vec<ClipVariant>,
 }
 
 impl WgpuEffectStore {
@@ -97,7 +97,7 @@ impl WgpuEffectStore {
         }
         let mut built = FormatEffects {
             format,
-            effects: vec![StencilVariant::NONE; modules.len()],
+            effects: vec![ClipVariant::NONE; modules.len()],
         };
         for idx in wanted.ones() {
             built.effects[idx] = attached.build(&modules[idx], format, idx);
@@ -188,12 +188,7 @@ impl AttachedEffects {
         self.formats.iter().find(|built| built.format == format)
     }
 
-    fn build(
-        &self,
-        module: &EffectModule,
-        format: wgpu::TextureFormat,
-        idx: usize,
-    ) -> StencilVariant {
+    fn build(&self, module: &EffectModule, format: wgpu::TextureFormat, idx: usize) -> ClipVariant {
         effect_pipeline::build(&self.gpu, &self.layouts, module, format, idx)
     }
 }
@@ -219,7 +214,7 @@ impl EffectStore for WgpuEffectStore {
             wanted.grow(modules.len());
             if let Some(attached) = attached {
                 for built in &mut attached.formats {
-                    built.effects.push(StencilVariant::NONE);
+                    built.effects.push(ClipVariant::NONE);
                 }
             }
         } else {
@@ -238,7 +233,7 @@ impl EffectStore for WgpuEffectStore {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
+    use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
     use crate::gpu::resource::wgpu_effect_store::{ATTACHED, FormatEffects, WgpuEffectStore};
 
     impl WgpuEffectStore {
@@ -252,18 +247,18 @@ pub(crate) mod internals {
         }
 
         /// Whether the pipeline `of` picks is built, which every format drawn to agrees on.
-        fn built_alike(&self, of: impl Fn(&FormatEffects) -> &StencilVariant) -> bool {
+        fn built_alike(&self, of: impl Fn(&FormatEffects) -> &ClipVariant) -> bool {
             let state = self.state.borrow();
             let formats = &state.attached.as_ref().expect(ATTACHED).formats;
             assert!(!formats.is_empty(), "a frame drew to a format");
             let built = |format| {
                 let variant = of(format);
                 assert_eq!(
-                    variant.is_built(StencilMode::Off),
-                    variant.is_built(StencilMode::Test),
+                    variant.is_built(Clipping::Off),
+                    variant.is_built(Clipping::On),
                     "a build makes both halves"
                 );
-                variant.is_built(StencilMode::Off)
+                variant.is_built(Clipping::Off)
             };
             let first = built(&formats[0]);
             assert!(formats.iter().all(|format| built(format) == first));

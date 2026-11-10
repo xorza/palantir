@@ -1,6 +1,6 @@
 //! GPU side of native parametric strokes (cubic beziers, arcs, polyline segments, join billboards; see
 //! `CurveInstance::kind`). One `draw_indexed` per scissor group covers its `GroupBatch`; an immutable index
-//! buffer subdivides each instance into [`SEGMENTS_PER_INSTANCE`] chords. Same stencil-variant pattern as
+//! buffer subdivides each instance into [`SEGMENTS_PER_INSTANCE`] chords. Same clip-variant pattern as
 //! [`MeshPipeline`] / [`ImagePipeline`].
 //!
 //! [`MeshPipeline`]: crate::gpu::pipeline::mesh_pipeline::MeshPipeline
@@ -12,13 +12,13 @@ pub(crate) mod bench;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::instanced_pipeline::{
     InstancedPipeline, InstancedSpec, VariantRecipe, VariantTarget,
 };
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, vertex_attr};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::line_style::LineCap;
@@ -96,7 +96,7 @@ impl CurvePipeline {
         }
     }
 
-    pub(super) fn ensure(&self, variant: &mut StencilVariant, gpu: &Gpu, target: VariantTarget) {
+    pub(super) fn ensure(&self, variant: &mut ClipVariant, gpu: &Gpu, target: VariantTarget) {
         self.family.ensure(
             variant,
             gpu,
