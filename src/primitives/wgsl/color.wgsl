@@ -1,4 +1,7 @@
-// Color transfers every palantir shader shares: sRGB encoding and premultiplied alpha.
+// Color every palantir shader shares: sRGB encoding, premultiplied alpha and luma.
+
+// Rec. 709 luma weights, over linear light, the space they are defined in.
+const PALANTIR_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 
 // Premultiplied in, straight out — for a color that was interpolated
 // premultiplied (a gradient texel, a vertex color) and must meet a

@@ -48,7 +48,7 @@ fn shaped_vertex(vi: u32, shape: PalantirShapeIn, in: VsIn, n: u32) -> ShapedOut
     out.local = v.pos;
     out.decal = in.decal;
     out.chain = shape.chain;
-    out.clip = clip_from_px(turned(rect_min + v.pos, rect_min + rect_size * 0.5, shape.inradius_rotation.y));
+    out.clip = palantir_clip_from_px(palantir_turned(rect_min + v.pos, rect_min + rect_size * 0.5, shape.inradius_rotation.y));
     return out;
 }
 
@@ -59,7 +59,7 @@ fn fs_shaped(in: ShapedOut) -> @location(0) vec4<f32> {
     let e = max(in.decal.xy - in.local, in.local - in.decal.zw);
     let paint = image_paint(in.uv, in.uv_rect, in.flags, in.tint)
         * palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y)
-        * palantir_clip_coverage(frag_px(in.clip), in.chain);
+        * palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
     if (in.region == PALANTIR_REGION_INTERIOR) {
         return paint;
     }

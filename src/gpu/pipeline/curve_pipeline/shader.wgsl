@@ -348,7 +348,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 
     out.flags = flags;
     out.phys = phys;
-    out.clip = clip_from_px(phys);
+    out.clip = palantir_clip_from_px(phys);
     out.chain = in.chain;
     return out;
 }
@@ -420,6 +420,6 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // `GpuFill::curve`.
         rgba = palantir_gradient_lut(in.curve_t, in.lut_row) * rgba;
     }
-    let a = rgba.a * coverage * palantir_clip_coverage(frag_px(in.clip), in.chain);
+    let a = rgba.a * coverage * palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
     return premultiply(rgba.rgb, a);
 }

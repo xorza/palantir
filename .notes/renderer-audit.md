@@ -46,7 +46,7 @@ source of that rule.
   the `Clipping`, as `EffectPipeline` keeps its own copy of the store's pipelines
   (`EffectPipeline::pipelines`, refreshed at each store revision). `PassPipelines` is the one
   place that picks a pipeline for a frame's clipping; the effects pick theirs a second way.
-- **The effect module re-declares what the prelude declares.** `prelude.wgsl` holds
+- **[fixed in item 3] The effect module re-declares what the prelude declares.** `prelude.wgsl` holds
   `Immediates`/`imm`, `clip_from_px`, `frag_px`, `turned` and `LUMA`; the effect module holds
   `PalantirImmediates`/`palantir_imm`, an inline NDC in `palantir_vs`, the frame origin added by
   hand in `palantir_local`, `palantir_turned` and `PALANTIR_LUMA` (`effect/material.wgsl`). Same
@@ -132,11 +132,14 @@ captured streams prove it.
    Mesh, curve and raster keep the one pipeline they take, as `PassPipelines` picks it; refused:
    `PassPipelines` handed to every family, which would tie the raster pass and its bench to the
    format's whole set.
-3. **One shared WGSL copy of the frame's coordinates.** A `primitives::wgsl` include declares
-   `PalantirImmediates`, `palantir_clip_from_px`, `palantir_frag_px`, `palantir_turned` and
-   `PALANTIR_LUMA`; the prelude and the effect module include it, and the prelude's unprefixed
-   `Immediates`, `clip_from_px`, `frag_px`, `turned` and `LUMA` go. Refused: the prelude in the
-   effect module, whose unprefixed names an app's text could collide with.
+3. [x] **One shared WGSL copy of the frame's coordinates**, done. `primitives::wgsl::VIEWPORT`
+   declares `PalantirImmediates`, `palantir_clip_from_px` and `palantir_frag_px`; `TURN` holds
+   `palantir_turned` apart, as the contract carries it for an app's text and naga asks the
+   immediates capability of every immediate global, read or not; `PALANTIR_LUMA` joins `COLOR`,
+   and `PALANTIR_AA_HALF_WIDTH` `ANTIALIAS`.
+   The prelude and the effect module include them, and the prelude's unprefixed names, the
+   wrapper's NDC and frame origin, and the contract's and material's copies go. Refused: the
+   prelude in the effect module, whose unprefixed names an app's text could collide with.
 4. **One template fragment tail.** `palantir_template_coverage(region, geo, ring_r)` and
    `palantir_template_fill(region, geo, ring_r, fill, border, width)` in `shape_template.wgsl`;
    the four stages call them. Refused: one function with a border of zero for the image and the

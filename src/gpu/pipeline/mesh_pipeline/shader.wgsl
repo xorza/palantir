@@ -33,7 +33,7 @@ struct VsOut {
 @vertex
 fn vs(in: VsIn) -> VsOut {
     var out: VsOut;
-    out.clip = clip_from_px(in.x_axis * in.pos.x + in.y_axis * in.pos.y + in.translate);
+    out.clip = palantir_clip_from_px(in.x_axis * in.pos.x + in.y_axis * in.pos.y + in.translate);
     let straight = vec4<f32>(palantir_srgb_to_linear(in.color.rgb), in.color.a) * in.tint;
     out.color = premultiply(straight.rgb, straight.a);
     out.chain = in.chain;
@@ -42,5 +42,5 @@ fn vs(in: VsIn) -> VsOut {
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    return in.color * palantir_clip_coverage(frag_px(in.clip), in.chain);
+    return in.color * palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
 }

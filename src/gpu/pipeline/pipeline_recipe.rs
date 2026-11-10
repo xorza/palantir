@@ -104,7 +104,7 @@ pub(crate) struct Pipeline {
     pub(crate) layout: wgpu::PipelineLayout,
 }
 
-/// Build the layout a recipe's [`PipelineRecipe::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by the prelude's `Immediates`.
+/// Build the layout a recipe's [`PipelineRecipe::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by `PalantirImmediates`.
 pub(crate) fn pipeline_layout(
     gpu: &Gpu,
     label: &'static str,

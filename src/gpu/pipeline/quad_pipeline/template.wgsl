@@ -50,14 +50,14 @@ fn vs_template(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: Qua
     out.fill_axis = q.fill_axis;
     out.inv_size = q.inv_size;
     out.chain = shape.chain;
-    out.clip = clip_from_px(turned(pos + v.pos, pos + size * 0.5, rotation));
+    out.clip = palantir_clip_from_px(palantir_turned(pos + v.pos, pos + size * 0.5, rotation));
     return out;
 }
 
 // A template fragment: what `template_color` draws, cut by the quad's rounded clips.
 @fragment
 fn fs_template(in: TemplateOut) -> @location(0) vec4<f32> {
-    return template_color(in) * palantir_clip_coverage(frag_px(in.clip), in.chain);
+    return template_color(in) * palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
 }
 
 // The fill alone inside; across a band the interpolated distance; across a ring the distance to

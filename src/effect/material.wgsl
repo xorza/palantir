@@ -12,9 +12,6 @@ override PALANTIR_DITHER_SRGB8: bool = false;
 // The solid fill's tag (`FillKind`), the one that reads no gradient.
 const PALANTIR_FILL_SOLID: u32 = /*{FILL_SOLID}*/;
 
-// Rec. 709 luminance weights, over linear light.
-const PALANTIR_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
-
 // The material's box at `local`, around `out`, what the effect shows there.
 fn palantir_material(v: PalantirVarying, local: vec2<f32>, input: EffectInput, out: EffectOutput) -> PalantirOut {
     let backdrop = palantir_backdrops[v.backdrop_idx];
@@ -52,13 +49,13 @@ fn palantir_material(v: PalantirVarying, local: vec2<f32>, input: EffectInput, o
     if (PALANTIR_DITHER_SRGB8) {
         // Interleaved gradient noise (Jimenez) of one encoded step, so a smooth blur stores no
         // band.
-        let p = v.clip.xy + palantir_imm.frag_origin;
+        let p = palantir_frag_px(v.clip);
         let ign = fract(52.9829189 * fract(dot(floor(p), vec2<f32>(0.06711056, 0.00583715))));
         c = palantir_srgb_to_linear(max(palantir_linear_to_srgb(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
     }
     // Premultiplied, so the clip scales the shade and leaves what is under as over composites it.
     let shaded = palantir_material_shade(v, backdrop, vec4<f32>(c, opacity))
-        * palantir_clip_coverage(v.clip.xy + palantir_imm.frag_origin, v.chain);
+        * palantir_clip_coverage(palantir_frag_px(v.clip), v.chain);
     return PalantirOut(shaded, vec4<f32>(1.0 - shaded.a));
 }
 

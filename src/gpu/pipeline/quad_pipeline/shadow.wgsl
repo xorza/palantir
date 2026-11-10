@@ -232,7 +232,7 @@ fn vs_shadow(
         vertex.y = select(select(vertex.y, edge_hi.y, line.y == 2u), edge_lo.y, line.y == 1u);
     }
     var out: ShadowOut;
-    out.clip = clip_from_px(turned(vertex, center, rotation));
+    out.clip = palantir_clip_from_px(palantir_turned(vertex, center, rotation));
     out.turn = vec4<f32>(center, cos(rotation), sin(rotation));
     out.chain = shape.chain;
     out.fill = unpack_f16x4(shadow.color_packed);
@@ -687,7 +687,7 @@ struct ShadowPixel {
 };
 
 fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
-    let frag = unturned(frag_px(in.clip), in.turn);
+    let frag = unturned(palantir_frag_px(in.clip), in.turn);
     var px = ShadowPixel(frag - in.box_center, 0.0);
     let s = frag - in.source_center;
     if (in.kind == SHADOW_DROP) {
@@ -725,7 +725,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
 // rounded clips let.
 fn shadow_paint(in: ShadowOut, px: ShadowPixel, cov: f32) -> vec4<f32> {
     let inset = in.kind == SHADOW_INSET;
-    let clipped = palantir_clip_coverage(frag_px(in.clip), in.chain);
+    let clipped = palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
     return premultiply(in.fill.rgb, in.fill.a * px.source * clipped * select(cov, 1.0 - cov, inset));
 }
 

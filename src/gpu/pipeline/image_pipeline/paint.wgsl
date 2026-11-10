@@ -136,7 +136,7 @@ fn footprint_taps(
             // result at the end rather than a path here. The whole tap wins
             // rather than a per-channel `max`, so a colored point source
             // keeps its hue instead of being pushed toward white.
-            let luma = dot(s.rgb, LUMA);
+            let luma = dot(s.rgb, PALANTIR_LUMA);
             let brighter = luma > best_luma;
             best = select(best, s, brighter);
             best_luma = select(best_luma, luma, brighter);

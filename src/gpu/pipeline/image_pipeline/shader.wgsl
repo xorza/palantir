@@ -56,7 +56,7 @@ fn vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, in: VsIn) -> VsOut
         let cs = vec2<f32>(cos(rotation), sin(rotation));
         at = rect_min + half + vec2<f32>(cs.x * l.x - cs.y * l.y, cs.y * l.x + cs.x * l.y);
     }
-    out.clip = clip_from_px(at);
+    out.clip = palantir_clip_from_px(at);
     out.local = c * rect_size - half;
     out.half_size = half;
     out.turned = u32(rotation != 0.0);
@@ -71,7 +71,7 @@ fn vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, in: VsIn) -> VsOut
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
     var out = image_paint(in.uv, in.uv_rect, in.flags, in.tint)
-        * palantir_clip_coverage(frag_px(in.clip), in.chain);
+        * palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
     if (in.turned != 0u) {
         // Distance outside the nearer edge on each axis, a box's ramp.
         let d = abs(in.local) - in.half_size;

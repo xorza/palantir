@@ -17,7 +17,7 @@ use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::wgsl::{
     ANTIALIAS, ARC_SEGMENTS, CLIP_DEPTH_BITS, COLOR, COMPOSITE, FRAME, FRAME_GROUP, GRADIENT_FILL,
-    GRADIENT_LUT, SDF, SHAPE_TEMPLATE,
+    GRADIENT_LUT, SDF, SHAPE_TEMPLATE, TURN, VIEWPORT,
 };
 
 /// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's
@@ -41,8 +41,8 @@ const BACKDROP_BINDINGS: [&str; 4] = [
 /// its rect's top-left and the scale `effect_backdrop` maps a logical position by.
 const BACKDROP_SET: &str = "palantir_backdrop_idx = v.backdrop_idx;\n    palantir_rect = v.rect;\n    \
      palantir_rotation = v.clock.w;\n    palantir_scale = scale;\n    ";
-/// Palantir's own stages around `effect`, with markers for the antialiasing reach, the parameter
-/// read and the call.
+/// Palantir's own stages around `effect`, with markers for the words' group, the material flag,
+/// the parameter read, the call and a backdrop effect's lines.
 const WRAPPER: &str = include_str!("wrapper.wgsl");
 
 /// Palantir's material path, after a backdrop effect's stages, which its fragment stage takes for a
@@ -114,7 +114,7 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         KindId::Color => "",
         KindId::Backdrop => BACKDROP,
     };
-    let contract = format!("{CONTRACT}{reads}{}", images(image_slots));
+    let contract = format!("{CONTRACT}{TURN}{reads}{}", images(image_slots));
     let app = parse_and_validate(format!("{wgsl}\n{contract}"), Capabilities::default())?;
     check_bindings(&app.module, kind, image_slots)?;
     let params_struct = check_entry(&app.module, params)?;
@@ -123,9 +123,10 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         KindId::Backdrop => material(),
     };
     let full = format!(
-        "{ENABLE}{wgsl}\n{contract}{}{}{}{material}",
+        "{ENABLE}{wgsl}\n{contract}{}{}{}{}{material}",
         wrapper(kind, params_struct.as_deref(), params.fields),
-        ANTIALIAS,
+        VIEWPORT,
+        ANTIALIAS.replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}")),
         SHAPE_TEMPLATE.replace("/*{ARC_SEGMENTS}*/", &format!("{ARC_SEGMENTS}u")),
     ) + &frame();
     let full = parse_and_validate(
@@ -234,7 +235,6 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
         KindId::Backdrop => (BACKDROP_SET, MATERIAL_BRANCH),
     };
     WRAPPER
-        .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
         .replace("/*{WORDS_GROUP}*/", &format!("{WORDS_GROUP}u"))
         .replace("/*{MATERIAL}*/", &format!("{MATERIAL_FLAG}u"))
         .replace("/*{PARAMS}*/", &read)

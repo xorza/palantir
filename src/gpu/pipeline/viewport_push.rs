@@ -1,11 +1,11 @@
-//! The [`ViewportPush`] carrier for `imm.viewport_size` and `imm.frag_origin`, the whole of the
-//! shared immediates ([`IMMEDIATES_BYTES`](crate::gpu::device::device_requirements::IMMEDIATES_BYTES)).
+//! The [`ViewportPush`] carrier for `palantir_imm.viewport_size` and `palantir_imm.frag_origin`,
+//! the whole of the shared immediates ([`IMMEDIATES_BYTES`](crate::gpu::device::device_requirements::IMMEDIATES_BYTES)).
 
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::{UVec2, Vec2};
 
 /// The viewport size and the fragment origin as they appear in the shared immediates (16 bytes,
-/// offset 0; see `Immediates` in `prelude.wgsl`).
+/// offset 0; see `PalantirImmediates` in `primitives::wgsl::VIEWPORT`).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ViewportPush {
@@ -72,13 +72,13 @@ mod tests {
         assert_eq!(encoded, expected);
     }
 
-    /// The viewport push lies as the prelude's `Immediates` declares it, which every shader reads
+    /// The viewport push lies as `PalantirImmediates` declares it, which every shader reads
     /// at `ViewportPush::OFFSET`.
     #[test]
     fn the_viewport_push_lies_as_the_shader_reads_it() {
         assert_eq!(ViewportPush::OFFSET, 0);
         QuadPipeline::SHADER.assert_struct_layout(
-            "Immediates",
+            "PalantirImmediates",
             ViewportPush::BYTES,
             &[
                 ("viewport_size", offset_of!(ViewportPush, size)),

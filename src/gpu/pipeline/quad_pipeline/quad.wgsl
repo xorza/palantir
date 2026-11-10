@@ -100,7 +100,7 @@ fn quad_vertex(vi: u32, shape: PalantirShapeIn, quad: QuadIn) -> VertexOut {
 
     var out: VertexOut;
     // Only the drawn corner turns: `local` stays in the quad's own frame.
-    out.clip         = clip_from_px(turned(corner, pos + size * 0.5, rotation));
+    out.clip         = palantir_clip_from_px(palantir_turned(corner, pos + size * 0.5, rotation));
     out.local        = corner - pos;
     out.size         = size;
     out.fill         = unpack_f16x4(quad.fill_packed);

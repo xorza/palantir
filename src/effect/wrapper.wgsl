@@ -2,16 +2,8 @@
 // Palantir's stages around `effect`. Every name here carries the `palantir_` prefix, which an
 // effect's own text leaves to palantir.
 
-struct PalantirImmediates {
-    viewport_size: vec2<f32>,
-    frag_origin: vec2<f32>,
-}
-var<immediate> palantir_imm: PalantirImmediates;
-
 // Every instance's parameters, as 32-bit words; an instance reads from its own offset.
 @group(/*{WORDS_GROUP}*/) @binding(0) var<storage, read> palantir_words: array<u32>;
-
-const PALANTIR_AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
 
 // `EffectInstance::flags`'s bit for a material's box.
 const PALANTIR_MATERIAL: u32 = /*{MATERIAL}*/;
@@ -61,10 +53,8 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, instance:
     let rotation = shape.inradius_rotation.y;
     let s = palantir_shape_of(shape, select(4u, 3u, PALANTIR_TRIANGLE));
     let t = palantir_template_vertex(s, vi, instance.border_width);
-    let px = palantir_turned(pos + t.pos, pos + size * 0.5, rotation);
-    let ndc = px * (vec2<f32>(2.0, -2.0) / palantir_imm.viewport_size) + vec2<f32>(-1.0, 1.0);
     return PalantirVarying(
-        vec4<f32>(ndc, 0.0, 1.0),
+        palantir_clip_from_px(palantir_turned(pos + t.pos, pos + size * 0.5, rotation)),
         shape.rect,
         shape.radius,
         vec4<f32>(instance.clock, rotation),
@@ -83,8 +73,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, instance:
 // surface pixel it shades turned back about the rect's center, exact where the shape is not
 // turned, so a read of `effect_backdrop` at its own position reads the pixel it covers.
 fn palantir_local(clip: vec4<f32>, rect: vec4<f32>, rotation: f32) -> vec2<f32> {
-    let frag = clip.xy + palantir_imm.frag_origin;
-    return palantir_turned(frag, rect.xy + rect.zw * 0.5, -rotation) - rect.xy;
+    return palantir_turned(palantir_frag_px(clip), rect.xy + rect.zw * 0.5, -rotation) - rect.xy;
 }
 
 // One stage for every draw of the effect: its color and what it keeps of what is under it, over
@@ -99,7 +88,7 @@ fn palantir_fs(v: PalantirVarying) -> PalantirOut {
     let input = EffectInput(local / scale, v.rect.zw / scale, corners / scale, v.clock.x, scale);
     /*{BACKDROP_SET}*/let out = /*{CALL}*/;
     /*{MATERIAL_BRANCH}*/var coverage = v.clock.y
-        * palantir_clip_coverage(v.clip.xy + palantir_imm.frag_origin, v.chain);
+        * palantir_clip_coverage(palantir_frag_px(v.clip), v.chain);
     if (v.region != PALANTIR_REGION_INTERIOR) {
         coverage *= palantir_edge_coverage(palantir_template_distance(v.region, v.geo, v.ring_r));
     }

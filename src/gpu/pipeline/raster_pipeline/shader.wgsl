@@ -68,7 +68,7 @@ fn vs(in: VertexIn) -> VertexOut {
     let uv_texel = vec2<f32>(vec2<u32>(u, v) + in.dim * corner);
 
     var out: VertexOut;
-    out.position = clip_from_px(vec2<f32>(pos));
+    out.position = palantir_clip_from_px(vec2<f32>(pos));
 
     // Straight-alpha linear color. Shader premuls at output; no sRGB
     // decode — the instance lanes are linear.
@@ -125,7 +125,7 @@ fn vs_spun(in: SpunIn) -> SpunOut {
     let turned = in.pivot + vec2<f32>(in.rotor.x * p.x - in.rotor.y * p.y, in.rotor.y * p.x + in.rotor.x * p.y);
 
     var out: SpunOut;
-    out.position = clip_from_px(turned);
+    out.position = palantir_clip_from_px(turned);
     out.color = in.color;
     out.flags = flags | FLAG_RESAMPLE;
     out.texel = vec2<f32>(vec2<u32>(u, v)) + drawn * vec2<f32>(in.dim) / max(size, vec2<f32>(1.0));
@@ -157,7 +157,7 @@ fn taps(texel: vec2<f32>, rect: vec4<i32>) -> Taps {
 
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
-    return texel_color(in) * palantir_clip_coverage(frag_px(in.position), in.chain);
+    return texel_color(in) * palantir_clip_coverage(palantir_frag_px(in.position), in.chain);
 }
 
 // What `fs` draws before its clips cut it.
@@ -178,7 +178,7 @@ fn texel_color(in: VertexOut) -> vec4<f32> {
     // DESATURATE collapses the artwork to its luminance — the disabled look
     // for an icon whose own colors the tint cannot replace. Alpha is
     // untouched, so the shape is unchanged and only the hue goes.
-    let gray = vec3<f32>(dot(s.rgb, LUMA));
+    let gray = vec3<f32>(dot(s.rgb, PALANTIR_LUMA));
     let rgb = select(s.rgb, gray, (in.flags & FLAG_DESATURATE) != 0u);
     return premultiply(rgb, s.a) * in.color.a;
 }
@@ -189,7 +189,7 @@ fn texel_color(in: VertexOut) -> vec4<f32> {
 fn fs_spun(in: SpunOut) -> @location(0) vec4<f32> {
     let d = abs(in.local) - in.half_size;
     let fade = palantir_edge_coverage(d.x) * palantir_edge_coverage(d.y)
-        * palantir_clip_coverage(frag_px(in.position), in.chain);
+        * palantir_clip_coverage(palantir_frag_px(in.position), in.chain);
     return resampled(VertexOut(in.position, in.color, in.flags, in.texel, in.texel_rect, in.chain)) * fade;
 }
 
@@ -213,7 +213,7 @@ fn resampled(in: VertexOut) -> vec4<f32> {
     let s = mix(mix(a, b, t.f.x), mix(c, d, t.f.x), t.f.y);
     // Luminance is linear, so the premultiplied gray is the gray of the
     // straight color times its alpha — the same look as `fs`'s.
-    let gray = vec3<f32>(dot(s.rgb, LUMA));
+    let gray = vec3<f32>(dot(s.rgb, PALANTIR_LUMA));
     let rgb = select(s.rgb, gray, (in.flags & FLAG_DESATURATE) != 0u);
     return vec4<f32>(rgb, s.a) * in.color.a;
 }
