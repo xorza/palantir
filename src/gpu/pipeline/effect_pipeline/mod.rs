@@ -13,7 +13,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shape_template;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -244,8 +244,8 @@ impl EffectDevice {
 }
 
 /// One frame's effects: their instances, their parameter words, the group the words bind
-/// through, each draw's images, and the frame's format's pipelines, copied from the store as they
-/// change, so a pass binds them for as long as it records.
+/// through, and each draw's images; their pipelines are the store's, which a frame reaches
+/// through `PassPipelines`.
 #[derive(Debug)]
 pub(crate) struct EffectPipeline {
     instances: DynamicBuffer<EffectInstance>,
@@ -255,27 +255,16 @@ pub(crate) struct EffectPipeline {
     /// Bound over `words`; made again when the buffer grows or shrinks.
     group: Option<wgpu::BindGroup>,
     group_capacity: usize,
-    /// What `pipelines` were copied at; `None` before the first upload.
-    copied: Option<PipelinesCopy>,
-    /// Each effect's forms, at each key's [`EffectKey::slot`].
-    pipelines: Vec<ClipVariant>,
-    /// Each effect's kind, at its id, copied with `pipelines`.
-    kinds: Vec<KindId>,
 }
 
-/// The format and store revision an [`EffectPipeline`]'s pipelines were copied at.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct PipelinesCopy {
-    format: wgpu::TextureFormat,
-    revision: u64,
-}
-
-/// One batch of effect draws: the frame's per-draw key column, this batch's slice of it, the
-/// groups the draws bind their images through, and the group a backdrop effect reads its
-/// backdrop's result through, `None` before the first frame with a backdrop.
+/// One batch of effect draws: the frame's per-draw key column, this batch's slice of it, each
+/// effect's module at its id, the groups the draws bind their images through, and the group a
+/// backdrop effect reads its backdrop's result through, `None` before the first frame with a
+/// backdrop.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
     pub(crate) keys: &'a [EffectKey],
+    pub(crate) modules: &'a [EffectModule],
     pub(crate) items: Span,
     pub(crate) groups: &'a EffectImageGroups,
     pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
@@ -289,7 +278,6 @@ pub(crate) struct EffectUpload<'a> {
     pub(crate) images: &'a [Span],
     pub(crate) textures: &'a [TextureId],
     pub(crate) words: &'a [u32],
-    pub(crate) format: wgpu::TextureFormat,
 }
 
 impl EffectPipeline {
@@ -300,15 +288,11 @@ impl EffectPipeline {
             images: Vec::new(),
             group: None,
             group_capacity: 0,
-            copied: None,
-            pipelines: Vec::new(),
-            kinds: Vec::new(),
         }
     }
 
-    /// Upload the frame's instances and words, note each draw's images with the image store,
-    /// which makes the group of a set first drawn, and copy the format's pipelines where the
-    /// store built since.
+    /// Upload the frame's instances and words, and note each draw's images with the image store,
+    /// which makes the group of a set first drawn.
     pub(crate) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -332,9 +316,8 @@ impl EffectPipeline {
                 .filter(|set| !set.ids().is_empty()),
             ctx.frame,
         );
-        let store = stores.effects;
-        let read = store.read();
         if self.group.is_none() || self.words.capacity() != self.group_capacity {
+            let read = stores.effects.read();
             self.group = Some(
                 ctx.gpu
                     .device
@@ -349,20 +332,6 @@ impl EffectPipeline {
             );
             self.group_capacity = self.words.capacity();
         }
-        let copy = PipelinesCopy {
-            format: upload.format,
-            revision: read.revision,
-        };
-        if self.copied != Some(copy) {
-            self.pipelines.clear();
-            if let Some(built) = read.attached.for_format(upload.format) {
-                self.pipelines.extend_from_slice(&built.effects);
-            }
-            self.kinds.clear();
-            self.kinds
-                .extend(read.modules.iter().map(|module| module.kind));
-            self.copied = Some(copy);
-        }
     }
 
     /// Draw one batch, one `draw` per run of instances of one key over one set of images, each
@@ -371,9 +340,10 @@ impl EffectPipeline {
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        clipping: Clipping,
+        pipelines: impl Fn(EffectKey) -> &'a Pipeline,
         EffectBatch {
             keys,
+            modules,
             items,
             groups,
             backdrops,
@@ -395,8 +365,8 @@ impl EffectPipeline {
                 };
                 Some(images_group)
             };
-            let kind = self.kinds[key.effect.idx()];
-            rec.pipeline(self.pipelines[key.slot()].get(clipping));
+            let kind = modules[key.effect.idx()].kind;
+            rec.pipeline(pipelines(key));
             rec.group(WORDS_GROUP, group);
             if let Some(images_group) = images_group {
                 rec.group_once(IMAGES_GROUP, images_group);

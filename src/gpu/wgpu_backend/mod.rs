@@ -52,6 +52,7 @@
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
+use crate::effect::effect_store::EffectModule;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -64,7 +65,7 @@ use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
-use crate::gpu::pipeline::clip_variant::Clipping;
+use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::effect_pipeline::{
     EffectBatch, EffectPipeline, EffectStores, EffectUpload,
@@ -157,7 +158,7 @@ pub(crate) struct WgpuBackend {
 }
 
 /// Whether `buffer`'s draws name rounded clips, which picks the half of each pipeline its passes
-/// bind ([`ClipVariant`](crate::gpu::pipeline::clip_variant::ClipVariant)).
+/// bind ([`ClipVariant`]).
 const fn clipping(buffer: &RenderBuffer) -> Clipping {
     if buffer.clips_drawn {
         Clipping::On
@@ -196,6 +197,10 @@ struct TimingSupport {
 #[derive(Clone, Copy, Debug)]
 struct FrameDraw<'a> {
     fmt: &'a FormatPipelines,
+    /// The format's effect pipelines and every effect's module, from the effect store's borrow
+    /// held across the frame's passes.
+    effects: &'a [ClipVariant],
+    effect_modules: &'a [EffectModule],
     /// The blit into the target's format, which presents the backbuffer.
     blit: &'a wgpu::RenderPipeline,
     buffer: &'a RenderBuffer,
@@ -574,10 +579,17 @@ impl WgpuBackend {
             "a view of the target exactly where a pass writes it"
         );
         self.ensure_pipelines(format, buffer);
+        let effects = self.effect_store.read();
         let main_pass = self.run_steps(
             FrameSteps {
                 draw: FrameDraw {
                     fmt: &self.pipelines[&format],
+                    effects: &effects
+                        .attached
+                        .for_format(format.get())
+                        .expect("a window notes its target's format before it records")
+                        .effects,
+                    effect_modules: &effects.modules,
                     blit: self.blit.get(format.get()),
                     buffer,
                     viewport: ViewportPush::for_buffer(buffer),
@@ -859,7 +871,6 @@ impl WgpuBackend {
                 images: buffer.effects.images(),
                 textures: &store.effect_images,
                 words: &store.effect_params,
-                format: format.get(),
             },
         );
 
@@ -933,7 +944,7 @@ impl WgpuBackend {
             binding: QuadBinding {
                 pipeline: draw
                     .fmt
-                    .for_frame(Clipping::Off)
+                    .for_frame(Clipping::Off, draw.effects)
                     .quad(QuadDraw::Fill(FillForm::BOX_SOLID)),
                 frame_group: self.frame_group.group(),
             },
@@ -1049,7 +1060,7 @@ impl WgpuBackend {
             targets: &self.gpu_view_targets,
         };
         // Read at a raster draw, as a frame that draws none builds no raster pipeline.
-        let pipelines = draw.fmt.for_frame(clipping(buffer));
+        let pipelines = draw.fmt.for_frame(clipping(buffer), draw.effects);
         let raster = move || pipelines.raster();
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => ctx.batch(BatchKind::PreClear, |ctx| {
@@ -1114,9 +1125,10 @@ impl WgpuBackend {
                         }
                         PaintTier::Effect => self.programs.effect.draw_batch(
                             ctx.rec,
-                            pipelines.clipping(),
+                            |key| pipelines.effect(key),
                             EffectBatch {
                                 keys: buffer.effects.key(),
+                                modules: draw.effect_modules,
                                 items: items(),
                                 groups: &effect_groups,
                                 backdrops: self.backdrops.group(),

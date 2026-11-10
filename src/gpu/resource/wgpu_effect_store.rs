@@ -57,8 +57,6 @@ struct StoreState {
     clipped: bool,
     /// `None` until the first attach.
     attached: Option<AttachedEffects>,
-    /// Moves with every build, so a reader of [`AttachedEffects::for_format`] knows to copy again.
-    revision: u64,
 }
 
 /// The store's side of one device: the device every effect builds on, and the pipelines of each
@@ -93,7 +91,6 @@ impl WgpuEffectStore {
         });
         // A new format builds every wanted effect, so nothing is pending on a fresh device.
         state.pending.clear();
-        state.revision += 1;
     }
 
     /// Build every wanted form for `format`, where it is new: before the frame that paints it.
@@ -104,7 +101,6 @@ impl WgpuEffectStore {
             wanted,
             clipped,
             attached,
-            revision,
             pending: _,
         } = &mut *state;
         let attached = attached.as_mut().expect(ATTACHED);
@@ -128,7 +124,6 @@ impl WgpuEffectStore {
             );
         }
         attached.formats.push(built);
-        *revision += 1;
     }
 
     /// The start of a frame's GPU phase: want each key of `keys`, the frame's draws, and build
@@ -145,7 +140,6 @@ impl WgpuEffectStore {
             clipped,
             attached,
             pending,
-            revision,
         } = &mut *state;
         if clipping == Clipping::On && !*clipped {
             *clipped = true;
@@ -172,24 +166,18 @@ impl WgpuEffectStore {
                 );
             }
         }
-        *revision += 1;
     }
 
-    /// The pipelines built now, each effect's module, and the revision they are at.
+    /// The pipelines built now, and each effect's module.
     pub(crate) fn read(&self) -> EffectsRead<'_> {
         let state = self.state.borrow();
-        let revision = state.revision;
         let (attached, modules) = Ref::map_split(state, |state| {
             (
                 state.attached.as_ref().expect(ATTACHED),
                 state.modules.as_slice(),
             )
         });
-        EffectsRead {
-            attached,
-            modules,
-            revision,
-        }
+        EffectsRead { attached, modules }
     }
 }
 
@@ -219,7 +207,6 @@ pub(crate) struct EffectsRead<'a> {
     pub(crate) attached: Ref<'a, AttachedEffects>,
     /// At each effect's id.
     pub(crate) modules: Ref<'a, [EffectModule]>,
-    pub(crate) revision: u64,
 }
 
 impl AttachedEffects {
@@ -239,7 +226,6 @@ impl EffectStore for WgpuEffectStore {
             wanted,
             pending,
             attached,
-            revision,
             ..
         } = &mut *state;
         debug_assert!(
@@ -270,7 +256,6 @@ impl EffectStore for WgpuEffectStore {
                     pending.push(key);
                 }
             }
-            *revision += 1;
         }
     }
 

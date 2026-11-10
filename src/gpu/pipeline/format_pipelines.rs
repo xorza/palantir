@@ -11,6 +11,7 @@ use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
+use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
@@ -121,29 +122,34 @@ impl FormatPipelines {
         }
     }
 
-    /// These pipelines as a frame of `clipping` binds them.
-    pub(crate) const fn for_frame(&self, clipping: Clipping) -> PassPipelines<'_> {
+    /// These pipelines as a frame of `clipping` binds them, with `effects`, the format's effect
+    /// pipelines the effect store built at each key's [`EffectKey::slot`].
+    pub(crate) const fn for_frame<'a>(
+        &'a self,
+        clipping: Clipping,
+        effects: &'a [ClipVariant],
+    ) -> PassPipelines<'a> {
         PassPipelines {
             fmt: self,
+            effects,
             clipping,
         }
     }
 }
 
 /// A format's pipelines for one frame, each picked for whether its draws name rounded clips in
-/// one place.
+/// one place: every family's, the effects' among them, which the effect store builds and the
+/// frame borrows for as long as its passes record. Refused: a copy of the effects' pipelines in
+/// the effect family, a second place a frame's pipelines live.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PassPipelines<'a> {
     fmt: &'a FormatPipelines,
+    /// The format's effect pipelines, at each key's [`EffectKey::slot`].
+    effects: &'a [ClipVariant],
     clipping: Clipping,
 }
 
 impl<'a> PassPipelines<'a> {
-    /// Whether the frame's draws name rounded clips, which picks an effect's pipeline.
-    pub(crate) const fn clipping(self) -> Clipping {
-        self.clipping
-    }
-
     /// The pipeline a quad of `draw` draws through.
     pub(crate) const fn quad(self, draw: QuadDraw) -> &'a Pipeline {
         self.fmt.quad.get(draw, self.clipping)
@@ -160,6 +166,12 @@ impl<'a> PassPipelines<'a> {
 
     pub(crate) const fn curve(self) -> &'a Pipeline {
         self.fmt.curve.get(self.clipping)
+    }
+
+    /// The pipeline an effect draw of `key` draws through, which the store built before the
+    /// frame's passes.
+    pub(crate) const fn effect(self, key: EffectKey) -> &'a Pipeline {
+        self.effects[key.slot()].get(self.clipping)
     }
 
     /// Both raster tenants' pipelines.

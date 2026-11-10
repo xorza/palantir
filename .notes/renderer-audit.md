@@ -40,7 +40,7 @@ source of that rule.
   together, and `WgpuEffectStore` builds per format on its own schedule. An app with no rounded
   clip compiles a second program per effect and form that it never binds, at load and at each
   device recovery.
-- **Effects are drawn through a different door.** `render_groups` hands each family its pipelines
+- **[fixed in item 2] Effects are drawn through a different door.** `render_groups` hands each family its pipelines
   a different way: the quads `PassPipelines`, an image a closure over `ShapeForm`, the mesh and
   the curve one `&Pipeline`, the raster tenants a `RasterPipelines` closure, and the effects only
   the `Clipping`, as `EffectPipeline` keeps its own copy of the store's pipelines
@@ -125,11 +125,13 @@ captured streams prove it.
    (`WgpuEffectStore::prepare` takes the frame's `Clipping`), so a press inside a clip reaches a
    built pipeline after that frame. `EffectDevice::ensure` builds one half; the decision lives in
    `WgpuEffectStore`'s doc. Test: `the_clipped_half_waits_for_a_frame_with_a_rounded_clip`.
-2. **Effects drawn through `PassPipelines`.** `PassPipelines::effect(key)` reads the format's
-   effect pipelines from the store's borrow held for the pass, and `EffectPipeline` drops its
-   copy and its revision check. Every family's `draw_batch` then takes `PassPipelines`. Refused:
-   the copy, a second place a frame's pipelines live. Cost: the store's `Ref` lives across the
-   pass, which no load can reach then.
+2. [x] **Effects drawn through `PassPipelines`**, done. `PassPipelines::effect(key)` reads the
+   format's effect pipelines from the store's borrow, which `submit` holds across the frame's
+   passes, and the effect family takes them as the image family does, a pipeline per run key;
+   `EffectPipeline` drops its copy, its revision check and its kinds, and the store its revision.
+   Mesh, curve and raster keep the one pipeline they take, as `PassPipelines` picks it; refused:
+   `PassPipelines` handed to every family, which would tie the raster pass and its bench to the
+   format's whole set.
 3. **One shared WGSL copy of the frame's coordinates.** A `primitives::wgsl` include declares
    `PalantirImmediates`, `palantir_clip_from_px`, `palantir_frag_px`, `palantir_turned` and
    `PALANTIR_LUMA`; the prelude and the effect module include it, and the prelude's unprefixed
