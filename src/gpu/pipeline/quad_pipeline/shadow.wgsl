@@ -157,13 +157,17 @@ struct ShadowOut {
 @vertex
 fn vs_shadow(
     @builtin(vertex_index) vi: u32,
+    shape: PalantirShapeIn,
     quad: QuadIn,
-    @location(9) cutouts: vec4<u32>,
+    @location(12) cutouts: vec4<u32>,
 ) -> ShadowOut {
-    let q = quad_vertex(0u, quad);
-    let bounds = shaded_bounds(quad.pos, quad.size, quad.fill_kind, quad.rotation);
-    let half = quad.size * 0.5;
-    let center = quad.pos + half;
+    let q = quad_vertex(0u, shape, quad);
+    let pos = shape.rect.xy;
+    let size = shape.rect.zw;
+    let rotation = shape.inradius_rotation.y;
+    let bounds = shaded_bounds(pos, size, quad.fill_kind, rotation);
+    let half = size * 0.5;
+    let center = pos + half;
     let kind = quad.fill_kind & PALANTIR_FILL_TAG_MASK;
     let sb = shadow_box(kind, half, q.radius, q.fill_axis);
     let sigma = q.fill_axis.z;
@@ -196,7 +200,7 @@ fn vs_shadow(
     var ys = array<f32, 4>(bounds.lo.y, inner_lo.y, inner_hi.y, bounds.hi.y);
     var edge_lo = inner_lo;
     var edge_hi = inner_hi;
-    if (kind == PALANTIR_FILL_SHADOW_DROP && quad.rotation == 0.0) {
+    if (kind == PALANTIR_FILL_SHADOW_DROP && rotation == 0.0) {
         let deep = vec2<f32>(PALANTIR_AA_HALF_WIDTH + 1.0);
         edge_lo = clamp(source_center - source_half + deep, bounds.lo, inner_lo);
         edge_hi = clamp(source_center + source_half - deep, inner_hi, bounds.hi);
@@ -219,9 +223,9 @@ fn vs_shadow(
         vertex.y = select(select(vertex.y, edge_hi.y, line.y == 2u), edge_lo.y, line.y == 1u);
     }
     var out: ShadowOut;
-    out.clip = clip_from_px(turned(vertex, center, quad.rotation));
-    out.turn = vec4<f32>(center, cos(quad.rotation), sin(quad.rotation));
-    out.chain = quad.chain;
+    out.clip = clip_from_px(turned(vertex, center, rotation));
+    out.turn = vec4<f32>(center, cos(rotation), sin(rotation));
+    out.chain = shape.chain;
     out.fill = q.fill;
     out.kind = kind;
     out.sigma = sigma;

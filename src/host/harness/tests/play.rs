@@ -63,7 +63,7 @@ fn each_depth_builds_what_it_names() {
             h.render_buffer()
                 .quads
                 .iter()
-                .map(|quad| quad.rect)
+                .map(|quad| quad.header.rect)
                 .collect()
         };
         let first = h.frame(tile);

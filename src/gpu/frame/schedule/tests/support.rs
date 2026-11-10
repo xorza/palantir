@@ -4,7 +4,6 @@ use crate::common::span::Span;
 use crate::display::Display;
 use crate::gpu::frame::frame_passes::ColorLoad;
 use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::RgbaF32;
@@ -15,6 +14,7 @@ use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::key::TextShapeKey;
@@ -117,9 +117,8 @@ pub(super) fn scissor_count(steps: &[RenderStep]) -> usize {
 
 fn dummy_quad() -> Quad {
     Quad {
-        rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+        header: ShapeHeader::of_box(Rect::new(0.0, 0.0, 10.0, 10.0)),
         fill: RgbaF32::WHITE.to_f16(),
-        corners: Corners::ZERO,
         border_color: RgbaF16::TRANSPARENT,
         border_width: 0.0,
         ..Default::default()

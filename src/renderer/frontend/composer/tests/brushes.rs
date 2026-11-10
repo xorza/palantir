@@ -163,7 +163,7 @@ fn compose_emits_image_batch_for_drawimage() {
     assert_eq!(buf.batches(PaintTier::Image)[0].items, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
     assert_eq!(
-        buf.images.instance()[0].rect,
+        buf.images.instance()[0].header.rect,
         Rect::new(20.0, 40.0, 60.0, 80.0)
     );
     // The composer must forward the encoder's UV crop verbatim: a zero UV size
@@ -215,7 +215,7 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
             "{case:?}"
         );
         assert_eq!(
-            buf.images.instance()[0].rect.size,
+            buf.images.instance()[0].header.rect.size,
             Size::new(case.expected_size.x as f32, case.expected_size.y as f32),
             "{case:?}"
         );
@@ -258,7 +258,7 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
     // And the composite covers exactly what the target holds.
     let instance = buf.images.instance()[0];
     assert_eq!(
-        instance.rect,
+        instance.header.rect,
         Rect::new(0.0, 0.0, 100.0, 90.0),
         "the visible target was stretched over the whole rect"
     );
@@ -295,7 +295,7 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     assert_eq!(target.full, UVec2::new(100, 60));
     assert_eq!(target.offset, UVec2::new(20, 10));
     let instance = buf.images.instance()[0];
-    assert_eq!(instance.rect, Rect::new(30.0, 20.0, 40.0, 25.0));
+    assert_eq!(instance.header.rect, Rect::new(30.0, 20.0, 40.0, 25.0));
     // 40 buckets to 64 and 25 to 32.
     assert_eq!(target.capacity(), UVec2::new(64, 32));
     assert_eq!(instance.uv_size, Vec2::new(40.0 / 64.0, 25.0 / 32.0));
@@ -317,7 +317,7 @@ fn compose_gpu_view_whole_when_nothing_clips_it() {
     assert_eq!(target.full, target.used, "a whole view is its own whole");
     assert_eq!(target.offset, UVec2::ZERO);
     let instance = buf.images.instance()[0];
-    assert_eq!(instance.rect, Rect::new(10.0, 20.0, 80.0, 40.0));
+    assert_eq!(instance.header.rect, Rect::new(10.0, 20.0, 80.0, 40.0));
     assert_eq!(
         target.capacity(),
         target.used,
@@ -367,7 +367,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
         assert_eq!(buf.frame_views().display_scale, 1.0, "{case:?}");
         assert_eq!(target.raster_factor, 0.5, "{case:?}");
         assert_eq!(
-            buf.images.instance()[0].rect.size,
+            buf.images.instance()[0].header.rect.size,
             case.logical_size,
             "the composite destination stays at monitor resolution: {case:?}"
         );
@@ -546,12 +546,16 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     );
     let instance = buf.images.instance()[0];
     assert!(
-        instance.rect.min.abs_diff_eq(Vec2::new(45.0, 45.0), EPS),
+        instance
+            .header
+            .rect
+            .min
+            .abs_diff_eq(Vec2::new(45.0, 45.0), EPS),
         "{:?}",
-        instance.rect
+        instance.header.rect
     );
-    assert_eq!(instance.rect.size, Size::new(20.0, 10.0));
-    assert_eq!(instance.rotation, FRAC_PI_2);
+    assert_eq!(instance.header.rect.size, Size::new(20.0, 10.0));
+    assert_eq!(instance.header.rotation, FRAC_PI_2);
     assert_eq!((instance.uv_min, instance.uv_size), (Vec2::ZERO, Vec2::ONE));
 
     let half_off = Rect::new(-10.0, 40.0, 20.0, 10.0);
@@ -619,8 +623,11 @@ fn an_effect_lands_as_one_physical_row() {
     );
     assert_eq!(buf.effects.images()[0], Span::new(4, 2));
     let instance = buf.effects.instance()[0];
-    assert_eq!(instance.rect, Rect::new(10.0, 12.0, 20.0, 16.0));
-    assert_eq!(instance.corners, [5.332_031_3, 8.0, 8.0, 5.332_031_3]);
+    assert_eq!(instance.header.rect, Rect::new(10.0, 12.0, 20.0, 16.0));
+    assert_eq!(
+        instance.header.corners.to_array(),
+        [5.332_031_3, 8.0, 8.0, 5.332_031_3]
+    );
     assert_eq!(instance.params, 12);
     assert_eq!(instance.opacity, 0.5);
     assert_eq!(instance.scale, 2.0);

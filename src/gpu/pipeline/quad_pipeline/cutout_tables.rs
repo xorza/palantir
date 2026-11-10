@@ -249,8 +249,9 @@ const BAKE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_l
     &BAKE_ATTRS,
 );
 
+/// Past the quad's own lanes, `QUAD_INSTANCE_ATTRS`, as `vs_shadow` reads it.
 const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = [vertex_attr(
-    9,
+    12,
     wgpu::VertexFormat::Uint32x4,
     offset_of!(CornerTables, 0),
 )];

@@ -67,7 +67,7 @@ pub(super) fn draw_marked(buf: &mut PaintCapture, r: Rect) {
 
 /// The surviving quads' rects, in buffer order.
 pub(super) fn survivors(buf: &RenderBuffer) -> Vec<Rect> {
-    buf.quads.iter().map(|q| q.rect).collect()
+    buf.quads.iter().map(|q| q.header.rect).collect()
 }
 
 /// Surviving capture positions, read off the fill [`draw_marked`] gave; tells apart survivors over one rect.

@@ -57,6 +57,7 @@ use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshDrawRow, MeshI
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
+use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
@@ -497,19 +498,14 @@ impl PaintSink for ComposeSession<'_> {
             effect: p.paint.effect,
             images: p.paint.images,
             instance: EffectInstance {
-                rect: physical,
-                corners: shape.corners.to_array(),
-                points: shape.points,
-                inradius: shape.inradius,
+                header: shape.header(clip),
                 border_width,
                 flags: stage_flag | shape_flags,
                 time: p.paint.time,
                 opacity: p.paint.opacity,
                 scale,
-                rotation: shape.rotation,
                 params: p.paint.params.start,
                 backdrop_idx,
-                clip,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -704,18 +700,13 @@ impl ComposeSession<'_> {
             id: p.paint.handle,
             form,
             instance: ImageInstance {
-                rect: shape.rect.physical,
+                header: shape.header(clip),
                 uv_min: p.paint.uv_min - lo * uv_per_px,
                 uv_size: size * uv_per_px,
                 tint: p.paint.tint,
                 flags: p.paint.flags,
-                rotation: shape.rotation,
-                points: shape.points,
-                corners: shape.corners,
-                inradius: shape.inradius,
                 decal_min: Vec2::new(from(lo.x), from(lo.y)),
                 decal_max: Vec2::new(to(hi.x, size.x), to(hi.y, size.y)),
-                clip,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -755,14 +746,17 @@ impl ComposeSession<'_> {
             .and_then(|_| self.seen(physical_rect));
         let composite = seen.unwrap_or(physical_rect);
         let clip = self.clip_chain(visible);
+        // A sharp box over what it composites, which the plain form draws as one quad.
         let mut instance = ImageInstance {
-            rect: composite,
+            header: ShapeHeader {
+                rotation: p.spin.map_or(0.0, |spin| spin.angle),
+                clip,
+                ..ShapeHeader::of_box(composite)
+            },
             uv_min: p.paint.uv_min,
             uv_size: p.paint.uv_size,
             tint: p.paint.tint,
             flags: p.paint.flags,
-            rotation: p.spin.map_or(0.0, |spin| spin.angle),
-            clip,
             ..bytemuck::Zeroable::zeroed()
         };
         // A `GpuView` also needs its off-screen target painted. Sized to what is on
@@ -825,18 +819,13 @@ impl ComposeSession<'_> {
             fill_axis,
         } = lanes;
         self.out.quads.push(Quad {
-            rect: shape.rect.physical,
+            header: shape.header(clip),
             fill: fill.color,
-            corners: shape.corners,
             border_color,
             border_width,
             fill_kind: fill.kind,
             fill_lut_row: fill.lut_row,
             fill_axis,
-            rotation: shape.rotation,
-            points: shape.points,
-            inradius: shape.inradius,
-            clip,
         });
     }
 

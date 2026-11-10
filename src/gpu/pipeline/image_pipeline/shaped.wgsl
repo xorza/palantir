@@ -21,40 +21,34 @@ struct ShapedOut {
 
 // A box's template (`ImageForm::Box`).
 @vertex
-fn vs_box(@builtin(vertex_index) vi: u32, in: VsIn) -> ShapedOut {
-    return shaped_vertex(vi, in, 4u);
+fn vs_box(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, in: VsIn) -> ShapedOut {
+    return shaped_vertex(vi, shape, in, 4u);
 }
 
 // A triangle's template (`ImageForm::Triangle`), three of the instance's points.
 @vertex
-fn vs_triangle(@builtin(vertex_index) vi: u32, in: VsIn) -> ShapedOut {
-    return shaped_vertex(vi, in, 3u);
+fn vs_triangle(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, in: VsIn) -> ShapedOut {
+    return shaped_vertex(vi, shape, in, 3u);
 }
 
 // Vertex `vi` of the template of the instance's shape of `n` corners, a constant of each entry.
-fn shaped_vertex(vi: u32, in: VsIn, n: u32) -> ShapedOut {
-    var s: PalantirShape;
-    s.n = n;
-    s.p0 = in.points01.xy;
-    s.p1 = in.points01.zw;
-    s.p2 = in.points23.xy;
-    s.p3 = in.points23.zw;
-    s.radius = in.corners;
-    s.inradius = in.inradius;
+fn shaped_vertex(vi: u32, shape: PalantirShapeIn, in: VsIn, n: u32) -> ShapedOut {
+    let rect_min = shape.rect.xy;
+    let rect_size = shape.rect.zw;
     // No border: the image covers the whole shape.
-    let v = palantir_template_vertex(s, vi, 0.0, PALANTIR_AA_HALF_WIDTH, false);
+    let v = palantir_template_vertex(palantir_shape_of(shape, n), vi, 0.0, PALANTIR_AA_HALF_WIDTH, false);
     var out: ShapedOut;
     out.region = v.region;
     out.geo = v.geo;
     out.ring_r = v.ring_r;
-    out.uv = in.uv_min + v.pos / max(in.rect_size, vec2<f32>(1e-6)) * in.uv_size;
-    out.uv_rect = vec4<f32>(in.uv_min, in.uv_min + in.uv_size);
+    out.uv = in.uv.xy + v.pos / max(rect_size, vec2<f32>(1e-6)) * in.uv.zw;
+    out.uv_rect = vec4<f32>(in.uv.xy, in.uv.xy + in.uv.zw);
     out.tint = in.tint;
     out.flags = in.flags;
     out.local = v.pos;
     out.decal = in.decal;
-    out.chain = in.chain;
-    out.clip = clip_from_px(turned(in.rect_min + v.pos, in.rect_min + in.rect_size * 0.5, in.rotation));
+    out.chain = shape.chain;
+    out.clip = clip_from_px(turned(rect_min + v.pos, rect_min + rect_size * 0.5, shape.inradius_rotation.y));
     return out;
 }
 

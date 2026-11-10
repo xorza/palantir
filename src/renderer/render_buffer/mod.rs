@@ -40,6 +40,7 @@ pub(crate) mod quad_form;
 pub(crate) mod render_target_draw;
 pub(crate) mod rounded_clip;
 pub(crate) mod row_spin;
+pub(crate) mod shape_header;
 pub(crate) mod text_batch;
 pub(crate) mod text_draw_row;
 

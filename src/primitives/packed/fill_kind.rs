@@ -112,7 +112,7 @@ impl FillKind {
         self.0 & Self::OUTSIDE_BIT != 0
     }
 
-    /// Bit 18: a rounded triangle, three of `Quad::points` where a box has four, which the
+    /// Bit 18: a rounded triangle, three of `ShapeHeader::points` where a box has four, which the
     /// template's corner count and the form follow; the tag still names its paint. The composer
     /// sets it on a `Quad` from a payload's triangle. Read as `FILL_FLAG_TRIANGLE`.
     pub(crate) const TRIANGLE_BIT: u32 = 1 << 18;

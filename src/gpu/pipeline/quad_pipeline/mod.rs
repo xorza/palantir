@@ -423,42 +423,47 @@ impl QuadPipeline {
 const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
 // Location 9 is the shadow pipeline's per-instance cutout tables, so the turn takes 10.
-const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 14] = [
-    vertex_attr(0, wgpu::VertexFormat::Float32x2, offset_of!(Quad, rect.min)),
-    vertex_attr(
-        1,
-        wgpu::VertexFormat::Float32x2,
-        offset_of!(Quad, rect.size),
-    ),
-    vertex_attr(2, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, fill)),
-    vertex_attr(3, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, corners)),
-    vertex_attr(
-        4,
-        wgpu::VertexFormat::Uint32x2,
-        offset_of!(Quad, border_color),
-    ),
-    vertex_attr(
-        5,
-        wgpu::VertexFormat::Float32,
-        offset_of!(Quad, border_width),
-    ),
-    vertex_attr(6, wgpu::VertexFormat::Uint32, offset_of!(Quad, fill_kind)),
-    vertex_attr(
-        7,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(Quad, fill_lut_row),
-    ),
-    vertex_attr(8, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, fill_axis)),
-    vertex_attr(10, wgpu::VertexFormat::Float32, offset_of!(Quad, rotation)),
-    vertex_attr(11, wgpu::VertexFormat::Float32x4, offset_of!(Quad, points)),
-    vertex_attr(
-        12,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(Quad, points) + 2 * size_of::<Vec2>(),
-    ),
-    vertex_attr(13, wgpu::VertexFormat::Float32, offset_of!(Quad, inradius)),
-    vertex_attr(14, wgpu::VertexFormat::Uint32, offset_of!(Quad, clip)),
-];
+/// The quad's header, then its fill's and its border's lanes.
+const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = {
+    let h = shape_template::HEADER_ATTRS;
+    let at = shape_template::HEADER_LOCATIONS;
+    [
+        h[0],
+        h[1],
+        h[2],
+        h[3],
+        h[4],
+        h[5],
+        vertex_attr(at, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, fill)),
+        vertex_attr(
+            at + 1,
+            wgpu::VertexFormat::Uint32x2,
+            offset_of!(Quad, border_color),
+        ),
+        vertex_attr(
+            at + 2,
+            wgpu::VertexFormat::Float32,
+            offset_of!(Quad, border_width),
+        ),
+        vertex_attr(
+            at + 3,
+            wgpu::VertexFormat::Uint32,
+            offset_of!(Quad, fill_kind),
+        ),
+        vertex_attr(
+            at + 4,
+            wgpu::VertexFormat::Uint32,
+            offset_of!(Quad, fill_lut_row),
+        ),
+        vertex_attr(
+            at + 5,
+            wgpu::VertexFormat::Uint32x2,
+            offset_of!(Quad, fill_axis),
+        ),
+    ]
+};
+
+const _: () = assert!(offset_of!(Quad, header) == 0);
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
     size_of::<Quad>(),
@@ -553,10 +558,7 @@ mod tests {
     /// `None`, so a pre-clear it forgot cannot draw the last frame's.
     #[test]
     fn extras_follow_the_quads_in_order() {
-        let quad = |x: f32| Quad {
-            rect: Rect::new(x, 0.0, 1.0, 1.0),
-            ..Default::default()
-        };
+        let quad = |x: f32| Quad::of_rect(Rect::new(x, 0.0, 1.0, 1.0));
         let mut tail = Vec::new();
         let spans = ExtraSpans::lay(
             3,
@@ -576,7 +578,7 @@ mod tests {
             }
         );
         assert_eq!(
-            tail.iter().map(|q| q.rect.min.x).collect::<Vec<_>>(),
+            tail.iter().map(|q| q.header.rect.min.x).collect::<Vec<_>>(),
             [3.0, 4.0]
         );
         let spans = ExtraSpans::lay(3, QuadExtras::default(), &mut tail);

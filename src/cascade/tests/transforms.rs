@@ -210,7 +210,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
         "expected exactly the child quad; got {:?}",
         buffer.quads,
     );
-    let quad_rect = buffer.quads[0].rect;
+    let quad_rect = buffer.quads[0].header.rect;
 
     // child-local (0,0,20,20): min = (0,0)*2 + (15,25), size = (20,20)*2 = (40,40)
     assert_eq!(cascade_rect, Rect::new(15.0, 25.0, 40.0, 40.0));

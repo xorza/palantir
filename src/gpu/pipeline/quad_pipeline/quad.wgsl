@@ -31,8 +31,9 @@ const NO_SPAN: f32 = 1e30;
 // rect path (solid and the gradients).
 const FILL_FLAG_OUTSIDE: u32 = /*{FILL_FLAG_OUTSIDE}*/;
 
-// Rounded triangle (`FillKind::TRIANGLE_BIT`): `points01`/`points23` hold its three points grown
-// by its radius and `radius` that radius at each (`Quad::points`); the tag names its paint.
+// Rounded triangle (`FillKind::TRIANGLE_BIT`): the shape's `points01`/`points23` hold its three
+// points grown by its radius and `radius` that radius at each (`ShapeHeader::points`); the tag
+// names its paint.
 const FILL_FLAG_TRIANGLE: u32 = /*{FILL_FLAG_TRIANGLE}*/;
 
 struct VertexOut {
@@ -64,28 +65,14 @@ struct VertexOut {
     @location(12) @interpolate(flat) chain: u32,
 };
 
-// The instance attributes every quad pipeline reads.
+// The instance attributes every quad pipeline reads past its shape (`PalantirShapeIn`).
 struct QuadIn {
-    @location(0) pos:          vec2<f32>,
-    @location(1) size:         vec2<f32>,
-    @location(2) fill_packed:  vec2<u32>,
-    @location(3) radius_packed: vec2<u32>,
-    @location(4) border_color_packed: vec2<u32>,
-    @location(5) border_width: f32,
-    @location(6) fill_kind:    u32,
-    @location(7) fill_lut_row: u32,
-    @location(8) fill_axis_packed: vec2<u32>,
-    // A paint animation's turn about the quad's center, in radians; 0 for
-    // none. The quad's own frame is unturned: `local`, the SDF and the
-    // fill read it, and only the drawn corners turn.
-    @location(10) rotation:    f32,
-    // The closed shape's sharp points from `pos`, clockwise on screen, two to a lane
-    // (`Quad::points`), and its inradius (`Quad::inradius`).
-    @location(11) points01:    vec4<f32>,
-    @location(12) points23:    vec4<f32>,
-    @location(13) inradius:    f32,
-    // The rounded clips that cut the quad (`ClipChain`).
-    @location(14) chain:       u32,
+    @location(6) fill_packed:  vec2<u32>,
+    @location(7) border_color_packed: vec2<u32>,
+    @location(8) border_width: f32,
+    @location(9) fill_kind:    u32,
+    @location(10) fill_lut_row: u32,
+    @location(11) fill_axis_packed: vec2<u32>,
 };
 
 // The pixel-center extent the quad shader shades for a quad: its rect
@@ -121,20 +108,24 @@ fn unpack_f16x4(packed: vec2<u32>) -> vec4<f32> {
     return vec4<f32>(unpack2x16float(packed.x), unpack2x16float(packed.y));
 }
 
-fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
-    let size = quad.size;
+// The vertex work every quad form shares. The shape's turn about its center leaves `local`, the
+// SDF and the fill in its own frame: only the drawn corners turn.
+fn quad_vertex(vi: u32, shape: PalantirShapeIn, quad: QuadIn) -> VertexOut {
+    let pos = shape.rect.xy;
+    let size = shape.rect.zw;
+    let rotation = shape.inradius_rotation.y;
     let fill_kind = quad.fill_kind;
     // `(tl, tr, br, bl)`, the `Corners` lane order, a radius at each of the shape's points; the
     // axis lanes as the top of this file lays them out per fill kind.
-    let radius = unpack_f16x4(quad.radius_packed);
+    let radius = shape.radius;
     let fill_axis = unpack_f16x4(quad.fill_axis_packed);
-    let bounds = shaded_bounds(quad.pos, size, fill_kind, quad.rotation);
+    let bounds = shaded_bounds(pos, size, fill_kind, rotation);
     let corner = select(bounds.lo, bounds.hi, CORNERS[vi] > vec2<f32>(0.5));
 
     var out: VertexOut;
     // Only the drawn corner turns: `local` stays in the quad's own frame.
-    out.clip         = clip_from_px(turned(corner, quad.pos + size * 0.5, quad.rotation));
-    out.local        = corner - quad.pos;
+    out.clip         = clip_from_px(turned(corner, pos + size * 0.5, rotation));
+    out.local        = corner - pos;
     out.size         = size;
     out.fill         = unpack_f16x4(quad.fill_packed);
     out.radius       = radius;
@@ -145,8 +136,8 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     out.fill_axis    = fill_axis;
     out.inv_size     = 1.0 / max(size, vec2<f32>(PALANTIR_ZERO_EPS));
     out.core         = vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN);
-    out.turned       = u32(quad.rotation != 0.0);
-    out.chain        = quad.chain;
+    out.turned       = u32(rotation != 0.0);
+    out.chain        = shape.chain;
     // Inside the quad by the largest radius, no corner's arc reaches; by the
     // border and `PALANTIR_AA_HALF_WIDTH`, its inner edge's coverage is 1. An outside
     // rect paints outside its shape, and a triangle's rect is not its shape.

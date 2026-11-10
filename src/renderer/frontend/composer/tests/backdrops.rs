@@ -158,7 +158,7 @@ fn a_backdrop_cuts_the_frame_at_its_barrier() {
     );
     let instance = buf.effects.instance()[0];
     assert_eq!((instance.backdrop_idx, instance.opacity), (0, 1.0));
-    assert_eq!(instance.rect, rect);
+    assert_eq!(instance.header.rect, rect);
 }
 
 /// A held backdrop keeps its result, so it breaks nothing: its effect row joins the open group
@@ -324,7 +324,7 @@ fn a_material_over_the_ground_breaks_nothing() {
     assert_eq!(buf.effects.instance()[0].backdrop_idx, 0);
     let instance = buf.effects.instance()[0];
     assert_eq!(
-        instance.points,
+        instance.header.points,
         [
             Vec2::ZERO,
             Vec2::new(40.0, 0.0),
@@ -332,7 +332,7 @@ fn a_material_over_the_ground_breaks_nothing() {
             Vec2::new(0.0, 20.0)
         ]
     );
-    assert_eq!(instance.inradius, 10.0);
+    assert_eq!(instance.header.inradius, 10.0);
     assert_eq!(instance.border_width, 3.0);
 }
 
@@ -345,9 +345,9 @@ fn an_effect_holds_its_shape_for_the_template() {
         &params(2.0, UVec2::new(200, 200)),
     );
     let instance = buf.effects.instance()[0];
-    assert_eq!(instance.rect, Rect::new(10.0, 10.0, 60.0, 20.0));
+    assert_eq!(instance.header.rect, Rect::new(10.0, 10.0, 60.0, 20.0));
     assert_eq!(
-        instance.points,
+        instance.header.points,
         [
             Vec2::ZERO,
             Vec2::new(60.0, 0.0),
@@ -355,7 +355,7 @@ fn an_effect_holds_its_shape_for_the_template() {
             Vec2::new(0.0, 20.0)
         ]
     );
-    assert_eq!(instance.inradius, 10.0);
+    assert_eq!(instance.header.inradius, 10.0);
     assert_eq!(instance.border_width, 0.0);
 }
 
@@ -406,13 +406,13 @@ fn a_triangles_material_packs_as_its_triangle() {
     );
     assert_eq!(instance.corner_count(), 3);
     assert_eq!(
-        instance.rect,
+        instance.header.rect,
         Rect::from_min_max(Vec2::new(8.0, 8.0), Vec2::new(52.0, 32.0))
     );
-    assert_eq!(instance.rect, quad.rect);
-    assert_eq!(instance.points, quad.points);
-    assert_eq!(instance.inradius, quad.inradius);
-    assert_eq!(instance.corners, quad.corners.to_array());
+    assert_eq!(
+        instance.header, quad.header,
+        "the effect's shape is its quad's"
+    );
 }
 
 /// A material and an app's backdrop effect over the same rect, each reaching nothing past it, land

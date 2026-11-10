@@ -477,7 +477,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
     assert_eq!(buf.clear_override, Some(folded), "the cover folds");
     assert_eq!(buf.quads.len(), 1, "underlay quads discarded");
     assert_eq!(
-        buf.quads[0].rect,
+        buf.quads[0].header.rect,
         Rect::new(10.0, 10.0, 20.0, 20.0),
         "survivor keeps the in-flight 2x transform",
     );
@@ -574,7 +574,7 @@ fn indexed_prune_matches_a_full_scan() {
         },
         &params(1.0, UVec2::new(1280, 1280)),
     );
-    let survivors: Vec<Rect> = buf.quads.iter().map(|q| q.rect).collect();
+    let survivors: Vec<Rect> = buf.quads.iter().map(|q| q.header.rect).collect();
     assert_eq!(survivors, expected);
 }
 

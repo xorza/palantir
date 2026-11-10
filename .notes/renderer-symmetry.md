@@ -19,8 +19,8 @@ and an effect hold their shape.
 | B10 Backdrop bound | done |
 | B3 Packer | done |
 | B4 Turns | done |
-| B5 Wire | next |
-| B6 Keys | to do |
+| B5 Wire | done |
+| B6 Keys | next |
 | B7 Effect forms | to do |
 | B8a Material composite | to do, a bug |
 | B8b One composite | waits for D1 |
@@ -192,7 +192,7 @@ makes these one, and keeps the pipelines above.
 
 ## Decisions
 
-- **[part: the wire and WGSL in B5] A draw is a geometry and a paint, geometry outside, at every layer.** A record, a payload and a
+- **[done] A draw is a geometry and a paint, geometry outside, at every layer.** A record, a payload and a
   row each hold a shape and an enum of the paints its family draws. As Skia Graphite records a draw
   as its geometry and its `PaintParams`, and makes the pipeline from the `RenderStep` the geometry
   picks and the paint's key
@@ -206,7 +206,7 @@ makes these one, and keeps the pipelines above.
   to the glyph-atlas family; a box's shadow lowers to the blurred-box family under or over its
   fill. As Graphite's `RendererProvider` picks a `Renderer` from the geometry and the style.
   Refused: a record per renderer family, which puts the renderer's split in the authoring model.
-- **[part: `ShapeHeader` and `PalantirShape` in B5] One closed-shape type per stage.** `ClosedGeometry` in the record, the box's side in it;
+- **[done] One closed-shape type per stage.** `ClosedGeometry` in the record, the box's side in it;
   `PlacedClosed` in the payload; `ShapeHeader` on the wire; `PalantirShape` in WGSL. A paint that
   draws no outside panics at `add_shape`, as an image's does now, and the record store asserts it.
   Named `PlacedClosed`, not `PlacedShape`: a shape is any geometry, a stroke's too (`AGENTS.md`, "A
@@ -272,9 +272,10 @@ makes these one, and keeps the pipelines above.
   a shadow's box packs through it too (`TemplateShape::shadow`). The border's width is the
   paint's, beside the shape. Refused: `DrawEffectPayload::quad`, which built a transparent quad to
   reach a second packer, and `PackedQuad`, the second packer.
-- **[B5] One wire header.** `ShapeHeader { rect, points, radii: Corners, inradius, rotation, clip }`
-  opens `Quad`, `ImageInstance` and `EffectInstance` at the same attribute locations, and one
-  WGSL function reads it into a `PalantirShape`. The radii are f16 in all three, as the effect's
+- **[done] One wire header.** `ShapeHeader { rect, points, corners, inradius, rotation, clip }`
+  opens `Quad`, `ImageInstance` and `EffectInstance` at attribute locations 0 to 5
+  (`shape_template::HEADER_ATTRS`), and one WGSL function, `palantir_shape_of`, reads it into a
+  `PalantirShape`. The radii are f16 in all three, as the effect's
   `[f32; 4]` widens the same f16 values. Refused: three layouts and three readers that must
   agree by hand.
 - **[B6, effects in B7] A pipeline key is a closed-shape form and a paint specialization.** `ShapeForm { Rect, Box,
@@ -322,8 +323,8 @@ The visual suite and the composer's captured streams prove it.
    image's, an effect's and a shadow's box; `PackedQuad` goes.
 4. [x] **B4 Turns**, done. `DrawAnimation` through the gate, one pivot frame, the turned cull
    bound in the composer; `StrokeBounds` goes.
-5. [ ] **B5 Wire.** `ShapeHeader` in Rust and WGSL; one reader replaces `instance_shape`,
-   `shaped_vertex` and the reader in `palantir_vs`.
+5. [x] **B5 Wire**, done. `ShapeHeader` in Rust and WGSL; `palantir_shape_of` replaces
+   `instance_shape` and the readers in `shaped_vertex` and `palantir_vs`.
 6. [ ] **B6 Keys.** `ShapeForm`, `FillKind` as a brush tag, the key column for quads, `FAST_BIT` out.
 7. [ ] **B7 Effect forms.** Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
    `OUTSIDE` go.

@@ -13,24 +13,13 @@ const IMAGE_GROUP: u32 = /*{IMAGE_GROUP}*/;
 @group(IMAGE_GROUP) @binding(0) var tex:     texture_2d<f32>;
 @group(IMAGE_GROUP) @binding(1) var tex_smp: sampler;
 
+// The instance attributes an image reads past its shape (`PalantirShapeIn`): the UV rect
+// `(min, size)`, the tint, the flags, and the decal a shaped image fades past.
 struct VsIn {
-    // Per-instance.
-    @location(0) rect_min:  vec2<f32>,
-    @location(1) rect_size: vec2<f32>,
-    @location(2) uv_min:    vec2<f32>,
-    @location(3) uv_size:   vec2<f32>,
-    @location(4) tint:      vec4<f32>,
-    @location(5) flags:     u32,
-    // A paint animation's turn about the rect's center, in radians; 0 for none.
-    @location(6) rotation:  f32,
-    // A shaped image's clipping shape (`shaped_vertex`), unread by `vs`.
-    @location(7) points01:  vec4<f32>,
-    @location(8) points23:  vec4<f32>,
-    @location(9) corners:   vec4<f32>,
-    @location(10) inradius: f32,
-    @location(11) decal:    vec4<f32>,
-    // The rounded clips that cut the image (`ClipChain`).
-    @location(12) chain:    u32,
+    @location(6) uv:    vec4<f32>,
+    @location(7) tint:  vec4<f32>,
+    @location(8) flags: u32,
+    @location(9) decal: vec4<f32>,
 };
 
 struct VsOut {
@@ -50,29 +39,32 @@ struct VsOut {
 };
 
 @vertex
-fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
+fn vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, in: VsIn) -> VsOut {
+    let rect_min = shape.rect.xy;
+    let rect_size = shape.rect.zw;
+    let rotation = shape.inradius_rotation.y;
     var c = CORNERS[vi];
     var out: VsOut;
-    let half = in.rect_size * 0.5;
-    var at = in.rect_min + c * in.rect_size;
-    if (in.rotation != 0.0) {
+    let half = rect_size * 0.5;
+    var at = rect_min + c * rect_size;
+    if (rotation != 0.0) {
         // A turned edge falls between pixels, so the quad reaches
         // `PALANTIR_AA_HALF_WIDTH` past it in the image's own frame, where a rotation
         // keeps distances, and the uv runs on with it.
-        c = (c * in.rect_size + (c * 2.0 - 1.0) * PALANTIR_AA_HALF_WIDTH) / max(in.rect_size, vec2<f32>(1e-6));
-        let l = c * in.rect_size - half;
-        let cs = vec2<f32>(cos(in.rotation), sin(in.rotation));
-        at = in.rect_min + half + vec2<f32>(cs.x * l.x - cs.y * l.y, cs.y * l.x + cs.x * l.y);
+        c = (c * rect_size + (c * 2.0 - 1.0) * PALANTIR_AA_HALF_WIDTH) / max(rect_size, vec2<f32>(1e-6));
+        let l = c * rect_size - half;
+        let cs = vec2<f32>(cos(rotation), sin(rotation));
+        at = rect_min + half + vec2<f32>(cs.x * l.x - cs.y * l.y, cs.y * l.x + cs.x * l.y);
     }
     out.clip = clip_from_px(at);
-    out.local = c * in.rect_size - half;
+    out.local = c * rect_size - half;
     out.half_size = half;
-    out.turned = u32(in.rotation != 0.0);
-    out.uv   = in.uv_min + c * in.uv_size;
+    out.turned = u32(rotation != 0.0);
+    out.uv   = in.uv.xy + c * in.uv.zw;
     out.tint = in.tint;
     out.flags = in.flags;
-    out.uv_rect = vec4<f32>(in.uv_min, in.uv_min + in.uv_size);
-    out.chain = in.chain;
+    out.uv_rect = vec4<f32>(in.uv.xy, in.uv.xy + in.uv.zw);
+    out.chain = shape.chain;
     return out;
 }
 

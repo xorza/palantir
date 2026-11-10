@@ -1,14 +1,12 @@
 //! Per-instance quad data: the Pod type the composer hands, through `RenderBuffer`, to the backend's `QuadPipeline`.
 
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::size::Size;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::{self, AA_HALF_WIDTH};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::renderer::render_buffer::clip_chain::ClipChain;
+use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 
@@ -22,10 +20,10 @@ use glam::Vec2;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {
-    pub(crate) rect: Rect,
+    /// The shape, its turn and its rounded clips, as every template pipeline's instance opens.
+    pub(crate) header: ShapeHeader,
     /// Linear-RGB fill as four `f16` (8 B), straight-alpha; the shader premultiplies at output.
     pub(crate) fill: RgbaF16,
-    pub(crate) corners: Corners,
     pub(crate) border_color: RgbaF16,
     pub(crate) border_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
@@ -33,71 +31,35 @@ pub(crate) struct Quad {
     /// Gradient atlas row when `fill_kind` is a gradient tag; `LutRow::FALLBACK` (0) is the magenta debug fallback, written by solid quads and ignored.
     pub(crate) fill_lut_row: LutRow,
     pub(crate) fill_axis: FillAxis,
-    /// A paint animation's turn about the rect's center, in radians; `0` for none. `rect` and
-    /// every lane above stay in the quad's own unturned frame.
-    pub(crate) rotation: f32,
-    /// A closed shape's sharp corners from `rect.min`, clockwise on screen: a box's
-    /// `(tl, tr, br, bl)`, a triangle's three points grown by its radius, its fourth unused. With
-    /// `corners`' radii, what the template's vertex stage builds the shape from
-    /// (`quad_pipeline/template.wgsl`), with no branch per kind of shape.
-    pub(crate) points: [Vec2; 4],
-    /// The radius of the largest circle inside the sharp polygon, the deepest any point lies inside
-    /// every edge: half a box's shorter side, a triangle's own inradius plus its growth.
-    pub(crate) inradius: f32,
-    /// The rounded clips that cut the quad; [`ClipChain::NONE`] by default.
-    pub(crate) clip: ClipChain,
 }
 
 impl Quad {
-    /// A box over `rect`: its points the rect's corners and its inradius half its shorter side, every
-    /// other lane at its default.
+    /// A box over `rect`, every other lane at its default.
     pub(crate) fn of_rect(rect: Rect) -> Self {
         Self {
-            rect,
-            points: Self::box_points(rect.size),
-            inradius: Self::box_inradius(rect.size),
+            header: ShapeHeader::of_box(rect),
             ..Self::default()
         }
-    }
-
-    /// The corners of a box of `size` from its top-left, `(tl, tr, br, bl)`.
-    pub(crate) const fn box_points(size: Size) -> [Vec2; 4] {
-        [
-            Vec2::ZERO,
-            Vec2::new(size.w, 0.0),
-            Vec2::new(size.w, size.h),
-            Vec2::new(0.0, size.h),
-        ]
-    }
-
-    /// The inradius of a box of `size`: half its shorter side.
-    pub(crate) const fn box_inradius(size: Size) -> f32 {
-        0.5 * size.w.min(size.h)
     }
 
     /// Whether the quad holds the shape the template draws: a box's points and inradius are its
     /// rect's, as the template builds a box from them; a triangle holds its own, and a shadow
     /// draws no template.
     pub(crate) fn has_shape(&self) -> bool {
-        self.fill_kind.is_shadow()
-            || self.fill_kind.is_triangle()
-            || (self.points == Self::box_points(self.rect.size)
-                && self.inradius == Self::box_inradius(self.rect.size))
+        self.fill_kind.is_shadow() || self.fill_kind.is_triangle() || self.header.is_box()
     }
 
     /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/quad.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; an outside rect is drawn at its rect. A turned quad, outside or not, grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the whole pixels around that turned about the rect's center.
     pub(crate) fn shaded_rect(&self) -> Rect {
-        if self.rotation == 0.0 {
+        let ShapeHeader { rect, rotation, .. } = self.header;
+        if rotation == 0.0 {
             if self.fill_kind.is_outside() {
-                return self.rect;
+                return rect;
             }
             let grow = Vec2::splat(AA_HALF_WIDTH - 0.5);
-            return Rect::from_min_max(
-                (self.rect.min - grow).floor(),
-                (self.rect.max() + grow).ceil(),
-            );
+            return Rect::from_min_max((rect.min - grow).floor(), (rect.max() + grow).ceil());
         }
-        let turned = antialias::turned_reach(self.rect, self.rotation);
+        let turned = antialias::turned_reach(rect, rotation);
         Rect::from_min_max(turned.min.floor(), turned.max().ceil())
     }
 }
@@ -107,13 +69,17 @@ mod tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::renderer::quad::Quad;
+    use crate::renderer::render_buffer::shape_header::ShapeHeader;
 
     /// A rect on pixel boundaries shades itself; otherwise every pixel its edges cross: (10.25, 3)..(20.5, 8) is columns 10..21, rows 3..8.
     #[test]
     fn a_quad_shades_the_pixels_its_edges_cross() {
         let shaded = |rect: Rect, fill_kind: FillKind| {
             Quad {
-                rect,
+                header: ShapeHeader {
+                    rect,
+                    ..ShapeHeader::default()
+                },
                 fill_kind,
                 ..Quad::default()
             }
@@ -134,9 +100,12 @@ mod tests {
     #[test]
     fn a_turned_quad_shades_the_pixels_around_its_turned_bound() {
         let quad = Quad {
-            rect: Rect::new(10.0, 10.0, 20.0, 10.0),
+            header: ShapeHeader {
+                rect: Rect::new(10.0, 10.0, 20.0, 10.0),
+                rotation: std::f32::consts::FRAC_PI_6,
+                ..ShapeHeader::default()
+            },
             fill_kind: FillKind::SOLID,
-            rotation: std::f32::consts::FRAC_PI_6,
             ..Quad::default()
         };
         assert_eq!(quad.shaded_rect(), Rect::new(8.0, 4.0, 24.0, 22.0));

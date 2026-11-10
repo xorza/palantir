@@ -15,7 +15,7 @@ fn quad(x: f32, kind: FillKind) -> Quad {
 /// The order `join` leaves, as the x of each quad.
 fn joined(quads: &mut [Quad]) -> Vec<f32> {
     QuadRuns::default().join(quads);
-    quads.iter().map(|q| q.rect.min.x).collect()
+    quads.iter().map(|q| q.header.rect.min.x).collect()
 }
 
 /// Apart quads alternating solid and gradient join into one run of each, the later solid moving

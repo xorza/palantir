@@ -220,7 +220,7 @@ const PINS: &[Pin] = &[
     pin::<Quad>("renderer::Quad", 104, 4),
     pin::<CurveInstance>("renderer::CurveInstance", 80, 4),
     pin::<MeshInstance>("renderer::MeshInstance", 36, 4),
-    pin::<EffectInstance>("renderer::EffectInstance", 104, 4),
+    pin::<EffectInstance>("renderer::EffectInstance", 96, 4),
     pin::<ImageInstance>("renderer::ImageInstance", 112, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
     pin::<RasterQuad>("raster_pipeline::RasterQuad", 36, 4),

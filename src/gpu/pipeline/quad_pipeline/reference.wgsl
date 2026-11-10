@@ -8,13 +8,13 @@
 const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
 
 @vertex
-fn vs(@builtin(vertex_index) vi: u32, quad: QuadIn) -> VertexOut {
-    var out = quad_vertex(vi, quad);
+fn vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: QuadIn) -> VertexOut {
+    var out = quad_vertex(vi, shape, quad);
     if (form_is_triangle()) {
         // The triangle's points are its corners' arc centers, which the instance's grown points
         // and radius give (`palantir_shape_corner`); `fs` takes them in `radius` and `core`, which
         // a triangle does not read, the radius in `core.z`.
-        let s = instance_shape(quad, 3u, out.radius);
+        let s = palantir_shape_of(shape, 3u);
         let a = palantir_shape_corner(s, 0u);
         out.radius = vec4<f32>(a.c, palantir_shape_corner(s, 1u).c);
         out.core = vec4<f32>(palantir_shape_corner(s, 2u).c, a.r, 0.0);

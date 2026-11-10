@@ -10,7 +10,8 @@ use crate::primitives::packed::half_simd::F16x4;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
+use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
@@ -18,7 +19,7 @@ use glam::Vec2;
 
 /// A closed shape in physical px as the shape template takes it: its covering rect and the whole
 /// pixels it reaches, its sharp points relative to that rect, a radius at each, its inradius, and
-/// a paint animation's turn about the rect's center (`Quad::points`).
+/// a paint animation's turn about the rect's center (`ShapeHeader`).
 #[derive(Debug)]
 pub(super) struct TemplateShape {
     /// The shape's own rect, unturned, moved by a turn about its pivot, and the whole pixels it
@@ -28,7 +29,7 @@ pub(super) struct TemplateShape {
     pub(super) points: [Vec2; 4],
     /// A radius at each point, `(tl, tr, br, bl)` for a box.
     pub(super) corners: Corners,
-    /// The shape's inradius (`Quad::inradius`).
+    /// The shape's inradius (`ShapeHeader::inradius`).
     pub(super) inradius: f32,
     /// A paint animation's turn about the rect's center, in radians; 0 for none.
     pub(super) rotation: f32,
@@ -109,6 +110,18 @@ impl TemplateShape {
         }
     }
 
+    /// The shape as an instance opens with it, cut by the rounded clips of `clip`.
+    pub(super) const fn header(&self, clip: ClipChain) -> ShapeHeader {
+        ShapeHeader {
+            rect: self.rect.physical,
+            points: self.points,
+            corners: self.corners,
+            inradius: self.inradius,
+            rotation: self.rotation,
+            clip,
+        }
+    }
+
     /// Unturned under a border `border_width` physical px wide, with no rounded corner: the edges
     /// are the rect's.
     pub(super) const fn is_sharp(&self, border_width: f32) -> bool {
@@ -132,9 +145,9 @@ impl TemplateShape {
         let size = rect.physical.size;
         Self {
             rect,
-            points: Quad::box_points(size),
+            points: ShapeHeader::box_points(size),
             corners,
-            inradius: Quad::box_inradius(size),
+            inradius: ShapeHeader::box_inradius(size),
             rotation: 0.0,
         }
     }

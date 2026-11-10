@@ -549,7 +549,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
                 group
                     .quads
                     .range()
-                    .any(|qi| buf.quads[qi].rect.min.y == quad_y)
+                    .any(|qi| buf.quads[qi].header.rect.min.y == quad_y)
             })
             .map(|(i, _)| i as u32)
             .expect("panel quad group");

@@ -541,7 +541,7 @@ impl CutoutPlan {
             return None;
         }
         let shadow = ShadowBox::of(quad);
-        let center = quad.rect.center() + shadow.center;
+        let center = quad.header.rect.center() + shadow.center;
         let reach = ShadowGeometry::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
         let (lo, hi) = (center - shadow.half, center + shadow.half);
         // Each square runs `r + reach` inward and `reach` outward.
@@ -586,7 +586,7 @@ impl ShadowBox {
     fn of(quad: &Quad) -> Self {
         debug_assert!(quad.fill_kind.is_shadow(), "a shadow quad");
         let [x, y, sigma, spread] = quad.fill_axis.lanes();
-        let half = Vec2::new(quad.rect.size.w, quad.rect.size.h) * 0.5;
+        let half = Vec2::new(quad.header.rect.size.w, quad.header.rect.size.h) * 0.5;
         let (center, half, spread) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
             let source = half - Vec2::splat(ShadowGeometry::REACH_SIGMAS * sigma + spread.max(0.0));
             (
@@ -605,7 +605,7 @@ impl ShadowBox {
             center,
             half,
             radius: corners::fit(
-                spread_radius(quad.corners.to_array(), spread),
+                spread_radius(quad.header.corners.to_array(), spread),
                 Size::new(2.0 * half.x, 2.0 * half.y),
             ),
         }

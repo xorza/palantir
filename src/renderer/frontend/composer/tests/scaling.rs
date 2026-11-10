@@ -182,8 +182,8 @@ fn compose_scales_rects_for_dpr() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.rect.min, Vec2::new(20.0, 40.0));
-    assert_eq!(q.rect.size, Size::new(60.0, 80.0));
+    assert_eq!(q.header.rect.min, Vec2::new(20.0, 40.0));
+    assert_eq!(q.header.rect.size, Size::new(60.0, 80.0));
 }
 
 #[test]
@@ -198,8 +198,8 @@ fn compose_translates_under_push_transform() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.rect.min, Vec2::new(110.0, 70.0));
-    assert_eq!(q.rect.size, Size::new(30.0, 40.0));
+    assert_eq!(q.header.rect.min, Vec2::new(110.0, 70.0));
+    assert_eq!(q.header.rect.size, Size::new(30.0, 40.0));
 }
 
 #[test]
@@ -216,8 +216,8 @@ fn compose_scales_radius_and_border_under_transform() {
         &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
-    assert_eq!(q.rect.size, Size::new(100.0, 100.0));
-    assert_eq!(q.corners.to_array()[0], 16.0);
+    assert_eq!(q.header.rect.size, Size::new(100.0, 100.0));
+    assert_eq!(q.header.corners.to_array()[0], 16.0);
     assert_eq!(q.border_width, 3.0);
 }
 
@@ -259,7 +259,7 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
     assert_eq!(buf.quads.len(), 1);
     // 100 × 1.013 and 50 × 1.013 — preserved, not snapped.
     assert_eq!(
-        buf.quads[0].rect.size,
+        buf.quads[0].header.rect.size,
         Size::new(100.0 * 1.013, 50.0 * 1.013)
     );
 }
@@ -293,8 +293,8 @@ fn compose_composes_nested_transforms() {
         &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
-    assert_eq!(q.rect.min, Vec2::new(1.0, 51.0));
-    assert_eq!(q.rect.size, Size::new(32.0, 40.0));
+    assert_eq!(q.header.rect.min, Vec2::new(1.0, 51.0));
+    assert_eq!(q.header.rect.size, Size::new(32.0, 40.0));
 }
 
 #[test]
@@ -460,20 +460,20 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     assert_eq!(buf.quads.len(), 1);
     let quad = buf.quads[0];
     assert_eq!(
-        quad.rect,
+        quad.header.rect,
         Rect::from_min_max(Vec2::new(11.3, 5.1), Vec2::new(3015.7, 2952.6)),
     );
-    assert_eq!(quad.corners, Corners::new(2.0, 2.0, 2.0, 0.0));
+    assert_eq!(quad.header.corners, Corners::new(2.0, 2.0, 2.0, 0.0));
     let [a, b, c] = points;
     let cross = (b - a).perp_dot(c - a);
     assert!(cross < 0.0, "given counterclockwise");
     let perimeter = (b - a).length() + (c - b).length() + (a - c).length();
-    assert_eq!(quad.inradius, cross.abs() / perimeter + 2.0);
+    assert_eq!(quad.header.inradius, cross.abs() / perimeter + 2.0);
     // Clockwise, as the quad holds them: the last two swapped.
     let clockwise = [a, c, b];
-    let grown: [Vec2; 3] = std::array::from_fn(|i| quad.rect.min + quad.points[i]);
+    let grown: [Vec2; 3] = std::array::from_fn(|i| quad.header.rect.min + quad.header.points[i]);
     assert_eq!(
-        quad.points[3], quad.points[2],
+        quad.header.points[3], quad.header.points[2],
         "the fourth point repeats the third"
     );
     let normal = |p: Vec2, q: Vec2| {
@@ -530,23 +530,31 @@ fn a_turned_triangle_turns_its_quad_about_its_pivot() {
     };
     let still = quad(None);
     assert_eq!(
-        still.rect,
+        still.header.rect,
         Rect::from_min_max(Vec2::new(6.0, 6.0), Vec2::new(30.0, 30.0))
     );
-    assert_eq!(still.rotation, 0.0);
+    assert_eq!(still.header.rotation, 0.0);
     let turned = quad(Some(Spin {
         pivot: Vec2::new(14.0, 14.0),
         angle: FRAC_PI_2,
     }));
     assert!(
-        turned.rect.min.abs_diff_eq(Vec2::new(26.0, 6.0), EPS)
-            && turned.rect.max().abs_diff_eq(Vec2::new(50.0, 30.0), EPS),
+        turned
+            .header
+            .rect
+            .min
+            .abs_diff_eq(Vec2::new(26.0, 6.0), EPS)
+            && turned
+                .header
+                .rect
+                .max()
+                .abs_diff_eq(Vec2::new(50.0, 30.0), EPS),
         "{:?}",
-        turned.rect
+        turned.header.rect
     );
-    assert_eq!(turned.rotation, FRAC_PI_2);
-    assert_eq!(turned.points, still.points);
-    assert_eq!(turned.inradius, still.inradius);
+    assert_eq!(turned.header.rotation, FRAC_PI_2);
+    assert_eq!(turned.header.points, still.header.points);
+    assert_eq!(turned.header.inradius, still.header.inradius);
 }
 
 /// A triangle's gradient reaches its quad as a rect's does: the kind with the triangle bit, the
@@ -630,7 +638,7 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
         );
         assert_eq!(buf.quads.len(), 1);
         assert_eq!(
-            buf.quads[0].rect, want,
+            buf.quads[0].header.rect, want,
             "snap {}, {transform:?}",
             display.pixel_snap
         );
@@ -684,8 +692,8 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.rect, Rect::new(4.5, 1.0, 58.0, 35.0));
-    assert_eq!(q.corners, Corners::all(4.0));
+    assert_eq!(q.header.rect, Rect::new(4.5, 1.0, 58.0, 35.0));
+    assert_eq!(q.header.corners, Corners::all(4.0));
     assert_eq!(q.fill_axis.lanes(), [3.0, -1.5, 3.0, 1.5]);
 
     let point = Rect::new(50.0, 50.0, 0.0, 0.0);
@@ -697,7 +705,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 1, "only the spread one paints");
-    assert_eq!(buf.quads[0].rect, Rect::new(48.0, 48.0, 4.0, 4.0));
+    assert_eq!(buf.quads[0].header.rect, Rect::new(48.0, 48.0, 4.0, 4.0));
 
     let buf = run(
         |b, _| {
@@ -715,7 +723,10 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     assert_eq!(buf.quads.len(), 1, "the widest shadow still paints");
     let q = &buf.quads[0];
     assert_eq!(q.fill_axis.lanes(), [0.0, 0.0, 65504.0, 0.0]);
-    assert_eq!(q.rect, Rect::new(-261996.0, -261996.0, 524072.0, 524072.0));
+    assert_eq!(
+        q.header.rect,
+        Rect::new(-261996.0, -261996.0, 524072.0, 524072.0)
+    );
 }
 
 /// A mesh at origin (4, 4), at display scale 2, its instance `x_axis`, `y_axis` and `translate`.
@@ -820,12 +831,16 @@ fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
     assert_eq!(buf.quads.len(), 2, "the turned quad occludes nothing");
     let turned = buf.quads[1];
     assert!(
-        turned.rect.min.abs_diff_eq(Vec2::new(90.0, 90.0), EPS),
+        turned
+            .header
+            .rect
+            .min
+            .abs_diff_eq(Vec2::new(90.0, 90.0), EPS),
         "{:?}",
-        turned.rect
+        turned.header.rect
     );
-    assert_eq!(turned.rect.size, Size::new(40.0, 20.0));
-    assert_eq!(turned.rotation, FRAC_PI_2);
+    assert_eq!(turned.header.rect.size, Size::new(40.0, 20.0));
+    assert_eq!(turned.header.rotation, FRAC_PI_2);
     assert!(
         !turned.fill_kind.is_fast(),
         "a turned quad is not pixel-aligned"
@@ -870,15 +885,15 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
         buf.images.instance()[0]
     };
     let contained = shaped(Rect::new(17.5, 5.0, 25.0, 25.0), None);
-    assert_eq!(contained.rect, Rect::new(10.0, 10.0, 100.0, 50.0));
+    assert_eq!(contained.header.rect, Rect::new(10.0, 10.0, 100.0, 50.0));
     assert_eq!(contained.uv_min, Vec2::new(-0.5, 0.0));
     assert_eq!(contained.uv_size, Vec2::new(2.0, 1.0));
     assert_eq!(contained.decal_min, Vec2::new(25.0, -f32::MAX));
     assert_eq!(contained.decal_max, Vec2::new(75.0, f32::MAX));
     assert_eq!(contained.flags, ImageFlags::TILED);
-    assert_eq!(contained.corners, Corners::all(8.0));
+    assert_eq!(contained.header.corners, Corners::all(8.0));
     assert_eq!(
-        contained.points,
+        contained.header.points,
         [
             Vec2::ZERO,
             Vec2::new(100.0, 0.0),
@@ -886,8 +901,8 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
             Vec2::new(0.0, 50.0)
         ]
     );
-    assert_eq!(contained.inradius, 25.0);
-    assert_eq!(contained.rotation, 0.0);
+    assert_eq!(contained.header.inradius, 25.0);
+    assert_eq!(contained.header.rotation, 0.0);
 
     // Turned about the shape's center, logical (30, 17.5), the quad stays and turns in the
     // shader, the uv and the decal in its own frame.
@@ -898,8 +913,8 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
             angle: FRAC_PI_2,
         }),
     );
-    assert_eq!(turned.rect, contained.rect);
-    assert_eq!(turned.rotation, FRAC_PI_2);
+    assert_eq!(turned.header.rect, contained.header.rect);
+    assert_eq!(turned.header.rotation, FRAC_PI_2);
     assert_eq!(
         (
             turned.uv_min,
@@ -973,13 +988,13 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
     let image = buf.images.instance()[0];
     let quad = buf.quads[0];
     assert_eq!(
-        image.rect,
+        image.header.rect,
         Rect::from_min_max(Vec2::new(8.0, 8.0), Vec2::new(52.0, 32.0))
     );
-    assert_eq!(image.rect, quad.rect);
-    assert_eq!(image.points, quad.points);
-    assert_eq!(image.corners, quad.corners);
-    assert_eq!(image.inradius, quad.inradius);
+    assert_eq!(image.header.rect, quad.header.rect);
+    assert_eq!(image.header.points, quad.header.points);
+    assert_eq!(image.header.corners, quad.header.corners);
+    assert_eq!(image.header.inradius, quad.header.inradius);
     assert_eq!(image.uv_min, Vec2::ZERO);
     assert_eq!(image.uv_size, Vec2::ONE);
     assert_eq!(image.decal_min, Vec2::splat(-f32::MAX));

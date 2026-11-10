@@ -28,30 +28,20 @@ struct TemplateOut {
     @location(12) @interpolate(flat) chain: u32,
 };
 
-// The shape the instance describes, of `n` corners, its radii `radius`.
-fn instance_shape(quad: QuadIn, n: u32, radius: vec4<f32>) -> PalantirShape {
-    var s: PalantirShape;
-    s.n = n;
-    s.p0 = quad.points01.xy;
-    s.p1 = quad.points01.zw;
-    s.p2 = quad.points23.xy;
-    s.p3 = quad.points23.zw;
-    s.radius = radius;
-    s.inradius = quad.inradius;
-    return s;
-}
-
 // `vs` for a box, a circle or a triangle drawn as its template: the regions where the shape's
 // distance has a closed form, so the fragment takes the fill alone inside, interpolates the
 // distance across an edge's band, and measures one length across a corner's ring.
 @vertex
-fn vs_template(@builtin(vertex_index) vi: u32, quad: QuadIn) -> TemplateOut {
-    let q = quad_vertex(0u, quad);
+fn vs_template(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: QuadIn) -> TemplateOut {
+    let q = quad_vertex(0u, shape, quad);
+    let pos = shape.rect.xy;
+    let size = shape.rect.zw;
+    let rotation = shape.inradius_rotation.y;
     let outside = (quad.fill_kind & FILL_FLAG_OUTSIDE) != 0u;
-    let s = instance_shape(quad, select(4u, 3u, form_is_triangle()), q.radius);
+    let s = palantir_shape_of(shape, select(4u, 3u, form_is_triangle()));
     // An outside rect over content of its own extent stops at its rect; turned, its edge is visible
     // and fades as any edge does, so it reaches past it too.
-    let outset = select(PALANTIR_AA_HALF_WIDTH, 0.0, outside && quad.rotation == 0.0);
+    let outset = select(PALANTIR_AA_HALF_WIDTH, 0.0, outside && rotation == 0.0);
     let v = palantir_template_vertex(s, vi, quad.border_width, outset, outside);
     var out: TemplateOut;
     out.region = v.region;
@@ -65,9 +55,9 @@ fn vs_template(@builtin(vertex_index) vi: u32, quad: QuadIn) -> TemplateOut {
     out.fill_lut_row = q.fill_lut_row;
     out.fill_axis = q.fill_axis;
     out.inv_size = q.inv_size;
-    out.turned_size = select(vec2<f32>(0.0), quad.size, outside && quad.rotation != 0.0);
-    out.chain = quad.chain;
-    out.clip = clip_from_px(turned(quad.pos + v.pos, quad.pos + quad.size * 0.5, quad.rotation));
+    out.turned_size = select(vec2<f32>(0.0), size, outside && rotation != 0.0);
+    out.chain = shape.chain;
+    out.clip = clip_from_px(turned(pos + v.pos, pos + size * 0.5, rotation));
     return out;
 }
 

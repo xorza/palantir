@@ -5,8 +5,6 @@
 use std::array;
 use std::mem::offset_of;
 
-use glam::Vec2;
-
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
 use crate::effect::contract::{BACKDROPS_GROUP, IMAGES_GROUP, WORDS_GROUP};
@@ -116,65 +114,55 @@ const BLEND: wgpu::BlendState = wgpu::BlendState {
     },
 };
 
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = [
-    vertex_attr(
-        0,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(EffectInstance, rect),
-    ),
-    vertex_attr(
-        1,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(EffectInstance, corners),
-    ),
-    // `time`, `opacity`, `scale` and `rotation`, one after another.
-    vertex_attr(
-        2,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(EffectInstance, time),
-    ),
-    vertex_attr(
-        3,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(EffectInstance, params),
-    ),
-    vertex_attr(
-        4,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(EffectInstance, backdrop_idx),
-    ),
-    vertex_attr(
-        5,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(EffectInstance, flags),
-    ),
-    // The shape as the template takes it, two points a slot.
-    vertex_attr(
-        6,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(EffectInstance, points),
-    ),
-    vertex_attr(
-        7,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(EffectInstance, points) + 2 * size_of::<Vec2>(),
-    ),
-    vertex_attr(
-        8,
-        wgpu::VertexFormat::Float32,
-        offset_of!(EffectInstance, inradius),
-    ),
-    vertex_attr(
-        9,
-        wgpu::VertexFormat::Float32,
-        offset_of!(EffectInstance, border_width),
-    ),
-    vertex_attr(
-        10,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(EffectInstance, clip),
-    ),
-];
+/// The effect's header, then its clock `(time, opacity, scale)`, its parameters' first word, its
+/// backdrop's row, its flags and a material's border width.
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = {
+    let h = shape_template::HEADER_ATTRS;
+    let at = shape_template::HEADER_LOCATIONS;
+    [
+        h[0],
+        h[1],
+        h[2],
+        h[3],
+        h[4],
+        h[5],
+        vertex_attr(
+            at,
+            wgpu::VertexFormat::Float32x3,
+            offset_of!(EffectInstance, time),
+        ),
+        vertex_attr(
+            at + 1,
+            wgpu::VertexFormat::Uint32,
+            offset_of!(EffectInstance, params),
+        ),
+        vertex_attr(
+            at + 2,
+            wgpu::VertexFormat::Uint32,
+            offset_of!(EffectInstance, backdrop_idx),
+        ),
+        vertex_attr(
+            at + 3,
+            wgpu::VertexFormat::Uint32,
+            offset_of!(EffectInstance, flags),
+        ),
+        vertex_attr(
+            at + 4,
+            wgpu::VertexFormat::Float32,
+            offset_of!(EffectInstance, border_width),
+        ),
+    ]
+};
+
+const _: () = {
+    assert!(offset_of!(EffectInstance, header) == 0);
+    assert!(
+        offset_of!(EffectInstance, opacity) == offset_of!(EffectInstance, time) + size_of::<f32>()
+    );
+    assert!(
+        offset_of!(EffectInstance, scale) == offset_of!(EffectInstance, opacity) + size_of::<f32>()
+    );
+};
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
     size_of::<EffectInstance>(),

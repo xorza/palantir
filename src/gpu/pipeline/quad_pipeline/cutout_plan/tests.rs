@@ -11,6 +11,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};
@@ -18,8 +19,10 @@ use glam::{U16Vec2, UVec2, Vec2};
 /// A drop shadow over a `size` quad, every corner `radius`, blurred by `sigma`, no spread.
 fn drop_shadow(size: Size, radius: f32, sigma: f32) -> Quad {
     Quad {
-        rect: Rect::new(0.0, 0.0, size.w, size.h),
-        corners: Corners::all(radius),
+        header: ShapeHeader {
+            corners: Corners::all(radius),
+            ..ShapeHeader::of_box(Rect::new(0.0, 0.0, size.w, size.h))
+        },
         fill_kind: FillKind::SHADOW_DROP,
         fill_axis: FillAxis::from_lanes([0.0, 0.0, sigma, 0.0]),
         ..Quad::default()
@@ -103,7 +106,7 @@ fn row(n: usize, x: f32) -> Vec<Quad> {
     (0..n)
         .map(|k| {
             let mut quad = drop_shadow(Size::new(100.0, 100.0), 8.0, 2.0);
-            quad.rect.min.x = x + 120.0 * k as f32;
+            quad.header.rect.min.x = x + 120.0 * k as f32;
             quad
         })
         .collect()
@@ -177,8 +180,10 @@ fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
 #[test]
 fn shadow_box_follows_the_shader() {
     let shadow = |kind: FillKind, size: Size, radii: [f32; 4], axis: [f32; 4]| Quad {
-        rect: Rect::new(0.0, 0.0, size.w, size.h),
-        corners: Corners::new(radii[0], radii[1], radii[2], radii[3]),
+        header: ShapeHeader {
+            corners: Corners::new(radii[0], radii[1], radii[2], radii[3]),
+            ..ShapeHeader::of_box(Rect::new(0.0, 0.0, size.w, size.h))
+        },
         fill_kind: kind,
         fill_axis: FillAxis::from_lanes(axis),
         ..Quad::default()
@@ -243,9 +248,9 @@ fn shadow_box_follows_the_shader() {
     let inputs: Vec<ShadowBoxIn> = quads
         .iter()
         .map(|quad| ShadowBoxIn {
-            radius: quad.corners.to_array(),
+            radius: quad.header.corners.to_array(),
             fill_axis: quad.fill_axis.lanes(),
-            half: [quad.rect.size.w * 0.5, quad.rect.size.h * 0.5],
+            half: [quad.header.rect.size.w * 0.5, quad.header.rect.size.h * 0.5],
             kind: quad.fill_kind.tag(),
             pad: 0,
         })
@@ -552,7 +557,10 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
     let quads: Vec<Quad> = row(14, 0.0)
         .into_iter()
         .map(|quad| Quad {
-            rect: Rect::new(-80.0, 0.0, 100.0, 100.0),
+            header: ShapeHeader {
+                rect: Rect::new(-80.0, 0.0, 100.0, 100.0),
+                ..quad.header
+            },
             ..quad
         })
         .collect();
@@ -565,7 +573,10 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
     let quads: Vec<Quad> = row(28, 0.0)
         .into_iter()
         .map(|quad| Quad {
-            corners: Corners::new(8.0, 8.0, 4.0, 4.0),
+            header: ShapeHeader {
+                corners: Corners::new(8.0, 8.0, 4.0, 4.0),
+                ..quad.header
+            },
             ..quad
         })
         .collect();
@@ -677,7 +688,7 @@ fn a_partial_repaint_that_moves_a_kept_table_is_stale() {
     let others: Vec<Quad> = (0..14)
         .map(|k| {
             let mut quad = drop_shadow(Size::new(100.0, 100.0), 12.0, 2.0);
-            quad.rect.min = Vec2::new(120.0 * k as f32, 200.0);
+            quad.header.rect.min = Vec2::new(120.0 * k as f32, 200.0);
             quad
         })
         .collect();

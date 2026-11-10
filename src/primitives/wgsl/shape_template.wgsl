@@ -1,7 +1,7 @@
 // The template a closed shape's vertex stage builds, the same for every pipeline that draws one:
-// per corner a ring, per edge a band, and an interior fan (`palantir_template_vertex`). The
-// includer describes the `PalantirShape` from its own instance and reads the regions in its
-// fragment.
+// per corner a ring, per edge a band, and an interior fan (`palantir_template_vertex`). Every
+// includer's instance opens with the shape (`ShapeHeader`), which `palantir_shape_of` reads, and
+// its fragment reads the regions.
 
 // The regions of a shape's template (`palantir_template_vertex`).
 const PALANTIR_REGION_INTERIOR: u32 = 0u;
@@ -17,7 +17,7 @@ const PALANTIR_POINT_INNER: u32 = 1u;
 const PALANTIR_POINT_DEEP: u32 = 2u;
 
 // A shape as its template reads it: a convex polygon of `n` corners, 3 or 4, in the quad's own
-// frame, as the CPU describes it (`Quad::points`): sharp points clockwise on screen, a radius at
+// frame, as the CPU describes it (`ShapeHeader::points`): sharp points clockwise on screen, a radius at
 // each, and its inradius, the deepest any point lies inside every edge. Corner `i` is an arc of radius `r` about `c`, swept from
 // `na`, the outward normal of the edge before it, to `nb`, the normal of the edge from corner `i` to
 // corner `i + 1`; a sharp corner has radius 0. Every kind of shape takes the one path: each corner
@@ -35,6 +35,32 @@ struct PalantirShape {
     // every edge.
     inradius: f32,
 };
+
+// The shape every template instance opens with (`ShapeHeader`, `shape_template::HEADER_ATTRS`): its
+// rect `(min, size)`, its sharp points from `min` two to a lane, a radius at each point, its
+// inradius beside its turn about the rect's center in radians, and the rounded clips that cut it
+// (`ClipChain`).
+struct PalantirShapeIn {
+    @location(0) rect: vec4<f32>,
+    @location(1) points01: vec4<f32>,
+    @location(2) points23: vec4<f32>,
+    @location(3) radius: vec4<f32>,
+    @location(4) inradius_rotation: vec2<f32>,
+    @location(5) chain: u32,
+};
+
+// The shape of `n` corners `shape` describes.
+fn palantir_shape_of(shape: PalantirShapeIn, n: u32) -> PalantirShape {
+    var s: PalantirShape;
+    s.n = n;
+    s.p0 = shape.points01.xy;
+    s.p1 = shape.points01.zw;
+    s.p2 = shape.points23.xy;
+    s.p3 = shape.points23.zw;
+    s.radius = shape.radius;
+    s.inradius = shape.inradius_rotation.x;
+    return s;
+}
 
 struct PalantirCorner {
     c: vec2<f32>,

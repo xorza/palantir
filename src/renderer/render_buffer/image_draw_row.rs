@@ -5,13 +5,11 @@
     reason = "`soa_rs`'s `Soars` derive writes `Clone` by hand for the `Copy` rows it generates"
 )]
 
-use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::image_form::ImageForm;
+use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use glam::Vec2;
 use soa_rs::Soars;
 
@@ -26,14 +24,16 @@ pub(crate) struct ImageDrawRow {
     pub(crate) instance: ImageInstance,
 }
 
-/// Per-image GPU state. The shader samples at `uv_min + corner * uv_size` and
-/// multiplies by `tint`; the UV pair carries the `ImageFit::Cover` crop.
+/// Per-image GPU state. The shader samples at `uv_min + corner * uv_size` and multiplies by
+/// `tint`; the UV pair carries the `ImageFit::Cover` crop.
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ImageInstance {
-    /// Physical-px paint rect.
-    pub(crate) rect: Rect,
+    /// The quad the image draws over, physical px, its turn and its rounded clips; and for an
+    /// image of a box's or a triangle's [`ImageForm`], the shape that clips it, which a plain
+    /// image leaves unread.
+    pub(crate) header: ShapeHeader,
     /// UV crop top-left (0..1 texture coords).
     pub(crate) uv_min: Vec2,
     /// UV crop extent: `(1, 1)` normally, smaller for `Cover`, `> 1` for `Tile`.
@@ -42,21 +42,9 @@ pub(crate) struct ImageInstance {
     pub(crate) tint: RgbaF16,
     /// Tile wrap, min/mag nearest sampling and minification tap mode.
     pub(crate) flags: ImageFlags,
-    /// A paint animation's turn about `rect`'s center, in radians; `0` for none.
-    pub(crate) rotation: f32,
-    /// The clipping shape of an image of a box's or a triangle's [`ImageForm`], as the shape
-    /// template reads it, as `Quad::points` holds a box's: the corners of `rect` relative to its
-    /// min, clockwise. Unread on a plain image.
-    pub(crate) points: [Vec2; 4],
-    /// The clipping shape's corner radii, physical px.
-    pub(crate) corners: Corners,
-    /// The clipping shape's inradius (`Quad::inradius`).
-    pub(crate) inradius: f32,
-    /// The image's own rect relative to `rect.min`, past which a shaped image shows nothing. An
-    /// edge on the shape's, within the composer's slack, or past it is out of reach (`f32::MAX`),
-    /// so it fades with the shape's.
+    /// The image's own rect relative to `header.rect.min`, past which a shaped image shows
+    /// nothing. An edge on the shape's, within the composer's slack, or past it is out of reach
+    /// (`f32::MAX`), so it fades with the shape's.
     pub(crate) decal_min: Vec2,
     pub(crate) decal_max: Vec2,
-    /// The rounded clips that cut the image.
-    pub(crate) clip: ClipChain,
 }

@@ -176,81 +176,51 @@ impl ImagePipeline {
 /// The group an image's texture binds at, past the frame group.
 const IMAGE_GROUP: u32 = 1;
 
-const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 13] = [
-    vertex_attr(
-        0,
-        wgpu::VertexFormat::Float32x2,
-        offset_of!(ImageInstance, rect.min),
-    ),
-    vertex_attr(
-        1,
-        wgpu::VertexFormat::Float32x2,
-        offset_of!(ImageInstance, rect.size),
-    ),
-    vertex_attr(
-        2,
-        wgpu::VertexFormat::Float32x2,
-        offset_of!(ImageInstance, uv_min),
-    ),
-    vertex_attr(
-        3,
-        wgpu::VertexFormat::Float32x2,
-        offset_of!(ImageInstance, uv_size),
-    ),
-    // Tint is linear straight-alpha; the shader premultiplies at write.
-    vertex_attr(
-        4,
-        wgpu::VertexFormat::Float16x4,
-        offset_of!(ImageInstance, tint),
-    ),
-    vertex_attr(
-        5,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(ImageInstance, flags),
-    ),
-    vertex_attr(
-        6,
-        wgpu::VertexFormat::Float32,
-        offset_of!(ImageInstance, rotation),
-    ),
-    // A shaped image's clipping shape, two points a slot, as the quad instance packs them.
-    vertex_attr(
-        7,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(ImageInstance, points),
-    ),
-    vertex_attr(
-        8,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(ImageInstance, points) + 2 * size_of::<Vec2>(),
-    ),
-    vertex_attr(
-        9,
-        wgpu::VertexFormat::Float16x4,
-        offset_of!(ImageInstance, corners),
-    ),
-    vertex_attr(
-        10,
-        wgpu::VertexFormat::Float32,
-        offset_of!(ImageInstance, inradius),
-    ),
-    // `decal_min` then `decal_max`, adjacent, as one `(min, max)`.
-    vertex_attr(
-        11,
-        wgpu::VertexFormat::Float32x4,
-        offset_of!(ImageInstance, decal_min),
-    ),
-    vertex_attr(
-        12,
-        wgpu::VertexFormat::Uint32,
-        offset_of!(ImageInstance, clip),
-    ),
-];
+/// The image's header, then its uv crop `(min, size)`, its tint (linear straight-alpha, which the
+/// shader premultiplies at write), its flags and its decal `(min, max)`.
+const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = {
+    let h = shape_template::HEADER_ATTRS;
+    let at = shape_template::HEADER_LOCATIONS;
+    [
+        h[0],
+        h[1],
+        h[2],
+        h[3],
+        h[4],
+        h[5],
+        vertex_attr(
+            at,
+            wgpu::VertexFormat::Float32x4,
+            offset_of!(ImageInstance, uv_min),
+        ),
+        vertex_attr(
+            at + 1,
+            wgpu::VertexFormat::Float16x4,
+            offset_of!(ImageInstance, tint),
+        ),
+        vertex_attr(
+            at + 2,
+            wgpu::VertexFormat::Uint32,
+            offset_of!(ImageInstance, flags),
+        ),
+        vertex_attr(
+            at + 3,
+            wgpu::VertexFormat::Float32x4,
+            offset_of!(ImageInstance, decal_min),
+        ),
+    ]
+};
 
-const _: () = assert!(
-    offset_of!(ImageInstance, decal_max)
-        == offset_of!(ImageInstance, decal_min) + size_of::<Vec2>()
-);
+const _: () = {
+    assert!(offset_of!(ImageInstance, header) == 0);
+    assert!(
+        offset_of!(ImageInstance, uv_size) == offset_of!(ImageInstance, uv_min) + size_of::<Vec2>()
+    );
+    assert!(
+        offset_of!(ImageInstance, decal_max)
+            == offset_of!(ImageInstance, decal_min) + size_of::<Vec2>()
+    );
+};
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
     size_of::<ImageInstance>(),
