@@ -1,6 +1,7 @@
 //! Where a backdrop cuts the frame, and what its row records.
 
 use crate::cascade::plane_backdrop::PlaneBackdrop;
+use crate::common::span::Span;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
@@ -9,7 +10,6 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::backdrop_captures::BackdropTicket;
@@ -18,8 +18,8 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, BackdropGeometry, DrawBackdropPayload,
+use crate::renderer::frontend::payload::draw_effect_payload::{
+    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
 };
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, TriangleQuad};
 use crate::renderer::render_buffer::RenderBuffer;
@@ -31,6 +31,7 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::blur_plan::BlurPlan;
+use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use glam::{UVec2, Vec2};
@@ -56,28 +57,40 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> BackdropTicket {
     }
 }
 
+/// A material of σ 4 over `geometry` reading `read`, under a white fill at α 0.25 and `border`.
+fn material(
+    geometry: EffectGeometry,
+    read: EffectCaptureDraw,
+    border: LoweredBorder,
+) -> DrawEffectPayload {
+    DrawEffectPayload::material(
+        LoweredMaterial::fixture(4.0),
+        read,
+        geometry,
+        BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
+        border,
+    )
+}
+
+/// The box at `rect`, square-cornered, covering its inside.
+const fn sharp(rect: Rect) -> EffectGeometry {
+    EffectGeometry::Box {
+        coverage: Coverage::Inside,
+        placed: PlacedBox {
+            rect,
+            corners: Corners::ZERO,
+        },
+    }
+}
+
 /// A backdrop at `rect` under `ticket`, faded by `alpha`; the ticket holds its plan, so its own σ
 /// is any.
 fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: BackdropTicket, alpha: f32) {
-    buf.draw(
-        DrawBackdropPayload {
-            geometry: BackdropGeometry::Box {
-                coverage: Coverage::Inside,
-                placed: PlacedBox {
-                    rect,
-                    corners: Corners::ZERO,
-                },
-            },
-            spin: None,
-            fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
-            fill_axis: FillAxis::ZERO,
-            border: LoweredBorder::NONE,
-            material: LoweredMaterial::fixture(4.0),
-            opacity: 1.0,
-            read: BackdropDraw::Capture(ticket),
-        },
-        alpha,
-    );
+    let read = EffectCaptureDraw::Capture {
+        ticket,
+        reach: CaptureReach::Px(0.0),
+    };
+    buf.draw(material(sharp(rect), read, LoweredBorder::NONE), alpha);
 }
 
 /// The source of `row`, a backdrop's.
@@ -288,22 +301,11 @@ fn a_material_over_the_ground_breaks_nothing() {
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
             b.draw(
-                DrawBackdropPayload {
-                    geometry: BackdropGeometry::Box {
-                        coverage: Coverage::Inside,
-                        placed: PlacedBox {
-                            rect,
-                            corners: Corners::ZERO,
-                        },
-                    },
-                    spin: None,
-                    fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
-                    fill_axis: FillAxis::ZERO,
-                    border: LoweredBorder::lower(Border::new(RgbaF32::WHITE, 3.0)),
-                    material: LoweredMaterial::fixture(4.0),
-                    opacity: 1.0,
-                    read: BackdropDraw::Ground,
-                },
+                material(
+                    sharp(rect),
+                    EffectCaptureDraw::Ground,
+                    LoweredBorder::lower(Border::new(RgbaF32::WHITE, 3.0)),
+                ),
                 1.0,
             );
         },
@@ -370,19 +372,14 @@ fn a_triangles_material_packs_as_its_triangle() {
     let buf = run(
         |b, _| {
             b.draw(
-                DrawBackdropPayload {
-                    geometry: BackdropGeometry::Triangle(PlacedTriangle {
+                material(
+                    EffectGeometry::Triangle(PlacedTriangle {
                         centers: points,
                         radius: 1.0,
                     }),
-                    spin: None,
-                    fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
-                    fill_axis: FillAxis::ZERO,
-                    border: LoweredBorder::NONE,
-                    material: LoweredMaterial::fixture(4.0),
-                    opacity: 1.0,
-                    read: BackdropDraw::Ground,
-                },
+                    EffectCaptureDraw::Ground,
+                    LoweredBorder::NONE,
+                ),
                 1.0,
             );
             b.draw(
@@ -412,4 +409,56 @@ fn a_triangles_material_packs_as_its_triangle() {
     assert_eq!(instance.points, quad.points);
     assert_eq!(instance.inradius, quad.inradius);
     assert_eq!(instance.corners, quad.corners.to_array());
+}
+
+/// A material and an app's backdrop effect over the same rect, each reaching nothing past it, land
+/// through one path: their instances differ in the material flag and the backdrop they read alone,
+/// and their rows in the look the material's stage holds; both read the rect itself, inside their
+/// footprints.
+#[test]
+fn a_material_and_a_backdrop_effect_share_one_path() {
+    let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
+    let read = |i| EffectCaptureDraw::Capture {
+        ticket: ticket(i, rect, 4.0, true),
+        reach: CaptureReach::Px(0.0),
+    };
+    let buf = run(
+        |b, _| {
+            b.draw(material(sharp(rect), read(0), LoweredBorder::NONE), 1.0);
+            b.draw(
+                DrawEffectPayload {
+                    geometry: sharp(rect),
+                    spin: None,
+                    effect: EffectId(0),
+                    params: Span::default(),
+                    images: Span::default(),
+                    backdrop: Some(read(1)),
+                    stage: None,
+                    opacity: 1.0,
+                    time: 0.0,
+                },
+                1.0,
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    let [worn, painted] = [buf.effects.instance()[0], buf.effects.instance()[1]];
+    assert_eq!(worn.flags, EffectInstance::MATERIAL);
+    assert_eq!(
+        painted,
+        EffectInstance {
+            flags: 0,
+            backdrop_idx: painted.backdrop_idx,
+            ..worn
+        }
+    );
+    assert_ne!(worn.backdrop_idx, painted.backdrop_idx);
+    let [worn, painted] = [
+        buf.backdrops[worn.backdrop_idx as usize],
+        buf.backdrops[painted.backdrop_idx as usize],
+    ];
+    assert!(worn.look.is_some(), "a material's row holds its look");
+    assert_eq!(painted.look, None);
+    assert_eq!(worn.reads, rect);
+    assert_eq!(painted.reads, rect);
 }

@@ -52,7 +52,6 @@
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::renderer::frontend::payload::draw_backdrop_payload::DrawBackdropPayload;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -80,9 +79,6 @@ pub(crate) trait PaintSink {
     /// through one gate so they agree on what is invisible.
     fn quad(&mut self, payload: DrawQuadPayload);
 
-    /// A backdrop: a quad over the pixels painted before it, and its key.
-    fn backdrop(&mut self, payload: DrawBackdropPayload);
-
     fn text(&mut self, payload: DrawTextPayload);
 
     /// Paint a mesh against vertices and indices already staged in
@@ -103,7 +99,7 @@ pub(crate) trait PaintSink {
 
     fn curve(&mut self, payload: DrawCurvePayload);
 
-    /// Paint an app-written effect over a rounded rect.
+    /// Paint an effect over a box or a triangle: an app's paint, or a box's material.
     fn effect(&mut self, payload: DrawEffectPayload);
 
     /// The gate the encoder paints through: fade `payload` by `alpha` (a paint animation's

@@ -267,7 +267,8 @@ fn a_material_coerces_into_its_kinds_where_it_paints() {
     );
     assert_eq!(lowered.capture().map(|capture| capture.sigma), Some(0.0));
     assert_eq!(lowered.min_luminance(), 0.0);
-    let start = lowered.params as usize;
+    let start = lowered.params.start as usize;
+    assert_eq!(lowered.params.len, 7);
     let words: Vec<f32> = store.effect_params[start..start + 7]
         .iter()
         .map(|&w| f32::from_bits(w))

@@ -82,6 +82,10 @@ use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 /// blurred by the capture's σ, shown through the effect, held within its luminance bounds, under
 /// the box's fill, as CSS pairs `backdrop-filter` with `background-color`.
 ///
+/// The theme form of a backdrop effect, plain data a theme file saves and a transition blends; an
+/// [`EffectPaint`](crate::widget::EffectPaint) draws any effect at run time, with parameters of its
+/// own type, images and a clock, and a material draws as one does, under palantir's stage.
+///
 /// A material reads past its edge: what is painted around it glows in as the blur reaches, and
 /// materials painted before it show through it, so glass over glass is exact. It costs a capture
 /// and a blur on each frame where something painted before it changes under it, and nothing on a

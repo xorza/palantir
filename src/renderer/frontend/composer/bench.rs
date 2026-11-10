@@ -25,17 +25,16 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, BackdropGeometry, DrawBackdropPayload,
-};
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_effect_payload::{
+    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
+};
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -350,36 +349,38 @@ fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
 fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
     let plan = BlurPlan::new(4.0);
     let footprint = URect::covering(rect.inflated(PlaneBackdrop::reach(plan, 0)));
+    let material = LoweredMaterial::fixture(4.0);
+    let read = EffectCaptureDraw::Capture {
+        ticket: BackdropTicket {
+            capture: BackdropCapture {
+                key: BackdropKey {
+                    owner: WidgetId::from_hash("bench.backdrop"),
+                    shape: i,
+                },
+                footprint,
+                plan,
+                region: plan
+                    .region(footprint, footprint.max())
+                    .expect("a bench backdrop paints"),
+            },
+            captures: false,
+        },
+        reach: material.capture().expect("the fixture captures").reach,
+    };
     cmds.draw(
-        DrawBackdropPayload {
-            geometry: BackdropGeometry::Box {
+        DrawEffectPayload::material(
+            material,
+            read,
+            EffectGeometry::Box {
                 coverage: Coverage::Inside,
                 placed: PlacedBox {
                     rect,
                     corners: Corners::ZERO,
                 },
             },
-            spin: None,
-            fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
-            fill_axis: FillAxis::ZERO,
-            border: LoweredBorder::NONE,
-            material: LoweredMaterial::fixture(4.0),
-            opacity: 1.0,
-            read: BackdropDraw::Capture(BackdropTicket {
-                capture: BackdropCapture {
-                    key: BackdropKey {
-                        owner: WidgetId::from_hash("bench.backdrop"),
-                        shape: i,
-                    },
-                    footprint,
-                    plan,
-                    region: plan
-                        .region(footprint, footprint.max())
-                        .expect("a bench backdrop paints"),
-                },
-                captures: false,
-            }),
-        },
+            BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
+            LoweredBorder::NONE,
+        ),
         1.0,
     );
 }
@@ -489,6 +490,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 let out = &fixture.rig.out;
                 let drawn = match case {
                     QuadCase::Polyline => out.curves.len(),
+                    QuadCase::Backdrops => out.effects.len(),
                     _ => out.quads.len(),
                 };
                 assert_eq!(

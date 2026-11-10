@@ -22,13 +22,9 @@ use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
-use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropGeometry, DrawBackdropPayload,
-};
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw,
+    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
 };
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
@@ -51,7 +47,7 @@ use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
-use crate::shape::paint::backdrop_capture::EffectBackdrop;
+use crate::shape::paint::capture_params::EffectBackdrop;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -105,12 +101,12 @@ struct RectPaint {
     alpha: f32,
 }
 
-/// What makes a rect a material's box: its material, and what it reads, the ticket the backdrop
+/// What makes a shape a material's: its material, and what it reads, the ticket the backdrop
 /// ledger wrote for it or the ground.
 #[derive(Clone, Copy, Debug)]
 struct BackdropLook {
     material: LoweredMaterial,
-    read: BackdropDraw,
+    read: EffectCaptureDraw,
 }
 
 /// A curve or an arc record placed in its owner, with the stroke that draws it.
@@ -150,23 +146,16 @@ fn paint_rect(paint: RectPaint, out: &mut impl PaintSink) {
 /// color or a gradient, and its border over the whole box.
 fn paint_backdrop(paint: RectPaint, look: BackdropLook, out: &mut impl PaintSink) {
     let RectPaint { quad, spin, alpha } = paint;
-    out.draw(
-        DrawBackdropPayload {
-            geometry: BackdropGeometry::Box {
-                coverage: quad.coverage,
-                placed: PlacedBox {
-                    rect: quad.rect,
-                    corners: quad.corners,
-                },
-            },
-            spin,
-            fill: quad.fill.gpu_fill(),
-            fill_axis: quad.fill.fill_axis(),
-            border: quad.border.normalized(),
-            material: look.material,
-            opacity: 1.0,
-            read: look.read,
+    let geometry = EffectGeometry::Box {
+        coverage: quad.coverage,
+        placed: PlacedBox {
+            rect: quad.rect,
+            corners: quad.corners,
         },
+    };
+    out.draw(
+        DrawEffectPayload::material(look.material, look.read, geometry, quad.fill, quad.border)
+            .turned(spin),
         alpha,
     );
 }
@@ -180,10 +169,12 @@ impl PlaneCtx<'_, '_> {
         material: Option<LoweredMaterial>,
     ) -> Option<BackdropLook> {
         let material = material?;
-        let read = if material.captures() {
-            BackdropDraw::Capture(self.backdrop_ticket(site)?)
-        } else {
-            BackdropDraw::Ground
+        let read = match material.capture() {
+            Some(capture) => EffectCaptureDraw::Capture {
+                ticket: self.backdrop_ticket(site)?,
+                reach: capture.reach,
+            },
+            None => EffectCaptureDraw::Ground,
         };
         Some(BackdropLook { material, read })
     }
@@ -418,16 +409,14 @@ impl PlaneCtx<'_, '_> {
                     };
                     if let Some(look) = self.backdrop_look(site, *material) {
                         out.draw(
-                            DrawBackdropPayload {
-                                geometry: BackdropGeometry::Triangle(placed),
-                                spin,
-                                fill: fill.gpu_fill(),
-                                fill_axis: fill.fill_axis(),
-                                border: border.normalized(),
-                                material: look.material,
-                                opacity: 1.0,
-                                read: look.read,
-                            },
+                            DrawEffectPayload::material(
+                                look.material,
+                                look.read,
+                                EffectGeometry::Triangle(placed),
+                                fill,
+                                *border,
+                            )
+                            .turned(spin),
                             alpha,
                         );
                     } else {
@@ -590,12 +579,13 @@ impl PlaneCtx<'_, '_> {
                 };
                 out.draw(
                     DrawEffectPayload {
-                        geometry: placed,
+                        geometry: placed.into(),
                         spin,
                         effect: *effect,
                         params: *params,
                         images: *images,
                         backdrop,
+                        stage: None,
                         opacity: 1.0,
                         time: paint_mod.time,
                     },

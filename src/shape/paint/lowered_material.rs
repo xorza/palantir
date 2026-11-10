@@ -4,6 +4,7 @@
 use std::hash::{self, Hasher as _};
 
 use crate::common::hash::Hasher;
+use crate::common::span::Span;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::nan::NanCheck;
@@ -11,7 +12,7 @@ use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::reduction::Reductions;
-use crate::shape::paint::backdrop_capture::{BackdropCapture, CaptureReach, EffectBackdrop};
+use crate::shape::paint::capture_params::{CaptureParams, CaptureReach, EffectBackdrop};
 use crate::shape::record_store::RecordStore;
 
 /// What a box's material reads this record, as the reductions decide it, with the effect the
@@ -64,9 +65,8 @@ pub(crate) struct LoweredMaterial {
     input_hash: u64,
     effect: EffectId,
     pub(crate) backdrop: EffectBackdrop,
-    /// The first of the input's words in the record store, which the record pass that staged them
-    /// keeps; a [`MaterialInput`](crate::MaterialInput) spans a fixed count of them.
-    pub(crate) params: u32,
+    /// The input's words in the record store, which the record pass that staged them keeps.
+    pub(crate) params: Span,
     max_luminance: u16,
     min_luminance: u16,
 }
@@ -83,7 +83,7 @@ impl LoweredMaterial {
         let mut h = Hasher::new();
         h.pod_slice(bytes);
         let lens = material.input.lens;
-        let capture = BackdropCapture {
+        let capture = CaptureParams {
             sigma: F16x4::saturate_lane(material.blur),
             reach: CaptureReach::Lens(F16x4::from_lanes_saturating([
                 lens.bezel,
@@ -95,7 +95,7 @@ impl LoweredMaterial {
         Self {
             effect: read.effect,
             backdrop: EffectBackdrop::of(read.mode, capture),
-            params: store.stage_effect_params(bytes).start,
+            params: store.stage_effect_params(bytes),
             input_hash: h.finish(),
             max_luminance: material
                 .max_luminance
@@ -121,7 +121,7 @@ impl LoweredMaterial {
 
     /// What it captures where it reads what is painted under the box, a backdrop the cascade
     /// lists; `None` over the ground.
-    pub(crate) const fn capture(self) -> Option<BackdropCapture> {
+    pub(crate) const fn capture(self) -> Option<CaptureParams> {
         self.backdrop.capture()
     }
 
@@ -178,9 +178,10 @@ impl NanCheck for LoweredMaterial {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::common::span::Span;
     use crate::primitives::identity::effect_id::EffectId;
     use crate::primitives::packed::half_simd::F16x4;
-    use crate::shape::paint::backdrop_capture::{BackdropCapture, CaptureReach, EffectBackdrop};
+    use crate::shape::paint::capture_params::{CaptureParams, CaptureReach, EffectBackdrop};
     use crate::shape::paint::lowered_material::LoweredMaterial;
 
     impl LoweredMaterial {
@@ -189,11 +190,11 @@ pub(crate) mod internals {
         pub(crate) fn fixture(sigma: f32) -> Self {
             Self {
                 effect: EffectId(0),
-                backdrop: EffectBackdrop::Capture(BackdropCapture {
+                backdrop: EffectBackdrop::Capture(CaptureParams {
                     sigma,
                     reach: CaptureReach::Lens(F16x4::from_lanes([0.0, 0.0, 1.0, 0.0])),
                 }),
-                params: 0,
+                params: Span::default(),
                 input_hash: 0,
                 max_luminance: half::f16::MAX.to_bits(),
                 min_luminance: 0,

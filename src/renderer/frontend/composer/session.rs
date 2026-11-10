@@ -25,12 +25,9 @@ use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, BackdropGeometry, DrawBackdropPayload,
-};
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw,
+    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
 };
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
@@ -196,80 +193,6 @@ impl PaintSink for ComposeSession<'_> {
         self.record_opaque_cover(&p, &packed);
     }
 
-    /// A material draws through its effect's material stage, over the rect a quad of it would
-    /// shade, packed as one: it neither folds into the clear nor covers anything opaquely, as what
-    /// it reads shows through it.
-    fn backdrop(&mut self, p: DrawBackdropPayload) {
-        let quad = p.quad();
-        let packed = PackedQuad::pack(&quad, &self.lowering());
-        let Some(visible) = self.ordering().cull(packed.rect.urect) else {
-            return;
-        };
-        let scale = self.composer.transform.physical_scale();
-        // The opacity f16 as a quad holds it.
-        let opacity = quad.fill_axis.lanes()[3];
-        let material = p.material;
-        let look = MaterialLook {
-            max_luminance: material.max_luminance(),
-            min_luminance: material.min_luminance(),
-            fill: p.fill,
-            fill_axis: p.fill_axis,
-            border_color: p.border.color,
-            border_width: packed.border_width,
-        };
-        // Listed before it is ordered, so its own paint is not among what it shares a break past.
-        let backdrop_idx = match p.read {
-            BackdropDraw::Capture(ticket) => {
-                self.list_backdrop(visible, ticket, |source| BackdropRow {
-                    reads: ticket.capture.footprint.into(),
-                    look: Some(look),
-                    read: BackdropRead::Capture {
-                        capture: ticket.capture,
-                        source,
-                    },
-                })
-            }
-            BackdropDraw::Ground => self.list_ground(BackdropRow {
-                reads: packed.rect.physical,
-                look: Some(look),
-                read: BackdropRead::Ground,
-            }),
-        };
-        self.ordering()
-            .order(Lane::Tier(PaintTier::Effect), visible);
-        self.out.effects.push(EffectDrawRow {
-            effect: material.effect(),
-            images: Span::default(),
-            instance: EffectInstance {
-                rect: packed.rect.physical,
-                corners: packed.corners.to_array(),
-                points: packed.points,
-                inradius: packed.inradius,
-                border_width: packed.border_width,
-                time: 0.0,
-                opacity,
-                scale,
-                rotation: packed.rotation,
-                params: material.params,
-                backdrop_idx,
-                flags: match p.geometry {
-                    BackdropGeometry::Box {
-                        coverage: Coverage::Inside,
-                        ..
-                    } => EffectInstance::MATERIAL,
-                    BackdropGeometry::Box {
-                        coverage: Coverage::Outside,
-                        ..
-                    } => EffectInstance::MATERIAL | EffectInstance::OUTSIDE,
-                    BackdropGeometry::Triangle(_) => {
-                        EffectInstance::MATERIAL | EffectInstance::TRIANGLE
-                    }
-                },
-                ..bytemuck::Zeroable::zeroed()
-            },
-        });
-    }
-
     fn mesh(&mut self, p: DrawMeshPayload) {
         let viewport_physical = self.out.display.physical;
         // `draw_mesh` already gated empty meshes, so `vertices` is non-empty. Inflate by 0.5 phys px
@@ -375,24 +298,26 @@ impl PaintSink for ComposeSession<'_> {
         }
     }
 
-    /// An effect over the rect a quad of it would shade, packed as one: snapped, or moved and
-    /// turned about its center by a paint animation's turn, whose edges snap to no pixel.
+    /// An effect over the shape a quad of it would shade, packed as one: snapped, or moved and
+    /// turned about its center by a paint animation's turn, whose edges snap to no pixel. A
+    /// material's box draws through its effect's material stage: it neither folds into the clear
+    /// nor covers anything opaquely, as what it reads shows through it.
     fn effect(&mut self, p: DrawEffectPayload) {
         let lowering = self.lowering();
         let scale = lowering.transform.physical_scale();
-        let shape = TemplateShape::of(p.geometry, p.spin, &lowering);
-        let shape_flags = match p.geometry {
-            PlacedClosed::Box(_) => 0,
-            PlacedClosed::Triangle(_) => EffectInstance::TRIANGLE,
-        };
-        let scaled = match p.spin {
-            None => ScaledRect::from_physical(shape.rect, lowering.display.physical),
-            Some(spin) => lowering.turned_rect(shape.rect, spin),
-        };
-        let physical = scaled.physical;
-        let Some(visible) = self.ordering().cull(scaled.urect) else {
+        let packed = PackedQuad::pack(&p.quad(), &lowering);
+        let physical = packed.rect.physical;
+        let Some(visible) = self.ordering().cull(packed.rect.urect) else {
             return;
         };
+        let look = p.stage.map(|stage| MaterialLook {
+            max_luminance: stage.max_luminance,
+            min_luminance: stage.min_luminance,
+            fill: stage.fill,
+            fill_axis: stage.fill_axis,
+            border_color: stage.border.color,
+            border_width: packed.border_width,
+        });
         // A backdrop is listed before it is ordered, so its own paint is not among what it shares a
         // break past.
         let backdrop_idx = match p.backdrop {
@@ -411,7 +336,7 @@ impl PaintSink for ComposeSession<'_> {
                             .clamp_to(Rect::from(ticket.capture.footprint).deflated(0.5));
                         self.list_backdrop(visible, ticket, |source| BackdropRow {
                             reads,
-                            look: None,
+                            look,
                             read: BackdropRead::Capture {
                                 capture: ticket.capture,
                                 source,
@@ -420,12 +345,28 @@ impl PaintSink for ComposeSession<'_> {
                     }
                     EffectCaptureDraw::Ground => self.list_ground(BackdropRow {
                         reads: cover,
-                        look: None,
+                        look,
                         read: BackdropRead::Ground,
                     }),
                 }
             }
             None => 0,
+        };
+        let shape_flags = match p.geometry {
+            EffectGeometry::Box {
+                coverage: Coverage::Inside,
+                ..
+            } => 0,
+            EffectGeometry::Box {
+                coverage: Coverage::Outside,
+                ..
+            } => EffectInstance::OUTSIDE,
+            EffectGeometry::Triangle(_) => EffectInstance::TRIANGLE,
+        };
+        let stage_flag = if p.stage.is_some() {
+            EffectInstance::MATERIAL
+        } else {
+            0
         };
         self.ordering()
             .order(Lane::Tier(PaintTier::Effect), visible);
@@ -434,14 +375,15 @@ impl PaintSink for ComposeSession<'_> {
             images: p.images,
             instance: EffectInstance {
                 rect: physical,
-                corners: shape.corners.to_array(),
-                points: shape.points,
-                inradius: shape.inradius,
-                flags: shape_flags,
+                corners: packed.corners.to_array(),
+                points: packed.points,
+                inradius: packed.inradius,
+                border_width: packed.border_width,
+                flags: stage_flag | shape_flags,
                 time: p.time,
                 opacity: p.opacity,
                 scale,
-                rotation: p.spin.map_or(0.0, |spin| spin.angle),
+                rotation: packed.rotation,
                 params: p.params.start,
                 backdrop_idx,
                 ..bytemuck::Zeroable::zeroed()

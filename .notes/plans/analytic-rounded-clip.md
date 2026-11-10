@@ -1,109 +1,11 @@
-# One effect engine, and an analytic rounded clip
+# An analytic rounded clip
 
-Two pieces of work. Part 1 gives a material and a backdrop `EffectPaint` one engine. Part 2
-replaces the rounded-clip stencil with a coverage term that each draw computes, so a rounded clip
-gets an antialiased edge and stops closing batches. Part 2 lands after Part 1's step 3, so the
-clip enters the effect stage through the one effect payload and the one composer path.
-
-# Part 1: one effect engine
-
-A material and a backdrop `EffectPaint` reach the same GPU stage by two record, cascade, payload
-and composer paths. This part keeps the two public forms and gives them one engine underneath, so
-a material is to a backdrop effect what `PressEffect` is to a color effect: theme data that lowers
-through the effect path.
-
-## Decisions
-
-- **Two front doors, one engine.** `Material` stays the theme form of a backdrop effect: plain
-  data a theme file saves and a transition blends, over `MaterialInput`, with palantir's stage
-  (fill, border, luminance bounds, dither). `EffectPaint` stays the runtime form of any effect:
-  any parameters, images, a clock. Below them, one lowered effect, one capture, one payload and
-  one composer path. As Skia's `SkRuntimeEffect`, Android's `RuntimeShader` and Flutter's
-  `FragmentShader` are one program whose placement decides its use, and as SwiftUI and WinUI keep a
-  theme material (`Material`, `AcrylicBrush`) beside their custom shader route. Refused: one public
-  backdrop type with any parameters (Flutter's `BackdropFilter`, CSS `backdrop-filter`), which puts
-  type-erased bytes in a `Chrome` no theme file holds and no tween blends, as the `Material` doc
-  refuses; a closed set of material looks (SwiftUI, WinUI), which drops app materials.
-- **The public API does not change.** `cargo drive surface` shows no difference at the end.
-- **Pixels do not change.** Every golden renders byte-identical to its render before step 1 on
-  the same adapter, the stale ones included: compare `actual.png` before and after, as the review
-  of `ce6a6616f` did.
-- **The hot structs keep their pins**: `ShapeRecord` 136 B, `ChromeRow` 104 B. A step that would
-  grow one packs the shared part instead, or stops and reports.
-
-## Steps
-
-Each step lands on its own, with the gate green, and its own commit.
-
-### 1. One backdrop read
-
-`MaterialRead` (`Capture(EffectId) | Ground(EffectId)`) and `EffectBackdrop`
-(`Capture(EffectCapture) | Ground`) both answer what a backdrop effect reads under the
-reductions, and `MaterialRead::resolve` and `RecordStore::record_effect` each decide
-`ReducedBackdrop::Nothing` and `Ground` for themselves.
-
-- Done: one `BackdropMode` (`Capture | Ground`) and one resolve, `ReducedBackdrop::mode`, which a
-  material's `MaterialRead` (now its effect and its mode) and `record_effect` both take. The
-  effect record still carries its capture in `EffectBackdrop::Capture`, as the material keeps its
-  σ and lens apart: step 2 gives both one capture and one `EffectBackdrop`.
-- Tests: a table over the choice × the setting in `reduced_backdrop.rs`; the material's and the
-  backdrop effect's reduced-transparency tests pass unchanged.
-
-### 2. One capture
-
-`BackdropReader::{Material, Effect}` exists because the two keep their capture apart: a material's
-σ as f16 bits and its lens, from which the cascade derives how far past the box it reads; an
-effect's σ and reach as f32.
-
-- Done: one `BackdropCapture` (an f32 σ, and a `CaptureReach`: a fixed reach in logical px or a
-  lens, whose margin the cascade derives from the box's narrowest side) and one `EffectBackdrop`
-  (`Capture(BackdropCapture) | Ground`) in `shape/paint/backdrop_capture.rs`. `LoweredMaterial`
-  and `ShapeRecord::EffectPaint` both hold the `EffectBackdrop`; `BackdropReader` is gone, and
-  the cascade reads one `ShapeRecord::backdrop_capture` or `LoweredMaterial::capture`.
-- `LoweredMaterial` stays 40 B with an f32 σ, so no σ moved to f16: a material's σ is no longer
-  rounded to f16. An effect's composite now reads its reach rounded out to whole physical px, the
-  margin its capture is planned with. `EffectCaptureDraw` is `Capture { ticket, reach } | Ground`,
-  so a draw over the ground holds no reach. No golden moved.
-- Tests: `CaptureReach::margin` for a fixed reach and a lens; the backdrop, material and effect
-  tests pass unchanged.
-
-### 3. One payload and one composer path
-
-`DrawBackdropPayload` (a material: geometry with coverage, fill, border, material) and
-`DrawEffectPayload` (an effect: placed geometry, params, images, time) both become one
-`EffectDrawRow`, through `ComposeSession::backdrop` and `ComposeSession::effect`, which repeat the
-listing of the backdrop, the ordering and the instance.
-
-- One payload: the geometry (a box with its coverage, or a triangle), the effect, its params and
-  images, its capture draw, its opacity, time and turn, and the material's stage as an optional
-  part (fill, fill axis, border, luminance bounds). `PaintSink::backdrop` goes; `paint_backdrop`
-  and the effect arm of `PlaneCtx` both build the one payload.
-- One packing: the box through `PackedQuad`, which already holds coverage and border width, the
-  triangle through `TemplateShape::triangle`, as both paths do now.
-- What the composite reads: a material reads its whole footprint, an effect its rect grown by its
-  reach and clamped to the footprint. The step makes them one rule only if no golden moves; if one
-  does, it keeps the two as data of the one payload and reports why.
-- Tests: the composer's backdrop and effect tests (`tests/backdrops.rs`, `tests/brushes.rs`)
-  through the one payload, with the same exact instances; one new case shows a material and an
-  app backdrop effect over the same rect differ only in the stage flag and the look.
-
-### 4. Docs
-
-- AGENTS.md: one decision under "Shapes and paint" for the three layers (an effect is a program;
-  `Material` and `PressEffect` are theme data that name one; `EffectPaint` is the one draw), which
-  replaces the parts of "Blur, frosted and glass are stock effects" and "A material reaches under
-  the border" it repeats.
-- The `Material` and `EffectPaint` docs each say what the other is for, in one sentence.
-- Part 1 leaves this file when step 3 lands; the file is deleted when Part 2's last step lands.
-
-## Gate at the end of Part 1
-
-- The palantir gate.
-- `cargo visual`: the same pass and fail set as before step 1, every `actual.png` byte-identical.
-- `cargo drive surface`: no change to `.notes/API_SURFACE.md`.
-- `hot_struct_sizes` holds `ShapeRecord` 136 B and `ChromeRow` 104 B.
-
-# Part 2: an analytic rounded clip
+Part 1, one effect engine for a material and a backdrop `EffectPaint`, has landed: its decisions
+are in AGENTS.md, "An effect is a program; theme data names one; `EffectPaint` is the one draw".
+Part 2 replaces the rounded-clip stencil with a coverage term that each draw computes, so a
+rounded clip gets an antialiased edge and stops closing batches. The clip enters the effect stage
+through the one effect payload, `DrawEffectPayload`, and the one composer path,
+`ComposeSession::effect`.
 
 ## What the code does now
 
@@ -198,8 +100,14 @@ listing of the backdrop, the ordering and the instance.
 - **What goes**: `StencilVariant`, `clip_stencil`, `gpu/surface/stencil`, the damage canvas's
   stencil, `MaskPlan`, `RenderStep::{SetStencilRef, MaskStamp, MaskClear}`,
   `PassState::establish`, `mask.wgsl` and the mask pipelines, `PipelineCensus::stencil`,
-  `DrawGroup::rounded_clips`, `TextBatch::rounded_clips`, `RenderBuffer::chains_equal`, and
-  AGENTS.md's "Rounded-clip stencil".
+  `DrawGroup::rounded_clips`, `TextBatch::rounded_clips`, `RenderBuffer::chains_equal`,
+  `RenderStream`'s stencil, the mask bucket of `diagnostics::gpu_pass_stats`, the
+  `depth_stencil` field of `PipelineRecipe`, and AGENTS.md's "Rounded-clip stencil". The docs
+  that name the stencil change with them: `primitives::math::nan`, `debug_overlay`,
+  `frame_passes`' `Dim`, `blit_pipeline`, and the `layout/cache` and `text_backend` benches.
+- **No stencil and no depth after step 7.** Every stencil in palantir is the rounded clip's, and
+  no pass attaches a depth texture, so with the field gone no pipeline can test either, and every
+  pass's `depth_stencil_attachment` is `None`.
 - **Clips with no scissor wait for a measurement** (step 10). With every clip in the instance, a
   group would close only at an overlap or a barrier, as GPUI clips. `.notes/PERF.md` refused the
   rect half before: 340 ns a group on Vulkan against a 2.1 ms frame.

@@ -16,7 +16,7 @@ use crate::shape::draw::Draw;
 use crate::shape::geometry::box_geometry::BoxOutline;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
-use crate::shape::paint::backdrop_capture::{BackdropCapture, CaptureReach};
+use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 use crate::shape::triangle::TriangleShape;
@@ -24,10 +24,11 @@ use crate::shape::triangle::TriangleShape;
 /// An app-written effect over a [`RectShape`], a [`CircleShape`] or a [`TriangleShape`]
 /// ([`Ui::add_shape`](crate::Ui::add_shape)), with one instance of its parameters: a color
 /// effect ([`Self::new`] of a color effect's name), or a backdrop effect, which also reads what is
-/// painted under it. Paints in record order, as any
-/// paint does, and its rect may exceed its node, as a ring does; clipping ancestors clip it.
-/// Refused: a `Brush` variant, which every brush family would have to draw, and which a theme
-/// file saves where no parameters fit: a box's backdrop effect is its [`Material`](crate::Material).
+/// painted under it. Paints in record order, as any paint does, and its rect may exceed its node,
+/// as a ring does; clipping ancestors clip it. A [`Material`](crate::Material) is the theme form of
+/// a backdrop effect, which a box wears under its fill and border, and draws as an `EffectPaint`
+/// does. Refused: a `Brush` variant, which every brush family would have to draw, and which a
+/// theme file saves where no parameters fit.
 ///
 /// A backdrop effect is a backdrop capture: what is painted under it is copied out of the frame at
 /// its place in paint order, blurred by its [σ](Self::blur), and kept across frames until
@@ -46,7 +47,7 @@ pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     name: EffectName<U, K>,
     params: U,
     /// What a backdrop effect reads under it; zero for a color effect, which reads none.
-    capture: BackdropCapture,
+    capture: CaptureParams,
     /// What a backdrop effect paints while transparency is reduced; a color effect reads none.
     reduced_transparency: ReducedBackdrop,
     /// The images bound, in slot order, each slot past the last `None`.
@@ -59,7 +60,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         Self {
             name,
             params,
-            capture: BackdropCapture::ZERO,
+            capture: CaptureParams::ZERO,
             reduced_transparency: ReducedBackdrop::Ground,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
         }
@@ -221,7 +222,7 @@ pub(crate) struct ErasedEffectPaint<'a> {
     pub(crate) name: TypedName,
     pub(crate) kind: KindId,
     pub(crate) params: &'a [u8],
-    pub(crate) capture: BackdropCapture,
+    pub(crate) capture: CaptureParams,
     pub(crate) reduced_transparency: ReducedBackdrop,
     pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
 }

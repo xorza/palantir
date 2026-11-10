@@ -1,4 +1,4 @@
-//! [`BackdropCapture`]: what a backdrop effect captures under it, a material's and an
+//! [`CaptureParams`]: what a backdrop effect's capture is planned from, a material's and an
 //! `EffectPaint`'s alike, and [`EffectBackdrop`], what it reads this record.
 
 use std::hash;
@@ -12,13 +12,13 @@ use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 /// window's ground while transparency is reduced, which takes no capture and makes no backdrop.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum EffectBackdrop {
-    Capture(BackdropCapture),
+    Capture(CaptureParams),
     Ground,
 }
 
 impl EffectBackdrop {
     /// What a use reads in `mode`, capturing as `capture` says where it captures.
-    pub(crate) const fn of(mode: BackdropMode, capture: BackdropCapture) -> Self {
+    pub(crate) const fn of(mode: BackdropMode, capture: CaptureParams) -> Self {
         match mode {
             BackdropMode::Capture => Self::Capture(capture),
             BackdropMode::Ground => Self::Ground,
@@ -26,7 +26,7 @@ impl EffectBackdrop {
     }
 
     /// The capture it takes; `None` over the ground.
-    pub(crate) const fn capture(self) -> Option<BackdropCapture> {
+    pub(crate) const fn capture(self) -> Option<CaptureParams> {
         match self {
             Self::Capture(capture) => Some(capture),
             Self::Ground => None,
@@ -53,10 +53,10 @@ impl NanCheck for EffectBackdrop {
     }
 }
 
-/// What a backdrop effect captures under it, in logical px: the σ of its blur and how far past its
-/// shape its composite reads.
+/// What the cascade plans a backdrop effect's capture from, in logical px, a material's and an
+/// `EffectPaint`'s alike: the σ of its blur and how far past its shape its composite reads.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct BackdropCapture {
+pub(crate) struct CaptureParams {
     pub(crate) sigma: f32,
     pub(crate) reach: CaptureReach,
 }
@@ -73,7 +73,7 @@ pub(crate) enum CaptureReach {
     Lens(F16x4),
 }
 
-impl BackdropCapture {
+impl CaptureParams {
     /// Sharp, reading under its shape alone.
     pub(crate) const ZERO: Self = Self {
         sigma: 0.0,
@@ -110,7 +110,7 @@ impl CaptureReach {
     }
 }
 
-impl hash::Hash for BackdropCapture {
+impl hash::Hash for CaptureParams {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u32(self.sigma.to_bits());
         match self.reach {
@@ -126,7 +126,7 @@ impl hash::Hash for BackdropCapture {
     }
 }
 
-impl NanCheck for BackdropCapture {
+impl NanCheck for CaptureParams {
     fn has_nan(&self) -> bool {
         self.sigma.is_nan()
             || match self.reach {
@@ -142,7 +142,7 @@ mod tests {
 
     use crate::primitives::packed::half_simd::F16x4;
     use crate::primitives::paint::material::lens_optics::LensOptics;
-    use crate::shape::paint::backdrop_capture::{BackdropCapture, CaptureReach, EffectBackdrop};
+    use crate::shape::paint::capture_params::{CaptureParams, CaptureReach, EffectBackdrop};
 
     /// A fixed reach rounds out to whole physical px whatever the shape's side: 2.3 logical px at
     /// scale 2 is 4.6, so 5, and 2.5 is exactly 5. A lens with no bezel reads nothing past the
@@ -177,7 +177,7 @@ mod tests {
             BuildHasherDefault::<DefaultHasher>::default().hash_one(backdrop)
         };
         let capture = |sigma, reach| {
-            EffectBackdrop::Capture(BackdropCapture {
+            EffectBackdrop::Capture(CaptureParams {
                 sigma,
                 reach: CaptureReach::Px(reach),
             })
@@ -187,12 +187,7 @@ mod tests {
         assert_ne!(base, hash(EffectBackdrop::Ground));
         assert_ne!(base, hash(capture(5.0, 2.0)));
         assert_ne!(base, hash(capture(4.0, 3.0)));
-        let zero = |reach| {
-            hash(EffectBackdrop::Capture(BackdropCapture {
-                sigma: 0.0,
-                reach,
-            }))
-        };
+        let zero = |reach| hash(EffectBackdrop::Capture(CaptureParams { sigma: 0.0, reach }));
         assert_ne!(
             zero(CaptureReach::Px(0.0)),
             zero(CaptureReach::Lens(F16x4::from_lanes([0.0; 4]))),

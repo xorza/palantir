@@ -560,12 +560,14 @@ fn an_effect_lands_as_one_physical_row() {
                     geometry: PlacedClosed::Box(PlacedBox {
                         rect: Rect::new(5.0, 6.0, 10.0, 8.0),
                         corners: Corners::new(4.0, 6.0, 6.0, 4.0),
-                    }),
+                    })
+                    .into(),
                     spin: None,
                     effect: EffectId(3),
                     params: Span::new(12, 8),
                     images: Span::new(4, 2),
                     backdrop: None,
+                    stage: None,
                     opacity: 1.0,
                     time: 1.25,
                 },

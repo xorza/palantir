@@ -21,7 +21,7 @@ use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
-use crate::shape::paint::backdrop_capture::{BackdropCapture, EffectBackdrop};
+use crate::shape::paint::capture_params::{CaptureParams, EffectBackdrop};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
@@ -177,7 +177,7 @@ impl TextAnchor {
 impl ShapeRecord {
     /// What the record reads as a backdrop over the pixels before it: a box's or a triangle's
     /// material or a backdrop effect's, each where it captures; `None` for every other record.
-    pub(crate) const fn backdrop_capture(&self) -> Option<BackdropCapture> {
+    pub(crate) const fn backdrop_capture(&self) -> Option<CaptureParams> {
         match self {
             Self::Quad(
                 QuadShape::Box {

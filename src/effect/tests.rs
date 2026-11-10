@@ -45,7 +45,7 @@ use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::renderer::frontend::payload::draw_effect_payload::EffectCaptureDraw;
 use crate::shape::Shape;
-use crate::shape::paint::backdrop_capture::CaptureReach;
+use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::theme::Theme;
 use crate::theme::error::ThemeEffectError;

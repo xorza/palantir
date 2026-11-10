@@ -44,7 +44,7 @@ use crate::shape::image_paint::ImagePaint;
 use crate::shape::lower;
 use crate::shape::lower::LoweredPaint;
 use crate::shape::mesh::MeshShape;
-use crate::shape::paint::backdrop_capture::EffectBackdrop;
+use crate::shape::paint::capture_params::EffectBackdrop;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_material::MaterialRead;

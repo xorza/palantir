@@ -324,11 +324,25 @@ driver serves that command alone; the drive table's `version` names it
   (`.notes/research/2026-11-10-draw-calls.md`). Refused: a clip rect in each glyph instance, 8 B a
   glyph; sorting by pipeline with a depth buffer, as Graphite does, a depth attachment in every
   pipeline for a −2 % ceiling (`.notes/PERF.md`).
+- **An effect is a program; theme data names one; `EffectPaint` is the one draw.** An effect is a
+  WGSL program an `EffectName<U, K>` names, a color effect or a backdrop effect; blur, frosted and
+  glass are palantir's stock backdrop effects (`EffectName::BLUR`, `FROSTED`, `GLASS`), loaded and
+  checked as an app's is. `Material` names a backdrop effect over `MaterialInput` and `PressEffect`
+  a color effect over `PressInput`: plain data a theme file saves and a transition blends, as
+  `Brush` is beside `ImagePaint`. `EffectPaint` draws any effect with any parameters, images and
+  a clock. Below them is one engine: a material lowers to the effect draw an `EffectPaint` does,
+  with palantir's stage (its fill, border and luminance bounds) around what the effect shows, as
+  a press lowers to an `EffectPaint`; one capture, one payload, one composer path and one effect
+  stage. As Skia's `SkRuntimeEffect`, Android's `RuntimeShader` and Flutter's `FragmentShader` are
+  one program whose placement decides its use, and as SwiftUI and WinUI keep a theme material
+  beside their shader route. Refused: one public backdrop type with any parameters (Flutter's
+  `BackdropFilter`, CSS `backdrop-filter`), whose type-erased bytes no theme file holds and no
+  tween blends; a closed set of material looks (SwiftUI, WinUI), which drops app materials; a
+  built-in filter type beside app effects, two forms of one thing.
 - **A material reaches under the border, in one draw.** The material and its fill, a color or a
   gradient, cover the whole box, and the border lies over them, as CSS's background and
-  `backdrop-filter` cover the border box. One effect stage draws every use of an effect: a
-  backdrop effect's also draws a material's box, its fill sampled from the gradient atlas the
-  quads read. Refused: the fill inside the border, which showed sharp content through a
+  `backdrop-filter` cover the border box, the fill sampled from the gradient atlas the quads
+  read. Refused: the fill inside the border, which showed sharp content through a
   translucent border; the gradient as a quad above the material, a second draw and a break in
   the run of material draws; a material stage compiled apart, a second pipeline per effect.
 - **The covered side is the shape's**: `Coverage::{Inside, Outside}` on `RectShape`, as Skia's
@@ -408,10 +422,6 @@ driver serves that command alone; the drive table's `version` names it
   float's fill, its luminance bound derived from each float's ink. Refused: opaque defaults, which
   made an app build its themes again to frost them and again to stop; a token per look (blur,
   frost, glass), three spellings of a choice one material holds.
-- **Blur, frosted and glass are stock effects.** A `Material` names a backdrop effect over
-  `MaterialInput`, palantir's own (`EffectName::BLUR`, `FROSTED`, `GLASS`) or an app's, loaded and
-  checked as any effect is, as Flutter's `BackdropFilter` takes `ImageFilter.blur` or
-  `ImageFilter.shader`. Refused: a built-in filter type beside app effects, two forms of one thing.
 - **Frosted glass holds its ink at WCAG 4.5:1**; palantir owns the math, as it depends on its
   dither. Refused: `Chrome::with_frost` and a `Chrome` setter per stock material
   ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).

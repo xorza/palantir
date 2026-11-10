@@ -318,14 +318,15 @@ mod press {
     use crate::internals::paint_capture::PaintCall;
     use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::geometry::coverage::Coverage;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::effect_id::EffectId;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::pointer::PointerButton;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::renderer::frontend::payload::draw_effect_payload::EffectGeometry;
     use crate::shape::geometry::box_geometry::PlacedBox;
-    use crate::shape::geometry::closed_geometry::PlacedClosed;
     use crate::theme::Theme;
     use crate::theme::look::press_effect::PressEffect;
     use crate::ui::Ui;
@@ -363,7 +364,11 @@ mod press {
             .iter()
             .filter_map(|call| match call {
                 PaintCall::Effect(p) => {
-                    let PlacedClosed::Box(PlacedBox { rect, corners }) = p.geometry else {
+                    let EffectGeometry::Box {
+                        coverage: Coverage::Inside,
+                        placed: PlacedBox { rect, corners },
+                    } = p.geometry
+                    else {
                         panic!("a press effect paints its button's rect");
                     };
                     Some(PressDraw {

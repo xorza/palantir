@@ -3,7 +3,6 @@
 //! Plain value types, consumed inline and never serialized, so layout is the compiler's and fields are ordinary enums, not `u8` newtypes with `#[repr(C)]` and padding a `bytemuck::Pod` arena would need.
 
 pub(crate) mod brush_source;
-pub(crate) mod draw_backdrop_payload;
 pub(crate) mod draw_curve_payload;
 pub(crate) mod draw_effect_payload;
 pub(crate) mod draw_icon_payload;
