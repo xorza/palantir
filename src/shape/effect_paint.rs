@@ -16,7 +16,7 @@ use crate::shape::draw::Draw;
 use crate::shape::geometry::box_geometry::BoxOutline;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
-use crate::shape::record::EffectCapture;
+use crate::shape::paint::backdrop_capture::{BackdropCapture, CaptureReach};
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 use crate::shape::triangle::TriangleShape;
@@ -46,7 +46,7 @@ pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     name: EffectName<U, K>,
     params: U,
     /// What a backdrop effect reads under it; zero for a color effect, which reads none.
-    capture: EffectCapture,
+    capture: BackdropCapture,
     /// What a backdrop effect paints while transparency is reduced; a color effect reads none.
     reduced_transparency: ReducedBackdrop,
     /// The images bound, in slot order, each slot past the last `None`.
@@ -59,7 +59,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         Self {
             name,
             params,
-            capture: EffectCapture::ZERO,
+            capture: BackdropCapture::ZERO,
             reduced_transparency: ReducedBackdrop::Ground,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
         }
@@ -98,8 +98,9 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     }
 
     /// Read up to `px` past the effect's rect, as a ring's glow or a lens's bent ray does
-    /// (SwiftUI's `maxSampleOffset`); a read past it reads its edge. 0 by default: the effect
-    /// reads under its own rect alone. The capture grows by it, so damage under it repaints.
+    /// (SwiftUI's `maxSampleOffset`), rounded out to whole physical px; a read past it reads its
+    /// edge. 0 by default: the effect reads under its own rect alone. The capture grows by it, so
+    /// damage under it repaints.
     /// Refused: one bound per effect, which its largest shape sets for all; the whole surface, as
     /// Flutter reads without a `ClipRect`, which captures and blurs what no shape reads.
     ///
@@ -108,7 +109,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
     pub const fn reach(mut self, px: f32) -> Self {
-        self.capture.reach = domain::length(px);
+        self.capture.reach = CaptureReach::Px(domain::length(px));
         self
     }
 
@@ -220,7 +221,7 @@ pub(crate) struct ErasedEffectPaint<'a> {
     pub(crate) name: TypedName,
     pub(crate) kind: KindId,
     pub(crate) params: &'a [u8],
-    pub(crate) capture: EffectCapture,
+    pub(crate) capture: BackdropCapture,
     pub(crate) reduced_transparency: ReducedBackdrop,
     pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
 }

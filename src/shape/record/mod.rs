@@ -21,10 +21,10 @@ use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
+use crate::shape::paint::backdrop_capture::{BackdropCapture, EffectBackdrop};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
-use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::text::shaping_font::ShapingFont;
@@ -41,61 +41,6 @@ pub(crate) enum ColorMode {
     Single = 0,
     PerPoint = 1,
     PerSegment = 2,
-}
-
-/// What a backdrop effect reads under it: what is painted there, captured, or the window's
-/// ground while transparency is reduced, which takes no capture and makes no backdrop.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum EffectBackdrop {
-    Capture(EffectCapture),
-    Ground,
-}
-
-/// What a backdrop effect captures under it, in logical px: the σ of its blur and how far past its
-/// rect it reads.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct EffectCapture {
-    pub(crate) sigma: f32,
-    pub(crate) reach: f32,
-}
-
-impl EffectCapture {
-    /// Reads under its rect alone, sharp.
-    pub(crate) const ZERO: Self = Self {
-        sigma: 0.0,
-        reach: 0.0,
-    };
-}
-
-/// What a backdrop reads, as the cascade plans its capture: a box's material or a backdrop effect.
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum BackdropReader {
-    Material(LoweredMaterial),
-    Effect(EffectCapture),
-}
-
-impl BackdropReader {
-    /// The blur's σ in logical px.
-    pub(crate) fn sigma(self) -> f32 {
-        match self {
-            Self::Material(material) => material.sigma(),
-            Self::Effect(capture) => capture.sigma,
-        }
-    }
-
-    /// How far past the backdrop, in physical px under `scale` physical px per logical px, its
-    /// composite reads: a lens's margin ([`LoweredMaterial::lens_margin`], `narrowest` its
-    /// backdrop's narrowest side), or an effect's reach rounded out.
-    #[expect(
-        clippy::cast_sign_loss,
-        reason = "a reach is a length, which `EffectPaint::reach` checks, and a scale is positive"
-    )]
-    pub(crate) fn margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
-        match self {
-            Self::Material(material) => material.lens_margin(scale, narrowest),
-            Self::Effect(capture) => (capture.reach * scale).ceil() as u32,
-        }
-    }
 }
 
 /// `#[repr(u8)]` pins the discriminant to one byte (`hot_struct_sizes`). Reorder variants freely: hashes use `mem::discriminant` and are only compared within a process run.
@@ -232,7 +177,7 @@ impl TextAnchor {
 impl ShapeRecord {
     /// What the record reads as a backdrop over the pixels before it: a box's or a triangle's
     /// material or a backdrop effect's, each where it captures; `None` for every other record.
-    pub(crate) const fn backdrop_reader(&self) -> Option<BackdropReader> {
+    pub(crate) const fn backdrop_capture(&self) -> Option<BackdropCapture> {
         match self {
             Self::Quad(
                 QuadShape::Box {
@@ -243,18 +188,18 @@ impl ShapeRecord {
                     material: Some(material),
                     ..
                 },
-            ) if material.captures() => Some(BackdropReader::Material(*material)),
+            ) => material.capture(),
             Self::EffectPaint {
                 backdrop: Some(EffectBackdrop::Capture(capture)),
                 ..
-            } => Some(BackdropReader::Effect(*capture)),
+            } => Some(*capture),
             _ => None,
         }
     }
 
     /// Whether the record reads a backdrop over the pixels before it.
     pub(crate) const fn reads_backdrop(&self) -> bool {
-        self.backdrop_reader().is_some()
+        self.backdrop_capture().is_some()
     }
 
     /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::push`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.

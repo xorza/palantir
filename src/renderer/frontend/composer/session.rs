@@ -29,7 +29,9 @@ use crate::renderer::frontend::payload::draw_backdrop_payload::{
     BackdropDraw, BackdropGeometry, DrawBackdropPayload,
 };
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
+use crate::renderer::frontend::payload::draw_effect_payload::{
+    DrawEffectPayload, EffectCaptureDraw,
+};
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -400,12 +402,12 @@ impl PaintSink for ComposeSession<'_> {
                     None => physical,
                     Some(spin) => physical.turned_cover(physical.center(), spin.angle),
                 };
-                match backdrop.read {
+                match backdrop {
                     // Inside the capture by half a pixel, so a read at the window's edge blends no
                     // texel past it.
-                    BackdropDraw::Capture(ticket) => {
+                    EffectCaptureDraw::Capture { ticket, reach } => {
                         let reads = cover
-                            .inflated(backdrop.reach * scale)
+                            .inflated(reach.margin(scale, None) as f32)
                             .clamp_to(Rect::from(ticket.capture.footprint).deflated(0.5));
                         self.list_backdrop(visible, ticket, |source| BackdropRow {
                             reads,
@@ -416,7 +418,7 @@ impl PaintSink for ComposeSession<'_> {
                             },
                         })
                     }
-                    BackdropDraw::Ground => self.list_ground(BackdropRow {
+                    EffectCaptureDraw::Ground => self.list_ground(BackdropRow {
                         reads: cover,
                         look: None,
                         read: BackdropRead::Ground,

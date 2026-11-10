@@ -1,5 +1,6 @@
 //! Lowered paint data shared by shape records and node chrome.
 
+pub(crate) mod backdrop_capture;
 pub(crate) mod blur_plan;
 pub(crate) mod chrome_row;
 pub(crate) mod curve_ramp;

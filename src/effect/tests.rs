@@ -43,8 +43,9 @@ use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
-use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
+use crate::renderer::frontend::payload::draw_effect_payload::EffectCaptureDraw;
 use crate::shape::Shape;
+use crate::shape::paint::backdrop_capture::CaptureReach;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::theme::Theme;
 use crate::theme::error::ThemeEffectError;
@@ -1662,12 +1663,12 @@ fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced()
     h.ui()
         .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
         .unwrap();
-    let reads = |h: &Harness| -> Vec<Option<BackdropDraw>> {
+    let reads = |h: &Harness| -> Vec<Option<EffectCaptureDraw>> {
         h.encode_paint()
             .calls
             .iter()
             .filter_map(|call| match call {
-                PaintCall::Effect(p) => Some(p.backdrop.map(|backdrop| backdrop.read)),
+                PaintCall::Effect(p) => Some(p.backdrop),
                 _ => None,
             })
             .collect()
@@ -1678,13 +1679,16 @@ fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced()
     });
     assert!(matches!(
         reads(&h).as_slice(),
-        [Some(BackdropDraw::Capture(_))]
+        [Some(EffectCaptureDraw::Capture {
+            reach: CaptureReach::Px(0.0),
+            ..
+        })]
     ));
     h.set_system_transparency_reduced(true);
     h.frame(|ui| {
         ui.add_shape(Shape::rect(), paint());
     });
-    assert_eq!(reads(&h), [Some(BackdropDraw::Ground)]);
+    assert_eq!(reads(&h), [Some(EffectCaptureDraw::Ground)]);
     h.frame(|ui| {
         ui.add_shape(
             Shape::rect(),

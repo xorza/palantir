@@ -28,7 +28,6 @@ use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::LineCap;
-use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
@@ -45,14 +44,15 @@ use crate::shape::image_paint::ImagePaint;
 use crate::shape::lower;
 use crate::shape::lower::LoweredPaint;
 use crate::shape::mesh::MeshShape;
+use crate::shape::paint::backdrop_capture::EffectBackdrop;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
+use crate::shape::record::ColorMode;
 use crate::shape::record::ShapeRecord;
-use crate::shape::record::{ColorMode, EffectBackdrop};
 use crate::shape::record_store::recorded_gradients::RecordedGradients;
 use crate::shape::record_store::text_store::TextStore;
 use crate::shape::rect::RectShape;
@@ -61,7 +61,7 @@ use crate::shape::triangle::TriangleShape;
 use crate::text::family_keys::FamilyKeys;
 use crate::text::shaping_font::ShapingFont;
 use glam::Vec2;
-use std::hash::Hasher as _;
+use std::hash::{Hash as _, Hasher as _};
 use std::slice;
 
 /// The payload columns and the only API that appends to them. Every writer
@@ -483,12 +483,10 @@ impl RecordStore {
         );
         let backdrop = match kind {
             KindId::Color => None,
-            KindId::Backdrop => Some(
-                match reduced_transparency.mode(resolve.reductions.transparency)? {
-                    BackdropMode::Capture => EffectBackdrop::Capture(capture),
-                    BackdropMode::Ground => EffectBackdrop::Ground,
-                },
-            ),
+            KindId::Backdrop => Some(EffectBackdrop::of(
+                reduced_transparency.mode(resolve.reductions.transparency)?,
+                capture,
+            )),
         };
         if geometry.is_paint_empty() {
             return None;
@@ -502,14 +500,8 @@ impl RecordStore {
             h.write_u64(image.id().0);
             h.write_u32(image.generation());
         }
-        match backdrop {
-            Some(EffectBackdrop::Capture(capture)) => {
-                h.write_u8(1);
-                h.write_u32(capture.sigma.to_bits());
-                h.write_u32(capture.reach.to_bits());
-            }
-            Some(EffectBackdrop::Ground) => h.write_u8(2),
-            None => {}
+        if let Some(backdrop) = backdrop {
+            backdrop.hash(&mut h);
         }
         Some(ShapeRecord::EffectPaint {
             backdrop,

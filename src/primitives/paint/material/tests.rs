@@ -265,7 +265,7 @@ fn a_material_coerces_into_its_kinds_where_it_paints() {
             mode: BackdropMode::Capture,
         },
     );
-    assert_eq!(lowered.sigma(), 0.0);
+    assert_eq!(lowered.capture().map(|capture| capture.sigma), Some(0.0));
     assert_eq!(lowered.min_luminance(), 0.0);
     let start = lowered.params as usize;
     let words: Vec<f32> = store.effect_params[start..start + 7]

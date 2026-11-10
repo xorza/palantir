@@ -11,6 +11,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::paint::lowered_border::LoweredBorder;
+use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
 use crate::shape::record_store::recorded_gradients::GradientId;

@@ -14,6 +14,7 @@
 - flag whether to reduce fps on lowpower
 - material for texts and strokes?
 - Draw::Effect - do we need it if we have box?
+- quad and triangle - different pipelines? unify?
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows

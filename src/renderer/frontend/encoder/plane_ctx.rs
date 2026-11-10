@@ -51,6 +51,7 @@ use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
+use crate::shape::paint::backdrop_capture::EffectBackdrop;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -60,7 +61,7 @@ use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint_animation::paint_mod::PaintMod;
-use crate::shape::record::{EffectBackdrop, ShapeRecord, TextAnchor};
+use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
@@ -567,7 +568,7 @@ impl PlaneCtx<'_, '_> {
                 content_hash: _,
             } => {
                 let backdrop = match backdrop {
-                    Some(EffectBackdrop::Capture(read)) => {
+                    Some(EffectBackdrop::Capture(capture)) => {
                         let site = BackdropSite {
                             owner: id,
                             origin: BackdropOrigin::Shape,
@@ -576,15 +577,12 @@ impl PlaneCtx<'_, '_> {
                         let Some(ticket) = self.backdrop_ticket(site) else {
                             return;
                         };
-                        Some(EffectCaptureDraw {
-                            read: BackdropDraw::Capture(ticket),
-                            reach: read.reach,
+                        Some(EffectCaptureDraw::Capture {
+                            ticket,
+                            reach: capture.reach,
                         })
                     }
-                    Some(EffectBackdrop::Ground) => Some(EffectCaptureDraw {
-                        read: BackdropDraw::Ground,
-                        reach: 0.0,
-                    }),
+                    Some(EffectBackdrop::Ground) => Some(EffectCaptureDraw::Ground),
                     None => None,
                 };
                 let Some(placed) = geometry.place(owner_rect) else {

@@ -2,10 +2,11 @@
 
 use crate::common::span::Span;
 use crate::primitives::identity::effect_id::EffectId;
+use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
-use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::paint::backdrop_capture::CaptureReach;
 
 /// An effect over a box or a triangle in the logical frame; `params` indexes the window's
 /// [`RecordStore`](crate::shape::record_store::RecordStore) parameter words.
@@ -26,12 +27,16 @@ pub(crate) struct DrawEffectPayload {
     pub(crate) time: f32,
 }
 
-/// What a backdrop effect's draw reads, and how far past its rect it reads, in logical px; a
-/// draw over the ground reads under its rect alone.
+/// What a backdrop effect's draw reads: what is painted under it, by the ticket the backdrop
+/// ledger wrote for it, up to its reach past its rect; or the window's ground, while transparency
+/// is reduced, under its rect alone.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct EffectCaptureDraw {
-    pub(crate) read: BackdropDraw,
-    pub(crate) reach: f32,
+pub(crate) enum EffectCaptureDraw {
+    Capture {
+        ticket: BackdropTicket,
+        reach: CaptureReach,
+    },
+    Ground,
 }
 
 impl PaintPayload for DrawEffectPayload {

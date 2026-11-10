@@ -1,5 +1,5 @@
-//! A material lowered: the effect it paints through, its input's words in the record store, its
-//! capture's σ, its luminance ceiling and floor, and what it reads.
+//! A material lowered: the effect it paints through, what it reads and captures, its input's
+//! words in the record store, and its luminance ceiling and floor.
 
 use std::hash::{self, Hasher as _};
 
@@ -9,9 +9,9 @@ use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::lens_optics::LensOptics;
 use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::reduction::Reductions;
+use crate::shape::paint::backdrop_capture::{BackdropCapture, CaptureReach, EffectBackdrop};
 use crate::shape::record_store::RecordStore;
 
 /// What a box's material reads this record, as the reductions decide it, with the effect the
@@ -52,23 +52,21 @@ impl MaterialRead {
     }
 }
 
-/// A [`Material`] as a record keeps it: the effect and what it reads, the first of the input's
-/// words in the record store and their hash, the capture's σ in logical px as f16 bits, the lens's
-/// `(bezel, thickness, refractive_index, dispersion)` in logical px, from which the cascade plans
-/// how far past the box it reads, and the luminance bounds. `max_luminance` is the ceiling's f16
+/// A [`Material`] as a record keeps it: the effect and what it reads, a capture whose reach is
+/// its lens, as a backdrop `EffectPaint`'s reach is its own, the first of the input's words in the
+/// record store and their hash, and the luminance bounds. `max_luminance` is the ceiling's f16
 /// bits, rounded down so the material never shows brighter than its author allowed, and 65504 for
 /// none; `min_luminance` the floor's, rounded up so it never shows darker, and 0 for none. Packed
 /// for the shape record and the chrome row that hold it: 40 B.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LoweredMaterial {
     /// The hash of the input's bytes, as their words are frame-local.
     input_hash: u64,
-    lens: F16x4,
-    pub(crate) read: MaterialRead,
+    effect: EffectId,
+    pub(crate) backdrop: EffectBackdrop,
     /// The first of the input's words in the record store, which the record pass that staged them
     /// keeps; a [`MaterialInput`](crate::MaterialInput) spans a fixed count of them.
     pub(crate) params: u32,
-    sigma: u16,
     max_luminance: u16,
     min_luminance: u16,
 }
@@ -85,27 +83,25 @@ impl LoweredMaterial {
         let mut h = Hasher::new();
         h.pod_slice(bytes);
         let lens = material.input.lens;
-        Self {
-            read,
-            params: store.stage_effect_params(bytes).start,
-            input_hash: h.finish(),
-            sigma: half::f16::from_f32(F16x4::saturate_lane(material.blur)).to_bits(),
-            lens: F16x4::from_lanes_saturating([
+        let capture = BackdropCapture {
+            sigma: F16x4::saturate_lane(material.blur),
+            reach: CaptureReach::Lens(F16x4::from_lanes_saturating([
                 lens.bezel,
                 lens.thickness,
                 lens.refractive_index,
                 lens.dispersion,
-            ]),
+            ])),
+        };
+        Self {
+            effect: read.effect,
+            backdrop: EffectBackdrop::of(read.mode, capture),
+            params: store.stage_effect_params(bytes).start,
+            input_hash: h.finish(),
             max_luminance: material
                 .max_luminance
                 .map_or(half::f16::MAX.to_bits(), f16_at_or_below),
             min_luminance: material.min_luminance.map_or(0, f16_at_or_above),
         }
-    }
-
-    /// The capture's σ in logical px.
-    pub(crate) fn sigma(self) -> f32 {
-        half::f16::from_bits(self.sigma).to_f32()
     }
 
     /// The highest relative luminance the material shows: its ceiling, or 65504 with none.
@@ -120,29 +116,18 @@ impl LoweredMaterial {
 
     /// The effect it paints through.
     pub(crate) const fn effect(self) -> EffectId {
-        self.read.effect
+        self.effect
     }
 
-    /// Whether it reads what is painted under the box, a backdrop the cascade lists.
+    /// What it captures where it reads what is painted under the box, a backdrop the cascade
+    /// lists; `None` over the ground.
+    pub(crate) const fn capture(self) -> Option<BackdropCapture> {
+        self.backdrop.capture()
+    }
+
+    /// Whether it reads what is painted under the box.
     pub(crate) const fn captures(self) -> bool {
-        matches!(self.read.mode, BackdropMode::Capture)
-    }
-
-    /// How far past the box, in physical px, its lens reads under `scale` physical px per logical
-    /// px, at its densest color: [`LensOptics::margin`] where `narrowest` gives the box's
-    /// narrowest side in physical px, else [`LensOptics::reach`]. Zero with no bezel.
-    pub(crate) fn lens_margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
-        let [bezel, thickness, refractive_index, dispersion] = self.lens.lanes();
-        if bezel == 0.0 {
-            return 0;
-        }
-        let optics = LensOptics {
-            bezel: bezel * scale,
-            thickness: thickness * scale,
-            index: refractive_index,
-        };
-        let index = LensOptics::violet_index(refractive_index, dispersion);
-        narrowest.map_or_else(|| optics.reach(index), |n| optics.margin(index, n))
+        self.capture().is_some()
     }
 }
 
@@ -175,10 +160,9 @@ fn f16_at_or_above(v: f32) -> u16 {
 /// Everything but the frame-local `params`, whose bytes `input_hash` stands for.
 impl hash::Hash for LoweredMaterial {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.read.hash(state);
+        state.write_u32(self.effect.0);
+        self.backdrop.hash(state);
         state.write_u64(self.input_hash);
-        state.write_u16(self.sigma);
-        state.write_u64(self.lens.as_u64());
         state.write_u16(self.max_luminance);
         state.write_u16(self.min_luminance);
     }
@@ -186,8 +170,7 @@ impl hash::Hash for LoweredMaterial {
 
 impl NanCheck for LoweredMaterial {
     fn has_nan(&self) -> bool {
-        half::f16::from_bits(self.sigma).is_nan()
-            || self.lens.has_nan()
+        self.backdrop.has_nan()
             || half::f16::from_bits(self.max_luminance).is_nan()
             || half::f16::from_bits(self.min_luminance).is_nan()
     }
@@ -197,22 +180,21 @@ impl NanCheck for LoweredMaterial {
 pub(crate) mod internals {
     use crate::primitives::identity::effect_id::EffectId;
     use crate::primitives::packed::half_simd::F16x4;
-    use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
-    use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
+    use crate::shape::paint::backdrop_capture::{BackdropCapture, CaptureReach, EffectBackdrop};
+    use crate::shape::paint::lowered_material::LoweredMaterial;
 
     impl LoweredMaterial {
         /// A material through effect 0 that captures, blurred by σ `sigma` logical px, with no
         /// lens or bound, and no input staged.
         pub(crate) fn fixture(sigma: f32) -> Self {
             Self {
-                read: MaterialRead {
-                    effect: EffectId(0),
-                    mode: BackdropMode::Capture,
-                },
+                effect: EffectId(0),
+                backdrop: EffectBackdrop::Capture(BackdropCapture {
+                    sigma,
+                    reach: CaptureReach::Lens(F16x4::from_lanes([0.0, 0.0, 1.0, 0.0])),
+                }),
                 params: 0,
                 input_hash: 0,
-                sigma: half::f16::from_f32(sigma).to_bits(),
-                lens: F16x4::from_lanes([0.0, 0.0, 1.0, 0.0]),
                 max_luminance: half::f16::MAX.to_bits(),
                 min_luminance: 0,
             }

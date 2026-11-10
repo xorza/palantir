@@ -35,7 +35,8 @@ use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
 use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::record::{BackdropReader, ShapeRecord};
+use crate::shape::paint::lowered_material::LoweredMaterial;
+use crate::shape::record::ShapeRecord;
 use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -618,20 +619,19 @@ impl TreeSource<'_> {
                 continue;
             }
             let paint_row = after_children(tree, lc, entry).max(row);
-            let read = match entry.origin {
+            let capture = match entry.origin {
                 BackdropOrigin::Chrome => tree
                     .chrome(entry.node)
                     .and_then(|row| row.material)
-                    .filter(|material| material.captures())
-                    .map(BackdropReader::Material),
+                    .and_then(LoweredMaterial::capture),
                 BackdropOrigin::Shape => {
-                    tree.shapes.records[entry.shape_idx as usize].backdrop_reader()
+                    tree.shapes.records[entry.shape_idx as usize].backdrop_capture()
                 }
             }
             .expect("a listed backdrop reads under it");
             let shape_scale = lc.shape_scales[node];
             let scale = shape_scale * display_scale;
-            let plan = BlurPlan::new(read.sigma() * scale);
+            let plan = BlurPlan::new(capture.sigma * scale);
             let narrowest = self
                 .narrowest_side(entry, rect, shape_scale)
                 .map(|n| n * display_scale);
@@ -645,7 +645,8 @@ impl TreeSource<'_> {
                 rect,
                 plan,
                 footprint: rect.inflated(
-                    PlaneBackdrop::reach(plan, read.margin(scale, narrowest)) / display_scale,
+                    PlaneBackdrop::reach(plan, capture.reach.margin(scale, narrowest))
+                        / display_scale,
                 ),
             });
         }
