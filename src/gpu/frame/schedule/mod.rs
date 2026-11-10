@@ -8,82 +8,9 @@ pub(crate) mod bench;
 use crate::common::span::Span;
 use crate::gpu::frame::frame_passes::ColorLoad;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use std::fmt;
-
-/// One clip chain staged into the mask-quad buffer: its source span and run.
-#[derive(Clone, Copy, Debug)]
-struct StagedChain {
-    chain: Span,
-    masks: Span,
-}
-
-/// Per-group and per-text-batch spans plus the deduplicated mask quads they index.
-/// Value-equal chains share one span: [`PassState::establish`] compares spans to
-/// decide whether a group keeps the stamped chain.
-#[derive(Debug, Default)]
-pub(crate) struct MaskPlan {
-    groups: Vec<Span>,
-    batches: Vec<Span>,
-    staged: Vec<StagedChain>,
-    quads: Vec<Quad>,
-}
-
-impl MaskPlan {
-    /// Rebuild the plan for `buffer`. The scan over staged chains is linear in
-    /// distinct chains (rare: nested rounded clips). A neighbor-only comparison
-    /// would break the span-per-chain invariant when anything, even a skipped group,
-    /// sits between two groups sharing a chain.
-    pub(crate) fn build(&mut self, buffer: &RenderBuffer) {
-        self.groups.clear();
-        self.batches.clear();
-        self.staged.clear();
-        self.quads.clear();
-        for group in &buffer.groups {
-            let chain = group.rounded_clips;
-            let mask_span = if group.scissor.is_some() && chain.len != 0 {
-                if let Some(staged) = self
-                    .staged
-                    .iter()
-                    .find(|staged| buffer.chains_equal(staged.chain, chain))
-                {
-                    staged.masks
-                } else {
-                    let start = self.quads.len() as u32;
-                    for clip in &buffer.rounded_clips[chain.range()] {
-                        self.quads.push(Quad {
-                            corners: clip.corners,
-                            ..Quad::of_rect(clip.mask_rect)
-                        });
-                    }
-                    let staged = Span::new(start, chain.len);
-                    self.staged.push(StagedChain {
-                        chain,
-                        masks: staged,
-                    });
-                    staged
-                }
-            } else {
-                Span::default()
-            };
-            self.groups.push(mask_span);
-        }
-        for batch in &buffer.text_batches {
-            let group = batch.last_group as usize;
-            debug_assert!(
-                buffer.chains_equal(batch.rounded_clips, buffer.groups[group].rounded_clips),
-                "text batch chain decorrelated from its last_group's chain"
-            );
-            self.batches.push(self.groups[group]);
-        }
-    }
-
-    pub(crate) fn quads(&self) -> &[Quad] {
-        &self.quads
-    }
-}
 
 /// One step of the schedule: what to do, not how.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,15 +20,6 @@ pub(crate) enum RenderStep {
     /// before left.
     PreClear,
     SetScissor(URect),
-    /// Set the stencil reference (stencil-path frames only): chain depth for content,
-    /// level `k` before stamping level `k`, `0` before a clear. Elided when held.
-    SetStencilRef(u32),
-    /// Bind the mask-stamp pipeline (`Equal` + `IncrementClamp`) and draw the mask
-    /// quad at this index, writing `ref + 1`.
-    MaskStamp(u32),
-    /// Bind the mask-clear pipeline (`Always` + `Replace`, ref 0) and draw the mask
-    /// quad at this index; a chain's outermost quad resets the whole chain.
-    MaskClear(u32),
     /// Draw a group's quads, shadows among them: the backend splits the range where the
     /// pipeline changes.
     Quads {
@@ -137,8 +55,6 @@ pub(crate) struct Schedule<'a> {
     pub(crate) buffer: &'a RenderBuffer,
     /// The damage rect this walk repaints; `None` on a full repaint.
     pub(crate) damage_scissor: Option<URect>,
-    /// The frame's [`MaskPlan`] when the pass has a stencil, else `None`.
-    pub(crate) masks: Option<&'a MaskPlan>,
     pub(crate) groups: GroupSpan,
     /// What the pass does with the target before it paints: one that clears needs no
     /// [`RenderStep::PreClear`].
@@ -154,18 +70,11 @@ impl Schedule<'_> {
     ///    `SetScissor(damage_scissor)` then [`PreClear`], on a walk from the first group
     ///    of a pass that loads.
     /// 2. Each group narrows the scissor to its `effective` rect before its draws.
-    /// 3. Stencil-path groups establish their mask chain first: level `k` stamps at
-    ///    `stencil_ref = k`, content draws at `depth`. A stale chain clears with one
-    ///    draw of its outermost quad at ref 0 under the stamp-time scissor (a clear
-    ///    under another scissor misses stamped pixels). Groups sharing the stamped
-    ///    chain elide the clear and re-stamp. A walk never ends with a chain stamped:
-    ///    the pass clears the stencil once, so residue would leak into the next walk.
-    /// 4. Text renders after its group's quads. A batch drained past damage-skipped
-    ///    groups establishes its own chain.
-    /// 5. Groups with an empty effective scissor, or one missing `damage_scissor`,
+    /// 3. Text renders after its group's quads, each batch under its own scissor.
+    /// 4. Groups with an empty effective scissor, or one missing `damage_scissor`,
     ///    emit nothing.
-    /// 6. `SetScissor` and `SetStencilRef` are transitions: [`PassState`] emits one
-    ///    only when the value changes. The first scissor of each walk always emits.
+    /// 5. `SetScissor` is a transition: [`PassState`] emits one only when the rect
+    ///    changes. The first scissor of each walk always emits.
     ///
     /// [`PreClear`]: RenderStep::PreClear
     pub(crate) fn for_each_step(
@@ -191,10 +100,7 @@ impl Schedule<'_> {
             cursors: ScheduleCursors::default(),
             state: PassState {
                 emit,
-                masks: self.masks,
                 cur_scissor: None,
-                cur_ref: 0,
-                active: None,
             },
         }
         .run();
@@ -263,12 +169,11 @@ impl ScheduleWalk<'_> {
             if effective.is_paint_empty() {
                 continue;
             }
-            // Drain stuck batches first so later quads paint over the drained text and a
-            // batch sharing the stamped chain elides its stamp.
+            // Drain stuck batches first so later quads paint over the drained text.
             self.drain_text_batches(i);
 
-            // A group can be content-less at walk time (its text drains later); establishing
-            // would emit a dead scissor and stamp a mask chain for nothing.
+            // A group can be content-less at walk time (its text drains later); its scissor
+            // would be a dead step.
             let has_content = g.quads.len != 0
                 || self
                     .cursors
@@ -276,14 +181,12 @@ impl ScheduleWalk<'_> {
                     .anchored_at(&buffer.text_batches, |b| b.last_group, i)
                 || self.has_tier_batch_at(i);
             if has_content {
-                self.state.narrow(|masks| masks.groups[i], effective);
+                self.state.scissor(effective);
                 self.emit_group_body(i, effective);
             }
         }
-        // Trailing drain, before the tail clear so a still-stamped chain elides. A batch past the
-        // walk's last group renders in a walk that reaches it.
+        // Trailing drain. A batch past the walk's last group renders in a walk that reaches it.
         self.drain_text_batches(self.end);
-        self.state.clear_active();
     }
 
     fn has_tier_batch_at(&self, group: usize) -> bool {
@@ -312,7 +215,7 @@ impl ScheduleWalk<'_> {
                 None => batches[batch].scissor,
             };
             if !s.is_paint_empty() {
-                self.state.narrow(|masks| masks.batches[batch], s);
+                self.state.scissor(s);
                 self.state.push(RenderStep::Text { batch });
             }
             self.cursors.text.advance();
@@ -320,8 +223,8 @@ impl ScheduleWalk<'_> {
     }
 
     /// The draws every non-skipped group emits: quads, text batches, then mesh /
-    /// image / curve batches, after re-requesting the group's scissor and stencil
-    /// (the text drain may have changed them). Caller gates it on content.
+    /// image / curve batches, after re-requesting the group's scissor (the text drain
+    /// may have changed it). Caller gates it on content.
     fn emit_group_body(&mut self, i: usize, effective: URect) {
         let quads = self.buffer.groups[i].quads;
         if quads.len != 0 {
@@ -331,8 +234,8 @@ impl ScheduleWalk<'_> {
         if !self.has_tier_batch_at(i) {
             return;
         }
-        // Restore the group's own state; a no-op when the text drain left it untouched.
-        self.state.narrow(|masks| masks.groups[i], effective);
+        // Restore the group's own scissor; a no-op when the text drain left it untouched.
+        self.state.scissor(effective);
         // Paint order is `PaintTier::ALL`'s, which is `Ord`'s; the composer's flush
         // arbitration rests on it.
         for tier in PaintTier::ALL {
@@ -354,38 +257,19 @@ impl ScheduleWalk<'_> {
     }
 }
 
-/// A stamped stencil chain: mask quads (outer to inner) and the stamp-time
-/// scissor, which the clear must replay.
-#[derive(Clone, Copy, Debug)]
-struct ActiveMask {
-    masks: Span,
-    scissor: URect,
-}
-
-/// The render-pass state one walk has established, and the single point steps are
-/// emitted from. Branches request state ([`Self::narrow`], [`Self::clear_active`]);
-/// a matching request emits nothing, since wgpu records every scissor and stencil
-/// set as a real command.
-///
-/// Dedup is sound only because `SetScissor` / `SetStencilRef` are the only steps
-/// touching that state. Tracked per walk (one pass runs a walk per damage rect);
-/// a walk exits with no chain stamped and ref 0.
+/// The render-pass state one walk has set, and the single point steps are emitted from. A
+/// request for the scissor in force emits nothing, since wgpu records every scissor set as a real
+/// command. Sound only because `SetScissor` is the only step touching it; tracked per walk (one
+/// pass runs a walk per damage rect).
 struct PassState<'a> {
     emit: &'a mut dyn FnMut(RenderStep),
-    /// The frame's mask chains; `Some` exactly when the pass has a stencil.
-    masks: Option<&'a MaskPlan>,
     cur_scissor: Option<URect>,
-    cur_ref: u32,
-    active: Option<ActiveMask>,
 }
 
 impl fmt::Debug for PassState<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PassState")
-            .field("masks", &self.masks)
             .field("cur_scissor", &self.cur_scissor)
-            .field("cur_ref", &self.cur_ref)
-            .field("active", &self.active)
             .finish_non_exhaustive()
     }
 }
@@ -399,61 +283,6 @@ impl PassState<'_> {
         if self.cur_scissor != Some(rect) {
             self.push(RenderStep::SetScissor(rect));
             self.cur_scissor = Some(rect);
-        }
-    }
-
-    fn stencil_ref(&mut self, v: u32) {
-        if self.cur_ref != v {
-            self.push(RenderStep::SetStencilRef(v));
-            self.cur_ref = v;
-        }
-    }
-
-    /// Bring the pass to "ready to draw the content of `chain` inside `scissor`".
-    /// Without a stencil only the scissor moves.
-    fn narrow(&mut self, chain: impl FnOnce(&MaskPlan) -> Span, scissor: URect) {
-        match self.masks {
-            Some(masks) => self.establish(chain(masks), scissor),
-            None => self.scissor(scissor),
-        }
-    }
-
-    /// Clear the stamped chain under its stamp-time scissor.
-    fn clear_active(&mut self) {
-        if let Some(prev) = self.active.take() {
-            self.scissor(prev.scissor);
-            self.stencil_ref(0);
-            self.push(RenderStep::MaskClear(prev.masks.start));
-        }
-    }
-
-    /// Bring the stencil to "`chain` stamped under `scissor`, ref = depth" and
-    /// narrow the scissor. Elides the clear and re-stamp when the same chain is
-    /// stamped and its stamp scissor covers `scissor` (a wider one would expose
-    /// unwritten pixels and fail `Equal`). "Same chain" is the staged span, unique
-    /// per value in [`MaskPlan`].
-    fn establish(&mut self, chain: Span, scissor: URect) {
-        let keep = chain.len != 0
-            && self.active.is_some_and(|prev| {
-                prev.masks == chain && prev.scissor.intersect(scissor) == Some(scissor)
-            });
-        if keep {
-            self.scissor(scissor);
-            self.stencil_ref(chain.len);
-            return;
-        }
-        self.clear_active();
-        self.scissor(scissor);
-        for level in 0..chain.len {
-            self.stencil_ref(level);
-            self.push(RenderStep::MaskStamp(chain.start + level));
-        }
-        self.stencil_ref(chain.len);
-        if chain.len != 0 {
-            self.active = Some(ActiveMask {
-                masks: chain,
-                scissor,
-            });
         }
     }
 }
@@ -511,18 +340,16 @@ impl BatchCursor {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::frame::frame_passes::ColorLoad;
-    use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
-    use crate::gpu::pipeline::clip_variant::Clipping;
+    use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
     use crate::primitives::geometry::urect::URect;
     use crate::renderer::render_buffer::RenderBuffer;
 
-    /// What one schedule walk emitted: the step total and the transition counts
+    /// What one schedule walk emitted: the step total and the scissor transitions
     /// [`PassState`](crate::gpu::frame::schedule::PassState) deduplicates.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub(crate) struct WalkCounts {
         pub(crate) steps: usize,
         pub(crate) scissors: usize,
-        pub(crate) stencil_refs: usize,
     }
 
     impl GroupSpan {
@@ -533,55 +360,21 @@ pub(crate) mod internals {
         };
     }
 
-    /// Schedule-walk harness for the `schedule` benchmark.
-    #[derive(Debug, Default)]
-    pub(crate) struct Walk {
-        plan: MaskPlan,
-    }
-
-    impl Walk {
-        pub(crate) fn new(buffer: &RenderBuffer) -> Self {
-            let mut walk = Self::default();
-            walk.plan.build(buffer);
-            walk
-        }
-
-        pub(crate) fn run(
-            &self,
-            buffer: &RenderBuffer,
-            damage: Option<URect>,
-            clipping: Clipping,
-        ) -> WalkCounts {
-            self.run_between(buffer, damage, clipping, GroupSpan::ALL)
-        }
-
-        /// [`Self::run`] over `groups`, as one pass of a main pass broken at a backdrop's barrier
-        /// walks.
-        pub(crate) fn run_between(
-            &self,
-            buffer: &RenderBuffer,
-            damage: Option<URect>,
-            clipping: Clipping,
-            groups: GroupSpan,
-        ) -> WalkCounts {
-            let mut counts = WalkCounts::default();
-            let masks = match clipping {
-                Clipping::Off => None,
-                Clipping::On => Some(&self.plan),
-            };
+    impl WalkCounts {
+        /// What a walk of `buffer`'s `groups` under `damage` emits, as one pass of a main pass
+        /// broken at a backdrop's barrier walks them.
+        pub(crate) fn of(buffer: &RenderBuffer, damage: Option<URect>, groups: GroupSpan) -> Self {
+            let mut counts = Self::default();
             let schedule = Schedule {
                 buffer,
                 damage_scissor: damage,
-                masks,
                 groups,
                 load: ColorLoad::Load,
             };
             schedule.for_each_step(&mut |step| {
                 counts.steps += 1;
-                match step {
-                    RenderStep::SetScissor(_) => counts.scissors += 1,
-                    RenderStep::SetStencilRef(_) => counts.stencil_refs += 1,
-                    _ => {}
+                if let RenderStep::SetScissor(_) = step {
+                    counts.scissors += 1;
                 }
             });
             counts

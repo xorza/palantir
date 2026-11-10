@@ -60,6 +60,8 @@ struct VertexOut {
     @location(10) @interpolate(flat) core: vec4<f32>,
     // Nonzero for a turned quad, whose quad edge is no pixel edge (`fs`).
     @location(11) @interpolate(flat) turned: u32,
+    // The rounded clips that cut the quad (`ClipChain`).
+    @location(12) @interpolate(flat) chain: u32,
 };
 
 // The instance attributes every quad pipeline reads.
@@ -82,6 +84,8 @@ struct QuadIn {
     @location(11) points01:    vec4<f32>,
     @location(12) points23:    vec4<f32>,
     @location(13) inradius:    f32,
+    // The rounded clips that cut the quad (`ClipChain`).
+    @location(14) chain:       u32,
 };
 
 // The pixel-center extent the quad shader shades for a quad: its rect
@@ -142,6 +146,7 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     out.inv_size     = 1.0 / max(size, vec2<f32>(PALANTIR_ZERO_EPS));
     out.core         = vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN);
     out.turned       = u32(quad.rotation != 0.0);
+    out.chain        = quad.chain;
     // Inside the quad by the largest radius, no corner's arc reaches; by the
     // border and `PALANTIR_AA_HALF_WIDTH`, its inner edge's coverage is 1. An outside
     // rect paints outside its shape, and a triangle's rect is not its shape.

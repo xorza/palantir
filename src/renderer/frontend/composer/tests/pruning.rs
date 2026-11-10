@@ -11,7 +11,8 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, draw, draw_marked, params, params_unsnapped, run, survivor_calls, survivors, text,
+    clip, clip_rounded, draw, draw_marked, params, params_unsnapped, run, survivor_calls,
+    survivors, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -591,4 +592,27 @@ fn equal_cells_cost_one_tile_each() {
     rig.compose(&recorded);
     assert_eq!(rig.out.quads.len(), 96 * 96, "no cell covers another");
     assert_eq!(rig.composer.order.contains_tests(), 144 * 2016);
+}
+
+/// A rounded clip keeps an occluder to what the clip leaves whole. Under a clip (10, 10, 80, 80)
+/// of radius 10, a sharp opaque quad over the whole surface covers only the clip's inscribed rect,
+/// inset `10 · (1 − 1/√2) ≈ 2.93` a side, less the 0.5 px reach and the slack: from about 13.44 to
+/// 86.56. A quad under it inside that rect goes; one in the clip's edge band, (10, 40, 2 × 10),
+/// stays, as the occluder there shows a share of what lies under it.
+#[test]
+fn a_rounded_clip_keeps_an_occluder_to_what_it_leaves_whole() {
+    let edge = Rect::new(10.0, 40.0, 2.0, 10.0);
+    let inside = Rect::new(40.0, 40.0, 10.0, 10.0);
+    let over = Rect::new(0.0, 0.0, 100.0, 100.0);
+    let buf = run(
+        |b, _| {
+            clip_rounded(b, Rect::new(10.0, 10.0, 80.0, 80.0), Corners::all(10.0));
+            draw_marked(b, edge);
+            draw_marked(b, inside);
+            draw(b, over);
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(survivors(&buf), [edge, over]);
 }

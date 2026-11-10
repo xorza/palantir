@@ -138,16 +138,15 @@ BatchKind
     enum BatchKind: Clone, Copy, Debug, Eq, PartialEq
         Setup = 0
         PreClear = 1
-        Mask = 2
-        Quads = 3
-        Shadows = 4
-        Text = 5
-        Mesh = 6
-        Image = 7
-        Curve = 8
-        Icon = 9
-        Effect = 10
-        pub const ALL: [Self; 11]
+        Quads = 2
+        Shadows = 3
+        Text = 4
+        Mesh = 5
+        Image = 6
+        Curve = 7
+        Icon = 8
+        Effect = 9
+        pub const ALL: [Self; 10]
         pub const fn label(self) -> &'static str
 
 Block

@@ -51,14 +51,14 @@ fn mesh_batch_in_damage_skipped_group_drops_silently() {
     );
     let damage = Some(URect::new(50, 0, 50, 100));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, None)),
+        simplify(&buf, &collect(&buf, damage)),
         vec![DrawOp::PreClear, DrawOp::Meshes(1)],
     );
 }
 
-/// An image batch at group `j` replays after that group's quads and meshes, through both stencil and non-stencil paths.
+/// An image batch at group `j` replays after that group's quads and meshes.
 #[test]
-fn image_batch_emits_after_group_quads_in_non_stencil_path() {
+fn image_batch_emits_after_group_quads() {
     let buf = buf_with_tier_anchors(
         vec![
             DrawGroup {
@@ -98,7 +98,7 @@ fn image_batch_in_damage_skipped_group_drops_silently() {
     );
     let damage = Some(URect::new(50, 0, 50, 100));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, None)),
+        simplify(&buf, &collect(&buf, damage)),
         vec![DrawOp::PreClear, DrawOp::Images(1)],
     );
 }

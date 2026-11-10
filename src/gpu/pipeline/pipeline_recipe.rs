@@ -3,7 +3,7 @@
 use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
 use crate::gpu::device::gpu::Gpu;
 
-/// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend, optional depth-stencil); [`Self::build`] fills the project-wide defaults (single color target, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
+/// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend); [`Self::build`] fills the project-wide defaults (single color target, no depth or stencil, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
 #[derive(Clone, Debug)]
 pub(crate) struct PipelineRecipe<'a> {
     pub(crate) label: &'a str,
@@ -18,13 +18,12 @@ pub(crate) struct PipelineRecipe<'a> {
     pub(crate) fragment_entry: &'static str,
     pub(crate) color_writes: wgpu::ColorWrites,
     pub(crate) blend: Option<wgpu::BlendState>,
-    pub(crate) depth_stencil: Option<wgpu::DepthStencilState>,
 }
 
 impl<'a> PipelineRecipe<'a> {
     /// A drawing family's color pipeline, the shape every one starts from: `vs` and `fs`, no
     /// override constants or vertex buffers, a triangle list, every channel written, premultiplied
-    /// blending, no stencil. A family overrides what it varies with struct update.
+    /// blending. A family overrides what it varies with struct update.
     pub(crate) const fn color(
         label: &'a str,
         shader: &'a wgpu::ShaderModule,
@@ -43,7 +42,6 @@ impl<'a> PipelineRecipe<'a> {
             fragment_entry: "fs",
             color_writes: wgpu::ColorWrites::ALL,
             blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-            depth_stencil: None,
         }
     }
 
@@ -81,7 +79,9 @@ impl<'a> PipelineRecipe<'a> {
                     topology: self.topology,
                     ..Default::default()
                 },
-                depth_stencil: self.depth_stencil,
+                // No pass attaches a depth or a stencil texture: a rounded clip is a coverage term
+                // each fragment takes.
+                depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 multiview_mask: None,
                 cache: None,

@@ -364,9 +364,10 @@ fn compose_strict_text_with_matching_clip_coalesces() {
     );
 }
 
-/// A rounded-clip change splits the text batch (different stencil masks); each batch carries its runs' mask chain so the schedule can stencil it past skipped groups.
+/// A rounded-clip change keeps the text batch: each run carries its own chain, which each of its
+/// glyphs takes, so runs under different rounded clips draw in one batch.
 #[test]
-fn compose_rounded_clip_change_splits_text_batch() {
+fn compose_rounded_clip_change_keeps_the_text_batch() {
     let buf = run(
         |b, _arena| {
             clip_rounded(b, Rect::new(0.0, 0.0, 100.0, 30.0), Corners::all(4.0));
@@ -378,21 +379,17 @@ fn compose_rounded_clip_change_splits_text_batch() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.text_batches.len(), 2, "rounded change must split batch");
-    for (i, tb) in buf.text_batches.iter().enumerate() {
-        let batch_chain = &buf.rounded_clips[tb.rounded_clips.range()];
-        assert_eq!(batch_chain.len(), 1, "batch {i} recorded under one mask");
-        let group_chain =
-            &buf.rounded_clips[buf.groups[tb.last_group as usize].rounded_clips.range()];
-        assert_eq!(
-            batch_chain, group_chain,
-            "batch {i} chain matches its last_group's chain"
-        );
-    }
-    let r0 = buf.rounded_clips[buf.text_batches[0].rounded_clips.range()][0];
-    let r1 = buf.rounded_clips[buf.text_batches[1].rounded_clips.range()][0];
-    assert_eq!(r0.corners.to_array()[0], 4.0);
-    assert_eq!(r1.corners.to_array()[0], 8.0);
+    assert_eq!(
+        buf.text_batches.len(),
+        1,
+        "a rounded change keeps the batch"
+    );
+    assert_eq!(buf.text_batches[0].texts.len, 2);
+    let chain = |t: usize| &buf.rounded_clips[buf.texts[t].clip.span().range()];
+    assert_eq!(chain(0).len(), 1);
+    assert_eq!(chain(1).len(), 1);
+    assert_eq!(chain(0)[0].corners.to_array()[0], 4.0);
+    assert_eq!(chain(1)[0].corners.to_array()[0], 8.0);
 }
 
 /// A culled higher-kind draw does not split the text batch: the cull runs before the overlap test.

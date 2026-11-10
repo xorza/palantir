@@ -202,7 +202,7 @@ fn compose_skips_groups_with_no_quads() {
     assert!(buf.groups.is_empty());
 }
 
-/// Rounded clip rides on the emitted `DrawGroup` as a one-entry mask chain, scaled by DPR; a nested `Rect` clip inherits the chain, else inner draws land at `stencil_ref=0` over `stencil=1` and vanish.
+/// A rounded clip rides on each draw under it as a one-entry chain, scaled by DPR; a nested `Rect` clip inherits the chain, which still cuts what it holds.
 #[test]
 fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let buf = run(
@@ -228,7 +228,8 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let outer = &buf.groups[0];
     let inner = &buf.groups[1];
 
-    let outer_chain = &buf.rounded_clips[outer.rounded_clips.range()];
+    let chain = |q: usize| &buf.rounded_clips[buf.quads[q].clip.span().range()];
+    let outer_chain = chain(0);
     assert_eq!(outer_chain.len(), 1, "single rounded clip → depth-1 chain");
     let outer_r = outer_chain[0];
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
@@ -239,14 +240,11 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
 
     // Inheritance: the inner Rect clip carries the outer chain; scissor narrows independently.
     assert_eq!(
-        inner.rounded_clips, outer.rounded_clips,
-        "inner group inherits parent's mask chain verbatim"
+        buf.quads[1].clip, buf.quads[0].clip,
+        "inner draw inherits parent's chain verbatim"
     );
     // DPR=2: rect (30,40,40,30) → (60,80,80,60), clamped to outer.
     assert_eq!(inner.scissor, Some(URect::new(60, 80, 80, 60)));
-    // Each draw names its group's chain.
-    assert_eq!(buf.quads[0].clip.span(), outer.rounded_clips);
-    assert_eq!(buf.quads[1].clip.span(), inner.rounded_clips);
 }
 
 /// Nested rounded clips stack: the child chain lists both masks outer→inner (a single mask would paint the child square over the ancestor's cutouts); a nested rect clip inherits the depth-2 chain. DPR 1: outer (10,10,200,200) r8, inner (20,20,100,100) r4.
@@ -271,7 +269,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
         3,
         "outer rounded, nested rounded, nested rect"
     );
-    let chain = |g: usize| &buf.rounded_clips[buf.groups[g].rounded_clips.range()];
+    let chain = |q: usize| &buf.rounded_clips[buf.quads[q].clip.span().range()];
 
     let outer = chain(0);
     assert_eq!(outer.len(), 1);
@@ -289,18 +287,14 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
 
     // Rect clip under both: inherits the depth-2 chain verbatim.
     assert_eq!(
-        buf.groups[2].rounded_clips, buf.groups[1].rounded_clips,
+        buf.quads[2].clip, buf.quads[1].clip,
         "rect inside nested rounded inherits the full chain"
     );
     assert_eq!(buf.groups[2].scissor, Some(URect::new(30, 30, 50, 50)));
-    // Each draw names its group's chain.
-    for (q, group) in buf.groups.iter().enumerate() {
-        assert_eq!(buf.quads[q].clip.span(), group.rounded_clips, "quad {q}");
-    }
 }
 
 #[test]
-fn rounded_clip_chain_accepts_stencil_depth_255() {
+fn rounded_clip_chain_accepts_depth_255() {
     let buf = run(
         |buffer, _payloads| {
             push_distinct_rounded_clips(buffer, 255);
@@ -310,13 +304,12 @@ fn rounded_clip_chain_accepts_stencil_depth_255() {
     );
 
     assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.groups[0].rounded_clips.len, 255);
     assert_eq!(buf.quads[0].clip.span().len, 255);
 }
 
 #[test]
-#[should_panic(expected = "rounded clip chain depth 256 exceeds stencil capacity 255")]
-fn rounded_clip_chain_rejects_stencil_depth_256() {
+#[should_panic(expected = "rounded clip chain depth 256 exceeds the deepest chain, 255")]
+fn rounded_clip_chain_rejects_depth_256() {
     let _ = run(
         |buffer, _payloads| push_distinct_rounded_clips(buffer, 256),
         &params(1.0, UVec2::new(400, 400)),
@@ -340,7 +333,7 @@ fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
     assert_eq!(buf.quads.len(), 2);
     assert_eq!(buf.groups.len(), 1, "identical rounded re-push is a no-op");
     assert_eq!(
-        buf.rounded_clips[buf.groups[0].rounded_clips.range()].len(),
+        buf.quads[1].clip.span().len,
         1,
         "no extra chain level for the redundant mask"
     );
@@ -358,7 +351,7 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
         },
         &params(1.0, UVec2::new(120, 60)),
     );
-    let chain = &buf.rounded_clips[buf.groups[0].rounded_clips.range()];
+    let chain = &buf.rounded_clips[buf.quads[0].clip.span().range()];
     let r = chain[0];
     // Mask rect keeps the off-screen origin (-50,-20) and full size (200,100).
     assert_eq!(r.mask_rect.min, Vec2::new(-50.0, -20.0));
@@ -379,13 +372,14 @@ fn push_clip_rect_emits_no_rounded_data() {
     );
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.rounded_clips.is_empty());
-    assert_eq!(buf.groups[0].rounded_clips.len, 0);
     assert_eq!(buf.quads[0].clip, ClipChain::NONE);
+    assert!(!buf.clips_drawn, "a rect clip names no rounded clip");
 }
 
 /// Every draw under a rounded clip names the chain in force, a quad, a text run, a mesh, an image
 /// and a curve alike, and each one past the clip names none: a depth-1 chain at the pool's start,
-/// `ClipChain::new(Span::new(0, 1))`.
+/// `ClipChain::new(Span::new(0, 1))`. A draw that names one marks the frame as one whose draws
+/// name rounded clips.
 #[test]
 fn every_draw_names_the_chain_in_force() {
     let buf = run(
@@ -408,6 +402,7 @@ fn every_draw_names_the_chain_in_force() {
     assert_eq!(buf.images.instance()[0].clip, inside);
     assert!(buf.curves.iter().all(|c| c.clip == inside));
     assert_eq!(buf.quads[1].clip, ClipChain::NONE, "past the clip");
+    assert!(buf.clips_drawn);
 }
 
 #[test]

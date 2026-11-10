@@ -91,8 +91,10 @@ const PRELUDE_CONSTANTS: [ShaderConstant; 1] =
 
 /// The constants the shared WGSL a body includes declares ([`wgsl::FRAME`]), substituted where a
 /// body includes it.
-const SHARED_CONSTANTS: [ShaderConstant; 1] =
-    [ShaderConstant::uint("FRAME_GROUP", wgsl::FRAME_GROUP)];
+const SHARED_CONSTANTS: [ShaderConstant; 2] = [
+    ShaderConstant::uint("FRAME_GROUP", wgsl::FRAME_GROUP),
+    ShaderConstant::uint("CLIP_DEPTH_BITS", wgsl::CLIP_DEPTH_BITS),
+];
 
 /// `body` behind the prelude, each marker of `constants` and the prelude's replaced. A marker
 /// occurs once, so a shader names a group through a WGSL `const` the marker sets, then

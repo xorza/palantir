@@ -3,7 +3,7 @@
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::gpu::frame::frame_passes::ColorLoad;
-use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
+use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -21,13 +21,11 @@ use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::UVec2;
 
-/// Simplified view of the render schedule: bookkeeping steps (`SetScissor`, `SetStencilRef`) are stripped.
-/// Raw [`RenderStep`] is tested where scissor narrowing and stencil-ref stepping matter.
+/// Simplified view of the render schedule: the bookkeeping step, `SetScissor`, is stripped.
+/// Raw [`RenderStep`] is tested where scissor narrowing matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DrawOp {
     PreClear,
-    MaskWrite(u32),
-    MaskClear(u32),
     Quads(usize),
     Text(usize),
     Meshes(usize),
@@ -37,12 +35,8 @@ pub(super) enum DrawOp {
     Effects(usize),
 }
 
-pub(super) fn collect(
-    buffer: &RenderBuffer,
-    damage_scissor: Option<URect>,
-    masks: Option<&MaskPlan>,
-) -> Vec<RenderStep> {
-    collect_between(buffer, damage_scissor, masks, GroupSpan::ALL)
+pub(super) fn collect(buffer: &RenderBuffer, damage_scissor: Option<URect>) -> Vec<RenderStep> {
+    collect_between(buffer, damage_scissor, GroupSpan::ALL)
 }
 
 /// [`collect`] of the walk over `groups`, as one pass of a main pass broken at a backdrop's barrier
@@ -50,14 +44,12 @@ pub(super) fn collect(
 pub(super) fn collect_between(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
-    masks: Option<&MaskPlan>,
     groups: GroupSpan,
 ) -> Vec<RenderStep> {
     let mut steps = Vec::new();
     let schedule = Schedule {
         buffer,
         damage_scissor,
-        masks,
         groups,
         load: ColorLoad::Load,
     };
@@ -66,7 +58,7 @@ pub(super) fn collect_between(
 }
 
 pub(super) fn plain_steps(buffer: &RenderBuffer) -> Vec<RenderStep> {
-    collect(buffer, None, None)
+    collect(buffer, None)
 }
 
 pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
@@ -85,9 +77,7 @@ pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawO
     for s in steps {
         match s {
             RenderStep::PreClear => out.push(DrawOp::PreClear),
-            RenderStep::SetScissor(_) | RenderStep::SetStencilRef(_) => {}
-            RenderStep::MaskStamp(mi) => out.push(DrawOp::MaskWrite(*mi)),
-            RenderStep::MaskClear(mi) => out.push(DrawOp::MaskClear(*mi)),
+            RenderStep::SetScissor(_) => {}
             RenderStep::Quads { range } => out.push(DrawOp::Quads(group_of(buffer, *range))),
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::TierBatch { tier, batch } => {
@@ -154,7 +144,6 @@ fn dummy_text() -> TextDrawRow {
 pub(super) fn group(quads: Span) -> DrawGroup {
     DrawGroup {
         scissor: Some(URect::new(0, 0, 100, 100)),
-        rounded_clips: Span::default(),
         quads,
     }
 }
@@ -164,14 +153,13 @@ pub(super) fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
     buf_with_batches(groups, Vec::new())
 }
 
-/// A `TextBatch` with the full-viewport sentinel scissor and no mask chain. Built explicitly, as the composer
+/// A `TextBatch` with the full-viewport sentinel scissor. Built explicitly, as the composer
 /// emits them (`DrawGroup` has no text span; deriving them would mask composer/batch decorrelation bugs).
 pub(super) fn text_batch(texts: Span, last_group: u32) -> TextBatch {
     TextBatch {
         texts,
         last_group,
         scissor: URect::new(0, 0, u32::MAX, u32::MAX),
-        rounded_clips: Span::default(),
     }
 }
 

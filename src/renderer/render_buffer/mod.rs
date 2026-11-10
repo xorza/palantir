@@ -1,6 +1,5 @@
 //! The frontend-to-backend contract: [`RenderBuffer`], the per-kind instance rows the composer fills, and the group and batch tables that order the backend's draws. Every buffer is retained and refilled, so a steady-state frame allocates nothing for its output.
 
-use crate::common::span::Span;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::primitives::identity::backdrop_keys::BackdropKeys;
@@ -44,9 +43,6 @@ pub(crate) mod row_spin;
 pub(crate) mod text_batch;
 pub(crate) mod text_draw_row;
 
-/// Deepest rounded-mask chain the eight-bit stencil counter can represent.
-pub(crate) const MAX_ROUNDED_CLIP_DEPTH: u32 = u8::MAX as u32;
-
 /// Output of `compose`: physical-px instances grouped by scissor region plus the wgpu callback sidecar for composited `GpuView`s. Holds no compose-time scratch; reuse one buffer across frames.
 #[derive(Debug)]
 pub(crate) struct RenderBuffer {
@@ -71,8 +67,12 @@ pub(crate) struct RenderBuffer {
     pub(crate) effects: Soa<EffectDrawRow>,
     /// Native GPU stroke instances: a `[t0, t1]` sub-range of a cubic/arc, a polyline segment, or a join billboard. One indexed instanced draw per batch.
     pub(crate) curves: Vec<CurveInstance>,
-    /// Flat pool of rounded-clip mask chains (outer→inner); `DrawGroup.rounded_clips` and `TextBatch.rounded_clips` are spans into it. Value-equal chains dedup at mask staging.
+    /// Flat pool of rounded-clip chains (outer→inner), uploaded as it is; each draw's
+    /// [`ClipChain`](clip_chain::ClipChain) names a run of it.
     pub(crate) rounded_clips: Vec<RoundedClip>,
+    /// Whether a draw names a chain of [`Self::rounded_clips`], which picks the pipelines that
+    /// read them (`ClipVariant`); a frame whose draws all lie inside their clips names none.
+    pub(crate) clips_drawn: bool,
     /// The backdrops in paint order; each one that captures breaks the main pass at its
     /// barrier and copies what the groups before it painted.
     pub(crate) backdrops: Vec<BackdropRow>,
@@ -103,6 +103,7 @@ impl RenderBuffer {
             effects: Soa::default(),
             curves: Vec::new(),
             rounded_clips: Vec::new(),
+            clips_drawn: false,
             backdrops: Vec::new(),
             live_backdrops: BackdropKeys::default(),
             clear_override: None,
@@ -133,11 +134,6 @@ impl RenderBuffer {
 
     pub(crate) const fn batches_mut(&mut self, tier: PaintTier) -> &mut Vec<GroupBatch> {
         &mut self.batches[tier.idx()]
-    }
-
-    /// Value equality of two rounded-mask chains: a pop and re-push of an identical clip gives different spans but identical masks.
-    pub(crate) fn chains_equal(&self, a: Span, b: Span) -> bool {
-        self.rounded_clips[a.range()] == self.rounded_clips[b.range()]
     }
 
     /// This tier's per-group batches; consumers walking all tiers go through here and [`PaintTier::ALL`] to keep replay order in one place.
@@ -185,5 +181,6 @@ impl RenderBuffer {
         self.effects.clear();
         self.curves.clear();
         self.rounded_clips.clear();
+        self.clips_drawn = false;
     }
 }

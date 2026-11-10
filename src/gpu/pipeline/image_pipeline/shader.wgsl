@@ -29,6 +29,8 @@ struct VsIn {
     @location(9) corners:   vec4<f32>,
     @location(10) inradius: f32,
     @location(11) decal:    vec4<f32>,
+    // The rounded clips that cut the image (`ClipChain`).
+    @location(12) chain:    u32,
 };
 
 struct VsOut {
@@ -44,6 +46,7 @@ struct VsOut {
     @location(4) local: vec2<f32>,
     @location(5) @interpolate(flat) half_size: vec2<f32>,
     @location(6) @interpolate(flat) turned: u32,
+    @location(7) @interpolate(flat) chain: u32,
 };
 
 @vertex
@@ -69,12 +72,14 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
     out.tint = in.tint;
     out.flags = in.flags;
     out.uv_rect = vec4<f32>(in.uv_min, in.uv_min + in.uv_size);
+    out.chain = in.chain;
     return out;
 }
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    var out = image_paint(in.uv, in.uv_rect, in.flags, in.tint);
+    var out = image_paint(in.uv, in.uv_rect, in.flags, in.tint)
+        * palantir_clip_coverage(frag_px(in.clip), in.chain);
     if (in.turned != 0u) {
         // Distance outside the nearer edge on each axis, a box's ramp.
         let d = abs(in.local) - in.half_size;

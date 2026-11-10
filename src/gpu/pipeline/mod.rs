@@ -2,7 +2,6 @@
 //! concern where a pipeline holds several), and the recipe, prelude and shader assembly they share.
 
 pub(crate) mod blit_pipeline;
-pub(crate) mod clip_stencil;
 pub(crate) mod clip_variant;
 pub(crate) mod curve_pipeline;
 pub(crate) mod effect_pipeline;

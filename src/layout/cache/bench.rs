@@ -1,5 +1,5 @@
 //! Cache-effectiveness A/B benchmark for the **measure cache**, over a list of
-//! stencil-clipped groups with shaped text (`list/*`), deep (`deep/*`) and
+//! rounded-clipped groups with shaped text (`list/*`), deep (`deep/*`) and
 //! broad (`broad/*`) mono trees, a virtualized list (`virtual_scroll/*`), and a
 //! Hug-column grid of shaped text (`grid/*`). Arms:
 //!
@@ -43,7 +43,7 @@ const LIST_ROWS_PER_GROUP: usize = 8;
 
 const GRID_ROWS: usize = 128;
 
-/// A list as an app draws one: rounded-stencil clips on every group and row,
+/// A list as an app draws one: rounded clips on every group and row,
 /// real cosmic-text shaping, an extra zstack per row, and group strokes, so
 /// measure is shaping-bound rather than mono-fallback.
 fn build_list(ui: &mut Ui) {

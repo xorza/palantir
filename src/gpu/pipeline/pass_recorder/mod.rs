@@ -23,7 +23,6 @@ pub(crate) trait PassState {
     fn set_index_buffer(&mut self, buffer: &Self::Buffer, format: wgpu::IndexFormat);
     fn push_viewport(&mut self, viewport: ViewportPush);
     fn set_scissor_rect(&mut self, rect: URect);
-    fn set_stencil_reference(&mut self, reference: u32);
     fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>);
     fn draw_indexed(&mut self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 }
@@ -56,10 +55,6 @@ impl PassState for wgpu::RenderPass<'_> {
 
     fn set_scissor_rect(&mut self, rect: URect) {
         Self::set_scissor_rect(self, rect.min.x, rect.min.y, rect.size.x, rect.size.y);
-    }
-
-    fn set_stencil_reference(&mut self, reference: u32) {
-        Self::set_stencil_reference(self, reference);
     }
 
     fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>) {
@@ -183,11 +178,6 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
     pub(crate) fn scissor(&mut self, rect: URect) {
         self.pass.set_scissor_rect(rect);
         self.counts.scissors += 1;
-    }
-
-    pub(crate) fn stencil_reference(&mut self, reference: u32) {
-        self.pass.set_stencil_reference(reference);
-        self.counts.stencil_refs += 1;
     }
 
     pub(crate) fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>) {

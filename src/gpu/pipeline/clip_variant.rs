@@ -2,32 +2,37 @@
 //! draws through it.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::clip_stencil;
 use crate::gpu::pipeline::pipeline_recipe::{Pipeline, PipelineRecipe};
 
-/// Whether a frame clips to a rounded rect, which picks the half of a [`ClipVariant`] its passes
+/// Whether a frame's draws name rounded clips, which picks the half of a [`ClipVariant`] its passes
 /// bind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Clipping {
-    /// No rounded clip: no stencil attachment, and the pipelines that test none.
+    /// No draw names a chain: the pipelines whose clip coverage the compiler folded away.
     Off,
-    /// A rounded clip: its passes attach the stencil and bind the stencil-test twins.
+    /// A draw names a chain: the pipelines that read it.
     On,
 }
 
-/// A color render pipeline in two halves built from one recipe: `off`, and `on`, the same recipe
-/// plus [`clip_stencil::test_state`], which runs in the stencil-attached rounded-clip pass. Shared
-/// by the quad / mesh / image / curve / raster pipelines so the choice of half can't drift.
+/// A color render pipeline in two halves built from one recipe: with `PALANTIR_CLIPS` off, which
+/// `primitives/wgsl/frame.wgsl` reads to return a clip coverage of 1 the compiler folds away, and
+/// on. A frame whose draws name no rounded clip binds the first, as the clip's code cost a whole
+/// frame with none 16 to 23 % of its main pass on an Apple GPU, a fragment register load even where
+/// it ran no clip (`.notes/research/2026-11-10-rounded-clip.md`). Speed alone: both halves give the
+/// same pixels for a draw of no chain.
 ///
 /// Each half is built on the first frame that draws through it ([`Self::ensure`]), as the frame's
 /// census asks before its passes record, so an app that never clips to a rounded rect builds no
-/// twin. Refused: both built up front, which made every format compile its twins, at startup and
-/// again at each device recovery.
+/// second half. Refused: both built up front, which made every format compile its twins, at
+/// startup and again at each device recovery.
 #[derive(Clone, Debug)]
 pub(crate) struct ClipVariant {
     off: Option<Pipeline>,
     on: Option<Pipeline>,
 }
+
+/// The override constant `frame.wgsl` declares.
+const CLIPS: &str = "PALANTIR_CLIPS";
 
 impl ClipVariant {
     /// Neither half built.
@@ -36,31 +41,28 @@ impl ClipVariant {
         on: None,
     };
 
-    /// Build the half `clipping` binds, where it is not built: `recipe`, or under
-    /// [`Clipping::On`] its twin, the same recipe labeled `{label}.stencil_test` with
-    /// [`clip_stencil::test_state`]. Shared by every color family so the twins cannot drift.
+    /// Build the half `clipping` binds, where it is not built: `recipe`, its override constants
+    /// and `PALANTIR_CLIPS`, the clipping half labeled `{label}.clipped`.
     pub(crate) fn ensure(&mut self, gpu: &Gpu, clipping: Clipping, recipe: &PipelineRecipe<'_>) {
-        debug_assert!(
-            recipe.depth_stencil.is_none(),
-            "the base of a stencil pair tests no stencil"
-        );
-        match clipping {
-            Clipping::Off => {
-                if self.off.is_none() {
-                    self.off = Some(recipe.clone().build(gpu));
+        let (slot, clips, label) = match clipping {
+            Clipping::Off => (&mut self.off, 0.0, recipe.label.to_owned()),
+            Clipping::On => (&mut self.on, 1.0, format!("{}.clipped", recipe.label)),
+        };
+        if slot.is_none() {
+            let constants: Vec<(&str, f64)> = recipe
+                .constants
+                .iter()
+                .copied()
+                .chain([(CLIPS, clips)])
+                .collect();
+            *slot = Some(
+                PipelineRecipe {
+                    label: &label,
+                    constants: &constants,
+                    ..recipe.clone()
                 }
-            }
-            Clipping::On => {
-                if self.on.is_none() {
-                    let label = format!("{}.stencil_test", recipe.label);
-                    let test = PipelineRecipe {
-                        label: &label,
-                        depth_stencil: Some(clip_stencil::test_state()),
-                        ..recipe.clone()
-                    };
-                    self.on = Some(test.build(gpu));
-                }
-            }
+                .build(gpu),
+            );
         }
     }
 

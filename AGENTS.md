@@ -41,8 +41,8 @@ common → primitives → {animation, text, display, window, clipboard, image_re
 
 ## GPU memory
 
-- **Scratch decays.** Per-frame GPU scratch (the blur textures, every `DynamicBuffer`, a window's
-  stencil) grows to each frame's need, and at the end of an expiry window of 120 display frames
+- **Scratch decays.** Per-frame GPU scratch (the blur textures, every `DynamicBuffer`, the frame's
+  rounded clips among them) grows to each frame's need, and at the end of an expiry window of 120 display frames
   (`ExpiryWindow`) steps down to that window's peak. A display frame is one round of every live
   window's submit (`DisplayFrames`). A cache shrinks back to its budget once its live set fits. An
   upload past the staging belt's chunk gets a buffer of its own, and a translucent image
@@ -145,13 +145,44 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **The visual suite stays on `OffscreenHost` and wears a theme of its own**, as it tests
   presentation paths and no recipe or palette may move a golden.
 
-## Rounded-clip stencil
+## Rounded clip
 
-- **`Stencil8`, zeroed by a queue write when it is made.** On NVIDIA under Vulkan an `S8_UINT`
-  image keeps 4 × 4 blocks of old memory that no clear resets, and a copy does. Refused:
-  `Depth24PlusStencil8`, four times the memory; a zeroed buffer kept for the write;
-  `clear_texture`, a render pass clear in wgpu. Facts:
-  `.notes/research/2026-10-31-shared-device-tile-loss.md`.
+- **A rounded clip is a coverage term each draw multiplies in**, `palantir_clip_coverage`
+  (`primitives/wgsl/frame.wgsl`): the edge coverage every shape takes, of the rounded rect's SDF, so
+  a child that fills its clip draws its parent's edge, antialiased; the scissor keeps the clip's
+  rect part. As Chromium's fast rounded corners put a `MaskFilterInfo` on the quad and draw no
+  render surface
+  ([`cc/trees/effect_node.h`](https://chromium.googlesource.com/chromium/src/+/HEAD/cc/trees/effect_node.h)),
+  and Skia carries an analytic clip in a draw's `PaintParams`
+  ([Graphite `ClipStack.h`](https://skia.googlesource.com/skia/+/main/src/gpu/graphite/ClipStack.h)).
+  No pass attaches a depth or a stencil texture, and `PipelineRecipe` holds no depth-stencil
+  state. Refused: a stencil, which keeps or drops a whole pixel, closes a text batch at each
+  clip, and puts a mask draw before each clip and a stencil test on every fragment of its frame; geometry cut to the clip, which cannot cut
+  an arc antialiased in a vertex stage; a mask texture each draw samples, as WebRender's clip
+  tasks, a pass and a texture a clip; an offscreen layer masked whole, the exact edge of a group
+  at a pass a clip. Cost: the edge conflates, a lower draw showing through an upper one by
+  `c(1 − c)`, at most 25 %, where both cross one edge pixel, as in Skia and Chromium. Measured in
+  `.notes/research/2026-11-10-rounded-clip.md`.
+- **An instance names its chain** in one `ClipChain`, a run of the frame's clip pool packed into a
+  `u32`, 4 B in every instance a glyph's included. Nested clips multiply, as Skia multiplies its
+  clip coverage terms. Refused: the clip inline in each instance, as GPUI's `content_mask` is,
+  24 B a clip and one clip a draw; a chain per draw call, a batch per clip; a rect clip in the
+  chain too, so a group closes only at an overlap, as GPUI clips: the clip's code costs a frame
+  that binds it 7 % of its main pass with no clip run, where the draws it saves read −0.1 to
+  −1.6 % (`.notes/research/2026-11-10-draw-calls.md`).
+- **The frame group is group 0 of every color pipeline**: the gradient atlas, its sampler and the
+  clip pool, which the main pass binds once, as wgpu binds again from the first slot whose layout
+  differs (`wgpu-core` 30.0.1, `command/bind.rs`, `update_expectations`) and Vulkan practice puts
+  the set that changes least at 0. Refused: the pool at a free slot of each family, a rebind at
+  each switch; a fifth bind group, past `downlevel_defaults`'s four.
+- **An occluder covers only where its clip covers whole**, as a prune past it would change the
+  pixel.
+- **A frame whose draws name no chain binds pipelines with the clip folded away**: each color
+  pipeline has a twin, `ClipVariant`, its `PALANTIR_CLIPS` override off. The clip's code, run or
+  not, cost a frame with none 16 to 23 % of its main pass on an Apple GPU. Speed alone: a draw of
+  no chain shades alike in both. Refused: one pipeline that branches on the chain, which kept 7 %.
+- **An effect takes the clip outside the app's code**, the wrapper multiplying its coverage into
+  the dual-source blend.
 
 ## Public API
 
@@ -321,8 +352,9 @@ driver serves that command alone; the drive table's `version` names it
   a clip cuts batches with any other; a turned one keeps a scissor of its own. A closing group's
   quads join one run per form, a quad looking back up to 10 quads past ones it does not overlap,
   as WebRender's `batch_lookback_count`. Measured: a showcase page from 7 to 38 draws to 5 to 22
-  (`.notes/research/2026-11-10-draw-calls.md`). Refused: a clip rect in each glyph instance, 8 B a
-  glyph; sorting by pipeline with a depth buffer, as Graphite does, a depth attachment in every
+  (`.notes/research/2026-11-10-draw-calls.md`). A rounded clip rides each instance as its chain, 4
+  B a glyph, for the arc the CPU cut cannot follow. Refused: a clip rect in each glyph instance,
+  8 B a glyph, which the CPU cut makes needless; sorting by pipeline with a depth buffer, as Graphite does, a depth attachment in every
   pipeline for a −2 % ceiling (`.notes/PERF.md`).
 - **An effect is a program; theme data names one; `EffectPaint` is the one draw.** An effect is a
   WGSL program an `EffectName<U, K>` names, a color effect or a backdrop effect; blur, frosted and

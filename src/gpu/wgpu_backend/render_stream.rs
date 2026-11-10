@@ -10,18 +10,16 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     Census, CutoutFrame, CutoutMode, CutoutPlan,
 };
 use crate::gpu::render_owner_id::RenderOwnerId;
-use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::RenderTarget;
-use crate::gpu::surface::stencil::Stencil;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use glam::UVec2;
 
 /// What one render owner's frames keep on the device: the backbuffer that holds the last frame
-/// painted through it, the stencil its rounded clips stamp, the shadow cutouts its frames plan,
+/// painted through it, the shadow cutouts its frames plan,
 /// and the queries its frames are timed with. The backend opens it
 /// ([`WgpuBackend::open_stream`](crate::gpu::wgpu_backend::WgpuBackend::open_stream)), so its
 /// cutouts take the device's mode; it drops with its window, as the backend retires the owner.
@@ -37,14 +35,6 @@ pub(crate) struct RenderStream {
     /// Whether [`Self::backbuffer`] holds what the target shows. A direct frame leaves it stale,
     /// as does a new target; the next partial resyncs it with one full repaint.
     backbuffer_fresh: bool,
-    /// Rounded-clip stencil, made on the first frame with a rounded clip; apart from the
-    /// backbuffer, so a direct frame needs none. Pure per-frame scratch, as each main pass clears
-    /// it and discards it, so it goes at the end of an expiry window no frame stamped it in: at
-    /// 7680 × 2160 it is 16 MiB.
-    stencil: Option<Stencil>,
-    /// The expiry window the stencil ages in, and whether a frame of it stamped the stencil.
-    stencil_window: ExpiryWindow,
-    stencil_used: bool,
     /// The damage canvases of the last two size classes the owner's partial frames painted,
     /// the latest first: hovering from one widget to another alternates between two.
     canvases: [Option<DamageCanvas>; 2],
@@ -61,9 +51,6 @@ pub(super) struct StreamPasses<'a> {
     pub(super) backbuffer: Option<&'a Backbuffer>,
     /// The canvas [`RenderStream::ensure_canvas`] made ready last.
     pub(super) canvas: Option<&'a DamageCanvas>,
-    /// The window's stencil view, which [`RenderStream::age_stencil`] made for a frame that
-    /// stamps it.
-    pub(super) stencil_view: Option<&'a wgpu::TextureView>,
     pub(super) timings: Option<&'a mut GpuTimings>,
 }
 
@@ -78,9 +65,6 @@ impl RenderStream {
             backbuffer: None,
             blur_source: None,
             backbuffer_fresh: false,
-            stencil: None,
-            stencil_window: ExpiryWindow::NEW,
-            stencil_used: false,
             canvases: [None, None],
             cutouts: CutoutPlan::new(cutout_mode),
             timings,
@@ -130,13 +114,12 @@ impl RenderStream {
         })
     }
 
-    /// The backbuffer, the damage canvas and the stencil a frame's passes paint through, made
+    /// The backbuffer and the damage canvas a frame's passes paint through, made
     /// for the frame, and the timings they write.
-    pub(super) fn passes(&mut self) -> StreamPasses<'_> {
+    pub(super) const fn passes(&mut self) -> StreamPasses<'_> {
         StreamPasses {
             backbuffer: self.backbuffer.as_ref(),
             canvas: self.canvases[0].as_ref(),
-            stencil_view: self.stencil.as_ref().map(Stencil::view),
             timings: self.timings.as_mut(),
         }
     }
@@ -206,32 +189,6 @@ impl RenderStream {
             self.canvases[0] = Some(DamageCanvas::new(gpu, format, size));
         }
     }
-
-    /// Give the frame's canvas ([`StreamPasses::canvas`]) its stencil.
-    pub(super) fn ensure_canvas_stencil(&mut self, gpu: &Gpu) {
-        self.canvases[0]
-            .as_mut()
-            .expect("a canvas made ready")
-            .ensure_stencil(gpu);
-    }
-
-    /// Age the stencil by display frame `frame`, whose main pass stamps one at `size` or none:
-    /// make it when there is none or it has another size, and drop it at the end of an expiry
-    /// window no frame stamped it in.
-    pub(super) fn age_stencil(&mut self, gpu: &Gpu, frame: u64, size: Option<UVec2>) {
-        if let Some(size) = size {
-            self.stencil_used = true;
-            if !self.stencil.as_ref().is_some_and(|held| held.fits(size)) {
-                self.stencil = Some(Stencil::new(gpu, size));
-            }
-        }
-        if self.stencil_window.ends(frame) {
-            if !self.stencil_used {
-                self.stencil = None;
-            }
-            self.stencil_used = false;
-        }
-    }
 }
 
 #[cfg(feature = "internals")]
@@ -263,34 +220,9 @@ pub(crate) mod internals {
 mod tests {
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::render_owner_id::RenderOwners;
-    use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::wgpu_backend::render_stream::RenderStream;
     use glam::UVec2;
-
-    /// The stencil a frame stamps stays through the expiry window it fell in, and goes at the end
-    /// of the next, which no frame stamped it in; a frame that stamps it again makes it again.
-    #[test]
-    fn a_stencil_no_frame_of_a_window_stamps_goes() {
-        let gpu = headless_test_gpu();
-        let mut stream =
-            RenderStream::detached(RenderOwners::default().reserve(), CutoutMode::Shade);
-        let size = UVec2::new(64, 32);
-        stream.age_stencil(&gpu, 0, Some(size));
-        for frame in 1..EXPIRY_FRAMES {
-            stream.age_stencil(&gpu, frame, None);
-        }
-        assert!(stream.stencil.is_some(), "its window stamped it");
-        for frame in EXPIRY_FRAMES..2 * EXPIRY_FRAMES {
-            stream.age_stencil(&gpu, frame, None);
-        }
-        assert!(
-            stream.stencil.is_none(),
-            "a window with no rounded clip drops it"
-        );
-        stream.age_stencil(&gpu, 2 * EXPIRY_FRAMES, Some(size));
-        assert!(stream.stencil.is_some());
-    }
 
     /// A stream keeps the canvases of its last two size classes: a class it holds comes back as
     /// the same texture, and a third class takes the place of the one used longest ago. After

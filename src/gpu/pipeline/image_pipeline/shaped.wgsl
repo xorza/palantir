@@ -16,6 +16,7 @@ struct ShapedOut {
     // The point in the shape's own frame, which the decal fade reads.
     @location(7) local: vec2<f32>,
     @location(8) @interpolate(flat) decal: vec4<f32>,
+    @location(9) @interpolate(flat) chain: u32,
 };
 
 // A box's template (`ImageForm::Box`).
@@ -52,6 +53,7 @@ fn shaped_vertex(vi: u32, in: VsIn, n: u32) -> ShapedOut {
     out.flags = in.flags;
     out.local = v.pos;
     out.decal = in.decal;
+    out.chain = in.chain;
     out.clip = clip_from_px(turned(in.rect_min + v.pos, in.rect_min + in.rect_size * 0.5, in.rotation));
     return out;
 }
@@ -62,7 +64,8 @@ fn shaped_vertex(vi: u32, in: VsIn, n: u32) -> ShapedOut {
 fn fs_shaped(in: ShapedOut) -> @location(0) vec4<f32> {
     let e = max(in.decal.xy - in.local, in.local - in.decal.zw);
     let paint = image_paint(in.uv, in.uv_rect, in.flags, in.tint)
-        * palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y);
+        * palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y)
+        * palantir_clip_coverage(frag_px(in.clip), in.chain);
     if (in.region == PALANTIR_REGION_INTERIOR) {
         return paint;
     }

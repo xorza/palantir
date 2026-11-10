@@ -25,6 +25,7 @@ struct TemplateOut {
     @location(10) @interpolate(flat) inv_size: vec2<f32>,
     // A turned outside rect's size, whose edge fades as any edge does; zero otherwise.
     @location(11) @interpolate(flat) turned_size: vec2<f32>,
+    @location(12) @interpolate(flat) chain: u32,
 };
 
 // The shape the instance describes, of `n` corners, its radii `radius`.
@@ -65,14 +66,20 @@ fn vs_template(@builtin(vertex_index) vi: u32, quad: QuadIn) -> TemplateOut {
     out.fill_axis = q.fill_axis;
     out.inv_size = q.inv_size;
     out.turned_size = select(vec2<f32>(0.0), quad.size, outside && quad.rotation != 0.0);
+    out.chain = quad.chain;
     out.clip = clip_from_px(turned(quad.pos + v.pos, quad.pos + quad.size * 0.5, quad.rotation));
     return out;
 }
 
-// A template fragment: the fill alone inside; across a band the interpolated distance; across a
-// ring the distance to its arc. Then the fill and the border composite as the reference's do.
+// A template fragment: what `template_color` draws, cut by the quad's rounded clips.
 @fragment
 fn fs_template(in: TemplateOut) -> @location(0) vec4<f32> {
+    return template_color(in) * palantir_clip_coverage(frag_px(in.clip), in.chain);
+}
+
+// The fill alone inside; across a band the interpolated distance; across a ring the distance to
+// its arc. Then the fill and the border composite as the reference's do.
+fn template_color(in: TemplateOut) -> vec4<f32> {
     let fill = quad_paint(
         unpack_f16x4(in.fill_packed),
         in.local * in.inv_size,

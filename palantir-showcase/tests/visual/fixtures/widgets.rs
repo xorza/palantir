@@ -105,9 +105,9 @@ fn a_border_paints_inside_the_rect() {
     assert_eq!(row, expected);
 }
 
-/// Rounded-clip stencil path: pink canvas, a rounded panel (distinct corner
-/// radii, 5 px green border), then a black child whose square corners the
-/// stencil must trim. Distinct radii catch corner-mixing bugs.
+/// Rounded clip: pink canvas, a rounded panel (distinct corner radii, 5 px
+/// green border), then a black child whose square corners the clip must trim.
+/// Distinct radii catch corner-mixing bugs.
 #[test]
 fn surface_rounded_clips_full_fill_child() {
     GoldenName::SurfaceRoundedClipsFullFillChild.assert_scene(UVec2::new(220, 220), |ui| {
@@ -183,9 +183,8 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
     GoldenName::RoundedClipPartiallyOffscreen.assert_matches(&img);
 }
 
-/// The backbuffer rebuild on a size change must reset the stencil attachment,
-/// else wgpu validation panics on the size mismatch. Two rounded-clip renders
-/// at different sizes, probed where the clip decides the pixel.
+/// Two rounded-clip renders at different sizes, across the backbuffer rebuild
+/// a size change makes, probed where the clip decides the pixel.
 #[test]
 fn rounded_clip_survives_surface_resize() {
     let mut h = VisualRig::new();
@@ -202,8 +201,7 @@ fn rounded_clip_survives_surface_resize() {
                 .show(ui, |_| {});
         });
     };
-    // A stale stencil would mismatch the pass and panic. Each render must still
-    // draw: corner (10, 10) is 7.5*sqrt(2) ~ 10.6 px from the arc center (18, 18),
+    // Each render draws: corner (10, 10) is 7.5*sqrt(2) ~ 10.6 px from the arc center (18, 18),
     // outside the 8 px arc, so it reads clear; the center reads the fill.
     let clear = DARK_BG.to_srgba8();
     let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba8();

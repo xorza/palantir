@@ -28,9 +28,7 @@
 //! Partial frame the footprint joins the scissors, as the target there holds the last frame's
 //! backdrop.
 //!
-//! The `dim_undamaged` debug mode adds a pre-pass on Partial frames in its own pass:
-//! the no-stencil dim pipeline is incompatible with the main pass's stencil
-//! attachment on rounded-clip frames.
+//! The `dim_undamaged` debug mode adds a pre-pass on Partial frames in its own pass.
 //!
 //! # The staging belt
 //!
@@ -63,7 +61,7 @@ use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassSt
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
+use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::clip_variant::Clipping;
@@ -71,9 +69,7 @@ use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::effect_pipeline::{
     EffectBatch, EffectPipeline, EffectStores, EffectUpload,
 };
-use crate::gpu::pipeline::format_pipelines::{
-    FormatPipelines, PassPipelines, PipelineCensus, Programs,
-};
+use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PipelineCensus, Programs};
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
@@ -103,7 +99,6 @@ use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl::FRAME_GROUP;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::quad_form::QuadForm;
@@ -147,11 +142,9 @@ pub(crate) struct WgpuBackend {
     /// The layouts and sampler every sampled texture binds through, so a group built for one binds
     /// in every pipeline that samples any.
     texture_binding: TextureBinding,
-    /// The frame group the main pass binds once: the gradient atlas.
+    /// The frame group the main pass binds once: the gradient atlas and the frame's rounded
+    /// clips.
     frame_group: FrameGroup,
-    /// Rounded-clip chains and mask quads, rebuilt on stencil frames only; retained to avoid
-    /// allocation.
-    mask_plan: MaskPlan,
     /// The passes of the frame being submitted, planned before any is recorded.
     passes: FramePasses,
     /// Render pipelines keyed by swapchain color format, built by [`Self::prepare_format`] as a
@@ -160,6 +153,16 @@ pub(crate) struct WgpuBackend {
     /// What timing this device can do; `Some` when the host opted in, and a device without
     /// timestamps then times frames on the CPU clock ([`GpuTimings`]).
     timing: Option<TimingSupport>,
+}
+
+/// Whether `buffer`'s draws name rounded clips, which picks the half of each pipeline its passes
+/// bind ([`ClipVariant`](crate::gpu::pipeline::clip_variant::ClipVariant)).
+const fn clipping(buffer: &RenderBuffer) -> Clipping {
+    if buffer.clips_drawn {
+        Clipping::On
+    } else {
+        Clipping::Off
+    }
 }
 
 /// Whether the backend times the frames it submits, which a host opts into.
@@ -200,8 +203,6 @@ struct FrameDraw<'a> {
     /// The surface pixel the main pass's target pixel 0 is: zero, but on a damage canvas, where
     /// the viewport and every scissor move by it.
     origin: UVec2,
-    /// The frame's mask chains; `Some` exactly when the main pass has a stencil attachment.
-    masks: Option<&'a MaskPlan>,
 }
 
 /// Where a frame's main pass paints, with what it paints through, built once per frame: the
@@ -271,14 +272,13 @@ impl<'a> FrameTarget<'a> {
     }
 }
 
-/// What every pass of the main pass draws into: color, optional stencil, the clear color and the
+/// What every pass of the main pass draws into: color, the clear color and the
 /// scissors it repaints, picked together per frame.
 #[derive(Clone, Copy, Debug)]
 struct MainPass<'a> {
     color_view: &'a wgpu::TextureView,
     /// The texture `color_view` views, which a backdrop's capture copies out of.
     color: &'a wgpu::Texture,
-    stencil_view: Option<&'a wgpu::TextureView>,
     clear: wgpu::Color,
     scissors: &'a RepaintScissors,
     /// Whether `color` is a damage canvas, which the viewport moves the surface onto.
@@ -303,11 +303,10 @@ struct SegmentPass<'a, 't> {
     timings: Option<&'t mut GpuTimings>,
 }
 
-/// One pass's draws: the frame's, the pass's pipelines, and the recorder they record through.
+/// One pass's draws: the frame's, and the recorder they record through.
 #[derive(Debug)]
 struct DrawCtx<'a, 'p> {
     draw: FrameDraw<'a>,
-    pipelines: PassPipelines<'a>,
     rec: &'p mut PassRecorder<'a>,
     /// The stream's timestamp queries, when timing is on.
     timings: Option<&'p mut GpuTimings>,
@@ -412,7 +411,6 @@ impl WgpuBackend {
             debug,
             texture_binding,
             frame_group,
-            mask_plan: MaskPlan::default(),
             passes: FramePasses::default(),
             pipelines: FxHashMap::default(),
             timing,
@@ -491,7 +489,6 @@ impl WgpuBackend {
             );
         }
         stream.mark_painted(route);
-        let stencil = !buffer.rounded_clips.is_empty();
         let frame = self.frames.advance(stream.owner());
         tracing::trace!(
             quads = buffer.quads.len(),
@@ -500,7 +497,7 @@ impl WgpuBackend {
             viewport = ?buffer.display.physical,
             scissors = ?repaint_scissors,
             ?route,
-            rounded_clip = stencil,
+            rounded_clips = buffer.rounded_clips.len(),
             "wgpu_backend.submit"
         );
 
@@ -530,14 +527,7 @@ impl WgpuBackend {
                 target.texture().format(),
                 DamageCanvas::class(rect, target.size()),
             );
-            if stencil {
-                stream.ensure_canvas_stencil(&self.gpu);
-            }
         }
-        // The window's stencil only where the main pass draws onto the backbuffer or the target:
-        // a canvas frame stamps the canvas's own.
-        let window_stencil = stencil && canvas_cut.is_none();
-        stream.age_stencil(&self.gpu, frame, window_stencil.then(|| target.size()));
 
         let outlines_damage = submission.overlay.damage.is_some();
         // At most one surface view, only where a pass writes it: a direct frame's main pass and
@@ -547,7 +537,6 @@ impl WgpuBackend {
         let StreamPasses {
             backbuffer,
             canvas,
-            stencil_view,
             mut timings,
         } = stream.passes();
         let frame_target = if via_backbuffer {
@@ -583,7 +572,7 @@ impl WgpuBackend {
             surface_view.is_some(),
             "a view of the target exactly where a pass writes it"
         );
-        self.ensure_pipelines(format, stencil, buffer);
+        self.ensure_pipelines(format, buffer);
         let main_pass = self.run_steps(
             FrameSteps {
                 draw: FrameDraw {
@@ -592,19 +581,10 @@ impl WgpuBackend {
                     buffer,
                     viewport: ViewportPush::for_buffer(buffer),
                     origin: frame_target.origin(),
-                    masks: stencil.then_some(&self.mask_plan),
                 },
                 main: MainPass {
                     color_view: frame_target.color_view(),
                     color: frame_target.color(),
-                    stencil_view: match frame_target {
-                        FrameTarget::Canvas { canvas, .. } => {
-                            stencil.then(|| canvas.stencil().expect("made for the frame").view())
-                        }
-                        FrameTarget::Direct { .. } | FrameTarget::Backbuffer { .. } => {
-                            stencil_view.filter(|_| stencil)
-                        }
-                    },
                     clear: wgpu_color(submission.clear),
                     scissors: repaint_scissors,
                     canvas: frame_target.kind() == TargetKind::Canvas,
@@ -659,7 +639,7 @@ impl WgpuBackend {
 
     /// The pipelines this frame draws through and the set of `format` lacks, built before its
     /// passes borrow it: the pre-clear and the overlays draw solid quads.
-    fn ensure_pipelines(&mut self, format: TargetFormat, stencil: bool, buffer: &RenderBuffer) {
+    fn ensure_pipelines(&mut self, format: TargetFormat, buffer: &RenderBuffer) {
         self.pipelines
             .get_mut(&format)
             .expect("a window notes its target's format before it records")
@@ -667,7 +647,7 @@ impl WgpuBackend {
                 &self.gpu,
                 &self.programs,
                 PipelineCensus {
-                    clipping: if stencil { Clipping::On } else { Clipping::Off },
+                    clipping: clipping(buffer),
                     quads: self
                         .programs
                         .quad
@@ -812,7 +792,8 @@ impl WgpuBackend {
         if let Some(rows) = gradients {
             self.gradient.upload(&mut ctx, rows);
         }
-        self.frame_group.update(ctx.gpu, &self.gradient);
+        self.frame_group
+            .upload(&mut ctx, &self.gradient, &buffer.rounded_clips);
 
         // Damage-rect overlay quads (debug): uploaded now, drawn last after the backbuffer copy.
         if let Some(damage) = overlay.damage {
@@ -820,20 +801,12 @@ impl WgpuBackend {
         } else {
             self.debug.clear_outlines();
         }
-        let masks: &[Quad] = if buffer.rounded_clips.is_empty() {
-            &[]
-        } else {
-            tracy::zone!("stage_masks");
-            self.mask_plan.build(buffer);
-            self.mask_plan.quads()
-        };
         let viewport = buffer.display.physical.as_vec2();
         self.programs.quad.upload(
             &mut ctx,
             &buffer.quads,
             stream.cutouts(),
             QuadExtras {
-                masks,
                 clear: scissors
                     .is_partial()
                     .then(|| quad_pipeline::pre_clear(viewport, clear)),
@@ -937,7 +910,7 @@ impl WgpuBackend {
     }
 
     /// Full-viewport pass drawing a translucent black quad over the backbuffer when `dim_undamaged`
-    /// is on. No stencil attachment; partial passes set their own.
+    /// is on, in a pass of its own before the partial passes.
     fn run_dim_pass(
         &self,
         draw: FrameDraw<'_>,
@@ -952,7 +925,7 @@ impl WgpuBackend {
         );
     }
 
-    /// The no-stencil solid quad binding both debug-overlay passes draw through.
+    /// The solid quad binding both debug-overlay passes draw through.
     const fn overlay_draw<'a>(&'a self, draw: FrameDraw<'a>) -> OverlayDraw<'a> {
         OverlayDraw {
             binding: QuadBinding {
@@ -971,9 +944,6 @@ impl WgpuBackend {
     /// on Full). The scissors are disjoint ([`RepaintScissors::new`]), as a later pass paints over
     /// what the one before it left. Timestamps open with the first pass and close with the last,
     /// the breaks between count in no category, and each pass adds its pipeline statistics.
-    ///
-    /// Every walk leaves the stencil clean: one ending with a mask stamped emits a tail
-    /// clear under the stamp's scissor, so no walk reads another's stencil writes.
     fn run_main_segment(
         &self,
         draw: FrameDraw<'_>,
@@ -991,26 +961,10 @@ impl WgpuBackend {
         let MainPass {
             color_view,
             color: _,
-            stencil_view,
             clear,
             scissors,
             canvas,
         } = main;
-        debug_assert_eq!(
-            stencil_view.is_some(),
-            draw.masks.is_some(),
-            "the mask plan rides exactly the passes with a stencil attachment",
-        );
-        let depth_stencil_attachment =
-            stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
-                view,
-                depth_ops: None,
-                stencil_ops: Some(wgpu::Operations {
-                    // One stencil clear per pass: the schedule's tail clear makes that sufficient.
-                    load: wgpu::LoadOp::Clear(0),
-                    store: wgpu::StoreOp::Discard,
-                }),
-            });
         let load_op = match load {
             ColorLoad::Clear => wgpu::LoadOp::Clear(clear),
             ColorLoad::Load => wgpu::LoadOp::Load,
@@ -1029,7 +983,7 @@ impl WgpuBackend {
                     store: wgpu::StoreOp::Store,
                 },
             })],
-            depth_stencil_attachment,
+            depth_stencil_attachment: None,
             timestamp_writes,
             occlusion_query_set: None,
             multiview_mask: None,
@@ -1054,21 +1008,14 @@ impl WgpuBackend {
         // group first of all, which every pipeline of the pass reads at the same slot.
         let mut rec = PassRecorder::new(pass, draw.viewport.with_origin(draw.origin));
         rec.group(FRAME_GROUP, self.frame_group.group());
-        let clipping = if draw.masks.is_some() {
-            Clipping::On
-        } else {
-            Clipping::Off
-        };
         let mut ctx = DrawCtx {
             draw,
-            pipelines: draw.fmt.for_frame(clipping),
             rec: &mut rec,
             timings: timings.as_deref_mut(),
         };
         let schedule = |damage_scissor| Schedule {
             buffer: draw.buffer,
             damage_scissor,
-            masks: draw.masks,
             groups,
             load,
         };
@@ -1100,14 +1047,14 @@ impl WgpuBackend {
             targets: &self.gpu_view_targets,
         };
         // Read at a raster draw, as a frame that draws none builds no raster pipeline.
-        let pipelines = ctx.pipelines;
+        let pipelines = draw.fmt.for_frame(clipping(buffer));
         let raster = move || pipelines.raster();
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => ctx.batch(BatchKind::PreClear, |ctx| {
                 // Through the recorder, so the viewport is pushed before the draw; else the clear
                 // quad reads stale immediates (zero on a partial pass's first PreClear) and
                 // clears nothing.
-                let solid = ctx.pipelines.quad(QuadDraw::Form(QuadForm::BoxSolid));
+                let solid = pipelines.quad(QuadDraw::Form(QuadForm::BoxSolid));
                 self.programs.quad.draw_clear(ctx.rec, solid);
             }),
             RenderStep::SetScissor(r) => {
@@ -1116,23 +1063,12 @@ impl WgpuBackend {
                     size: r.size,
                 });
             }
-            RenderStep::SetStencilRef(v) => ctx.rec.stencil_reference(v),
-            RenderStep::MaskStamp(mi) => ctx.batch(BatchKind::Mask, |ctx| {
-                let stamp = ctx.pipelines.mask_stamp();
-                self.programs.quad.bind_mask(ctx.rec, stamp);
-                self.programs.quad.draw_mask(ctx.rec, mi);
-            }),
-            RenderStep::MaskClear(mi) => ctx.batch(BatchKind::Mask, |ctx| {
-                let clear = ctx.pipelines.mask_clear();
-                self.programs.quad.bind_mask(ctx.rec, clear);
-                self.programs.quad.draw_mask(ctx.rec, mi);
-            }),
             RenderStep::Quads { range } => {
                 for run in self.programs.quad.runs(range) {
                     ctx.batch(run.key.batch_kind(), |ctx| {
                         self.programs.quad.draw_run(
                             ctx.rec,
-                            ctx.pipelines,
+                            pipelines,
                             QuadRun {
                                 draw: run.key,
                                 instances: run.instances,
@@ -1152,7 +1088,7 @@ impl WgpuBackend {
                     match tier {
                         PaintTier::Mesh => self.programs.mesh.draw_batch(
                             ctx.rec,
-                            ctx.pipelines.mesh(),
+                            pipelines.mesh(),
                             MeshBatch {
                                 draws: buffer.meshes.draw(),
                                 items: items(),
@@ -1160,7 +1096,7 @@ impl WgpuBackend {
                         ),
                         PaintTier::Image => self.programs.image.draw_batch(
                             ctx.rec,
-                            |form| ctx.pipelines.image(form),
+                            |form| pipelines.image(form),
                             ImageBatch {
                                 ids: buffer.images.id(),
                                 forms: buffer.images.form(),
@@ -1172,11 +1108,11 @@ impl WgpuBackend {
                         PaintTier::Curve => {
                             self.programs
                                 .curve
-                                .draw_batch(ctx.rec, ctx.pipelines.curve(), items());
+                                .draw_batch(ctx.rec, pipelines.curve(), items());
                         }
                         PaintTier::Effect => self.programs.effect.draw_batch(
                             ctx.rec,
-                            ctx.pipelines.clipping(),
+                            pipelines.clipping(),
                             EffectBatch {
                                 effects: buffer.effects.effect(),
                                 instances: buffer.effects.instance(),

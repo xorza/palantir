@@ -5,7 +5,7 @@ use crate::primitives::wgsl;
 
 /// The rounded clips that cut a draw: a run of [`RenderBuffer::rounded_clips`], outer to inner,
 /// packed into the one `u32` its instance carries, the depth in the low [`Self::DEPTH_BITS`] and
-/// the start above them. [`Self::NONE`] cuts nothing.
+/// the start above them, which `palantir_clip_coverage` reads. [`Self::NONE`] cuts nothing.
 ///
 /// [`RenderBuffer::rounded_clips`]: crate::renderer::render_buffer::RenderBuffer::rounded_clips
 #[repr(transparent)]
@@ -13,7 +13,7 @@ use crate::primitives::wgsl;
 pub(crate) struct ClipChain(u32);
 
 impl ClipChain {
-    /// The bits that hold the depth.
+    /// The bits that hold the depth, which bound the fragment's loop over a chain.
     pub(crate) const DEPTH_BITS: u32 = wgsl::CLIP_DEPTH_BITS;
 
     /// The deepest chain.

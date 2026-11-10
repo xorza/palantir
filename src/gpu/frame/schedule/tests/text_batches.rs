@@ -96,7 +96,7 @@ fn text_batches_emit_once_after_their_last_group() {
             .map(|&(texts, last)| text_batch(texts, last))
             .collect();
         let buf = buf_with_batches(groups, batches);
-        let steps = collect(&buf, case.damage, None);
+        let steps = collect(&buf, case.damage);
         assert_eq!(simplify(&buf, &steps), case.want, "{}", case.label);
     }
 }
@@ -127,13 +127,12 @@ fn a_walk_broken_at_a_barrier_draws_the_whole_walk_once() {
         DrawOp::Quads(2),
         DrawOp::Text(1),
     ];
-    assert_eq!(simplify(&buf, &collect(&buf, damage, None)), whole);
+    assert_eq!(simplify(&buf, &collect(&buf, damage)), whole);
     // The ops before each barrier: the clear, then group 0 with its text, group 1, group 2.
     for (barrier, split) in [(0, 1), (1, 3), (2, 4), (3, 6)] {
         let before = collect_between(
             &buf,
             damage,
-            None,
             GroupSpan {
                 from: 0,
                 barrier: Some(barrier),
@@ -142,7 +141,6 @@ fn a_walk_broken_at_a_barrier_draws_the_whole_walk_once() {
         let after = collect_between(
             &buf,
             damage,
-            None,
             GroupSpan {
                 from: barrier,
                 barrier: None,

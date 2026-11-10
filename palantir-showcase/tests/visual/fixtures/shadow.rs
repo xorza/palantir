@@ -755,7 +755,7 @@ fn grid_case_shadow(ui: &mut Ui, case: GridCase, at: Rect) {
 }
 
 /// The sweep, then two shadows seen through clips: a scissor across one's
-/// edge cells, a rounded (stencil) clip over another.
+/// edge cells, a rounded clip over another.
 fn grid_sweep(ui: &mut Ui) {
     let cases = grid_cases();
     fixtures::canvas(ui, |ui| {

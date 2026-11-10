@@ -25,7 +25,7 @@ fn preclear_emits_under_partial_damage() {
     );
     let damage = Some(URect::new(0, 0, 50, 50));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, None)),
+        simplify(&buf, &collect(&buf, damage)),
         vec![DrawOp::PreClear, DrawOp::Quads(0), DrawOp::Text(0),],
     );
     assert_eq!(
@@ -36,7 +36,6 @@ fn preclear_emits_under_partial_damage() {
     Schedule {
         buffer: &buf,
         damage_scissor: damage,
-        masks: None,
         groups: GroupSpan::ALL,
         load: ColorLoad::Clear,
     }
@@ -61,8 +60,8 @@ fn schedule_replays_per_damage_rect() {
             ..group(Span::new(1, 1))
         },
     ]);
-    let pass_a = collect(&buf, Some(URect::new(0, 0, 50, 100)), None);
-    let pass_b = collect(&buf, Some(URect::new(50, 0, 50, 100)), None);
+    let pass_a = collect(&buf, Some(URect::new(0, 0, 50, 100)));
+    let pass_b = collect(&buf, Some(URect::new(50, 0, 50, 100)));
     let mut combined = pass_a;
     combined.extend(pass_b);
     assert_eq!(
@@ -76,7 +75,7 @@ fn schedule_replays_per_damage_rect() {
     );
 }
 
-/// A non-stencil walk opens with a mandatory `SetScissor`, then emits one only on a real change:
+/// A walk opens with a mandatory `SetScissor`, then emits one only on a real change:
 /// a narrower group after damage, a restore only where a text batch's wider scissor intervened,
 /// and adjacent equal scissors collapse.
 #[test]
@@ -89,7 +88,7 @@ fn scissor_steps_emit_once_per_transition() {
     let buf = buf_with(vec![scissored(narrow, 0)]);
     let damage = URect::new(0, 0, 80, 80);
     assert_eq!(
-        collect(&buf, Some(damage), None),
+        collect(&buf, Some(damage)),
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
@@ -100,7 +99,7 @@ fn scissor_steps_emit_once_per_transition() {
         ],
     );
     assert_eq!(
-        collect(&buf, Some(narrow), None),
+        collect(&buf, Some(narrow)),
         vec![
             RenderStep::SetScissor(narrow),
             RenderStep::PreClear,
@@ -170,7 +169,7 @@ fn group_outside_damage_emits_no_steps() {
     ]);
     let damage = URect::new(0, 0, 40, 40);
     assert_eq!(
-        simplify(&buf, &collect(&buf, Some(damage), None)),
+        simplify(&buf, &collect(&buf, Some(damage))),
         vec![DrawOp::PreClear, DrawOp::Quads(0)],
     );
 }

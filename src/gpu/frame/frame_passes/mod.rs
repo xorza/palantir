@@ -6,8 +6,8 @@ use crate::gpu::frame::schedule::GroupSpan;
 /// One step of a frame's passes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PassStep {
-    /// Dim what a partial frame keeps, in a pass of its own over the color target: it runs with
-    /// no stencil attachment, which the main pass may have.
+    /// Dim what a partial frame keeps, in a pass of its own over the color target, before the
+    /// main pass.
     Dim,
     /// One pass of the main pass, painting `groups` into the color target.
     Main {

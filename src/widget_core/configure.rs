@@ -376,7 +376,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Rounded-corner stencil clip; the radius comes from the widget's chrome (zero
+    /// Rounded-corner clip, its edge antialiased; the radius comes from the widget's chrome (zero
     /// without chrome).
     #[inline]
     #[must_use]

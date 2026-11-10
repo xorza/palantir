@@ -190,7 +190,7 @@ impl Fixture {
         let runs = make_runs(&mut store, &shaper);
         let textures = TextureBinding::new(&g.gpu);
         let program = RasterProgram::new(&g.gpu, &textures);
-        // The frame group the raster pipelines take first, which their glyphs read nothing of.
+        // The frame group the raster pipelines take first, which their glyphs read no clip of.
         let frame = FrameGroup::new(&g.gpu, textures, &GpuGradientAtlas::new(&g.gpu, 1));
         let mut pipelines = RasterVariants::NONE;
         program.ensure(

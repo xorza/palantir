@@ -15,6 +15,7 @@ use crate::gpu::pipeline::raster_pipeline::raster_quad::{
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::texture_binding::{self, Filtering, TextureBinding};
+use crate::primitives::wgsl;
 
 /// The two pipeline pairs one swapchain format draws raster quads with.
 #[derive(Debug)]
@@ -33,7 +34,7 @@ impl RasterVariants {
     };
 }
 
-/// The pipelines one raster draw binds, picked for whether the frame clips to a rounded rect.
+/// The pipelines one raster draw binds.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RasterPipelines<'a> {
     pub(crate) flat: &'a Pipeline,
@@ -54,7 +55,7 @@ impl RasterProgram {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.raster.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[],
+        includes: &[wgsl::FRAME],
         constants: SHADER_CONSTANTS,
     };
 
@@ -77,9 +78,9 @@ impl RasterProgram {
         &self.layout
     }
 
-    /// Build the halves of `variants` `target` binds, against its format, where
-    /// they are not built: the only format-dependent part here, for unturned quads, and for the
-    /// [`SpunRasterQuad`]s a paint animation turns.
+    /// Build the halves of `variants` `target` binds, where they are not built: the only
+    /// format-dependent part here, for unturned quads, and for the [`SpunRasterQuad`]s a paint
+    /// animation turns.
     pub(crate) fn ensure(&self, variants: &mut RasterVariants, gpu: &Gpu, target: VariantTarget) {
         variants.flat.ensure(
             gpu,

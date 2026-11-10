@@ -47,8 +47,6 @@ impl PassState for Recorder {
 
     fn set_scissor_rect(&mut self, _: URect) {}
 
-    fn set_stencil_reference(&mut self, _: u32) {}
-
     fn draw(&mut self, _: Range<u32>, _: Range<u32>) {
         self.0.push(Call::Draw);
     }
@@ -154,10 +152,9 @@ fn a_switch_sets_only_what_changed() {
         "an index buffer read as another format is bound again",
     );
 
-    // A scissor and a stencil reference take no elision here: the schedule dedupes them.
+    // A scissor takes no elision here: the schedule dedupes it.
     rec.scissor(URect::new(0, 0, 8, 8));
     rec.scissor(URect::new(0, 0, 8, 8));
-    rec.stencil_reference(1);
     rec.draw_indexed(0..3, 0, 0..1);
     // Pipelines 1, 2, 3, 4, 1 and 5; groups 20, 21, 22 and 20 again; the draw and the indexed one.
     assert_eq!(
@@ -167,7 +164,6 @@ fn a_switch_sets_only_what_changed() {
             pipelines: 6,
             groups: 4,
             scissors: 2,
-            stencil_refs: 1,
         },
         "the counts are the calls the pass took"
     );

@@ -119,6 +119,8 @@ struct VsIn {
     @location(10) fill_lut_row: u32,
     // Basis tag: one of the KIND_* constants. Constant per instance.
     @location(11) kind: u32,
+    // The rounded clips that cut the stroke (`ClipChain`).
+    @location(12) chain: u32,
 };
 
 struct VsOut {
@@ -162,6 +164,7 @@ struct VsOut {
     // FLAG_CLIP: the two plane anchors `(a0, a1)` (segment endpoints).
     // FLAG_JOIN: the joint point `P` in both halves.
     @location(9) @interpolate(flat) jv1: vec4<f32>,
+    @location(10) @interpolate(flat) chain: u32,
 };
 
 struct PosTan { pos: vec2<f32>, tan: vec2<f32> };
@@ -346,6 +349,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.flags = flags;
     out.phys = phys;
     out.clip = clip_from_px(phys);
+    out.chain = in.chain;
     return out;
 }
 
@@ -416,6 +420,6 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // `GpuFill::curve`.
         rgba = palantir_gradient_lut(in.curve_t, in.lut_row) * rgba;
     }
-    let a = rgba.a * coverage;
+    let a = rgba.a * coverage * palantir_clip_coverage(frag_px(in.clip), in.chain);
     return premultiply(rgba.rgb, a);
 }

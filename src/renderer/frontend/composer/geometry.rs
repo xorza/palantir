@@ -6,7 +6,6 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
 use crate::primitives::paint::line_style::LineJoin;
-use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -115,5 +114,8 @@ pub(super) fn rounded_clip_pool_overflow(start: u32) -> ! {
 #[cold]
 #[inline(never)]
 pub(super) fn rounded_clip_depth_overflow(depth: u32) -> ! {
-    panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
+    panic!(
+        "rounded clip chain depth {depth} exceeds the deepest chain, {}",
+        ClipChain::MAX_DEPTH
+    );
 }

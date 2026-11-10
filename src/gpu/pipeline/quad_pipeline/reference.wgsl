@@ -50,10 +50,14 @@ fn sdf_triangle(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>) -> f32 {
     return select(dist, -dist, d.y > 0.0);
 }
 
-// The one-quad form's fragment: the shape's SDF composites its fill and inner-edge border into
-// premultiplied linear.
+// The one-quad form's fragment: what `reference_color` draws, cut by the quad's rounded clips.
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
+    return reference_color(in) * palantir_clip_coverage(frag_px(in.clip), in.chain);
+}
+
+// The shape's SDF composites its fill and inner-edge border into premultiplied linear.
+fn reference_color(in: VertexOut) -> vec4<f32> {
     // Uniform per instance (`fill_kind` is flat), so whole wavefronts
     // inside one quad take a single side of this branch.
     if (QUAD_FORM == QUAD_FORM_BOX_SOLID && (in.fill_kind & FILL_FLAG_FAST) != 0u) {

@@ -462,10 +462,10 @@ fn rounded_clip_pages_draw_their_counts() {
     assert_eq!(
         counts,
         [
-            ("Tabs", 22),
-            ("Dock", 22),
-            ("Clip & transform", 17),
-            ("Motion", 20)
+            ("Tabs", 14),
+            ("Dock", 14),
+            ("Clip & transform", 12),
+            ("Motion", 14)
         ]
     );
 }

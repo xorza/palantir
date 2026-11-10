@@ -1,8 +1,9 @@
-//! Whether a node clips its descendants: no clip, a scissor, or a rounded stencil mask.
+//! Whether a node clips its descendants: no clip, a scissor, or a rounded rect.
 
 /// How a node clips its descendants' paint.
 ///
-/// `Rounded` clips to the node's `Chrome.radius` and needs a backend stencil pass, so apps that never use it pay nothing.
+/// `Rounded` clips to the node's `Chrome.radius`, with an antialiased edge: each draw it cuts takes
+/// the clip's coverage in its fragment stage.
 #[derive(
     Clone,
     Copy,
@@ -23,7 +24,7 @@ pub enum ClipMode {
     None = 0,
     /// Axis-aligned scissor — the cheap, GPU-native path.
     Rect = 1,
-    /// Clip to the node's corner radii. Costs a stencil pass.
+    /// Clip to the node's corner radii. Costs a coverage term in each draw that crosses its edge.
     Rounded = 2,
 }
 

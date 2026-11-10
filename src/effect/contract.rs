@@ -16,7 +16,8 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::wgsl::{
-    ANTIALIAS, ARC_SEGMENTS, COLOR, FRAME, FRAME_GROUP, GRADIENT_FILL, GRADIENT_LUT, SHAPE_TEMPLATE,
+    ANTIALIAS, ARC_SEGMENTS, CLIP_DEPTH_BITS, COLOR, FRAME, FRAME_GROUP, GRADIENT_FILL,
+    GRADIENT_LUT, SDF, SHAPE_TEMPLATE,
 };
 
 /// The public contract, `EffectInput`, `EffectOutput` and the blends, which follows the app's
@@ -131,7 +132,11 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
     ) + &frame();
     let full = parse_and_validate(
         full,
-        Capabilities::default() | Capabilities::DUAL_SOURCE_BLENDING | Capabilities::IMMEDIATES,
+        // The f16 unpack the clip's corners take, as every palantir pipeline's instance does.
+        Capabilities::default()
+            | Capabilities::DUAL_SOURCE_BLENDING
+            | Capabilities::IMMEDIATES
+            | Capabilities::SHADER_FLOAT16_IN_FLOAT32,
     )?;
     Ok(EffectModule {
         text: full.text,
@@ -242,9 +247,13 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
         .replace("/*{MATERIAL_BRANCH}*/", branch)
 }
 
-/// The frame group the pipelines bind, the gradient atlas, its marker put in.
+/// The frame group the pipelines bind, the gradient atlas and the rounded clips, with the clip's
+/// coverage and the SDF it reads, its markers put in.
 fn frame() -> String {
-    FRAME.replace("/*{FRAME_GROUP}*/", &format!("{FRAME_GROUP}u"))
+    [SDF, FRAME]
+        .concat()
+        .replace("/*{FRAME_GROUP}*/", &format!("{FRAME_GROUP}u"))
+        .replace("/*{CLIP_DEPTH_BITS}*/", &format!("{CLIP_DEPTH_BITS}u"))
 }
 
 /// The material path with the WGSL it shares with the pipelines, the fill kinds the quad shader

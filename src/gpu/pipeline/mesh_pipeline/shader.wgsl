@@ -20,11 +20,14 @@ struct VsIn {
     @location(3) x_axis: vec2<f32>,
     @location(4) y_axis: vec2<f32>,
     @location(5) tint: vec4<f32>,
+    // The rounded clips that cut the mesh (`ClipChain`).
+    @location(6) chain: u32,
 };
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(1) @interpolate(flat) chain: u32,
 };
 
 @vertex
@@ -33,10 +36,11 @@ fn vs(in: VsIn) -> VsOut {
     out.clip = clip_from_px(in.x_axis * in.pos.x + in.y_axis * in.pos.y + in.translate);
     let straight = vec4<f32>(palantir_srgb_to_linear(in.color.rgb), in.color.a) * in.tint;
     out.color = premultiply(straight.rgb, straight.a);
+    out.chain = in.chain;
     return out;
 }
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    return in.color;
+    return in.color * palantir_clip_coverage(frag_px(in.clip), in.chain);
 }

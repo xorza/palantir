@@ -253,18 +253,11 @@ impl Ordering<'_> {
         self.order.occlusion.record_opaque(idx, cover);
     }
 
-    /// Close what the clip in force owns, if `next` differs. Chains compare by value, so a
-    /// redundant push/pop is a no-op. Runs before the stack moves, since [`Self::flush`] stamps the
-    /// closing group with the stack top.
+    /// Close the group the clip in force owns, if `next` has another scissor. A rounded clip's
+    /// chain rides each draw, so it closes nothing. Runs before the stack moves, since
+    /// [`Self::flush`] stamps the closing group with the stack top.
     pub(super) fn break_for_clip(&mut self, next: Option<ClipFrame>) {
-        let next_chain = next.map_or_else(Span::default, |frame| frame.chain);
-        let chain_changed = !self.out.chains_equal(next_chain, self.clip.chain());
-        if chain_changed {
-            // The stencil mask stack follows the active chain; close before the group transition,
-            // while the stack top still names the batch's chain.
-            self.close_batch();
-        }
-        if next.map(|frame| frame.scissor) != self.clip.scissor() || chain_changed {
+        if next.map(|frame| frame.scissor) != self.clip.scissor() {
             self.flush();
         }
     }
@@ -301,7 +294,6 @@ impl Ordering<'_> {
             }
             self.out.groups.push(DrawGroup {
                 scissor: self.clip.scissor(),
-                rounded_clips: self.clip.chain(),
                 quads: Span::try_from(order.cursors.quads..q_end).unwrap(),
             });
         }
@@ -318,8 +310,8 @@ impl Ordering<'_> {
         order.batch.pending_batch_cursor = self.out.text_batches.len();
     }
 
-    /// Finalize the open text batch, if any. Called at batch-split events (rounded-clip change,
-    /// higher-kind append, strict-bounds mismatch). The grid fill is deferred to
+    /// Finalize the open text batch, if any. Called at batch-split events (higher-kind append,
+    /// strict-bounds mismatch, a backdrop's barrier). The grid fill is deferred to
     /// [`Self::closed_hit`].
     pub(super) fn close_batch(&mut self) {
         let Some(ClosedBatch { batch: b, scissor }) = self.order.batch.close() else {
@@ -346,8 +338,6 @@ impl Ordering<'_> {
             // Already physical and clamped to every run's clip-narrowed bounds, so it is the
             // batch's GPU scissor (the text backend has no per-run clipping).
             scissor,
-            // Every close site runs while the outgoing clip is still the stack top.
-            rounded_clips: self.clip.chain(),
         });
     }
 

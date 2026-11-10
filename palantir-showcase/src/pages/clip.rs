@@ -152,7 +152,7 @@ enum Mode {
     Rounded,
 }
 
-/// Card with a large corner radius so the rect scissor and rounded stencil differ clearly.
+/// Card with a large corner radius so the rect scissor and rounded clip differ clearly.
 fn card_chrome(k: Kit) -> Chrome {
     Chrome::rounded(k.t.ground, Corners::all(28.0)).with_border(Border::new(k.t.border, 1.5))
 }

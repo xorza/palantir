@@ -1,4 +1,4 @@
-//! Push/pop balance, and when a rounded clip needs the stencil.
+//! Push/pop balance, and when a clip is rounded.
 
 use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;

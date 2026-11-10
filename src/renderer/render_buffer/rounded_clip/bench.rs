@@ -377,7 +377,6 @@ fn clip_pass_batch(c: &mut Criterion, backends: &Backends) {
     };
     let mut group = Kind::Atomic.group(c, "clip_pass_batch", Scale::Frame);
     let kinds = [
-        BatchKind::Mask,
         BatchKind::Quads,
         BatchKind::Text,
         BatchKind::Image,
@@ -385,10 +384,6 @@ fn clip_pass_batch(c: &mut Criterion, backends: &Backends) {
     ];
     for kind in kinds {
         for arm in ClipArm::ALL {
-            // The rect arm stamps no mask, so it has no mask batch to time.
-            if kind == BatchKind::Mask && arm == ClipArm::Rect {
-                continue;
-            }
             let case = format!("{}/{}", kind.label(), arm.label());
             group.bench_function(backend.case(&case), |b| {
                 let gpu = backends.device(Timing::Instrumented);

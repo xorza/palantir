@@ -183,8 +183,8 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 );
 
 /// The effect at `idx`, from `module`, over the layout of its kind and image slots, against
-/// `format`, with its rounded-clip twin: its one stage, which for a backdrop effect also draws a
-/// material's box and dithers that result before an 8-bit sRGB target stores it.
+/// `format`, both halves of its [`ClipVariant`]: its one stage, which for a backdrop effect also
+/// draws a material's box and dithers that result before an 8-bit sRGB target stores it.
 pub(crate) fn build(
     gpu: &Gpu,
     layouts: &EffectLayouts,

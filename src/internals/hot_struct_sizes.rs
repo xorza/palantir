@@ -116,7 +116,7 @@ const UI_SIZE: usize = 3000;
 /// Expected `size_of::<WindowFrames>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const WINDOW_FRAMES_SIZE: usize = 7208;
+const WINDOW_FRAMES_SIZE: usize = 6688;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)

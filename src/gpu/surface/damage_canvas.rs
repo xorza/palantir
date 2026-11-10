@@ -4,7 +4,6 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::TargetSpec;
-use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use glam::UVec2;
@@ -13,15 +12,13 @@ use glam::UVec2;
 /// rect's tiles are whole on either.
 const TILE: u32 = 64;
 
-/// A color target, and a stencil from its first frame with a rounded clip, of the
-/// [size class](Self::class) of the damage a partial frame repaints. The frame paints into it from a clear, as a whole frame paints the backbuffer, then
+/// A color target of the [size class](Self::class) of the damage a partial frame repaints. The frame paints into it from a clear, as a whole frame paints the backbuffer, then
 /// copies each damage rect into the backbuffer: such a device's pass then loads nothing and stores
 /// the canvas alone, where a pass on the backbuffer loads and stores the whole surface.
 #[derive(Debug)]
 pub(crate) struct DamageCanvas {
     texture: wgpu::Texture,
     view: wgpu::TextureView,
-    stencil: Option<Stencil>,
 }
 
 impl DamageCanvas {
@@ -37,11 +34,7 @@ impl DamageCanvas {
             },
         );
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        Self {
-            texture,
-            view,
-            stencil: None,
-        }
+        Self { texture, view }
     }
 
     /// The surface rect a partial frame of `damage` paints through a canvas on `surface`: the
@@ -103,18 +96,6 @@ impl DamageCanvas {
 
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
-    }
-
-    /// The stencil [`Self::ensure_stencil`] made.
-    pub(crate) const fn stencil(&self) -> Option<&Stencil> {
-        self.stencil.as_ref()
-    }
-
-    /// Make the stencil when there is none.
-    pub(crate) fn ensure_stencil(&mut self, gpu: &Gpu) {
-        if self.stencil.is_none() {
-            self.stencil = Some(Stencil::new(gpu, texel::size(&self.texture)));
-        }
     }
 }
 

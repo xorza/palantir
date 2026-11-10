@@ -9,7 +9,8 @@
 /// `effect` lies left of `renderer` and `gpu` in the module order and its contract reads it.
 pub(crate) const FRAME_GROUP: u32 = 0;
 
-/// The bits of a draw's clip chain (`ClipChain`) that hold its depth, below its start.
+/// The bits of a draw's clip chain (`ClipChain`) that hold its depth, below its start: what
+/// [`FRAME`]'s `palantir_clip_coverage` unpacks.
 pub(crate) const CLIP_DEPTH_BITS: u32 = 8;
 
 /// `palantir_edge_coverage`.
@@ -18,7 +19,8 @@ pub(crate) const ANTIALIAS: &str = include_str!("antialias.wgsl");
 pub(crate) const COLOR: &str = include_str!("color.wgsl");
 /// The rounded rect's signed distance.
 pub(crate) const SDF: &str = include_str!("sdf.wgsl");
-/// The frame group's bindings, the gradient LUT atlas, with the marker `FRAME_GROUP`.
+/// The frame group's bindings, the gradient LUT atlas and the rounded clips, and
+/// `palantir_clip_coverage`, with the markers `FRAME_GROUP` and `CLIP_DEPTH_BITS`.
 pub(crate) const FRAME: &str = include_str!("frame.wgsl");
 /// A read of the gradient LUT atlas, whose bindings [`FRAME`] declares.
 pub(crate) const GRADIENT_LUT: &str = include_str!("gradient_lut.wgsl");

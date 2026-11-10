@@ -1,5 +1,5 @@
 //! Where a frame lands: render targets, window swapchains and their
-//! manager, the retained backbuffer, the stencil attachment, and scissors.
+//! manager, the retained backbuffer, and scissors.
 
 pub(crate) mod backbuffer;
 pub(crate) mod capture;
@@ -15,7 +15,6 @@ pub(crate) mod map_state;
 pub(crate) mod owned_target;
 pub(crate) mod render_target;
 pub(crate) mod staging;
-pub(crate) mod stencil;
 #[cfg(feature = "winit")]
 pub(crate) mod surface_manager;
 pub(crate) mod texel_readback;

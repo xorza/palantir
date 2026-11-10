@@ -44,8 +44,7 @@ impl BlitPipeline {
     }
 
     /// Build the pipeline for `format` where none is built. No blend: the backbuffer holds the
-    /// finished frame, so the draw replaces the target. No stencil twin: it runs after every
-    /// clipped draw, in its own pass.
+    /// finished frame, so the draw replaces the target, in its own pass.
     pub(crate) fn ensure(&mut self, gpu: &Gpu, format: wgpu::TextureFormat) {
         if self.pipelines.contains_key(&format) {
             return;

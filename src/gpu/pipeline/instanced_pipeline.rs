@@ -30,8 +30,8 @@ pub(crate) struct InstancedSpec<'a> {
     pub(crate) capacity: usize,
 }
 
-/// What a pipeline is built for: the target's color format, and whether the frame clips to a
-/// rounded rect.
+/// What a pipeline is built for: the target's color format, and whether the frame's draws name
+/// rounded clips.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VariantTarget {
     pub(crate) format: wgpu::TextureFormat,

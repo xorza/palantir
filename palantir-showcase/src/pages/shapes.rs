@@ -1,6 +1,6 @@
 //! Filled shape primitives: triangles, meshes and a rect covering its outside
-//! (`Coverage::Outside`), the inverted-fill corner mask standing in for rounded clipping without a
-//! stencil pass.
+//! (`Coverage::Outside`), the inverted-fill corner mask standing in for a rounded clip over content
+//! that keeps no clip of its own.
 #![expect(
     clippy::disallowed_methods,
     reason = "a demo of the crate, whose frames owe no two systems the same bits"
@@ -59,8 +59,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 ui,
                 k,
                 "An inverted rounded-rect fill: it paints the corner wedges and \
-                 leaves the window alone, which gives rounded clipping with no \
-                 stencil pass.",
+                 leaves the window alone, which looks like a rounded clip over \
+                 content that keeps no clip of its own.",
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("corner mask over content").show(ui, k, |ui| window_mask(ui, k));
@@ -170,7 +170,7 @@ fn gradient_quad(ui: &mut Ui, k: Kit) {
     });
 }
 
-/// The headline use: rounded-corner clipping without a stencil pass; the windowed rect fills the corner wedges
+/// The headline use: rounded corners over content that keeps no clip; the windowed rect fills the corner wedges
 /// with the tile background and strokes the boundary over a plain unclipped gradient.
 fn window_mask(ui: &mut Ui, k: Kit) {
     ui.add_shape(

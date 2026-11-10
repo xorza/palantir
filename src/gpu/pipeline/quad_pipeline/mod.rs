@@ -9,7 +9,6 @@ pub(crate) mod quad_draw;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::clip_stencil;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::format_pipelines::PassPipelines;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
@@ -39,7 +38,7 @@ use glam::Vec2;
 use std::mem::offset_of;
 use std::ops::Range;
 
-/// The label of `draw`'s pipeline; its stencil-test twin takes it with `.stencil_test`.
+/// The label of `draw`'s pipeline.
 const fn draw_label(draw: QuadDraw) -> &'static str {
     match draw {
         QuadDraw::Form(QuadForm::BoxSolid) => "palantir.quad.pipeline.box_solid",
@@ -53,44 +52,25 @@ const fn draw_label(draw: QuadDraw) -> &'static str {
     }
 }
 
-/// Every quad pipeline one swapchain format needs: one pair per [`QuadDraw`], a form of `fs` or
-/// a shadow's entry, and two stencil-writing mask variants.
+/// Every quad pipeline one swapchain format needs: one per [`QuadDraw`], a form of `fs` or a
+/// shadow's entry.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
-    /// Each draw's base and stencil-test twin, by [`QuadDraw::idx`]. The shadows read the baked
-    /// cutouts ([`CutoutTables`]), apart from `fs` to keep the blur integral out of other quads.
+    /// Each draw's pipeline, by [`QuadDraw::idx`]. The shadows read the baked cutouts
+    /// ([`CutoutTables`]), apart from `fs` to keep the blur integral out of other quads.
     draws: [ClipVariant; QuadDraw::ALL.len()],
-    /// The stencil-writing masks, built on the first frame with a rounded clip.
-    mask_stamp: Option<Pipeline>,
-    mask_clear: Option<Pipeline>,
 }
 
 impl QuadVariants {
     /// No pipeline built.
     pub(crate) const NONE: Self = Self {
         draws: [ClipVariant::NONE; QuadDraw::ALL.len()],
-        mask_stamp: None,
-        mask_clear: None,
     };
 
     /// The pipeline a quad of `draw` draws through in a frame of `clipping`, which the frame's
     /// census built.
     pub(crate) const fn get(&self, draw: QuadDraw, clipping: Clipping) -> &Pipeline {
         self.draws[draw.idx() as usize].get(clipping)
-    }
-
-    /// The mask that stamps a rounded clip into the stencil, which the frame's census built.
-    pub(crate) const fn mask_stamp(&self) -> &Pipeline {
-        self.mask_stamp
-            .as_ref()
-            .expect("a frame with a rounded clip builds its masks")
-    }
-
-    /// The mask that clears the stencil a stamp left, which the frame's census built.
-    pub(crate) const fn mask_clear(&self) -> &Pipeline {
-        self.mask_clear
-            .as_ref()
-            .expect("a frame with a rounded clip builds its masks")
     }
 }
 
@@ -125,8 +105,6 @@ pub(crate) struct QuadRun {
 /// its pre-clear drew the last one's.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct QuadExtras<'a> {
-    /// One quad per deduped rounded clip, stamped and cleared per mask.
-    pub(crate) masks: &'a [Quad],
     /// The partial repaint's pre-clear, drawn first inside each damage scissor so `LoadOp::Load`
     /// leaks no last-frame AA fringe.
     pub(crate) clear: Option<Quad>,
@@ -139,7 +117,6 @@ pub(crate) struct QuadExtras<'a> {
 /// Where the last upload put each of its [`QuadExtras`] in the instance stream.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct ExtraSpans {
-    masks: Span,
     clear: Option<u32>,
     dim: Option<u32>,
     outlines: Span,
@@ -147,10 +124,9 @@ struct ExtraSpans {
 
 impl ExtraSpans {
     /// Lay `extras` into `tail`, which follows `base` quads in the stream, in a fixed order:
-    /// masks, clear, dim, outlines. An absent extra takes no instance and reads `None`.
+    /// clear, dim, outlines. An absent extra takes no instance and reads `None`.
     fn lay(base: u32, extras: QuadExtras<'_>, tail: &mut Vec<Quad>) -> Self {
         let QuadExtras {
-            masks,
             clear,
             dim,
             outlines,
@@ -162,7 +138,6 @@ impl ExtraSpans {
             span
         };
         Self {
-            masks: push(masks),
             clear: clear.map(|quad| push(&[quad]).start),
             dim: dim.map(|quad| push(&[quad]).start),
             outlines: push(outlines),
@@ -239,41 +214,24 @@ impl QuadPipeline {
             include_str!("reference.wgsl"),
             include_str!("shadow.wgsl"),
             include_str!("cutout_bake.wgsl"),
-            include_str!("mask.wgsl"),
         ],
         constants: SHADER_CONSTANTS,
     };
 
-    /// Bind `pipeline` over the instance stream and draw the frame's pre-clear quad. Under
-    /// [`Clipping::On`], the test at reference 0 matches every pixel and leaves the stencil
-    /// intact.
+    /// Bind `pipeline` over the instance stream and draw the frame's pre-clear quad.
     pub(crate) fn draw_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
         let at = self
             .extras
             .clear
             .expect("a frame that pre-clears uploads its clear quad");
-        // Sets no stencil reference: the schedule dedupes `SetStencilRef` assuming no draw arm sets one, and the ref is already 0.
         self.bind(rec, pipeline);
         rec.draw(0..self.form_vertices(QuadForm::BoxSolid), at..at + 1);
-    }
-
-    /// Bind a mask pipeline (stamp or clear) over the instance stream; the caller sets `stencil_reference` per draw.
-    pub(crate) fn bind_mask<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
-        self.bind(rec, pipeline);
     }
 
     /// Bind `pipeline` over the instance stream in the main pass, which holds the frame group.
     fn bind<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
         rec.pipeline(pipeline);
         rec.vertex(0, &self.instance_buffer.buffer);
-    }
-
-    /// Draw the frame's mask `mask_idx`, which [`QuadExtras::masks`] held.
-    pub(crate) fn draw_mask(&self, rec: &mut PassRecorder<'_>, mask_idx: u32) {
-        let masks = self.extras.masks;
-        debug_assert!(mask_idx < masks.len, "mask {mask_idx} of {}", masks.len);
-        let at = masks.start + mask_idx;
-        rec.draw(0..shape_template::vertices(4), at..at + 1);
     }
 
     /// The instance stream, the frame's quads and its extras.
@@ -295,7 +253,7 @@ impl QuadPipeline {
         self.extras.outlines.u32_range()
     }
 
-    /// Build the format-independent quad resources; per-format pipelines come from [`Self::ensure_draw`] and [`Self::ensure_masks`].
+    /// Build the format-independent quad resources; per-format pipelines come from [`Self::ensure_draw`].
     pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
         let shader = Self::SHADER.module(gpu);
         let cutouts = CutoutTables::new(gpu, &shader);
@@ -309,7 +267,7 @@ impl QuadPipeline {
             tail: Vec::new(),
             extras: ExtraSpans::default(),
             shader,
-            // The frame group. One layout serves every form; stencil state and fragment entry are not part of it.
+            // The frame group. One layout serves every form; the fragment entry is no part of it.
             pipeline_layout: pipeline_recipe::pipeline_layout(
                 gpu,
                 "palantir.quad.pl",
@@ -326,9 +284,8 @@ impl QuadPipeline {
         }
     }
 
-    /// Build the half of `draw`'s pipelines `target` binds, against its format,
-    /// where it is not built: the only format-dependent quad objects; the atlas and buffers are
-    /// reused.
+    /// Build the half of `draw`'s pipelines `target` binds, where it is not built: the only
+    /// format-dependent quad objects; the atlas and buffers are reused.
     pub(super) fn ensure_draw(
         &self,
         variants: &mut QuadVariants,
@@ -392,43 +349,6 @@ impl QuadPipeline {
                 );
             }
         }
-    }
-
-    /// Build the stencil-writing masks against `format`, where they are not built.
-    pub(super) fn ensure_masks(
-        &self,
-        variants: &mut QuadVariants,
-        gpu: &Gpu,
-        format: wgpu::TextureFormat,
-    ) {
-        let instance = [Some(INSTANCE_LAYOUT)];
-        // The mask pair writes stencil only: `fs_mask` discards past the shape's template, color
-        // writes are off, the blend is inert.
-        let mask = |label: &'static str, depth_stencil: wgpu::DepthStencilState| -> Pipeline {
-            PipelineRecipe {
-                vertex_buffers: &instance,
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                vertex_entry: "vs_mask",
-                fragment_entry: "fs_mask",
-                color_writes: wgpu::ColorWrites::empty(),
-                blend: None,
-                depth_stencil: Some(depth_stencil),
-                ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
-            }
-            .build(gpu)
-        };
-        variants.mask_stamp.get_or_insert_with(|| {
-            mask(
-                "palantir.quad.pipeline.mask_stamp",
-                clip_stencil::stamp_state(),
-            )
-        });
-        variants.mask_clear.get_or_insert_with(|| {
-            mask(
-                "palantir.quad.pipeline.mask_clear",
-                clip_stencil::clear_state(),
-            )
-        });
     }
 
     /// Upload the frame's quads and, after them, its `extras`, and work out the draw each quad
@@ -599,11 +519,6 @@ pub(crate) mod internals {
         pub(crate) const fn is_built(&self, draw: QuadDraw, clipping: Clipping) -> bool {
             self.draws[draw.idx() as usize].is_built(clipping)
         }
-
-        /// Whether the stencil-writing masks are built.
-        pub(crate) const fn has_masks(&self) -> bool {
-            self.mask_stamp.is_some() && self.mask_clear.is_some()
-        }
     }
 
     impl QuadPipeline {
@@ -633,8 +548,8 @@ mod tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::renderer::quad::Quad;
 
-    /// The extras follow the frame's 3 quads in order: masks at 3 and 4, the clear at 5, the
-    /// outline at 6; no dim takes no instance. A frame with none lays nothing and its clear reads
+    /// The extras follow the frame's 3 quads in order: the clear at 3, the outline at 4; no dim
+    /// takes no instance. A frame with none lays nothing and its clear reads
     /// `None`, so a pre-clear it forgot cannot draw the last frame's.
     #[test]
     fn extras_follow_the_quads_in_order() {
@@ -646,7 +561,6 @@ mod tests {
         let spans = ExtraSpans::lay(
             3,
             QuadExtras {
-                masks: &[quad(1.0), quad(2.0)],
                 clear: Some(quad(3.0)),
                 dim: None,
                 outlines: &[quad(4.0)],
@@ -656,19 +570,18 @@ mod tests {
         assert_eq!(
             spans,
             ExtraSpans {
-                masks: Span::new(3, 2),
-                clear: Some(5),
+                clear: Some(3),
                 dim: None,
-                outlines: Span::new(6, 1),
+                outlines: Span::new(4, 1),
             }
         );
         assert_eq!(
             tail.iter().map(|q| q.rect.min.x).collect::<Vec<_>>(),
-            [1.0, 2.0, 3.0, 4.0]
+            [3.0, 4.0]
         );
         let spans = ExtraSpans::lay(3, QuadExtras::default(), &mut tail);
         assert!(tail.is_empty());
         assert_eq!(spans.clear, None);
-        assert_eq!(spans.masks.len, 0);
+        assert_eq!(spans.outlines.len, 0);
     }
 }

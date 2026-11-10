@@ -53,7 +53,9 @@ fn palantir_material(v: PalantirVarying, local: vec2<f32>, input: EffectInput, o
         let ign = fract(52.9829189 * fract(dot(floor(p), vec2<f32>(0.06711056, 0.00583715))));
         c = palantir_srgb_to_linear(max(palantir_linear_to_srgb(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
     }
-    let shaded = palantir_material_shade(v, local, backdrop, vec4<f32>(c, opacity));
+    // Premultiplied, so the clip scales the shade and leaves what is under as over composites it.
+    let shaded = palantir_material_shade(v, local, backdrop, vec4<f32>(c, opacity))
+        * palantir_clip_coverage(v.clip.xy + palantir_imm.frag_origin, v.chain);
     return PalantirOut(shaded, vec4<f32>(1.0 - shaded.a));
 }
 

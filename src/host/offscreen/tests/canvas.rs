@@ -28,8 +28,8 @@ use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
 /// A translucent tile whose color turns each frame over a shadowed block, a rounded clip, text,
-/// a mesh and a stroke off the pixel grid, so every pipeline that reads its fragment's position
-/// or the stencil paints inside the damage.
+/// a mesh and a stroke off the pixel grid, so every pipeline that reads its fragment's position,
+/// a rounded clip's coverage among them, paints inside the damage.
 fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
     Panel::canvas()
         .id_salt("canvas")

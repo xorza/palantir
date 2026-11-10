@@ -8,39 +8,36 @@ use std::time::Duration;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BatchKind {
-    /// Work before the first drawing step (binds, scissor, stencil-ref).
+    /// Work before the first drawing step (binds, scissor).
     Setup = 0,
     /// Per-rect clear quad of a Partial pass.
     PreClear = 1,
-    /// Stencil mask quads.
-    Mask = 2,
     /// The quad pipeline.
-    Quads = 3,
+    Quads = 2,
     /// Drop and inset shadows.
-    Shadows = 4,
+    Shadows = 3,
     /// Text batches.
-    Text = 5,
+    Text = 4,
     /// Mesh replay.
-    Mesh = 6,
+    Mesh = 5,
     /// Image replay.
-    Image = 7,
+    Image = 6,
     /// Curve replay.
-    Curve = 8,
+    Curve = 7,
     /// Icon replay.
-    Icon = 9,
+    Icon = 8,
     /// Effect replay.
-    Effect = 10,
+    Effect = 9,
 }
 
 impl BatchKind {
     /// How many kinds there are.
-    pub(crate) const COUNT: usize = 11;
+    pub(crate) const COUNT: usize = 10;
 
     /// Every kind, in discriminant order.
     pub const ALL: [Self; Self::COUNT] = [
         Self::Setup,
         Self::PreClear,
-        Self::Mask,
         Self::Quads,
         Self::Shadows,
         Self::Text,
@@ -60,7 +57,6 @@ impl BatchKind {
         match self {
             Self::Setup => "setup",
             Self::PreClear => "preclear",
-            Self::Mask => "mask",
             Self::Quads => "quads",
             Self::Shadows => "shadows",
             Self::Text => "text",
@@ -116,7 +112,6 @@ pub(crate) struct PassCounts {
     pub(crate) pipelines: u32,
     pub(crate) groups: u32,
     pub(crate) scissors: u32,
-    pub(crate) stencil_refs: u32,
 }
 
 impl PassCounts {
@@ -126,7 +121,6 @@ impl PassCounts {
         pipelines: 0,
         groups: 0,
         scissors: 0,
-        stencil_refs: 0,
     };
 
     /// Add `other`'s calls to these.
@@ -135,7 +129,6 @@ impl PassCounts {
         self.pipelines += other.pipelines;
         self.groups += other.groups;
         self.scissors += other.scissors;
-        self.stencil_refs += other.stencil_refs;
     }
 }
 

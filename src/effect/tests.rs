@@ -742,6 +742,68 @@ fn each_blend_paints_its_exact_value() {
     }
 }
 
+/// A rounded clip cuts an effect by its coverage `k`, outside the effect's own code: the over blend
+/// of `c = (0.4, 0.2, 0.1, 0.5)` over the ground `g = (0.2, 0.4, 0.6)` paints
+/// `k·c + g·(1 − k·α) = g + k·(c − α·g)`. A clip whose left edge lies at 10.25 px leaves column
+/// 10's center, 10.5, a quarter pixel inside, `k = 0.75`: `(0.2 + 0.75·0.3, 0.4 + 0.75·0,
+/// 0.6 + 0.75·(−0.2)) = (0.425, 0.4, 0.45)`. Column 20 takes the whole blend, `(0.5, 0.4, 0.4)`,
+/// and column 5, past the clip, the ground.
+#[test]
+fn a_rounded_clip_cuts_an_effect_by_its_coverage() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(40, 32))
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    h.set_pixel_snap(false);
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
+    h.prime(2, |ui| {
+        ui.add_shape(Shape::rect(), ground);
+        Panel::canvas()
+            .id_salt("canvas")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::canvas()
+                    .id_salt("clip")
+                    .at((10.25, 4.0))
+                    .size((Sizing::fixed(20.0), Sizing::fixed(24.0)))
+                    .chrome(Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(4.0)))
+                    .clip_rounded()
+                    .show(ui, |ui| {
+                        ui.add_shape(
+                            Shape::rect().at(Rect::new(-20.0, -10.0, 80.0, 60.0)),
+                            EffectPaint::new(
+                                BLEND,
+                                Blend {
+                                    color: [0.4, 0.2, 0.1, 0.5],
+                                    mode: 0,
+                                    pad0: 0,
+                                    pad1: 0,
+                                    pad2: 0,
+                                },
+                            ),
+                        );
+                    });
+            });
+    });
+    let image = h.read_back();
+    for (x, want) in [
+        (5, (0.2, 0.4, 0.6)),
+        (10, (0.425, 0.4, 0.45)),
+        (20, (0.5, 0.4, 0.4)),
+    ] {
+        let got = image.get_pixel(x, 16).0;
+        let want = bytes(RgbaF32::new(want.0, want.1, want.2, 1.0));
+        assert!(
+            got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 1),
+            "column {x}: got {got:?}, want {want:?}"
+        );
+    }
+}
+
 /// A triangle clips its effect: the triangle (0, 0), (40, 40), (0, 40) under the over blend of
 /// `c = (0.4, 0.2, 0.1, 0.5)` paints `(0.5, 0.4, 0.4)` at (8, 32), inside it, and leaves the ground
 /// `(0.2, 0.4, 0.6)` at (32, 8), inside its covering rect but past its edge. Its effect reads its

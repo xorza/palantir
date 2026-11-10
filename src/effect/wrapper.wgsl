@@ -34,6 +34,8 @@ struct PalantirInstance {
     @location(7) points23: vec4<f32>,
     @location(8) inradius: f32,
     @location(9) border_width: f32,
+    // The rounded clips that cut the shape (`ClipChain`).
+    @location(10) chain: u32,
 }
 
 struct PalantirVarying {
@@ -48,6 +50,7 @@ struct PalantirVarying {
     @location(6) @interpolate(flat) region: u32,
     @location(7) geo: vec2<f32>,
     @location(8) @interpolate(flat) ring_r: f32,
+    @location(9) @interpolate(flat) chain: u32,
 }
 
 struct PalantirOut {
@@ -88,6 +91,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, instance: PalantirInstance) -> Pa
         t.region,
         t.geo,
         t.ring_r,
+        instance.chain,
     );
 }
 
@@ -111,7 +115,8 @@ fn palantir_fs(v: PalantirVarying) -> PalantirOut {
     let corners = select(v.corners, vec4<f32>(0.0), (v.flags & PALANTIR_TRIANGLE) != 0u);
     let input = EffectInput(local / scale, v.rect.zw / scale, corners / scale, v.clock.x, scale);
     /*{BACKDROP_SET}*/let out = /*{CALL}*/;
-    /*{MATERIAL_BRANCH}*/var coverage = v.clock.y;
+    /*{MATERIAL_BRANCH}*/var coverage = v.clock.y
+        * palantir_clip_coverage(v.clip.xy + palantir_imm.frag_origin, v.chain);
     if (v.region != PALANTIR_REGION_INTERIOR) {
         coverage *= palantir_edge_coverage(palantir_template_distance(v.region, v.geo, v.ring_r));
     }

@@ -18,6 +18,8 @@ struct VertexIn {
     // Linear straight RGBA — the `Float16x4` fetch widens in hardware,
     // no shader unpack.
     @location(4) color: vec4<f32>,
+    // The rounded clips that cut the quad (`ClipChain`).
+    @location(5) chain: u32,
 }
 
 struct VertexOut {
@@ -31,6 +33,7 @@ struct VertexOut {
     // The raster's texel rect as inclusive min/max — read only under
     // FLAG_RESAMPLE.
     @location(3) @interpolate(flat) texel_rect: vec4<i32>,
+    @location(4) @interpolate(flat) chain: u32,
 }
 
 // The `uv_and_kind` layout: `u` in the low `U_BITS`, the carried flags in
@@ -73,6 +76,7 @@ fn vs(in: VertexIn) -> VertexOut {
     out.flags = flags | select(0u, FLAG_RESAMPLE, any(in.size != in.dim));
     out.texel = uv_texel;
     out.texel_rect = vec4<i32>(vec2<i32>(vec2<u32>(u, v)), vec2<i32>(vec2<u32>(u, v) + in.dim) - 1);
+    out.chain = in.chain;
     return out;
 }
 
@@ -87,6 +91,7 @@ struct SpunIn {
     @location(4) color: vec4<f32>,
     @location(5) pivot: vec2<f32>,
     @location(6) rotor: vec2<f32>,
+    @location(7) chain: u32,
 }
 
 // `VertexOut`'s fields, then the quad's own unturned frame: the position
@@ -100,6 +105,7 @@ struct SpunOut {
     @location(3) @interpolate(flat) texel_rect: vec4<i32>,
     @location(4) local: vec2<f32>,
     @location(5) @interpolate(flat) half_size: vec2<f32>,
+    @location(6) @interpolate(flat) chain: u32,
 }
 
 // A turned quad. Its texels no longer sit on pixels, so it always takes the
@@ -126,6 +132,7 @@ fn vs_spun(in: SpunIn) -> SpunOut {
     out.texel_rect = vec4<i32>(vec2<i32>(vec2<u32>(u, v)), vec2<i32>(vec2<u32>(u, v) + in.dim) - 1);
     out.local = drawn - size * 0.5;
     out.half_size = size * 0.5;
+    out.chain = in.chain;
     return out;
 }
 
@@ -150,6 +157,11 @@ fn taps(texel: vec2<f32>, rect: vec4<i32>) -> Taps {
 
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
+    return texel_color(in) * palantir_clip_coverage(frag_px(in.position), in.chain);
+}
+
+// What `fs` draws before its clips cut it.
+fn texel_color(in: VertexOut) -> vec4<f32> {
     if ((in.flags & FLAG_RESAMPLE) != 0u) {
         return resampled(in);
     }
@@ -176,8 +188,9 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_spun(in: SpunOut) -> @location(0) vec4<f32> {
     let d = abs(in.local) - in.half_size;
-    let fade = palantir_edge_coverage(d.x) * palantir_edge_coverage(d.y);
-    return resampled(VertexOut(in.position, in.color, in.flags, in.texel, in.texel_rect)) * fade;
+    let fade = palantir_edge_coverage(d.x) * palantir_edge_coverage(d.y)
+        * palantir_clip_coverage(frag_px(in.position), in.chain);
+    return resampled(VertexOut(in.position, in.color, in.flags, in.texel, in.texel_rect, in.chain)) * fade;
 }
 
 // An icon drawn at a size other than its raster's: the four nearest texels,

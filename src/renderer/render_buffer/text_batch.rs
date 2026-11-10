@@ -10,5 +10,4 @@ pub(crate) struct TextBatch {
     pub(crate) last_group: u32,
     /// Physical-pixel union of every contributing text run's bounds.
     pub(crate) scissor: URect,
-    pub(crate) rounded_clips: Span,
 }

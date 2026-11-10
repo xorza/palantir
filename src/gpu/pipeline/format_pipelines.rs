@@ -17,9 +17,9 @@ use crate::renderer::render_buffer::quad_form::QuadForm;
 /// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
 ///
 /// Each is built on the first frame whose census asks for it ([`Self::ensure`]), before the
-/// frame's passes borrow the set; [`Self::new`] builds what nearly every frame draws, the plain
-/// halves of the solid, gradient and triangle quads and of every other family. A
-/// backdrop's forms, a shadow's forms, the stencil-test twins and the masks wait for a frame that
+/// frame's passes borrow the set; [`Self::new`] builds what nearly every frame draws, the solid,
+/// gradient and triangle quads and every other family, each its half that takes no clip. A
+/// backdrop's forms, a shadow's forms and the halves that take rounded clips wait for a frame that
 /// draws one, as the backdrop blur's pipelines wait for a backdrop: an app with none pays for none.
 #[derive(Debug)]
 pub(crate) struct FormatPipelines {
@@ -29,7 +29,8 @@ pub(crate) struct FormatPipelines {
     /// Indexed by [`ImageForm`].
     pub(crate) image: [ClipVariant; 3],
     pub(crate) curve: ClipVariant,
-    /// Base + stencil-test pipelines for **both** raster tenants: glyph and icon quads share one shader and group-0 layout, binding whichever atlas the step names. See [`RasterProgram`].
+    /// The pipelines of **both** raster tenants: glyph and icon quads share one shader and layout,
+    /// binding whichever atlas the step names. See [`RasterProgram`].
     pub(crate) raster: RasterVariants,
 }
 
@@ -41,14 +42,14 @@ pub(crate) struct Programs {
     pub(crate) mesh: MeshPipeline,
     pub(crate) image: ImagePipeline,
     pub(crate) curve: CurvePipeline,
-    /// The one shader and group-0 layout both raster tenants draw through; see [`RasterProgram`].
+    /// The one shader and layout both raster tenants draw through; see [`RasterProgram`].
     pub(crate) raster: RasterProgram,
     /// The frame's effect instances and words; each effect's pipelines are the store's.
     pub(crate) effect: EffectPipeline,
 }
 
-/// What a frame draws through, which its pipelines are built for: the stencil mode of its passes,
-/// the quad draws it takes, and the families it draws.
+/// What a frame draws through, which its pipelines are built for: whether its draws name rounded
+/// clips, the quad draws it takes, and the families it draws.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PipelineCensus {
     pub(crate) clipping: Clipping,
@@ -102,9 +103,6 @@ impl FormatPipelines {
         for draw in census.quads.iter() {
             programs.quad.ensure_draw(&mut self.quad, gpu, target, draw);
         }
-        if census.clipping == Clipping::On {
-            programs.quad.ensure_masks(&mut self.quad, gpu, self.format);
-        }
         if census.meshes {
             programs.mesh.ensure(&mut self.mesh, gpu, target);
         }
@@ -123,8 +121,7 @@ impl FormatPipelines {
         }
     }
 
-    /// These pipelines as a frame of `clipping` binds them: the stencil-test twins where its
-    /// passes have the rounded-clip attachment.
+    /// These pipelines as a frame of `clipping` binds them.
     pub(crate) const fn for_frame(&self, clipping: Clipping) -> PassPipelines<'_> {
         PassPipelines {
             fmt: self,
@@ -133,8 +130,8 @@ impl FormatPipelines {
     }
 }
 
-/// A format's pipelines for one frame, each picked for whether it clips to a rounded rect in one
-/// place.
+/// A format's pipelines for one frame, each picked for whether its draws name rounded clips in
+/// one place.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PassPipelines<'a> {
     fmt: &'a FormatPipelines,
@@ -142,6 +139,11 @@ pub(crate) struct PassPipelines<'a> {
 }
 
 impl<'a> PassPipelines<'a> {
+    /// Whether the frame's draws name rounded clips, which picks an effect's pipeline.
+    pub(crate) const fn clipping(self) -> Clipping {
+        self.clipping
+    }
+
     /// The pipeline a quad of `draw` draws through.
     pub(crate) const fn quad(self, draw: QuadDraw) -> &'a Pipeline {
         self.fmt.quad.get(draw, self.clipping)
@@ -166,19 +168,5 @@ impl<'a> PassPipelines<'a> {
             flat: self.fmt.raster.flat.get(self.clipping),
             spun: self.fmt.raster.spun.get(self.clipping),
         }
-    }
-
-    /// Whether the frame clips to a rounded rect, which picks an effect's pipeline.
-    pub(crate) const fn clipping(self) -> Clipping {
-        self.clipping
-    }
-
-    /// The stencil-writing mask pipelines, which only a pass with the attachment binds.
-    pub(crate) const fn mask_stamp(self) -> &'a Pipeline {
-        self.fmt.quad.mask_stamp()
-    }
-
-    pub(crate) const fn mask_clear(self) -> &'a Pipeline {
-        self.fmt.quad.mask_clear()
     }
 }

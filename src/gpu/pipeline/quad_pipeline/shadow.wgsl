@@ -127,6 +127,8 @@ struct ShadowOut {
     // The quad's turn: its center and `(cos, sin)`, which `shadow_pixel`
     // undoes so every position above stays in the unturned frame.
     @location(11) @interpolate(flat) turn: vec4<f32>,
+    // The rounded clips that cut the shadow (`ClipChain`).
+    @location(12) @interpolate(flat) chain: u32,
 };
 
 // `vs` for the shadow pipeline, which also binds the per-instance cutout
@@ -219,6 +221,7 @@ fn vs_shadow(
     var out: ShadowOut;
     out.clip = clip_from_px(turned(vertex, center, quad.rotation));
     out.turn = vec4<f32>(center, cos(quad.rotation), sin(quad.rotation));
+    out.chain = quad.chain;
     out.fill = q.fill;
     out.kind = kind;
     out.sigma = sigma;
@@ -705,10 +708,12 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
 }
 
 // A shadow pixel's color at `cov`, the coverage of its box: a drop shadow
-// paints it, an inset one its complement, both as far as the source lets.
+// paints it, an inset one its complement, both as far as the source and the
+// rounded clips let.
 fn shadow_paint(in: ShadowOut, px: ShadowPixel, cov: f32) -> vec4<f32> {
     let inset = in.kind == PALANTIR_FILL_SHADOW_INSET;
-    return premultiply(in.fill.rgb, in.fill.a * px.source * select(cov, 1.0 - cov, inset));
+    let clipped = palantir_clip_coverage(frag_px(in.clip), in.chain);
+    return premultiply(in.fill.rgb, in.fill.a * px.source * clipped * select(cov, 1.0 - cov, inset));
 }
 
 // Drop and inset shadows. Its own entry, and so its own pipeline, because

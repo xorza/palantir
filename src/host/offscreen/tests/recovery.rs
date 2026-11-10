@@ -99,7 +99,7 @@ impl GpuPaint for ClearView {
 }
 
 /// One scene that holds every kind of GPU object a host keeps: solid and gradient quads
-/// (gradient atlas), four shadows of one key (cutout tables), a rounded clip (stencil), text
+/// (gradient atlas), four shadows of one key (cutout tables), a rounded clip (clip pool), text
 /// (glyph atlas), a mask and a color icon (raster atlases), a mesh, a curve, a polyline, a
 /// registered image (image store), a `GpuView` (view target), and a backdrop (backdrop atlas
 /// and blur). It fills its image again when the image is not resident.

@@ -3,11 +3,6 @@
 //! lists with per-vertex pos+color and per-instance transform+tint. The vertex
 //! stream uploads each frame beside a parallel instance buffer of per-draw
 //! state.
-//!
-//! **No `mesh_mask.wgsl`:** rounded-clip masks are quad-shaped and stamped by
-//! [`QuadPipeline`](crate::gpu::pipeline::quad_pipeline::QuadPipeline) (`fs_mask`).
-//! Mesh and [`crate::gpu::pipeline::image_pipeline::ImagePipeline`] only build a
-//! stencil-*test* variant.
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
@@ -22,6 +17,7 @@ use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::mesh::MeshVertex;
+use crate::primitives::wgsl;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshInstance};
 use std::mem::offset_of;
 
@@ -54,7 +50,7 @@ impl MeshPipeline {
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.mesh.shader",
         wgsl: include_str!("shader.wgsl"),
-        includes: &[],
+        includes: &[wgsl::FRAME],
         constants: &[],
     };
 
@@ -79,8 +75,7 @@ impl MeshPipeline {
         }
     }
 
-    /// Build the base and stencil-test color pipelines against `format`, the only
-    /// format-dependent mesh objects. Called by `FormatPipelines` per format.
+    /// Build the half of the color pipeline `target` binds, the only format-dependent mesh object. Called by `FormatPipelines` per format.
     pub(super) fn ensure(&self, variant: &mut ClipVariant, gpu: &Gpu, target: VariantTarget) {
         self.family.ensure(
             variant,

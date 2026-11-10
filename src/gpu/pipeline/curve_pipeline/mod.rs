@@ -1,10 +1,6 @@
 //! GPU side of native parametric strokes (cubic beziers, arcs, polyline segments, join billboards; see
 //! `CurveInstance::kind`). One `draw_indexed` per scissor group covers its `GroupBatch`; an immutable index
-//! buffer subdivides each instance into [`SEGMENTS_PER_INSTANCE`] chords. Same clip-variant pattern as
-//! [`MeshPipeline`] / [`ImagePipeline`].
-//!
-//! [`MeshPipeline`]: crate::gpu::pipeline::mesh_pipeline::MeshPipeline
-//! [`ImagePipeline`]: crate::gpu::pipeline::image_pipeline::ImagePipeline
+//! buffer subdivides each instance into [`SEGMENTS_PER_INSTANCE`] chords.
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;

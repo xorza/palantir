@@ -69,6 +69,7 @@ impl ImagePipeline {
         label: "palantir.image.shader",
         wgsl: include_str!("shader.wgsl"),
         includes: &[
+            wgsl::FRAME,
             include_str!("paint.wgsl"),
             wgsl::SHAPE_TEMPLATE,
             include_str!("shaped.wgsl"),
@@ -95,8 +96,7 @@ impl ImagePipeline {
         }
     }
 
-    /// Build `form`'s base and stencil-test color pipelines against `format`, the only
-    /// format-dependent image objects. Called by `FormatPipelines` per format.
+    /// Build the half of `form`'s color pipeline `target` binds, the only format-dependent image object. Called by `FormatPipelines` per format.
     pub(super) fn ensure(
         &self,
         variant: &mut ClipVariant,

@@ -69,9 +69,10 @@ fn record(ui: &mut Ui, scene: Scene) {
     }
 }
 
-/// A plain frame builds no shadow form, no stencil twin and no mask; the first shadowed frame
-/// builds the plain shadow form it draws, still no twin; the first frame with a rounded clip
-/// builds the solid quad's twin and the masks, and no shadow twin, as it draws no shadow.
+/// A plain frame builds no shadow form and no half that takes rounded clips; the first shadowed
+/// frame builds the plain shadow form it draws, still no clipping half; the first frame whose
+/// draws name a rounded clip builds the solid quad's clipping half, and no shadow's, as it draws no
+/// shadow.
 #[test]
 fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
     let gpu = headless_test_gpu();
@@ -88,21 +89,13 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
             .quad
             .is_built(draw, clipping)
     };
-    let masks = |host: &OffscreenHost| {
-        host.device
-            .backend()
-            .format_pipelines(TargetFormat::RGBA8_SRGB)
-            .quad
-            .has_masks()
-    };
 
     host.frame(target.as_target(), &mut |ui: &mut Ui| {
         record(ui, Scene::Plain);
     });
     assert!(built(&host, solid, Clipping::Off));
-    assert!(!built(&host, solid, Clipping::On), "no twin");
+    assert!(!built(&host, solid, Clipping::On), "no clipping half");
     assert!(!built(&host, shadow, Clipping::Off), "no shadow form");
-    assert!(!masks(&host), "no mask");
 
     host.frame(target.as_target(), &mut |ui: &mut Ui| {
         record(ui, Scene::Shadowed);
@@ -115,12 +108,17 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
     .into_iter()
     .any(|entry| built(&host, QuadDraw::Shadow(entry), Clipping::Off));
     assert!(shadowed, "the shadow form it drew");
-    assert!(!built(&host, solid, Clipping::On), "still no twin");
+    assert!(!built(&host, solid, Clipping::On), "still no clipping half");
 
     host.frame(target.as_target(), &mut |ui: &mut Ui| {
         record(ui, Scene::Clipped);
     });
-    assert!(built(&host, solid, Clipping::On), "the solid twin");
-    assert!(masks(&host), "the masks");
-    assert!(!built(&host, shadow, Clipping::On), "no shadow twin");
+    assert!(
+        built(&host, solid, Clipping::On),
+        "the solid's clipping half"
+    );
+    assert!(
+        !built(&host, shadow, Clipping::On),
+        "no shadow's clipping half"
+    );
 }

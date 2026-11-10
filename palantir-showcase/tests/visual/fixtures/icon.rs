@@ -250,9 +250,8 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
             Rect::new(20.0, 6.0, 20.0, 20.0),
             icon(icons, "solid").tint(tint),
         );
-        // A rect clip changes the scissor without changing the stencil
-        // chain: it flushes the group but leaves an open batch open,
-        // giving it somewhere later to drain.
+        // A rect clip changes the scissor: it flushes the group but leaves
+        // an open batch open, giving it somewhere later to drain.
         Panel::zstack()
             .id_salt("panel")
             .clip_rect()

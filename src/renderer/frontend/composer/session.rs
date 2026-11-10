@@ -37,6 +37,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{
     BackdropRead, BackdropRow, BackdropSource, MaterialLook,
 };
@@ -51,7 +52,6 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
-use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
@@ -92,9 +92,14 @@ impl ComposeSession<'_> {
         (clipped != whole).then_some(clipped)
     }
 
-    /// The rounded clips in force, which cut every draw under them.
-    fn clip_chain(&self) -> ClipChain {
-        ClipChain::new(self.composer.clip.chain())
+    /// The rounded clips in force, which cut every draw under them; a chain of any marks the frame
+    /// as one whose draws name rounded clips.
+    fn clip_chain(&mut self) -> ClipChain {
+        let chain = ClipChain::new(self.composer.clip.chain());
+        if chain != ClipChain::NONE {
+            self.out.clips_drawn = true;
+        }
+        chain
     }
 
     /// Paint order over this session's buffer, under the clip in force.
@@ -141,16 +146,16 @@ impl PaintSink for ComposeSession<'_> {
                 corners: logical_radius.fit_to(physical.size, scale_physical),
             };
             // A rounded push nested in rounded ancestors stacks: child chain = ancestor chain + own
-            // mask, copied whole, as the backend reads each chain as one contiguous span. Re-pushing
+            // mask, copied whole, as a fragment reads each chain as one contiguous run. Re-pushing
             // the innermost mask adds no depth. The pool grows by the sum of the depths, a few
             // masks a clip at a UI's two to four rounded levels. Refused until a profile shows deep
-            // nesting: WebRender's clip-chain nodes with parent links, which the backend would walk
-            // back into a span at each draw.
+            // nesting: WebRender's clip-chain nodes with parent links, which the fragment would walk
+            // through memory at each pixel.
             if self.out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
                 parent_chain
             } else {
                 let depth = parent_chain.len + 1;
-                if depth > MAX_ROUNDED_CLIP_DEPTH {
+                if depth > ClipChain::MAX_DEPTH {
                     geometry::rounded_clip_depth_overflow(depth);
                 }
                 let chain_start = self.out.rounded_clips.len() as u32;
@@ -164,8 +169,8 @@ impl PaintSink for ComposeSession<'_> {
                 Span::new(chain_start, depth)
             }
         } else {
-            // A rect clip inside rounded ancestors inherits their chain; else the child group draws
-            // with ref=0 and the stencil test discards every fragment.
+            // A rect clip inside rounded ancestors inherits their chain, which still cuts what it
+            // holds.
             parent_chain
         };
         self.enter_clip(ClipFrame { scissor, chain });
@@ -237,6 +242,7 @@ impl PaintSink for ComposeSession<'_> {
         let x_axis = rotor * (scale_physical * p.fit.scale.x);
         let y_axis = rotor.perp() * (scale_physical * p.fit.scale.y);
         let translate = to_physical.point(rotor.rotate(p.fit.offset - pivot) + pivot);
+        let clip = self.clip_chain();
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
                 vertices: p.vertices,
@@ -247,7 +253,7 @@ impl PaintSink for ComposeSession<'_> {
                 x_axis,
                 y_axis,
                 tint: p.tint,
-                clip: self.clip_chain(),
+                clip,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -291,6 +297,7 @@ impl PaintSink for ComposeSession<'_> {
             let size = (max - min).max(Vec2::ONE);
             (min.as_ivec2(), size.as_uvec2())
         };
+        let clip = self.clip_chain();
         self.out.icons.push(IconDrawRow {
             key,
             origin,
@@ -298,7 +305,7 @@ impl PaintSink for ComposeSession<'_> {
             color: p.tint,
             desaturate: p.desaturate,
             spin,
-            clip: self.clip_chain(),
+            clip,
         });
     }
 
@@ -381,6 +388,7 @@ impl PaintSink for ComposeSession<'_> {
         };
         self.ordering()
             .order(Lane::Tier(PaintTier::Effect), visible);
+        let clip = self.clip_chain();
         self.out.effects.push(EffectDrawRow {
             effect: p.effect,
             images: p.images,
@@ -397,7 +405,7 @@ impl PaintSink for ComposeSession<'_> {
                 rotation: packed.rotation,
                 params: p.params.start,
                 backdrop_idx,
-                clip: self.clip_chain(),
+                clip,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -470,6 +478,7 @@ impl PaintSink for ComposeSession<'_> {
         // Only now that the polyline will emit geometry: an empty or culled one must not split the
         // batch or group.
         self.ordering().order(Lane::Tier(PaintTier::Curve), visible);
+        let clip = self.clip_chain();
         self.composer.polyline.emit(
             PolylineLook {
                 colors: src_colors,
@@ -478,7 +487,7 @@ impl PaintSink for ComposeSession<'_> {
                 width: width_physical,
                 cap,
                 join,
-                clip: self.clip_chain(),
+                clip,
             },
             &mut self.out.curves,
         );
@@ -516,6 +525,7 @@ impl PaintSink for ComposeSession<'_> {
         let Some(bounds) = self.ordering().admit(Lane::Text, unclipped) else {
             return;
         };
+        let clip = self.clip_chain();
         let row = TextDrawRow {
             origin: physical_rect.min,
             bounds,
@@ -525,7 +535,7 @@ impl PaintSink for ComposeSession<'_> {
             // would mint a new glyph cache key every frame.
             scale: geometry::snap_text_scale(self.composer.transform.scale()),
             spin,
-            clip: self.clip_chain(),
+            clip,
         };
         // An unturned run's glyphs clip to its bounds where the text backend emits them
         // (`RasterPass::clip_since`), so only a turned one needs a scissor of its own bounds.
@@ -579,6 +589,7 @@ impl ComposeSession<'_> {
         let slack = Self::DECAL_SLACK_PX;
         let from = |at: f32| if at > slack { at } else { -f32::MAX };
         let to = |at: f32, end: f32| if at < end - slack { at } else { f32::MAX };
+        let clip = self.clip_chain();
         self.out.images.push(ImageDrawRow {
             id: p.handle,
             form,
@@ -594,7 +605,7 @@ impl ComposeSession<'_> {
                 inradius: shape.inradius,
                 decal_min: Vec2::new(from(lo.x), from(lo.y)),
                 decal_max: Vec2::new(to(hi.x, size.x), to(hi.y, size.y)),
-                clip: self.clip_chain(),
+                clip,
                 ..bytemuck::Zeroable::zeroed()
             },
         });
@@ -634,6 +645,7 @@ impl ComposeSession<'_> {
             .filter(|_| p.spin.is_none())
             .and_then(|_| self.seen(physical_rect));
         let composite = seen.unwrap_or(physical_rect);
+        let clip = self.clip_chain();
         let mut instance = ImageInstance {
             rect: composite,
             uv_min: p.uv_min,
@@ -641,7 +653,7 @@ impl ComposeSession<'_> {
             tint: p.tint,
             flags: p.flags,
             rotation: p.spin.map_or(0.0, |spin| spin.angle),
-            clip: self.clip_chain(),
+            clip,
             ..bytemuck::Zeroable::zeroed()
         };
         // A `GpuView` also needs its off-screen target painted. Sized to what is on
@@ -782,7 +794,9 @@ impl ComposeSession<'_> {
     /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. `SOLID` only: a
     /// shadow's blur and a triangle's empty corners don't cover the whole `rect`, and a turned
     /// quad covers no axis-aligned rect of its own. A quad on the fast path has no anti-aliased
-    /// edge to inset by.
+    /// edge to inset by. The rounded clips in force keep the cover to what they leave whole
+    /// ([`RoundedClip::covered`]): past it the quad shows a share of what it covers, which a
+    /// prune would drop.
     fn record_opaque_cover(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) {
         if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() || packed.rotation != 0.0 {
             return;
@@ -799,7 +813,12 @@ impl ComposeSession<'_> {
         } else {
             AA_HALF_WIDTH
         };
-        let cover = inscribed.deflated_by(Spacing::saturating([border_inset + aa_inset; 4]));
+        let cover = self.out.rounded_clips[self.composer.clip.chain().range()]
+            .iter()
+            .fold(
+                inscribed.deflated_by(Spacing::saturating([border_inset + aa_inset; 4])),
+                |cover, clip| cover.clamp_to(clip.covered()),
+            );
         if !cover.is_paint_empty() {
             self.ordering().record_opaque(cover);
         }

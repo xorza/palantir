@@ -130,9 +130,8 @@ fn backdrops_apart_blur_together() {
     );
 }
 
-/// A backdrop inside a rounded clip, which stamps the stencil, blurs what lies under it inside the
-/// clip and leaves the rest: the pass breaks at the backdrop, and the walk after the break stamps
-/// the clip again. Away from the corners and their coverage, the inside matches the reference blur,
+/// A backdrop inside a rounded clip blurs what lies under it inside the clip and leaves the rest:
+/// the pass breaks at the backdrop, and the draws after the break carry the clip on. Away from the corners and their coverage, the inside matches the reference blur,
 /// and outside the clip the stripes are unchanged.
 #[test]
 fn a_backdrop_inside_a_rounded_clip_blurs_inside_it() {
