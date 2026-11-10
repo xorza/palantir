@@ -23,7 +23,7 @@ and an effect hold their shape.
 | B6 Keys | done |
 | B7 Effect forms | done |
 | B8a Material composite | done |
-| B8b One composite | waits for D1 |
+| B8b One composite | done |
 | B9 Strokes | to do |
 
 Each decision below starts with its state: **[done]**, **[part]** with what is left, or the batch
@@ -66,7 +66,7 @@ deletes it from the log.
   second pair of stages for a material, lays a solid fill, and draws a gradient fill as its own
   quad above. The effect's one fragment stage branches on `PALANTIR_MATERIAL` (`effect/contract.rs`,
   `MATERIAL_BRANCH`), and `effect/material.wgsl` samples a gradient fill in the material's own
-  draw, as `AGENTS.md` decides ("A material reaches under the border, in one draw", which refuses
+  draw, as `AGENTS.md` decides ("A box's fill reaches under its border; a material too, in one draw", which refuses
   both the quad and a stage compiled apart). Fix: the bullet states the branch and the one draw,
   and points at `AGENTS.md` for the refusals.
 - **[fixed in B10] `TreeSource::narrowest_side` measures a material box with its drop shadow's
@@ -318,6 +318,16 @@ makes these one, and keeps the pipelines above.
   quad's bytes (`From` both ways) and read by the shadow pipelines through their own attributes.
   Refused: a Rust union, whose reads are `unsafe`; a stream per kind, which breaks the record order
   one span keeps.
+- **[done] One fill-and-border composite, the border box (D1).** A quad's fill stopped at the
+  border's inner edge, and a material's covered the border box, so a translucent border showed what
+  is behind a plain box and the fill on a material box, one `Paint` two ways. Both now take CSS's
+  border box (`background-clip: border-box`, the CSS default), weighted by area, `(o − i) ·
+  (B + F · (1 − Bα)) + i · F` inside and `(1 − o) · F` past the band outside, from one copy,
+  `primitives/wgsl/composite.wgsl`, in `AGENTS.md` ("A box's fill reaches under its border"). It
+  is exact and free of the seam the quad's summed form was written against. Refused: the quad's
+  model for a material, which `AGENTS.md` refused for the sharp content it shows through the
+  border; two models. Landed in B8b: every golden of a box with a translucent border moved, and a
+  material over such a box moved with what it reads.
 - **[B9] One stroke payload.** `DrawStrokePayload { path: Cubic | Arc | Polyline, stroke }` feeds the one
   curve pipeline that draws all three, with `ShapeRecord::Stroke { path, stroke }` behind it.
   Refused: `DrawCurvePayload` and `DrawPolylinePayload`, and three stroke records, for one family.
@@ -351,8 +361,9 @@ The visual suite and the composer's captured streams prove it.
    `OUTSIDE` go.
 8. [x] **B8a Material composite**, done. `palantir_composite` and `palantir_composite_outside` take
    the exact border-box form, with a test of their values; no decision waits.
-   [ ] **B8b One composite**, after decision D1: the quad's `composite` and `composite_outside`
-   take the model D1 picks, and one copy serves both families.
+   [x] **B8b One composite**, done, after decision D1: the quad's `composite` and
+   `composite_outside` take the border box, and one copy, `primitives/wgsl/composite.wgsl`,
+   serves both families.
 9. [ ] **B9 Strokes.** `StrokeGeometry`, `ShapeRecord::Stroke`, `DrawStrokePayload`; `ArcGeometry`
    and `BezierGeometry` go.
 10. [x] **B10 Backdrop bound**, done. The lens's narrowest side is the box's own, and a triangle
@@ -365,17 +376,6 @@ each lands.
 
 ## Open decisions
 
-- **D1: one fill-and-border composite.** A quad's fill stops at the border's inner edge, and the
-  two coverages sum. A material's fill covers the border box, and the border lies over it. A
-  translucent border shows what is behind the box on a plain box, and the fill on a material box,
-  so one `Paint` paints two ways. The material's form was also inexact at its edges, which B8a fixed
-  first ("Issues this plan fixes"). Pick:
-  CSS's border box (`background-clip: border-box`, the CSS default), weighted by area, `(o − i) ·
-  (B + F · (1 − Bα)) + i · F` with `o` and `i` the outer and inner coverage and `B`, `F`
-  premultiplied: the border over the fill in the band, the fill alone inside it, exact, and free of
-  the seam `composite`'s comment names. Cost: every golden of a plain box with a translucent
-  border moves. Refused: the quad's model for a material, which `AGENTS.md` refused for the
-  sharp content it shows through the border; the material's form as it is.
 - **D2: one ordered lane of runs for every family.** The quad lane replays in record order and
   every other family in a fixed tier order after it (`PaintTier`), closing a group where order
   would break. WebRender batches every kind in one list with a look-back. This removes the

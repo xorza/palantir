@@ -16,7 +16,7 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::wgsl::{
-    ANTIALIAS, ARC_SEGMENTS, CLIP_DEPTH_BITS, COLOR, FRAME, FRAME_GROUP, GRADIENT_FILL,
+    ANTIALIAS, ARC_SEGMENTS, CLIP_DEPTH_BITS, COLOR, COMPOSITE, FRAME, FRAME_GROUP, GRADIENT_FILL,
     GRADIENT_LUT, SDF, SHAPE_TEMPLATE,
 };
 
@@ -48,9 +48,6 @@ const WRAPPER: &str = include_str!("wrapper.wgsl");
 /// Palantir's material path, after a backdrop effect's stages, which its fragment stage takes for a
 /// material's box; with markers for the fill kinds it reads.
 const MATERIAL: &str = include_str!("material.wgsl");
-
-/// A material's fill and border over its box, which the material path composites through.
-pub(crate) const COMPOSITE: &str = include_str!("composite.wgsl");
 
 /// What a backdrop effect's fragment stage does first for a material's box.
 const MATERIAL_BRANCH: &str = "if ((v.flags & PALANTIR_MATERIAL) != 0u) {\n        \

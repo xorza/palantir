@@ -47,7 +47,7 @@ struct VertexOut {
     @location(9) @interpolate(flat) inv_size:     vec2<f32>,
     // `(lo.x, lo.y, hi.x, hi.y)` in `local`: the rounded rect's interior,
     // past every corner's arc and the border's inner edge by
-    // `PALANTIR_AA_HALF_WIDTH`, where `composite` is the fill (`fs`). Empty where the
+    // `PALANTIR_AA_HALF_WIDTH`, where `palantir_composite` is the fill (`fs`). Empty where the
     // shape has no such interior.
     @location(10) @interpolate(flat) core: vec4<f32>,
     // Nonzero for a turned quad, whose quad edge is no pixel edge (`fs`).

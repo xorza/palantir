@@ -50,15 +50,15 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     return reference_color(in) * palantir_clip_coverage(frag_px(in.clip), in.chain);
 }
 
-// The shape's SDF composites its fill and inner-edge border into premultiplied linear.
+// The shape's SDF composites its fill and its border, inside its edge, into premultiplied linear.
 fn reference_color(in: VertexOut) -> vec4<f32> {
     let fill = quad_paint(in.fill, in.local * in.inv_size, in.fill_kind, in.fill_axis, in.fill_lut_row);
     if (form_is_triangle()) {
         // The three corner centers, in `local` 0..size coords, and the corner radius, as `vs`
         // put them. `sdf_triangle - radius` gives the rounded shape, whose edges lie on the
-        // sharp triangle's; `composite` applies the coverage and the inner border a rect takes.
+        // sharp triangle's; `palantir_composite` applies the coverage and the border a rect takes.
         let td = sdf_triangle(in.local, in.radius.xy, in.radius.zw, in.core.xy) - in.core.z;
-        return composite(td, fill, in.border_color, in.border_width);
+        return palantir_composite(td, fill, in.border_color, in.border_width);
     }
     return shade_rect(in, fill);
 }
@@ -72,7 +72,7 @@ fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
     }
     let d = palantir_sdf_rounded_rect(in.local, in.size, in.radius);
     if (form_is_outside()) {
-        var cover = composite_outside(d, fill, in.border_color, in.border_width);
+        var cover = palantir_composite_outside(d, fill, in.border_color, in.border_width);
         if (in.turned != 0u) {
             // Turned, the quad edge no longer lies on content of its own
             // extent, so it is a visible edge and fades as any edge does.
@@ -81,5 +81,5 @@ fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
         }
         return cover;
     }
-    return composite(d, fill, in.border_color, in.border_width);
+    return palantir_composite(d, fill, in.border_color, in.border_width);
 }

@@ -15,6 +15,9 @@ pub(crate) const CLIP_DEPTH_BITS: u32 = 8;
 
 /// `palantir_edge_coverage`.
 pub(crate) const ANTIALIAS: &str = include_str!("antialias.wgsl");
+/// A box's fill and border over its edge, `palantir_composite` and its outside twin, which a quad
+/// and a material shade alike; it reads [`ANTIALIAS`].
+pub(crate) const COMPOSITE: &str = include_str!("composite.wgsl");
 /// The sRGB transfers and `palantir_unpremultiply`.
 pub(crate) const COLOR: &str = include_str!("color.wgsl");
 /// The rounded rect's signed distance.
@@ -35,3 +38,6 @@ pub(crate) const SHAPE_TEMPLATE: &str = include_str!("shape_template.wgsl");
 /// inside it falls 8 % short of its depth, both of a ring the fragment measures; at 3 both shrink
 /// to 3.5 % for 12 more vertices a box.
 pub(crate) const ARC_SEGMENTS: u32 = 2;
+
+#[cfg(test)]
+mod tests;

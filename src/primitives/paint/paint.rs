@@ -16,8 +16,9 @@ use palantir_derive::{Animatable, Lerp};
 /// [`Chrome`](crate::Chrome) holds one beside its corners. [`Self::NONE`] paints nothing.
 ///
 /// Bottom to top: a drop shadow; the material over the whole box, the border band included, as
-/// CSS's backdrop filter covers the border box; the fill over it, which a material shows through
-/// by the fill's alpha; an inset shadow inside the border; the border inside the edge.
+/// CSS's backdrop filter covers the border box; the fill over the whole box too, as CSS's
+/// background covers the border box, which a material shows through by the fill's alpha; an
+/// inset shadow inside the border; the border inside the edge, over the fill.
 ///
 /// `Animatable` is derived: the fill, the border and the shadow interpolate componentwise, the
 /// material as [`Material`] blends. "No border" is `Border::NONE`, not an `Option`.

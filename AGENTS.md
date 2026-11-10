@@ -375,12 +375,17 @@ driver serves that command alone; the drive table's `version` names it
   `BackdropFilter`, CSS `backdrop-filter`), whose type-erased bytes no theme file holds and no
   tween blends; a closed set of material looks (SwiftUI, WinUI), which drops app materials; a
   built-in filter type beside app effects, two forms of one thing.
-- **A material reaches under the border, in one draw.** The material and its fill, a color or a
-  gradient, cover the whole box, and the border lies over them, as CSS's background and
-  `backdrop-filter` cover the border box, the fill sampled from the gradient atlas the quads
-  read. Refused: the fill inside the border, which showed sharp content through a
-  translucent border; the gradient as a quad above the material, a second draw and a break in
-  the run of material draws; a material stage compiled apart, a second pipeline per effect.
+- **A box's fill reaches under its border; a material too, in one draw.** A fill, a color or a
+  gradient, covers the whole box, a material under it, and the border lies over them, as CSS's
+  background (`background-clip: border-box`, its default) and `backdrop-filter` cover the border
+  box; a material samples its gradient from the atlas the quads read. One copy weighs the parts of
+  an edge pixel by area, the border over the fill in its band and the fill alone past it, for a
+  quad and a material alike (`primitives/wgsl/composite.wgsl`). Refused: the fill inside the
+  border, which showed sharp content through a translucent border on a material and what is
+  behind on a plain box, one `Paint` two ways; the fill at the outer edge's coverage with the
+  border over it, which counted the band twice, 0.75 for an opaque pixel half covered; the
+  gradient as a quad above the material, a second draw and a break in the run of material draws;
+  a material stage compiled apart, a second pipeline per effect.
 - **The covered side is the shape's**: `Coverage::{Inside, Outside}` on `RectShape`, as Skia's
   inverse fill types belong to the path. Refused: a second constructor of one geometry; a flag
   setter.

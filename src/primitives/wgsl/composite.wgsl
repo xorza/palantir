@@ -1,9 +1,12 @@
-// A material's fill and border over its box: CSS's border-box background, weighted by area. With
-// `o` and `i` the coverage of the border's outer and inner edge, the band `o − i` takes the border
-// over the fill and the rest of the covered side the fill alone, so each part of a pixel counts
-// once. Colors are straight in and premultiplied out. Refused: the fill at `o` with the border
-// composited over it, which counted the band's share of the fill twice: an opaque box and border
-// half over a pixel read 0.75 where they cover 0.5.
+// A box's fill and border over its edge, a quad's and a material's alike: CSS's border-box
+// background (`background-clip: border-box`, the CSS default), weighted by area. With `o` and `i`
+// the coverage of the border's outer and inner edge, the band `o − i` takes the border over the
+// fill and the rest of the covered side the fill alone, so each part of a pixel counts once, and
+// an opaque fill sums to `o` under any border, with no seam at the inner edge. Colors are straight
+// in and premultiplied out. Refused: the fill inside the border, which showed what is behind a
+// plain box through a translucent border and the fill on a material, one `Paint` two ways; the
+// fill at `o` with the border composited over it, which counted the band's share of the fill
+// twice: an opaque box and border half over a pixel read 0.75 where they cover 0.5.
 
 // The border over the fill, premultiplied: what the band shows.
 fn palantir_border_over_fill(fill: vec4<f32>, border_color: vec4<f32>) -> vec4<f32> {

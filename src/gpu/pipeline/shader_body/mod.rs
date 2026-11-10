@@ -7,9 +7,10 @@ use crate::primitives::wgsl;
 
 /// Concatenated ahead of every shader body, so shared vocabulary has one definition: the
 /// pipelines' own prelude, then the WGSL they share with the effect modules.
-const PRELUDE: [&str; 4] = [
+const PRELUDE: [&str; 5] = [
     include_str!("../prelude.wgsl"),
     wgsl::ANTIALIAS,
+    wgsl::COMPOSITE,
     wgsl::COLOR,
     wgsl::SDF,
 ];

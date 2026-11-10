@@ -83,12 +83,12 @@ fn template_color(in: TemplateOut) -> vec4<f32> {
     let border_color = unpack_f16x4(in.border_color_packed);
     let d = palantir_template_distance(in.region, in.geo, in.ring_r);
     if (form_is_outside()) {
-        var cover = composite_outside(d, fill, border_color, in.border_width);
+        var cover = palantir_composite_outside(d, fill, border_color, in.border_width);
         if (in.turned_size.x > 0.0) {
             let e = abs(in.local - in.turned_size * 0.5) - in.turned_size * 0.5;
             cover *= palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y);
         }
         return cover;
     }
-    return composite(d, fill, border_color, in.border_width);
+    return palantir_composite(d, fill, border_color, in.border_width);
 }
