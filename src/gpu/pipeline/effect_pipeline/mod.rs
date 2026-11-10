@@ -116,7 +116,7 @@ const BLEND: wgpu::BlendState = wgpu::BlendState {
     },
 };
 
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = [
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Float32x4,
@@ -168,6 +168,11 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = [
         9,
         wgpu::VertexFormat::Float32,
         offset_of!(EffectInstance, border_width),
+    ),
+    vertex_attr(
+        10,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(EffectInstance, clip),
     ),
 ];
 

@@ -134,7 +134,7 @@ impl CurvePipeline {
     }
 }
 
-const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
+const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 13] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Float32x2,
@@ -195,6 +195,11 @@ const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
         11,
         wgpu::VertexFormat::Uint32,
         offset_of!(CurveInstance, kind),
+    ),
+    vertex_attr(
+        12,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(CurveInstance, clip),
     ),
 ];
 

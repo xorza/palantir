@@ -5,6 +5,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::composer::geometry;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -32,6 +33,8 @@ pub(super) struct PolylineLook<'a> {
     pub(super) width: f32,
     pub(super) cap: LineCap,
     pub(super) join: LineJoin,
+    /// The rounded clips that cut the polyline.
+    pub(super) clip: ClipChain,
 }
 
 /// The two ends of one polyline segment's color ramp.
@@ -79,6 +82,7 @@ impl PolylineScratch {
             width,
             cap,
             join,
+            clip,
         } = look;
         debug_assert!(self.kept.len() >= 2, "only a kept polyline emits");
         let Self {
@@ -146,6 +150,7 @@ impl PolylineScratch {
                 caps: CurveCaps::new(cap, CapEnds::of_segment(k, segment_count)),
                 kind: CurveKind::SEGMENT,
                 fill_kind: FillKind::SOLID,
+                clip,
                 ..bytemuck::Zeroable::zeroed()
             });
         }
@@ -172,6 +177,7 @@ impl PolylineScratch {
                 color1: color,
                 kind: geometry::polyline_join_kind(d_a, d_b, join),
                 fill_kind: FillKind::SOLID,
+                clip,
                 ..bytemuck::Zeroable::zeroed()
             });
         }

@@ -30,6 +30,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl::FRAME_GROUP;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::shape::record_store::RecordStore;
 use crate::text::glyph_font::GlyphFont;
@@ -116,6 +117,7 @@ impl BenchRun<'_> {
             color: RgbaF16::new(gray, gray, gray, 1.0),
             scale: 1.0,
             spin: None,
+            clip: ClipChain::NONE,
         }
     }
 }

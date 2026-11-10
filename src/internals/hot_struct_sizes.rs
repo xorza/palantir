@@ -36,6 +36,7 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
+use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
 use crate::renderer::render_buffer::image_draw_row::ImageInstance;
@@ -213,19 +214,20 @@ const PINS: &[Pin] = &[
     pin::<DrawImagePayload>("payload::DrawImagePayload", 120, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
-    pin::<Quad>("renderer::Quad", 100, 4),
-    pin::<CurveInstance>("renderer::CurveInstance", 76, 4),
-    pin::<MeshInstance>("renderer::MeshInstance", 32, 4),
-    pin::<ImageInstance>("renderer::ImageInstance", 108, 4),
+    pin::<Quad>("renderer::Quad", 104, 4),
+    pin::<CurveInstance>("renderer::CurveInstance", 80, 4),
+    pin::<MeshInstance>("renderer::MeshInstance", 36, 4),
+    pin::<EffectInstance>("renderer::EffectInstance", 104, 4),
+    pin::<ImageInstance>("renderer::ImageInstance", 112, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
-    pin::<RasterQuad>("raster_pipeline::RasterQuad", 32, 4),
-    pin::<SpunRasterQuad>("raster_pipeline::SpunRasterQuad", 48, 4),
+    pin::<RasterQuad>("raster_pipeline::RasterQuad", 36, 4),
+    pin::<SpunRasterQuad>("raster_pipeline::SpunRasterQuad", 52, 4),
     pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
     pin::<TextDrawRow>("renderer::TextDrawRow", 88, 8),
-    pin::<IconDrawRow>("renderer::IconDrawRow", 52, 4),
-    pin::<ImageDrawRow>("renderer::ImageDrawRow", 120, 8),
-    pin::<MeshDrawRow>("renderer::MeshDrawRow", 48, 4),
+    pin::<IconDrawRow>("renderer::IconDrawRow", 56, 4),
+    pin::<ImageDrawRow>("renderer::ImageDrawRow", 128, 8),
+    pin::<MeshDrawRow>("renderer::MeshDrawRow", 52, 4),
 ];
 
 #[test]

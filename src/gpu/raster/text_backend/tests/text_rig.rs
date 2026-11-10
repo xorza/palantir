@@ -1,13 +1,13 @@
 //! A text backend on the shared test device, and the frames driving it.
 
-use crate::gpu::resource::texture_binding::TextureBinding;
-
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::shape::record_store::RecordStore;
 use crate::text::font_family::FontFamily;
@@ -78,6 +78,7 @@ impl TextRig {
             color: RgbaF16::new(0.94, 0.94, 0.94, 1.0),
             scale: 1.0,
             spin: None,
+            clip: ClipChain::NONE,
         }
     }
 

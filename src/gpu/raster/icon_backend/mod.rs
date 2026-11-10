@@ -73,14 +73,17 @@ impl IconBackend {
                 .slot(idx)
                 .placement()
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
-            let mut quad = slot.quad_sized(row.origin, row.size, row.color);
+            let mut quad = RasterQuad {
+                clip: row.clip,
+                ..slot.quad_sized(row.origin, row.size, row.color)
+            };
             if row.desaturate {
                 quad.uv_and_kind |= RasterQuad::DESATURATE;
             }
             let start = self.pass.instance_count();
             self.pass.push(quad);
             if let Some(spin) = row.spin {
-                self.pass.turn_since(start, spin);
+                self.pass.turn_since(start, spin, row.clip);
             }
         }
     }

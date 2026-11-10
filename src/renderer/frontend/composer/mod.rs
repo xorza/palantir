@@ -45,7 +45,7 @@ mod transform_stack;
 /// orchestrates encode and compose.
 #[derive(Debug, Default)]
 pub(crate) struct Composer {
-    /// The nested clips the walk has open: scissor plus rounded-mask chain per level.
+    /// The nested clips the walk has open: scissor plus rounded-clip chain per level.
     clip: ClipStack,
     /// The walk transform: live product plus the ancestors a pop restores.
     transform: TransformStack,

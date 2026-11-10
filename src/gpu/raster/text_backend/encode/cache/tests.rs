@@ -24,6 +24,7 @@ fn glyph(tag: u32) -> EncodedGlyph {
             size: UVec2::new(tag ^ 0x5a5a, 0),
             uv_and_kind: tag << 8,
             color: bytemuck::cast(u64::from(!tag)),
+            clip: bytemuck::cast(tag.rotate_left(16)),
         },
         atlas_slot: tag,
         generation: tag + 1,

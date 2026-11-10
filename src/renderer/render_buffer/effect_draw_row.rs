@@ -9,6 +9,7 @@ use crate::common::span::Span;
 use crate::effect::contract;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use glam::Vec2;
 use soa_rs::Soars;
 
@@ -57,6 +58,8 @@ pub(crate) struct EffectInstance {
     /// A material's border width, physical px, which the template keeps out of its interior; 0
     /// for an app's draw.
     pub(crate) border_width: f32,
+    /// The rounded clips that cut the shape, which palantir's stage takes past the effect's.
+    pub(crate) clip: ClipChain,
 }
 
 impl EffectInstance {

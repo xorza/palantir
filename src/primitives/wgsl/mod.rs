@@ -9,6 +9,9 @@
 /// `effect` lies left of `renderer` and `gpu` in the module order and its contract reads it.
 pub(crate) const FRAME_GROUP: u32 = 0;
 
+/// The bits of a draw's clip chain (`ClipChain`) that hold its depth, below its start.
+pub(crate) const CLIP_DEPTH_BITS: u32 = 8;
+
 /// `palantir_edge_coverage`.
 pub(crate) const ANTIALIAS: &str = include_str!("antialias.wgsl");
 /// The sRGB transfers and `palantir_unpremultiply`.

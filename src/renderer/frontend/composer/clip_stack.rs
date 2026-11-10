@@ -3,14 +3,14 @@
 use crate::common::span::Span;
 use crate::primitives::geometry::urect::URect;
 
-/// One clip level: the resolved scissor plus the rounded-mask chain that
+/// One clip level: the resolved scissor plus the rounded-clip chain that
 /// travels with it, so a `PopClip` restores both as a unit.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ClipFrame {
     pub(super) scissor: URect,
-    /// Outer→inner chain of rounded masks for this frame's subtree, a span into
-    /// `RenderBuffer.rounded_clips`. A rounded push extends the parent chain; a rect push inherits it.
-    /// Empty = no rounded ancestor.
+    /// Outer→inner chain of rounded clips for this frame's subtree, a span into
+    /// `RenderBuffer.rounded_clips`, which each draw under it carries. A rounded push extends the
+    /// parent chain; a rect push inherits it. Empty = no rounded ancestor.
     pub(super) chain: Span,
 }
 

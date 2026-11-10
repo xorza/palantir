@@ -179,7 +179,7 @@ const VERTEX_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex
 
 // Tint is straight-alpha linear; the shader multiplies it by the decoded
 // vertex color.
-const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 4] = [
+const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 5] = [
     vertex_attr(
         2,
         wgpu::VertexFormat::Float32x2,
@@ -199,6 +199,11 @@ const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 4] = [
         5,
         wgpu::VertexFormat::Float16x4,
         offset_of!(MeshInstance, tint),
+    ),
+    vertex_attr(
+        6,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(MeshInstance, clip),
     ),
 ];
 

@@ -503,7 +503,7 @@ impl QuadPipeline {
 const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
 // Location 9 is the shadow pipeline's per-instance cutout tables, so the turn takes 10.
-const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 13] = [
+const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 14] = [
     vertex_attr(0, wgpu::VertexFormat::Float32x2, offset_of!(Quad, rect.min)),
     vertex_attr(
         1,
@@ -537,6 +537,7 @@ const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 13] = [
         offset_of!(Quad, points) + 2 * size_of::<Vec2>(),
     ),
     vertex_attr(13, wgpu::VertexFormat::Float32, offset_of!(Quad, inradius)),
+    vertex_attr(14, wgpu::VertexFormat::Uint32, offset_of!(Quad, clip)),
 ];
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(

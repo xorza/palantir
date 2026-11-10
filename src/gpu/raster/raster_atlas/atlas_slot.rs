@@ -3,6 +3,7 @@
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 
 /// Where a packed raster sits on its side, its bearing and its packer rectangle; a non-drawing entry owns none.
@@ -30,6 +31,7 @@ impl SlotPlacement {
             size: self.size.as_uvec2(),
             uv_and_kind: RasterQuad::pack_uv(self.origin.x, self.origin.y, self.content),
             color,
+            clip: ClipChain::NONE,
         }
     }
 

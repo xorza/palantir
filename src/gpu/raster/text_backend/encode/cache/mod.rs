@@ -309,6 +309,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
+    use crate::renderer::render_buffer::clip_chain::ClipChain;
     use crate::text::key::TextShapeKey;
     use glam::{IVec2, U16Vec2, UVec2};
 
@@ -371,6 +372,7 @@ pub(crate) mod internals {
                             size: UVec2::ZERO,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
+                            clip: ClipChain::NONE,
                         },
                         atlas_slot: glyph,
                         generation: 1,
@@ -437,6 +439,7 @@ pub(crate) mod internals {
                             size: UVec2::ZERO,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
+                            clip: ClipChain::NONE,
                         },
                         atlas_slot: glyph,
                         generation: 1,

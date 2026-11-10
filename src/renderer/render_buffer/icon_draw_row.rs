@@ -2,6 +2,7 @@
 
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use glam::{IVec2, UVec2};
 
@@ -22,4 +23,6 @@ pub(crate) struct IconDrawRow {
     pub(crate) desaturate: bool,
     /// A paint animation's turn of the quad, about a physical pivot.
     pub(crate) spin: Option<RowSpin>,
+    /// The rounded clips that cut the icon.
+    pub(crate) clip: ClipChain,
 }

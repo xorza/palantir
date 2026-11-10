@@ -11,6 +11,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -146,6 +147,7 @@ fn dummy_text() -> TextDrawRow {
         color: RgbaF32::WHITE.to_f16(),
         scale: 1.0,
         spin: None,
+        clip: ClipChain::NONE,
     }
 }
 

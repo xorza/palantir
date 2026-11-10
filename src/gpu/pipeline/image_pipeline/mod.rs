@@ -176,7 +176,7 @@ impl ImagePipeline {
 /// The group an image's texture binds at, past the frame group.
 const IMAGE_GROUP: u32 = 1;
 
-const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
+const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 13] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Float32x2,
@@ -239,6 +239,11 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
         11,
         wgpu::VertexFormat::Float32x4,
         offset_of!(ImageInstance, decal_min),
+    ),
+    vertex_attr(
+        12,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(ImageInstance, clip),
     ),
 ];
 

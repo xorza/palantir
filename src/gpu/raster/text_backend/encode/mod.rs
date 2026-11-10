@@ -68,6 +68,7 @@ mod tests {
     use crate::gpu::raster::text_backend::encode::EncodedRunKey;
     use crate::primitives::geometry::urect::URect;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::renderer::render_buffer::clip_chain::ClipChain;
     use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
     use crate::text::key::TextShapeKey;
     use crate::text::shaped_ref::ShapedTextRef;
@@ -84,6 +85,7 @@ mod tests {
             color: RgbaF32::WHITE.to_f16(),
             scale: 1.0,
             spin: None,
+            clip: ClipChain::NONE,
         };
         EncodedRunKey::for_row(&row, 1.0)
     }

@@ -7,6 +7,7 @@ use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
 use crate::primitives::paint::line_style::LineJoin;
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::shape::stroke_bounds::MITER_LIMIT;
@@ -100,6 +101,15 @@ pub(super) fn snap_text_scale(s: f32) -> f32 {
 /// the GPU consumes. Pairs [`URect::covering`] with [`URect::clamp_to`].
 pub(super) fn urect_from_physical(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
     URect::covering(Rect::from_min_max(min, max)).clamp_to(URect::new(0, 0, viewport.x, viewport.y))
+}
+
+#[cold]
+#[inline(never)]
+pub(super) fn rounded_clip_pool_overflow(start: u32) -> ! {
+    panic!(
+        "a rounded clip chain at {start} starts past the frame's pool, {} masks",
+        ClipChain::MAX_POOL
+    );
 }
 
 #[cold]

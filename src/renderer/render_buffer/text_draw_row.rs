@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
@@ -26,4 +27,6 @@ pub(crate) struct TextDrawRow {
     pub(crate) scale: f32,
     /// A paint animation's turn of the whole run, about a physical pivot.
     pub(crate) spin: Option<RowSpin>,
+    /// The rounded clips that cut the run, which each of its glyphs carries.
+    pub(crate) clip: ClipChain,
 }

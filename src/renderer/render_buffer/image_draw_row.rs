@@ -9,6 +9,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::image_form::ImageForm;
 use glam::Vec2;
@@ -56,4 +57,6 @@ pub(crate) struct ImageInstance {
     /// so it fades with the shape's.
     pub(crate) decal_min: Vec2,
     pub(crate) decal_max: Vec2,
+    /// The rounded clips that cut the image.
+    pub(crate) clip: ClipChain,
 }

@@ -8,6 +8,7 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::{self, AA_HALF_WIDTH};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 
@@ -43,6 +44,8 @@ pub(crate) struct Quad {
     /// The radius of the largest circle inside the sharp polygon, the deepest any point lies inside
     /// every edge: half a box's shorter side, a triangle's own inradius plus its growth.
     pub(crate) inradius: f32,
+    /// The rounded clips that cut the quad; [`ClipChain::NONE`] by default.
+    pub(crate) clip: ClipChain,
 }
 
 impl Quad {

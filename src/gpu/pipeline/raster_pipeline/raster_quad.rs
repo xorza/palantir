@@ -4,10 +4,11 @@
 use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use glam::{IVec2, U16Vec2, UVec2, Vec2};
 use std::mem::offset_of;
 
-/// One per-instance vertex record. 32 bytes, `Pod`.
+/// One per-instance vertex record, `Pod`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct RasterQuad {
@@ -21,6 +22,8 @@ pub(crate) struct RasterQuad {
     pub(crate) uv_and_kind: u32,
     /// Straight-alpha linear RGBA; the shader premultiplies at output.
     pub(crate) color: RgbaF16,
+    /// The rounded clips that cut the glyph or the icon: its run's or its row's.
+    pub(crate) clip: ClipChain,
 }
 
 impl RasterQuad {
@@ -61,7 +64,7 @@ impl RasterQuad {
             // `u` and `v` move by the cut, which stays inside the slot, so neither carries into
             // the field past it.
             uv_and_kind: self.uv_and_kind + cut.x + (cut.y << V_SHIFT),
-            color: self.color,
+            ..self
         })
     }
 
@@ -99,7 +102,7 @@ const _: () = {
 
 /// A [`RasterQuad`] a paint animation turns: the quad as drawn unturned, and the turn of its whole
 /// run about the physical `pivot`, as `rotor = (cos, sin)`. In a buffer of its own, so an
-/// unturned glyph keeps its 32 bytes.
+/// unturned glyph takes no turn's bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct SpunRasterQuad {
@@ -116,7 +119,7 @@ impl SpunRasterQuad {
     );
 }
 
-const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = [
+const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 6] = [
     vertex_attr(0, wgpu::VertexFormat::Sint32x2, offset_of!(RasterQuad, pos)),
     vertex_attr(1, wgpu::VertexFormat::Uint16x2, offset_of!(RasterQuad, dim)),
     vertex_attr(
@@ -134,9 +137,10 @@ const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = [
         wgpu::VertexFormat::Float16x4,
         offset_of!(RasterQuad, color),
     ),
+    vertex_attr(5, wgpu::VertexFormat::Uint32, offset_of!(RasterQuad, clip)),
 ];
 
-const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 7] = [
+const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 8] = [
     vertex_attr(
         0,
         wgpu::VertexFormat::Sint32x2,
@@ -163,6 +167,11 @@ const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 7] = [
         offset_of!(SpunRasterQuad, quad.color),
     ),
     vertex_attr(
+        7,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(SpunRasterQuad, quad.clip),
+    ),
+    vertex_attr(
         5,
         wgpu::VertexFormat::Float32x2,
         offset_of!(SpunRasterQuad, pivot),
@@ -181,6 +190,7 @@ mod tests {
     };
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::primitives::paint::content_type::ContentType;
+    use crate::renderer::render_buffer::clip_chain::ClipChain;
 
     /// The three fields share one `u32`; `u` is taken at its range top to catch a mask one bit too wide.
     #[test]
@@ -224,6 +234,7 @@ mod tests {
             size: UVec2::new(10, 8),
             uv_and_kind: RasterQuad::pack_uv(100, 200, ContentType::Color),
             color: RgbaF16::WHITE,
+            clip: ClipChain::NONE,
         };
         let cut = quad
             .clipped(IVec2::new(8, 6), IVec2::new(12, 20))

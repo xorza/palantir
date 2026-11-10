@@ -10,6 +10,7 @@ use crate::gpu::raster::text_backend::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
@@ -170,7 +171,8 @@ fn slot_generation_invalidates_only_referencing_run() {
 /// (`TextBackend::flush` after all `prepare_batch` calls). The per-batch `ranges`
 /// must partition the shared instance vec and each batch's glyphs keep their own
 /// color/placement: same atlas uv + dim and x, y shifted by the 40 px origin delta
-/// (an integer so subpixel bins match), distinct colors.
+/// (an integer so subpixel bins match), distinct colors, and each run's own clip chain, which the
+/// cached template of the first run does not carry into the second.
 #[test]
 fn deferred_upload_keeps_batches_distinct() {
     let mut rig = TextRig::new();
@@ -181,8 +183,10 @@ fn deferred_upload_keeps_batches_distinct() {
         color: color_a,
         ..rig.row("File", 16.8, Vec2::new(20.0, 20.0))
     };
+    let chain_b = ClipChain::new(Span::new(3, 2));
     let run_b = TextDrawRow {
         color: color_b,
+        clip: chain_b,
         ..rig.row("File", 16.8, Vec2::new(20.0, 60.0))
     };
 
@@ -202,6 +206,8 @@ fn deferred_upload_keeps_batches_distinct() {
     {
         assert_eq!(ga.color, color_a);
         assert_eq!(gb.color, color_b);
+        assert_eq!(ga.clip, ClipChain::NONE);
+        assert_eq!(gb.clip, chain_b);
         assert_eq!(gb.uv_and_kind, ga.uv_and_kind);
         assert_eq!(gb.dim, ga.dim);
         assert_eq!(gb.pos, ga.pos + IVec2::new(0, 40));
@@ -210,9 +216,9 @@ fn deferred_upload_keeps_batches_distinct() {
 }
 
 /// A turned run emits the quads its unturned twin does, from the same encoded template, into the
-/// turned buffer, each carrying the run's physical pivot and `(cos, sin)`; the unturned buffer gets
-/// none of them, a batch mixing both draws them in emission order, and a later unturned frame
-/// emits flat again.
+/// turned buffer, each carrying the run's physical pivot, `(cos, sin)` and clip chain; the unturned
+/// buffer gets none of them, a batch mixing both draws them in emission order, and a later
+/// unturned frame emits flat again.
 #[test]
 fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
     let mut rig = TextRig::new();
@@ -221,8 +227,10 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
         pivot: Vec2::new(30.0, 25.0),
         angle: 0.5,
     };
+    let chain = ClipChain::new(Span::new(0, 1));
     let turned = TextDrawRow {
         spin: Some(spin),
+        clip: chain,
         ..flat
     };
 
@@ -247,6 +255,7 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
         assert_eq!(spun.quad.pos, quad.pos);
         assert_eq!(spun.quad.uv_and_kind, quad.uv_and_kind);
         assert_eq!((spun.pivot, spun.rotor), (spin.pivot, rotor));
+        assert_eq!(spun.quad.clip, chain);
     }
     rig.backend.tick_frame();
 

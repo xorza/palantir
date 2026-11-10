@@ -24,6 +24,7 @@ use soa_rs::Soa;
 use std::time::Duration;
 
 pub(crate) mod backdrop_row;
+pub(crate) mod clip_chain;
 pub(crate) mod curve_caps;
 pub(crate) mod curve_instance;
 pub(crate) mod curve_kind;

@@ -18,6 +18,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use glam::Vec2;
 use std::fmt::Debug;
@@ -201,28 +202,35 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
 
     /// Clip the quads emitted from `start` on to `bounds`, each to its part inside them
     /// ([`RasterQuad::clipped`]), dropping one wholly outside, so a run a clip cuts needs no
-    /// scissor of its own.
-    pub(super) fn clip_since(&mut self, start: usize, bounds: URect) {
+    /// scissor of its own; each kept one takes the rounded clips of `chain`, as the cached quads
+    /// of a run hold none.
+    pub(super) fn clip_since(&mut self, start: usize, bounds: URect, chain: ClipChain) {
         let min = bounds.min.as_ivec2();
         let max = (bounds.min + bounds.size).as_ivec2();
         let mut kept = start;
         for at in start..self.instances.len() {
             if let Some(quad) = self.instances[at].clipped(min, max) {
-                self.instances[kept] = quad;
+                self.instances[kept] = RasterQuad {
+                    clip: chain,
+                    ..quad
+                };
                 kept += 1;
             }
         }
         self.instances.truncate(kept);
     }
 
-    /// Move the quads emitted from `start` on into the turned buffer, each turned by `spin`. They
-    /// keep their place in the batch's paint order.
-    pub(super) fn turn_since(&mut self, start: usize, spin: RowSpin) {
+    /// Move the quads emitted from `start` on into the turned buffer, each turned by `spin` and
+    /// cut by the rounded clips of `chain`. They keep their place in the batch's paint order.
+    pub(super) fn turn_since(&mut self, start: usize, spin: RowSpin, chain: ClipChain) {
         let rotor = Vec2::libm_from_angle(spin.angle);
         let first = self.spun.len() as u32;
         self.spun
             .extend(self.instances.drain(start..).map(|quad| SpunRasterQuad {
-                quad,
+                quad: RasterQuad {
+                    clip: chain,
+                    ..quad
+                },
                 pivot: spin.pivot,
                 rotor,
             }));

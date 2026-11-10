@@ -7,6 +7,7 @@
 
 use crate::common::span::Span;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use glam::Vec2;
 use soa_rs::Soars;
 
@@ -38,4 +39,6 @@ pub(crate) struct MeshInstance {
     /// Where a vertex's unit y lands: `scale · fit.y · (−sin, cos)` of the turn.
     pub(crate) y_axis: Vec2,
     pub(crate) tint: RgbaF16,
+    /// The rounded clips that cut the mesh.
+    pub(crate) clip: ClipChain,
 }

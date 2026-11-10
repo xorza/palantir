@@ -3,6 +3,7 @@
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use glam::Vec2;
@@ -47,4 +48,6 @@ pub(crate) struct CurveInstance {
     pub(crate) fill_lut_row: LutRow,
     /// How the vertex shader reads the geometry lanes.
     pub(crate) kind: CurveKind,
+    /// The rounded clips that cut the stroke.
+    pub(crate) clip: ClipChain,
 }

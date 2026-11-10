@@ -235,7 +235,7 @@ enum QuadCase {
     Plain,
     /// Each quad inside a rect clip of its own: a group per quad.
     Clipped,
-    /// Each quad inside a rounded clip of its own: a group and a mask chain per quad.
+    /// Each quad inside a rounded clip of its own: a group and a clip chain per quad.
     RoundedClip,
     /// Every quad opaque over the one before: the group's prune keeps the last.
     Pruned,

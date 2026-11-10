@@ -5,6 +5,7 @@ use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::Lowering;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -103,8 +104,8 @@ impl CurveRun {
     }
 
     /// Tile `t` in `[0, 1]` into `n` contiguous ranges, the last ending at exactly `1.0` so the
-    /// shader's trailing-cap test fires.
-    pub(super) fn push_into(self, curves: &mut Vec<CurveInstance>) {
+    /// shader's trailing-cap test fires, each cut by the rounded clips of `clip`.
+    pub(super) fn push_into(self, curves: &mut Vec<CurveInstance>, clip: ClipChain) {
         let Self { proto, n } = self;
         let inv_n = 1.0 / n as f32;
         for i in 0..n {
@@ -116,6 +117,7 @@ impl CurveRun {
             curves.push(CurveInstance {
                 t0: i as f32 * inv_n,
                 t1,
+                clip,
                 ..proto
             });
         }
