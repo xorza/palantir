@@ -1,5 +1,6 @@
 use super::*;
 use crate::host::harness::Harness;
+use crate::shape::paint::closed_paint::ClosedPaint;
 
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
@@ -44,8 +45,11 @@ fn records_one_gpu_view_shape_at_committed_size() {
     assert!(
         matches!(
             shapes.next(),
-            Some(ShapeRecord::ImagePaint {
-                source: ImageSource::GpuView { .. },
+            Some(ShapeRecord::Closed {
+                paint: ClosedPaint::Image {
+                    source: ImageSource::GpuView { .. },
+                    ..
+                },
                 ..
             }),
         ),
@@ -70,8 +74,12 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
                 .tree(Layer::Main)
                 .shapes_of(node)
                 .find_map(|shape| match shape {
-                    ShapeRecord::ImagePaint {
-                        source: ImageSource::GpuView { epoch, .. },
+                    ShapeRecord::Closed {
+                        paint:
+                            ClosedPaint::Image {
+                                source: ImageSource::GpuView { epoch, .. },
+                                ..
+                            },
                         ..
                     } => Some(*epoch),
                     _ => None,

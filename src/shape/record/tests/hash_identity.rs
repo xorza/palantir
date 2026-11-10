@@ -3,10 +3,13 @@
 use crate::common::hash;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
+use crate::primitives::geometry::fit::Fit;
+use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::image::{ImageDownsample, ImageFilter};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
@@ -18,43 +21,62 @@ use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
-/// Same box payload, a different covered side or outline, and both quad shapes share
-/// [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own must separate them and each shape's
-/// fields must reach the hasher. A collision makes damage diff skip a repaint.
+/// Same fill, a different covered side or outline, and a box and a triangle share
+/// [`ShapeRecord::Closed`]'s discriminant, so `ClosedGeometry`'s own must separate them and each
+/// shape's fields must reach the hasher. A collision makes damage diff skip a repaint.
 #[test]
 fn quad_shapes_hash_apart() {
     let fill = LoweredBrush::Solid(RgbaF32::WHITE.to_f16());
     let stroke = LoweredBorder::lower(Border::new(RgbaF32::BLACK, 2.0));
-    let quad_box = |coverage, outline| {
-        ShapeRecord::Quad(QuadShape::Box {
-            geometry: BoxGeometry {
-                local_rect: None,
-                outline,
-                coverage,
-            },
+    let quad_box = |coverage, outline| ShapeRecord::Closed {
+        geometry: ClosedGeometry::Box(BoxGeometry {
+            local_rect: None,
+            outline,
+            coverage,
+        }),
+        paint: ClosedPaint::Fill(LoweredPaint {
             fill,
             border: stroke,
             shadow: LoweredShadow::lower(Shadow::NONE),
             material: None,
-        })
+        }),
     };
-    let triangle = ShapeRecord::Quad(QuadShape::Triangle {
-        geometry: TriangleGeometry {
+    let triangle = ShapeRecord::Closed {
+        geometry: ClosedGeometry::Triangle(TriangleGeometry {
             corners: [Vec2::ZERO; 3],
             radius: 0.0,
             placement: PointPlacement::NATURAL,
-        },
-        fill: LoweredBrush::Solid(RgbaF32::WHITE.to_f16()),
-        border: stroke,
-        material: None,
-    });
+        }),
+        paint: ClosedPaint::Fill(LoweredPaint {
+            fill: LoweredBrush::Solid(RgbaF32::WHITE.to_f16()),
+            border: stroke,
+            material: None,
+            shadow: LoweredShadow::default(),
+        }),
+    };
     let sharp = BoxOutline::Rect(Corners::ZERO);
+    // An effect over the inside box, which its paint's discriminant keeps apart from the fill.
+    let effect = ShapeRecord::Closed {
+        geometry: ClosedGeometry::Box(BoxGeometry {
+            local_rect: None,
+            outline: sharp,
+            coverage: Coverage::Inside,
+        }),
+        paint: ClosedPaint::Effect {
+            backdrop: None,
+            effect: EffectId(0),
+            params: Span::default(),
+            images: Span::default(),
+            content_hash: ContentHash::default(),
+        },
+    };
     let mut seen = Vec::new();
     for (label, record) in [
         ("inside", quad_box(Coverage::Inside, sharp)),
         ("outside", quad_box(Coverage::Outside, sharp)),
         ("circle", quad_box(Coverage::Inside, BoxOutline::Circle)),
         ("triangle", triangle),
+        ("effect", effect),
     ] {
         let hash = record.content_hash();
         assert!(
@@ -149,18 +171,20 @@ fn shape_mesh_hash_excludes_span_offsets() {
 /// A view composite and a texture draw share `Image`'s discriminant, so [`ImageSource`]'s must separate them and the view's `epoch` must reach the hasher, or a bumped epoch keeps a stale texture.
 #[test]
 fn image_source_hashes_apart_by_source() {
-    let image = |source| ShapeRecord::ImagePaint {
+    let image = |source| ShapeRecord::Closed {
         geometry: ClosedGeometry::Box(BoxGeometry {
             local_rect: None,
             outline: BoxOutline::Rect(Corners::ZERO),
             coverage: Coverage::Inside,
         }),
-        tint: RgbaF32::WHITE.to_f16(),
-        source,
-        fit: ImageFit::Fill,
-        min_filter: ImageFilter::Linear,
-        mag_filter: ImageFilter::Linear,
-        downsample: ImageDownsample::Single,
+        paint: ClosedPaint::Image {
+            tint: RgbaF32::WHITE.to_f16(),
+            source,
+            fit: ImageFit::Fill,
+            min_filter: ImageFilter::Linear,
+            mag_filter: ImageFilter::Linear,
+            downsample: ImageDownsample::Single,
+        },
     };
     let gpu_view = |id, epoch| {
         image(ImageSource::GpuView {
@@ -218,22 +242,24 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
                 tint: RgbaF32,
                 min_filter: ImageFilter,
                 mag_filter: ImageFilter| {
-        ShapeRecord::ImagePaint {
+        ShapeRecord::Closed {
             geometry: ClosedGeometry::Box(BoxGeometry {
                 local_rect: None,
                 outline: BoxOutline::Rect(Corners::ZERO),
                 coverage: Coverage::Inside,
             }),
-            tint: tint.to_f16(),
-            source: ImageSource::Texture {
-                id,
-                size,
-                generation: 0,
+            paint: ClosedPaint::Image {
+                tint: tint.to_f16(),
+                source: ImageSource::Texture {
+                    id,
+                    size,
+                    generation: 0,
+                },
+                fit: ImageFit::Fill,
+                min_filter,
+                mag_filter,
+                downsample: ImageDownsample::Single,
             },
-            fit: ImageFit::Fill,
-            min_filter,
-            mag_filter,
-            downsample: ImageDownsample::Single,
         }
     };
     let size = glam::UVec2::new(64, 64);

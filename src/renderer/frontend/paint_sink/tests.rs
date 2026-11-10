@@ -2,15 +2,21 @@
 
 use crate::common::span::Span;
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
+    ClosedImage, GpuViewDraw,
+};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use glam::Vec2;
 
 #[test]
@@ -128,16 +134,21 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
     for (label, rect, handle, has_paint, expect_call) in cases {
         let mut sink = PaintCapture::default();
         sink.draw(
-            DrawImagePayload {
-                rect,
-                geometry: None,
-                uv_min: Vec2::ZERO,
-                uv_size: Vec2::ONE,
-                tint: RgbaF32::WHITE.to_f16(),
-                handle,
-                flags: ImageFlags::NONE,
+            DrawClosedPayload {
+                geometry: PlacedClosed::inside(PlacedBox {
+                    rect,
+                    corners: Corners::ZERO,
+                }),
                 spin: None,
-                view: has_paint.then_some(view),
+                paint: ClosedImage {
+                    rect,
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::ONE,
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle,
+                    flags: ImageFlags::NONE,
+                    view: has_paint.then_some(view),
+                },
             },
             1.0,
         );
@@ -152,32 +163,37 @@ fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
             );
         };
         assert_eq!(
-            payload.view,
+            payload.paint.view,
             Some(view),
             "case {label}: the capture keeps the view"
         );
-        assert_eq!(payload.rect, rect, "case {label}");
-        assert_eq!(payload.handle, handle, "case {label}");
-        assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
-        assert_eq!(payload.uv_size, Vec2::ONE, "case {label}");
-        assert_eq!(payload.flags, ImageFlags::NONE, "case {label}");
-        assert_eq!(payload.tint, RgbaF32::WHITE.to_f16(), "case {label}");
+        assert_eq!(payload.paint.rect, rect, "case {label}");
+        assert_eq!(payload.paint.handle, handle, "case {label}");
+        assert_eq!(payload.paint.uv_min, Vec2::ZERO, "case {label}");
+        assert_eq!(payload.paint.uv_size, Vec2::ONE, "case {label}");
+        assert_eq!(payload.paint.flags, ImageFlags::NONE, "case {label}");
+        assert_eq!(payload.paint.tint, RgbaF32::WHITE.to_f16(), "case {label}");
     }
 }
 
 /// The gate sees the faded payload. A draw faded to nothing is dropped by the existing no-op gate; a half fade halves the tint alpha and leaves color lanes untouched.
 #[test]
 fn the_gate_sees_the_faded_payload() {
-    let draw = || DrawImagePayload {
-        rect: Rect::new(0.0, 0.0, 4.0, 4.0),
-        geometry: None,
-        uv_min: Vec2::ZERO,
-        uv_size: Vec2::ONE,
-        tint: RgbaF32::WHITE.to_f16(),
-        handle: TextureId(7),
-        flags: ImageFlags::NONE,
+    let draw = || DrawClosedPayload {
+        geometry: PlacedClosed::inside(PlacedBox {
+            rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+            corners: Corners::ZERO,
+        }),
         spin: None,
-        view: None,
+        paint: ClosedImage {
+            rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: RgbaF32::WHITE.to_f16(),
+            handle: TextureId(7),
+            flags: ImageFlags::NONE,
+            view: None,
+        },
     };
 
     let mut faded_out = PaintCapture::default();
@@ -194,7 +210,7 @@ fn the_gate_sees_the_faded_payload() {
         panic!("expected one Image call, got {:?}", half.calls);
     };
     // Half an opaque white tint's alpha, color untouched; exact in f16.
-    let tint = RgbaF32::from(payload.tint);
+    let tint = RgbaF32::from(payload.paint.tint);
     assert_eq!([tint.r, tint.g, tint.b, tint.a], [1.0, 1.0, 1.0, 0.5]);
 
     // A polyline gates alike: its fade rides the payload's alpha lane, its colors being in the record store.

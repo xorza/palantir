@@ -25,12 +25,14 @@ use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::recorded_text::RecordedText;
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -141,7 +143,7 @@ const PINS: &[Pin] = &[
     pin::<PanelExtras>("scene::PanelExtras", 20, 4),
     pin::<Node>("scene::Node", 104, 4),
     // A rect's shadow and material, 18 and 40 of them, set the row's size.
-    pin::<ShapeRecord>("shape::ShapeRecord", 136, 8),
+    pin::<ShapeRecord>("shape::ShapeRecord", 144, 8),
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
     // 40 of them the material: its effect, its input's words and their hash, its σ, lens and bounds.
     pin::<ChromeRow>("scene::ChromeRow", 104, 8),
@@ -207,11 +209,12 @@ const PINS: &[Pin] = &[
     pin::<CollapsedDamage>("damage::CollapsedDamage", 136, 4),
     pin::<NodeSnapshot>("damage::node_snapshot::NodeSnapshot", 40, 8),
     pin::<PushClipPayload>("payload::PushClipPayload", 24, 4),
-    pin::<DrawQuadPayload>("payload::DrawQuadPayload", 84, 4),
+    pin::<DrawClosedPayload<ClosedFill>>("payload::DrawClosedPayload<ClosedFill>", 84, 4),
+    pin::<DrawShadowPayload>("payload::DrawShadowPayload", 60, 4),
     pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
     pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 72, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 80, 4),
-    pin::<DrawImagePayload>("payload::DrawImagePayload", 120, 8),
+    pin::<DrawClosedPayload<ClosedImage>>("payload::DrawClosedPayload<ClosedImage>", 120, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
     pin::<Quad>("renderer::Quad", 104, 4),

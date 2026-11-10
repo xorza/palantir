@@ -13,7 +13,9 @@ use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::record::ShapeRecord;
 use crate::shape::rect::RectShape;
 use crate::widget_core::configure::Configure;
@@ -92,15 +94,15 @@ fn interleaved_shapes_record_correct_order() {
         .tree(Layer::Main)
         .shapes_of(p)
         .map(|s| match s {
-            ShapeRecord::Quad(QuadShape::Box {
+            ShapeRecord::Closed {
                 geometry:
-                    BoxGeometry {
+                    ClosedGeometry::Box(BoxGeometry {
                         coverage: Coverage::Inside,
                         local_rect: Some(rect),
                         ..
-                    },
-                ..
-            }) => rect.size.w,
+                    }),
+                paint: ClosedPaint::Fill(LoweredPaint { .. }),
+            } => rect.size.w,
             _ => panic!("unexpected shape variant"),
         })
         .collect();
@@ -110,7 +112,7 @@ fn interleaved_shapes_record_correct_order() {
     let draw_rect_count = cmds
         .calls
         .iter()
-        .filter(|command| matches!(command, PaintCall::Quad(_)))
+        .filter(|command| matches!(command, PaintCall::Fill(_) | PaintCall::Shadow(_)))
         .count();
     assert_eq!(
         draw_rect_count, 5,

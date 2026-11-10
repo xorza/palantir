@@ -15,7 +15,6 @@ use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::Encoder;
@@ -228,7 +227,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         .iter()
         .filter_map(|command| as_rect(command))
         .map(|p| match p.geometry {
-            PlacedClosed::Box { coverage, .. } => (p.fill.kind, coverage),
+            PlacedClosed::Box { coverage, .. } => (p.paint.fill.kind, coverage),
             PlacedClosed::Triangle(_) => unreachable!("`as_rect` keeps box geometry"),
         })
         .collect();
@@ -241,7 +240,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "both rects fill solid, the outside one covering its outside",
     );
     // A Line rides the GPU curve pipeline as a degenerate cubic: a DrawCurve, never a DrawPolyline.
-    assert_eq!(cmds.kinds(), ["Quad", "Quad", "Curve", "Curve"]);
+    assert_eq!(cmds.kinds(), ["Fill", "Fill", "Curve", "Curve"]);
     let [solid, ramp] = [2, 3].map(|i| cmds.calls[i].as_curve().unwrap().fill);
     assert_eq!(
         (solid.kind, solid.color),
@@ -265,7 +264,6 @@ fn manually_pushed_shapes_emit_expected_cmds() {
 fn shadows_lower_to_their_source_and_geometry_lanes() {
     use crate::primitives::paint::shadow::Shadow;
 
-    use crate::primitives::packed::fill_kind::FillKind;
     use crate::shape::Shape;
 
     let mut h = Harness::mono(UVec2::new(200, 200));
@@ -306,19 +304,19 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
     assert_eq!(shadow_payloads.len(), 2, "drop and inset shadow cmds");
     let drop = shadow_payloads[0];
     let inset = shadow_payloads[1];
-    let (drop_rect, inset_rect) = (quad_rect(drop), quad_rect(inset));
+    let (drop_rect, inset_rect) = (drop.source.rect, inset.source.rect);
 
-    assert_eq!(drop.fill.kind, FillKind::SHADOW_DROP);
+    assert!(!drop.shadow.inset());
     assert_eq!(drop_rect, inset_rect, "both carry the one source rect");
-    assert_eq!(drop.fill_axis.lanes(), [2.0, 4.0, 8.0, -1.0]);
-    assert_eq!(drop.fill.color, RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).to_f16());
-    // A shadow's whole edge is its blur: the payload must carry no stroke, or the shared quad path would paint one.
-    assert_eq!(drop.border.color, RgbaF16::TRANSPARENT);
-    assert_eq!(drop.border.width, 0.0);
+    assert_eq!(drop.shadow.geometry_f16.lanes(), [2.0, 4.0, 8.0, -1.0]);
+    assert_eq!(
+        drop.shadow.color,
+        RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).to_f16()
+    );
 
-    assert_eq!(inset.fill.kind, FillKind::SHADOW_INSET);
+    assert!(inset.shadow.inset());
     assert_eq!(inset_rect.size, Size::new(30.0, 40.0));
-    assert_eq!(inset.fill_axis.lanes(), [2.0, 4.0, 8.0, -2.0]);
+    assert_eq!(inset.shadow.geometry_f16.lanes(), [2.0, 4.0, 8.0, -2.0]);
 }
 
 /// Chrome paints shadows in CSS Backgrounds 3 §7.1 order: drop under the fill, inset over it. An inset
@@ -328,11 +326,10 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
 #[test]
 fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::geometry::coverage::Coverage;
+
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::Shape;
     use crate::shape::geometry::box_geometry::PlacedBox;
-    use crate::shape::geometry::closed_geometry::PlacedClosed;
 
     struct Case {
         label: &'static str,
@@ -438,26 +435,19 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             let shadow = shadow.unwrap_or_else(|| panic!("{label}: shadow out of order"));
             let node = quad_rect(fill);
             assert_eq!(node.size, Size::new(100.0, 60.0), "{label}");
-            let expected_kind = if case.inset {
-                FillKind::SHADOW_INSET
-            } else {
-                FillKind::SHADOW_DROP
-            };
-            assert_eq!(shadow.fill.kind, expected_kind, "{label}");
-            let PlacedClosed::Box {
-                placed: PlacedBox { rect, corners },
-                coverage: Coverage::Inside,
-            } = shadow.geometry
-            else {
-                panic!("{label}: a shadow has the geometry of a box that covers its inside");
-            };
+            assert_eq!(shadow.shadow.inset(), case.inset, "{label}");
+            let PlacedBox { rect, corners } = shadow.source;
             let expected = Rect {
                 min: node.min + case.shadow_rect.min,
                 size: case.shadow_rect.size,
             };
             assert_eq!(rect, expected, "{label}");
             assert_eq!(corners, case.shadow_corners, "{label}");
-            assert_eq!(shadow.fill_axis.lanes(), [0.0, 2.0, 6.0, 0.0], "{label}");
+            assert_eq!(
+                shadow.shadow.geometry_f16.lanes(),
+                [0.0, 2.0, 6.0, 0.0],
+                "{label}"
+            );
         }
     }
 }
@@ -536,7 +526,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     let cmds = h.encode_paint();
     assert_eq!(
         cmds.kinds(),
-        ["Quad", "Text"],
+        ["Fill", "Text"],
         "the button's chrome, then its label"
     );
     let text_rect = cmds.calls[1].as_text().unwrap().rect;

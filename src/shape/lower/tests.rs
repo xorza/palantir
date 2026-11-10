@@ -22,11 +22,13 @@ use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::lower::LoweredPaint;
 use crate::shape::lower::{brush, chrome, ramp};
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
-use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::Resolve;
@@ -184,8 +186,10 @@ fn a_material_lowers_as_it_reads() {
         store.record(Shape::rect().draw(&frosted.paint), resolve)
     };
     for (reductions, captures) in [(Reductions::FULL, true), (reduced, false)] {
-        let Some(ShapeRecord::Quad(QuadShape::Box { fill, material, .. })) =
-            rect(&mut store, reductions)
+        let Some(ShapeRecord::Closed {
+            geometry: ClosedGeometry::Box(_),
+            paint: ClosedPaint::Fill(LoweredPaint { fill, material, .. }),
+        }) = rect(&mut store, reductions)
         else {
             panic!("a rect lowers to a rect quad");
         };

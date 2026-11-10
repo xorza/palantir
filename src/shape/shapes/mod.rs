@@ -9,6 +9,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::Shape;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record::ShapeRecord;
@@ -59,23 +60,25 @@ impl Shapes {
         idx
     }
 
-    /// Append an [`ImageSource::GpuView`]-sourced [`ShapeRecord::ImagePaint`] directly,
+    /// Append an [`ImageSource::GpuView`]-sourced image [`ShapeRecord::Closed`] directly,
     /// bypassing the record store's lowering. The view's `paint` lives in `Ui::gpu_views`
     /// by the owner's `WidgetId`; the record carries its target `id` and `epoch`.
     ///
     /// Placement is neutral: no sub-rect, untinted, `Fill` fit, which resolves to
     /// the base rect at full UV against the encoder's zero intrinsic size.
     pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) {
-        let record = ShapeRecord::ImagePaint {
+        let record = ShapeRecord::Closed {
             geometry: ClosedGeometry::Box(Shape::rect().geometry()),
-            tint: RgbaF32::WHITE.to_f16(),
-            source: ImageSource::GpuView { id, epoch },
-            fit: ImageFit::Fill,
-            min_filter: ImageFilter::Linear,
-            mag_filter: ImageFilter::Linear,
-            // A view's target is allocated to the rect it composites into, so it is
-            // never minified and has no footprint to cover.
-            downsample: ImageDownsample::Single,
+            paint: ClosedPaint::Image {
+                tint: RgbaF32::WHITE.to_f16(),
+                source: ImageSource::GpuView { id, epoch },
+                fit: ImageFit::Fill,
+                min_filter: ImageFilter::Linear,
+                mag_filter: ImageFilter::Linear,
+                // A view's target is allocated to the rect it composites into, so it is
+                // never minified and has no footprint to cover.
+                downsample: ImageDownsample::Single,
+            },
         };
         self.push(record);
     }

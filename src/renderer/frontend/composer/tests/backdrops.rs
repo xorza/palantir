@@ -4,7 +4,6 @@ use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -18,10 +17,11 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw,
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    ClosedEffect, EffectCaptureDraw,
 };
-use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, TriangleQuad};
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{
     BackdropCapture, BackdropRead, BackdropRow, BackdropSource,
@@ -63,25 +63,24 @@ fn material(
     geometry: PlacedClosed,
     read: EffectCaptureDraw,
     border: LoweredBorder,
-) -> DrawEffectPayload {
-    DrawEffectPayload::material(
-        LoweredMaterial::fixture(4.0),
-        read,
+) -> DrawClosedPayload<ClosedEffect> {
+    DrawClosedPayload::new(
         geometry,
-        BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
-        border,
+        ClosedEffect::material(
+            LoweredMaterial::fixture(4.0),
+            read,
+            BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
+            border,
+        ),
     )
 }
 
 /// The box at `rect`, square-cornered, covering its inside.
 const fn sharp(rect: Rect) -> PlacedClosed {
-    PlacedClosed::Box {
-        coverage: Coverage::Inside,
-        placed: PlacedBox {
-            rect,
-            corners: Corners::ZERO,
-        },
-    }
+    PlacedClosed::inside(PlacedBox {
+        rect,
+        corners: Corners::ZERO,
+    })
 }
 
 /// A backdrop at `rect` under `ticket`, faded by `alpha`; the ticket holds its plan, so its own σ
@@ -384,14 +383,16 @@ fn a_triangles_material_packs_as_its_triangle() {
                 1.0,
             );
             b.draw(
-                DrawQuadPayload::triangle(TriangleQuad {
-                    triangle: PlacedTriangle {
+                DrawClosedPayload::new(
+                    PlacedClosed::Triangle(PlacedTriangle {
                         centers: points,
                         radius: 1.0,
-                    },
-                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-                    border: LoweredBorder::NONE,
-                }),
+                    }),
+                    ClosedFill::new(
+                        BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+                        LoweredBorder::NONE,
+                    ),
+                ),
                 1.0,
             );
         },
@@ -429,16 +430,18 @@ fn a_material_and_a_backdrop_effect_share_one_path() {
         |b, _| {
             b.draw(material(sharp(rect), read(0), LoweredBorder::NONE), 1.0);
             b.draw(
-                DrawEffectPayload {
+                DrawClosedPayload {
                     geometry: sharp(rect),
                     spin: None,
-                    effect: EffectId(0),
-                    params: Span::default(),
-                    images: Span::default(),
-                    backdrop: Some(read(1)),
-                    stage: None,
-                    opacity: 1.0,
-                    time: 0.0,
+                    paint: ClosedEffect {
+                        effect: EffectId(0),
+                        params: Span::default(),
+                        images: Span::default(),
+                        backdrop: Some(read(1)),
+                        stage: None,
+                        opacity: 1.0,
+                        time: 0.0,
+                    },
                 },
                 1.0,
             );

@@ -47,7 +47,7 @@ fn clip_emits_balanced_push_pop() {
                 });
         });
     });
-    assert_eq!(h.encode_paint().kinds(), ["PushClip", "Quad", "PopClip"]);
+    assert_eq!(h.encode_paint().kinds(), ["PushClip", "Fill", "PopClip"]);
 }
 
 #[test]
@@ -78,7 +78,7 @@ fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
         });
     });
     let cmds = h.encode_paint();
-    assert_eq!(cmds.kinds(), ["Quad", "PushClip", "PopClip"]);
+    assert_eq!(cmds.kinds(), ["Fill", "PushClip", "PopClip"]);
     let payload = cmds.calls[1].as_push_clip().unwrap();
 
     let panel_rect = h.arranged(WidgetId::from_hash("rounded"));

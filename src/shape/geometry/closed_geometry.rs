@@ -4,6 +4,7 @@
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::shape::geometry::box_geometry::{BoxGeometry, PlacedBox};
 use crate::shape::geometry::triangle_geometry::{self, PlacedTriangle, TriangleGeometry};
@@ -42,6 +43,18 @@ impl ClosedGeometry {
             Self::Triangle(geometry) => geometry
                 .place(owner_rect.size)
                 .map(|placed| PlacedClosed::Triangle(placed.translated(owner_rect.min))),
+        }
+    }
+
+    /// The shape's covering rect in an owner of `owner_size`, owner-local: a box's rect, a
+    /// circle's square, a triangle's corner centers grown by its radius; [`Rect::ZERO`] for a
+    /// triangle that places nothing.
+    pub(crate) fn local_bounds(self, owner_size: Size) -> Rect {
+        match self {
+            Self::Box(geometry) => geometry.place(owner_size).rect,
+            Self::Triangle(geometry) => geometry
+                .place(owner_size)
+                .map_or(Rect::ZERO, PlacedTriangle::bbox),
         }
     }
 

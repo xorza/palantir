@@ -6,6 +6,8 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -15,6 +17,7 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::paint::Paint;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -86,6 +89,19 @@ pub(crate) struct LoweredPaint {
     pub(crate) border: LoweredBorder,
     pub(crate) shadow: LoweredShadow,
     pub(crate) material: Option<LoweredMaterial>,
+}
+
+impl LoweredPaint {
+    /// The owner-local rect this paints over `geometry` in an owner of `owner_size`: the shape's
+    /// covering rect, grown by its shadow.
+    pub(crate) fn bbox_local(&self, geometry: ClosedGeometry, owner_size: Size) -> Rect {
+        let rect = geometry.local_bounds(owner_size);
+        if self.shadow.is_noop() {
+            rect
+        } else {
+            rect.union(self.shadow.paint_rect_local(Some(rect), owner_size))
+        }
+    }
 }
 
 /// Lower `paint`, whose material reads `material` this record (`None` where it paints none): the

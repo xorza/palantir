@@ -37,6 +37,7 @@ use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
 use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::paint::blur_plan::BlurPlan;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::record::ShapeRecord;
 use std::hash::Hasher as _;
@@ -688,10 +689,16 @@ impl TreeSource<'_> {
         if entry.origin != BackdropOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
             return None;
         }
-        let ShapeRecord::Quad(quad) = &tree.shapes.records[entry.shape_idx as usize] else {
+        let ShapeRecord::Closed {
+            geometry,
+            paint: ClosedPaint::Fill(paint),
+        } = &tree.shapes.records[entry.shape_idx as usize]
+        else {
             return None;
         };
-        let local = quad.bbox_local(layout.rect[entry.node.idx()].size).size;
+        let local = paint
+            .bbox_local(*geometry, layout.rect[entry.node.idx()].size)
+            .size;
         let (w, h) = (local.w * shape_scale, local.h * shape_scale);
         // The lift and a clip that misses the backdrop round the size within a few f32 ulps; a clip
         // that cuts less than this lets a sample out by less than the pixel `PlaneBackdrop::reach`

@@ -4,8 +4,6 @@ use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
-use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -22,17 +20,19 @@ use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw,
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    ClosedEffect, EffectCaptureDraw,
 };
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
+    ClosedImage, GpuViewDraw,
+};
+use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::{
-    DrawQuadPayload, RectQuad, TriangleQuad,
-};
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
@@ -47,15 +47,15 @@ use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
+use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::capture_params::EffectBackdrop;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
-use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint_animation::paint_mod::PaintMod;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
@@ -93,14 +93,6 @@ pub(super) struct PlaneCtx<'a, 'g> {
     pub(super) now: Duration,
 }
 
-/// A rect as one paint call draws it: its quad, a paint animation's turn, and its opacity.
-#[derive(Clone, Copy, Debug)]
-struct RectPaint {
-    quad: RectQuad,
-    spin: Option<Spin>,
-    alpha: f32,
-}
-
 /// What makes a shape a material's: its material, and what it reads, the ticket the backdrop
 /// ledger wrote for it or the ground.
 #[derive(Clone, Copy, Debug)]
@@ -118,14 +110,15 @@ struct NativeStroke {
     ramp: CurveRamp,
 }
 
-/// A box as one paint call draws it: its rect, its shadow, its material, and where its backdrop is
-/// recorded.
+/// A closed shape's fill as one paint call draws it: the shape in the logical frame, its lowered
+/// paint, where its backdrop is recorded, a paint animation's turn and its opacity.
 #[derive(Clone, Copy, Debug)]
-struct BoxPaint {
-    paint: RectPaint,
-    shadow: LoweredShadow,
-    material: Option<LoweredMaterial>,
+struct FillItem {
+    geometry: PlacedClosed,
+    paint: LoweredPaint,
     site: BackdropSite,
+    spin: Option<Spin>,
+    alpha: f32,
 }
 
 /// Where a backdrop is recorded: by its owner, as its chrome or its shape at `shape_idx`.
@@ -134,30 +127,6 @@ struct BackdropSite {
     owner: NodeId,
     origin: BackdropOrigin,
     shape_idx: u32,
-}
-
-/// Paint `paint` as an ordinary rect.
-fn paint_rect(paint: RectPaint, out: &mut impl PaintSink) {
-    let RectPaint { quad, spin, alpha } = paint;
-    out.draw(DrawQuadPayload::rect(quad).turned(spin), alpha);
-}
-
-/// Paint `paint` as a material's box over what it reads, through `look`: one draw, its fill, a
-/// color or a gradient, and its border over the whole box.
-fn paint_backdrop(paint: RectPaint, look: BackdropLook, out: &mut impl PaintSink) {
-    let RectPaint { quad, spin, alpha } = paint;
-    let geometry = PlacedClosed::Box {
-        placed: PlacedBox {
-            rect: quad.rect,
-            corners: quad.corners,
-        },
-        coverage: quad.coverage,
-    };
-    out.draw(
-        DrawEffectPayload::material(look.material, look.read, geometry, quad.fill, quad.border)
-            .turned(spin),
-        alpha,
-    );
 }
 
 impl PlaneCtx<'_, '_> {
@@ -179,43 +148,73 @@ impl PlaneCtx<'_, '_> {
         Some(BackdropLook { material, read })
     }
 
-    /// Paint a box, a node's chrome or a rect shape: its drop shadow under its fill, its fill or
-    /// its material, and its inset shadow over the fill inside its border, as CSS Backgrounds 3
-    /// §7.1 orders them.
-    fn paint_box(&mut self, item: BoxPaint, out: &mut impl PaintSink) {
-        let BoxPaint {
-            paint,
-            shadow,
-            material,
+    /// Paint a closed shape's fill, a node's chrome or a shape's: a box's drop shadow under its
+    /// fill, its fill or its material, and its inset shadow over the fill inside its border, as
+    /// CSS Backgrounds 3 §7.1 orders them. A material draws its fill and its border over the
+    /// whole shape, in one draw.
+    fn paint_fill(&mut self, item: FillItem, out: &mut impl PaintSink) {
+        let FillItem {
+            geometry,
+            paint:
+                LoweredPaint {
+                    fill,
+                    border,
+                    shadow,
+                    material,
+                },
             site,
+            spin,
+            alpha,
         } = item;
+        let fill = self.brush_source(fill);
         let backdrop = self.backdrop_look(site, material);
-        let paint_fill = |out: &mut _| match backdrop {
-            Some(look) => paint_backdrop(paint, look, out),
-            None => paint_rect(paint, out),
+        // A drop shadow is cast by the box, under its fill; an inset one by its padding box, over
+        // it.
+        let inset = shadow.inset();
+        let shadow = match geometry {
+            PlacedClosed::Box { placed, .. } if inset => {
+                let width = border.width;
+                let padding_box = Rect {
+                    min: Vec2::ZERO,
+                    size: placed.rect.size,
+                }
+                .deflated(width);
+                let source = PlacedBox {
+                    rect: placed.rect.resolve_local(Some(padding_box)),
+                    corners: placed
+                        .corners
+                        .inner(placed.rect.size, Spacing::saturating([width; 4])),
+                };
+                Some(DrawShadowPayload::new(source, shadow).turned(spin))
+            }
+            // The box's rect, as `compute_paint_rect` and `LoweredPaint::bbox_local` mirror.
+            PlacedClosed::Box { placed, .. } => {
+                Some(DrawShadowPayload::new(placed, shadow).turned(spin))
+            }
+            PlacedClosed::Triangle(_) => {
+                debug_assert!(shadow.is_noop(), "a triangle casts no shadow");
+                None
+            }
         };
-        let RectPaint { quad, spin, alpha } = paint;
-        if shadow.inset() {
-            paint_fill(out);
-            let width = quad.border.width;
-            let padding_box = Rect {
-                min: Vec2::ZERO,
-                size: quad.rect.size,
-            }
-            .deflated(width);
-            let source = quad.rect.resolve_local(Some(padding_box));
-            let corners = quad
-                .corners
-                .inner(quad.rect.size, Spacing::saturating([width; 4]));
-            if let Some(shadow) = DrawQuadPayload::shadow(source, corners, shadow) {
-                out.draw(shadow.turned(spin), alpha);
-            }
-        } else {
-            // The box's rect, as `compute_paint_rect` and `QuadShape::bbox_local` mirror.
-            if let Some(shadow) = DrawQuadPayload::shadow(quad.rect, quad.corners, shadow) {
-                out.draw(shadow.turned(spin), alpha);
-            }
-            paint_fill(out);
+        if let Some(shadow) = shadow.filter(|_| !inset) {
+            out.draw(shadow, alpha);
+        }
+        match backdrop {
+            Some(look) => out.draw(
+                DrawClosedPayload::new(
+                    geometry,
+                    ClosedEffect::material(look.material, look.read, fill, border),
+                )
+                .turned(spin),
+                alpha,
+            ),
+            None => out.draw(
+                DrawClosedPayload::new(geometry, ClosedFill::new(fill, border)).turned(spin),
+                alpha,
+            ),
+        }
+        if let Some(shadow) = shadow.filter(|_| inset) {
+            out.draw(shadow, alpha);
         }
     }
 
@@ -261,21 +260,18 @@ impl PlaneCtx<'_, '_> {
                         .tinted(self.gradients.ramp(id).color_at(0.0))
                         .to_f16(),
                 };
-                let quad = RectQuad {
-                    coverage: Coverage::Inside,
+                let dot = PlacedClosed::inside(PlacedBox {
                     rect: owner_rect.resolve_local(Some(rect)),
                     corners,
-                    fill: BrushSource::Solid(color),
-                    border: LoweredBorder::NONE,
-                };
+                });
                 let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
-                paint_rect(
-                    RectPaint {
-                        quad,
-                        spin,
-                        alpha: paint_mod.alpha,
-                    },
-                    out,
+                out.draw(
+                    DrawClosedPayload::new(
+                        dot,
+                        ClosedFill::new(BrushSource::Solid(color), LoweredBorder::NONE),
+                    )
+                    .turned(spin),
+                    paint_mod.alpha,
                 );
             }
             PlacedStroke::Nothing => {}
@@ -360,76 +356,144 @@ impl PlaneCtx<'_, '_> {
         // takes `Spin::about_owner` with that origin.
         let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
         match shape {
-            ShapeRecord::Quad(shape) => match shape {
-                QuadShape::Box {
-                    geometry,
-                    fill,
-                    border,
-                    shadow,
-                    material,
-                } => {
-                    let PlacedBox { rect, corners } =
-                        geometry.place(owner_rect.size).translated(owner_rect.min);
-                    let quad = RectQuad {
-                        coverage: geometry.coverage,
-                        rect,
-                        corners,
-                        fill: self.brush_source(*fill),
-                        border: *border,
-                    };
-                    self.paint_box(
-                        BoxPaint {
-                            paint: RectPaint { quad, spin, alpha },
-                            shadow: *shadow,
-                            material: *material,
-                            site: BackdropSite {
-                                owner: id,
-                                origin: BackdropOrigin::Shape,
-                                shape_idx,
-                            },
+            ShapeRecord::Closed { geometry, paint } => {
+                let Some(placed) = geometry.place(owner_rect) else {
+                    return;
+                };
+                let site = BackdropSite {
+                    owner: id,
+                    origin: BackdropOrigin::Shape,
+                    shape_idx,
+                };
+                match paint {
+                    ClosedPaint::Fill(paint) => self.paint_fill(
+                        FillItem {
+                            geometry: placed,
+                            paint: *paint,
+                            site,
+                            spin,
+                            alpha,
                         },
                         out,
-                    );
-                }
-                QuadShape::Triangle {
-                    geometry,
-                    fill,
-                    border,
-                    material,
-                } => {
-                    let Some(placed) = geometry.place(owner_rect.size) else {
-                        return;
-                    };
-                    // Placed in the logical placement, as a rect is.
-                    let placed = placed.translated(owner_rect.min);
-                    let fill = self.brush_source(*fill);
-                    let site = BackdropSite {
-                        owner: id,
-                        origin: BackdropOrigin::Shape,
-                        shape_idx,
-                    };
-                    if let Some(look) = self.backdrop_look(site, *material) {
+                    ),
+                    ClosedPaint::Image {
+                        tint,
+                        source,
+                        fit,
+                        min_filter,
+                        mag_filter,
+                        downsample,
+                    } => {
+                        // Either source carries its texture id; a `GpuView` also names its owner,
+                        // whose callback the backend finds in the window's `GpuViews`, and the
+                        // epoch telling the backend whether the target is current.
+                        let (handle, view) = match source {
+                            ImageSource::Texture { id, .. } => (*id, None),
+                            ImageSource::GpuView { id: target, epoch } => {
+                                let owner = self.tree.records.widget_id()[id.idx()];
+                                (
+                                    *target,
+                                    Some(GpuViewDraw {
+                                        owner,
+                                        epoch: *epoch,
+                                    }),
+                                )
+                            }
+                        };
+                        // The image fits the shape's covering rect.
+                        let FitRect {
+                            rect,
+                            uv_min,
+                            uv_size,
+                        } = fit.resolve(placed.bounds(), source.intrinsic());
+                        let mut flags = ImageFlags::NONE;
+                        if matches!(*fit, ImageFit::Tile { .. }) {
+                            flags = flags.union(ImageFlags::TILED);
+                        }
+                        if *min_filter == ImageFilter::Nearest {
+                            flags = flags.union(ImageFlags::MIN_NEAREST);
+                        }
+                        if *mag_filter == ImageFilter::Nearest {
+                            flags = flags.union(ImageFlags::MAG_NEAREST);
+                        }
+                        flags = flags.union(match *downsample {
+                            ImageDownsample::Single => ImageFlags::NONE,
+                            ImageDownsample::Mean => ImageFlags::TAPS_MEAN,
+                            ImageDownsample::Peak => ImageFlags::TAPS_PEAK,
+                        });
                         out.draw(
-                            DrawEffectPayload::material(
-                                look.material,
-                                look.read,
-                                PlacedClosed::Triangle(placed),
-                                fill,
-                                *border,
+                            DrawClosedPayload::new(
+                                placed,
+                                ClosedImage {
+                                    rect,
+                                    uv_min,
+                                    uv_size,
+                                    tint: *tint,
+                                    handle,
+                                    flags,
+                                    view,
+                                },
                             )
                             .turned(spin),
                             alpha,
                         );
-                    } else {
-                        let triangle = DrawQuadPayload::triangle(TriangleQuad {
-                            triangle: placed,
-                            fill,
-                            border: *border,
-                        });
-                        out.draw(triangle.turned(spin), alpha);
+                    }
+                    ClosedPaint::Icon {
+                        handle,
+                        fit,
+                        tint,
+                        desaturate,
+                    } => out.draw(
+                        DrawIconPayload {
+                            rect: fit.place_artwork(placed.bounds(), handle.view_box()),
+                            icon: handle.icon,
+                            tint: *tint,
+                            desaturate: *desaturate,
+                            spin,
+                        },
+                        alpha,
+                    ),
+                    // An effect fades, turns and reads its time with its paint animation. A
+                    // backdrop effect the cascade lists not lies outside every clip.
+                    ClosedPaint::Effect {
+                        backdrop,
+                        effect,
+                        params,
+                        images,
+                        content_hash: _,
+                    } => {
+                        let backdrop = match backdrop {
+                            Some(EffectBackdrop::Capture(capture)) => {
+                                let Some(ticket) = self.backdrop_ticket(site) else {
+                                    return;
+                                };
+                                Some(EffectCaptureDraw::Capture {
+                                    ticket,
+                                    reach: capture.reach,
+                                })
+                            }
+                            Some(EffectBackdrop::Ground) => Some(EffectCaptureDraw::Ground),
+                            None => None,
+                        };
+                        out.draw(
+                            DrawClosedPayload::new(
+                                placed,
+                                ClosedEffect {
+                                    effect: *effect,
+                                    params: *params,
+                                    images: *images,
+                                    backdrop,
+                                    stage: None,
+                                    opacity: 1.0,
+                                    time: paint_mod.time,
+                                },
+                            )
+                            .turned(spin),
+                            alpha,
+                        );
                     }
                 }
-            },
+            }
             ShapeRecord::Text {
                 local_origin,
                 text,
@@ -546,144 +610,6 @@ impl PlaneCtx<'_, '_> {
                 };
                 self.paint_native_stroke(native, owner_rect, paint_mod, out);
             }
-            // An effect fades, turns and reads its time with its paint animation. A backdrop effect
-            // the cascade lists not lies outside every clip.
-            ShapeRecord::EffectPaint {
-                backdrop,
-                geometry,
-                effect,
-                params,
-                images,
-                content_hash: _,
-            } => {
-                let backdrop = match backdrop {
-                    Some(EffectBackdrop::Capture(capture)) => {
-                        let site = BackdropSite {
-                            owner: id,
-                            origin: BackdropOrigin::Shape,
-                            shape_idx,
-                        };
-                        let Some(ticket) = self.backdrop_ticket(site) else {
-                            return;
-                        };
-                        Some(EffectCaptureDraw::Capture {
-                            ticket,
-                            reach: capture.reach,
-                        })
-                    }
-                    Some(EffectBackdrop::Ground) => Some(EffectCaptureDraw::Ground),
-                    None => None,
-                };
-                let Some(placed) = geometry.place(owner_rect) else {
-                    return;
-                };
-                out.draw(
-                    DrawEffectPayload {
-                        geometry: placed,
-                        spin,
-                        effect: *effect,
-                        params: *params,
-                        images: *images,
-                        backdrop,
-                        stage: None,
-                        opacity: 1.0,
-                        time: paint_mod.time,
-                    },
-                    alpha,
-                );
-            }
-            ShapeRecord::IconPaint {
-                local_rect,
-                handle,
-                fit,
-                tint,
-                desaturate,
-            } => {
-                let base = owner_rect.resolve_local(*local_rect);
-                out.draw(
-                    DrawIconPayload {
-                        rect: fit.place_artwork(base, handle.view_box()),
-                        icon: handle.icon,
-                        tint: *tint,
-                        desaturate: *desaturate,
-                        spin,
-                    },
-                    alpha,
-                );
-            }
-            ShapeRecord::ImagePaint {
-                geometry,
-                tint,
-                source,
-                fit,
-                min_filter,
-                mag_filter,
-                downsample,
-            } => {
-                // The rect the image fits in, and the shape that clips it, where one does.
-                let Some(placed) = geometry.place(owner_rect) else {
-                    return;
-                };
-                let base = placed.bounds();
-                // Square corners clip nothing past the image's own rect.
-                let clip = match placed {
-                    PlacedClosed::Box {
-                        placed: PlacedBox { corners, .. },
-                        ..
-                    } if corners == Corners::ZERO => None,
-                    _ => Some(placed),
-                };
-                // Either source carries its texture id; a `GpuView` also names its owner, whose
-                // callback the backend finds in the window's `GpuViews`, and the epoch telling
-                // the backend whether the target is current.
-                let (handle, view) = match source {
-                    ImageSource::Texture { id, .. } => (*id, None),
-                    ImageSource::GpuView { id: target, epoch } => {
-                        let owner = self.tree.records.widget_id()[id.idx()];
-                        (
-                            *target,
-                            Some(GpuViewDraw {
-                                owner,
-                                epoch: *epoch,
-                            }),
-                        )
-                    }
-                };
-                let FitRect {
-                    rect,
-                    uv_min,
-                    uv_size,
-                } = fit.resolve(base, source.intrinsic());
-                let mut flags = ImageFlags::NONE;
-                if matches!(*fit, ImageFit::Tile { .. }) {
-                    flags = flags.union(ImageFlags::TILED);
-                }
-                if *min_filter == ImageFilter::Nearest {
-                    flags = flags.union(ImageFlags::MIN_NEAREST);
-                }
-                if *mag_filter == ImageFilter::Nearest {
-                    flags = flags.union(ImageFlags::MAG_NEAREST);
-                }
-                flags = flags.union(match *downsample {
-                    ImageDownsample::Single => ImageFlags::NONE,
-                    ImageDownsample::Mean => ImageFlags::TAPS_MEAN,
-                    ImageDownsample::Peak => ImageFlags::TAPS_PEAK,
-                });
-                out.draw(
-                    DrawImagePayload {
-                        rect,
-                        geometry: clip,
-                        uv_min,
-                        uv_size,
-                        tint: *tint,
-                        handle,
-                        flags,
-                        spin,
-                        view,
-                    },
-                    alpha,
-                );
-            }
         }
     }
 
@@ -713,40 +639,36 @@ impl PlaneCtx<'_, '_> {
         let chrome = self.tree.chrome(id);
 
         if let Some(chrome) = chrome {
-            let quad = RectQuad {
-                coverage: Coverage::Inside,
+            let geometry = PlacedClosed::inside(PlacedBox {
                 rect,
                 corners: chrome.corners,
-                fill: self.brush_source(chrome.fill),
-                border: chrome.border,
-            };
+            });
             // Alpha `1.0`: chrome isn't a shape, so no paint animation.
-            self.paint_box(
-                BoxPaint {
-                    paint: RectPaint {
-                        quad,
-                        spin: None,
-                        alpha: 1.0,
+            self.paint_fill(
+                FillItem {
+                    geometry,
+                    paint: LoweredPaint {
+                        fill: chrome.fill,
+                        border: chrome.border,
+                        shadow: chrome.shadow,
+                        material: chrome.material,
                     },
-                    shadow: chrome.shadow,
-                    material: chrome.material,
                     site: BackdropSite {
                         owner: id,
                         origin: BackdropOrigin::Chrome,
                         shape_idx: self.tree.records.shape_span()[id.idx()].start,
                     },
+                    spin: None,
+                    alpha: 1.0,
                 },
                 out,
             );
             if chrome.ring {
-                let ring = DrawQuadPayload::rect(RectQuad {
-                    coverage: Coverage::Inside,
-                    rect,
-                    corners: chrome.corners,
-                    fill: self.brush_source(LoweredBrush::Solid(RgbaF16::TRANSPARENT)),
-                    border: self.tree.focus_ring,
-                });
-                out.draw(ring, 1.0);
+                let ring = ClosedFill::new(
+                    self.brush_source(LoweredBrush::Solid(RgbaF16::TRANSPARENT)),
+                    self.tree.focus_ring,
+                );
+                out.draw(DrawClosedPayload::new(geometry, ring), 1.0);
             }
         }
 

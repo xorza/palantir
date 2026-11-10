@@ -19,29 +19,27 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::shape::curve::CurveShape;
 use crate::shape::effect_paint::ErasedEffectPaint;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
-use crate::shape::geometry::box_geometry::BoxGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::mesh::MeshShape;
 use crate::shape::polyline::PolylineShape;
-use crate::shape::rect::RectShape;
 use crate::shape::text::TextShape;
-use crate::shape::triangle::TriangleShape;
 
 /// One pair [`Ui::add_shape`](crate::Ui::add_shape) takes, borrowed from its caller: the pipeline
 /// that draws it, its geometry and its paint. Each pair's `DrawWith::draw` makes one, so the
 /// record store lowers every pair through one match, compiled once.
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a draw lives on the stack for one `add_shape` and is matched once; boxing its effect \
+              would allocate per shape"
+)]
 pub(crate) enum Draw<'a> {
-    /// A rect's or a circle's box.
-    Box {
-        geometry: BoxGeometry,
-        paint: Cow<'a, Paint>,
-    },
-    Triangle {
-        shape: &'a TriangleShape,
-        paint: Cow<'a, Paint>,
+    /// A rect, a circle or a triangle, and the paint that covers it.
+    Closed {
+        geometry: ClosedGeometry,
+        paint: ClosedPaintRef<'a>,
     },
     /// A line or a Bézier.
     Curve {
@@ -65,26 +63,30 @@ pub(crate) enum Draw<'a> {
         shape: &'a MeshShape<'a>,
         tint: RgbaF32,
     },
-    /// An image over a rect, a circle or a triangle.
-    ImagePaint {
-        geometry: ClosedGeometry,
-        paint: &'a ImagePaint,
-    },
-    IconPaint {
-        rect: &'a RectShape,
-        paint: &'a IconPaint,
-    },
-    /// An app's effect over a rect, a circle or a triangle.
-    EffectPaint {
-        geometry: ClosedGeometry,
-        paint: ErasedEffectPaint<'a>,
-    },
+}
+
+/// The paint of a [`Draw::Closed`], borrowed from its caller.
+#[derive(Debug)]
+pub(crate) enum ClosedPaintRef<'a> {
+    /// A box's or a triangle's fill, border, shadow and material.
+    Fill(Cow<'a, Paint>),
+    Image(&'a ImagePaint),
+    /// An icon, of a square-cornered rect alone.
+    Icon(&'a IconPaint),
+    /// An app's effect.
+    Effect(ErasedEffectPaint<'a>),
 }
 
 impl Draw<'_> {
     /// Whether the draw reads a paint animation's time, so an animation that drives no channel
     /// still moves it: only an effect does.
     pub(crate) const fn reads_time(&self) -> bool {
-        matches!(self, Self::EffectPaint { .. })
+        matches!(
+            self,
+            Self::Closed {
+                paint: ClosedPaintRef::Effect(_),
+                ..
+            }
+        )
     }
 }

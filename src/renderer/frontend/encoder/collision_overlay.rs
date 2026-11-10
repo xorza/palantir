@@ -1,14 +1,16 @@
 //! The explicit-`WidgetId` collision overlay, in every build: a duplicate id shares a widget's state between two call sites, and a bug that shows beats one that only logs (`Forest::report_explicit_collision`).
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::lowered_border::LoweredBorder;
 
 /// Magenta, distinct from the red damage-rect overlay. Painted unclipped after every layer.
@@ -22,13 +24,16 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
             let entry = scene.cascade.entry(scene.cascade.location(ep));
             let screen = entry.transform.apply_rect(rect);
             out.draw(
-                DrawQuadPayload::rect(RectQuad {
-                    coverage: Coverage::Inside,
-                    rect: screen,
-                    corners: Corners::ZERO,
-                    fill: BrushSource::Solid(RgbaF16::TRANSPARENT),
-                    border: LoweredBorder::lower(BORDER),
-                }),
+                DrawClosedPayload::new(
+                    PlacedClosed::inside(PlacedBox {
+                        rect: screen,
+                        corners: Corners::ZERO,
+                    }),
+                    ClosedFill::new(
+                        BrushSource::Solid(RgbaF16::TRANSPARENT),
+                        LoweredBorder::lower(BORDER),
+                    ),
+                ),
                 1.0,
             );
         }

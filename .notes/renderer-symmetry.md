@@ -9,7 +9,26 @@ between them do not: a record, a payload, a composer packer, a wire instance and
 tell the same closed shape in a different way. A box and a triangle hold their paint, and an image
 and an effect hold their shape.
 
+## Status
+
+| Batch | State |
+| --- | --- |
+| B1 Geometry | done, `acd517c11` |
+| B2 Records and payloads | done |
+| B3 Packer | next |
+| B4 Turns | to do |
+| B5 Wire | to do |
+| B6 Keys | to do |
+| B7 Effect forms | to do |
+| B8 Composite | waits for D1 |
+| B9 Strokes | to do |
+
+Each decision below starts with its state: **[done]**, **[part]** with what is left, or the batch
+that does it.
+
 ## Findings
+
+The tables and lists below state the code before B1.
 
 The same closed shape, told three ways. Paths are from `src/`.
 
@@ -30,15 +49,15 @@ The same closed shape, told three ways. Paths are from `src/`.
 
 Smaller faults of the same origin:
 
-- **A shadow is a `DrawQuadPayload` with a kind tag.** `FillKind::SHADOW_DROP` or `SHADOW_INSET`
+- **[fixed in B2] A shadow is a `DrawQuadPayload` with a kind tag.** `FillKind::SHADOW_DROP` or `SHADOW_INSET`
   selects it, and `fill_axis` carries `(offset, σ, spread)` under a gradient's name. A border on a
   shadow and a shadow on a triangle are representable, and `QuadForm::of` panics on them.
-- **`FillKind::FAST_BIT` reaches the wire, and no production shader reads it.** Only the internals
+- **[B6] `FillKind::FAST_BIT` reaches the wire, and no production shader reads it.** Only the internals
   reference (`quad_pipeline/reference.wgsl`) reads it. The CPU reads it back in
   `ComposeSession::record_opaque_cover`, where `PackedQuad::is_pixel_aligned` gives the same answer.
-- **A box's fill and border have two homes**: `DrawQuadPayload` without a material,
+- **[open] A box's fill and border have two homes**: `DrawQuadPayload` without a material,
   `MaterialStage` inside `DrawEffectPayload` with one.
-- **`QuadForm::BoxOutside` merges two brushes** and reads the tag at run time, while the inside
+- **[B6] `QuadForm::BoxOutside` merges two brushes** and reads the tag at run time, while the inside
   forms pin it. No triangle form covers its outside, by contract, but no type says so.
 
 ### Turns
@@ -112,7 +131,7 @@ makes these one, and keeps the pipelines above.
 
 ## Decisions
 
-- **A draw is a geometry and a paint, geometry outside, at every layer.** A record, a payload and a
+- **[part: the wire and WGSL in B5] A draw is a geometry and a paint, geometry outside, at every layer.** A record, a payload and a
   row each hold a shape and an enum of the paints its family draws. As Skia Graphite records a draw
   as its geometry and its `PaintParams`, and makes the pipeline from the `RenderStep` the geometry
   picks and the paint's key
@@ -122,11 +141,11 @@ makes these one, and keeps the pipelines above.
   the paint owning its shape, as Impeller's `Contents::GetGeometry` does
   ([`color_source_contents.h`](https://github.com/flutter/flutter/blob/master/engine/src/flutter/impeller/entity/contents/color_source_contents.h)),
   which `DrawImagePayload` and `DrawEffectPayload` follow now.
-- **The pair picks the renderer family, and the record keeps the pair.** An icon of a rect lowers
+- **[done] The pair picks the renderer family, and the record keeps the pair.** An icon of a rect lowers
   to the glyph-atlas family; a box's shadow lowers to the blurred-box family under or over its
   fill. As Graphite's `RendererProvider` picks a `Renderer` from the geometry and the style.
   Refused: a record per renderer family, which puts the renderer's split in the authoring model.
-- **One closed-shape type per stage.** `ClosedGeometry` in the record, the box's side in it;
+- **[part: `ShapeHeader` and `PalantirShape` in B5] One closed-shape type per stage.** `ClosedGeometry` in the record, the box's side in it;
   `PlacedClosed` in the payload; `ShapeHeader` on the wire; `PalantirShape` in WGSL. A paint that
   draws no outside panics at `add_shape`, as an image's does now, and the record store asserts it.
   Named `PlacedClosed`, not `PlacedShape`: a shape is any geometry, a stroke's too (`AGENTS.md`, "A
@@ -134,31 +153,36 @@ makes these one, and keeps the pipelines above.
   side in `ClosedGeometry`, routes to one shape. Landed in B1 over the variant structs
   (`BoxGeometry`, `PlacedBox`, …), which B2 inlines; the payload's paint word names the brush
   alone, and the composer writes the outside and triangle bits into the `Quad` from the shape.
-- **Records.** `ShapeRecord::Closed { geometry: ClosedGeometry, paint: ClosedPaint }`, with
-  `ClosedPaint { Fill { fill, border, shadow, material }, Image(…), Effect(…), Icon(…) }`. An icon
-  takes a sharp box that covers its inside, checked at `add_shape`. The authoring `Draw` takes the
-  same shape: `Draw::Closed { geometry, paint }`.
-- **Payloads, one per geometry family.** `DrawClosedPayload { shape: PlacedClosed, spin, paint }`,
-  with a paint of `Fill { brush, border }`, `Image(ImageLayer)` or `Effect(EffectLayer)`; a
-  material is an `EffectLayer` whose `stage` is `Some`, as now. `DrawShadowPayload { source:
-  PlacedBox, shadow, color }`, so a shadow on a triangle or with a border is no value. Text, icon,
-  mesh and stroke keep a payload each. Refused: one payload of a geometry enum and a paint enum,
-  whose product holds pairs no family draws.
-- **An image's own rect is part of its paint.** `ImageLayer { rect, uv, tint, handle, flags, view
-  }`: where the image lies inside its shape, past which it shows nothing, as CSS's
-  `background-repeat: no-repeat` lays an image in its box. The composer picks the rect form where
-  the shape cuts nothing past that rect, the choice the encoder's `Corners::ZERO` test makes now.
-- **A spin belongs to the draw, never to its geometry.** It is a paint animation's turn of the
+- **[done] Records.** `ShapeRecord::Closed { geometry: ClosedGeometry, paint: ClosedPaint }`, with
+  `ClosedPaint { Fill(LoweredPaint), Image { … }, Icon { … }, Effect { … } }`. An icon takes a sharp
+  box that covers its inside, checked at `add_shape` and asserted at record. The authoring `Draw`
+  takes the same shape: `Draw::Closed { geometry, paint: ClosedPaintRef }`. Landed in B2. Cost: the
+  record grows from 136 to 144 B, the triangle's geometry beside a box's paint with its shadow.
+- **[done] One payload for every closed paint, generic over the paint.** `DrawClosedPayload<P> {
+  geometry: PlacedClosed, spin, paint: P }`, `P` one of `ClosedFill`, `ClosedImage` and
+  `ClosedEffect`, each a `ClosedPaintPayload` that fades, says whether it paints over its shape and
+  names its sink method; a material is a `ClosedEffect` whose `stage` is `Some`.
+  `DrawShadowPayload { source: PlacedBox, spin, shadow }`, so a shadow on a triangle or with a
+  border is no value. Text, icon, mesh and stroke keep a payload each. Landed in B2: a fill draw
+  stays 84 B and an image draw 120 B. Refused: an enum of the paints in one payload, which would
+  carry an effect's 150-odd bytes in every fill a frame draws; one payload of a geometry enum and a
+  paint enum, whose product holds pairs no family draws.
+- **[done] An image's own rect is part of its paint.** `ClosedImage { rect, uv_min, uv_size, tint,
+  handle, flags, view }`: where the image lies inside its shape, past which it shows nothing, as
+  CSS's `background-repeat: no-repeat` lays an image in its box. Every image draw carries its
+  shape, and the composer draws one quad over the image's rect where the shape is a
+  square-cornered box, which cuts nothing past it. Landed in B2.
+- **[part: curve and polyline in B4] A spin belongs to the draw, never to its geometry.** It is a paint animation's turn of the
   whole draw, so every payload holds `spin: Option<Spin>` beside its shape, a curve's and a
   polyline's too. Refused: a spin inside `QuadGeometry`'s variants (gone in B1) or inside
   `StrokeBounds`.
-- **A turn reaches every draw through the gate, as a fade does.** `PaintSink::draw(payload,
+- **[B4] A turn reaches every draw through the gate, as a fade does.** `PaintSink::draw(payload,
   PaintMod { alpha, spin })`, and `PaintPayload::turned` beside `faded`, so no encoder arm can
   forget to turn. Refused: a turn passed by hand in each arm.
-- **One pivot frame, the encoder's logical frame.** `Spin::about_owner` loses its `origin`
+- **[B4] One pivot frame, the encoder's logical frame.** `Spin::about_owner` loses its `origin`
   parameter; a payload with an `origin` (mesh, curve, polyline) subtracts it where it turns its own
   points. Refused: a pivot whose frame depends on the payload, two readings of one field.
-- **The composer culls a turned draw by its bound at this frame's angle; the cascade keeps the
+- **[B4] The composer culls a turned draw by its bound at this frame's angle; the cascade keeps the
   swept one.** The cull asks whether the draw paints in this frame's damage, which the turned
   bound answers: a rect's turned bound, a curve's turned control points or arc, which the composer
   turns already. The cascade's paint rect must hold across an animation's frames, which the swept
@@ -166,47 +190,48 @@ makes these one, and keeps the pipelines above.
   it now, which admits draws that paint nothing in the damage; `StrokeBounds`, a cull bound stored
   where the composer derives it from the geometry. Cost: the polyline keeps its record's `bbox` in
   its geometry, as a scan of its points is O(n).
-- **One enum per family and stage, its variants inline.** Record: `ClosedGeometry { Box {
-  local_rect, outline, coverage }, Triangle { corners, radius, placement } }` and `StrokeGeometry {
-  Bezier { bezier, placement }, Arc { local_rect, start_angle, sweep }, Polyline { points, bbox,
-  placement } }`. Placed: `PlacedClosed { Box { rect, corners, coverage }, Triangle { centers,
-  radius } }` and `PlacedStroke { Curve(CurveBasis), Polyline { … }, Dot(PlacedClosed), Nothing }`.
-  A variant gets a struct of its own only where it travels alone. Goes: `BoxGeometry`,
-  `TriangleGeometry`, `PlacedBox`, `PlacedTriangle`, `ArcGeometry`, `BezierGeometry`, `QuadShape`,
-  `RectQuad`, `TriangleQuad`, `RectPaint`, `PackedQuad`, `StrokeBounds`: twelve types. Comes:
-  `StrokeGeometry`. Refused: a struct per variant beside each enum, built, passed and changed only
-  with it; one geometry enum for every family, whose pairs with paints no family draws would be
-  representable; a payload generic over geometry and paint, which each family's own fields, text's
-  ink and an image's view, break into special cases.
-- **One packer.** `TemplateShape::of(PlacedClosed, spin)` packs every closed draw, with one edge
+- **[part: closed shapes done; strokes in B9, `PackedQuad` in B3] One enum per family and stage, over a struct per kind that owns its math.** Record:
+  `ClosedGeometry { Box(BoxGeometry), Triangle(TriangleGeometry) }`, and `StrokeGeometry {
+  Bezier(BezierGeometry), Arc(ArcGeometry), Polyline { … } }`. Placed: `PlacedClosed { Box {
+  placed: PlacedBox, coverage }, Triangle(PlacedTriangle) }` and `PlacedStroke`. As `std`'s
+  `IpAddr { V4(Ipv4Addr), V6(Ipv6Addr) }`: each kind's struct holds the methods of its kind, its
+  placement, bounds and hash, and travels alone where one kind is meant, a stroke's dot as a
+  `PlacedBox`, a triangle into the composer's `TemplateShape::triangle`. What goes are the bundles
+  that repeat them: `QuadShape`, `RectQuad`, `TriangleQuad`, `RectPaint`, `BoxPaint` (gone in B2),
+  `EffectGeometry`, `QuadGeometry` (gone in B1), `PackedQuad`'s second route, `StrokeBounds`.
+  Refused, after B2 was planned on it: the variants inline, which turns each kind's methods into
+  enum matches and a triangle's placement into a free function of four parameters, the struct
+  again; one geometry enum for every family, whose pairs with paints no family draws would be
+  representable.
+- **[B3] One packer.** `TemplateShape::of(PlacedClosed, spin)` packs every closed draw, with one edge
   rounding rule; `PackedQuad` keeps the fill's own lanes. Refused: `DrawEffectPayload::quad`,
   which builds a transparent quad to reach a second packer.
-- **One wire header.** `ShapeHeader { rect, points, radii: Corners, inradius, rotation, clip }`
+- **[B5] One wire header.** `ShapeHeader { rect, points, radii: Corners, inradius, rotation, clip }`
   opens `Quad`, `ImageInstance` and `EffectInstance` at the same attribute locations, and one
   WGSL function reads it into a `PalantirShape`. The radii are f16 in all three, as the effect's
   `[f32; 4]` widens the same f16 values. Refused: three layouts and three readers that must
   agree by hand.
-- **A pipeline key is a closed-shape form and a paint specialization.** `ShapeForm { Rect, Box,
+- **[B6, effects in B7] A pipeline key is a closed-shape form and a paint specialization.** `ShapeForm { Rect, Box,
   BoxOutside, Triangle }` is shared by every closed family and pinned as a constant in each:
   fill `(ShapeForm, Solid | Gradient)`, image `ShapeForm`, effect `(EffectId, ShapeForm)`. Each
   pipeline is built on the first frame that draws it, as a `ClipVariant` half is. Refused: the
   corner count as instance data, as an effect reads it now, which puts a runtime `% n` in the
   template's vertex decode where the constant folds it, and which no bench measured; the
   flattened `QuadForm`, where `BoxOutside` merges two brushes.
-- **The key lives in a column beside the instance, set once by the composer.** Every family whose
+- **[B6] The key lives in a column beside the instance, set once by the composer.** Every family whose
   rows pick a pipeline stores `Soa<Row { key, instance }>`, as `ImageDrawRow::form` does now. A
   shadow's key says shadow, and the backend picks its entry from the cutout plan it alone holds,
   as `QuadDraws` does now. Refused: `QuadPipeline` deriving `QuadDraw` from `fill_kind` bits at upload, and
   `EffectInstance::corner_count` reading flags.
-- **`FillKind` is a brush tag.** It keeps solid, linear, radial, conic, ramp and the spread. The
+- **[part: the payload's word since B1; the `Quad`'s in B6] `FillKind` is a brush tag.** It keeps solid, linear, radial, conic, ramp and the spread. The
   outside and triangle bits move to `ShapeForm`; the shadow tags move to `QuadDraw::Shadow`;
   `FAST_BIT` goes, and `record_opaque_cover` reads `PackedQuad::is_pixel_aligned`. Refused: a
   paint word that carries geometry and a composer flag.
-- **Shadows stay in the quad stream.** Inside a group, the quad lane replays in record order, and
+- **[part: kept; its named lanes in B6] Shadows stay in the quad stream.** Inside a group, the quad lane replays in record order, and
   a drop shadow paints under its box and an inset shadow over its fill. A stream of its own would
   move shadows to a tier, and each shadowed box would close a group. The shadow's lanes are named
   as a shadow's (`offset`, `σ`, `spread`), not borrowed from `fill_axis`.
-- **One stroke payload.** `DrawStrokePayload { path: Cubic | Arc | Polyline, stroke }` feeds the one
+- **[B9] One stroke payload.** `DrawStrokePayload { path: Cubic | Arc | Polyline, stroke }` feeds the one
   curve pipeline that draws all three, with `ShapeRecord::Stroke { path, stroke }` behind it.
   Refused: `DrawCurvePayload` and `DrawPolylinePayload`, and three stroke records, for one family.
 
@@ -215,23 +240,24 @@ makes these one, and keeps the pipelines above.
 Each batch is a refactor that moves no golden, except B8. The visual suite and the composer's
 captured streams prove it.
 
-1. **B1 Geometry**, landed. `ClosedGeometry` with coverage, `PlacedClosed` with coverage in
+1. [x] **B1 Geometry**, done. `ClosedGeometry` with coverage, `PlacedClosed` with coverage in
    every closed payload; spin out of `QuadGeometry`, which goes with `EffectGeometry`.
-2. **B2 Records, payloads and closed types.** `ClosedGeometry` and `PlacedClosed` with inline
-   variants; `ShapeRecord::Closed`, `Draw::Closed`, `DrawClosedPayload` and its one fill
-   constructor, `DrawShadowPayload`; `BoxGeometry`, `TriangleGeometry`, `PlacedBox`,
-   `PlacedTriangle`, `QuadShape`, `RectQuad`, `TriangleQuad` and `RectPaint` go.
-3. **B3 Packer.** `TemplateShape::of` for every closed draw; `PackedQuad` and
-   `DrawEffectPayload::quad` go.
-4. **B4 Turns.** `PaintMod` through the gate, one pivot frame, the turned cull bound in the
+2. [x] **B2 Records and payloads**, done. `ShapeRecord::Closed`, `Draw::Closed`,
+   `DrawClosedPayload<P>`, `DrawShadowPayload`; `QuadShape`, `RectQuad`, `TriangleQuad`,
+   `RectPaint`, `BoxPaint`, `DrawQuadPayload`, `DrawImagePayload`, `DrawEffectPayload` and
+   `DrawEffectPayload::quad` go. `PackedQuad` packs a closed shape and a shadow apart from their
+   lanes, which a fill and a shadow each write.
+3. [ ] **B3 Packer.** `TemplateShape::of` for every closed draw, a fill's and an effect's too;
+   `PackedQuad` goes.
+4. [ ] **B4 Turns.** `PaintMod` through the gate, one pivot frame, the turned cull bound in the
    composer; `StrokeBounds` goes.
-5. **B5 Wire.** `ShapeHeader` in Rust and WGSL; one reader replaces `instance_shape`,
+5. [ ] **B5 Wire.** `ShapeHeader` in Rust and WGSL; one reader replaces `instance_shape`,
    `shaped_vertex` and the reader in `palantir_vs`.
-6. **B6 Keys.** `ShapeForm`, `FillKind` as a brush tag, the key column for quads, `FAST_BIT` out.
-7. **B7 Effect forms.** Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
+6. [ ] **B6 Keys.** `ShapeForm`, `FillKind` as a brush tag, the key column for quads, `FAST_BIT` out.
+7. [ ] **B7 Effect forms.** Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
    `OUTSIDE` go.
-8. **B8 Composite**, after decision D1.
-9. **B9 Strokes.** `StrokeGeometry`, `ShapeRecord::Stroke`, `DrawStrokePayload`; `ArcGeometry`
+8. [ ] **B8 Composite**, after decision D1.
+9. [ ] **B9 Strokes.** `StrokeGeometry`, `ShapeRecord::Stroke`, `DrawStrokePayload`; `ArcGeometry`
    and `BezierGeometry` go.
 
 B6 and B7 change pipeline counts: a frame with a triangle effect builds a second pipeline of that

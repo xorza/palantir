@@ -349,8 +349,8 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             .calls
             .iter()
             .filter_map(|command| match command {
-                PaintCall::Quad(payload) if payload.fill.lut_row != LutRow::FALLBACK => {
-                    Some(payload.fill.lut_row)
+                PaintCall::Fill(payload) if payload.paint.fill.lut_row != LutRow::FALLBACK => {
+                    Some(payload.paint.fill.lut_row)
                 }
                 _ => None,
             })

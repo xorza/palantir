@@ -6,13 +6,15 @@
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
@@ -67,14 +69,15 @@ macro_rules! paint_calls {
 paint_calls! {
     PushClip(PushClipPayload) => push_clip,
     PushTransform(TranslateScale) => push_transform,
-    Quad(DrawQuadPayload) => quad,
+    Fill(DrawClosedPayload<ClosedFill>) => fill,
+    Shadow(DrawShadowPayload) => shadow,
     Text(DrawTextPayload) => text,
     Mesh(DrawMeshPayload) => mesh,
     Polyline(DrawPolylinePayload) => polyline,
     Icon(DrawIconPayload) => icon,
-    Image(DrawImagePayload) => image,
+    Image(DrawClosedPayload<ClosedImage>) => image,
     Curve(DrawCurvePayload) => curve,
-    Effect(DrawEffectPayload) => effect,
+    Effect(DrawClosedPayload<ClosedEffect>) => effect,
     --
     PopClip => pop_clip,
     PopTransform => pop_transform,
@@ -99,8 +102,9 @@ impl PaintCapture {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::internals::paint_capture::{PaintCall, PaintCapture};
+    use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+    use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
     use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
     use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
@@ -127,7 +131,7 @@ pub(crate) mod internals {
             }
         }
 
-        pub(crate) fn as_image(&self) -> Option<&DrawImagePayload> {
+        pub(crate) fn as_image(&self) -> Option<&DrawClosedPayload<ClosedImage>> {
             match self {
                 Self::Image(payload) => Some(payload),
                 _ => None,

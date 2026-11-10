@@ -9,7 +9,7 @@ use crate::primitives::paint::shadow::Shadow;
 use glam::Vec2;
 use std::hash;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct LoweredShadow {
     pub(crate) color: RgbaF16,
     /// `(offset.x, offset.y, blur, spread)` in the shared 4-lane [`F16x4`] core.
@@ -51,7 +51,7 @@ impl LoweredShadow {
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {
         // Geometry is screened for NaN, not magnitude: a zero-sigma zero-offset shadow still paints, so only the tint
-        // decides visibility. Mirrors `Shadow::is_noop`; chrome reaches `DrawQuadPayload::shadow` through this form with no NaN gate.
+        // decides visibility. Mirrors `Shadow::is_noop`; chrome reaches `DrawShadowPayload` through this form with no NaN gate.
         self.color.is_noop() || self.geometry_f16.has_nan()
     }
 

@@ -1,5 +1,5 @@
 //! [`EffectPaint`]: an effect of either kind over a rect, a circle or a triangle. Lowers to
-//! `ShapeRecord::EffectPaint`.
+//! a `ShapeRecord::Closed` of `ClosedPaint::Effect`.
 
 use std::fmt;
 
@@ -12,7 +12,7 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::shape::PaintedBy;
 use crate::shape::circle::CircleShape;
-use crate::shape::draw::Draw;
+use crate::shape::draw::{ClosedPaintRef, Draw};
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 use crate::shape::rect::RectShape;
@@ -145,9 +145,9 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Rec
     }
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
-        Draw::EffectPaint {
+        Draw::Closed {
             geometry: ClosedGeometry::Box(self.geometry()),
-            paint: paint.erased(),
+            paint: ClosedPaintRef::Effect(paint.erased()),
         }
     }
 }
@@ -160,9 +160,9 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Cir
     fn check(&self, _paint: &EffectPaint<U, K>) {}
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
-        Draw::EffectPaint {
+        Draw::Closed {
             geometry: ClosedGeometry::Box(self.geometry()),
-            paint: paint.erased(),
+            paint: ClosedPaintRef::Effect(paint.erased()),
         }
     }
 }
@@ -175,9 +175,9 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Tri
     fn check(&self, _paint: &EffectPaint<U, K>) {}
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
-        Draw::EffectPaint {
+        Draw::Closed {
             geometry: ClosedGeometry::Triangle(self.geometry()),
-            paint: paint.erased(),
+            paint: ClosedPaintRef::Effect(paint.erased()),
         }
     }
 }

@@ -6,8 +6,6 @@ use glam::UVec2;
 
 /// Where a textured rect samples from. A registered image and an app-rendered GPU surface composite through
 /// the one image pipeline; only the source of the `TextureId` and the damage hash differ.
-///
-/// [`ShapeRecord::ImagePaint`]: crate::shape::record::ShapeRecord::ImagePaint
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ImageSource {
     /// A registered image: `id` is extracted at lowering so the record carries no `Rc` (the held handle keeps the GPU

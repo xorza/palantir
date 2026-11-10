@@ -365,19 +365,19 @@ mod press {
             .filter_map(|call| match call {
                 PaintCall::Effect(p) => {
                     let PlacedClosed::Box {
-                        coverage: Coverage::Inside,
                         placed: PlacedBox { rect, corners },
+                        coverage: Coverage::Inside,
                     } = p.geometry
                     else {
                         panic!("a press effect paints its button's rect");
                     };
                     Some(PressDraw {
-                        effect: p.effect,
-                        time: p.time,
+                        effect: p.paint.effect,
+                        time: p.paint.time,
                         rect,
                         corners,
                         input: bytemuck::pod_read_unaligned(bytemuck::cast_slice(
-                            &words[p.params.range()],
+                            &words[p.paint.params.range()],
                         )),
                     })
                 }

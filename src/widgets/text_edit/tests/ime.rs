@@ -11,7 +11,9 @@ use crate::primitives::input::keyboard::modifiers::Modifiers;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::record::ShapeRecord;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
@@ -37,14 +39,14 @@ fn painted(h: &Harness, caret_width: f32) -> (String, usize) {
     for shape in h.ui().tree(Layer::Main).shapes_of(block) {
         match shape {
             ShapeRecord::Text { text: run, .. } => shown.push_str(text.resolve(run.span)),
-            ShapeRecord::Quad(QuadShape::Box {
+            ShapeRecord::Closed {
                 geometry:
-                    BoxGeometry {
+                    ClosedGeometry::Box(BoxGeometry {
                         local_rect: Some(rect),
                         ..
-                    },
-                ..
-            }) if rect.size.h == caret_width && rect.size.w > caret_width => underlines += 1,
+                    }),
+                paint: ClosedPaint::Fill(LoweredPaint { .. }),
+            } if rect.size.h == caret_width && rect.size.w > caret_width => underlines += 1,
             _ => {}
         }
     }

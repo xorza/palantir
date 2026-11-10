@@ -5,25 +5,23 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 
-/// A plain rectangle draw: box geometry with a fill kind that isn't the shadow SDF (shadows share the geometry).
-pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawQuadPayload> {
+/// A plain rectangle draw: a fill over a box.
+pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawClosedPayload<ClosedFill>> {
     match call {
-        PaintCall::Quad(p)
-            if matches!(p.geometry, PlacedClosed::Box { .. }) && !p.fill.kind.is_shadow() =>
-        {
-            Some(p)
-        }
+        PaintCall::Fill(p) if matches!(p.geometry, PlacedClosed::Box { .. }) => Some(p),
         _ => None,
     }
 }
 
-pub(super) fn as_shadow(call: &PaintCall) -> Option<&DrawQuadPayload> {
+pub(super) fn as_shadow(call: &PaintCall) -> Option<&DrawShadowPayload> {
     match call {
-        PaintCall::Quad(p) if p.fill.kind.is_shadow() => Some(p),
+        PaintCall::Shadow(p) => Some(p),
         _ => None,
     }
 }
@@ -37,7 +35,7 @@ pub(super) fn drawn_fills(cmds: &PaintCapture) -> Vec<RgbaF16> {
     cmds.calls
         .iter()
         .filter_map(as_rect)
-        .map(|p| p.fill.color)
+        .map(|p| p.paint.fill.color)
         .collect()
 }
 
@@ -80,9 +78,10 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
                     Some(c) => screen.clamp_to(c),
                     None => screen,
                 };
-                out.push((p.fill.color, visible));
+                out.push((p.paint.fill.color, visible));
             }
-            PaintCall::Quad(_)
+            PaintCall::Fill(_)
+            | PaintCall::Shadow(_)
             | PaintCall::Text(_)
             | PaintCall::Mesh(_)
             | PaintCall::Polyline(_)
@@ -98,7 +97,7 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
 }
 
 #[track_caller]
-pub(super) fn quad_rect(p: &DrawQuadPayload) -> Rect {
+pub(super) fn quad_rect(p: &DrawClosedPayload<ClosedFill>) -> Rect {
     match p.geometry {
         PlacedClosed::Box {
             placed: PlacedBox { rect, .. },

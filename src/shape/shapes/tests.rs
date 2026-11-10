@@ -14,6 +14,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
 use crate::shape::image_paint::ImagePaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::polyline::PolylineShape;
 use crate::shape::record::ShapeRecord;
@@ -164,8 +165,12 @@ fn image_dimensions_above_u16_survive_lowering() {
         ),
         Some(0)
     );
-    let ShapeRecord::ImagePaint {
-        source: ImageSource::Texture { size, .. },
+    let ShapeRecord::Closed {
+        paint:
+            ClosedPaint::Image {
+                source: ImageSource::Texture { size, .. },
+                ..
+            },
         ..
     } = shapes.records[0]
     else {
@@ -195,7 +200,11 @@ fn an_image_keeps_the_shape_that_clips_it() {
     let paint = paint_of(4);
     rounded.check(&paint);
     assert_eq!(add(&mut shapes, (rounded, paint), &mut store), Some(0));
-    let ShapeRecord::ImagePaint { geometry, .. } = shapes.records[0] else {
+    let ShapeRecord::Closed {
+        geometry,
+        paint: ClosedPaint::Image { .. },
+    } = shapes.records[0]
+    else {
         panic!("an image lowers to an image record");
     };
     assert_eq!(
@@ -215,7 +224,11 @@ fn an_image_keeps_the_shape_that_clips_it() {
         add(&mut shapes, (triangle, paint_of(4)), &mut store),
         Some(1)
     );
-    let ShapeRecord::ImagePaint { geometry, .. } = shapes.records[1] else {
+    let ShapeRecord::Closed {
+        geometry,
+        paint: ClosedPaint::Image { .. },
+    } = shapes.records[1]
+    else {
         panic!("a triangle's image lowers to an image record");
     };
     assert_eq!(
@@ -233,7 +246,11 @@ fn an_image_keeps_the_shape_that_clips_it() {
     let circle = Shape::circle().at(at);
     circle.check(&paint_of(4));
     assert_eq!(add(&mut shapes, (circle, paint_of(4)), &mut store), Some(2));
-    let ShapeRecord::ImagePaint { geometry, .. } = shapes.records[2] else {
+    let ShapeRecord::Closed {
+        geometry,
+        paint: ClosedPaint::Image { .. },
+    } = shapes.records[2]
+    else {
         panic!("a circle's image lowers to an image record");
     };
     assert_eq!(

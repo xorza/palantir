@@ -16,8 +16,9 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use glam::UVec2;
 use std::f32::consts::FRAC_PI_4;
@@ -234,12 +235,13 @@ fn prune_keeps_shadow_under_opaque_cover() {
     let buf = run(
         |b, _| {
             b.draw(
-                DrawQuadPayload::shadow(
-                    Rect::new(20.0, 20.0, 60.0, 60.0),
-                    Corners::default(),
+                DrawShadowPayload::new(
+                    PlacedBox {
+                        rect: Rect::new(20.0, 20.0, 60.0, 60.0),
+                        corners: Corners::default(),
+                    },
                     LoweredShadow::lower(shadow),
-                )
-                .expect("a half-black shadow paints"),
+                ),
                 1.0,
             );
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // opaque cover on top

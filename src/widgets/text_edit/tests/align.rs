@@ -7,7 +7,9 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::layout::align::Align;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::theme::text_style::LINE_HEIGHT_FACTOR;
 use crate::widgets::text_edit::tests::*;
 
@@ -100,15 +102,15 @@ fn shape_origins(ui: &Ui, node: NodeId) -> Origins {
                 local_origin: Some(o),
                 ..
             } => text_origin = Some(*o + at),
-            ShapeRecord::Quad(QuadShape::Box {
+            ShapeRecord::Closed {
                 geometry:
-                    BoxGeometry {
+                    ClosedGeometry::Box(BoxGeometry {
                         coverage: Coverage::Inside,
                         local_rect: Some(r),
                         ..
-                    },
-                ..
-            }) => caret_origin = Some(Vec2::new(r.min.x, r.min.y) + at),
+                    }),
+                paint: ClosedPaint::Fill(LoweredPaint { .. }),
+            } => caret_origin = Some(Vec2::new(r.min.x, r.min.y) + at),
             _ => {}
         }
     }
@@ -363,15 +365,15 @@ fn selection_rects_offset_matches_text() {
         .tree(Layer::Main)
         .shapes_of(block)
         .find_map(|s| match s {
-            ShapeRecord::Quad(QuadShape::Box {
+            ShapeRecord::Closed {
                 geometry:
-                    BoxGeometry {
+                    ClosedGeometry::Box(BoxGeometry {
                         coverage: Coverage::Inside,
                         local_rect,
                         ..
-                    },
-                ..
-            }) => *local_rect,
+                    }),
+                paint: ClosedPaint::Fill(LoweredPaint { .. }),
+            } => *local_rect,
             _ => None,
         });
     let r = first_rounded.expect("selection wash rect present");

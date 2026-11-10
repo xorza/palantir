@@ -1,5 +1,5 @@
 //! [`ImagePaint`]: a registered image over a rect, a circle or a triangle. Lowers to
-//! `ShapeRecord::ImagePaint`.
+//! a `ShapeRecord::Closed` of `ClosedPaint::Image`.
 
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::math::domain;
@@ -7,7 +7,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::PaintedBy;
 use crate::shape::circle::CircleShape;
-use crate::shape::draw::Draw;
+use crate::shape::draw::{ClosedPaintRef, Draw};
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
@@ -97,9 +97,9 @@ impl sealed::DrawWith<ImagePaint> for RectShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
-        Draw::ImagePaint {
+        Draw::Closed {
             geometry: ClosedGeometry::Box(self.geometry()),
-            paint,
+            paint: ClosedPaintRef::Image(paint),
         }
     }
 }
@@ -111,9 +111,9 @@ impl sealed::DrawWith<ImagePaint> for CircleShape {
     fn check(&self, _paint: &ImagePaint) {}
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
-        Draw::ImagePaint {
+        Draw::Closed {
             geometry: ClosedGeometry::Box(self.geometry()),
-            paint,
+            paint: ClosedPaintRef::Image(paint),
         }
     }
 }
@@ -125,9 +125,9 @@ impl sealed::DrawWith<ImagePaint> for TriangleShape {
     fn check(&self, _paint: &ImagePaint) {}
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
-        Draw::ImagePaint {
+        Draw::Closed {
             geometry: ClosedGeometry::Triangle(self.geometry()),
-            paint,
+            paint: ClosedPaintRef::Image(paint),
         }
     }
 }

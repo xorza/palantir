@@ -16,8 +16,10 @@ use crate::primitives::paint::line_style::LineCap;
 use crate::scene::layer::Layer;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::BoxGeometry;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::lowered_brush::LoweredBrush;
-use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
@@ -1219,14 +1221,14 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         .tree(Layer::Main)
         .shapes_of(node)
         .filter_map(|shape| match shape {
-            ShapeRecord::Quad(QuadShape::Box {
+            ShapeRecord::Closed {
                 geometry:
-                    BoxGeometry {
+                    ClosedGeometry::Box(BoxGeometry {
                         local_rect: Some(rect),
                         ..
-                    },
-                ..
-            }) => Some(*rect),
+                    }),
+                paint: ClosedPaint::Fill(LoweredPaint { .. }),
+            } => Some(*rect),
             _ => None,
         })
         .collect();

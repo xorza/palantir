@@ -19,12 +19,14 @@ use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_brush::LoweredBrush;
-use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::Resolve;
@@ -186,14 +188,19 @@ fn a_triangle_records_its_gradient_as_a_rect_does() {
     let triangle = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0);
     triangle.check(&gradient);
     let mut store = RecordStore::default();
-    let Some(ShapeRecord::Quad(QuadShape::Triangle { fill, .. })) =
-        lower_in(&mut store, (triangle, gradient.clone()))
+    let Some(ShapeRecord::Closed {
+        geometry: ClosedGeometry::Triangle(_),
+        paint: ClosedPaint::Fill(LoweredPaint { fill, .. }),
+    }) = lower_in(&mut store, (triangle, gradient.clone()))
     else {
         panic!("a triangle of a gradient records a triangle quad");
     };
-    let Some(ShapeRecord::Quad(QuadShape::Box {
-        fill: rect_fill, ..
-    })) = lower_in(&mut store, (Shape::rect(), gradient))
+    let Some(ShapeRecord::Closed {
+        geometry: ClosedGeometry::Box(_),
+        paint: ClosedPaint::Fill(LoweredPaint {
+            fill: rect_fill, ..
+        }),
+    }) = lower_in(&mut store, (Shape::rect(), gradient))
     else {
         panic!("a rect of a gradient records a box");
     };
@@ -224,17 +231,25 @@ fn a_triangle_wears_a_material_as_a_rect_does() {
     let Some(record) = lower((triangle, paint.clone())) else {
         panic!("a triangle of a material records it");
     };
-    let ShapeRecord::Quad(QuadShape::Triangle {
-        material: Some(material),
-        ..
-    }) = record
+    let ShapeRecord::Closed {
+        geometry: ClosedGeometry::Triangle(_),
+        paint:
+            ClosedPaint::Fill(LoweredPaint {
+                material: Some(material),
+                ..
+            }),
+    } = record
     else {
         panic!("a triangle's material lowers into its quad, got {record:?}");
     };
-    let Some(ShapeRecord::Quad(QuadShape::Box {
-        material: Some(rect_material),
-        ..
-    })) = lower((Shape::rect(), paint))
+    let Some(ShapeRecord::Closed {
+        geometry: ClosedGeometry::Box(_),
+        paint:
+            ClosedPaint::Fill(LoweredPaint {
+                material: Some(rect_material),
+                ..
+            }),
+    }) = lower((Shape::rect(), paint))
     else {
         panic!("a rect of a material records it");
     };
@@ -281,7 +296,11 @@ fn triangle_rounding_keeps_the_edges() {
         let shape =
             Shape::triangle(Vec2::ZERO, Vec2::new(30.0, 0.0), Vec2::new(0.0, 40.0)).radius(radius);
         let record = lower_in(&mut store, (shape, RgbaF32::WHITE));
-        let Some(ShapeRecord::Quad(QuadShape::Triangle { geometry, .. })) = record else {
+        let Some(ShapeRecord::Closed {
+            geometry: ClosedGeometry::Triangle(geometry),
+            paint: ClosedPaint::Fill(LoweredPaint { .. }),
+        }) = record
+        else {
             panic!("a triangle lowers to a triangle quad, got {record:?}");
         };
         let placed = geometry.place(Size::ZERO);
@@ -345,8 +364,10 @@ fn typed_builders_set_the_fields_they_name() {
     // A rect of no size only anchors a natural point shape: the corners move by (10, 10).
     let anchored = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0)
         .at(Rect::new(10.0, 10.0, 0.0, 0.0));
-    let Some(ShapeRecord::Quad(QuadShape::Triangle { geometry, .. })) =
-        lower((anchored, RgbaF32::WHITE))
+    let Some(ShapeRecord::Closed {
+        geometry: ClosedGeometry::Triangle(geometry),
+        paint: ClosedPaint::Fill(LoweredPaint { .. }),
+    }) = lower((anchored, RgbaF32::WHITE))
     else {
         panic!("a triangle in a rect of no size keeps its record");
     };
@@ -702,10 +723,14 @@ fn a_rect_shapes_bbox_takes_in_its_drop_shadow() {
     let owner = Size::new(100.0, 60.0);
     let bbox = |shadow: Shadow| {
         let paint = Paint::from(RgbaF32::WHITE).with_shadow(shadow);
-        let Some(ShapeRecord::Quad(quad)) = lower((Shape::rect(), paint)) else {
-            panic!("a rect lowers to a quad");
+        let Some(ShapeRecord::Closed {
+            geometry,
+            paint: ClosedPaint::Fill(paint),
+        }) = lower((Shape::rect(), paint))
+        else {
+            panic!("a rect lowers to a fill");
         };
-        quad.bbox_local(owner)
+        paint.bbox_local(geometry, owner)
     };
     let drop = Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0);
     assert_eq!(bbox(drop), Rect::new(-16.0, -14.0, 132.0, 92.0));

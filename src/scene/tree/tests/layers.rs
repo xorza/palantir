@@ -19,7 +19,9 @@ use crate::scene::plane::Plane;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::record::ShapeRecord;
 use crate::shape::rect::RectShape;
 use crate::ui::Ui;
@@ -245,15 +247,15 @@ fn mid_recording_popup_keeps_trees_independent() {
     }
     fn marker_w(s: &ShapeRecord) -> u32 {
         match s {
-            ShapeRecord::Quad(QuadShape::Box {
+            ShapeRecord::Closed {
                 geometry:
-                    BoxGeometry {
+                    ClosedGeometry::Box(BoxGeometry {
                         coverage: Coverage::Inside,
                         local_rect: Some(r),
                         ..
-                    },
-                ..
-            }) => r.size.w as u32,
+                    }),
+                paint: ClosedPaint::Fill(LoweredPaint { .. }),
+            } => r.size.w as u32,
             _ => panic!("unexpected shape variant"),
         }
     }

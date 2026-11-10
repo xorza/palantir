@@ -17,7 +17,6 @@ use crate::display::Display;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
@@ -32,14 +31,15 @@ use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw,
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
+    ClosedEffect, EffectCaptureDraw,
 };
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
+use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
@@ -407,13 +407,16 @@ impl ClipCase {
 
 fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
-        DrawQuadPayload::rect(RectQuad {
-            coverage: Coverage::Inside,
-            rect,
-            corners: Corners::ZERO,
-            fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-            border: LoweredBorder::NONE,
-        }),
+        DrawClosedPayload::new(
+            PlacedClosed::inside(PlacedBox {
+                rect,
+                corners: Corners::ZERO,
+            }),
+            ClosedFill::new(
+                BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+                LoweredBorder::NONE,
+            ),
+        ),
         1.0,
     );
 }
@@ -441,15 +444,17 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
         reach: material.capture().expect("the fixture captures").reach,
     };
     cmds.draw(
-        DrawEffectPayload::material(
-            material,
-            read,
+        DrawClosedPayload::new(
             PlacedClosed::inside(PlacedBox {
                 rect,
                 corners: Corners::ZERO,
             }),
-            BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
-            LoweredBorder::NONE,
+            ClosedEffect::material(
+                material,
+                read,
+                BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
+                LoweredBorder::NONE,
+            ),
         ),
         1.0,
     );
@@ -498,16 +503,21 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
 
 fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
-        DrawImagePayload {
-            rect,
-            geometry: None,
-            uv_min: Vec2::ZERO,
-            uv_size: Vec2::ONE,
-            tint: RgbaF32::WHITE.to_f16(),
-            handle: TextureId(1),
-            flags: ImageFlags::NONE,
+        DrawClosedPayload {
+            geometry: PlacedClosed::inside(PlacedBox {
+                rect,
+                corners: Corners::ZERO,
+            }),
             spin: None,
-            view: None,
+            paint: ClosedImage {
+                rect,
+                uv_min: Vec2::ZERO,
+                uv_size: Vec2::ONE,
+                tint: RgbaF32::WHITE.to_f16(),
+                handle: TextureId(1),
+                flags: ImageFlags::NONE,
+                view: None,
+            },
         },
         1.0,
     );

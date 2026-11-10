@@ -23,9 +23,12 @@ use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
+    ClosedImage, GpuViewDraw,
+};
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
@@ -138,21 +141,32 @@ fn run_in(
 
 /// The payload the encoder builds for a `GpuView`: full arranged rect, untinted, full UV, default
 /// sampling, its view owned by one widget at epoch 0.
-pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
-    DrawImagePayload {
-        rect,
-        geometry: None,
-        uv_min: Vec2::ZERO,
-        uv_size: Vec2::ONE,
-        tint: RgbaF32::WHITE.to_f16(),
-        handle,
-        flags: ImageFlags::NONE,
-        spin: None,
-        view: Some(GpuViewDraw {
-            owner: WidgetId::from_hash("view"),
-            epoch: 0,
+pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawClosedPayload<ClosedImage> {
+    DrawClosedPayload::new(
+        PlacedClosed::inside(PlacedBox {
+            rect,
+            corners: Corners::ZERO,
         }),
-    }
+        ClosedImage {
+            rect,
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: RgbaF32::WHITE.to_f16(),
+            handle,
+            flags: ImageFlags::NONE,
+            view: Some(GpuViewDraw {
+                owner: WidgetId::from_hash("view"),
+                epoch: 0,
+            }),
+        },
+    )
+}
+
+/// [`gpu_view_payload`] with no view: a registered image's draw.
+pub(super) fn image_payload(rect: Rect, handle: TextureId) -> DrawClosedPayload<ClosedImage> {
+    let mut image = gpu_view_payload(rect, handle);
+    image.paint.view = None;
+    image
 }
 
 /// Draw a `GpuView` at `rect`: [`gpu_view_payload`], full alpha.
@@ -312,19 +326,21 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 /// An effect over `r` with sharp corners, the first effect's id and two words of parameters.
 pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
     b.draw(
-        DrawEffectPayload {
+        DrawClosedPayload {
             geometry: PlacedClosed::inside(PlacedBox {
                 rect: r,
                 corners: Corners::ZERO,
             }),
             spin: None,
-            effect: EffectId(0),
-            params: Span::new(0, 2),
-            images: Span::new(0, 0),
-            backdrop: None,
-            stage: None,
-            opacity: 1.0,
-            time: 0.0,
+            paint: ClosedEffect {
+                effect: EffectId(0),
+                params: Span::new(0, 2),
+                images: Span::new(0, 0),
+                backdrop: None,
+                stage: None,
+                opacity: 1.0,
+                time: 0.0,
+            },
         },
         1.0,
     );
@@ -332,16 +348,21 @@ pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
     b.draw(
-        DrawImagePayload {
-            rect: r,
-            geometry: None,
-            uv_min: Vec2::ZERO,
-            uv_size: Vec2::ONE,
-            tint: RgbaF32::WHITE.to_f16(),
-            handle: TextureId(1),
-            flags: ImageFlags::NONE,
+        DrawClosedPayload {
+            geometry: PlacedClosed::inside(PlacedBox {
+                rect: r,
+                corners: Corners::ZERO,
+            }),
             spin: None,
-            view: None,
+            paint: ClosedImage {
+                rect: r,
+                uv_min: Vec2::ZERO,
+                uv_size: Vec2::ONE,
+                tint: RgbaF32::WHITE.to_f16(),
+                handle: TextureId(1),
+                flags: ImageFlags::NONE,
+                view: None,
+            },
         },
         1.0,
     );

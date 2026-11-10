@@ -20,8 +20,11 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
+    ClosedImage, GpuViewDraw,
+};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
@@ -130,16 +133,21 @@ fn compose_emits_image_batch_for_drawimage() {
     let buf = run(
         |b, _arena| {
             b.draw(
-                DrawImagePayload {
-                    rect: Rect::new(10.0, 20.0, 30.0, 40.0),
-                    geometry: None,
-                    uv_min: Vec2::ZERO,
-                    uv_size: Vec2::ONE,
-                    tint: RgbaF32::WHITE.to_f16(),
-                    handle: TextureId(0xc0ffee),
-                    flags: ImageFlags::NONE,
+                DrawClosedPayload {
+                    geometry: PlacedClosed::inside(PlacedBox {
+                        rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+                        corners: Corners::ZERO,
+                    }),
                     spin: None,
-                    view: None,
+                    paint: ClosedImage {
+                        rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(0xc0ffee),
+                        flags: ImageFlags::NONE,
+                        view: None,
+                    },
                 },
                 1.0,
             );
@@ -399,16 +407,21 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     let buf = run(
         |b, _arena| {
             b.draw(
-                DrawImagePayload {
-                    rect: Rect::new(0.0, 0.0, 100.0, 100.0),
-                    geometry: None,
-                    uv_min: Vec2::new(0.25, 0.0),
-                    uv_size: Vec2::new(0.5, 1.0),
-                    tint: RgbaF32::WHITE.to_f16(),
-                    handle: TextureId(1),
-                    flags: ImageFlags::NONE,
+                DrawClosedPayload {
+                    geometry: PlacedClosed::inside(PlacedBox {
+                        rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                        corners: Corners::ZERO,
+                    }),
                     spin: None,
-                    view: None,
+                    paint: ClosedImage {
+                        rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                        uv_min: Vec2::new(0.25, 0.0),
+                        uv_size: Vec2::new(0.5, 1.0),
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(1),
+                        flags: ImageFlags::NONE,
+                        view: None,
+                    },
                 },
                 1.0,
             );
@@ -426,46 +439,61 @@ fn compose_forwards_flags_and_repeat_uv() {
         |b, _arena| {
             // Plain draw: no flags.
             b.draw(
-                DrawImagePayload {
-                    rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                    geometry: None,
-                    uv_min: Vec2::ZERO,
-                    uv_size: Vec2::ONE,
-                    tint: RgbaF32::WHITE.to_f16(),
-                    handle: TextureId(1),
-                    flags: ImageFlags::NONE,
+                DrawClosedPayload {
+                    geometry: PlacedClosed::inside(PlacedBox {
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                        corners: Corners::ZERO,
+                    }),
                     spin: None,
-                    view: None,
+                    paint: ClosedImage {
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(1),
+                        flags: ImageFlags::NONE,
+                        view: None,
+                    },
                 },
                 1.0,
             );
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
             b.draw(
-                DrawImagePayload {
-                    rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                    geometry: None,
-                    uv_min: Vec2::ZERO,
-                    uv_size: Vec2::new(3.0, 2.0),
-                    tint: RgbaF32::WHITE.to_f16(),
-                    handle: TextureId(2),
-                    flags: ImageFlags::TILED,
+                DrawClosedPayload {
+                    geometry: PlacedClosed::inside(PlacedBox {
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                        corners: Corners::ZERO,
+                    }),
                     spin: None,
-                    view: None,
+                    paint: ClosedImage {
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::new(3.0, 2.0),
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(2),
+                        flags: ImageFlags::TILED,
+                        view: None,
+                    },
                 },
                 1.0,
             );
             // The two nearest-filter bits ride through together.
             b.draw(
-                DrawImagePayload {
-                    rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                    geometry: None,
-                    uv_min: Vec2::ZERO,
-                    uv_size: Vec2::ONE,
-                    tint: RgbaF32::WHITE.to_f16(),
-                    handle: TextureId(3),
-                    flags: ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST),
+                DrawClosedPayload {
+                    geometry: PlacedClosed::inside(PlacedBox {
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                        corners: Corners::ZERO,
+                    }),
                     spin: None,
-                    view: None,
+                    paint: ClosedImage {
+                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(3),
+                        flags: ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST),
+                        view: None,
+                    },
                 },
                 1.0,
             );
@@ -495,16 +523,21 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     let buf = run(
         |b, _| {
             b.draw(
-                DrawImagePayload {
-                    rect: Rect::new(40.0, 40.0, 20.0, 10.0),
-                    geometry: None,
-                    uv_min: Vec2::ZERO,
-                    uv_size: Vec2::ONE,
-                    tint: RgbaF32::WHITE.to_f16(),
-                    handle: TextureId(1),
-                    flags: ImageFlags::NONE,
+                DrawClosedPayload {
+                    geometry: PlacedClosed::inside(PlacedBox {
+                        rect: Rect::new(40.0, 40.0, 20.0, 10.0),
+                        corners: Corners::ZERO,
+                    }),
                     spin,
-                    view: None,
+                    paint: ClosedImage {
+                        rect: Rect::new(40.0, 40.0, 20.0, 10.0),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(1),
+                        flags: ImageFlags::NONE,
+                        view: None,
+                    },
                 },
                 1.0,
             );
@@ -525,13 +558,13 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     let buf = run(
         |b, _| {
             b.draw(
-                DrawImagePayload {
-                    spin,
-                    view: Some(GpuViewDraw {
+                {
+                    let mut view = gpu_view_payload(half_off, TextureId(2)).turned(spin);
+                    view.paint.view = Some(GpuViewDraw {
                         owner: WidgetId::from_hash("view"),
                         epoch: 1,
-                    }),
-                    ..gpu_view_payload(half_off, TextureId(2))
+                    });
+                    view
                 },
                 1.0,
             );
@@ -556,19 +589,21 @@ fn an_effect_lands_as_one_physical_row() {
     let buf = run(
         |b, _arena| {
             b.draw(
-                DrawEffectPayload {
+                DrawClosedPayload {
                     geometry: PlacedClosed::inside(PlacedBox {
                         rect: Rect::new(5.0, 6.0, 10.0, 8.0),
                         corners: Corners::new(4.0, 6.0, 6.0, 4.0),
                     }),
                     spin: None,
-                    effect: EffectId(3),
-                    params: Span::new(12, 8),
-                    images: Span::new(4, 2),
-                    backdrop: None,
-                    stage: None,
-                    opacity: 1.0,
-                    time: 1.25,
+                    paint: ClosedEffect {
+                        effect: EffectId(3),
+                        params: Span::new(12, 8),
+                        images: Span::new(4, 2),
+                        backdrop: None,
+                        stage: None,
+                        opacity: 1.0,
+                        time: 1.25,
+                    },
                 },
                 0.5,
             );

@@ -1,5 +1,6 @@
 //! The rect a shape reports as painted, where it is not the owner's.
 
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::shape::paint::lowered_shadow::LoweredShadow;

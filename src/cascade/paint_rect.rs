@@ -15,7 +15,7 @@ use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
 use crate::text;
@@ -299,40 +299,9 @@ impl PaintRectCtx<'_> {
                         *cap,
                         stroke.width,
                     ),
-                    // A triangle's bbox carries its corner radius but not the physical AA fringe, added here like the stroked kinds above.
-                    ShapeRecord::Quad(QuadShape::Triangle { geometry, .. }) => {
-                        match geometry.place(layout_rect.size) {
-                            Some(placed) => clip_screen(
-                                shape
-                                    .to_screen(spun_if_animated(placed.bbox(), idx), None)
-                                    .inflated(AA_HALF_WIDTH / display_scale),
-                                shape_clip,
-                            ),
-                            None => Rect::ZERO,
-                        }
-                    }
-                    // These kinds resolve their whole bound in owner-local space, so one lift finishes each. A quad's shadow halo is inside `QuadShape::bbox_local`.
-                    ShapeRecord::Quad(quad) => shape.to_screen(
-                        spun_if_animated(quad.bbox_local(layout_rect.size), idx),
-                        shape_clip,
-                    ),
-                    // The vertex hull, which can exceed the owner rect: the owner rect would make
-                    // partial damage too small.
-                    ShapeRecord::Mesh {
-                        bbox, placement, ..
-                    } => shape.to_screen(
-                        spun_if_animated(
-                            placement.map(*bbox, layout_rect.size).apply_rect(*bbox),
-                            idx,
-                        ),
-                        shape_clip,
-                    ),
-                    // A triangle clips its image and its effect: bounded as a triangle quad is.
-                    ShapeRecord::ImagePaint {
-                        geometry: ClosedGeometry::Triangle(geometry),
-                        ..
-                    }
-                    | ShapeRecord::EffectPaint {
+                    // A triangle's bbox carries its corner radius but not the physical AA fringe,
+                    // added here like the stroked kinds above, whatever paints it.
+                    ShapeRecord::Closed {
                         geometry: ClosedGeometry::Triangle(geometry),
                         ..
                     } => match geometry.place(layout_rect.size) {
@@ -344,12 +313,20 @@ impl PaintRectCtx<'_> {
                         ),
                         None => Rect::ZERO,
                     },
-                    // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::Natural`.
-                    ShapeRecord::ImagePaint {
+                    // A box's fill resolves its whole bound, its shadow's halo included, in
+                    // owner-local space, so one lift finishes it.
+                    ShapeRecord::Closed {
+                        geometry,
+                        paint: ClosedPaint::Fill(paint),
+                    } => shape.to_screen(
+                        spun_if_animated(paint.bbox_local(*geometry, layout_rect.size), idx),
+                        shape_clip,
+                    ),
+                    // Bounded by the rect the encoder draws, which overflows the base under
+                    // `ImageFit::Natural`.
+                    ShapeRecord::Closed {
                         geometry: ClosedGeometry::Box(geometry),
-                        source,
-                        fit,
-                        ..
+                        paint: ClosedPaint::Image { source, fit, .. },
                     } => shape.to_screen(
                         spun_if_animated(
                             fit.resolve(geometry.place(layout_rect.size).rect, source.intrinsic())
@@ -360,9 +337,9 @@ impl PaintRectCtx<'_> {
                     ),
                     // The box's rect, a circle's square, grown by the physical antialiasing reach
                     // its stages draw, as a triangle's is.
-                    ShapeRecord::EffectPaint {
+                    ShapeRecord::Closed {
                         geometry: ClosedGeometry::Box(geometry),
-                        ..
+                        paint: ClosedPaint::Effect { .. },
                     } => clip_screen(
                         shape
                             .to_screen(
@@ -372,17 +349,26 @@ impl PaintRectCtx<'_> {
                             .inflated(AA_HALF_WIDTH / display_scale),
                         shape_clip,
                     ),
-                    ShapeRecord::IconPaint {
-                        local_rect,
-                        handle,
-                        fit,
-                        ..
+                    ShapeRecord::Closed {
+                        geometry: ClosedGeometry::Box(geometry),
+                        paint: ClosedPaint::Icon { handle, fit, .. },
                     } => shape.to_screen(
                         spun_if_animated(
                             fit.place_artwork(
-                                owner_local.resolve_local(*local_rect),
+                                geometry.place(layout_rect.size).rect,
                                 handle.view_box(),
                             ),
+                            idx,
+                        ),
+                        shape_clip,
+                    ),
+                    // The vertex hull, which can exceed the owner rect: the owner rect would make
+                    // partial damage too small.
+                    ShapeRecord::Mesh {
+                        bbox, placement, ..
+                    } => shape.to_screen(
+                        spun_if_animated(
+                            placement.map(*bbox, layout_rect.size).apply_rect(*bbox),
                             idx,
                         ),
                         shape_clip,

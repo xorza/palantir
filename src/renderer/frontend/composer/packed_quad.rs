@@ -1,30 +1,30 @@
-//! A quad-tier draw reduced to physical space: its rect, corners and lanes, past which the
-//! composer is shape-blind.
+//! A closed draw reduced to physical space: its rect, corners and the shape the template takes,
+//! past which the composer is shape-blind.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::num::F32Px;
-use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
 
-/// A quad-tier draw reduced to physical space: its covering rect, and the closed shape inside it
-/// as sharp points, a radius at each and its inradius (`Quad::points`).
+/// A closed draw reduced to physical space: its covering rect, and the closed shape inside it as
+/// sharp points, a radius at each and its inradius (`Quad::points`).
 #[derive(Debug)]
 pub(super) struct PackedQuad {
     /// The quad's own rect, unturned, and the whole pixels it reaches turned.
     pub(super) rect: ScaledRect,
     /// A radius at each point, `(tl, tr, br, bl)` for a box.
     pub(super) corners: Corners,
-    pub(super) fill_axis: FillAxis,
     pub(super) border_width: f32,
     /// A paint animation's turn about the rect's center, in radians.
     pub(super) rotation: f32,
@@ -52,80 +52,102 @@ impl PackedQuad {
             && max.y.is_integral()
     }
 
-    /// Reduce a quad-tier draw to physical space; everything past this is shape-blind.
-    // Always inlined into `quad` and `backdrop`: as a call, `repeated_chrome` ran 4 % slower.
+    /// Reduce `p`'s shape, under `border`, to physical space; everything past this is
+    /// shape-blind.
+    // Always inlined into `fill` and `effect`: as a call, `repeated_chrome` ran 4 % slower.
     #[inline(always)]
-    pub(super) fn pack(p: &DrawQuadPayload, lowering: &Lowering<'_>) -> Self {
+    pub(super) fn pack<P>(
+        p: &DrawClosedPayload<P>,
+        border: LoweredBorder,
+        lowering: &Lowering<'_>,
+    ) -> Self {
         let scale_physical = lowering.transform.physical_scale();
-        let spin = p.spin;
-        match p.geometry {
+        let unturned = match p.geometry {
             PlacedClosed::Box {
                 placed: PlacedBox { rect, corners },
                 ..
             } => {
-                // A turned rect snaps to no pixel: its edges are not on the pixel grid.
-                let edges = match spin {
-                    None => lowering.display.edge_rounding(),
-                    Some(_) => EdgeRounding::Exact,
-                };
-                let source = lowering.scaled_rect_with(rect, edges);
-                // Shadow scalars are logical px, so scale them; a gradient axis is unit-space,
-                // and a backdrop's lanes are ratios.
-                let fill_axis = if p.fill.kind.is_shadow() {
-                    p.fill_axis.scaled_saturating(scale_physical)
-                } else {
-                    p.fill_axis
-                };
-                let corners = corners.fit_to(source.physical.size, scale_physical);
-                // A drop shadow's quad is its snapped source moved and grown, not re-snapped, so
-                // the source inside it lies on the same pixels as the fill.
-                let rect = if p.fill.kind == FillKind::SHADOW_DROP {
-                    let geometry = ShadowGeometry::from_lanes(fill_axis.lanes());
-                    let physical = Rect {
-                        min: source.physical.min + geometry.offset,
-                        size: source.physical.size,
-                    }
-                    .inflated(geometry.halo());
-                    ScaledRect::from_physical(physical, lowering.display.physical)
-                } else {
-                    source
-                };
-                let (rect, rotation) = match spin {
-                    None => (rect, 0.0),
-                    Some(spin) => (lowering.turned_rect(rect.physical, spin), spin.angle),
-                };
-                let size = rect.physical.size;
-                Self {
-                    rect,
-                    corners,
-                    fill_axis,
-                    border_width: p.border.width * scale_physical,
-                    rotation,
-                    points: Quad::box_points(size),
-                    inradius: Quad::box_inradius(size),
-                }
+                let rect = Self::snapped(rect, p.spin, lowering);
+                let corners = corners.fit_to(rect.physical.size, scale_physical);
+                Self::of_box(rect, corners, border.width * scale_physical)
             }
             PlacedClosed::Triangle(placed) => {
                 let triangle = TemplateShape::triangle(placed.centers, placed.radius, lowering);
-                // Turned as a rect is, so its gradient turns with it.
-                let (rect, rotation) = match spin {
-                    None => (
-                        ScaledRect::from_physical(triangle.rect, lowering.display.physical),
-                        0.0,
-                    ),
-                    Some(spin) => (lowering.turned_rect(triangle.rect, spin), spin.angle),
-                };
                 Self {
-                    rect,
+                    rect: ScaledRect::from_physical(triangle.rect, lowering.display.physical),
                     corners: triangle.corners,
-                    // A gradient axis is unit-space.
-                    fill_axis: p.fill_axis,
-                    border_width: (p.border.width * scale_physical).max(0.0),
-                    rotation,
+                    border_width: (border.width * scale_physical).max(0.0),
+                    rotation: 0.0,
                     points: triangle.points,
                     inradius: triangle.inradius,
                 }
             }
+        };
+        // A triangle turns as a rect does, so its gradient turns with it.
+        unturned.turned(p.spin, lowering)
+    }
+
+    /// Reduce `p`, whose `geometry` is its lanes scaled to physical px, to physical space: its
+    /// source snapped as a fill's, a drop shadow's moved and grown by its halo, not snapped again,
+    /// so the source inside it lies on the same pixels as the fill.
+    pub(super) fn shadow(
+        p: &DrawShadowPayload,
+        geometry: ShadowGeometry,
+        lowering: &Lowering<'_>,
+    ) -> Self {
+        let source = Self::snapped(p.source.rect, p.spin, lowering);
+        let corners = p
+            .source
+            .corners
+            .fit_to(source.physical.size, lowering.transform.physical_scale());
+        let rect = if p.shadow.inset() {
+            source
+        } else {
+            let physical = Rect {
+                min: source.physical.min + geometry.offset,
+                size: source.physical.size,
+            }
+            .inflated(geometry.halo());
+            ScaledRect::from_physical(physical, lowering.display.physical)
+        };
+        // A shadow has no border; its edge is the blur.
+        Self::of_box(rect, corners, 0.0).turned(p.spin, lowering)
+    }
+
+    /// The logical `rect` in physical px: on the display's pixels, or exact when turned, as a
+    /// turned rect's edges are not on the pixel grid.
+    fn snapped(rect: Rect, spin: Option<Spin>, lowering: &Lowering<'_>) -> ScaledRect {
+        let edges = match spin {
+            None => lowering.display.edge_rounding(),
+            Some(_) => EdgeRounding::Exact,
+        };
+        lowering.scaled_rect_with(rect, edges)
+    }
+
+    /// An unturned box over `rect`, rounded by `corners`, under a border `border_width` physical
+    /// px wide.
+    const fn of_box(rect: ScaledRect, corners: Corners, border_width: f32) -> Self {
+        let size = rect.physical.size;
+        Self {
+            rect,
+            corners,
+            border_width,
+            rotation: 0.0,
+            points: Quad::box_points(size),
+            inradius: Quad::box_inradius(size),
+        }
+    }
+
+    /// This quad turned by `spin`: its rect moved and turned about its center as
+    /// [`Lowering::turned_rect`] does, which keeps its size and so its shape.
+    fn turned(self, spin: Option<Spin>, lowering: &Lowering<'_>) -> Self {
+        match spin {
+            None => self,
+            Some(spin) => Self {
+                rect: lowering.turned_rect(self.rect.physical, spin),
+                rotation: spin.angle,
+                ..self
+            },
         }
     }
 }

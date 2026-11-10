@@ -9,7 +9,7 @@
 //! calls the provided [`PaintSink::draw`] gate, which fades a [`PaintPayload`],
 //! tests `is_noop` and forwards or does nothing, so there is one gate for every
 //! kind. Payload construction lives on the payload types
-//! (`DrawQuadPayload::rect`, ...), not here.
+//! (`DrawClosedPayload::new`, ...), not here.
 //!
 //! The encoder is generic over the sink, not `&mut dyn PaintSink`, so the
 //! gates inline.
@@ -41,7 +41,7 @@
 //!    pre-check.
 //!
 //! Tier 2 is an optimization, tier 3 correctness. The gate is bypassable
-//! (`sink.quad(payload)` compiles anywhere); `PaintCapture::replay` does so
+//! (`sink.fill(payload)` compiles anywhere); `PaintCapture::replay` does so
 //! because its input already passed.
 //!
 //! Exception: a polyline asserts its geometry before gating
@@ -52,13 +52,15 @@
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
@@ -75,9 +77,11 @@ pub(crate) trait PaintSink {
 
     fn pop_transform(&mut self);
 
-    /// One quad-tier draw (rect, outside rect, shadow or triangle), all
-    /// through one gate so they agree on what is invisible.
-    fn quad(&mut self, payload: DrawQuadPayload);
+    /// Paint a fill and a border over a box or a triangle.
+    fn fill(&mut self, payload: DrawClosedPayload<ClosedFill>);
+
+    /// Paint a box's drop or inset shadow.
+    fn shadow(&mut self, payload: DrawShadowPayload);
 
     fn text(&mut self, payload: DrawTextPayload);
 
@@ -90,8 +94,8 @@ pub(crate) trait PaintSink {
     /// `PolylineShape::per_point` and `PolylineShape::per_segment`.
     fn polyline(&mut self, payload: DrawPolylinePayload);
 
-    /// Paint a textured rect, and the `GpuView` it composites, if any.
-    fn image(&mut self, payload: DrawImagePayload);
+    /// Paint an image over a box or a triangle, and the `GpuView` it composites, if any.
+    fn image(&mut self, payload: DrawClosedPayload<ClosedImage>);
 
     /// Paint a baked icon: the sink records which icon at which logical rect,
     /// and the backend rasterizes it once the physical size is known.
@@ -100,7 +104,7 @@ pub(crate) trait PaintSink {
     fn curve(&mut self, payload: DrawCurvePayload);
 
     /// Paint an effect over a box or a triangle: an app's paint, or a box's material.
-    fn effect(&mut self, payload: DrawEffectPayload);
+    fn effect(&mut self, payload: DrawClosedPayload<ClosedEffect>);
 
     /// The gate the encoder paints through: fade `payload` by `alpha` (a paint animation's
     /// opacity, `1.0` when still), drop it where it paints nothing, else hand it to the method of

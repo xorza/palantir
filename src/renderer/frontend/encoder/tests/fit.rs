@@ -44,7 +44,10 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
 
     let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 200.0, 200.0)));
     assert_eq!(cmds.kinds(), ["Image"; 3], "one image draw per mode");
-    let flags = cmds.calls.iter().map(|call| call.as_image().unwrap().flags);
+    let flags = cmds
+        .calls
+        .iter()
+        .map(|call| call.as_image().unwrap().paint.flags);
     for ((label, _, expected), actual) in modes.into_iter().zip(flags) {
         assert_eq!(actual, expected, "{label} encoded the wrong tap flags");
         let filters = ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST);
@@ -56,9 +59,9 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     }
 }
 
-/// A rect's corners reach the image payload as the shape that clips it: its rect, the one the
-/// image fits in, and its radii. A contained 2×2 image in (0, 0, 100 × 50) is (25, 0, 50 × 50);
-/// square corners clip nothing, so that image carries no shape. A sharp triangle (0, 0), (40, 0),
+/// An image's payload carries the shape that clips it: a rect's, the one the image fits in, with
+/// its radii, square ones too. A contained 2×2 image in (0, 0, 100 × 50) is (25, 0, 50 × 50). A
+/// sharp triangle (0, 0), (40, 0),
 /// (0, 20) fits its image in its covering rect, (0, 0, 40 × 20), so contained at (10, 0, 20 × 20),
 /// and carries its corners. A circle in the same rect fits its image in its square, (25, 0,
 /// 50 × 50), so a filled image takes that square, and carries it rounded by 25.
@@ -107,32 +110,38 @@ fn an_image_carries_the_shape_that_clips_it() {
         .map(|call| call.as_image().unwrap())
         .collect();
     for image in &images[..2] {
-        assert_eq!(image.rect, Rect::new(25.0, 0.0, 50.0, 50.0));
+        assert_eq!(image.paint.rect, Rect::new(25.0, 0.0, 50.0, 50.0));
     }
     assert_eq!(
         images[0].geometry,
-        Some(PlacedClosed::inside(PlacedBox {
+        PlacedClosed::inside(PlacedBox {
             rect: at,
             corners: Corners::all(6.0),
-        }))
+        })
     );
-    assert_eq!(images[1].geometry, None);
-    assert_eq!(images[2].rect, Rect::new(10.0, 0.0, 20.0, 20.0));
+    assert_eq!(
+        images[1].geometry,
+        PlacedClosed::inside(PlacedBox {
+            rect: at,
+            corners: Corners::ZERO,
+        })
+    );
+    assert_eq!(images[2].paint.rect, Rect::new(10.0, 0.0, 20.0, 20.0));
     assert_eq!(
         images[2].geometry,
-        Some(PlacedClosed::Triangle(PlacedTriangle {
+        PlacedClosed::Triangle(PlacedTriangle {
             centers: [Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)],
             radius: 0.0,
-        }))
+        })
     );
     let square = Rect::new(25.0, 0.0, 50.0, 50.0);
-    assert_eq!(images[3].rect, square);
+    assert_eq!(images[3].paint.rect, square);
     assert_eq!(
         images[3].geometry,
-        Some(PlacedClosed::inside(PlacedBox {
+        PlacedClosed::inside(PlacedBox {
             rect: square,
             corners: Corners::all(25.0),
-        }))
+        })
     );
 }
 
@@ -185,7 +194,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
         let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 300.0, 300.0)));
         assert_eq!(cmds.kinds(), ["Image"], "{fit:?}");
         assert_eq!(
-            cmds.calls[0].as_image().unwrap().rect,
+            cmds.calls[0].as_image().unwrap().paint.rect,
             expected,
             "{fit:?} draw"
         );
@@ -269,7 +278,7 @@ fn an_arc_of_no_sweep_paints_its_dot_in_the_ramp_start() {
     let cmds = h.encode_paint();
     let rects: Vec<_> = cmds.calls.iter().filter_map(support::as_rect).collect();
     assert_eq!(rects.len(), 1, "one dot, got {:?}", cmds.kinds());
-    assert_eq!(rects[0].fill.color, red.to_f16());
+    assert_eq!(rects[0].paint.fill.color, red.to_f16());
     assert_eq!(support::quad_rect(rects[0]), Rect::new(18.0, 8.0, 4.0, 4.0));
 }
 

@@ -3,9 +3,11 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
+use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::image::{ImageDownsample, ImageFilter};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
@@ -47,18 +49,18 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let rect = |r| Some(Rect::new(r, 0.0, 4.0, 4.0));
     let pt = |x| Vec2::new(x, 0.0);
 
-    let quad_box = |coverage, local_rect, outline, fill, stroke| {
-        ShapeRecord::Quad(QuadShape::Box {
-            geometry: BoxGeometry {
-                local_rect,
-                outline,
-                coverage,
-            },
+    let quad_box = |coverage, local_rect, outline, fill, stroke| ShapeRecord::Closed {
+        geometry: ClosedGeometry::Box(BoxGeometry {
+            local_rect,
+            outline,
+            coverage,
+        }),
+        paint: ClosedPaint::Fill(LoweredPaint {
             fill,
             border: stroke,
             shadow: LoweredShadow::lower(Shadow::NONE),
             material: None,
-        })
+        }),
     };
     let rounded = BoxOutline::Rect(Corners::all(2.0));
     let base = quad_box(Coverage::Inside, rect(0.0), rounded, solid, stroke);
@@ -112,18 +114,18 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             stroke,
         ),
     );
-    let box_with = |shadow: Shadow, material| {
-        ShapeRecord::Quad(QuadShape::Box {
-            geometry: BoxGeometry {
-                local_rect: rect(0.0),
-                outline: rounded,
-                coverage: Coverage::Inside,
-            },
+    let box_with = |shadow: Shadow, material| ShapeRecord::Closed {
+        geometry: ClosedGeometry::Box(BoxGeometry {
+            local_rect: rect(0.0),
+            outline: rounded,
+            coverage: Coverage::Inside,
+        }),
+        paint: ClosedPaint::Fill(LoweredPaint {
             fill: solid,
             border: stroke,
             shadow: LoweredShadow::lower(shadow),
             material,
-        })
+        }),
     };
     let sh = Shadow {
         color: RgbaF32::BLACK,
@@ -185,17 +187,18 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &grad_box(grad(5, 1)),
     );
 
-    let tri = |corners, radius, placement, fill, stroke| {
-        ShapeRecord::Quad(QuadShape::Triangle {
-            geometry: TriangleGeometry {
-                corners,
-                radius,
-                placement,
-            },
+    let tri = |corners, radius, placement, fill, stroke| ShapeRecord::Closed {
+        geometry: ClosedGeometry::Triangle(TriangleGeometry {
+            corners,
+            radius,
+            placement,
+        }),
+        paint: ClosedPaint::Fill(LoweredPaint {
             fill,
             border: stroke,
             material: None,
-        })
+            shadow: LoweredShadow::default(),
+        }),
     };
     let corners = [pt(0.0), pt(1.0), pt(2.0)];
     let natural = PointPlacement::NATURAL;
@@ -239,24 +242,25 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &grad_tri(grad(0, 1)),
         &grad_tri(grad(5, 1)),
     );
-    let ShapeRecord::Quad(QuadShape::Triangle {
-        geometry,
-        fill,
-        border,
-        ..
-    }) = base
+    let ShapeRecord::Closed {
+        geometry: ClosedGeometry::Triangle(geometry),
+        paint: ClosedPaint::Fill(LoweredPaint { fill, border, .. }),
+    } = base
     else {
         unreachable!("`tri` builds a triangle");
     };
     moves(
         "Quad/Triangle.material",
         &base,
-        &ShapeRecord::Quad(QuadShape::Triangle {
-            geometry,
-            fill,
-            border,
-            material: Some(LoweredMaterial::fixture(8.0)),
-        }),
+        &ShapeRecord::Closed {
+            geometry: ClosedGeometry::Triangle(geometry),
+            paint: ClosedPaint::Fill(LoweredPaint {
+                fill,
+                border,
+                material: Some(LoweredMaterial::fixture(8.0)),
+                shadow: LoweredShadow::default(),
+            }),
+        },
     );
     moves(
         "Quad/Triangle.border",
@@ -655,21 +659,22 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    let image = |local_rect, tint, source, fit, min_filter, mag_filter, downsample| {
-        ShapeRecord::ImagePaint {
+    let image =
+        |local_rect, tint, source, fit, min_filter, mag_filter, downsample| ShapeRecord::Closed {
             geometry: ClosedGeometry::Box(BoxGeometry {
                 local_rect,
                 outline: BoxOutline::Rect(Corners::ZERO),
                 coverage: Coverage::Inside,
             }),
-            tint,
-            source,
-            fit,
-            min_filter,
-            mag_filter,
-            downsample,
-        }
-    };
+            paint: ClosedPaint::Image {
+                tint,
+                source,
+                fit,
+                min_filter,
+                mag_filter,
+                downsample,
+            },
+        };
     let texture = ImageSource::Texture {
         id: TextureId(1),
         size: glam::UVec2::new(2, 3),
@@ -697,26 +702,32 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageDownsample::Single,
         ),
     );
-    let ShapeRecord::ImagePaint {
-        tint,
-        source,
-        fit,
-        min_filter,
-        mag_filter,
-        downsample,
+    let ShapeRecord::Closed {
+        paint:
+            ClosedPaint::Image {
+                tint,
+                source,
+                fit,
+                min_filter,
+                mag_filter,
+                downsample,
+                ..
+            },
         ..
     } = base
     else {
         unreachable!("`image` builds an image record");
     };
-    let shaped = |geometry| ShapeRecord::ImagePaint {
+    let shaped = |geometry| ShapeRecord::Closed {
         geometry,
-        tint,
-        source,
-        fit,
-        min_filter,
-        mag_filter,
-        downsample,
+        paint: ClosedPaint::Image {
+            tint,
+            source,
+            fit,
+            min_filter,
+            mag_filter,
+            downsample,
+        },
     };
     let triangle = |radius| {
         ClosedGeometry::Triangle(TriangleGeometry {

@@ -43,7 +43,7 @@ use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
-use crate::renderer::frontend::payload::draw_effect_payload::EffectCaptureDraw;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::EffectCaptureDraw;
 use crate::shape::Shape;
 use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
@@ -1193,7 +1193,7 @@ fn effect_draws(h: &Harness) -> Vec<(EffectId, f32)> {
         .calls
         .iter()
         .filter_map(|call| match call {
-            PaintCall::Effect(p) => Some((p.effect, p.time)),
+            PaintCall::Effect(p) => Some((p.paint.effect, p.paint.time)),
             _ => None,
         })
         .collect()
@@ -1730,7 +1730,7 @@ fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced()
             .calls
             .iter()
             .filter_map(|call| match call {
-                PaintCall::Effect(p) => Some(p.backdrop),
+                PaintCall::Effect(p) => Some(p.paint.backdrop),
                 _ => None,
             })
             .collect()

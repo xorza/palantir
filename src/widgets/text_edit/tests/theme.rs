@@ -1,6 +1,8 @@
 use crate::primitives::geometry::coverage::Coverage;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::{LINE_HEIGHT_FACTOR, TextStyle};
@@ -379,13 +381,13 @@ fn no_selection_paints_no_highlight_rect() {
         .filter(|s| {
             matches!(
                 s,
-                ShapeRecord::Quad(QuadShape::Box {
-                    geometry: BoxGeometry {
+                ShapeRecord::Closed {
+                    geometry: ClosedGeometry::Box(BoxGeometry {
                         coverage: Coverage::Inside,
                         ..
-                    },
-                    ..
-                })
+                    }),
+                    paint: ClosedPaint::Fill(LoweredPaint { .. })
+                }
             )
         })
         .count();
@@ -425,15 +427,15 @@ fn shift_end_paints_selection_highlight() {
 
     let rects: Vec<_> = painted_shapes(h.ui(), leaf)
         .filter_map(|s| match s {
-            ShapeRecord::Quad(QuadShape::Box {
+            ShapeRecord::Closed {
                 geometry:
-                    BoxGeometry {
+                    ClosedGeometry::Box(BoxGeometry {
                         coverage: Coverage::Inside,
                         local_rect: Some(r),
                         ..
-                    },
-                ..
-            }) => Some(*r),
+                    }),
+                paint: ClosedPaint::Fill(LoweredPaint { .. }),
+            } => Some(*r),
             _ => None,
         })
         .collect();
@@ -478,15 +480,15 @@ fn line_height_override_changes_caret_rect_height() {
         let leaf = h.frame_value(|ui| body(ui, &mut buf, style));
         painted_shapes(h.ui(), leaf)
             .find_map(|s| match s {
-                ShapeRecord::Quad(QuadShape::Box {
+                ShapeRecord::Closed {
                     geometry:
-                        BoxGeometry {
+                        ClosedGeometry::Box(BoxGeometry {
                             coverage: Coverage::Inside,
                             local_rect: Some(rect),
                             ..
-                        },
-                    ..
-                }) => Some(rect.size.h),
+                        }),
+                    paint: ClosedPaint::Fill(LoweredPaint { .. }),
+                } => Some(rect.size.h),
                 _ => None,
             })
             .expect("focused TextEdit pushes a caret Overlay")

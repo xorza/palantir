@@ -14,17 +14,17 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    TestPolyline, clip, clip_rounded, curve, draw, effect, gpu_view_payload, icon, image,
-    inked_text, mesh, params, params_unsnapped, run, text,
+    TestPolyline, clip, clip_rounded, curve, draw, effect, icon, image, image_payload, inked_text,
+    mesh, params, params_unsnapped, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -255,12 +255,13 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
         |b, _arena| {
             text(b, Rect::new(39.0, 60.0, 2.0, 10.0));
             b.draw(
-                DrawQuadPayload::shadow(
-                    source,
-                    Corners::ZERO,
+                DrawShadowPayload::new(
+                    PlacedBox {
+                        rect: source,
+                        corners: Corners::ZERO,
+                    },
                     LoweredShadow::lower(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, sigma)),
-                )
-                .expect("a black shadow paints"),
+                ),
                 1.0,
             );
         },
@@ -720,10 +721,7 @@ fn images_between_labels_coalesce_text_the_same_way() {
             for i in 0..BUTTONS {
                 let x = i as f32 * 100.0;
                 buf.draw(
-                    DrawImagePayload {
-                        view: None,
-                        ..gpu_view_payload(Rect::new(x, 0.0, 16.0, 16.0), TextureId(1))
-                    },
+                    image_payload(Rect::new(x, 0.0, 16.0, 16.0), TextureId(1)),
                     1.0,
                 );
                 text(buf, Rect::new(x + 20.0, 0.0, 60.0, 16.0));
@@ -780,10 +778,7 @@ fn text_batch_drains_past_a_non_overlapping_image() {
         |buf, _| {
             text(buf, Rect::new(0.0, 0.0, 60.0, 16.0));
             buf.draw(
-                DrawImagePayload {
-                    view: None,
-                    ..gpu_view_payload(Rect::new(100.0, 0.0, 16.0, 16.0), TextureId(1))
-                },
+                image_payload(Rect::new(100.0, 0.0, 16.0, 16.0), TextureId(1)),
                 1.0,
             );
             // Over the image, so this run flushes the group.

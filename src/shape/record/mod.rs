@@ -4,29 +4,27 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
-use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::identity::effect_id::EffectId;
-use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
+use crate::primitives::paint::image::ImageFit;
 use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
-use crate::shape::paint::capture_params::{CaptureParams, EffectBackdrop};
+use crate::shape::lower::LoweredPaint;
+use crate::shape::paint::capture_params::CaptureParams;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
 use crate::shape::paint::lowered_stroke::LoweredStroke;
-use crate::shape::paint::quad_shape::QuadShape;
 use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
@@ -47,8 +45,11 @@ pub(crate) enum ColorMode {
 #[repr(u8)]
 #[derive(Clone, Debug)]
 pub(crate) enum ShapeRecord {
-    /// A box or a rounded triangle, per [`QuadShape`].
-    Quad(QuadShape),
+    /// A closed shape, a box or a rounded triangle, and the paint that covers it.
+    Closed {
+        geometry: ClosedGeometry,
+        paint: ClosedPaint,
+    },
     /// Stroked polyline. `points`/`colors` index the `RecordStore`; `colors` has 1 entry for `Single`, `points.len()` for `PerPoint`, `points.len() - 1` for `PerSegment`. `bbox` is the points' AABB as authored, the extent `placement` fits into its rect where the polyline is drawn; damage and composition apply the stroke inflation.
     Polyline {
         width: f32,
@@ -85,39 +86,6 @@ pub(crate) enum ShapeRecord {
         /// AABB of the vertex positions as authored, the extent `placement` fits; frozen from
         /// `Mesh::bbox()` so the encoder doesn't re-scan.
         bbox: Rect,
-        content_hash: ContentHash,
-    },
-    /// A registered image or a `GpuView` target, per [`ImageSource`], fit to its geometry's rect
-    /// and clipped to the geometry. `tint` multiplies in linear-RGB premultiplied space.
-    ImagePaint {
-        geometry: ClosedGeometry,
-        tint: RgbaF16,
-        source: ImageSource,
-        fit: ImageFit,
-        min_filter: ImageFilter,
-        mag_filter: ImageFilter,
-        downsample: ImageDownsample,
-    },
-    /// A baked SVG icon, rasterized at the exact physical size into the icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup. `tint` multiplies a tintable icon whole and a color icon's alpha only, see [`IconPaint`](crate::widget::IconPaint).
-    IconPaint {
-        local_rect: Option<Rect>,
-        handle: IconHandle,
-        fit: Fit,
-        tint: RgbaF16,
-        /// Draws a color icon as its own luminance, see [`IconPaint::desaturate`](crate::widget::IconPaint::desaturate).
-        desaturate: bool,
-    },
-    /// An app-written effect over its geometry, a box or a triangle, which may exceed the owner.
-    /// `params` indexes the `RecordStore`'s parameter words; `content_hash` covers the effect,
-    /// those words, its images and its backdrop.
-    EffectPaint {
-        /// What a backdrop effect reads under it; `None` for a color effect.
-        backdrop: Option<EffectBackdrop>,
-        geometry: ClosedGeometry,
-        effect: EffectId,
-        params: Span,
-        /// Into `RecordStore::effect_images`.
-        images: Span,
         content_hash: ContentHash,
     },
     /// Native GPU stroke of a cubic Bézier (quadratics promote to cubic, lines degenerate; see
@@ -179,20 +147,7 @@ impl ShapeRecord {
     /// material or a backdrop effect's, each where it captures; `None` for every other record.
     pub(crate) const fn backdrop_capture(&self) -> Option<CaptureParams> {
         match self {
-            Self::Quad(
-                QuadShape::Box {
-                    material: Some(material),
-                    ..
-                }
-                | QuadShape::Triangle {
-                    material: Some(material),
-                    ..
-                },
-            ) => material.capture(),
-            Self::EffectPaint {
-                backdrop: Some(EffectBackdrop::Capture(capture)),
-                ..
-            } => Some(*capture),
+            Self::Closed { paint, .. } => paint.backdrop_capture(),
             _ => None,
         }
     }
@@ -209,36 +164,9 @@ impl ShapeRecord {
         let mut h = Hasher::new();
         mem::discriminant(self).hash(&mut h);
         match self {
-            // Both shapes share this record's discriminant, so `QuadShape`'s goes in first
-            // to keep a box and a triangle apart.
-            Self::Quad(shape) => {
-                mem::discriminant(shape).hash(&mut h);
-                match shape {
-                    QuadShape::Box {
-                        geometry,
-                        fill,
-                        border,
-                        shadow,
-                        material,
-                    } => {
-                        geometry.hash_into(&mut h);
-                        hash_brush(*fill, &mut h);
-                        border.hash_into(&mut h);
-                        shadow.hash(&mut h);
-                        material.hash(&mut h);
-                    }
-                    QuadShape::Triangle {
-                        geometry,
-                        fill,
-                        border,
-                        material,
-                    } => {
-                        geometry.hash_into(&mut h);
-                        hash_brush(*fill, &mut h);
-                        border.hash_into(&mut h);
-                        material.hash(&mut h);
-                    }
-                }
+            Self::Closed { geometry, paint } => {
+                geometry.hash_into(&mut h);
+                hash_closed_paint(paint, &mut h);
             }
             // `content_hash` already folds width, color_mode, cap, join, points and
             // colors; bbox/spans are frame-local. Fields are named rather than `..` so
@@ -283,82 +211,6 @@ impl ShapeRecord {
             } => {
                 placement.hash_into(&mut h);
                 tint.hash(&mut h);
-                content_hash.hash(&mut h);
-            }
-            // `ImageSource`'s discriminant goes in first to keep a texture draw and a
-            // view composite apart; the shared placement fields are hashed once, around
-            // the split.
-            Self::ImagePaint {
-                geometry,
-                tint,
-                source,
-                fit,
-                min_filter,
-                mag_filter,
-                downsample,
-            } => {
-                geometry.hash_into(&mut h);
-                tint.hash(&mut h);
-                mem::discriminant(source).hash(&mut h);
-                match source {
-                    // The registration `id`, the intrinsic `size`, and the write count
-                    // that moves the hash when texels change under an unchanged id.
-                    ImageSource::Texture {
-                        id,
-                        size,
-                        generation,
-                    } => {
-                        h.write_u64(id.0);
-                        h.write_u64(u64::from(size.x) | (u64::from(size.y) << 32));
-                        h.write_u32(*generation);
-                    }
-                    // `epoch` is the view's damage version: `Ui::gpu_view` bumps it to
-                    // the frame id on `repaint(true)` (hash changes, the rect repaints)
-                    // and holds it on `repaint(false)` (hash matches, the view culls).
-                    // The view's paint lives in `Ui::gpu_views`, which the hash cannot
-                    // see; a new paint takes a new target `id`, which it does.
-                    ImageSource::GpuView { id, epoch } => {
-                        h.write_u64(id.0);
-                        h.write_u64(*epoch);
-                    }
-                }
-                // The fit (including `Tile`'s UV transform, which changes every
-                // pan/zoom placement), both sampling filters and the minification tap mode:
-                // two 1-bit filters in the low bits, the 3-variant `downsample` above.
-                hash_fit(fit, &mut h);
-                h.write_u8(
-                    (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
-                );
-            }
-            // The handle's `view_box` is baked and constant per `(set, icon)`, so
-            // identity plus rect, fit and tint is all that can change; `IconSetId`
-            // carries a generation, so a reused slot never names two artworks. The
-            // raster size is *not* hashed: it follows from the resolved screen rect and
-            // needs a display scale the record lacks.
-            Self::IconPaint {
-                local_rect,
-                handle,
-                fit,
-                tint,
-                desaturate,
-            } => {
-                local_rect.hash_visual(&mut h);
-                tint.hash(&mut h);
-                h.write_u32(handle.icon.set.bits());
-                h.write_u16(handle.icon.icon.idx());
-                h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
-            }
-            // `content_hash` folds the effect and its parameter words, which live in the
-            // `RecordStore`; the span is frame-local.
-            Self::EffectPaint {
-                geometry,
-                content_hash,
-                backdrop: _,
-                effect: _,
-                params: _,
-                images: _,
-            } => {
-                geometry.hash_into(&mut h);
                 content_hash.hash(&mut h);
             }
             // Geometry + style are hashed inline (every input lives on the record).
@@ -426,6 +278,91 @@ impl ShapeRecord {
     }
 }
 
+/// Fold a closed shape's paint into the shape hash, its discriminant first, as the variants share
+/// none of their fields.
+fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
+    mem::discriminant(paint).hash(h);
+    match paint {
+        ClosedPaint::Fill(LoweredPaint {
+            fill,
+            border,
+            shadow,
+            material,
+        }) => {
+            hash_brush(*fill, h);
+            border.hash_into(h);
+            shadow.hash(h);
+            material.hash(h);
+        }
+        // `ImageSource`'s discriminant goes in first to keep a texture draw and a view composite
+        // apart; the shared placement fields are hashed once, around the split.
+        ClosedPaint::Image {
+            tint,
+            source,
+            fit,
+            min_filter,
+            mag_filter,
+            downsample,
+        } => {
+            tint.hash(h);
+            mem::discriminant(source).hash(h);
+            match source {
+                // The registration `id`, the intrinsic `size`, and the write count that moves the
+                // hash when texels change under an unchanged id.
+                ImageSource::Texture {
+                    id,
+                    size,
+                    generation,
+                } => {
+                    h.write_u64(id.0);
+                    h.write_u64(u64::from(size.x) | (u64::from(size.y) << 32));
+                    h.write_u32(*generation);
+                }
+                // `epoch` is the view's damage version: `Ui::gpu_view` bumps it to the frame id on
+                // `repaint(true)` (hash changes, the rect repaints) and holds it on
+                // `repaint(false)` (hash matches, the view culls). The view's paint lives in
+                // `Ui::gpu_views`, which the hash cannot see; a new paint takes a new target `id`,
+                // which it does.
+                ImageSource::GpuView { id, epoch } => {
+                    h.write_u64(id.0);
+                    h.write_u64(*epoch);
+                }
+            }
+            // The fit (including `Tile`'s UV transform, which changes every pan/zoom placement),
+            // both sampling filters and the minification tap mode: two 1-bit filters in the low
+            // bits, the 3-variant `downsample` above.
+            hash_fit(fit, h);
+            h.write_u8(
+                (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
+            );
+        }
+        // The handle's `view_box` is baked and constant per `(set, icon)`, so identity plus rect,
+        // fit and tint is all that can change; `IconSetId` carries a generation, so a reused slot
+        // never names two artworks. The raster size is *not* hashed: it follows from the resolved
+        // screen rect and needs a display scale the record lacks.
+        ClosedPaint::Icon {
+            handle,
+            fit,
+            tint,
+            desaturate,
+        } => {
+            tint.hash(h);
+            h.write_u32(handle.icon.set.bits());
+            h.write_u16(handle.icon.icon.idx());
+            h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
+        }
+        // `content_hash` folds the effect and its parameter words, which live in the
+        // `RecordStore`; the span is frame-local.
+        ClosedPaint::Effect {
+            content_hash,
+            backdrop: _,
+            effect: _,
+            params: _,
+            images: _,
+        } => content_hash.hash(h),
+    }
+}
+
 /// Fold a native stroke's paint into the shape hash: its width and color, its cap, and its ramp
 /// by content hash.
 fn hash_stroke(stroke: LoweredStroke, cap: LineCap, ramp: CurveRamp, h: &mut Hasher) {
@@ -463,7 +400,7 @@ fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
 impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {
-            Self::Quad(shape) => shape.has_nan(),
+            Self::Closed { geometry, paint } => geometry.has_nan() || paint.has_nan(),
             Self::Polyline {
                 width,
                 bbox,
@@ -482,15 +419,6 @@ impl NanCheck for ShapeRecord {
                 bbox,
                 ..
             } => placement.has_nan() || tint.has_nan() || bbox.has_nan(),
-            Self::ImagePaint {
-                geometry,
-                tint,
-                fit,
-                ..
-            } => geometry.has_nan() || tint.has_nan() || fit.has_nan(),
-            Self::IconPaint {
-                local_rect, tint, ..
-            } => local_rect.has_nan() || tint.has_nan(),
             Self::Curve {
                 geometry: BezierGeometry { bezier, placement },
                 stroke,
@@ -511,7 +439,6 @@ impl NanCheck for ShapeRecord {
                 stroke,
                 ..
             } => local_rect.has_nan() || start_angle.is_nan() || sweep.is_nan() || stroke.has_nan(),
-            Self::EffectPaint { geometry, .. } => geometry.has_nan(),
         }
     }
 }

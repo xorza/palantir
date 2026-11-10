@@ -8,7 +8,9 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
     use crate::primitives::geometry::coverage::Coverage;
     use crate::scene::tree::iter::TreeItem;
     use crate::shape::geometry::box_geometry::BoxGeometry;
-    use crate::shape::paint::quad_shape::QuadShape;
+    use crate::shape::geometry::closed_geometry::ClosedGeometry;
+    use crate::shape::lower::LoweredPaint;
+    use crate::shape::paint::closed_paint::ClosedPaint;
 
     let tree = ui.tree(Layer::Main);
     let now = ui.now();
@@ -22,14 +24,14 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
         .any(|(idx, s)| {
             let is_caret = matches!(
                 s,
-                ShapeRecord::Quad(QuadShape::Box {
-                    geometry: BoxGeometry {
+                ShapeRecord::Closed {
+                    geometry: ClosedGeometry::Box(BoxGeometry {
                         coverage: Coverage::Inside,
                         local_rect: Some(_),
                         ..
-                    },
-                    ..
-                })
+                    }),
+                    paint: ClosedPaint::Fill(LoweredPaint { .. })
+                }
             );
             is_caret && paint_animations.sample(idx, now).alpha > 0.0
         })

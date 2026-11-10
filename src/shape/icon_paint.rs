@@ -1,11 +1,13 @@
-//! [`IconPaint`]: a baked icon over a rect. Lowers to `ShapeRecord::IconPaint`.
+//! [`IconPaint`]: a baked icon over a rect. Lowers to a `ShapeRecord::Closed` of `ClosedPaint::Icon`.
 
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::PaintedBy;
+use crate::shape::draw::ClosedPaintRef;
 use crate::shape::draw::Draw;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 
@@ -69,6 +71,9 @@ impl sealed::DrawWith<IconPaint> for RectShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a IconPaint) -> Draw<'a> {
-        Draw::IconPaint { rect: self, paint }
+        Draw::Closed {
+            geometry: ClosedGeometry::Box(self.geometry()),
+            paint: ClosedPaintRef::Icon(paint),
+        }
     }
 }

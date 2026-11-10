@@ -1,9 +1,11 @@
-//! [`TriangleShape`]: a triangle with rounded corners; lowers to `ShapeRecord::Quad(QuadShape::Triangle)`.
+//! [`TriangleShape`]: a triangle with rounded corners; lowers to a `ShapeRecord::Closed` triangle.
 
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
+use crate::shape::draw::ClosedPaintRef;
 use crate::shape::draw::Draw;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::sealed;
@@ -89,9 +91,9 @@ impl<P: IntoPaint> sealed::DrawWith<P> for TriangleShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
-        Draw::Triangle {
-            shape: self,
-            paint: paint.to_paint(),
+        Draw::Closed {
+            geometry: ClosedGeometry::Triangle(self.geometry()),
+            paint: ClosedPaintRef::Fill(paint.to_paint()),
         }
     }
 }

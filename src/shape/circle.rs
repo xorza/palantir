@@ -5,9 +5,11 @@ use std::f32::consts::TAU;
 use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::stroke::Stroke;
+use crate::shape::draw::ClosedPaintRef;
 use crate::shape::draw::Draw;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::sealed;
 use crate::shape::{IntoPaint, PaintedBy};
 
@@ -59,9 +61,9 @@ impl<P: IntoPaint> sealed::DrawWith<P> for CircleShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
-        Draw::Box {
-            geometry: self.geometry(),
-            paint: paint.to_paint(),
+        Draw::Closed {
+            geometry: ClosedGeometry::Box(self.geometry()),
+            paint: ClosedPaintRef::Fill(paint.to_paint()),
         }
     }
 }

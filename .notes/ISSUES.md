@@ -9,3 +9,7 @@
   internals reference `quad_pipeline/reference.wgsl` does.
 - **`.notes/PERF.md` "Decisions" names `QuadForm::BackdropLens` and `BackdropSpectrum`**, which do
   not exist: glass is an effect program now.
+- **`TreeSource::narrowest_side` measures a material box with its drop shadow's halo**
+  (`src/cascade/engine.rs`): the backdrop's screen rect and the lifted bound it compares are both
+  its paint rect, which `LoweredPaint::bbox_local` grows by the shadow, so a shadowed glass box's
+  narrowest side is its shadow's.

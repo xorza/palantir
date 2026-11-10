@@ -8,9 +8,11 @@ use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
-use crate::renderer::frontend::payload::draw_quad_payload::RectQuad;
+use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
+use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use glam::Vec2;
 
@@ -77,13 +79,16 @@ impl QuadBuilder {
 
     pub(super) fn draw(self, buf: &mut PaintCapture) {
         buf.draw(
-            DrawQuadPayload::rect(RectQuad {
-                coverage: self.coverage,
-                rect: self.rect,
-                corners: self.corners,
-                fill: self.fill,
-                border: LoweredBorder::lower(self.border),
-            })
+            DrawClosedPayload::new(
+                PlacedClosed::Box {
+                    placed: PlacedBox {
+                        rect: self.rect,
+                        corners: self.corners,
+                    },
+                    coverage: self.coverage,
+                },
+                ClosedFill::new(self.fill, LoweredBorder::lower(self.border)),
+            )
             .turned(self.spin),
             1.0,
         );

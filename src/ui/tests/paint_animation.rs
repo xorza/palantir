@@ -75,7 +75,8 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
         .calls
         .iter()
         .filter_map(|call| match call {
-            PaintCall::Quad(p) => Some(RgbaF32::from(p.fill.color).a),
+            PaintCall::Fill(p) => Some(RgbaF32::from(p.paint.fill.color).a),
+            PaintCall::Shadow(p) => Some(RgbaF32::from(p.shadow.color).a),
             _ => None,
         })
         .collect();
@@ -121,7 +122,7 @@ fn a_turn_records_on_every_kind() {
         .iter()
         .filter_map(|call| match call {
             PaintCall::Curve(p) => Some(p.bounds.spin().is_some()),
-            PaintCall::Quad(p) => {
+            PaintCall::Fill(p) => {
                 Some(matches!(p.geometry, PlacedClosed::Box { .. }) && p.spin.is_some())
             }
             PaintCall::Text(p) => Some(p.spin.is_some()),
@@ -175,7 +176,7 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
         .calls
         .iter()
         .find_map(|call| match call {
-            PaintCall::Quad(p) => match p.geometry {
+            PaintCall::Fill(p) => match p.geometry {
                 PlacedClosed::Triangle(placed) => Some((placed.centers, p.spin)),
                 PlacedClosed::Box { .. } => None,
             },

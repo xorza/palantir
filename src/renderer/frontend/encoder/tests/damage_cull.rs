@@ -63,11 +63,11 @@ fn damage_filter_culls_subtree_outside_damage() {
         Transformed,
     }
     let cases = [
-        ("clipped", Wrap::Clipped, ["PushClip", "Quad", "PopClip"]),
+        ("clipped", Wrap::Clipped, ["PushClip", "Fill", "PopClip"]),
         (
             "transformed",
             Wrap::Transformed,
-            ["PushTransform", "Quad", "PopTransform"],
+            ["PushTransform", "Fill", "PopTransform"],
         ),
     ];
     for (label, wrap, kept) in cases {
