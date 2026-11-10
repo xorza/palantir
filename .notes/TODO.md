@@ -12,7 +12,6 @@
 - Brush::Linear add conveninet ctors
 - flag whether to reduce fps on lowpower
 - material for texts and strokes?
-- shadow as effect, unify pipeline
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
