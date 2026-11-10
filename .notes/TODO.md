@@ -12,6 +12,7 @@
 - Brush::Linear add conveninet ctors
 - flag whether to reduce fps on lowpower
 - material for texts and strokes?
+- outside effects in four rects
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
