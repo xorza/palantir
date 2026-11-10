@@ -175,8 +175,11 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
   differs (`wgpu-core` 30.0.1, `command/bind.rs`, `update_expectations`) and Vulkan practice puts
   the set that changes least at 0. Refused: the pool at a free slot of each family, a rebind at
   each switch; a fifth bind group, past `downlevel_defaults`'s four.
-- **An occluder covers only where its clip covers whole**, as a prune past it would change the
-  pixel.
+- **A draw a chain covers whole names none, and a clip that holds the next leaves the chain**:
+  the composer tests the draw's pixel centers, and the new clip's reach, against each clip on the
+  CPU (`RoundedClip::holds`), exact for a convex shape, with a slack the GPU's f32 distance stays
+  inside. As Skia's `ClipStack` drops an element another contains. An occluder covers only where
+  its clip covers whole, as a prune past it would change the pixel.
 - **A frame whose draws name no chain binds pipelines with the clip folded away**: each color
   pipeline has a twin, `ClipVariant`, its `PALANTIR_CLIPS` override off. The clip's code, run or
   not, cost a frame with none 16 to 23 % of its main pass on an Apple GPU. Speed alone: a draw of

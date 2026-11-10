@@ -1,5 +1,6 @@
 //! What a rounded clip leaves of each draw it cuts, read back from the GPU.
 
+use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
@@ -16,6 +17,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
 use crate::primitives::paint::stroke::Stroke;
+use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::shape::Shape;
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
@@ -217,4 +219,109 @@ fn nested_clips_multiply() {
     let image = h.read_back();
     let got = image.get_pixel(10, 6).0;
     assert!(near(got, gray(0.5625)), "got {got:?}");
+}
+
+/// The clip's distance, the CPU twin of `palantir_sdf_rounded_rect`, by hand on (0, 0, 20 × 10)
+/// of radius 4: the center lies 5 inside, the top edge's middle 0, and (−3, −4) lies
+/// `√(7² + 8²) − 4 ≈ 6.63` past the arc about (4, 4).
+#[test]
+fn a_clips_distance_is_its_rounded_rects() {
+    let clip = RoundedClip {
+        mask_rect: Rect::new(0.0, 0.0, 20.0, 10.0),
+        corners: Corners::all(4.0),
+    };
+    assert_eq!(clip.distance(Vec2::new(10.0, 5.0)), -5.0);
+    assert_eq!(clip.distance(Vec2::new(10.0, 0.0)), 0.0);
+    assert_eq!(
+        clip.distance(Vec2::new(-3.0, -4.0)),
+        Vec2::new(7.0, 8.0).length() - 4.0
+    );
+}
+
+/// A clip holds a rect whose every point lies the reach and the slack, `0.5 + 1/64 = 33/64`,
+/// inside it: on (0, 0, 20 × 10) of radius 4 a point at y = 33/64 below the top edge's middle lies
+/// just that deep and is held; one at y = 0.5 is not. A rect into a corner past the arc is not held
+/// though its corners on the straight edges are.
+#[test]
+fn a_clip_holds_what_it_covers_whole() {
+    let clip = RoundedClip {
+        mask_rect: Rect::new(0.0, 0.0, 20.0, 10.0),
+        corners: Corners::all(4.0),
+    };
+    let point = |y: f32| Rect::new(10.0, y, 0.0, 0.0);
+    assert!(clip.holds(point(33.0 / 64.0)));
+    assert!(!clip.holds(point(0.5)));
+    assert!(clip.holds(Rect::new(4.0, 1.0, 12.0, 8.0)));
+    assert!(
+        !clip.holds(Rect::new(0.6, 0.6, 10.0, 8.0)),
+        "its corner lies past the arc"
+    );
+}
+
+/// The input of the SDF probe, as WGSL lays it out: a vec4 starts at 32.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct SdfIn {
+    p: [f32; 2],
+    min: [f32; 2],
+    size: [f32; 2],
+    pad: [f32; 2],
+    radius: [f32; 4],
+}
+
+const SDF_PROBE: &str = "
+struct SdfIn { p: vec2<f32>, min: vec2<f32>, size: vec2<f32>, pad: vec2<f32>, radius: vec4<f32> }
+@group(0) @binding(14) var<storage, read> probe_in: array<SdfIn>;
+@group(0) @binding(15) var<storage, read_write> probe_out: array<f32>;
+@compute @workgroup_size(1)
+fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
+    let q = probe_in[id.x];
+    probe_out[id.x] = palantir_sdf_rounded_rect(q.p - q.min, q.size, q.radius);
+}
+";
+
+/// The CPU's distance follows the GPU's within 1/128 px, the bound `RoundedClip::SLACK_PX` takes
+/// twice over: at the center, on each edge, on each arc and past each corner of a clip of unequal
+/// radii, one corner sharp, at a coordinate near 2^12.
+#[test]
+fn the_cpu_distance_follows_the_shader() {
+    let clip = RoundedClip {
+        mask_rect: Rect::new(4000.25, 4.0, 20.0, 24.0),
+        corners: Corners::new(8.0, 2.0, 0.0, 5.0),
+    };
+    let min = clip.mask_rect.min;
+    let points: Vec<Vec2> = [
+        (10.0, 12.0),
+        (0.0, 12.0),
+        (20.0, 12.0),
+        (10.0, 0.0),
+        (10.0, 24.0),
+        (1.0, 1.0),
+        (19.5, 0.5),
+        (20.0, 24.0),
+        (1.0, 23.0),
+        (-3.0, -4.0),
+        (23.0, -1.0),
+        (22.0, 26.0),
+        (-2.0, 27.0),
+        (2.34, 2.34),
+    ]
+    .into_iter()
+    .map(|(x, y)| min + Vec2::new(x, y))
+    .collect();
+    let inputs: Vec<SdfIn> = points
+        .iter()
+        .map(|&p| SdfIn {
+            p: p.to_array(),
+            min: min.to_array(),
+            size: [clip.mask_rect.size.w, clip.mask_rect.size.h],
+            pad: [0.0; 2],
+            radius: clip.corners.to_array(),
+        })
+        .collect();
+    let gpu: Vec<f32> = QuadPipeline::SHADER.probe(SDF_PROBE, &inputs);
+    for (p, g) in points.iter().zip(gpu) {
+        let c = clip.distance(*p);
+        assert!((c - g).abs() <= 1.0 / 128.0, "at {p}: cpu {c}, gpu {g}");
+    }
 }

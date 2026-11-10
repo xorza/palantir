@@ -1,6 +1,7 @@
 //! The clip in force during a compose pass, and the stack it comes off.
 
 use crate::common::span::Span;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 
 /// One clip level: the resolved scissor plus the rounded-clip chain that
@@ -12,6 +13,11 @@ pub(super) struct ClipFrame {
     /// `RenderBuffer.rounded_clips`, which each draw under it carries. A rounded push extends the
     /// parent chain; a rect push inherits it. Empty = no rounded ancestor.
     pub(super) chain: Span,
+    /// The rect every clip of `chain` covers whole ([`RoundedClip::covered`]), empty for no
+    /// chain: a draw whose pixel centers lie inside it takes no clip.
+    ///
+    /// [`RoundedClip::covered`]: crate::renderer::render_buffer::rounded_clip::RoundedClip::covered
+    pub(super) whole: Rect,
 }
 
 /// The nested clips a compose walk has open, innermost last.

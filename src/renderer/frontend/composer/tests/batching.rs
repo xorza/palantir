@@ -370,11 +370,12 @@ fn compose_strict_text_with_matching_clip_coalesces() {
 fn compose_rounded_clip_change_keeps_the_text_batch() {
     let buf = run(
         |b, _arena| {
+            // Each run crosses its clip's right edge, so it takes the clip's chain.
             clip_rounded(b, Rect::new(0.0, 0.0, 100.0, 30.0), Corners::all(4.0));
-            text(b, Rect::new(4.0, 4.0, 90.0, 20.0));
+            text(b, Rect::new(14.0, 4.0, 90.0, 20.0));
             b.pop_clip();
             clip_rounded(b, Rect::new(0.0, 40.0, 100.0, 30.0), Corners::all(8.0));
-            text(b, Rect::new(4.0, 44.0, 90.0, 20.0));
+            text(b, Rect::new(14.0, 44.0, 90.0, 20.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),

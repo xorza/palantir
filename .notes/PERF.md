@@ -263,6 +263,15 @@ new run.
 
 ## Decisions
 
+- **The rounded clip as coverage, the clip folded away where no draw names one** (an Apple laptop,
+  ABBA, `.notes/research/2026-11-10-rounded-clip.md`): against the stencil, `record_pass/gpu/rounded`
+  −61 %, `clip_pass/gpu/inside` −26 %, `clip_frame/gpu/inside/scrolling` −14 %, the frame cases of a
+  page with no rounded clip within ±0.3 %; `clip_pass/gpu/nested`, three clips none holding the next
+  over every draw's edge, +17 %. One pipeline for both cost a frame with no rounded clip 16 to
+  23 % of its main pass, and an early return on no chain 7 %, as the clip's registers stayed.
+- **A draw inside its clips names none** (same host): `clip_pass/gpu/inside` −12 %, at
+  `clip_frame/cpu/*/scrolling` +3 to +4 %.
+
 - **Shape templates** (fanless, ABBA, `atomic/main_pass/gpu/scrolling` and
   `integration/frame/gpu/scrolling`): a box, a circle and a triangle draw as a vertex-stage
   template (`vs_template`), 221 → 146 µs and 577 → 483 µs. On this GPU the quads' fragments are

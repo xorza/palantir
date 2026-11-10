@@ -92,14 +92,30 @@ impl ComposeSession<'_> {
         (clipped != whole).then_some(clipped)
     }
 
-    /// The rounded clips in force, which cut every draw under them; a chain of any marks the frame
-    /// as one whose draws name rounded clips.
-    fn clip_chain(&mut self) -> ClipChain {
-        let chain = ClipChain::new(self.composer.clip.chain());
-        if chain != ClipChain::NONE {
-            self.out.clips_drawn = true;
+    /// The rounded clips in force that cut a draw reaching the pixels `visible`: none where each
+    /// clip of the chain covers every pixel center there whole, as most draws inside a rounded
+    /// card lie; the chain otherwise. The chain's whole rect answers most draws; the clips' own
+    /// test, exact for a convex clip, the rest.
+    fn clip_chain(&mut self, visible: URect) -> ClipChain {
+        let Some(frame) = self.composer.clip.top() else {
+            return ClipChain::NONE;
+        };
+        if frame.chain.len == 0 {
+            return ClipChain::NONE;
         }
-        chain
+        let centers = Rect::from(visible).deflated(0.5);
+        // Innermost first: a draw near an edge most often crosses the nearest clip's.
+        let whole = frame.whole.contains_rect(centers)
+            || self.out.rounded_clips[frame.chain.range()]
+                .iter()
+                .rev()
+                .all(|clip| clip.holds(centers));
+        if whole {
+            ClipChain::NONE
+        } else {
+            self.out.clips_drawn = true;
+            ClipChain::new(frame.chain)
+        }
     }
 
     /// Paint order over this session's buffer, under the clip in force.
@@ -146,26 +162,32 @@ impl PaintSink for ComposeSession<'_> {
                 corners: logical_radius.fit_to(physical.size, scale_physical),
             };
             // A rounded push nested in rounded ancestors stacks: child chain = ancestor chain + own
-            // mask, copied whole, as a fragment reads each chain as one contiguous run. Re-pushing
-            // the innermost mask adds no depth. The pool grows by the sum of the depths, a few
-            // masks a clip at a UI's two to four rounded levels. Refused until a profile shows deep
-            // nesting: WebRender's clip-chain nodes with parent links, which the fragment would walk
-            // through memory at each pixel.
+            // clip, copied, as a fragment reads each chain as one contiguous run. Re-pushing the
+            // innermost clip adds no depth. An ancestor that holds the new clip's reach, its rect
+            // grown by the antialiasing reach, covers it whole wherever the new clip covers any of
+            // a pixel, so a product with it changes no bit: it leaves the chain, which nested cards
+            // keep one clip deep, as Skia's `ClipStack` drops an element another contains. Refused
+            // until a profile shows deep nesting: WebRender's clip-chain nodes with parent links,
+            // which the fragment would walk through memory at each pixel.
             if self.out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
                 parent_chain
             } else {
-                let depth = parent_chain.len + 1;
-                if depth > ClipChain::MAX_DEPTH {
-                    geometry::rounded_clip_depth_overflow(depth);
-                }
                 let chain_start = self.out.rounded_clips.len() as u32;
                 if chain_start >= ClipChain::MAX_POOL {
                     geometry::rounded_clip_pool_overflow(chain_start);
                 }
-                self.out
-                    .rounded_clips
-                    .extend_from_within(parent_chain.range());
+                let reach = physical.inflated(AA_HALF_WIDTH);
+                for at in parent_chain.range() {
+                    let ancestor = self.out.rounded_clips[at];
+                    if !ancestor.holds(reach) {
+                        self.out.rounded_clips.push(ancestor);
+                    }
+                }
                 self.out.rounded_clips.push(rc);
+                let depth = self.out.rounded_clips.len() as u32 - chain_start;
+                if depth > ClipChain::MAX_DEPTH {
+                    geometry::rounded_clip_depth_overflow(depth);
+                }
                 Span::new(chain_start, depth)
             }
         } else {
@@ -173,7 +195,16 @@ impl PaintSink for ComposeSession<'_> {
             // holds.
             parent_chain
         };
-        self.enter_clip(ClipFrame { scissor, chain });
+        let whole = self.out.rounded_clips[chain.range()]
+            .iter()
+            .map(|clip| clip.covered())
+            .reduce(Rect::clamp_to)
+            .unwrap_or_default();
+        self.enter_clip(ClipFrame {
+            scissor,
+            chain,
+            whole,
+        });
     }
 
     fn pop_clip(&mut self) {
@@ -195,14 +226,10 @@ impl PaintSink for ComposeSession<'_> {
         }
         // The clipped rect is also the overlap test's rect, so an ancestor-clipped quad does not
         // force a needless flush.
-        if self
-            .ordering()
-            .admit(Lane::Quad, packed.rect.urect)
-            .is_none()
-        {
+        let Some(visible) = self.ordering().admit(Lane::Quad, packed.rect.urect) else {
             return;
-        }
-        let clip = self.clip_chain();
+        };
+        let clip = self.clip_chain(visible);
         self.push_quad(&p, &packed, clip);
         self.record_opaque_cover(&p, &packed);
     }
@@ -223,13 +250,12 @@ impl PaintSink for ComposeSession<'_> {
         );
         // A surviving mesh closes the open text batch so its text emits before this above-text
         // geometry.
-        if self
+        let Some(visible) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Mesh), mesh_urect)
-            .is_none()
-        {
+        else {
             return;
-        }
+        };
         // Verts stay as recorded; the per-instance transform folds in the fit, the owner origin
         // and the transform stack, so the shader produces physical coords. The fit maps `pos` to
         // `o + S·pos`, and a turn about the pivot `c` maps that to `R(o + S·pos - c) + c`, so the
@@ -242,7 +268,7 @@ impl PaintSink for ComposeSession<'_> {
         let x_axis = rotor * (scale_physical * p.fit.scale.x);
         let y_axis = rotor.perp() * (scale_physical * p.fit.scale.y);
         let translate = to_physical.point(rotor.rotate(p.fit.offset - pivot) + pivot);
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(visible);
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
                 vertices: p.vertices,
@@ -274,13 +300,9 @@ impl PaintSink for ComposeSession<'_> {
                 geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical)
             }
         };
-        if self
-            .ordering()
-            .admit(Lane::Tier(PaintTier::Icon), urect)
-            .is_none()
-        {
+        let Some(visible) = self.ordering().admit(Lane::Tier(PaintTier::Icon), urect) else {
             return;
-        }
+        };
         let box_px = Vec2::new(physical_rect.size.w, physical_rect.size.h);
         let key = IconRasterKey::for_box(p.icon, box_px);
         let (origin, size) = if key.is_exact() {
@@ -297,7 +319,7 @@ impl PaintSink for ComposeSession<'_> {
             let size = (max - min).max(Vec2::ONE);
             (min.as_ivec2(), size.as_uvec2())
         };
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(visible);
         self.out.icons.push(IconDrawRow {
             key,
             origin,
@@ -388,7 +410,7 @@ impl PaintSink for ComposeSession<'_> {
         };
         self.ordering()
             .order(Lane::Tier(PaintTier::Effect), visible);
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(visible);
         self.out.effects.push(EffectDrawRow {
             effect: p.effect,
             images: p.images,
@@ -425,15 +447,14 @@ impl PaintSink for ComposeSession<'_> {
             display: self.out.display,
         }
         .urect();
-        if self
+        let Some(visible) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Curve), bbox_urect)
-            .is_none()
-        {
+        else {
             return;
-        }
+        };
         let run = CurveRun::lower(&p, width_physical, &self.lowering());
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(visible);
         run.push_into(&mut self.out.curves, clip);
     }
 
@@ -478,7 +499,7 @@ impl PaintSink for ComposeSession<'_> {
         // Only now that the polyline will emit geometry: an empty or culled one must not split the
         // batch or group.
         self.ordering().order(Lane::Tier(PaintTier::Curve), visible);
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(visible);
         self.composer.polyline.emit(
             PolylineLook {
                 colors: src_colors,
@@ -525,7 +546,7 @@ impl PaintSink for ComposeSession<'_> {
         let Some(bounds) = self.ordering().admit(Lane::Text, unclipped) else {
             return;
         };
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(bounds);
         let row = TextDrawRow {
             origin: physical_rect.min,
             bounds,
@@ -574,14 +595,15 @@ impl ComposeSession<'_> {
             None => ScaledRect::from_physical(shape.rect, lowering.display.physical),
             Some(spin) => lowering.turned_rect(shape.rect, spin),
         };
-        if image.is_paint_empty()
-            || self
-                .ordering()
-                .admit(Lane::Tier(PaintTier::Image), scaled.urect)
-                .is_none()
-        {
+        if image.is_paint_empty() {
             return;
         }
+        let Some(visible) = self
+            .ordering()
+            .admit(Lane::Tier(PaintTier::Image), scaled.urect)
+        else {
+            return;
+        };
         let size = Vec2::from(shape.rect.size);
         let lo = image.min - shape.rect.min;
         let hi = lo + Vec2::from(image.size);
@@ -589,7 +611,7 @@ impl ComposeSession<'_> {
         let slack = Self::DECAL_SLACK_PX;
         let from = |at: f32| if at > slack { at } else { -f32::MAX };
         let to = |at: f32, end: f32| if at < end - slack { at } else { f32::MAX };
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(visible);
         self.out.images.push(ImageDrawRow {
             id: p.handle,
             form,
@@ -632,20 +654,19 @@ impl ComposeSession<'_> {
                 self.lowering().turned_rect(exact, spin)
             }
         };
-        if self
+        let Some(visible) = self
             .ordering()
             .admit(Lane::Tier(PaintTier::Image), image_urect)
-            .is_none()
-        {
+        else {
             return;
-        }
+        };
         // A `GpuView` draws over only its visible part, since that is all its target holds; a
         // turned one draws whole, as its visible part is not a rect of its own.
         let seen = view
             .filter(|_| p.spin.is_none())
             .and_then(|_| self.seen(physical_rect));
         let composite = seen.unwrap_or(physical_rect);
-        let clip = self.clip_chain();
+        let clip = self.clip_chain(visible);
         let mut instance = ImageInstance {
             rect: composite,
             uv_min: p.uv_min,

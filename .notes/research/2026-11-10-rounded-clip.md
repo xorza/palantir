@@ -43,6 +43,28 @@ Two diagnostic builds of that one pipeline, each against it:
 - an early return where a draw names no chain: `main_pass/gpu/scrolling` −13 %, `rect` −8 %,
   `edge` +2 %, `nested` +1.5 %: 7 % of the cost stayed with no clip run.
 
+## A draw inside its clips names none, against coverage with one pipeline
+
+`clip_pass/gpu/inside` −12 %, `clip_frame/gpu/inside/scrolling` −5 %; the other GPU arms within
+±1 %. On the CPU, `clip_frame/cpu/*/scrolling` +3 % to +4 %, the composer's `clips` cases +12 % to
++23 %, after a clip's test rejects a rect past its straight edges first and a draw tests its
+innermost clip first; before those, `clips/nested` read +55 %.
+
+## The clip folded away where no draw names one, a draw inside naming none, against the frame group
+
+| case | change |
+| --- | --- |
+| `main_pass/gpu/{scrolling,partial}` | ±0.2 %, −2.3 % to 0 % |
+| `frame/gpu/{scrolling,resizing,theming,alternating}` | within ±0.3 % |
+| `clip_pass/gpu/rect` | +0.1 % |
+| `clip_pass/gpu/inside` | −26 % |
+| `clip_pass/gpu/edge` | +1 % |
+| `clip_pass/gpu/nested` | +17 % |
+| `clip_frame/gpu/rect/scrolling` | +1 % |
+| `clip_frame/gpu/inside/scrolling` | −14 % |
+| `clip_frame/gpu/edge/scrolling` | −2.5 % |
+| `clip_frame/gpu/nested/scrolling` | +9 % |
+
 ## Memory
 
 A window's `Stencil8` held 1 B a pixel at its target's size, 3.5 MiB at 2560 × 1440, and a damage
