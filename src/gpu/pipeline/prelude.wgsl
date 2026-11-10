@@ -101,7 +101,7 @@ fn composite(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32
     return premultiply(fill.rgb, fill.a * outer_aa);
 }
 
-// Inverted-fill counterpart of `composite` for `FILL_FLAG_OUTSIDE`: the
+// Inverted-fill counterpart of `composite` for an outside rect (`ShapeForm::BoxOutside`): the
 // border covers the same inner-edge annulus, but the fill paints the
 // complement of the rounded shape (`1 - outer_aa`) — the corner wedges
 // out to the quad edge — and the interior is transparent. The

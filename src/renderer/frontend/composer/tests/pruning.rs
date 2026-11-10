@@ -18,6 +18,9 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
+use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use glam::UVec2;
@@ -34,7 +37,7 @@ fn alone(quads: &[QuadBuilder]) -> Vec<u8> {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    bytemuck::cast_slice(&buf.quads).to_vec()
+    bytemuck::cast_slice(buf.quads.instance()).to_vec()
 }
 
 /// An under quad goes when a later quad of its group covers it with opaque paint, and only then.
@@ -140,7 +143,7 @@ fn a_later_opaque_cover_drops_what_it_holds() {
             &params(1.0, UVec2::new(200, 200)),
         );
         assert_eq!(buf.clear_override, None, "{label}");
-        let composed: &[u8] = bytemuck::cast_slice(&buf.quads);
+        let composed: &[u8] = bytemuck::cast_slice(buf.quads.instance());
         let expected = if pruned {
             alone(&[over])
         } else {
@@ -157,10 +160,14 @@ fn a_later_opaque_cover_drops_what_it_holds() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(
-        outside.quads[0].fill_kind,
-        FillKind::SOLID.with_outside(),
-        "the outside bit rides through to the quad, with no fast bit",
+        outside.quads.key(),
+        [QuadKey::Fill(FillForm::new(
+            ShapeForm::BoxOutside,
+            FillBrush::Solid
+        ))],
+        "the outside side rides through to the quad's key",
     );
+    assert_eq!(outside.quads.instance()[0].fill_kind, FillKind::SOLID);
 }
 
 /// The unsnapped occluder (10.25, 10.25)..(110.25, 110.25) covers only (10.75, 10.75)..(109.75, 109.75), its half-pixel ramp inset. An under quad goes only if every pixel it shades is inside that, and its own ramp reaches past its rect:
@@ -169,7 +176,7 @@ fn a_later_opaque_cover_drops_what_it_holds() {
 /// - (11.25, 11.25)..(108.75, 108.75) shades 11..109, inside the cover;
 /// - (11.25, 11.25)..(109.85, 108.75) shades out to 110, past it.
 #[test]
-fn prune_non_fast_cover_holds_every_pixel_the_under_shades() {
+fn prune_unaligned_cover_holds_every_pixel_the_under_shades() {
     #[derive(Debug)]
     struct Case {
         label: &'static str,
@@ -477,7 +484,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
     assert_eq!(buf.clear_override, Some(folded), "the cover folds");
     assert_eq!(buf.quads.len(), 1, "underlay quads discarded");
     assert_eq!(
-        buf.quads[0].header.rect,
+        buf.quads.instance()[0].header.rect,
         Rect::new(10.0, 10.0, 20.0, 20.0),
         "survivor keeps the in-flight 2x transform",
     );
@@ -574,7 +581,7 @@ fn indexed_prune_matches_a_full_scan() {
         },
         &params(1.0, UVec2::new(1280, 1280)),
     );
-    let survivors: Vec<Rect> = buf.quads.iter().map(|q| q.header.rect).collect();
+    let survivors: Vec<Rect> = buf.quads.instance().iter().map(|q| q.header.rect).collect();
     assert_eq!(survivors, expected);
 }
 

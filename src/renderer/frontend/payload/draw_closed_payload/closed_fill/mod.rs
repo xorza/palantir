@@ -73,7 +73,7 @@ impl ClosedPaintPayload for ClosedFill {
 
 impl DrawClosedPayload<ClosedFill> {
     /// Whether this is a solid fill over the inside of a box: the one draw whose covered rect
-    /// can be whole, which the clear fold, the fragment fast path and the occlusion prune read.
+    /// can be whole, which the clear fold and the occlusion prune read.
     /// An outside rect's hole, a triangle's corners and a gradient's stops cover no rect whole.
     pub(crate) fn is_solid_box(&self) -> bool {
         matches!(

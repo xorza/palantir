@@ -11,7 +11,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
-use crate::renderer::render_buffer::quad_form::QuadForm;
+use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -80,7 +80,7 @@ fn a_pipeline_waits_for_the_first_frame_that_draws_through_it() {
         .shaper(TextShaper::test_mono())
         .build();
     let target = gpu.target("palantir.test.lazy_pipelines", UVec2::new(80, 80));
-    let solid = QuadDraw::Form(QuadForm::BoxSolid);
+    let solid = QuadDraw::Fill(FillForm::BOX_SOLID);
     let shadow = QuadDraw::Shadow(ShadowEntry::General);
     let built = |host: &OffscreenHost, draw: QuadDraw, clipping: Clipping| {
         host.device

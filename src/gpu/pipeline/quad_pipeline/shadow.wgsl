@@ -88,14 +88,22 @@ const INV_SQRT_TAU: f32 = 0.39894228;
 const SHADOW_CLIP_EPS: f32 = 1.0 / 255.0;
 
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
-// `fill` is the shadow color, `radius` is the source rect's corner
-// radii, `size` is the paint bbox, and
-// `fill_axis = (offset.x, offset.y, sigma, spread)` for both.
+// The shape's `radius` is the source rect's corner radii, its rect the
+// paint bbox, and `geometry = (offset.x, offset.y, sigma, spread)` for both.
 //   - Drop:  paint bbox = (source + offset).inflated(SHADOW_REACH_SIGMAS·σ + max(spread, 0)).
 //   - Inset: paint bbox = source. Spread shrinks the "hole" rect
 //            inside the shader.
-const PALANTIR_FILL_SHADOW_DROP:  u32 = /*{FILL_SHADOW_DROP}*/;
-const PALANTIR_FILL_SHADOW_INSET: u32 = /*{FILL_SHADOW_INSET}*/;
+const SHADOW_DROP:  u32 = /*{SHADOW_DROP}*/;
+const SHADOW_INSET: u32 = /*{SHADOW_INSET}*/;
+
+// A shadow's lanes past its shape (`ShadowQuad`, `SHADOW_INSTANCE_ATTRS`): its straight-alpha
+// color, its kind, and its geometry `(offset.x, offset.y, sigma, spread)`, each four f16 two to a
+// `u32`.
+struct ShadowIn {
+    @location(6) color_packed: vec2<u32>,
+    @location(7) kind: u32,
+    @location(8) geometry_packed: vec2<u32>,
+};
 
 // What a shadow's fragments read: `vs_shadow`'s geometry, worked out once
 // per vertex. Every position is in pixels, and a fragment takes its own as
@@ -105,7 +113,7 @@ const PALANTIR_FILL_SHADOW_INSET: u32 = /*{FILL_SHADOW_INSET}*/;
 struct ShadowOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) @interpolate(flat) fill: vec4<f32>,
-    // `PALANTIR_FILL_SHADOW_DROP` or `PALANTIR_FILL_SHADOW_INSET`.
+    // `SHADOW_DROP` or `SHADOW_INSET`.
     @location(1) @interpolate(flat) kind: u32,
     @location(2) @interpolate(flat) sigma: f32,
     // The box whose blur the shadow paints (`ShadowBox`).
@@ -158,19 +166,20 @@ struct ShadowOut {
 fn vs_shadow(
     @builtin(vertex_index) vi: u32,
     shape: PalantirShapeIn,
-    quad: QuadIn,
-    @location(12) cutouts: vec4<u32>,
+    shadow: ShadowIn,
+    @location(9) cutouts: vec4<u32>,
 ) -> ShadowOut {
-    let q = quad_vertex(0u, shape, quad);
     let pos = shape.rect.xy;
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
-    let bounds = shaded_bounds(pos, size, quad.fill_kind, rotation);
+    let radius = shape.radius;
+    let geometry = unpack_f16x4(shadow.geometry_packed);
+    let bounds = shaded_bounds(pos, size, false, rotation);
     let half = size * 0.5;
     let center = pos + half;
-    let kind = quad.fill_kind & PALANTIR_FILL_TAG_MASK;
-    let sb = shadow_box(kind, half, q.radius, q.fill_axis);
-    let sigma = q.fill_axis.z;
+    let kind = shadow.kind;
+    let sb = shadow_box(kind, half, radius, geometry);
+    let sigma = geometry.z;
     let reach = SHADOW_REACH_SIGMAS * sigma + PALANTIR_AA_HALF_WIDTH;
     let r = sb.radius;
     let core_lo = -sb.half + vec2<f32>(max(r.x, r.w), max(r.x, r.y)) + vec2<f32>(reach);
@@ -183,10 +192,10 @@ fn vs_shadow(
     // `offset` back from its center.
     var source_center = center;
     var source_half = half;
-    if (kind == PALANTIR_FILL_SHADOW_DROP) {
-        source_half = shadow_source_half(half, q.fill_axis);
-        source_center = center - q.fill_axis.xy;
-        let inset = max(max(q.radius.x, q.radius.y), max(q.radius.z, q.radius.w)) + PALANTIR_AA_HALF_WIDTH;
+    if (kind == SHADOW_DROP) {
+        source_half = shadow_source_half(half, geometry);
+        source_center = center - geometry.xy;
+        let inset = max(max(radius.x, radius.y), max(radius.z, radius.w)) + PALANTIR_AA_HALF_WIDTH;
         hole_lo = source_center - source_half + vec2<f32>(inset);
         hole_hi = source_center + source_half - vec2<f32>(inset);
     }
@@ -200,7 +209,7 @@ fn vs_shadow(
     var ys = array<f32, 4>(bounds.lo.y, inner_lo.y, inner_hi.y, bounds.hi.y);
     var edge_lo = inner_lo;
     var edge_hi = inner_hi;
-    if (kind == PALANTIR_FILL_SHADOW_DROP && rotation == 0.0) {
+    if (kind == SHADOW_DROP && rotation == 0.0) {
         let deep = vec2<f32>(PALANTIR_AA_HALF_WIDTH + 1.0);
         edge_lo = clamp(source_center - source_half + deep, bounds.lo, inner_lo);
         edge_hi = clamp(source_center + source_half - deep, inner_hi, bounds.hi);
@@ -226,7 +235,7 @@ fn vs_shadow(
     out.clip = clip_from_px(turned(vertex, center, rotation));
     out.turn = vec4<f32>(center, cos(rotation), sin(rotation));
     out.chain = shape.chain;
-    out.fill = q.fill;
+    out.fill = unpack_f16x4(shadow.color_packed);
     out.kind = kind;
     out.sigma = sigma;
     out.box_center = center + sb.center;
@@ -234,7 +243,7 @@ fn vs_shadow(
     out.box_radius = sb.radius;
     out.source_center = source_center;
     out.source_half = source_half;
-    out.source_radius = q.radius;
+    out.source_radius = radius;
     out.cutouts = cutouts;
     out.core = select(
         vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN),
@@ -594,12 +603,12 @@ struct ShadowBox {
     radius: vec4<f32>,
 };
 
-fn shadow_box(kind: u32, half: vec2<f32>, radius: vec4<f32>, fill_axis: vec4<f32>) -> ShadowBox {
-    let spread = fill_axis.w;
-    if (kind == PALANTIR_FILL_SHADOW_DROP) {
+fn shadow_box(kind: u32, half: vec2<f32>, radius: vec4<f32>, geometry: vec4<f32>) -> ShadowBox {
+    let spread = geometry.w;
+    if (kind == SHADOW_DROP) {
         // CSS's radius rule for a spread, fitted to the shadow's own box,
         // as the inset hole's are.
-        let shadow_half = max(shadow_source_half(half, fill_axis) + vec2<f32>(spread), vec2<f32>(0.0));
+        let shadow_half = max(shadow_source_half(half, geometry) + vec2<f32>(spread), vec2<f32>(0.0));
         return ShadowBox(vec2<f32>(0.0), shadow_half, fit_radii(spread_radius(radius, spread), shadow_half));
     }
     // The hole is the source shrunk by `spread`, so its radii follow the
@@ -607,12 +616,12 @@ fn shadow_box(kind: u32, half: vec2<f32>, radius: vec4<f32>, fill_axis: vec4<f32
     // grown the way a drop shadow's are when the spread is negative — then
     // fit the hole's own box.
     let hole_half = max(half - vec2<f32>(spread), vec2<f32>(0.0));
-    return ShadowBox(fill_axis.xy, hole_half, fit_radii(spread_radius(radius, -spread), hole_half));
+    return ShadowBox(geometry.xy, hole_half, fit_radii(spread_radius(radius, -spread), hole_half));
 }
 
 // A drop shadow's source S, as half-extents: its quad less the halo.
-fn shadow_source_half(half: vec2<f32>, fill_axis: vec4<f32>) -> vec2<f32> {
-    return half - vec2<f32>(SHADOW_REACH_SIGMAS * fill_axis.z + max(fill_axis.w, 0.0));
+fn shadow_source_half(half: vec2<f32>, geometry: vec4<f32>) -> vec2<f32> {
+    return half - vec2<f32>(SHADOW_REACH_SIGMAS * geometry.z + max(geometry.w, 0.0));
 }
 
 // `blurred_box_coverage` at `p`, relative to the shadow's box, taking the
@@ -681,7 +690,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
     let frag = unturned(frag_px(in.clip), in.turn);
     var px = ShadowPixel(frag - in.box_center, 0.0);
     let s = frag - in.source_center;
-    if (in.kind == PALANTIR_FILL_SHADOW_DROP) {
+    if (in.kind == SHADOW_DROP) {
         // CSS clips an outer shadow inside the box that casts it
         // (Backgrounds 3 §7.1.1). Only where the source's own coverage is
         // full: the fill drawn over its edge pixels then blends with the
@@ -694,7 +703,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
             px.source = 1.0;
         }
     }
-    if (in.kind == PALANTIR_FILL_SHADOW_INSET) {
+    if (in.kind == SHADOW_INSET) {
         // Inset shadow: the source is the paint bbox, and the box is the
         // hole, the source deflated by `spread` per side and shifted by
         // `offset` (the light source moves in that direction → shadow
@@ -715,7 +724,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
 // paints it, an inset one its complement, both as far as the source and the
 // rounded clips let.
 fn shadow_paint(in: ShadowOut, px: ShadowPixel, cov: f32) -> vec4<f32> {
-    let inset = in.kind == PALANTIR_FILL_SHADOW_INSET;
+    let inset = in.kind == SHADOW_INSET;
     let clipped = palantir_clip_coverage(frag_px(in.clip), in.chain);
     return premultiply(in.fill.rgb, in.fill.a * px.source * clipped * select(cov, 1.0 - cov, inset));
 }

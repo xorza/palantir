@@ -1,12 +1,6 @@
 // The one-quad form of a box and a triangle, each fragment taking the shape's SDF: the reference
 // the template is compared against, built only by the crate's internals.
 
-// Fragment fast path (`FillKind::FAST_BIT`). The composer sets it on a
-// solid, sharp, borderless quad whose rect is pixel-aligned — every
-// rasterized fragment is interior (SDF coverage exactly 1.0), so `fs`
-// returns the premultiplied fill directly.
-const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
-
 @vertex
 fn vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: QuadIn) -> VertexOut {
     var out = quad_vertex(vi, shape, quad);
@@ -58,11 +52,6 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
 
 // The shape's SDF composites its fill and inner-edge border into premultiplied linear.
 fn reference_color(in: VertexOut) -> vec4<f32> {
-    // Uniform per instance (`fill_kind` is flat), so whole wavefronts
-    // inside one quad take a single side of this branch.
-    if (QUAD_FORM == QUAD_FORM_BOX_SOLID && (in.fill_kind & FILL_FLAG_FAST) != 0u) {
-        return premultiply(in.fill.rgb, in.fill.a);
-    }
     let fill = quad_paint(in.fill, in.local * in.inv_size, in.fill_kind, in.fill_axis, in.fill_lut_row);
     if (form_is_triangle()) {
         // The three corner centers, in `local` 0..size coords, and the corner radius, as `vs`
@@ -82,7 +71,7 @@ fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
         return premultiply(fill.rgb, fill.a);
     }
     let d = palantir_sdf_rounded_rect(in.local, in.size, in.radius);
-    if ((in.fill_kind & FILL_FLAG_OUTSIDE) != 0u) {
+    if (form_is_outside()) {
         var cover = composite_outside(d, fill, in.border_color, in.border_width);
         if (in.turned != 0u) {
             // Turned, the quad edge no longer lies on content of its own

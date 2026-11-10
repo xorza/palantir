@@ -31,9 +31,12 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
@@ -129,7 +132,8 @@ fn nan_border_width_normalizes_away_on_every_quad_geometry() {
     );
     assert_eq!(buf.quads.len(), 1, "the fill keeps the rect alive");
     assert_eq!(
-        buf.quads[0].border_width, 0.0,
+        buf.quads.instance()[0].border_width,
+        0.0,
         "a NaN width must not reach the instance",
     );
 
@@ -157,7 +161,8 @@ fn nan_border_width_normalizes_away_on_every_quad_geometry() {
     );
     assert_eq!(buf.quads.len(), 1, "the fill keeps the triangle alive");
     assert_eq!(
-        buf.quads[0].border_width, 0.0,
+        buf.quads.instance()[0].border_width,
+        0.0,
         "the triangle arm must agree with the rect arm",
     );
 
@@ -181,7 +186,7 @@ fn compose_scales_rects_for_dpr() {
         &params(2.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
-    let q = &buf.quads[0];
+    let q = &buf.quads.instance()[0];
     assert_eq!(q.header.rect.min, Vec2::new(20.0, 40.0));
     assert_eq!(q.header.rect.size, Size::new(60.0, 80.0));
 }
@@ -197,7 +202,7 @@ fn compose_translates_under_push_transform() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
-    let q = &buf.quads[0];
+    let q = &buf.quads.instance()[0];
     assert_eq!(q.header.rect.min, Vec2::new(110.0, 70.0));
     assert_eq!(q.header.rect.size, Size::new(30.0, 40.0));
 }
@@ -215,7 +220,7 @@ fn compose_scales_radius_and_border_under_transform() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    let q = &buf.quads[0];
+    let q = &buf.quads.instance()[0];
     assert_eq!(q.header.rect.size, Size::new(100.0, 100.0));
     assert_eq!(q.header.corners.to_array()[0], 16.0);
     assert_eq!(q.border_width, 3.0);
@@ -259,7 +264,7 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
     assert_eq!(buf.quads.len(), 1);
     // 100 × 1.013 and 50 × 1.013 — preserved, not snapped.
     assert_eq!(
-        buf.quads[0].header.rect.size,
+        buf.quads.instance()[0].header.rect.size,
         Size::new(100.0 * 1.013, 50.0 * 1.013)
     );
 }
@@ -292,7 +297,7 @@ fn compose_composes_nested_transforms() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    let q = &buf.quads[0];
+    let q = &buf.quads.instance()[0];
     assert_eq!(q.header.rect.min, Vec2::new(1.0, 51.0));
     assert_eq!(q.header.rect.size, Size::new(32.0, 40.0));
 }
@@ -458,7 +463,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
         &params(1.0, UVec2::new(4000, 4000)),
     );
     assert_eq!(buf.quads.len(), 1);
-    let quad = buf.quads[0];
+    let quad = buf.quads.instance()[0];
     assert_eq!(
         quad.header.rect,
         Rect::from_min_max(Vec2::new(11.3, 5.1), Vec2::new(3015.7, 2952.6)),
@@ -526,7 +531,7 @@ fn a_turned_triangle_turns_its_quad_about_its_pivot() {
             },
             &params(2.0, UVec2::new(100, 100)),
         );
-        buf.quads[0]
+        buf.quads.instance()[0]
     };
     let still = quad(None);
     assert_eq!(
@@ -588,11 +593,15 @@ fn a_triangle_carries_its_gradient_lanes() {
         },
         &params(2.0, UVec2::new(100, 100)),
     );
-    let quad = buf.quads[0];
+    let quad = buf.quads.instance()[0];
     assert_eq!(
-        quad.fill_kind,
-        FillKind::radial(Spread::Repeat).with_triangle()
+        buf.quads.key(),
+        [QuadKey::Fill(FillForm::new(
+            ShapeForm::Triangle,
+            FillBrush::Gradient
+        ))]
     );
+    assert_eq!(quad.fill_kind, FillKind::radial(Spread::Repeat));
     assert_eq!(quad.fill_lut_row, LutRow(3));
     assert_eq!(quad.fill_axis, axis);
     assert_eq!(quad.fill, RgbaF16::WHITE);
@@ -638,7 +647,8 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
         );
         assert_eq!(buf.quads.len(), 1);
         assert_eq!(
-            buf.quads[0].header.rect, want,
+            buf.quads.instance()[0].header.rect,
+            want,
             "snap {}, {transform:?}",
             display.pixel_snap
         );
@@ -653,6 +663,9 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
 /// min (15 + 3 − 13.5, 16 − 1.5 − 13.5) = (4.5, 1), size (31 + 27, 8 + 27).
 /// The radii fit the source: 4 × 1.5 = 6 per corner, 12 over its 8 px
 /// sides, so f = 8 / 12 and each is 4.
+///
+/// An inset shadow of the same source paints over the snapped source itself, its kind and its
+/// scaled lanes in the shadow's own fields.
 ///
 /// A source with no size still casts its spread: (50, 50) grown by 2 is
 /// (48, 48, 4, 4). With no blur and no spread it casts nothing.
@@ -690,11 +703,43 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         },
         &params(1.5, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.quads.len(), 1);
-    let q = &buf.quads[0];
+    assert_eq!(buf.quads.key(), [QuadKey::Shadow]);
+    let q = ShadowQuad::from(buf.quads.instance()[0]);
     assert_eq!(q.header.rect, Rect::new(4.5, 1.0, 58.0, 35.0));
     assert_eq!(q.header.corners, Corners::all(4.0));
-    assert_eq!(q.fill_axis.lanes(), [3.0, -1.5, 3.0, 1.5]);
+    assert_eq!(q.kind, ShadowKind::DROP);
+    assert_eq!(q.geometry.lanes(), [3.0, -1.5, 3.0, 1.5]);
+
+    let buf = run(
+        |b, _| {
+            let mut p = drop(
+                Rect::new(10.25, 10.75, 20.5, 5.25),
+                4.0,
+                [2.0, -1.0, 2.0, 1.0],
+            );
+            p.shadow = LoweredShadow::lower(
+                Shadow::drop(
+                    RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
+                    Vec2::new(2.0, -1.0),
+                    2.0,
+                )
+                .with_spread(1.0)
+                .inset(),
+            );
+            b.draw(p, 1.0);
+        },
+        &params(1.5, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.key(), [QuadKey::Shadow]);
+    let q = ShadowQuad::from(buf.quads.instance()[0]);
+    assert_eq!(
+        q.header.rect,
+        Rect::new(15.0, 16.0, 31.0, 8.0),
+        "the snapped source"
+    );
+    assert_eq!(q.header.corners, Corners::all(4.0));
+    assert_eq!(q.kind, ShadowKind::INSET);
+    assert_eq!(q.geometry.lanes(), [3.0, -1.5, 3.0, 1.5]);
 
     let point = Rect::new(50.0, 50.0, 0.0, 0.0);
     let buf = run(
@@ -705,7 +750,10 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 1, "only the spread one paints");
-    assert_eq!(buf.quads[0].header.rect, Rect::new(48.0, 48.0, 4.0, 4.0));
+    assert_eq!(
+        buf.quads.instance()[0].header.rect,
+        Rect::new(48.0, 48.0, 4.0, 4.0)
+    );
 
     let buf = run(
         |b, _| {
@@ -721,8 +769,8 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         &params(2.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 1, "the widest shadow still paints");
-    let q = &buf.quads[0];
-    assert_eq!(q.fill_axis.lanes(), [0.0, 0.0, 65504.0, 0.0]);
+    let q = ShadowQuad::from(buf.quads.instance()[0]);
+    assert_eq!(q.geometry.lanes(), [0.0, 0.0, 65504.0, 0.0]);
     assert_eq!(
         q.header.rect,
         Rect::new(-261996.0, -261996.0, 524072.0, 524072.0)
@@ -812,9 +860,9 @@ fn a_mesh_instance_fits_turns_and_scales_at_once() {
 
 /// An opaque rect turned a quarter about the logical pivot (50, 50), at display scale 2: its
 /// physical rect (80, 80)..(120, 100) has its center (100, 90) turned about the physical pivot
-/// (100, 100) to (110, 100), so the instance is (90, 90) 40×20 at the angle, unsnapped and off
-/// the fast path. A turned quad occludes nothing: a quad under its own rect but outside the turned
-/// shape, at physical (124, 94)..(126, 96), survives the group.
+/// (100, 100) to (110, 100), so the instance is (90, 90) 40×20 at the angle, unsnapped. A turned
+/// quad occludes nothing: a quad under its own rect but outside the turned shape, at physical
+/// (124, 94)..(126, 96), survives the group.
 #[test]
 fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
     const EPS: f32 = 1e-4;
@@ -829,7 +877,7 @@ fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
         &display,
     );
     assert_eq!(buf.quads.len(), 2, "the turned quad occludes nothing");
-    let turned = buf.quads[1];
+    let turned = buf.quads.instance()[1];
     assert!(
         turned
             .header
@@ -841,10 +889,6 @@ fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
     );
     assert_eq!(turned.header.rect.size, Size::new(40.0, 20.0));
     assert_eq!(turned.header.rotation, FRAC_PI_2);
-    assert!(
-        !turned.fill_kind.is_fast(),
-        "a turned quad is not pixel-aligned"
-    );
 }
 
 /// A shaped image's quad is its shape's rect, with the image's uv carried over the whole rect and
@@ -881,7 +925,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
             },
             &params(2.0, UVec2::new(200, 200)),
         );
-        assert_eq!(buf.images.form(), [ImageForm::Box]);
+        assert_eq!(buf.images.form(), [ShapeForm::Box]);
         buf.images.instance()[0]
     };
     let contained = shaped(Rect::new(17.5, 5.0, 25.0, 25.0), None);
@@ -984,9 +1028,9 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
         },
         &params(2.0, UVec2::new(200, 200)),
     );
-    assert_eq!(buf.images.form(), [ImageForm::Triangle]);
+    assert_eq!(buf.images.form(), [ShapeForm::Triangle]);
     let image = buf.images.instance()[0];
-    let quad = buf.quads[0];
+    let quad = buf.quads.instance()[0];
     assert_eq!(
         image.header.rect,
         Rect::from_min_max(Vec2::new(8.0, 8.0), Vec2::new(52.0, 32.0))

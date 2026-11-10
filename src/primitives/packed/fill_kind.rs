@@ -7,9 +7,8 @@ use bytemuck::{Pod, Zeroable};
 
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching paint-payload
 /// fields: **bits 0..8** the family tag (one of the `TAG_*`, via
-/// [`Self::tag`]), **bits 8..16** the `Spread` discriminant (gradient tags only),
-/// **bit 16** [`Self::FAST_BIT`], **bit 17** [`Self::OUTSIDE_BIT`], **bit 18**
-/// [`Self::TRIANGLE_BIT`].
+/// [`Self::tag`]), **bits 8..16** the `Spread` discriminant (gradient tags only).
+/// A brush alone: the shape's form and a shadow are the quad row's key (`QuadKey`).
 /// `repr(transparent)` over `u32` so the wire layout is a plain vertex attribute.
 ///
 /// Every number here is substituted into the quad shader (`quad_pipeline/*.wgsl`) rather than
@@ -30,9 +29,7 @@ impl FillKind {
     pub(crate) const TAG_LINEAR: u32 = 1;
     pub(crate) const TAG_RADIAL: u32 = 2;
     pub(crate) const TAG_CONIC: u32 = 3;
-    pub(crate) const TAG_SHADOW_DROP: u32 = 4;
-    pub(crate) const TAG_SHADOW_INSET: u32 = 5;
-    pub(crate) const TAG_RAMP: u32 = 6;
+    pub(crate) const TAG_RAMP: u32 = 4;
 
     #[inline]
     pub(crate) const fn tag(self) -> u32 {
@@ -66,73 +63,9 @@ impl FillKind {
         Self(tag | ((spread as u32) << Self::SPREAD_SHIFT))
     }
 
-    /// Drop-shadow marker: `fill` is the shadow color, `fill_axis = (offset.x,
-    /// offset.y, sigma, spread)`, `corners` the *source* shape's radii. The quad is
-    /// the source moved by the offset and grown by the halo; the shader recovers
-    /// the source from the quad's center.
-    pub(crate) const SHADOW_DROP: Self = Self(Self::TAG_SHADOW_DROP);
-
-    /// Inset-shadow marker: same `fill_axis` layout; the shader inverts coverage
-    /// and clips to the source rect.
-    pub(crate) const SHADOW_INSET: Self = Self(Self::TAG_SHADOW_INSET);
-
     /// Curve-ramp marker, read by the curve pipeline only; the atlas row rides in
     /// `fill_lut_row`, so there is no axis or spread.
     pub(crate) const RAMP: Self = Self(Self::TAG_RAMP);
-
-    /// Bit 16: fragment fast path, set by the composer on a solid, sharp,
-    /// borderless, pixel-aligned quad whose fragments are all interior, so the
-    /// shader skips the SDF + composite path. Read as `FILL_FLAG_FAST`.
-    pub(crate) const FAST_BIT: u32 = 1 << 16;
-
-    /// Bit 17: outside rect. Fill coverage is inverted (painting outside the rounded boundary,
-    /// interior transparent); the composer sets it on a `Quad` from a box that covers its
-    /// [`Coverage::Outside`](crate::widget::Coverage::Outside), as a payload's shape holds the
-    /// side. Read as `FILL_FLAG_OUTSIDE`.
-    pub(crate) const OUTSIDE_BIT: u32 = 1 << 17;
-
-    #[inline]
-    pub(crate) const fn with_fast(self) -> Self {
-        Self(self.0 | Self::FAST_BIT)
-    }
-
-    /// Whether the fragment fast path draws this fill: its coverage is whole at every pixel.
-    #[inline]
-    pub(crate) const fn is_fast(self) -> bool {
-        self.0 & Self::FAST_BIT != 0
-    }
-
-    #[inline]
-    pub(crate) const fn with_outside(self) -> Self {
-        Self(self.0 | Self::OUTSIDE_BIT)
-    }
-
-    #[inline]
-    pub(crate) const fn is_outside(self) -> bool {
-        self.0 & Self::OUTSIDE_BIT != 0
-    }
-
-    /// Bit 18: a rounded triangle, three of `ShapeHeader::points` where a box has four, which the
-    /// template's corner count and the form follow; the tag still names its paint. The composer
-    /// sets it on a `Quad` from a payload's triangle. Read as `FILL_FLAG_TRIANGLE`.
-    pub(crate) const TRIANGLE_BIT: u32 = 1 << 18;
-
-    #[inline]
-    pub(crate) const fn with_triangle(self) -> Self {
-        Self(self.0 | Self::TRIANGLE_BIT)
-    }
-
-    #[inline]
-    pub(crate) const fn is_triangle(self) -> bool {
-        self.0 & Self::TRIANGLE_BIT != 0
-    }
-
-    /// True iff this marks a shadow draw; blur extends past the stored rect, so
-    /// shadows are never dropped by the occlusion-prune sweep.
-    #[inline]
-    pub(crate) const fn is_shadow(self) -> bool {
-        matches!(self.tag(), Self::TAG_SHADOW_DROP | Self::TAG_SHADOW_INSET)
-    }
 }
 
 // The fields tile the word without overlapping and every value fits its field.
@@ -140,21 +73,4 @@ const _: () = {
     assert!(FillKind::TAG_MASK < 1 << FillKind::SPREAD_SHIFT);
     assert!(FillKind::TAG_RAMP <= FillKind::TAG_MASK);
     assert!(Spread::Reflect as u32 <= FillKind::SPREAD_MASK);
-    let spread_bits = FillKind::SPREAD_MASK << FillKind::SPREAD_SHIFT;
-    let flags = [
-        FillKind::FAST_BIT,
-        FillKind::OUTSIDE_BIT,
-        FillKind::TRIANGLE_BIT,
-    ];
-    let mut i = 0;
-    while i < flags.len() {
-        assert!(spread_bits & flags[i] == 0);
-        assert!(flags[i].is_power_of_two());
-        let mut j = i + 1;
-        while j < flags.len() {
-            assert!(flags[i] & flags[j] == 0);
-            j += 1;
-        }
-        i += 1;
-    }
 };

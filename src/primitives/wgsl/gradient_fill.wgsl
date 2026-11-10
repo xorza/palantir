@@ -6,9 +6,8 @@
 // fallback.
 const PALANTIR_ZERO_EPS: f32 = 1e-6;
 
-// `fill_kind`'s tag field, and the solid fill's tag, the one that reads no gradient.
+// `fill_kind`'s tag field.
 const PALANTIR_FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
-const PALANTIR_FILL_SOLID:    u32 = /*{FILL_SOLID}*/;
 
 // The gradient kinds' tags (`FillKind`), conic the one left when neither matches:
 //   linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
@@ -63,7 +62,7 @@ fn palantir_gradient_fill(local01: vec2<f32>, fill_kind: u32, fill_axis: vec4<f3
         let d  = (local01 - center) / vec2<f32>(rx, ry);
         t01 = length(d);
     } else {
-        // Conic, the remaining kind (`QuadForm::of`): clockwise on screen, as y points down.
+        // Conic, the remaining kind (`FillBrush::of`): clockwise on screen, as y points down.
         // `+ 1.0` lifts atan2's negative half before `fract`.
         let center      = fill_axis.xy;
         let start_angle = fill_axis.z;

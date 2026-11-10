@@ -21,7 +21,6 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::geometry::box_geometry::PlacedBox;
@@ -180,7 +179,7 @@ fn a_quad_over_closed_text_and_an_open_image_flushes() {
 }
 
 /// A quad turned 30° about its center reaches the AA half width past each edge in its own frame:
-/// (10, 10)..(30, 20) shades (8, 4)..(32, 26), as `Quad::shaded_rect` says. An image in row 25,
+/// (10, 10)..(30, 20) shades (8, 4)..(32, 26), as `QuadKey::shaded_rect` says. An image in row 25,
 /// which only that fringe reaches, comes before it, so the quad flushes to paint above it.
 #[test]
 fn a_turned_quad_orders_against_its_fringe() {
@@ -193,7 +192,10 @@ fn a_turned_quad_orders_against_its_fringe() {
         },
         &params(1.0, UVec2::new(100, 100)),
     );
-    assert_eq!(buf.quads[0].shaded_rect(), Rect::new(8.0, 4.0, 24.0, 22.0));
+    assert_eq!(
+        buf.quads.key()[0].shaded_rect(&buf.quads.instance()[0].header),
+        Rect::new(8.0, 4.0, 24.0, 22.0)
+    );
     assert_eq!(buf.groups.len(), 2, "the quad flushes past the image");
     assert_eq!(buf.groups[1].quads, Span::new(0, 1));
 }
@@ -225,7 +227,7 @@ fn a_turned_quad_is_culled_by_the_pixels_it_reaches() {
     assert_eq!(quads(quad), 0, "unturned, outside it");
 }
 
-/// A quad orders by the whole pixels it shades, `Quad::shaded_rect`: one at x 10..20 shades
+/// A quad orders by the whole pixels it shades, `QuadKey::shaded_rect`: one at x 10..20 shades
 /// columns 10..20 and leaves an image at x 20..30 in its group; one at x 10..20.25 shades column
 /// 20 too, so it closes the group to paint above the image recorded before it.
 #[test]
@@ -239,7 +241,7 @@ fn a_quad_orders_by_the_pixels_it_shades() {
             &params_unsnapped(1.0, UVec2::new(100, 100)),
         );
         assert_eq!(
-            buf.quads[0].shaded_rect(),
+            buf.quads.key()[0].shaded_rect(&buf.quads.instance()[0].header),
             Rect::new(10.0, 0.0, if width == 10.0 { 10.0 } else { 11.0 }, 10.0)
         );
         assert_eq!(buf.groups.len(), groups, "width {width}");
@@ -549,7 +551,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
                 group
                     .quads
                     .range()
-                    .any(|qi| buf.quads[qi].header.rect.min.y == quad_y)
+                    .any(|qi| buf.quads.instance()[qi].header.rect.min.y == quad_y)
             })
             .map(|(i, _)| i as u32)
             .expect("panel quad group");
@@ -562,38 +564,18 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
     }
 }
 
-/// Solid, sharp, borderless, pixel-aligned quads carry `FillKind::FAST_BIT`; alignment is on the physical rect, and translucency does not disqualify.
+/// An opaque solid box whose physical edges lie on whole pixels, sharp and borderless, covers its
+/// own rect whole, so it drops an under quad of the same rect; any other keeps a half-pixel ramp
+/// inside its edge, which the under quad's pixels reach past. Alignment is on the physical rect.
 #[test]
-fn quad_fast_path_flag_cases() {
-    use crate::primitives::packed::fill_axis::FillAxis;
-    use crate::primitives::packed::fill_kind::FillKind;
-    use crate::primitives::paint::brush::gradient::Spread;
-    use crate::primitives::paint::lut_row::LutRow;
-
-    let solid = |c: RgbaF32| BrushSource::Solid(c.to_f16());
-    let opaque = RgbaF32::srgb(0.5, 0.5, 0.5);
-
-    let gradient = BrushSource::Gradient(ResolvedGradient {
-        axis: FillAxis::ZERO,
-        lut_row: LutRow::FALLBACK,
-        kind: FillKind::linear(Spread::Pad),
-    });
-    let cases: &[(&str, Rect, Corners, Border, BrushSource, f32, bool)] = &[
+fn a_pixel_aligned_sharp_box_covers_its_own_rect() {
+    let opaque = BrushSource::Solid(RgbaF32::srgb(0.5, 0.5, 0.5).to_f16());
+    let cases: &[(&str, Rect, Corners, Border, f32, bool)] = &[
         (
-            "aligned sharp borderless solid",
+            "aligned sharp borderless",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Border::NONE,
-            solid(opaque),
-            1.0,
-            true,
-        ),
-        (
-            "translucent still qualifies",
-            Rect::new(10.0, 10.0, 20.0, 20.0),
-            Corners::ZERO,
-            Border::NONE,
-            solid(RgbaF32::srgba(0.5, 0.5, 0.5, 0.5)),
             1.0,
             true,
         ),
@@ -602,80 +584,57 @@ fn quad_fast_path_flag_cases() {
             Rect::new(10.5, 10.5, 20.0, 20.0),
             Corners::ZERO,
             Border::NONE,
-            solid(opaque),
             2.0,
             true,
         ),
         (
-            "fractional rect disqualifies",
+            "fractional rect",
             Rect::new(10.25, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Border::NONE,
-            solid(opaque),
             1.0,
             false,
         ),
         (
-            "fractional size disqualifies",
+            "fractional size",
             Rect::new(10.0, 10.0, 20.5, 20.0),
             Corners::ZERO,
             Border::NONE,
-            solid(opaque),
             1.0,
             false,
         ),
         (
-            "corners disqualify",
+            "corners",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::all(4.0),
             Border::NONE,
-            solid(opaque),
             1.0,
             false,
         ),
         (
-            "border disqualifies",
+            "an opaque border",
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Border::new(RgbaF32::WHITE, 1.0),
-            solid(opaque),
-            1.0,
-            false,
-        ),
-        (
-            "gradient disqualifies",
-            Rect::new(10.0, 10.0, 20.0, 20.0),
-            Corners::ZERO,
-            Border::NONE,
-            gradient,
             1.0,
             false,
         ),
     ];
 
-    for (name, r, corners, border, brush, dpr, expect_fast) in cases {
+    for &(name, r, corners, border, dpr, covers) in cases {
         let buf = run(
             |b, _arena| {
-                QuadBuilder::new(*r)
-                    .corners(*corners)
-                    .brush(*brush)
-                    .border(*border)
+                QuadBuilder::new(r).brush(opaque).draw(b);
+                QuadBuilder::new(r)
+                    .corners(corners)
+                    .brush(opaque)
+                    .border(border)
                     .draw(b);
             },
-            &params_unsnapped(*dpr, UVec2::new(400, 400)),
+            &params_unsnapped(dpr, UVec2::new(400, 400)),
         );
-        assert_eq!(buf.quads.len(), 1, "{name}: quad emitted");
-        let got = buf.quads[0].fill_kind;
-        let plain = match brush {
-            BrushSource::Solid(_) => FillKind::SOLID,
-            BrushSource::Gradient(g) => g.kind,
-        };
-        let want = if *expect_fast {
-            plain.with_fast()
-        } else {
-            plain
-        };
-        assert_eq!(got, want, "{name}: fill_kind");
+        let quads = if covers { 1 } else { 2 };
+        assert_eq!(buf.quads.len(), quads, "{name}");
     }
 }
 

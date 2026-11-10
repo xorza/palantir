@@ -28,9 +28,11 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::quad_row::QuadKey;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use glam::{UVec2, Vec2};
@@ -47,13 +49,12 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     // 200x200 viewport: an opaque solid sharp quad covering it all would fold into
     // the clear instead of emitting.
     rig.compose(&buffer);
-    let q = &rig.out.quads[0];
+    let q = &rig.out.quads.instance()[0];
+    assert_eq!(rig.out.quads.key(), [QuadKey::Fill(FillForm::BOX_SOLID)]);
     assert_eq!(
         q.fill_kind,
-        // Sharp, stroke-less, pixel-aligned: the solid kind also carries the
-        // fragment fast-path bit.
-        FillKind::SOLID.with_fast(),
-        "solid quad must carry kind=solid (+fast)",
+        FillKind::SOLID,
+        "solid quad must carry kind=solid"
     );
     assert_eq!(
         q.fill_lut_row,
@@ -87,7 +88,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         .draw(&mut buffer);
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(100, 100)));
     rig.compose(&buffer);
-    let q = &rig.out.quads[0];
+    let q = &rig.out.quads.instance()[0];
     assert_eq!(q.fill_kind, FillKind::linear(Spread::Reflect));
     assert_eq!(
         q.fill_lut_row,
@@ -119,7 +120,13 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     }
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(100, 100)));
     rig.compose(&buffer);
-    let rows: Vec<_> = rig.out.quads.iter().map(|q| q.fill_lut_row).collect();
+    let rows: Vec<_> = rig
+        .out
+        .quads
+        .instance()
+        .iter()
+        .map(|q| q.fill_lut_row)
+        .collect();
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0], rows[1]);
     assert_eq!(rows[1], rows[2]);
@@ -154,11 +161,7 @@ fn compose_emits_image_batch_for_drawimage() {
         },
         &params(2.0, UVec2::new(400, 400)),
     );
-    assert_eq!(
-        buf.images.form(),
-        [ImageForm::Plain],
-        "one plain image draw"
-    );
+    assert_eq!(buf.images.form(), [ShapeForm::Rect], "one plain image draw");
     assert_eq!(buf.batches(PaintTier::Image).len(), 1, "one image batch");
     assert_eq!(buf.batches(PaintTier::Image)[0].items, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));

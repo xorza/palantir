@@ -230,7 +230,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let outer = &buf.groups[0];
     let inner = &buf.groups[1];
 
-    let chain = |q: usize| &buf.rounded_clips[buf.quads[q].header.clip.span().range()];
+    let chain = |q: usize| &buf.rounded_clips[buf.quads.instance()[q].header.clip.span().range()];
     let outer_chain = chain(0);
     assert_eq!(outer_chain.len(), 1, "single rounded clip → depth-1 chain");
     let outer_r = outer_chain[0];
@@ -242,7 +242,8 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
 
     // Inheritance: the inner Rect clip carries the outer chain; scissor narrows independently.
     assert_eq!(
-        buf.quads[1].header.clip, buf.quads[0].header.clip,
+        buf.quads.instance()[1].header.clip,
+        buf.quads.instance()[0].header.clip,
         "inner draw inherits parent's chain verbatim"
     );
     // DPR=2: rect (5,25,40,30) → (10,50,80,60), clamped to outer.
@@ -279,7 +280,7 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
         4,
         "outer rounded, nested rounded, nested rect, crossing rounded"
     );
-    let chain = |q: usize| &buf.rounded_clips[buf.quads[q].header.clip.span().range()];
+    let chain = |q: usize| &buf.rounded_clips[buf.quads.instance()[q].header.clip.span().range()];
 
     let outer = chain(0);
     assert_eq!(outer.len(), 1);
@@ -297,7 +298,8 @@ fn push_clip_rounded_nested_builds_outer_inner_chain() {
 
     // Rect clip under both: inherits the inner's chain verbatim.
     assert_eq!(
-        buf.quads[2].header.clip, buf.quads[1].header.clip,
+        buf.quads.instance()[2].header.clip,
+        buf.quads.instance()[1].header.clip,
         "rect inside nested rounded inherits the full chain"
     );
     assert_eq!(buf.groups[2].scissor, Some(URect::new(20, 30, 50, 50)));
@@ -325,9 +327,21 @@ fn a_draw_inside_its_clips_takes_none() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 3);
-    assert_eq!(buf.quads[0].header.clip, ClipChain::NONE, "far inside");
-    assert_eq!(buf.quads[1].header.clip.span().len, 1, "across the edge");
-    assert_eq!(buf.quads[2].header.clip.span().len, 1, "past the arc");
+    assert_eq!(
+        buf.quads.instance()[0].header.clip,
+        ClipChain::NONE,
+        "far inside"
+    );
+    assert_eq!(
+        buf.quads.instance()[1].header.clip.span().len,
+        1,
+        "across the edge"
+    );
+    assert_eq!(
+        buf.quads.instance()[2].header.clip.span().len,
+        1,
+        "past the arc"
+    );
     assert!(buf.clips_drawn, "a draw names a chain");
     let inside = run(
         |b, _arena| {
@@ -355,7 +369,7 @@ fn rounded_clip_chain_accepts_depth_255() {
     );
 
     assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.quads[0].header.clip.span().len, 255);
+    assert_eq!(buf.quads.instance()[0].header.clip.span().len, 255);
 }
 
 #[test]
@@ -384,11 +398,14 @@ fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
     assert_eq!(buf.quads.len(), 2);
     assert_eq!(buf.groups.len(), 1, "identical rounded re-push is a no-op");
     assert_eq!(
-        buf.quads[1].header.clip.span().len,
+        buf.quads.instance()[1].header.clip.span().len,
         1,
         "no extra chain level for the redundant mask"
     );
-    assert_eq!(buf.quads[1].header.clip, buf.quads[0].header.clip);
+    assert_eq!(
+        buf.quads.instance()[1].header.clip,
+        buf.quads.instance()[0].header.clip
+    );
     assert_eq!(buf.rounded_clips.len(), 1, "the pool holds the one clip");
 }
 
@@ -404,7 +421,7 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
         &params(1.0, UVec2::new(120, 60)),
     );
     // Every pixel on screen lies far inside the clip, so the draw takes no chain; the pool holds it.
-    assert_eq!(buf.quads[0].header.clip, ClipChain::NONE);
+    assert_eq!(buf.quads.instance()[0].header.clip, ClipChain::NONE);
     let r = buf.rounded_clips[0];
     // Mask rect keeps the off-screen origin (-50,-20) and full size (200,100).
     assert_eq!(r.mask_rect.min, Vec2::new(-50.0, -20.0));
@@ -425,7 +442,7 @@ fn push_clip_rect_emits_no_rounded_data() {
     );
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.rounded_clips.is_empty());
-    assert_eq!(buf.quads[0].header.clip, ClipChain::NONE);
+    assert_eq!(buf.quads.instance()[0].header.clip, ClipChain::NONE);
     assert!(!buf.clips_drawn, "a rect clip names no rounded clip");
 }
 
@@ -450,12 +467,16 @@ fn every_draw_names_the_chain_in_force() {
         &params(1.0, UVec2::new(400, 400)),
     );
     let edge = ClipChain::new(Span::new(0, 1));
-    assert_eq!(buf.quads[0].header.clip, edge);
+    assert_eq!(buf.quads.instance()[0].header.clip, edge);
     assert_eq!(buf.texts[0].clip, edge);
     assert_eq!(buf.meshes.instance()[0].clip, edge);
     assert_eq!(buf.images.instance()[0].header.clip, edge);
     assert!(buf.curves.iter().all(|c| c.clip == edge));
-    assert_eq!(buf.quads[1].header.clip, ClipChain::NONE, "past the clip");
+    assert_eq!(
+        buf.quads.instance()[1].header.clip,
+        ClipChain::NONE,
+        "past the clip"
+    );
     assert!(buf.clips_drawn);
 }
 

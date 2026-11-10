@@ -32,27 +32,37 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl;
 use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::quad_form::QuadForm;
+use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
+use crate::renderer::render_buffer::quad_row::QuadRow;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
+use soa_rs::Soa;
 use std::mem::offset_of;
 use std::ops::Range;
 
 /// The label of `draw`'s pipeline.
 const fn draw_label(draw: QuadDraw) -> &'static str {
     match draw {
-        QuadDraw::Form(QuadForm::BoxSolid) => "palantir.quad.pipeline.box_solid",
-        QuadDraw::Form(QuadForm::BoxGradient) => "palantir.quad.pipeline.box_gradient",
-        QuadDraw::Form(QuadForm::TriangleSolid) => "palantir.quad.pipeline.triangle_solid",
-        QuadDraw::Form(QuadForm::BoxOutside) => "palantir.quad.pipeline.box_outside",
-        QuadDraw::Form(QuadForm::TriangleGradient) => "palantir.quad.pipeline.triangle_gradient",
+        QuadDraw::Fill(form) => FILL_LABELS[form.idx() as usize],
         QuadDraw::Shadow(ShadowEntry::General) => "palantir.quad.pipeline.shadow",
         QuadDraw::Shadow(ShadowEntry::Tables) => "palantir.quad.pipeline.shadow_tables",
         QuadDraw::Shadow(ShadowEntry::TablesWide) => "palantir.quad.pipeline.shadow_tables_wide",
     }
 }
 
-/// Every quad pipeline one swapchain format needs: one per [`QuadDraw`], a form of `fs` or a
+/// Each fill form's pipeline label, in [`FillForm::ALL`] order.
+const FILL_LABELS: [&str; FillForm::ALL.len()] = [
+    "palantir.quad.pipeline.box_solid",
+    "palantir.quad.pipeline.box_gradient",
+    "palantir.quad.pipeline.box_outside_solid",
+    "palantir.quad.pipeline.box_outside_gradient",
+    "palantir.quad.pipeline.triangle_solid",
+    "palantir.quad.pipeline.triangle_gradient",
+];
+
+/// Every quad pipeline one swapchain format needs: one per [`QuadDraw`], a fill's form or a
 /// shadow's entry.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
@@ -154,7 +164,6 @@ pub(crate) fn pre_clear(viewport: Vec2, color: RgbaF16) -> Quad {
     );
     Quad {
         fill: color,
-        fill_kind: FillKind::SOLID.with_fast(),
         ..Quad::of_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y))
     }
 }
@@ -187,14 +196,9 @@ pub(crate) struct QuadPipeline {
 
 impl QuadPipeline {
     /// The vertices `form` draws each instance with.
-    pub(crate) const fn form_vertices(&self, form: QuadForm) -> u32 {
+    pub(crate) const fn form_vertices(&self, form: FillForm) -> u32 {
         match self.shape_cells {
-            ShapeCells::Template => match form {
-                QuadForm::TriangleSolid | QuadForm::TriangleGradient => shape_template::vertices(3),
-                QuadForm::BoxSolid | QuadForm::BoxGradient | QuadForm::BoxOutside => {
-                    shape_template::vertices(4)
-                }
-            },
+            ShapeCells::Template => shape_template::vertices(form.shape().corner_count()),
             #[cfg(feature = "internals")]
             ShapeCells::OneQuad => 4,
         }
@@ -225,7 +229,7 @@ impl QuadPipeline {
             .clear
             .expect("a frame that pre-clears uploads its clear quad");
         self.bind(rec, pipeline);
-        rec.draw(0..self.form_vertices(QuadForm::BoxSolid), at..at + 1);
+        rec.draw(0..self.form_vertices(FillForm::BOX_SOLID), at..at + 1);
     }
 
     /// Bind `pipeline` over the instance stream in the main pass, which holds the frame group.
@@ -298,7 +302,7 @@ impl QuadPipeline {
         let label = draw_label(draw);
         let variant = &mut variants.draws[draw.idx() as usize];
         match draw {
-            QuadDraw::Form(form) => {
+            QuadDraw::Fill(form) => {
                 variant.ensure(
                     gpu,
                     clipping,
@@ -313,7 +317,10 @@ impl QuadPipeline {
                             #[cfg(feature = "internals")]
                             ShapeCells::OneQuad => "fs",
                         },
-                        constants: &[("QUAD_FORM", f64::from(form as u32))],
+                        constants: &[
+                            ("SHAPE_FORM", f64::from(form.shape() as u32)),
+                            ("FILL_BRUSH", f64::from(form.brush() as u32)),
+                        ],
                         vertex_buffers: &instance,
                         topology: match self.shape_cells {
                             ShapeCells::Template => wgpu::PrimitiveTopology::TriangleList,
@@ -343,7 +350,10 @@ impl QuadPipeline {
                             ),
                             ("TABLES_SERIES", f64::from(u8::from(series))),
                         ],
-                        vertex_buffers: &[Some(INSTANCE_LAYOUT), Some(CutoutTables::CORNER_LAYOUT)],
+                        vertex_buffers: &[
+                            Some(SHADOW_INSTANCE_LAYOUT),
+                            Some(CutoutTables::CORNER_LAYOUT),
+                        ],
                         ..PipelineRecipe::color(label, &self.shader, &self.shadow_layout, format)
                     },
                 );
@@ -356,17 +366,31 @@ impl QuadPipeline {
     pub(crate) fn upload(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        quads: &[Quad],
+        quads: &Soa<QuadRow>,
         cutouts: &CutoutPlan,
         extras: QuadExtras<'_>,
     ) {
         self.extras = ExtraSpans::lay(quads.len() as u32, extras, &mut self.tail);
         debug_assert!(
-            quads.iter().chain(&self.tail).all(Quad::has_shape),
+            quads
+                .key()
+                .iter()
+                .zip(quads.instance())
+                .all(|(key, quad)| key.holds_shape(&quad.header)),
             "a box quad left its points or its depth at their default (`Quad::of_rect`)"
         );
-        self.instance_buffer.upload_parts(ctx, &[quads, &self.tail]);
-        self.taken = quad_draw::fill(&mut self.draws, quads, cutouts.entries(), self.shadow_cells);
+        debug_assert!(
+            self.tail.iter().all(|quad| quad.header.is_box()),
+            "an extra is a box (`Quad::of_rect`)"
+        );
+        self.instance_buffer
+            .upload_parts(ctx, &[quads.instance(), &self.tail]);
+        self.taken = quad_draw::fill(
+            &mut self.draws,
+            quads.key(),
+            cutouts.entries(),
+            self.shadow_cells,
+        );
     }
 
     /// The draws the last uploaded frame's quads take.
@@ -410,7 +434,7 @@ impl QuadPipeline {
         }
         self.bind(rec, pipelines.quad(draw));
         match draw {
-            QuadDraw::Form(form) => rec.draw(0..self.form_vertices(form), instances.u32_range()),
+            QuadDraw::Fill(form) => rec.draw(0..self.form_vertices(form), instances.u32_range()),
             QuadDraw::Shadow(_) => {
                 self.cutouts.bind(rec);
                 rec.draw(0..SHADOW_GRID_VERTICES, instances.u32_range());
@@ -422,7 +446,6 @@ impl QuadPipeline {
 /// Vertices per shadow instance: a 3×3 grid less the center, two triangles per cell.
 const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
-// Location 9 is the shadow pipeline's per-instance cutout tables, so the turn takes 10.
 /// The quad's header, then its fill's and its border's lanes.
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = {
     let h = shape_template::HEADER_ATTRS;
@@ -471,27 +494,54 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
     &QUAD_INSTANCE_ATTRS,
 );
 
+/// A shadow's header, then its own lanes, over the same stream at the same stride; the cutout
+/// tables follow at the next location (`CutoutTables::CORNER_LAYOUT`).
+const SHADOW_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = {
+    let h = shape_template::HEADER_ATTRS;
+    let at = shape_template::HEADER_LOCATIONS;
+    [
+        h[0],
+        h[1],
+        h[2],
+        h[3],
+        h[4],
+        h[5],
+        vertex_attr(
+            at,
+            wgpu::VertexFormat::Uint32x2,
+            offset_of!(ShadowQuad, color),
+        ),
+        vertex_attr(
+            at + 1,
+            wgpu::VertexFormat::Uint32,
+            offset_of!(ShadowQuad, kind),
+        ),
+        vertex_attr(
+            at + 2,
+            wgpu::VertexFormat::Uint32x2,
+            offset_of!(ShadowQuad, geometry),
+        ),
+    ]
+};
+
+const SHADOW_INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+    size_of::<ShadowQuad>(),
+    wgpu::VertexStepMode::Instance,
+    &SHADOW_INSTANCE_ATTRS,
+);
+
 /// The numbers [`QuadPipeline::SHADER`] takes from the Rust types that own them.
 const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
     ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
     ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
-    ShaderConstant::uint("FILL_SOLID", FillKind::TAG_SOLID),
     ShaderConstant::uint("FILL_LINEAR", FillKind::TAG_LINEAR),
     ShaderConstant::uint("FILL_RADIAL", FillKind::TAG_RADIAL),
-    ShaderConstant::uint("FILL_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
-    ShaderConstant::uint("FILL_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
-    ShaderConstant::uint("FILL_FLAG_TRIANGLE", FillKind::TRIANGLE_BIT),
-    ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
-    ShaderConstant::uint("FILL_FLAG_OUTSIDE", FillKind::OUTSIDE_BIT),
-    ShaderConstant::uint("QUAD_FORM_BOX_SOLID", QuadForm::BoxSolid as u32),
-    ShaderConstant::uint("QUAD_FORM_BOX_GRADIENT", QuadForm::BoxGradient as u32),
-    ShaderConstant::uint("QUAD_FORM_TRIANGLE_SOLID", QuadForm::TriangleSolid as u32),
-    ShaderConstant::uint("QUAD_FORM_BOX_OUTSIDE", QuadForm::BoxOutside as u32),
-    ShaderConstant::uint(
-        "QUAD_FORM_TRIANGLE_GRADIENT",
-        QuadForm::TriangleGradient as u32,
-    ),
+    ShaderConstant::uint("SHADOW_DROP", ShadowKind::DROP.bits()),
+    ShaderConstant::uint("SHADOW_INSET", ShadowKind::INSET.bits()),
+    ShaderConstant::uint("SHAPE_FORM_BOX_OUTSIDE", ShapeForm::BoxOutside as u32),
+    ShaderConstant::uint("SHAPE_FORM_TRIANGLE", ShapeForm::Triangle as u32),
+    ShaderConstant::uint("FILL_BRUSH_GRADIENT", FillBrush::Gradient as u32),
     shape_template::CONSTANT,
     // `Pad` isn't pinned: it is `palantir_apply_spread`'s fallback, also right for unknown modes.
     ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
@@ -585,5 +635,32 @@ mod tests {
         assert!(tail.is_empty());
         assert_eq!(spans.clear, None);
         assert_eq!(spans.outlines.len, 0);
+    }
+
+    /// Each fill form's pipeline is labeled by its own shape and brush, so a capture names the
+    /// form it shows.
+    #[test]
+    fn each_fill_form_labels_its_shape_and_brush() {
+        use crate::gpu::pipeline::quad_pipeline::draw_label;
+        use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
+        use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
+        use crate::renderer::render_buffer::shape_form::ShapeForm;
+
+        for form in FillForm::ALL {
+            let shape = match form.shape() {
+                ShapeForm::Box => "box",
+                ShapeForm::BoxOutside => "box_outside",
+                ShapeForm::Triangle => "triangle",
+                ShapeForm::Rect => unreachable!("no fill draws a rect"),
+            };
+            let brush = match form.brush() {
+                FillBrush::Solid => "solid",
+                FillBrush::Gradient => "gradient",
+            };
+            assert_eq!(
+                draw_label(QuadDraw::Fill(form)),
+                format!("palantir.quad.pipeline.{shape}_{brush}"),
+            );
+        }
     }
 }

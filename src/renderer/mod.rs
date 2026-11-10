@@ -8,3 +8,4 @@ pub(crate) mod quad;
 pub(crate) mod render_buffer;
 pub(crate) mod render_plan;
 pub(crate) mod repaint_scissors;
+pub(crate) mod shadow_quad;

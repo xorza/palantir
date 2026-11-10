@@ -25,7 +25,7 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::wgsl;
 use crate::renderer::render_buffer::image_draw_row::ImageInstance;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::renderer::render_buffer::image_form::ImageForm;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::mem::offset_of;
@@ -36,7 +36,7 @@ use std::mem::offset_of;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ImageBatch<'a> {
     pub(crate) ids: &'a [TextureId],
-    pub(crate) forms: &'a [ImageForm],
+    pub(crate) forms: &'a [ShapeForm],
     pub(crate) items: Span,
 }
 
@@ -102,40 +102,41 @@ impl ImagePipeline {
         variant: &mut ClipVariant,
         gpu: &Gpu,
         target: VariantTarget,
-        form: ImageForm,
+        form: ShapeForm,
     ) {
         let recipe = match form {
-            ImageForm::Plain => VariantRecipe {
+            ShapeForm::Rect => VariantRecipe {
                 label: "palantir.image.pipeline",
                 vertex_entry: "vs",
                 fragment_entry: "fs",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
-            ImageForm::Box => VariantRecipe {
+            ShapeForm::Box => VariantRecipe {
                 label: "palantir.image.pipeline.box",
                 vertex_entry: "vs_box",
                 fragment_entry: "fs_shaped",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
-            ImageForm::Triangle => VariantRecipe {
+            ShapeForm::Triangle => VariantRecipe {
                 label: "palantir.image.pipeline.triangle",
                 vertex_entry: "vs_triangle",
                 fragment_entry: "fs_shaped",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
+            ShapeForm::BoxOutside => panic!("an image paints inside its shape"),
         };
         self.family.ensure(variant, gpu, target, recipe);
     }
 
     /// The vertices `form` draws each instance with: a strip of four, or its shape's template.
-    pub(crate) const fn form_vertices(form: ImageForm) -> u32 {
+    pub(crate) const fn form_vertices(form: ShapeForm) -> u32 {
         match form {
-            ImageForm::Plain => 4,
-            ImageForm::Box => shape_template::vertices(4),
-            ImageForm::Triangle => shape_template::vertices(3),
+            ShapeForm::Rect => 4,
+            ShapeForm::Box | ShapeForm::Triangle => shape_template::vertices(form.corner_count()),
+            ShapeForm::BoxOutside => panic!("an image paints inside its shape"),
         }
     }
 
@@ -155,7 +156,7 @@ impl ImagePipeline {
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
-        pipelines: impl Fn(ImageForm) -> &'a Pipeline,
+        pipelines: impl Fn(ShapeForm) -> &'a Pipeline,
         ImageBatch { ids, forms, items }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
@@ -246,19 +247,19 @@ pub(crate) mod bench;
 #[cfg(test)]
 mod tests {
     use crate::gpu::pipeline::image_pipeline::ImagePipeline;
-    use crate::renderer::render_buffer::image_form::ImageForm;
+    use crate::renderer::render_buffer::shape_form::ShapeForm;
 
     /// A plain image is a strip of four; a box's template is 4 rings of 5 triangles, 4 bands of
     /// 4 and an interior fan of 10; a triangle's 3 rings, 3 bands and a fan of 7.
     #[test]
     fn each_form_draws_its_shapes_vertices() {
-        assert_eq!(ImagePipeline::form_vertices(ImageForm::Plain), 4);
+        assert_eq!(ImagePipeline::form_vertices(ShapeForm::Rect), 4);
         assert_eq!(
-            ImagePipeline::form_vertices(ImageForm::Box),
+            ImagePipeline::form_vertices(ShapeForm::Box),
             3 * (20 + 16 + 10)
         );
         assert_eq!(
-            ImagePipeline::form_vertices(ImageForm::Triangle),
+            ImagePipeline::form_vertices(ShapeForm::Triangle),
             3 * (15 + 12 + 7)
         );
     }

@@ -37,7 +37,7 @@ fn vs_template(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: Qua
     let pos = shape.rect.xy;
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
-    let outside = (quad.fill_kind & FILL_FLAG_OUTSIDE) != 0u;
+    let outside = form_is_outside();
     let s = palantir_shape_of(shape, select(4u, 3u, form_is_triangle()));
     // An outside rect over content of its own extent stops at its rect; turned, its edge is visible
     // and fades as any edge does, so it reaches past it too.
@@ -82,7 +82,7 @@ fn template_color(in: TemplateOut) -> vec4<f32> {
     }
     let border_color = unpack_f16x4(in.border_color_packed);
     let d = palantir_template_distance(in.region, in.geo, in.ring_r);
-    if (QUAD_FORM == QUAD_FORM_BOX_OUTSIDE) {
+    if (form_is_outside()) {
         var cover = composite_outside(d, fill, border_color, in.border_width);
         if (in.turned_size.x > 0.0) {
             let e = abs(in.local - in.turned_size * 0.5) - in.turned_size * 0.5;

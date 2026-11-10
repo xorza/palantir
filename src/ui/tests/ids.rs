@@ -33,6 +33,7 @@ fn collision_outlines(frames: &WindowFrames) -> Vec<Rect> {
     frontend
         .buffer
         .quads
+        .instance()
         .iter()
         .filter(|q| q.border_width > 2.5 && q.border_width < 3.5)
         .map(|q| q.header.rect)

@@ -62,6 +62,7 @@ fn each_depth_builds_what_it_names() {
         let quads = |h: &Harness| -> Vec<Rect> {
             h.render_buffer()
                 .quads
+                .instance()
                 .iter()
                 .map(|quad| quad.header.rect)
                 .collect()

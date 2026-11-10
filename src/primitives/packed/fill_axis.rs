@@ -3,19 +3,10 @@
 use crate::primitives::packed::half_simd::F16x4;
 
 /// GPU-wire form of a gradient's axis: four f16 lanes (`[u16; 4]`, 8 B), laid out per variant: `[dir_x, dir_y, t0, t1]`
-/// linear, `[cx, cy, rx, ry]` radial, `[cx, cy, start_angle, _]` conic, `[offset.x, offset.y, σ, spread]` shadows.
-/// Pixel-valued lanes round by up to half an f16 step (¼ px below 1024, ½ below 2048, 1 below 4096).
+/// linear, `[cx, cy, rx, ry]` radial, `[cx, cy, start_angle, _]` conic.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct FillAxis(F16x4);
-
-impl From<F16x4> for FillAxis {
-    /// Adopts an already-packed word: the inset-shadow axis is `LoweredShadow::geometry_f16`, skipping an f16 round trip.
-    #[inline]
-    fn from(lanes: F16x4) -> Self {
-        Self(lanes)
-    }
-}
 
 impl FillAxis {
     /// All-zero axis for solid quads (the shader ignores it); zeroed so Pod-byte cache keys are deterministic.
@@ -29,14 +20,5 @@ impl FillAxis {
     #[inline]
     pub(crate) fn lanes(self) -> [f32; 4] {
         self.0.lanes()
-    }
-
-    /// Every lane times `s` in one decode-multiply-encode pass, saturated at ±65504
-    /// ([`F16x4::scaled_saturating`]), as a shadow's lanes scale to physical px by the display
-    /// scale and every zoom, which no logical check bounds (`half_simd`, "A lane holds ±65504").
-    /// The drop quad is built from these same lanes, so the shader finds its source again.
-    #[inline]
-    pub(crate) fn scaled_saturating(self, s: f32) -> Self {
-        Self(self.0.scaled_saturating(s))
     }
 }

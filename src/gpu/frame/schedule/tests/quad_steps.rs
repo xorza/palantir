@@ -5,13 +5,20 @@ use crate::gpu::frame::schedule::RenderStep;
 use crate::gpu::frame::schedule::tests::support::{
     DrawOp, buf_with, buf_with_batches, group, plain_steps, simplify, text_batch,
 };
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
+use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 
-fn with_kinds(mut buffer: RenderBuffer, kinds: &[FillKind]) -> RenderBuffer {
-    buffer.quads.resize(kinds.len(), buffer.quads[0]);
-    for (quad, &kind) in buffer.quads.iter_mut().zip(kinds) {
-        quad.fill_kind = kind;
+const SOLID: QuadKey = QuadKey::Fill(FillForm::BOX_SOLID);
+const TRIANGLE: QuadKey = QuadKey::Fill(FillForm::new(ShapeForm::Triangle, FillBrush::Solid));
+const SHADOW: QuadKey = QuadKey::Shadow;
+
+fn with_kinds(mut buffer: RenderBuffer, keys: &[QuadKey]) -> RenderBuffer {
+    let instance = buffer.quads.instance()[0];
+    buffer.quads.clear();
+    for &key in keys {
+        buffer.quads.push(QuadRow { key, instance });
     }
     buffer
 }
@@ -27,13 +34,7 @@ fn each_group_draws_its_quads_in_one_step() {
             group(Span::new(3, 0)),
             group(Span::new(3, 2)),
         ]),
-        &[
-            FillKind::SOLID,
-            FillKind::SHADOW_DROP,
-            FillKind::SHADOW_INSET,
-            FillKind::SHADOW_DROP,
-            FillKind::SOLID.with_triangle(),
-        ],
+        &[SOLID, SHADOW, SHADOW, SHADOW, TRIANGLE],
     );
     let quads: Vec<RenderStep> = plain_steps(&buffer)
         .into_iter()
@@ -61,12 +62,7 @@ fn text_follows_its_groups_quads() {
             vec![group(Span::new(0, 3)), group(Span::new(3, 1))],
             vec![text_batch(Span::new(0, 1), 0)],
         ),
-        &[
-            FillKind::SHADOW_DROP,
-            FillKind::SOLID,
-            FillKind::SHADOW_DROP,
-            FillKind::SOLID,
-        ],
+        &[SHADOW, SOLID, SHADOW, SOLID],
     );
     assert_eq!(
         simplify(&buffer, &plain_steps(&buffer)),

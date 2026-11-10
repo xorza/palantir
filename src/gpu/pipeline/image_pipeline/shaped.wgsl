@@ -19,13 +19,13 @@ struct ShapedOut {
     @location(9) @interpolate(flat) chain: u32,
 };
 
-// A box's template (`ImageForm::Box`).
+// A box's template (`ShapeForm::Box`).
 @vertex
 fn vs_box(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, in: VsIn) -> ShapedOut {
     return shaped_vertex(vi, shape, in, 4u);
 }
 
-// A triangle's template (`ImageForm::Triangle`), three of the instance's points.
+// A triangle's template (`ShapeForm::Triangle`), three of the instance's points.
 @vertex
 fn vs_triangle(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, in: VsIn) -> ShapedOut {
     return shaped_vertex(vi, shape, in, 3u);

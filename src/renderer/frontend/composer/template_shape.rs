@@ -128,8 +128,8 @@ impl TemplateShape {
         self.rotation == 0.0 && is_invisible(border_width) && self.corners.is_approx_zero()
     }
 
-    /// [`Self::is_sharp`] plus physical edges on whole pixels. Exactness makes the fragment fast
-    /// path bitwise-identical to the SDF.
+    /// [`Self::is_sharp`] plus physical edges on whole pixels: the template's coverage is then
+    /// whole at every pixel it shades, with no antialiased edge.
     pub(super) fn is_pixel_aligned(&self, border_width: f32) -> bool {
         let physical = self.rect.physical;
         let max = physical.max();

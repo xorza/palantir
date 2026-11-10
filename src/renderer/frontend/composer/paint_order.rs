@@ -267,9 +267,9 @@ impl Ordering<'_> {
     pub(super) fn flush(&mut self) {
         let order = &mut *self.order;
         order.occlusion.prune(self.out, order.cursors.quads);
-        order
-            .runs
-            .join(&mut self.out.quads[order.cursors.quads as usize..]);
+        let mut group = self.out.quads.idx_mut(order.cursors.quads as usize..);
+        let rows = group.slices_mut();
+        order.runs.join(rows.key, rows.instance);
         let q_end = self.out.quads.len() as u32;
         let t_end = self.out.texts.len() as u32;
         let higher_end = PaintTier::ALL.map(|tier| self.out.draws_len(tier));

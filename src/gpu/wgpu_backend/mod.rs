@@ -100,8 +100,9 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_form::QuadForm;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::repaint_scissors::{PartialScissors, RepaintScissors};
 use glam::UVec2;
 use rustc_hash::FxHashMap;
@@ -652,10 +653,10 @@ impl WgpuBackend {
                         .programs
                         .quad
                         .taken()
-                        .with(QuadDraw::Form(QuadForm::BoxSolid)),
+                        .with(QuadDraw::Fill(FillForm::BOX_SOLID)),
                     meshes: !buffer.meshes.is_empty(),
                     images: {
-                        let mut forms = [false; 3];
+                        let mut forms = [false; ShapeForm::ALL.len()];
                         for &form in buffer.images.form() {
                             forms[form as usize] = true;
                         }
@@ -932,11 +933,11 @@ impl WgpuBackend {
                 pipeline: draw
                     .fmt
                     .for_frame(Clipping::Off)
-                    .quad(QuadDraw::Form(QuadForm::BoxSolid)),
+                    .quad(QuadDraw::Fill(FillForm::BOX_SOLID)),
                 frame_group: self.frame_group.group(),
             },
             viewport: draw.viewport,
-            vertices: self.programs.quad.form_vertices(QuadForm::BoxSolid),
+            vertices: self.programs.quad.form_vertices(FillForm::BOX_SOLID),
         }
     }
 
@@ -1054,7 +1055,7 @@ impl WgpuBackend {
                 // Through the recorder, so the viewport is pushed before the draw; else the clear
                 // quad reads stale immediates (zero on a partial pass's first PreClear) and
                 // clears nothing.
-                let solid = pipelines.quad(QuadDraw::Form(QuadForm::BoxSolid));
+                let solid = pipelines.quad(QuadDraw::Fill(FillForm::BOX_SOLID));
                 self.programs.quad.draw_clear(ctx.rec, solid);
             }),
             RenderStep::SetScissor(r) => {

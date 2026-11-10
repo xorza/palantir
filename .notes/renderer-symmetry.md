@@ -20,8 +20,8 @@ and an effect hold their shape.
 | B3 Packer | done |
 | B4 Turns | done |
 | B5 Wire | done |
-| B6 Keys | next |
-| B7 Effect forms | to do |
+| B6 Keys | done |
+| B7 Effect forms | next |
 | B8a Material composite | to do, a bug |
 | B8b One composite | waits for D1 |
 | B9 Strokes | to do |
@@ -46,7 +46,7 @@ deletes it from the log.
   `(o − i)·(B + F·(1 − Bα)) + i·F` inside, `(o − i)·(B + F·(1 − Bα)) + (1 − o)·F` outside. Test: the
   two functions' values at those coverages, hand-computed, in the effect tests, failing on the
   current form. Goldens of every material edge move.
-- **`FillKind::FAST_BIT`'s doc claims a shader path: B6.** Confirmed: only the internals reference
+- **[fixed in B6] `FillKind::FAST_BIT`'s doc claims a shader path.** Confirmed: only the internals reference
   `quad_pipeline/reference.wgsl` reads `FILL_FLAG_FAST`; production reads the bit back on the CPU
   alone, in `ComposeSession::record_opaque_cover`, where `TemplateShape::is_pixel_aligned` gives the
   same answer. B6 deletes the bit, its doc and the reference shader's fast branch, which the
@@ -113,12 +113,12 @@ Smaller faults of the same origin:
 - **[fixed in B2] A shadow is a `DrawQuadPayload` with a kind tag.** `FillKind::SHADOW_DROP` or `SHADOW_INSET`
   selects it, and `fill_axis` carries `(offset, σ, spread)` under a gradient's name. A border on a
   shadow and a shadow on a triangle are representable, and `QuadForm::of` panics on them.
-- **[B6] `FillKind::FAST_BIT` reaches the wire, and no production shader reads it.** Only the internals
+- **[fixed in B6] `FillKind::FAST_BIT` reaches the wire, and no production shader reads it.** Only the internals
   reference (`quad_pipeline/reference.wgsl`) reads it. The CPU reads it back in
   `ComposeSession::record_opaque_cover`, where `TemplateShape::is_pixel_aligned` gives the same answer.
 - **[open] A box's fill and border have two homes**: `DrawQuadPayload` without a material,
   `MaterialStage` inside `DrawEffectPayload` with one.
-- **[B6] `QuadForm::BoxOutside` merges two brushes** and reads the tag at run time, while the inside
+- **[fixed in B6] `QuadForm::BoxOutside` merges two brushes** and reads the tag at run time, while the inside
   forms pin it. No triangle form covers its outside, by contract, but no type says so.
 
 ### Turns
@@ -278,26 +278,38 @@ makes these one, and keeps the pipelines above.
   `PalantirShape`. The radii are f16 in all three, as the effect's
   `[f32; 4]` widens the same f16 values. Refused: three layouts and three readers that must
   agree by hand.
-- **[B6, effects in B7] A pipeline key is a closed-shape form and a paint specialization.** `ShapeForm { Rect, Box,
+- **[part: fills and images done in B6; effects in B7] A pipeline key is a closed-shape form and a paint specialization.** `ShapeForm { Rect, Box,
   BoxOutside, Triangle }` is shared by every closed family and pinned as a constant in each:
   fill `(ShapeForm, Solid | Gradient)`, image `ShapeForm`, effect `(EffectId, ShapeForm)`. Each
   pipeline is built on the first frame that draws it, as a `ClipVariant` half is. Refused: the
   corner count as instance data, as an effect reads it now, which puts a runtime `% n` in the
   template's vertex decode where the constant folds it, and which no bench measured; the
-  flattened `QuadForm`, where `BoxOutside` merges two brushes.
-- **[B6] The key lives in a column beside the instance, set once by the composer.** Every family whose
+  flattened `QuadForm`, where `BoxOutside` merges two brushes. Landed in B6 as `FillForm`, built
+  only by its `new`, which refuses `ShapeForm::Rect` (decision D3), and an image's `ShapeForm`,
+  whose pipeline refuses `BoxOutside`; an outside box now has a solid and a gradient pipeline.
+  Measured against the parent on a high-end laptop GPU, `atomic/main_pass/gpu/*` and
+  `integration/frame/gpu/*` move within their noise, run in both orders; the composer's CPU cases
+  wait for the bench session.
+- **[part: quads done in B6; effects in B7] The key lives in a column beside the instance, set once by the composer.** Every family whose
   rows pick a pipeline stores `Soa<Row { key, instance }>`, as `ImageDrawRow::form` does now. A
   shadow's key says shadow, and the backend picks its entry from the cutout plan it alone holds,
   as `QuadDraws` does now. Refused: `QuadPipeline` deriving `QuadDraw` from `fill_kind` bits at upload, and
-  `EffectInstance::corner_count` reading flags.
-- **[part: the payload's word since B1; the `Quad`'s in B6] `FillKind` is a brush tag.** It keeps solid, linear, radial, conic, ramp and the spread. The
-  outside and triangle bits move to `ShapeForm`; the shadow tags move to `QuadDraw::Shadow`;
+  `EffectInstance::corner_count` reading flags. Landed for quads in B6: `Soa<QuadRow { key:
+  QuadKey, instance }>`, `QuadKey { Fill(FillForm), Shadow }`, which the run joiner, the occlusion
+  prune and the cutout plan read in place of the paint word.
+- **[done] `FillKind` is a brush tag.** It keeps solid, linear, radial, conic, ramp and the spread. The
+  outside and triangle bits move to `ShapeForm`; the shadow tags move to `QuadKey::Shadow`, with
+  the drop or inset kind in the shadow's own lane, as one pipeline per cutout entry draws both;
   `FAST_BIT` goes, and `record_opaque_cover` reads `TemplateShape::is_pixel_aligned`. Refused: a
   paint word that carries geometry and a composer flag.
-- **[part: kept; its named lanes in B6] Shadows stay in the quad stream.** Inside a group, the quad lane replays in record order, and
+- **[done] Shadows stay in the quad stream.** Inside a group, the quad lane replays in record order, and
   a drop shadow paints under its box and an inset shadow over its fill. A stream of its own would
   move shadows to a tier, and each shadowed box would close a group. The shadow's lanes are named
-  as a shadow's (`offset`, `σ`, `spread`), not borrowed from `fill_axis`.
+  as a shadow's (`offset`, `σ`, `spread`), not borrowed from `fill_axis`. Landed in B6 as
+  `ShadowQuad { header, color, kind, geometry }`, a `Quad`'s size, stored in the stream in a
+  quad's bytes (`From` both ways) and read by the shadow pipelines through their own attributes.
+  Refused: a Rust union, whose reads are `unsafe`; a stream per kind, which breaks the record order
+  one span keeps.
 - **[B9] One stroke payload.** `DrawStrokePayload { path: Cubic | Arc | Polyline, stroke }` feeds the one
   curve pipeline that draws all three, with `ShapeRecord::Stroke { path, stroke }` behind it.
   Refused: `DrawCurvePayload` and `DrawPolylinePayload`, and three stroke records, for one family.
@@ -325,7 +337,8 @@ The visual suite and the composer's captured streams prove it.
    bound in the composer; `StrokeBounds` goes.
 5. [x] **B5 Wire**, done. `ShapeHeader` in Rust and WGSL; `palantir_shape_of` replaces
    `instance_shape` and the readers in `shaped_vertex` and `palantir_vs`.
-6. [ ] **B6 Keys.** `ShapeForm`, `FillKind` as a brush tag, the key column for quads, `FAST_BIT` out.
+6. [x] **B6 Keys**, done. `ShapeForm` and `FillForm`, `FillKind` as a brush tag, the key column
+   for quads, `ShadowQuad`'s named lanes, `FAST_BIT` out.
 7. [ ] **B7 Effect forms.** Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
    `OUTSIDE` go.
 8. [ ] **B8a Material composite.** `palantir_composite` and `palantir_composite_outside` take the

@@ -13,13 +13,14 @@ use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
-use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
 use crate::renderer::repaint_scissors::RepaintScissors;
+use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};
+use soa_rs::Soa;
 use std::cmp::Reverse;
 use std::mem;
 
@@ -191,7 +192,7 @@ pub(crate) enum CutoutMode {
 /// physical-pixel `viewport`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CutoutFrame<'a> {
-    pub(crate) quads: &'a [Quad],
+    pub(crate) quads: &'a Soa<QuadRow>,
     pub(crate) repaint: &'a RepaintScissors,
     pub(crate) viewport: UVec2,
 }
@@ -271,7 +272,7 @@ impl CutoutPlan {
         self.corners.clear();
         self.entries.clear();
         if matches!(self.mode, CutoutMode::Shade) {
-            if quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
+            if quads.key().contains(&QuadKey::Shadow) {
                 self.corners.resize(quads.len(), CornerTables::NONE);
                 self.entries.resize(quads.len(), ShadowEntry::General);
             }
@@ -302,8 +303,8 @@ impl CutoutPlan {
         self.next.clear();
         self.next
             .extend(self.census.iter().filter(|shadow| !reached(shadow.shaded)));
-        for quad in quads {
-            if let Some(shadow) = Self::census_shadow(quad, viewport)
+        for shadow in shadows(quads).flatten() {
+            if let Some(shadow) = Self::census_shadow(&shadow, viewport)
                 && reached(shadow.shaded)
             {
                 self.next.push(shadow);
@@ -329,7 +330,7 @@ impl CutoutPlan {
         mem::swap(&mut self.census, &mut self.next);
         mem::swap(&mut self.tabled, &mut self.last_tabled);
         self.release_untabled(placements);
-        if !quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
+        if !quads.key().contains(&QuadKey::Shadow) {
             return Census::Cur;
         }
         self.repaint.clear();
@@ -341,14 +342,16 @@ impl CutoutPlan {
         self.spans.resize(self.keys.len(), TexelSpan::EMPTY);
         self.corners.reserve_exact(quads.len());
         self.entries.reserve_exact(quads.len());
-        for quad in quads {
-            let Some(corners) = Self::cutout_corners(quad) else {
+        for shadow in shadows(quads) {
+            let Some((shadow, corners)) = shadow
+                .and_then(|shadow| Self::cutout_corners(&shadow).map(|corners| (shadow, corners)))
+            else {
                 self.corners.push(CornerTables::NONE);
                 self.entries.push(ShadowEntry::General);
                 continue;
             };
-            let sigma = quad.fill_axis.lanes()[2];
-            let shaded = quad.shaded_rect();
+            let sigma = shadow.sigma();
+            let shaded = QuadKey::Shadow.shaded_rect(&shadow.header);
             let mut codes = CornerTables::NONE.0;
             let mut tabled = true;
             for (code, corner) in codes.iter_mut().zip(&corners) {
@@ -521,10 +524,10 @@ impl CutoutPlan {
         });
     }
 
-    fn census_shadow(quad: &Quad, viewport: Rect) -> Option<CensusShadow> {
-        let corners = Self::cutout_corners(quad)?;
-        let sigma = quad.fill_axis.lanes()[2];
-        let shaded = quad.shaded_rect();
+    fn census_shadow(shadow: &ShadowQuad, viewport: Rect) -> Option<CensusShadow> {
+        let corners = Self::cutout_corners(shadow)?;
+        let sigma = shadow.sigma();
+        let shaded = QuadKey::Shadow.shaded_rect(&shadow.header);
         let uses = corners.map(|corner| KeyUse {
             key: CutoutKey::new(corner.r, sigma),
             area: corner.shown_area(shaded, viewport),
@@ -534,10 +537,10 @@ impl CutoutPlan {
             .then_some(CensusShadow { shaded, uses })
     }
 
-    /// A shadow quad's corners `(tl, tr, br, bl)` as the shader cuts them, or `None` if not a shadow or blurred below [`Self::MIN_SIGMA`].
-    fn cutout_corners(quad: &Quad) -> Option<[CutoutCorner; 4]> {
-        let sigma = quad.fill_axis.lanes()[2];
-        if !quad.fill_kind.is_shadow() || sigma.is_nan() || sigma < Self::MIN_SIGMA {
+    /// A shadow's corners `(tl, tr, br, bl)` as the shader cuts them, or `None` if blurred below [`Self::MIN_SIGMA`].
+    fn cutout_corners(quad: &ShadowQuad) -> Option<[CutoutCorner; 4]> {
+        let sigma = quad.sigma();
+        if sigma.is_nan() || sigma < Self::MIN_SIGMA {
             return None;
         }
         let shadow = ShadowBox::of(quad);
@@ -571,6 +574,15 @@ impl CutoutPlan {
     }
 }
 
+/// Each quad of `quads` as the shadow it holds, in stream order; `None` for a fill.
+fn shadows(quads: &Soa<QuadRow>) -> impl Iterator<Item = Option<ShadowQuad>> + '_ {
+    quads
+        .key()
+        .iter()
+        .zip(quads.instance())
+        .map(|(&key, &quad)| (key == QuadKey::Shadow).then(|| ShadowQuad::from(quad)))
+}
+
 /// The box whose blur a shadow paints, relative to its quad's center, with the radii fitted to
 /// it: the shader's `shadow_box`, which `shadow_box_follows_the_shader` runs against this.
 #[derive(Clone, Copy, Debug)]
@@ -583,11 +595,10 @@ struct ShadowBox {
 impl ShadowBox {
     /// A drop shadow's box is its source grown by the spread, centered on the quad; an inset
     /// shadow's is the hole, its source shrunk by the spread and moved by `offset`.
-    fn of(quad: &Quad) -> Self {
-        debug_assert!(quad.fill_kind.is_shadow(), "a shadow quad");
-        let [x, y, sigma, spread] = quad.fill_axis.lanes();
+    fn of(quad: &ShadowQuad) -> Self {
+        let [x, y, sigma, spread] = quad.geometry.lanes();
         let half = Vec2::new(quad.header.rect.size.w, quad.header.rect.size.h) * 0.5;
-        let (center, half, spread) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
+        let (center, half, spread) = if quad.kind == ShadowKind::DROP {
             let source = half - Vec2::splat(ShadowGeometry::REACH_SIGMAS * sigma + spread.max(0.0));
             (
                 Vec2::ZERO,

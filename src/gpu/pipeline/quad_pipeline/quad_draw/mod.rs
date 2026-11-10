@@ -2,37 +2,39 @@
 
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
-use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::quad_form::QuadForm;
+use crate::renderer::render_buffer::fill_form::FillForm;
+use crate::renderer::render_buffer::quad_row::QuadKey;
 
-/// The pipeline a quad instance draws through, and so what it binds: a form of `fs`, or a
+/// The pipeline a quad instance draws through, and so what it binds: a fill's form, or a
 /// shadow's entry, which also reads the cutout tables.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QuadDraw {
-    Form(QuadForm),
+    Fill(FillForm),
     Shadow(ShadowEntry),
 }
 
 impl QuadDraw {
-    /// Every draw, in [`Self::idx`] order.
-    pub(crate) const ALL: [Self; 8] = [
-        Self::Form(QuadForm::BoxSolid),
-        Self::Form(QuadForm::BoxGradient),
-        Self::Form(QuadForm::BoxOutside),
-        Self::Form(QuadForm::TriangleSolid),
-        Self::Form(QuadForm::TriangleGradient),
-        Self::Shadow(ShadowEntry::General),
-        Self::Shadow(ShadowEntry::Tables),
-        Self::Shadow(ShadowEntry::TablesWide),
-    ];
+    /// Every draw, in [`Self::idx`] order: the fills, then the shadows.
+    pub(crate) const ALL: [Self; FillForm::ALL.len() + 3] = {
+        let mut all = [Self::Shadow(ShadowEntry::General); FillForm::ALL.len() + 3];
+        let mut at = 0;
+        while at < FillForm::ALL.len() {
+            all[at] = Self::Fill(FillForm::ALL[at]);
+            at += 1;
+        }
+        all[at + 1] = Self::Shadow(ShadowEntry::Tables);
+        all[at + 2] = Self::Shadow(ShadowEntry::TablesWide);
+        all
+    };
 
     /// This draw's place in [`Self::ALL`], its bit in a [`QuadDraws`].
     pub(crate) const fn idx(self) -> u32 {
+        let fills = FillForm::ALL.len() as u32;
         match self {
-            Self::Form(form) => form as u32,
-            Self::Shadow(ShadowEntry::General) => 5,
-            Self::Shadow(ShadowEntry::Tables) => 6,
-            Self::Shadow(ShadowEntry::TablesWide) => 7,
+            Self::Fill(form) => form.idx(),
+            Self::Shadow(ShadowEntry::General) => fills,
+            Self::Shadow(ShadowEntry::Tables) => fills + 1,
+            Self::Shadow(ShadowEntry::TablesWide) => fills + 2,
         }
     }
 
@@ -43,7 +45,7 @@ impl QuadDraw {
     /// The timing bucket a run of this draw lands in.
     pub(crate) const fn batch_kind(self) -> BatchKind {
         match self {
-            Self::Form(_) => BatchKind::Quads,
+            Self::Fill(_) => BatchKind::Quads,
             Self::Shadow(_) => BatchKind::Shadows,
         }
     }
@@ -132,26 +134,23 @@ pub(crate) enum ShapeCells {
     OneQuad,
 }
 
-/// Write each of `quads`' draws into `draws`: a shadow through its `entries` row, every one
-/// through the general entry where the shadows draw [`ShadowCells::Whole`], any other quad
-/// through its form. Returns the draws taken.
+/// Write the draw of each quad of `keys` into `draws`: a shadow through its `entries` row, every
+/// one through the general entry where the shadows draw [`ShadowCells::Whole`], a fill through
+/// its form. Returns the draws taken.
 pub(crate) fn fill(
     draws: &mut Vec<QuadDraw>,
-    quads: &[Quad],
+    keys: &[QuadKey],
     entries: &[ShadowEntry],
     cells: ShadowCells,
 ) -> QuadDraws {
     draws.clear();
-    draws.extend(quads.iter().enumerate().map(|(i, quad)| {
-        if quad.fill_kind.is_shadow() {
-            match cells {
-                ShadowCells::Grid => QuadDraw::Shadow(entries[i]),
-                #[cfg(feature = "internals")]
-                ShadowCells::Whole => QuadDraw::Shadow(ShadowEntry::General),
-            }
-        } else {
-            QuadDraw::Form(QuadForm::of(quad.fill_kind))
-        }
+    draws.extend(keys.iter().enumerate().map(|(i, &key)| match key {
+        QuadKey::Fill(form) => QuadDraw::Fill(form),
+        QuadKey::Shadow => match cells {
+            ShadowCells::Grid => QuadDraw::Shadow(entries[i]),
+            #[cfg(feature = "internals")]
+            ShadowCells::Whole => QuadDraw::Shadow(ShadowEntry::General),
+        },
     }));
     draws.iter().copied().collect()
 }

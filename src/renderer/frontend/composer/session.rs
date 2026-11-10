@@ -11,11 +11,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::domain::{EPS, is_invisible};
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::math::num::Vec2Ext;
-use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
@@ -39,7 +35,6 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
@@ -49,19 +44,21 @@ use crate::renderer::render_buffer::backdrop_row::{
 };
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInstance};
+use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::quad_row::{QuadKey, QuadRow};
 use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
-use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
@@ -79,16 +76,6 @@ pub(crate) struct ComposeSession<'a> {
     pub(super) composer: &'a mut Composer,
     pub(super) store: &'a RecordStore,
     pub(super) out: &'a mut RenderBuffer,
-}
-
-/// What a quad's instance carries past its shape: its fill word, its border, physical px wide, and
-/// its fill's axis, a gradient's or a shadow's.
-#[derive(Clone, Copy, Debug)]
-struct QuadLanes {
-    fill: GpuFill,
-    border_color: RgbaF16,
-    border_width: f32,
-    fill_axis: FillAxis,
 }
 
 impl ComposeSession<'_> {
@@ -252,31 +239,19 @@ impl PaintSink for ComposeSession<'_> {
             return;
         };
         let clip = self.clip_chain(visible);
-        // Fragment fast path: a solid, sharp, borderless, pixel-aligned box has coverage exactly
-        // 1.0, so the shader returns the fill directly.
-        let fast = p.is_solid_box() && shape.is_pixel_aligned(border_width);
-        // The instance carries the shape's side and kind in its fill word, which picks its form.
-        let kind = match p.geometry {
-            PlacedClosed::Box {
-                coverage: Coverage::Inside,
-                ..
-            } => p.paint.fill.kind,
-            PlacedClosed::Box {
-                coverage: Coverage::Outside,
-                ..
-            } => p.paint.fill.kind.with_outside(),
-            PlacedClosed::Triangle(_) => p.paint.fill.kind.with_triangle(),
-        };
-        let lanes = QuadLanes {
-            fill: GpuFill {
-                kind: if fast { kind.with_fast() } else { kind },
-                ..p.paint.fill
+        let form = FillForm::new(ShapeForm::of(&p.geometry), FillBrush::of(p.paint.fill.kind));
+        self.push_quad(
+            QuadKey::Fill(form),
+            Quad {
+                header: shape.header(clip),
+                fill: p.paint.fill.color,
+                border_color: p.paint.border.color,
+                border_width,
+                fill_kind: p.paint.fill.kind,
+                fill_lut_row: p.paint.fill.lut_row,
+                fill_axis: p.paint.fill_axis,
             },
-            border_color: p.paint.border.color,
-            border_width,
-            fill_axis: p.paint.fill_axis,
-        };
-        self.push_quad(&shape, lanes, clip);
+        );
         self.record_opaque_cover(&p, &shape, border_width);
     }
 
@@ -285,29 +260,28 @@ impl PaintSink for ComposeSession<'_> {
         let lowering = self.lowering();
         // The lanes are logical px, scaled here; the quad is built from the same lanes, so the
         // shader finds its source again.
-        let fill_axis = FillAxis::from(p.shadow.geometry_f16)
+        let geometry = p
+            .shadow
+            .geometry_f16
             .scaled_saturating(lowering.transform.physical_scale());
         let shape =
-            TemplateShape::shadow(&p, ShadowGeometry::from_lanes(fill_axis.lanes()), &lowering);
+            TemplateShape::shadow(&p, ShadowGeometry::from_lanes(geometry.lanes()), &lowering);
         let Some(visible) = self.ordering().admit(Lane::Quad, shape.rect.urect) else {
             return;
         };
         let clip = self.clip_chain(visible);
-        let lanes = QuadLanes {
-            fill: GpuFill {
-                color: p.shadow.color,
-                kind: if p.shadow.inset() {
-                    FillKind::SHADOW_INSET
-                } else {
-                    FillKind::SHADOW_DROP
-                },
-                lut_row: LutRow::FALLBACK,
+        let shadow = ShadowQuad {
+            header: shape.header(clip),
+            color: p.shadow.color,
+            kind: if p.shadow.inset() {
+                ShadowKind::INSET
+            } else {
+                ShadowKind::DROP
             },
-            border_color: LoweredBorder::NONE.color,
-            border_width: 0.0,
-            fill_axis,
+            geometry,
+            unused: [0; 4],
         };
-        self.push_quad(&shape, lanes, clip);
+        self.push_quad(QuadKey::Shadow, Quad::from(shadow));
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -672,10 +646,7 @@ impl ComposeSession<'_> {
         let unturned = TemplateShape::of(placed, p.spin, &lowering);
         // The image's rect lies on the pixels its shape's does.
         let edges = TemplateShape::edges(placed, p.spin, &lowering);
-        let form = match placed {
-            PlacedClosed::Box { .. } => ImageForm::Box,
-            PlacedClosed::Triangle(_) => ImageForm::Triangle,
-        };
+        let form = ShapeForm::of(&placed);
         let image = lowering.scaled_rect_with(p.paint.rect, edges).physical;
         if image.is_paint_empty() {
             return;
@@ -805,28 +776,14 @@ impl ComposeSession<'_> {
             // Only the registration id: the encoder already resolved fit into `rect` + UV. The
             // view's off-screen paint is scheduled above, in `frame_targets`.
             id: p.paint.handle,
-            form: ImageForm::Plain,
+            form: ShapeForm::Rect,
             instance,
         });
     }
 
-    /// Push the quad of `shape` under `lanes`, cut by the rounded clips of `clip`.
-    fn push_quad(&mut self, shape: &TemplateShape, lanes: QuadLanes, clip: ClipChain) {
-        let QuadLanes {
-            fill,
-            border_color,
-            border_width,
-            fill_axis,
-        } = lanes;
-        self.out.quads.push(Quad {
-            header: shape.header(clip),
-            fill: fill.color,
-            border_color,
-            border_width,
-            fill_kind: fill.kind,
-            fill_lut_row: fill.lut_row,
-            fill_axis,
-        });
+    /// Push `instance`, a quad of the stream that draws through `key`.
+    fn push_quad(&mut self, key: QuadKey, instance: Quad) {
+        self.out.quads.push(QuadRow { key, instance });
     }
 
     /// List `row`, a backdrop over the window's ground, which takes no capture and breaks no
@@ -893,8 +850,7 @@ impl ComposeSession<'_> {
 
     /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. A solid box
     /// only ([`DrawClosedPayload::is_solid_box`]), and a turned
-    /// quad covers no axis-aligned rect of its own. A quad on the fast path has no anti-aliased
-    /// edge to inset by. The rounded clips in force keep the cover to what they leave whole
+    /// quad covers no axis-aligned rect of its own. The rounded clips in force keep the cover to what they leave whole
     /// ([`RoundedClip::covered`]): past it the quad shows a share of what it covers, which a
     /// prune would drop.
     fn record_opaque_cover(
@@ -906,14 +862,14 @@ impl ComposeSession<'_> {
         if !p.is_solid_box() || !p.paint.fill.color.is_opaque() || shape.rotation != 0.0 {
             return;
         }
-        let quad = self.out.quads.last().expect("the quad just pushed");
         let inscribed = shape.rect.physical.inscribed_for_corners(shape.corners);
         let border_inset = if is_invisible(border_width) || p.paint.border.color.is_opaque() {
             0.0
         } else {
             border_width
         };
-        let aa_inset = if quad.fill_kind.is_fast() {
+        // A pixel-aligned sharp borderless box has no antialiased edge to inset by.
+        let aa_inset = if shape.is_pixel_aligned(border_width) {
             0.0
         } else {
             AA_HALF_WIDTH

@@ -9,6 +9,9 @@
 // smooth result for.
 override PALANTIR_DITHER_SRGB8: bool = false;
 
+// The solid fill's tag (`FillKind`), the one that reads no gradient.
+const PALANTIR_FILL_SOLID: u32 = /*{FILL_SOLID}*/;
+
 // Rec. 709 luminance weights, over linear light.
 const PALANTIR_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 

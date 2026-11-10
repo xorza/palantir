@@ -11,8 +11,8 @@ use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
-use crate::renderer::render_buffer::image_form::ImageForm;
-use crate::renderer::render_buffer::quad_form::QuadForm;
+use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 
 /// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
 ///
@@ -26,8 +26,8 @@ pub(crate) struct FormatPipelines {
     format: wgpu::TextureFormat,
     pub(crate) quad: QuadVariants,
     pub(crate) mesh: ClipVariant,
-    /// Indexed by [`ImageForm`].
-    pub(crate) image: [ClipVariant; 3],
+    /// Indexed by [`ShapeForm`]; an image draws no [`ShapeForm::BoxOutside`].
+    pub(crate) image: [ClipVariant; ShapeForm::ALL.len()],
     pub(crate) curve: ClipVariant,
     /// The pipelines of **both** raster tenants: glyph and icon quads share one shader and layout,
     /// binding whichever atlas the step names. See [`RasterProgram`].
@@ -55,8 +55,8 @@ pub(crate) struct PipelineCensus {
     pub(crate) clipping: Clipping,
     pub(crate) quads: QuadDraws,
     pub(crate) meshes: bool,
-    /// Images of each [`ImageForm`], indexed by it.
-    pub(crate) images: [bool; 3],
+    /// Images of each [`ShapeForm`], indexed by it.
+    pub(crate) images: [bool; ShapeForm::ALL.len()],
     pub(crate) curves: bool,
     /// Text or icons, which draw through the raster pipelines.
     pub(crate) rasters: bool,
@@ -68,12 +68,12 @@ impl PipelineCensus {
         Self {
             clipping: Clipping::Off,
             quads: QuadDraws::from([
-                QuadDraw::Form(QuadForm::BoxSolid),
-                QuadDraw::Form(QuadForm::BoxGradient),
-                QuadDraw::Form(QuadForm::TriangleSolid),
+                QuadDraw::Fill(FillForm::BOX_SOLID),
+                QuadDraw::Fill(FillForm::new(ShapeForm::Box, FillBrush::Gradient)),
+                QuadDraw::Fill(FillForm::new(ShapeForm::Triangle, FillBrush::Solid)),
             ]),
             meshes: true,
-            images: [true, false, false],
+            images: [true, false, false, false],
             curves: true,
             rasters: true,
         }
@@ -86,7 +86,7 @@ impl FormatPipelines {
             format,
             quad: QuadVariants::NONE,
             mesh: ClipVariant::NONE,
-            image: [ClipVariant::NONE; 3],
+            image: [ClipVariant::NONE; ShapeForm::ALL.len()],
             curve: ClipVariant::NONE,
             raster: RasterVariants::NONE,
         };
@@ -106,7 +106,7 @@ impl FormatPipelines {
         if census.meshes {
             programs.mesh.ensure(&mut self.mesh, gpu, target);
         }
-        for (form, wanted) in ImageForm::ALL.into_iter().zip(census.images) {
+        for (form, wanted) in ShapeForm::ALL.into_iter().zip(census.images) {
             if wanted {
                 programs
                     .image
@@ -154,7 +154,7 @@ impl<'a> PassPipelines<'a> {
     }
 
     /// The pipeline an image of `form` draws through.
-    pub(crate) const fn image(self, form: ImageForm) -> &'a Pipeline {
+    pub(crate) const fn image(self, form: ShapeForm) -> &'a Pipeline {
         self.fmt.image[form as usize].get(self.clipping)
     }
 

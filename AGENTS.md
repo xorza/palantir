@@ -340,8 +340,9 @@ driver serves that command alone; the drive table's `version` names it
 - **Coverage is geometry, paint a function the fragment calls.** The template hands each
   fragment its region and distance; the paint, a solid, a gradient (`quad_paint`), an image
   (`image_paint`), a material or an app effect, is one function of the point. A pipeline is one
-  geometry and one paint, pinned per form (`QuadForm`, `ImageForm`, named shape then paint), as
-  Skia Graphite pairs a RenderStep with a paint key and WebRender a quad with a pattern.
+  geometry and one paint, pinned per form (a fill's `FillForm`, its `ShapeForm` and `FillBrush`;
+  an image's `ShapeForm`), as Skia Graphite pairs a RenderStep with a paint key and WebRender a
+  quad with a pattern.
   Refused: every paint behind one dynamic branch, which VideoCore's register count refused (54
   temporaries for all forms, 22 for a solid); a pipeline per shape kind.
 - **Antialiasing is an interpolated distance**, clamped in the fragment, or one `length` in a

@@ -5,7 +5,6 @@ use crate::display::frame_stamp::FrameStamp;
 use crate::primitives::identity::backdrop_keys::BackdropKeys;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, BackdropSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
@@ -15,6 +14,7 @@ use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
 use crate::renderer::render_buffer::mesh_draw_row::MeshDrawRow;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::quad_row::QuadRow;
 use crate::renderer::render_buffer::render_target_draw::{FrameViews, RenderTargetDraw};
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
@@ -29,17 +29,18 @@ pub(crate) mod curve_instance;
 pub(crate) mod curve_kind;
 pub(crate) mod draw_group;
 pub(crate) mod effect_draw_row;
+pub(crate) mod fill_form;
 pub(crate) mod group_batch;
 pub(crate) mod icon_draw_row;
 pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
-pub(crate) mod image_form;
 pub(crate) mod mesh_draw_row;
 pub(crate) mod paint_tier;
-pub(crate) mod quad_form;
+pub(crate) mod quad_row;
 pub(crate) mod render_target_draw;
 pub(crate) mod rounded_clip;
 pub(crate) mod row_spin;
+pub(crate) mod shape_form;
 pub(crate) mod shape_header;
 pub(crate) mod text_batch;
 pub(crate) mod text_draw_row;
@@ -47,7 +48,8 @@ pub(crate) mod text_draw_row;
 /// Output of `compose`: physical-px instances grouped by scissor region plus the wgpu callback sidecar for composited `GpuView`s. Holds no compose-time scratch; reuse one buffer across frames.
 #[derive(Debug)]
 pub(crate) struct RenderBuffer {
-    pub(crate) quads: Vec<Quad>,
+    /// The quad stream, SoA: each instance beside its pipeline's key.
+    pub(crate) quads: Soa<QuadRow>,
     pub(crate) texts: Vec<TextDrawRow>,
     /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::mesh_vertices`](crate::shape::record_store::RecordStore::mesh_vertices) and `mesh_idxs`; each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
     pub(crate) meshes: Soa<MeshDrawRow>,
@@ -91,7 +93,7 @@ pub(crate) struct RenderBuffer {
 impl RenderBuffer {
     pub(crate) fn new() -> Self {
         Self {
-            quads: Vec::new(),
+            quads: Soa::default(),
             texts: Vec::new(),
             meshes: Soa::default(),
             groups: Vec::new(),

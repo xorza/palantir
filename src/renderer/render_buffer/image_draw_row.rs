@@ -8,7 +8,7 @@
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::renderer::render_buffer::image_form::ImageForm;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use glam::Vec2;
 use soa_rs::Soars;
@@ -20,7 +20,7 @@ use soa_rs::Soars;
 pub(crate) struct ImageDrawRow {
     pub(crate) id: TextureId,
     /// The geometry the draw takes, which picks its pipeline.
-    pub(crate) form: ImageForm,
+    pub(crate) form: ShapeForm,
     pub(crate) instance: ImageInstance,
 }
 
@@ -31,7 +31,7 @@ pub(crate) struct ImageDrawRow {
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ImageInstance {
     /// The quad the image draws over, physical px, its turn and its rounded clips; and for an
-    /// image of a box's or a triangle's [`ImageForm`], the shape that clips it, which a plain
+    /// image of a box's or a triangle's [`ShapeForm`], the shape that clips it, which a plain
     /// image leaves unread.
     pub(crate) header: ShapeHeader,
     /// UV crop top-left (0..1 texture coords).

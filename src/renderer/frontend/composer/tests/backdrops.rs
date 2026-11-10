@@ -399,7 +399,7 @@ fn a_triangles_material_packs_as_its_triangle() {
         &params(2.0, UVec2::new(200, 200)),
     );
     let instance = buf.effects.instance()[0];
-    let quad = buf.quads[0];
+    let quad = buf.quads.instance()[0];
     assert_eq!(
         instance.flags,
         EffectInstance::MATERIAL | EffectInstance::TRIANGLE

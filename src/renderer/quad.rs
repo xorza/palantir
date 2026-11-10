@@ -3,12 +3,11 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::antialias::{self, AA_HALF_WIDTH};
+
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use bytemuck::{Pod, Zeroable};
-use glam::Vec2;
 
 /// Per-instance quad data, read through `QUAD_INSTANCE_ATTRS` (backend), which takes each field's offset; no tail padding, as vertex strides need only 4-byte alignment.
 ///
@@ -40,74 +39,5 @@ impl Quad {
             header: ShapeHeader::of_box(rect),
             ..Self::default()
         }
-    }
-
-    /// Whether the quad holds the shape the template draws: a box's points and inradius are its
-    /// rect's, as the template builds a box from them; a triangle holds its own, and a shadow
-    /// draws no template.
-    pub(crate) fn has_shape(&self) -> bool {
-        self.fill_kind.is_shadow() || self.fill_kind.is_triangle() || self.header.is_box()
-    }
-
-    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/quad.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; an outside rect is drawn at its rect. A turned quad, outside or not, grows [`AA_HALF_WIDTH`] past each edge in its own frame, and shades within the whole pixels around that turned about the rect's center.
-    pub(crate) fn shaded_rect(&self) -> Rect {
-        let ShapeHeader { rect, rotation, .. } = self.header;
-        if rotation == 0.0 {
-            if self.fill_kind.is_outside() {
-                return rect;
-            }
-            let grow = Vec2::splat(AA_HALF_WIDTH - 0.5);
-            return Rect::from_min_max((rect.min - grow).floor(), (rect.max() + grow).ceil());
-        }
-        let turned = antialias::turned_reach(rect, rotation);
-        Rect::from_min_max(turned.min.floor(), turned.max().ceil())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::packed::fill_kind::FillKind;
-    use crate::renderer::quad::Quad;
-    use crate::renderer::render_buffer::shape_header::ShapeHeader;
-
-    /// A rect on pixel boundaries shades itself; otherwise every pixel its edges cross: (10.25, 3)..(20.5, 8) is columns 10..21, rows 3..8.
-    #[test]
-    fn a_quad_shades_the_pixels_its_edges_cross() {
-        let shaded = |rect: Rect, fill_kind: FillKind| {
-            Quad {
-                header: ShapeHeader {
-                    rect,
-                    ..ShapeHeader::default()
-                },
-                fill_kind,
-                ..Quad::default()
-            }
-            .shaded_rect()
-        };
-        let aligned = Rect::new(10.0, 3.0, 11.0, 5.0);
-        let off_grid = Rect::new(10.25, 3.0, 10.25, 5.0);
-        assert_eq!(shaded(aligned, FillKind::SOLID), aligned);
-        assert_eq!(shaded(off_grid, FillKind::SOLID), aligned);
-        assert_eq!(shaded(off_grid, FillKind::SOLID.with_outside()), off_grid);
-    }
-
-    /// A turned quad shades the whole pixels around its turned bound, grown by the AA half width in
-    /// its own frame even on whole-pixel edges. (10, 10)..(30, 20) grown 0.5 is 21 x 11, which
-    /// turned 30° about its center (20, 15) reaches `10.5·cos + 5.5·sin = 11.84` across and
-    /// `10.5·sin + 5.5·cos = 10.01` down, so (8.16, 4.99)..(31.84, 25.01), out to whole pixels
-    /// (8, 4)..(32, 26). Without the growth it would be (8, 5)..(32, 25).
-    #[test]
-    fn a_turned_quad_shades_the_pixels_around_its_turned_bound() {
-        let quad = Quad {
-            header: ShapeHeader {
-                rect: Rect::new(10.0, 10.0, 20.0, 10.0),
-                rotation: std::f32::consts::FRAC_PI_6,
-                ..ShapeHeader::default()
-            },
-            fill_kind: FillKind::SOLID,
-            ..Quad::default()
-        };
-        assert_eq!(quad.shaded_rect(), Rect::new(8.0, 4.0, 24.0, 22.0));
     }
 }

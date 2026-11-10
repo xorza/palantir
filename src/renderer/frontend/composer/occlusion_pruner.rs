@@ -5,6 +5,7 @@ use crate::common::counters::TestOnly;
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::frontend::composer::tile_index::{TILE_SIZE, TileIndex, TileSpan};
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::quad_row::QuadKey;
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
@@ -74,23 +75,26 @@ impl OcclusionPruner {
         let mut cursor = 0;
         let occluders = self.opaque_in_group.len();
         let end = out.quads.len();
+        let rows = out.quads.slices_mut();
+        let (keys, quads) = (rows.key, rows.instance);
         // Survivors move down to `write`, in order.
         let mut write = start;
         for read in start..end {
-            let q = &out.quads[read];
+            let key = keys[read];
             // Shadows blur past the stored rect; never drop.
-            if !q.fill_kind.is_shadow() {
+            if key != QuadKey::Shadow {
                 let i = read - start;
                 while cursor < occluders && self.opaque_in_group[cursor].idx as usize <= i {
                     cursor += 1;
                 }
                 // No later occluder for this or any later quad: the rest survive.
                 if cursor >= occluders {
-                    out.quads.copy_within(read..end, write);
+                    keys.copy_within(read..end, write);
+                    quads.copy_within(read..end, write);
                     write += end - read;
                     break;
                 }
-                let shaded = q.shaded_rect();
+                let shaded = key.shaded_rect(&quads[read].header);
                 let covered = if indexed {
                     self.indexed_covers(shaded, cursor)
                 } else {
@@ -101,7 +105,8 @@ impl OcclusionPruner {
                 }
             }
             if read != write {
-                out.quads[write] = out.quads[read];
+                keys[write] = key;
+                quads[write] = quads[read];
             }
             write += 1;
         }
