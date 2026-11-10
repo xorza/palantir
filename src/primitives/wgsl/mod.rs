@@ -37,7 +37,8 @@ pub(crate) const GRADIENT_LUT: &str = include_str!("gradient_lut.wgsl");
 /// A gradient fill's color at a point, with the spread and kind constants it reads.
 pub(crate) const GRADIENT_FILL: &str = include_str!("gradient_fill.wgsl");
 /// The template a closed shape's vertex stage builds: per corner a ring, per edge a band, and an
-/// interior fan, from a `PalantirShape` its includer describes from its own instance.
+/// interior fan, from a `PalantirShape` its includer describes from its own instance, and a
+/// fragment's coverage and box fill from its region; it reads [`ANTIALIAS`] and [`COMPOSITE`].
 pub(crate) const SHAPE_TEMPLATE: &str = include_str!("shape_template.wgsl");
 
 /// Segments of each corner's arc in [`SHAPE_TEMPLATE`], substituted as `ARC_SEGMENTS`. At 2, the

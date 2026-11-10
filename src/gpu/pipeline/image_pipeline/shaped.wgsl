@@ -52,16 +52,13 @@ fn shaped_vertex(vi: u32, shape: PalantirShapeIn, in: VsIn, n: u32) -> ShapedOut
     return out;
 }
 
-// The image inside; across a band the interpolated distance and across a ring the distance to
-// its arc fade it, as a quad's template edge fades.
+// The image within its decal, faded at its template's edge as a quad's is, and cut by its rounded
+// clips.
 @fragment
 fn fs_shaped(in: ShapedOut) -> @location(0) vec4<f32> {
     let e = max(in.decal.xy - in.local, in.local - in.decal.zw);
-    let paint = image_paint(in.uv, in.uv_rect, in.flags, in.tint)
+    return image_paint(in.uv, in.uv_rect, in.flags, in.tint)
         * palantir_edge_coverage(e.x) * palantir_edge_coverage(e.y)
+        * palantir_template_coverage(in.region, in.geo, in.ring_r)
         * palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
-    if (in.region == PALANTIR_REGION_INTERIOR) {
-        return paint;
-    }
-    return paint * palantir_edge_coverage(palantir_template_distance(in.region, in.geo, in.ring_r));
 }

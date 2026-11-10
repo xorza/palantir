@@ -53,18 +53,15 @@ fn palantir_material(v: PalantirVarying, local: vec2<f32>, input: EffectInput, o
         let ign = fract(52.9829189 * fract(dot(floor(p), vec2<f32>(0.06711056, 0.00583715))));
         c = palantir_srgb_to_linear(max(palantir_linear_to_srgb(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
     }
-    // Premultiplied, so the clip scales the shade and leaves what is under as over composites it.
-    let shaded = palantir_material_shade(v, backdrop, vec4<f32>(c, opacity))
-        * palantir_clip_coverage(palantir_frag_px(v.clip), v.chain);
+    // The box's shape under the slot's border, as a quad's `fs_template` shades it; premultiplied,
+    // so the clip scales the shade and leaves what is under as over composites it.
+    let shaded = palantir_template_fill(
+        v.region,
+        v.geo,
+        v.ring_r,
+        vec4<f32>(c, opacity),
+        backdrop.border_color,
+        backdrop.border_width,
+    ) * palantir_clip_coverage(palantir_frag_px(v.clip), v.chain);
     return PalantirOut(shaded, vec4<f32>(1.0 - shaded.a));
-}
-
-// The shape of `fill` under the slot's border, as a quad's `fs_template` shades it: the template's
-// interior, past the border and the antialiasing reach, is the fill without the distance.
-fn palantir_material_shade(v: PalantirVarying, backdrop: PalantirBackdrop, fill: vec4<f32>) -> vec4<f32> {
-    if (v.region == PALANTIR_REGION_INTERIOR) {
-        return vec4<f32>(fill.rgb * fill.a, fill.a);
-    }
-    let d = palantir_template_distance(v.region, v.geo, v.ring_r);
-    return palantir_composite(d, fill, backdrop.border_color, backdrop.border_width);
 }

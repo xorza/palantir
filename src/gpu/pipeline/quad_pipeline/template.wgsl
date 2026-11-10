@@ -60,8 +60,7 @@ fn fs_template(in: TemplateOut) -> @location(0) vec4<f32> {
     return template_color(in) * palantir_clip_coverage(palantir_frag_px(in.clip), in.chain);
 }
 
-// The fill alone inside; across a band the interpolated distance; across a ring the distance to
-// its arc. Then the fill and the border composite as the reference's do.
+// The quad's paint under its border over its template, composited as the reference's are.
 fn template_color(in: TemplateOut) -> vec4<f32> {
     let fill = quad_paint(
         unpack_f16x4(in.fill_packed),
@@ -70,10 +69,6 @@ fn template_color(in: TemplateOut) -> vec4<f32> {
         in.fill_axis,
         in.fill_lut_row,
     );
-    if (in.region == PALANTIR_REGION_INTERIOR) {
-        return premultiply(fill.rgb, fill.a);
-    }
     let border_color = unpack_f16x4(in.border_color_packed);
-    let d = palantir_template_distance(in.region, in.geo, in.ring_r);
-    return palantir_composite(d, fill, border_color, in.border_width);
+    return palantir_template_fill(in.region, in.geo, in.ring_r, fill, border_color, in.border_width);
 }

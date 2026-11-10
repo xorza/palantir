@@ -53,7 +53,7 @@ source of that rule.
   layout and arithmetic, two copies, which `AGENTS.md` refuses ("Shared WGSL has one copy, under
   the `palantir_` prefix"). The prelude stays out of an effect module because its names carry no
   prefix.
-- **The template's fragment tail is written four times.** "The interior is the paint; elsewhere
+- **[fixed in item 4] The template's fragment tail is written four times.** "The interior is the paint; elsewhere
   the template's distance fades it" is spelled out in `template_color` (quad), `fs_shaped`
   (image), `palantir_material_shade` (material) and `palantir_fs` (effect), two with the
   composite and two with a bare coverage. The vertex half already has one copy,
@@ -140,9 +140,10 @@ captured streams prove it.
    The prelude and the effect module include them, and the prelude's unprefixed names, the
    wrapper's NDC and frame origin, and the contract's and material's copies go. Refused: the
    prelude in the effect module, whose unprefixed names an app's text could collide with.
-4. **One template fragment tail.** `palantir_template_coverage(region, geo, ring_r)` and
+4. [x] **One template fragment tail**, done. `palantir_template_coverage(region, geo, ring_r)` and
    `palantir_template_fill(region, geo, ring_r, fill, border, width)` in `shape_template.wgsl`;
-   the four stages call them. Refused: one function with a border of zero for the image and the
+   the four stages call them, the material's `palantir_material_shade` goes, and every effect
+   module includes `COMPOSITE`, which the template now reads. Refused: one function with a border of zero for the image and the
    effect, which would pay the composite where no border is.
 5. **One template vertex count.** `shape_template::form_vertices(ShapeForm)` (4 for `Rect`, the
    template's count for the others); the three callers go through it.

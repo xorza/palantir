@@ -123,10 +123,11 @@ pub(crate) fn check(wgsl: &str, spec: ContractSpec) -> Result<EffectModule, Effe
         KindId::Backdrop => material(),
     };
     let full = format!(
-        "{ENABLE}{wgsl}\n{contract}{}{}{}{}{material}",
+        "{ENABLE}{wgsl}\n{contract}{}{}{}{}{}{material}",
         wrapper(kind, params_struct.as_deref(), params.fields),
         VIEWPORT,
         ANTIALIAS.replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}")),
+        COMPOSITE,
         SHAPE_TEMPLATE.replace("/*{ARC_SEGMENTS}*/", &format!("{ARC_SEGMENTS}u")),
     ) + &frame();
     let full = parse_and_validate(
@@ -267,7 +268,7 @@ fn material() -> String {
     ]
     .into_iter()
     .fold(
-        [MATERIAL, COMPOSITE, COLOR, GRADIENT_LUT, GRADIENT_FILL].concat(),
+        [MATERIAL, COLOR, GRADIENT_LUT, GRADIENT_FILL].concat(),
         |text, (marker, value)| text.replace(&format!("/*{{{marker}}}*/"), &format!("{value}u")),
     )
 }

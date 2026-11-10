@@ -32,7 +32,7 @@ struct PalantirVarying {
     @location(3) @interpolate(flat) params: u32,
     @location(4) @interpolate(flat) backdrop_idx: u32,
     @location(5) @interpolate(flat) flags: u32,
-    // The template region, distance and ring (`palantir_template_distance`).
+    // The template region, distance and ring (`palantir_template_vertex`).
     @location(6) @interpolate(flat) region: u32,
     @location(7) geo: vec2<f32>,
     @location(8) @interpolate(flat) ring_r: f32,
@@ -87,10 +87,8 @@ fn palantir_fs(v: PalantirVarying) -> PalantirOut {
     let corners = select(v.corners, vec4<f32>(0.0), PALANTIR_TRIANGLE);
     let input = EffectInput(local / scale, v.rect.zw / scale, corners / scale, v.clock.x, scale);
     /*{BACKDROP_SET}*/let out = /*{CALL}*/;
-    /*{MATERIAL_BRANCH}*/var coverage = v.clock.y
+    /*{MATERIAL_BRANCH}*/let coverage = v.clock.y
+        * palantir_template_coverage(v.region, v.geo, v.ring_r)
         * palantir_clip_coverage(palantir_frag_px(v.clip), v.chain);
-    if (v.region != PALANTIR_REGION_INTERIOR) {
-        coverage *= palantir_edge_coverage(palantir_template_distance(v.region, v.geo, v.ring_r));
-    }
     return PalantirOut(out.color * coverage, vec4<f32>(1.0) - coverage * (vec4<f32>(1.0) - out.under));
 }

@@ -1,7 +1,8 @@
 // The template a closed shape's vertex stage builds, the same for every pipeline that draws one:
 // per corner a ring, per edge a band, and an interior fan (`palantir_template_vertex`). Every
 // includer's instance opens with the shape (`ShapeHeader`), which `palantir_shape_of` reads, and
-// its fragment reads the regions.
+// its fragment stage takes the shape's coverage or a box's fill from the regions; it reads
+// `ANTIALIAS` and `COMPOSITE`.
 
 // The regions of a shape's template (`palantir_template_vertex`).
 const PALANTIR_REGION_INTERIOR: u32 = 0u;
@@ -220,11 +221,37 @@ fn palantir_template_vertex(s: PalantirShape, vi: u32, border_width: f32) -> Pal
 }
 
 // The shape's signed distance at a fragment of a band or a ring, from what `palantir_template_vertex`
-// handed it: a band's interpolated distance, a ring's length to its arc. An interior fragment is
-// inside past every edge's reach, so its caller takes the fill there without a distance.
+// handed it: a band's interpolated distance, a ring's length to its arc.
 fn palantir_template_distance(region: u32, geo: vec2<f32>, ring_r: f32) -> f32 {
     if (region == PALANTIR_REGION_RING) {
         return length(geo) - ring_r;
     }
     return geo.x;
+}
+
+// The shape's coverage at a fragment of its template: full in the interior, which lies inside past
+// every edge's reach, and the edge's ramp at the shape's distance elsewhere.
+fn palantir_template_coverage(region: u32, geo: vec2<f32>, ring_r: f32) -> f32 {
+    if (region == PALANTIR_REGION_INTERIOR) {
+        return 1.0;
+    }
+    return palantir_edge_coverage(palantir_template_distance(region, geo, ring_r));
+}
+
+// A box's straight `fill` under its border at a fragment of its template, premultiplied: the fill
+// alone in the interior, which lies inside past the border and every edge's reach, and
+// `palantir_composite` at the shape's distance elsewhere.
+fn palantir_template_fill(
+    region: u32,
+    geo: vec2<f32>,
+    ring_r: f32,
+    fill: vec4<f32>,
+    border_color: vec4<f32>,
+    border_width: f32,
+) -> vec4<f32> {
+    if (region == PALANTIR_REGION_INTERIOR) {
+        return vec4<f32>(fill.rgb * fill.a, fill.a);
+    }
+    let d = palantir_template_distance(region, geo, ring_r);
+    return palantir_composite(d, fill, border_color, border_width);
 }
