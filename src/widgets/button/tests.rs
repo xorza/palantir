@@ -325,8 +325,8 @@ mod press {
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::pointer::PointerButton;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::renderer::frontend::payload::draw_effect_payload::EffectGeometry;
     use crate::shape::geometry::box_geometry::PlacedBox;
+    use crate::shape::geometry::closed_geometry::PlacedClosed;
     use crate::theme::Theme;
     use crate::theme::look::press_effect::PressEffect;
     use crate::ui::Ui;
@@ -364,7 +364,7 @@ mod press {
             .iter()
             .filter_map(|call| match call {
                 PaintCall::Effect(p) => {
-                    let EffectGeometry::Box {
+                    let PlacedClosed::Box {
                         coverage: Coverage::Inside,
                         placed: PlacedBox { rect, corners },
                     } = p.geometry

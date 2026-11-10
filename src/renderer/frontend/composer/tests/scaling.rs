@@ -136,12 +136,14 @@ fn nan_border_width_normalizes_away_on_every_quad_geometry() {
         |b, _arena| {
             b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
-                    points: [
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(10.0, 0.0),
-                        Vec2::new(5.0, 8.0),
-                    ],
-                    radius: 0.0,
+                    triangle: PlacedTriangle {
+                        centers: [
+                            Vec2::new(0.0, 0.0),
+                            Vec2::new(10.0, 0.0),
+                            Vec2::new(5.0, 8.0),
+                        ],
+                        radius: 0.0,
+                    },
                     fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                     border: LoweredBorder::lower(nan_border),
                 }),
@@ -438,8 +440,10 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
         |b, _arena| {
             b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
-                    points,
-                    radius: 2.0,
+                    triangle: PlacedTriangle {
+                        centers: points,
+                        radius: 2.0,
+                    },
                     fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                     border: LoweredBorder::lower(Border::NONE),
                 }),
@@ -498,12 +502,14 @@ fn a_turned_triangle_turns_its_quad_about_its_pivot() {
             |b, _| {
                 b.draw(
                     DrawQuadPayload::triangle(TriangleQuad {
-                        points: [
-                            Vec2::new(4.0, 4.0),
-                            Vec2::new(14.0, 4.0),
-                            Vec2::new(4.0, 14.0),
-                        ],
-                        radius: 1.0,
+                        triangle: PlacedTriangle {
+                            centers: [
+                                Vec2::new(4.0, 4.0),
+                                Vec2::new(14.0, 4.0),
+                                Vec2::new(4.0, 14.0),
+                            ],
+                            radius: 1.0,
+                        },
                         fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                         border: LoweredBorder::lower(Border::NONE),
                     })
@@ -545,12 +551,14 @@ fn a_triangle_carries_its_gradient_lanes() {
         |b, _| {
             b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
-                    points: [
-                        Vec2::new(4.0, 4.0),
-                        Vec2::new(14.0, 4.0),
-                        Vec2::new(4.0, 14.0),
-                    ],
-                    radius: 1.0,
+                    triangle: PlacedTriangle {
+                        centers: [
+                            Vec2::new(4.0, 4.0),
+                            Vec2::new(14.0, 4.0),
+                            Vec2::new(4.0, 14.0),
+                        ],
+                        radius: 1.0,
+                    },
                     fill: BrushSource::Gradient(ResolvedGradient {
                         axis,
                         lut_row: LutRow(3),
@@ -825,7 +833,7 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
                 b.draw(
                     DrawImagePayload {
                         rect: image,
-                        geometry: Some(PlacedClosed::Box(PlacedBox {
+                        geometry: Some(PlacedClosed::inside(PlacedBox {
                             rect: Rect::new(5.0, 5.0, 50.0, 25.0),
                             corners: Corners::all(4.0),
                         })),
@@ -929,8 +937,10 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
             );
             b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
-                    points,
-                    radius: 1.0,
+                    triangle: PlacedTriangle {
+                        centers: points,
+                        radius: 1.0,
+                    },
                     fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                     border: LoweredBorder::lower(Border::NONE),
                 }),
@@ -1000,7 +1010,7 @@ fn an_image_edge_on_its_shape_leaves_the_fade_to_the_shape() {
         assert_eq!(image.decal_min, Vec2::splat(-f32::MAX), "triangle {i}");
         assert_eq!(image.decal_max, Vec2::splat(f32::MAX), "triangle {i}");
     }
-    let shape = PlacedClosed::Box(PlacedBox {
+    let shape = PlacedClosed::inside(PlacedBox {
         rect: Rect::new(5.0, 5.0, 50.0, 25.0),
         corners: Corners::all(4.0),
     });

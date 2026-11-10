@@ -5,6 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
 use crate::shape::draw::Draw;
 use crate::shape::geometry::point_placement::PointPlacement;
+use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::sealed;
 use crate::shape::{IntoPaint, PaintedBy};
 use glam::Vec2;
@@ -29,6 +30,15 @@ impl TriangleShape {
             corners: [a, b, c],
             radius: 0.0,
             placement: PointPlacement::NATURAL,
+        }
+    }
+
+    /// The rounded triangle this shape lays out.
+    pub(crate) const fn geometry(&self) -> TriangleGeometry {
+        TriangleGeometry {
+            corners: self.corners,
+            radius: self.radius,
+            placement: self.placement,
         }
     }
 

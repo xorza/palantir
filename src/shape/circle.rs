@@ -27,6 +27,15 @@ impl CircleShape {
         Self { local_rect: None }
     }
 
+    /// The round box this circle lays out, covering its inside.
+    pub(crate) const fn geometry(&self) -> BoxGeometry {
+        BoxGeometry {
+            local_rect: self.local_rect,
+            outline: BoxOutline::Circle,
+            coverage: Coverage::Inside,
+        }
+    }
+
     /// Lay out in `rect`, in owner-relative coords, instead of the owner's arranged rect.
     ///
     /// # Panics
@@ -50,13 +59,8 @@ impl<P: IntoPaint> sealed::DrawWith<P> for CircleShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
-        let Self { local_rect } = *self;
         Draw::Box {
-            geometry: BoxGeometry {
-                local_rect,
-                outline: BoxOutline::Circle,
-                coverage: Coverage::Inside,
-            },
+            geometry: self.geometry(),
             paint: paint.to_paint(),
         }
     }

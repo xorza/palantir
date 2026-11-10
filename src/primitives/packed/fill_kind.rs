@@ -85,11 +85,10 @@ impl FillKind {
     /// shader skips the SDF + composite path. Read as `FILL_FLAG_FAST`.
     pub(crate) const FAST_BIT: u32 = 1 << 16;
 
-    /// Bit 17: outside rect. Fill coverage is inverted (painting outside the
-    /// rounded boundary, interior transparent); set for a [`Coverage::Outside`](crate::widget::Coverage::Outside) rect and
-    /// read as `FILL_FLAG_OUTSIDE`. It disqualifies the quad from opaque-cover
-    /// checks (clear fold, fast path, occlusion prune), which compare `fill_kind ==
-    /// FillKind::SOLID` exactly, since its interior is a hole.
+    /// Bit 17: outside rect. Fill coverage is inverted (painting outside the rounded boundary,
+    /// interior transparent); the composer sets it on a `Quad` from a box that covers its
+    /// [`Coverage::Outside`](crate::widget::Coverage::Outside), as a payload's shape holds the
+    /// side. Read as `FILL_FLAG_OUTSIDE`.
     pub(crate) const OUTSIDE_BIT: u32 = 1 << 17;
 
     #[inline]
@@ -114,9 +113,8 @@ impl FillKind {
     }
 
     /// Bit 18: a rounded triangle, three of `Quad::points` where a box has four, which the
-    /// template's corner count and the form follow; the tag still names its paint. Read as
-    /// `FILL_FLAG_TRIANGLE`. Like the outside bit, it keeps the quad out of the checks that
-    /// compare `fill_kind == FillKind::SOLID`, as a triangle covers no rect.
+    /// template's corner count and the form follow; the tag still names its paint. The composer
+    /// sets it on a `Quad` from a payload's triangle. Read as `FILL_FLAG_TRIANGLE`.
     pub(crate) const TRIANGLE_BIT: u32 = 1 << 18;
 
     #[inline]

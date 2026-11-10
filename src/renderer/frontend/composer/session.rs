@@ -10,7 +10,6 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::domain::{EPS, is_invisible};
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::math::num::Vec2Ext;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::Composer;
@@ -26,7 +25,7 @@ use crate::renderer::frontend::composer::template_shape::TemplateShape;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
+    DrawEffectPayload, EffectCaptureDraw,
 };
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
@@ -393,15 +392,15 @@ impl PaintSink for ComposeSession<'_> {
             None => 0,
         };
         let shape_flags = match p.geometry {
-            EffectGeometry::Box {
+            PlacedClosed::Box {
                 coverage: Coverage::Inside,
                 ..
             } => 0,
-            EffectGeometry::Box {
+            PlacedClosed::Box {
                 coverage: Coverage::Outside,
                 ..
             } => EffectInstance::OUTSIDE,
-            EffectGeometry::Triangle(_) => EffectInstance::TRIANGLE,
+            PlacedClosed::Triangle(_) => EffectInstance::TRIANGLE,
         };
         let stage_flag = if p.stage.is_some() {
             EffectInstance::MATERIAL
@@ -587,7 +586,7 @@ impl ComposeSession<'_> {
         // The image's rect lies on the pixels its shape's does.
         let edges = TemplateShape::edges(placed, p.spin, &lowering);
         let form = match placed {
-            PlacedClosed::Box(_) => ImageForm::Box,
+            PlacedClosed::Box { .. } => ImageForm::Box,
             PlacedClosed::Triangle(_) => ImageForm::Triangle,
         };
         let image = lowering.scaled_rect_with(p.rect, edges).physical;
@@ -730,15 +729,22 @@ impl ComposeSession<'_> {
 
     /// Push `p`, packed as `packed`, cut by the rounded clips of `clip`.
     fn push_quad(&mut self, p: &DrawQuadPayload, packed: &PackedQuad, clip: ClipChain) {
-        // Fragment fast path: a solid, sharp, borderless, pixel-aligned quad has
-        // coverage exactly 1.0, so the shader returns the fill directly. `SOLID` excludes
-        // shadows and triangles.
-        let fast = p.fill.kind == FillKind::SOLID && packed.is_pixel_aligned();
-        let fill_kind = if fast {
-            p.fill.kind.with_fast()
-        } else {
-            p.fill.kind
+        // Fragment fast path: a solid, sharp, borderless, pixel-aligned box has coverage exactly
+        // 1.0, so the shader returns the fill directly.
+        let fast = p.is_solid_box() && packed.is_pixel_aligned();
+        // The instance carries the shape's side and kind in its fill word, which picks its form.
+        let shaped = match p.geometry {
+            PlacedClosed::Box {
+                coverage: Coverage::Inside,
+                ..
+            } => p.fill.kind,
+            PlacedClosed::Box {
+                coverage: Coverage::Outside,
+                ..
+            } => p.fill.kind.with_outside(),
+            PlacedClosed::Triangle(_) => p.fill.kind.with_triangle(),
         };
+        let fill_kind = if fast { shaped.with_fast() } else { shaped };
         self.out.quads.push(Quad {
             rect: packed.rect.physical,
             fill: p.fill.color,
@@ -801,7 +807,7 @@ impl ComposeSession<'_> {
             && physical.max().y >= self.out.display.physical.as_vec2().y - EPS;
         if !covers_viewport
             || self.composer.clip.top().is_some()
-            || p.fill.kind != FillKind::SOLID
+            || !p.is_solid_box()
             || !p.fill.color.is_opaque()
             || !packed.is_sharp()
         {
@@ -812,14 +818,14 @@ impl ComposeSession<'_> {
         true
     }
 
-    /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. `SOLID` only: a
-    /// shadow's blur and a triangle's empty corners don't cover the whole `rect`, and a turned
+    /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. A solid box
+    /// only ([`DrawQuadPayload::is_solid_box`]), and a turned
     /// quad covers no axis-aligned rect of its own. A quad on the fast path has no anti-aliased
     /// edge to inset by. The rounded clips in force keep the cover to what they leave whole
     /// ([`RoundedClip::covered`]): past it the quad shows a share of what it covers, which a
     /// prune would drop.
     fn record_opaque_cover(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) {
-        if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() || packed.rotation != 0.0 {
+        if !p.is_solid_box() || !p.fill.color.is_opaque() || packed.rotation != 0.0 {
             return;
         }
         let quad = self.out.quads.last().expect("the quad just pushed");

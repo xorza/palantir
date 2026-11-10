@@ -19,7 +19,7 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
+    DrawEffectPayload, EffectCaptureDraw,
 };
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, TriangleQuad};
 use crate::renderer::render_buffer::RenderBuffer;
@@ -29,6 +29,7 @@ use crate::renderer::render_buffer::backdrop_row::{
 use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::capture_params::CaptureReach;
@@ -59,7 +60,7 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> BackdropTicket {
 
 /// A material of σ 4 over `geometry` reading `read`, under a white fill at α 0.25 and `border`.
 fn material(
-    geometry: EffectGeometry,
+    geometry: PlacedClosed,
     read: EffectCaptureDraw,
     border: LoweredBorder,
 ) -> DrawEffectPayload {
@@ -73,8 +74,8 @@ fn material(
 }
 
 /// The box at `rect`, square-cornered, covering its inside.
-const fn sharp(rect: Rect) -> EffectGeometry {
-    EffectGeometry::Box {
+const fn sharp(rect: Rect) -> PlacedClosed {
+    PlacedClosed::Box {
         coverage: Coverage::Inside,
         placed: PlacedBox {
             rect,
@@ -373,7 +374,7 @@ fn a_triangles_material_packs_as_its_triangle() {
         |b, _| {
             b.draw(
                 material(
-                    EffectGeometry::Triangle(PlacedTriangle {
+                    PlacedClosed::Triangle(PlacedTriangle {
                         centers: points,
                         radius: 1.0,
                     }),
@@ -384,8 +385,10 @@ fn a_triangles_material_packs_as_its_triangle() {
             );
             b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
-                    points,
-                    radius: 1.0,
+                    triangle: PlacedTriangle {
+                        centers: points,
+                        radius: 1.0,
+                    },
                     fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
                     border: LoweredBorder::NONE,
                 }),

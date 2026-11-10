@@ -60,6 +60,15 @@ impl RectShape {
         self
     }
 
+    /// The box this rect lays out: its rect, its corners and the side it covers.
+    pub(crate) const fn geometry(&self) -> BoxGeometry {
+        BoxGeometry {
+            local_rect: self.local_rect,
+            outline: BoxOutline::Rect(self.corners),
+            coverage: self.coverage,
+        }
+    }
+
     /// Panic unless the rect is square-cornered and covers its inside, as `what`'s pipeline,
     /// which clips to neither corners nor a side, draws.
     #[track_caller]
@@ -92,17 +101,8 @@ impl<P: IntoPaint> sealed::DrawWith<P> for RectShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
-        let Self {
-            local_rect,
-            corners,
-            coverage,
-        } = *self;
         Draw::Box {
-            geometry: BoxGeometry {
-                local_rect,
-                outline: BoxOutline::Rect(corners),
-                coverage,
-            },
+            geometry: self.geometry(),
             paint: paint.to_paint(),
         }
     }

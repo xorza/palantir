@@ -181,6 +181,7 @@ fn an_image_keeps_the_shape_that_clips_it() {
     use crate::internals::panic_probe;
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::geometry::coverage::Coverage;
+    use crate::shape::geometry::box_geometry::BoxGeometry;
     use crate::shape::geometry::box_geometry::BoxOutline;
     use crate::shape::geometry::closed_geometry::ClosedGeometry;
     use crate::shape::geometry::point_placement::PointPlacement;
@@ -199,10 +200,11 @@ fn an_image_keeps_the_shape_that_clips_it() {
     };
     assert_eq!(
         geometry,
-        ClosedGeometry::Box {
+        ClosedGeometry::Box(BoxGeometry {
             local_rect: None,
             outline: BoxOutline::Rect(Corners::new(1.0, 2.0, 3.0, 4.0)),
-        }
+            coverage: Coverage::Inside,
+        })
     );
     // A triangle takes an image, its geometry kept for the draw to place; one of no area paints
     // nothing.
@@ -236,10 +238,11 @@ fn an_image_keeps_the_shape_that_clips_it() {
     };
     assert_eq!(
         geometry,
-        ClosedGeometry::Box {
+        ClosedGeometry::Box(BoxGeometry {
             local_rect: Some(at),
             outline: BoxOutline::Circle,
-        }
+            coverage: Coverage::Inside,
+        })
     );
     let empty = Shape::circle().at(Rect::new(1.0, 2.0, 0.0, 4.0));
     assert_eq!(add(&mut shapes, (empty, paint_of(4)), &mut store), None);

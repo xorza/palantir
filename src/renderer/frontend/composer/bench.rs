@@ -34,7 +34,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
+    DrawEffectPayload, EffectCaptureDraw,
 };
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
@@ -47,6 +47,7 @@ use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -443,13 +444,10 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
         DrawEffectPayload::material(
             material,
             read,
-            EffectGeometry::Box {
-                coverage: Coverage::Inside,
-                placed: PlacedBox {
-                    rect,
-                    corners: Corners::ZERO,
-                },
-            },
+            PlacedClosed::inside(PlacedBox {
+                rect,
+                corners: Corners::ZERO,
+            }),
             BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()),
             LoweredBorder::NONE,
         ),

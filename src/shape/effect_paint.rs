@@ -13,9 +13,7 @@ use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::shape::PaintedBy;
 use crate::shape::circle::CircleShape;
 use crate::shape::draw::Draw;
-use crate::shape::geometry::box_geometry::BoxOutline;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
-use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
@@ -148,10 +146,7 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Rec
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
         Draw::EffectPaint {
-            geometry: ClosedGeometry::Box {
-                local_rect: self.local_rect,
-                outline: BoxOutline::Rect(self.corners),
-            },
+            geometry: ClosedGeometry::Box(self.geometry()),
             paint: paint.erased(),
         }
     }
@@ -166,10 +161,7 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Cir
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
         Draw::EffectPaint {
-            geometry: ClosedGeometry::Box {
-                local_rect: self.local_rect,
-                outline: BoxOutline::Circle,
-            },
+            geometry: ClosedGeometry::Box(self.geometry()),
             paint: paint.erased(),
         }
     }
@@ -184,11 +176,7 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Tri
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
         Draw::EffectPaint {
-            geometry: ClosedGeometry::Triangle(TriangleGeometry {
-                corners: self.corners,
-                radius: self.radius,
-                placement: self.placement,
-            }),
+            geometry: ClosedGeometry::Triangle(self.geometry()),
             paint: paint.erased(),
         }
     }

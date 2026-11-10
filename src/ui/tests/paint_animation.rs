@@ -7,8 +7,8 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 use crate::shape::Shape;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::text::glyph_font::GlyphFont;
 use crate::ui::Ui;
@@ -121,10 +121,9 @@ fn a_turn_records_on_every_kind() {
         .iter()
         .filter_map(|call| match call {
             PaintCall::Curve(p) => Some(p.bounds.spin().is_some()),
-            PaintCall::Quad(p) => Some(matches!(
-                p.geometry,
-                QuadGeometry::Rect { spin: Some(_), .. }
-            )),
+            PaintCall::Quad(p) => {
+                Some(matches!(p.geometry, PlacedClosed::Box { .. }) && p.spin.is_some())
+            }
             PaintCall::Text(p) => Some(p.spin.is_some()),
             _ => None,
         })
@@ -177,8 +176,8 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
         .iter()
         .find_map(|call| match call {
             PaintCall::Quad(p) => match p.geometry {
-                QuadGeometry::Triangle { a, b, c, spin, .. } => Some(([a, b, c], spin)),
-                QuadGeometry::Rect { .. } => None,
+                PlacedClosed::Triangle(placed) => Some((placed.centers, p.spin)),
+                PlacedClosed::Box { .. } => None,
             },
             _ => None,
         })

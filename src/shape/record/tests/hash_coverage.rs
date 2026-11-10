@@ -657,10 +657,11 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
 
     let image = |local_rect, tint, source, fit, min_filter, mag_filter, downsample| {
         ShapeRecord::ImagePaint {
-            geometry: ClosedGeometry::Box {
+            geometry: ClosedGeometry::Box(BoxGeometry {
                 local_rect,
                 outline: BoxOutline::Rect(Corners::ZERO),
-            },
+                coverage: Coverage::Inside,
+            }),
             tint,
             source,
             fit,
@@ -727,18 +728,29 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     moves(
         "ImagePaint.geometry.corners",
         &base,
-        &shaped(ClosedGeometry::Box {
+        &shaped(ClosedGeometry::Box(BoxGeometry {
             local_rect: rect(0.0),
             outline: BoxOutline::Rect(Corners::all(4.0)),
-        }),
+            coverage: Coverage::Inside,
+        })),
     );
     moves(
         "ImagePaint.geometry.circle",
         &base,
-        &shaped(ClosedGeometry::Box {
+        &shaped(ClosedGeometry::Box(BoxGeometry {
             local_rect: rect(0.0),
             outline: BoxOutline::Circle,
-        }),
+            coverage: Coverage::Inside,
+        })),
+    );
+    moves(
+        "ImagePaint.geometry.coverage",
+        &base,
+        &shaped(ClosedGeometry::Box(BoxGeometry {
+            local_rect: rect(0.0),
+            outline: BoxOutline::Rect(Corners::ZERO),
+            coverage: Coverage::Outside,
+        })),
     );
     moves("ImagePaint.geometry.kind", &base, &shaped(triangle(1.0)));
     moves(

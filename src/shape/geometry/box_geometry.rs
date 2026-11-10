@@ -63,6 +63,19 @@ pub(crate) struct PlacedBox {
     pub(crate) corners: Corners,
 }
 
+impl PlacedBox {
+    /// The box moved by `by`, as an owner's position places an owner-local box.
+    pub(crate) fn translated(self, by: Vec2) -> Self {
+        Self {
+            rect: Rect {
+                min: self.rect.min + by,
+                size: self.rect.size,
+            },
+            corners: self.corners,
+        }
+    }
+}
+
 impl BoxOutline {
     /// Feed the outline into a record's hash.
     pub(crate) fn hash_into(self, h: &mut Hasher) {

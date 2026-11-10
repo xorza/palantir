@@ -27,7 +27,10 @@ impl TemplateShape {
     /// [`Self::edges`] picks, its corners fit to it; or its triangle.
     pub(super) fn of(placed: PlacedClosed, spin: Option<Spin>, lowering: &Lowering<'_>) -> Self {
         match placed {
-            PlacedClosed::Box(PlacedBox { rect, corners }) => {
+            PlacedClosed::Box {
+                placed: PlacedBox { rect, corners },
+                ..
+            } => {
                 let rect = lowering
                     .scaled_rect_with(rect, Self::edges(placed, spin, lowering))
                     .physical;
@@ -51,7 +54,7 @@ impl TemplateShape {
         lowering: &Lowering<'_>,
     ) -> EdgeRounding {
         match (placed, spin) {
-            (PlacedClosed::Box(_), None) => lowering.display.edge_rounding(),
+            (PlacedClosed::Box { .. }, None) => lowering.display.edge_rounding(),
             _ => EdgeRounding::Exact,
         }
     }

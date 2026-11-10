@@ -6,13 +6,14 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
-use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 
-/// A plain rectangle draw: rect geometry with a fill kind that isn't the shadow SDF (shadows share the geometry).
+/// A plain rectangle draw: box geometry with a fill kind that isn't the shadow SDF (shadows share the geometry).
 pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawQuadPayload> {
     match call {
         PaintCall::Quad(p)
-            if matches!(p.geometry, QuadGeometry::Rect { .. }) && !p.fill.kind.is_shadow() =>
+            if matches!(p.geometry, PlacedClosed::Box { .. }) && !p.fill.kind.is_shadow() =>
         {
             Some(p)
         }
@@ -99,7 +100,10 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
 #[track_caller]
 pub(super) fn quad_rect(p: &DrawQuadPayload) -> Rect {
     match p.geometry {
-        QuadGeometry::Rect { rect, .. } => rect,
-        QuadGeometry::Triangle { .. } => panic!("expected rect geometry, got a triangle"),
+        PlacedClosed::Box {
+            placed: PlacedBox { rect, .. },
+            ..
+        } => rect,
+        PlacedClosed::Triangle(_) => panic!("expected box geometry, got a triangle"),
     }
 }

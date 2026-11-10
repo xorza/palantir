@@ -111,7 +111,7 @@ fn an_image_carries_the_shape_that_clips_it() {
     }
     assert_eq!(
         images[0].geometry,
-        Some(PlacedClosed::Box(PlacedBox {
+        Some(PlacedClosed::inside(PlacedBox {
             rect: at,
             corners: Corners::all(6.0),
         }))
@@ -129,7 +129,7 @@ fn an_image_carries_the_shape_that_clips_it() {
     assert_eq!(images[3].rect, square);
     assert_eq!(
         images[3].geometry,
-        Some(PlacedClosed::Box(PlacedBox {
+        Some(PlacedClosed::inside(PlacedBox {
             rect: square,
             corners: Corners::all(25.0),
         }))
@@ -248,7 +248,6 @@ fn an_arc_of_no_sweep_paints_its_dot_in_the_ramp_start() {
     use crate::primitives::paint::line_style::LineCap;
     use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::encoder::tests::support;
-    use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
     use crate::shape::Shape;
 
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
@@ -271,10 +270,7 @@ fn an_arc_of_no_sweep_paints_its_dot_in_the_ramp_start() {
     let rects: Vec<_> = cmds.calls.iter().filter_map(support::as_rect).collect();
     assert_eq!(rects.len(), 1, "one dot, got {:?}", cmds.kinds());
     assert_eq!(rects[0].fill.color, red.to_f16());
-    let QuadGeometry::Rect { rect, .. } = rects[0].geometry else {
-        unreachable!("`as_rect` keeps rect geometry");
-    };
-    assert_eq!(rect, Rect::new(18.0, 8.0, 4.0, 4.0));
+    assert_eq!(support::quad_rect(rects[0]), Rect::new(18.0, 8.0, 4.0, 4.0));
 }
 
 /// The cascade bounds a triangle's image as it bounds the triangle in a color: the triangle clips

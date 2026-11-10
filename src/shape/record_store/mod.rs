@@ -38,7 +38,7 @@ use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::BoxGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
-use crate::shape::geometry::triangle_geometry::{self, TriangleGeometry};
+use crate::shape::geometry::triangle_geometry;
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::lower;
@@ -190,7 +190,7 @@ impl RecordStore {
     /// paints nothing.
     ///
     /// The corners keep their placement, which resolves where the triangle is drawn
-    /// ([`TriangleGeometry::place`]); a triangle of no area drops here, as no fit gives it one. A
+    /// ([`TriangleGeometry::place`](triangle_geometry::TriangleGeometry::place)); a triangle of no area drops here, as no fit gives it one. A
     /// rect of no size keeps it: `Natural` only moves the corners by the rect's corner, and a
     /// scaling fit collapses it where it is placed.
     fn record_triangle(
@@ -199,16 +199,11 @@ impl RecordStore {
         paint: &Paint,
         resolve: Resolve<'_>,
     ) -> Option<ShapeRecord> {
-        let TriangleShape {
-            corners,
-            radius,
-            placement,
-        } = *shape;
         let read = paint.material.as_ref().and_then(|material| {
             MaterialRead::resolve(material, resolve.effects, resolve.reductions)
         });
         if (paint.fill.is_noop() && paint.border.is_noop() && read.is_none())
-            || triangle_geometry::area_is_paint_empty(corners)
+            || triangle_geometry::area_is_paint_empty(shape.corners)
         {
             return None;
         }
@@ -220,11 +215,7 @@ impl RecordStore {
             material,
         } = lower::lower_paint(self, paint, read);
         Some(ShapeRecord::Quad(QuadShape::Triangle {
-            geometry: TriangleGeometry {
-                corners,
-                radius,
-                placement,
-            },
+            geometry: shape.geometry(),
             fill,
             border,
             material,
@@ -406,6 +397,10 @@ impl RecordStore {
         } = paint;
         let (fit, min_filter, mag_filter, downsample, tint) =
             (*fit, *min_filter, *mag_filter, *downsample, *tint);
+        debug_assert!(
+            geometry.covers_inside(),
+            "an image's pair covers its inside: {geometry:?}"
+        );
         if geometry.is_paint_empty() || tint.is_noop() {
             return None;
         }
@@ -488,6 +483,10 @@ impl RecordStore {
                 capture,
             )),
         };
+        debug_assert!(
+            geometry.covers_inside(),
+            "an effect's pair covers its inside: {geometry:?}"
+        );
         if geometry.is_paint_empty() {
             return None;
         }

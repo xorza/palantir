@@ -27,6 +27,7 @@ use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::gradient_atlas::tests::support::{distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 use crate::scene::layer::Layer;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::GradientId;
@@ -225,12 +226,19 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     let rect_kinds: Vec<_> = cmds
         .calls
         .iter()
-        .filter_map(|command| as_rect(command).map(|p| p.fill.kind))
+        .filter_map(|command| as_rect(command))
+        .map(|p| match p.geometry {
+            PlacedClosed::Box { coverage, .. } => (p.fill.kind, coverage),
+            PlacedClosed::Triangle(_) => unreachable!("`as_rect` keeps box geometry"),
+        })
         .collect();
     assert_eq!(
         rect_kinds,
-        [FillKind::SOLID, FillKind::SOLID.with_outside()],
-        "the rounded rect is plain solid, the outside one outside-tagged",
+        [
+            (FillKind::SOLID, Coverage::Inside),
+            (FillKind::SOLID, Coverage::Outside),
+        ],
+        "both rects fill solid, the outside one covering its outside",
     );
     // A Line rides the GPU curve pipeline as a degenerate cubic: a DrawCurve, never a DrawPolyline.
     assert_eq!(cmds.kinds(), ["Quad", "Quad", "Curve", "Curve"]);
@@ -320,9 +328,11 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
 #[test]
 fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::geometry::coverage::Coverage;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
     use crate::shape::Shape;
+    use crate::shape::geometry::box_geometry::PlacedBox;
+    use crate::shape::geometry::closed_geometry::PlacedClosed;
 
     struct Case {
         label: &'static str,
@@ -434,8 +444,12 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
                 FillKind::SHADOW_DROP
             };
             assert_eq!(shadow.fill.kind, expected_kind, "{label}");
-            let QuadGeometry::Rect { rect, corners, .. } = shadow.geometry else {
-                panic!("{label}: a shadow has rect geometry");
+            let PlacedClosed::Box {
+                placed: PlacedBox { rect, corners },
+                coverage: Coverage::Inside,
+            } = shadow.geometry
+            else {
+                panic!("{label}: a shadow has the geometry of a box that covers its inside");
             };
             let expected = Rect {
                 min: node.min + case.shadow_rect.min,

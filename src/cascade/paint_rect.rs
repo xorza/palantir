@@ -346,21 +346,14 @@ impl PaintRectCtx<'_> {
                     },
                     // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::Natural`.
                     ShapeRecord::ImagePaint {
-                        geometry:
-                            ClosedGeometry::Box {
-                                local_rect,
-                                outline,
-                            },
+                        geometry: ClosedGeometry::Box(geometry),
                         source,
                         fit,
                         ..
                     } => shape.to_screen(
                         spun_if_animated(
-                            fit.resolve(
-                                outline.place(owner_local.resolve_local(*local_rect)).rect,
-                                source.intrinsic(),
-                            )
-                            .rect,
+                            fit.resolve(geometry.place(layout_rect.size).rect, source.intrinsic())
+                                .rect,
                             idx,
                         ),
                         shape_clip,
@@ -368,19 +361,12 @@ impl PaintRectCtx<'_> {
                     // The box's rect, a circle's square, grown by the physical antialiasing reach
                     // its stages draw, as a triangle's is.
                     ShapeRecord::EffectPaint {
-                        geometry:
-                            ClosedGeometry::Box {
-                                local_rect,
-                                outline,
-                            },
+                        geometry: ClosedGeometry::Box(geometry),
                         ..
                     } => clip_screen(
                         shape
                             .to_screen(
-                                spun_if_animated(
-                                    outline.place(owner_local.resolve_local(*local_rect)).rect,
-                                    idx,
-                                ),
+                                spun_if_animated(geometry.place(layout_rect.size).rect, idx),
                                 None,
                             )
                             .inflated(AA_HALF_WIDTH / display_scale),

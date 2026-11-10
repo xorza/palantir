@@ -313,11 +313,10 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawEffectPayload {
-            geometry: PlacedClosed::Box(PlacedBox {
+            geometry: PlacedClosed::inside(PlacedBox {
                 rect: r,
                 corners: Corners::ZERO,
-            })
-            .into(),
+            }),
             spin: None,
             effect: EffectId(0),
             params: Span::new(0, 2),

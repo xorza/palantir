@@ -1,7 +1,6 @@
 //! One effect draw: an app's `EffectPaint`, or a box's material, which palantir's stage wraps.
 
 use crate::common::span::Span;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::packed::fill_axis::FillAxis;
@@ -11,12 +10,10 @@ use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, QuadGeometry};
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
-use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
@@ -26,7 +23,9 @@ use crate::shape::paint::lowered_material::LoweredMaterial;
 /// [`RecordStore`](crate::shape::record_store::RecordStore) parameter words.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawEffectPayload {
-    pub(crate) geometry: EffectGeometry,
+    /// The shape in the logical frame: a material's box may cover its outside, an app's paint
+    /// covers its inside.
+    pub(crate) geometry: PlacedClosed,
     /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
     pub(crate) effect: EffectId,
@@ -41,32 +40,6 @@ pub(crate) struct DrawEffectPayload {
     pub(crate) opacity: f32,
     /// Seconds into the paint animation's pass, which the effect reads; 0 when unanimated.
     pub(crate) time: f32,
-}
-
-/// The shape an effect covers, in logical px.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum EffectGeometry {
-    /// A box, a rect's or a circle's, covering `coverage` of itself: a material's box may cover
-    /// its outside, an app's paint covers its inside.
-    Box {
-        coverage: Coverage,
-        placed: PlacedBox,
-    },
-    /// A triangle placed as a triangle quad is.
-    Triangle(PlacedTriangle),
-}
-
-/// An app's paint covers the inside of its shape.
-impl From<PlacedClosed> for EffectGeometry {
-    fn from(placed: PlacedClosed) -> Self {
-        match placed {
-            PlacedClosed::Box(placed) => Self::Box {
-                coverage: Coverage::Inside,
-                placed,
-            },
-            PlacedClosed::Triangle(placed) => Self::Triangle(placed),
-        }
-    }
 }
 
 /// What a backdrop effect's draw reads: what is painted under it, by the ticket the backdrop
@@ -100,7 +73,7 @@ impl DrawEffectPayload {
     pub(crate) fn material(
         material: LoweredMaterial,
         read: EffectCaptureDraw,
-        geometry: EffectGeometry,
+        geometry: PlacedClosed,
         fill: BrushSource,
         border: LoweredBorder,
     ) -> Self {
@@ -132,40 +105,12 @@ impl DrawEffectPayload {
     /// The shape as a quad packs it, which the effect's instance takes its rect, shape, turn and
     /// border width from, so it lies on the pixels a quad of it does.
     pub(crate) fn quad(&self) -> DrawQuadPayload {
-        let (geometry, kind) = match self.geometry {
-            EffectGeometry::Box {
-                coverage,
-                placed: PlacedBox { rect, corners },
-            } => (
-                QuadGeometry::Rect {
-                    rect,
-                    corners,
-                    spin: self.spin,
-                },
-                match coverage {
-                    Coverage::Inside => FillKind::SOLID,
-                    Coverage::Outside => FillKind::SOLID.with_outside(),
-                },
-            ),
-            EffectGeometry::Triangle(PlacedTriangle {
-                centers: [a, b, c],
-                radius,
-            }) => (
-                QuadGeometry::Triangle {
-                    a,
-                    b,
-                    c,
-                    radius,
-                    spin: self.spin,
-                },
-                FillKind::SOLID.with_triangle(),
-            ),
-        };
         DrawQuadPayload {
-            geometry,
+            geometry: self.geometry,
+            spin: self.spin,
             fill: GpuFill {
                 color: RgbaF16::TRANSPARENT,
-                kind,
+                kind: FillKind::SOLID,
                 lut_row: LutRow::FALLBACK,
             },
             border: self.stage.map_or(LoweredBorder::NONE, |stage| stage.border),
@@ -198,8 +143,8 @@ impl PaintPayload for DrawEffectPayload {
     #[inline]
     fn is_noop(&self) -> bool {
         let empty = match self.geometry {
-            EffectGeometry::Box { placed, .. } => placed.rect.is_paint_empty(),
-            EffectGeometry::Triangle(_) => false,
+            PlacedClosed::Box { placed, .. } => placed.rect.is_paint_empty(),
+            PlacedClosed::Triangle(_) => false,
         };
         empty || is_invisible(self.opacity)
     }

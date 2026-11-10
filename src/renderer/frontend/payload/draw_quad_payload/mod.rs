@@ -11,52 +11,32 @@ use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeometry};
-use glam::Vec2;
-
-/// The geometry half of a [`DrawQuadPayload`]. Rects, outside rects and
-/// shadows arrive as an already-resolved rect; a triangle's covering rect
-/// only exists after its points are transformed, so it carries the points.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum QuadGeometry {
-    /// A logical-px rect and corner radii; a shadow's are the source shape's
-    /// (the composer grows a drop shadow's paint rect from it after snapping).
-    /// `spin` is a paint animation's turn.
-    Rect {
-        rect: Rect,
-        corners: Corners,
-        spin: Option<Spin>,
-    },
-    /// Logical-px corner points and rounding. The composer folds the
-    /// push-transform, scales to physical px, derives the covering rect (the
-    /// points' bounds inflated by `radius`), which a gradient spans, and turns
-    /// it by `spin`, as it turns a rect.
-    Triangle {
-        a: Vec2,
-        b: Vec2,
-        c: Vec2,
-        radius: f32,
-        spin: Option<Spin>,
-    },
-}
 
 /// One quad-tier draw (rounded rect, outside rect, box-shadow or rounded
 /// triangle), all lowered to a single `Quad` instance; they differ in
-/// [`geometry`](Self::geometry) and the SDF `fill_kind` selects.
+/// [`geometry`](Self::geometry) and the fill's kind.
 ///
-/// `fill_kind`'s low byte is the kind tag; bits 8..16 carry `Spread` for
-/// gradients. `fill_lut_row` is the gradient atlas row, or
-/// [`LutRow::FALLBACK`]. `fill_axis` is the gradient geometry, or for a
-/// shadow `(0, 0, σ, spread)` (drop) / `(offset.x, offset.y, σ, spread)`
-/// (inset) in logical px, scaled to physical by the composer.
+/// `fill.kind` names the brush, or a shadow by its tag; the side a box covers and a triangle are
+/// the geometry's, which the composer writes into the instance. `fill_lut_row` is the gradient
+/// atlas row, or [`LutRow::FALLBACK`]. `fill_axis` is the gradient geometry, or for a shadow
+/// `(0, 0, σ, spread)` (drop) / `(offset.x, offset.y, σ, spread)` (inset) in logical px, scaled
+/// to physical by the composer.
 ///
 /// `fill` is the solid color (the tint for a shadow); for a gradient it
 /// multiplies the atlas row's color. `RgbaF16` saves 8 B per payload over
 /// `RgbaF32`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawQuadPayload {
-    pub(crate) geometry: QuadGeometry,
+    /// The shape in the logical frame; a shadow's is its source box, which the composer grows
+    /// a drop shadow's paint rect from after snapping.
+    pub(crate) geometry: PlacedClosed,
+    /// A paint animation's turn.
+    pub(crate) spin: Option<Spin>,
     pub(crate) fill: GpuFill,
     /// Normalized by [`LoweredBorder::normalized`], so `NONE` means no border exactly.
     pub(crate) border: LoweredBorder,
@@ -76,23 +56,19 @@ pub(crate) struct RectQuad {
     pub(crate) border: LoweredBorder,
 }
 
-/// What [`DrawQuadPayload::triangle`] lowers: three logical-px corner centers
-/// in `points`, dilated by `radius`, with its fill brush and a border.
+/// What [`DrawQuadPayload::triangle`] lowers: a triangle placed in the logical frame, with its
+/// fill brush and a border.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TriangleQuad {
-    pub(crate) points: [Vec2; 3],
-    pub(crate) radius: f32,
+    pub(crate) triangle: PlacedTriangle,
     pub(crate) fill: BrushSource,
     pub(crate) border: LoweredBorder,
 }
 
 impl DrawQuadPayload {
-    /// A rect covering `q.coverage` with `q.fill` and `q.border`. The brush is lowered
-    /// here because the GPU lanes it fills are this type's. A
-    /// [`Coverage::Outside`] rect's `FillKind` carries the outside bit, so the
-    /// shader inverts the fill coverage and the composer's opaque-cover checks
-    /// (`fill_kind == FillKind::SOLID`) do not treat its hole as an occluder.
-    pub(crate) fn rect(q: RectQuad) -> Self {
+    /// A rect covering `q.coverage` with `q.fill` and `q.border`. The brush is lowered here
+    /// because the GPU lanes it fills are this type's.
+    pub(crate) const fn rect(q: RectQuad) -> Self {
         let RectQuad {
             coverage,
             rect,
@@ -100,18 +76,14 @@ impl DrawQuadPayload {
             fill,
             border,
         } = q;
-        // Border stays solid-only.
-        let mut lanes = fill.gpu_fill();
-        if coverage == Coverage::Outside {
-            lanes.kind = lanes.kind.with_outside();
-        }
         Self {
-            geometry: QuadGeometry::Rect {
-                rect,
-                corners,
-                spin: None,
+            geometry: PlacedClosed::Box {
+                placed: PlacedBox { rect, corners },
+                coverage,
             },
-            fill: lanes,
+            spin: None,
+            // Border stays solid-only.
+            fill: fill.gpu_fill(),
             border: border.normalized(),
             fill_axis: fill.fill_axis(),
         }
@@ -119,11 +91,7 @@ impl DrawQuadPayload {
 
     /// This draw turned by `spin`.
     pub(crate) const fn turned(mut self, spin: Option<Spin>) -> Self {
-        match &mut self.geometry {
-            QuadGeometry::Rect { spin: slot, .. } | QuadGeometry::Triangle { spin: slot, .. } => {
-                *slot = spin;
-            }
-        }
+        self.spin = spin;
         self
     }
 
@@ -140,11 +108,8 @@ impl DrawQuadPayload {
             FillKind::SHADOW_DROP
         };
         Some(Self {
-            geometry: QuadGeometry::Rect {
-                rect,
-                corners,
-                spin: None,
-            },
+            geometry: PlacedClosed::inside(PlacedBox { rect, corners }),
+            spin: None,
             fill: GpuFill {
                 color: shadow.color,
                 kind,
@@ -157,29 +122,34 @@ impl DrawQuadPayload {
         })
     }
 
-    /// A rounded triangle from `q`'s three corner centers. Same tier and border
+    /// A rounded triangle, `q.triangle` with `q.fill` and `q.border`. Same tier and border
     /// normalization as [`Self::rect`].
     pub(crate) const fn triangle(q: TriangleQuad) -> Self {
         let TriangleQuad {
-            points: [a, b, c],
-            radius,
+            triangle,
             fill,
             border,
         } = q;
-        let mut lanes = fill.gpu_fill();
-        lanes.kind = lanes.kind.with_triangle();
         Self {
-            geometry: QuadGeometry::Triangle {
-                a,
-                b,
-                c,
-                radius,
-                spin: None,
-            },
-            fill: lanes,
+            geometry: PlacedClosed::Triangle(triangle),
+            spin: None,
+            fill: fill.gpu_fill(),
             border: border.normalized(),
             fill_axis: fill.fill_axis(),
         }
+    }
+
+    /// Whether this is a solid fill over the inside of a box: the one draw whose covered rect
+    /// can be whole, which the clear fold, the fragment fast path and the occlusion prune read.
+    /// A shadow's blur, an outside rect's hole and a triangle's corners cover no rect whole.
+    pub(crate) fn is_solid_box(&self) -> bool {
+        matches!(
+            self.geometry,
+            PlacedClosed::Box {
+                coverage: Coverage::Inside,
+                ..
+            }
+        ) && self.fill.kind == FillKind::SOLID
     }
 
     /// Whether the geometry covers no pixels. A drop shadow covers its source
@@ -188,12 +158,12 @@ impl DrawQuadPayload {
     #[inline]
     fn is_paint_empty(&self) -> bool {
         match self.geometry {
-            QuadGeometry::Rect { rect, .. } if self.fill.kind == FillKind::SHADOW_DROP => {
+            PlacedClosed::Box { placed, .. } if self.fill.kind == FillKind::SHADOW_DROP => {
                 let halo = ShadowGeometry::from_lanes(self.fill_axis.lanes()).halo();
-                rect.inflated(halo).is_paint_empty()
+                placed.rect.inflated(halo).is_paint_empty()
             }
-            QuadGeometry::Rect { rect, .. } => rect.is_paint_empty(),
-            QuadGeometry::Triangle { .. } => false,
+            PlacedClosed::Box { placed, .. } => placed.rect.is_paint_empty(),
+            PlacedClosed::Triangle(_) => false,
         }
     }
 }

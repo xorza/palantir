@@ -24,7 +24,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::{
-    DrawEffectPayload, EffectCaptureDraw, EffectGeometry,
+    DrawEffectPayload, EffectCaptureDraw,
 };
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
@@ -146,12 +146,12 @@ fn paint_rect(paint: RectPaint, out: &mut impl PaintSink) {
 /// color or a gradient, and its border over the whole box.
 fn paint_backdrop(paint: RectPaint, look: BackdropLook, out: &mut impl PaintSink) {
     let RectPaint { quad, spin, alpha } = paint;
-    let geometry = EffectGeometry::Box {
-        coverage: quad.coverage,
+    let geometry = PlacedClosed::Box {
         placed: PlacedBox {
             rect: quad.rect,
             corners: quad.corners,
         },
+        coverage: quad.coverage,
     };
     out.draw(
         DrawEffectPayload::material(look.material, look.read, geometry, quad.fill, quad.border)
@@ -368,10 +368,11 @@ impl PlaneCtx<'_, '_> {
                     shadow,
                     material,
                 } => {
-                    let PlacedBox { rect, corners } = geometry.place(owner_rect.size);
+                    let PlacedBox { rect, corners } =
+                        geometry.place(owner_rect.size).translated(owner_rect.min);
                     let quad = RectQuad {
                         coverage: geometry.coverage,
-                        rect: owner_rect.resolve_local(Some(rect)),
+                        rect,
                         corners,
                         fill: self.brush_source(*fill),
                         border: *border,
@@ -412,7 +413,7 @@ impl PlaneCtx<'_, '_> {
                             DrawEffectPayload::material(
                                 look.material,
                                 look.read,
-                                EffectGeometry::Triangle(placed),
+                                PlacedClosed::Triangle(placed),
                                 fill,
                                 *border,
                             )
@@ -421,8 +422,7 @@ impl PlaneCtx<'_, '_> {
                         );
                     } else {
                         let triangle = DrawQuadPayload::triangle(TriangleQuad {
-                            points: placed.centers,
-                            radius: placed.radius,
+                            triangle: placed,
                             fill,
                             border: *border,
                         });
@@ -579,7 +579,7 @@ impl PlaneCtx<'_, '_> {
                 };
                 out.draw(
                     DrawEffectPayload {
-                        geometry: placed.into(),
+                        geometry: placed,
                         spin,
                         effect: *effect,
                         params: *params,
@@ -627,9 +627,10 @@ impl PlaneCtx<'_, '_> {
                 let base = placed.bounds();
                 // Square corners clip nothing past the image's own rect.
                 let clip = match placed {
-                    PlacedClosed::Box(PlacedBox { corners, .. }) if corners == Corners::ZERO => {
-                        None
-                    }
+                    PlacedClosed::Box {
+                        placed: PlacedBox { corners, .. },
+                        ..
+                    } if corners == Corners::ZERO => None,
                     _ => Some(placed),
                 };
                 // Either source carries its texture id; a `GpuView` also names its owner, whose

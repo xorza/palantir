@@ -557,11 +557,10 @@ fn an_effect_lands_as_one_physical_row() {
         |b, _arena| {
             b.draw(
                 DrawEffectPayload {
-                    geometry: PlacedClosed::Box(PlacedBox {
+                    geometry: PlacedClosed::inside(PlacedBox {
                         rect: Rect::new(5.0, 6.0, 10.0, 8.0),
                         corners: Corners::new(4.0, 6.0, 6.0, 4.0),
-                    })
-                    .into(),
+                    }),
                     spin: None,
                     effect: EffectId(3),
                     params: Span::new(12, 8),

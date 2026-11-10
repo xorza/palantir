@@ -150,10 +150,11 @@ fn shape_mesh_hash_excludes_span_offsets() {
 #[test]
 fn image_source_hashes_apart_by_source() {
     let image = |source| ShapeRecord::ImagePaint {
-        geometry: ClosedGeometry::Box {
+        geometry: ClosedGeometry::Box(BoxGeometry {
             local_rect: None,
             outline: BoxOutline::Rect(Corners::ZERO),
-        },
+            coverage: Coverage::Inside,
+        }),
         tint: RgbaF32::WHITE.to_f16(),
         source,
         fit: ImageFit::Fill,
@@ -218,10 +219,11 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
                 min_filter: ImageFilter,
                 mag_filter: ImageFilter| {
         ShapeRecord::ImagePaint {
-            geometry: ClosedGeometry::Box {
+            geometry: ClosedGeometry::Box(BoxGeometry {
                 local_rect: None,
                 outline: BoxOutline::Rect(Corners::ZERO),
-            },
+                coverage: Coverage::Inside,
+            }),
             tint: tint.to_f16(),
             source: ImageSource::Texture {
                 id,

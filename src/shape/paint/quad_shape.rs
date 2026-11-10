@@ -11,9 +11,9 @@ use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 
 /// Which shape a quad-tier draw paints: a box or a rounded triangle. Both lower to a single
-/// `Quad` on one pipeline, selected by its `fill_kind` lane, in [`crate::shape::lower`]. The
-/// composer's fast paths are gated on `fill_kind == FillKind::SOLID`, which only [`Self::Box`]
-/// carries. Both are owner-local.
+/// `Quad`, its form picked from the shape and the fill, in [`crate::shape::lower`]. The
+/// composer's fast paths read a solid box alone (`DrawQuadPayload::is_solid_box`). Both are
+/// owner-local.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum QuadShape {
     /// A rect's or a circle's paint: a filled or bordered box, placed against the owner where it

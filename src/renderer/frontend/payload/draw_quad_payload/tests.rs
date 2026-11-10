@@ -8,13 +8,18 @@ use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::primitives::paint::shadow::Shadow;
 use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::{
-    DrawQuadPayload, QuadGeometry, RectQuad, TriangleQuad,
+    DrawQuadPayload, RectQuad, TriangleQuad,
 };
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::lowered_border::LoweredBorder;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
 use glam::Vec2;
 
 /// Every quad-tier constructor normalizes the border
@@ -50,6 +55,14 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
         ),
         ("live", LoweredBorder::lower(Border::new(green, 3.0)), false),
     ];
+    let triangle = PlacedTriangle {
+        centers: [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(5.0, 8.0),
+        ],
+        radius: 0.0,
+    };
     for (label, border, expect_normalized) in cases {
         let rp = DrawQuadPayload::rect(RectQuad {
             coverage: Coverage::Inside,
@@ -58,30 +71,27 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
             fill: BrushSource::Solid(fill.to_f16()),
             border,
         });
-        assert!(
-            matches!(rp.geometry, QuadGeometry::Rect { .. }),
-            "case {label}: rect must carry rect geometry",
+        assert_eq!(
+            rp.geometry,
+            PlacedClosed::inside(PlacedBox {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                corners: Corners::ZERO,
+            }),
+            "case {label}",
         );
 
         let tp = DrawQuadPayload::triangle(TriangleQuad {
-            points: [
-                Vec2::new(0.0, 0.0),
-                Vec2::new(10.0, 0.0),
-                Vec2::new(5.0, 8.0),
-            ],
-            radius: 0.0,
+            triangle,
             fill: BrushSource::Solid(fill.to_f16()),
             border,
         });
-        assert!(
-            matches!(tp.geometry, QuadGeometry::Triangle { .. }),
-            "case {label}: triangle must carry triangle geometry",
-        );
         assert_eq!(
-            tp.fill.kind,
-            FillKind::SOLID.with_triangle(),
+            tp.geometry,
+            PlacedClosed::Triangle(triangle),
             "case {label}"
         );
+        // The paint word names the brush alone: the triangle is the geometry's.
+        assert_eq!(tp.fill.kind, FillKind::SOLID, "case {label}");
 
         assert_eq!(tp.border.color, rp.border.color, "case {label}");
         assert_eq!(
@@ -148,4 +158,49 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
         gradient.fill.faded(0.0).is_noop(),
         "a gradient faded out paints nothing"
     );
+}
+
+/// Only a solid fill over the inside of a box can cover its rect whole. Each other quad differs
+/// from that one draw in one respect: an outside rect's hole, a triangle's corners, a gradient's
+/// stops and a shadow's blur each leave part of the rect uncovered or unknown.
+#[test]
+fn only_a_solid_inside_box_is_a_solid_box() {
+    let placed = PlacedBox {
+        rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+        corners: Corners::ZERO,
+    };
+    let solid = BrushSource::Solid(RgbaF32::WHITE.to_f16());
+    let rect = |coverage, fill| {
+        DrawQuadPayload::rect(RectQuad {
+            coverage,
+            rect: placed.rect,
+            corners: placed.corners,
+            fill,
+            border: LoweredBorder::NONE,
+        })
+    };
+    assert!(rect(Coverage::Inside, solid).is_solid_box());
+    assert!(!rect(Coverage::Outside, solid).is_solid_box());
+    let gradient = BrushSource::Gradient(ResolvedGradient {
+        axis: FillAxis::ZERO,
+        lut_row: LutRow::FALLBACK,
+        kind: FillKind::linear(Spread::Pad),
+    });
+    assert!(!rect(Coverage::Inside, gradient).is_solid_box());
+    let triangle = DrawQuadPayload::triangle(TriangleQuad {
+        triangle: PlacedTriangle {
+            centers: [Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(0.0, 10.0)],
+            radius: 0.0,
+        },
+        fill: solid,
+        border: LoweredBorder::NONE,
+    });
+    assert!(!triangle.is_solid_box());
+    let shadow = DrawQuadPayload::shadow(
+        placed.rect,
+        placed.corners,
+        LoweredShadow::lower(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 4.0)),
+    )
+    .expect("a black blurred shadow paints");
+    assert!(!shadow.is_solid_box());
 }

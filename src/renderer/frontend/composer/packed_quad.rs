@@ -9,8 +9,10 @@ use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
-use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, QuadGeometry};
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::quad::Quad;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
 
@@ -55,11 +57,11 @@ impl PackedQuad {
     #[inline(always)]
     pub(super) fn pack(p: &DrawQuadPayload, lowering: &Lowering<'_>) -> Self {
         let scale_physical = lowering.transform.physical_scale();
+        let spin = p.spin;
         match p.geometry {
-            QuadGeometry::Rect {
-                rect,
-                corners,
-                spin,
+            PlacedClosed::Box {
+                placed: PlacedBox { rect, corners },
+                ..
             } => {
                 // A turned rect snaps to no pixel: its edges are not on the pixel grid.
                 let edges = match spin {
@@ -103,14 +105,8 @@ impl PackedQuad {
                     inradius: Quad::box_inradius(size),
                 }
             }
-            QuadGeometry::Triangle {
-                a,
-                b,
-                c,
-                radius,
-                spin,
-            } => {
-                let triangle = TemplateShape::triangle([a, b, c], radius, lowering);
+            PlacedClosed::Triangle(placed) => {
+                let triangle = TemplateShape::triangle(placed.centers, placed.radius, lowering);
                 // Turned as a rect is, so its gradient turns with it.
                 let (rect, rotation) = match spin {
                     None => (
