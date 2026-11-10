@@ -846,7 +846,7 @@ impl WgpuBackend {
             },
         );
         self.programs.curve.upload(&mut ctx, &buffer.curves);
-        self.effect_store.prepare(buffer.effects.effect());
+        self.effect_store.prepare(buffer.effects.key());
         self.programs.effect.upload(
             &mut ctx,
             EffectStores {
@@ -1115,8 +1115,7 @@ impl WgpuBackend {
                             ctx.rec,
                             pipelines.clipping(),
                             EffectBatch {
-                                effects: buffer.effects.effect(),
-                                instances: buffer.effects.instance(),
+                                keys: buffer.effects.key(),
                                 items: items(),
                                 groups: &effect_groups,
                                 backdrops: self.backdrops.group(),

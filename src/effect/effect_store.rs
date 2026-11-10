@@ -24,6 +24,8 @@ pub(crate) trait EffectStore: Debug {
     /// wanted effect builds the new one before its next frame, any other nothing yet.
     fn register(&self, id: EffectId, module: &EffectModule);
 
-    /// Want `id` built before the next frame draws, for every format and every device after.
+    /// Want `id`'s pipeline of a box, which a press and a material draw, built before the next
+    /// frame draws, for every format and every device after; another form builds at the first
+    /// frame that draws it.
     fn want(&self, id: EffectId);
 }

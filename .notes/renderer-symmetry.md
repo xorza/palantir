@@ -21,7 +21,7 @@ and an effect hold their shape.
 | B4 Turns | done |
 | B5 Wire | done |
 | B6 Keys | done |
-| B7 Effect forms | next |
+| B7 Effect forms | done |
 | B8a Material composite | to do, a bug |
 | B8b One composite | waits for D1 |
 | B9 Strokes | to do |
@@ -278,7 +278,7 @@ makes these one, and keeps the pipelines above.
   `PalantirShape`. The radii are f16 in all three, as the effect's
   `[f32; 4]` widens the same f16 values. Refused: three layouts and three readers that must
   agree by hand.
-- **[part: fills and images done in B6; effects in B7] A pipeline key is a closed-shape form and a paint specialization.** `ShapeForm { Rect, Box,
+- **[done] A pipeline key is a closed-shape form and a paint specialization.** `ShapeForm { Rect, Box,
   BoxOutside, Triangle }` is shared by every closed family and pinned as a constant in each:
   fill `(ShapeForm, Solid | Gradient)`, image `ShapeForm`, effect `(EffectId, ShapeForm)`. Each
   pipeline is built on the first frame that draws it, as a `ClipVariant` half is. Refused: the
@@ -289,14 +289,20 @@ makes these one, and keeps the pipelines above.
   whose pipeline refuses `BoxOutside`; an outside box now has a solid and a gradient pipeline.
   Measured against the parent on a high-end laptop GPU, `atomic/main_pass/gpu/*` and
   `integration/frame/gpu/*` move within their noise, run in both orders; the composer's CPU cases
-  wait for the bench session.
-- **[part: quads done in B6; effects in B7] The key lives in a column beside the instance, set once by the composer.** Every family whose
+  wait for the bench session. Landed for effects in B7 as `EffectKey { effect, form }`, its form
+  pinned by the `PALANTIR_TRIANGLE` and `PALANTIR_OUTSIDE` overrides, as the effect module, left
+  of the renderer, cannot name `ShapeForm`; a color effect refuses `BoxOutside`, which only a
+  material's box takes. A load's or a theme's want builds an effect's box form, and another form
+  builds at the first frame that draws it. Its main-pass and frame cases wait for the bench session.
+- **[done] The key lives in a column beside the instance, set once by the composer.** Every family whose
   rows pick a pipeline stores `Soa<Row { key, instance }>`, as `ImageDrawRow::form` does now. A
   shadow's key says shadow, and the backend picks its entry from the cutout plan it alone holds,
   as `QuadDraws` does now. Refused: `QuadPipeline` deriving `QuadDraw` from `fill_kind` bits at upload, and
   `EffectInstance::corner_count` reading flags. Landed for quads in B6: `Soa<QuadRow { key:
   QuadKey, instance }>`, `QuadKey { Fill(FillForm), Shadow }`, which the run joiner, the occlusion
-  prune and the cutout plan read in place of the paint word.
+  prune and the cutout plan read in place of the paint word. Landed for effects in B7:
+  `EffectDrawRow { key: EffectKey, images, instance }`, which the effect store's want and the run
+  split read; `EffectInstance::flags` keeps the material bit alone.
 - **[done] `FillKind` is a brush tag.** It keeps solid, linear, radial, conic, ramp and the spread. The
   outside and triangle bits move to `ShapeForm`; the shadow tags move to `QuadKey::Shadow`, with
   the drop or inset kind in the shadow's own lane, as one pipeline per cutout entry draws both;
@@ -339,7 +345,7 @@ The visual suite and the composer's captured streams prove it.
    `instance_shape` and the readers in `shaped_vertex` and `palantir_vs`.
 6. [x] **B6 Keys**, done. `ShapeForm` and `FillForm`, `FillKind` as a brush tag, the key column
    for quads, `ShadowQuad`'s named lanes, `FAST_BIT` out.
-7. [ ] **B7 Effect forms.** Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
+7. [x] **B7 Effect forms**, done. Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
    `OUTSIDE` go.
 8. [ ] **B8a Material composite.** `palantir_composite` and `palantir_composite_outside` take the
    exact border-box form, with a test of their values; no decision waits.

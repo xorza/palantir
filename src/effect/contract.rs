@@ -80,15 +80,17 @@ pub(crate) struct ParamsLayout {
 /// The group an effect's images bind at, past the frame group.
 pub(crate) const IMAGES_GROUP: u32 = 1;
 
-/// An instance's flag for a material's box that covers outside its rounded rect.
-pub(crate) const OUTSIDE_FLAG: u32 = 1;
-
 /// An instance's flag for a material's box, which a backdrop effect's stage draws through the
 /// material path.
-pub(crate) const MATERIAL_FLAG: u32 = 2;
+pub(crate) const MATERIAL_FLAG: u32 = 1;
 
-/// An instance's flag for a triangle, three of its points, where a rect has four.
-pub(crate) const TRIANGLE_FLAG: u32 = 4;
+/// The override constant that pins a pipeline to a triangle's template, three of the instance's
+/// points, where a box has four.
+pub(crate) const TRIANGLE_OVERRIDE: &str = "PALANTIR_TRIANGLE";
+
+/// The override constant that pins a pipeline to a material's box that covers outside its rounded
+/// rect.
+pub(crate) const OUTSIDE_OVERRIDE: &str = "PALANTIR_OUTSIDE";
 
 /// The group an effect's parameter words bind at, past the backdrops.
 pub(crate) const WORDS_GROUP: u32 = 3;
@@ -239,8 +241,6 @@ fn wrapper(kind: KindId, params_struct: Option<&str>, fields: &[EffectParam]) ->
         .replace("/*{AA_HALF_WIDTH}*/", &format!("{AA_HALF_WIDTH:?}"))
         .replace("/*{WORDS_GROUP}*/", &format!("{WORDS_GROUP}u"))
         .replace("/*{MATERIAL}*/", &format!("{MATERIAL_FLAG}u"))
-        .replace("/*{OUTSIDE}*/", &format!("{OUTSIDE_FLAG}u"))
-        .replace("/*{TRIANGLE}*/", &format!("{TRIANGLE_FLAG}u"))
         .replace("/*{PARAMS}*/", &read)
         .replace("/*{BACKDROP_SET}*/", set)
         .replace("/*{CALL}*/", call)

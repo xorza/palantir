@@ -70,7 +70,7 @@ fn palantir_material_shade(v: PalantirVarying, local: vec2<f32>, backdrop: Palan
     }
     let size = v.rect.zw;
     let d = palantir_template_distance(v.region, v.geo, v.ring_r);
-    if ((v.flags & PALANTIR_OUTSIDE) != 0u) {
+    if (PALANTIR_OUTSIDE) {
         var cover = palantir_composite_outside(
             d,
             fill,

@@ -28,6 +28,7 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -621,8 +622,14 @@ fn an_effect_lands_as_one_physical_row() {
     assert_eq!(buf.batches(PaintTier::Effect).len(), 1);
     assert_eq!(buf.batches(PaintTier::Effect)[0].items, Span::new(0, 1));
     assert_eq!(
-        (buf.effects.effect()[0], buf.effects.instance()[0].flags),
-        (EffectId(3), 0)
+        (buf.effects.key()[0], buf.effects.instance()[0].flags),
+        (
+            EffectKey {
+                effect: EffectId(3),
+                form: ShapeForm::Box,
+            },
+            0
+        )
     );
     assert_eq!(buf.effects.images()[0], Span::new(4, 2));
     let instance = buf.effects.instance()[0];

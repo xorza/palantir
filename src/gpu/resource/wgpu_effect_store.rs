@@ -7,20 +7,24 @@ use fixedbitset::FixedBitSet;
 use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
-use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts};
+use crate::gpu::pipeline::effect_pipeline::{self, EffectLayouts, EffectTarget};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::effect_id::EffectId;
+use crate::renderer::render_buffer::effect_draw_row::EffectKey;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 
 /// The [`EffectStore`] a host's registry loads through and its backend draws from. It keeps each
-/// effect's module, and builds the pipelines of the effects some use wants at one place, the
-/// start of a frame's GPU phase ([`Self::prepare`]), before any pass: an effect a load wants
-/// built at once, each effect a window's themes name, and each a frame draws. A theme's effects so
-/// build together before a press can reach them, and nothing builds that no use wants, as a
-/// pipeline-state cache with a warm-up does (Unity's `ShaderVariantCollection.WarmUp`, Unreal's
-/// PSO precaching). Refused: building at the load or the theme set, which a later one replaces
-/// for nothing; building at the first press, which stutters, the reason Flutter wrote Impeller;
-/// building on a worker, which shows an effect late. A wanted effect stays built, for every
-/// format and every device after.
+/// effect's module, and builds the pipelines some use wants at one place, the start of a frame's
+/// GPU phase ([`Self::prepare`]), before any pass: the box form of an effect a load wants built at
+/// once and of each effect a window's themes name, and the form of each draw a frame holds. A
+/// theme's effects so build together before a press can reach them, and nothing builds that no use
+/// wants, as a pipeline-state cache with a warm-up does (Unity's
+/// `ShaderVariantCollection.WarmUp`, Unreal's PSO precaching). Refused: building at the load or the
+/// theme set, which a later one replaces for nothing; building at the first press, which stutters,
+/// the reason Flutter wrote Impeller; building on a worker, which shows an effect late; every form
+/// at a want, three pipelines where a press and a material draw a box. Cost: an effect's first
+/// triangle, or a material's first box that covers its outside, builds at the frame that draws it.
+/// A wanted form stays built, for every format and every device after.
 ///
 /// Built before any device, as the registry every recorder clones holds it from the start; the
 /// host [attaches](Self::attach) each device it draws with.
@@ -33,11 +37,12 @@ pub(crate) struct WgpuEffectStore {
 struct StoreState {
     /// Each loaded effect's module, at its id.
     modules: Vec<EffectModule>,
-    /// The effects some use wanted, at each id: built for every format of every device.
+    /// The forms some use wanted, at each key's [`EffectKey::slot`]: built for every format of
+    /// every device.
     wanted: FixedBitSet,
-    /// The wanted effects the attached device builds at the next [`WgpuEffectStore::prepare`]: a
-    /// new want, or a want reloaded with a new module.
-    pending: Vec<EffectId>,
+    /// The wanted forms the attached device builds at the next [`WgpuEffectStore::prepare`]: a new
+    /// want, or a want reloaded with a new module.
+    pending: Vec<EffectKey>,
     /// `None` until the first attach.
     attached: Option<AttachedEffects>,
     /// Moves with every build, so a reader of [`AttachedEffects::for_format`] knows to copy again.
@@ -57,12 +62,12 @@ pub(crate) struct AttachedEffects {
     formats: Vec<FormatEffects>,
 }
 
-/// Every pipeline one format draws effects with: each loaded effect's, [`ClipVariant::NONE`]
-/// where none is built.
+/// Every pipeline one format draws effects with: each form of each loaded effect,
+/// [`ClipVariant::NONE`] where none is built.
 #[derive(Debug)]
 pub(crate) struct FormatEffects {
     format: wgpu::TextureFormat,
-    /// At each effect's id.
+    /// At each key's [`EffectKey::slot`].
     pub(crate) effects: Vec<ClipVariant>,
 }
 
@@ -81,7 +86,7 @@ impl WgpuEffectStore {
         state.revision += 1;
     }
 
-    /// Build every wanted effect for `format`, where it is new: before the frame that paints it.
+    /// Build every wanted form for `format`, where it is new: before the frame that paints it.
     pub(crate) fn ensure_format(&self, format: wgpu::TextureFormat) {
         let mut state = self.state.borrow_mut();
         let StoreState {
@@ -97,21 +102,30 @@ impl WgpuEffectStore {
         }
         let mut built = FormatEffects {
             format,
-            effects: vec![ClipVariant::NONE; modules.len()],
+            effects: vec![ClipVariant::NONE; modules.len() * ShapeForm::ALL.len()],
         };
-        for idx in wanted.ones() {
-            built.effects[idx] = attached.build(&modules[idx], format, idx);
+        for slot in wanted.ones() {
+            let key = EffectKey::of_slot(slot);
+            built.effects[slot] = effect_pipeline::build(
+                &attached.gpu,
+                &attached.layouts,
+                EffectTarget {
+                    module: &modules[key.effect.idx()],
+                    key,
+                    format,
+                },
+            );
         }
         attached.formats.push(built);
         *revision += 1;
     }
 
-    /// The start of a frame's GPU phase: want each effect `effects`, the frame's draws, name,
-    /// and build every wanted one not built yet for each format, before any pass.
-    pub(crate) fn prepare(&self, effects: &[EffectId]) {
+    /// The start of a frame's GPU phase: want each key of `keys`, the frame's draws, and build
+    /// every wanted form not built yet for each format, before any pass.
+    pub(crate) fn prepare(&self, keys: &[EffectKey]) {
         let mut state = self.state.borrow_mut();
-        for &id in effects {
-            state.want(id);
+        for &key in keys {
+            state.want(key);
         }
         let StoreState {
             modules,
@@ -131,14 +145,16 @@ impl WgpuEffectStore {
             layouts,
             formats,
         } = attached;
-        for id in pending.drain(..) {
+        for key in pending.drain(..) {
             for built in formats.iter_mut() {
-                built.effects[id.idx()] = effect_pipeline::build(
+                built.effects[key.slot()] = effect_pipeline::build(
                     gpu,
                     layouts,
-                    &modules[id.idx()],
-                    built.format,
-                    id.idx(),
+                    EffectTarget {
+                        module: &modules[key.effect.idx()],
+                        key,
+                        format: built.format,
+                    },
                 );
             }
         }
@@ -164,11 +180,11 @@ impl WgpuEffectStore {
 }
 
 impl StoreState {
-    /// Want the effect `id`: the next prepare builds it, where no use wanted it before.
-    fn want(&mut self, id: EffectId) {
-        if !self.wanted.contains(id.idx()) {
-            self.wanted.insert(id.idx());
-            self.pending.push(id);
+    /// Want the form `key` names: the next prepare builds it, where no use wanted it before.
+    fn want(&mut self, key: EffectKey) {
+        if !self.wanted.contains(key.slot()) {
+            self.wanted.insert(key.slot());
+            self.pending.push(key);
         }
     }
 }
@@ -186,10 +202,6 @@ impl AttachedEffects {
     /// Every pipeline `format` draws effects with; `None` where the format is not built.
     pub(crate) fn for_format(&self, format: wgpu::TextureFormat) -> Option<&FormatEffects> {
         self.formats.iter().find(|built| built.format == format)
-    }
-
-    fn build(&self, module: &EffectModule, format: wgpu::TextureFormat, idx: usize) -> ClipVariant {
-        effect_pipeline::build(&self.gpu, &self.layouts, module, format, idx)
     }
 }
 
@@ -209,25 +221,32 @@ impl EffectStore for WgpuEffectStore {
             id.idx() <= modules.len(),
             "the registry hands out ids in order"
         );
+        let slots = (modules.len() + 1) * ShapeForm::ALL.len();
         if id.idx() == modules.len() {
             modules.push(module.clone());
-            wanted.grow(modules.len());
+            wanted.grow(slots);
             if let Some(attached) = attached {
                 for built in &mut attached.formats {
-                    built.effects.push(ClipVariant::NONE);
+                    built.effects.resize(slots, ClipVariant::NONE);
                 }
             }
         } else {
             module.clone_into(&mut modules[id.idx()]);
-            // A wanted effect reloaded builds its new module at the next prepare.
-            if wanted.contains(id.idx()) && !pending.contains(&id) {
-                pending.push(id);
+            // Each wanted form of an effect reloaded builds its new module at the next prepare.
+            for form in ShapeForm::ALL {
+                let key = EffectKey { effect: id, form };
+                if wanted.contains(key.slot()) && !pending.contains(&key) {
+                    pending.push(key);
+                }
             }
         }
     }
 
     fn want(&self, id: EffectId) {
-        self.state.borrow_mut().want(id);
+        self.state.borrow_mut().want(EffectKey {
+            effect: id,
+            form: ShapeForm::Box,
+        });
     }
 }
 
@@ -235,14 +254,23 @@ impl EffectStore for WgpuEffectStore {
 pub(crate) mod internals {
     use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
     use crate::gpu::resource::wgpu_effect_store::{ATTACHED, FormatEffects, WgpuEffectStore};
+    use crate::primitives::identity::effect_id::EffectId;
+    use crate::renderer::render_buffer::effect_draw_row::EffectKey;
+    use crate::renderer::render_buffer::shape_form::ShapeForm;
 
     impl WgpuEffectStore {
-        /// Whether each loaded effect's stage, at its id, is built, the same for every format
-        /// drawn to.
-        pub(crate) fn built_effects(&self) -> Vec<bool> {
+        /// Whether each loaded effect's pipeline of `form`, at its id, is built, the same for
+        /// every format drawn to.
+        pub(crate) fn built_effects(&self, form: ShapeForm) -> Vec<bool> {
             let state = self.state.borrow();
             (0..state.modules.len())
-                .map(|idx| self.built_alike(|format| &format.effects[idx]))
+                .map(|idx| {
+                    let key = EffectKey {
+                        effect: EffectId(u32::try_from(idx).unwrap()),
+                        form,
+                    };
+                    self.built_alike(|format| &format.effects[key.slot()])
+                })
                 .collect()
         }
 
@@ -271,7 +299,7 @@ pub(crate) mod internals {
 mod tests {
     use std::time::Duration;
 
-    use glam::UVec2;
+    use glam::{UVec2, Vec2};
 
     use crate::animation::animation_spec::AnimationSpec;
     use crate::effect::effect_source::{EffectBuild, EffectSource};
@@ -283,6 +311,7 @@ mod tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
     use crate::primitives::paint::paint::Paint;
+    use crate::renderer::render_buffer::shape_form::ShapeForm;
     use crate::shape::Shape;
     use crate::shape::effect_paint::EffectPaint;
     use crate::text::shaper::TextShaper;
@@ -323,7 +352,8 @@ mod tests {
     /// the stock themes' floats wear; blue builds at the frame that draws it, red staying built. A
     /// reload of blue as green builds again, so the next frame paints green. A material builds at
     /// the frame that draws it, through the one stage its effect draws every use with: the blur
-    /// for a blurred box.
+    /// for a blurred box. A triangle of blue builds blue's triangle form alone, at the frame that
+    /// draws it, beside its box.
     #[test]
     fn an_effect_builds_where_a_use_wants_it() {
         let (mut host, target) = host();
@@ -339,7 +369,7 @@ mod tests {
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
             ui.add_shape(Shape::rect(), RgbaF32::WHITE);
         });
-        let store = |host: &OffscreenHost| host.effect_store().built_effects();
+        let store = |host: &OffscreenHost| host.effect_store().built_effects(ShapeForm::Box);
         assert_eq!(
             store(&host),
             [false, false, false, true, false, false, true]
@@ -366,6 +396,22 @@ mod tests {
             );
         });
         assert_eq!(store(&host), [false, false, true, true, false, true, true]);
+
+        let triangles =
+            |host: &OffscreenHost| host.effect_store().built_effects(ShapeForm::Triangle);
+        assert_eq!(triangles(&host), [false; 7]);
+        host.frame(target.as_target(), &mut |ui: &mut Ui| {
+            ui.add_shape(
+                Shape::triangle(Vec2::ZERO, Vec2::new(8.0, 0.0), Vec2::new(0.0, 8.0)),
+                EffectPaint::new(BLUE, ()),
+            );
+        });
+        assert_eq!(
+            triangles(&host),
+            [false, false, false, false, false, true, false]
+        );
+        assert_eq!(store(&host), [false, false, true, true, false, true, true]);
+        assert_eq!(target.read_back().get_pixel(1, 1).0, [0, 255, 0, 255]);
     }
 
     /// The press effects of a window's themes build at the next frame that draws, for both
@@ -398,7 +444,8 @@ mod tests {
         host.ui_mut()
             .set_theme(ColorScheme::Dark, Theme::stock(ColorScheme::Dark))
             .unwrap();
-        let ripples = |host: &OffscreenHost| host.effect_store().built_effects()[..2].to_vec();
+        let ripples =
+            |host: &OffscreenHost| host.effect_store().built_effects(ShapeForm::Box)[..2].to_vec();
         host.frame(target.as_target(), &mut nothing);
         assert_eq!(ripples(&host), [false, false]);
 

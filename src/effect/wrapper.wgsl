@@ -13,11 +13,15 @@ var<immediate> palantir_imm: PalantirImmediates;
 
 const PALANTIR_AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
 
-// `EffectInstance::flags`'s bits: a material's box, one that covers outside its rounded rect, and
-// a triangle.
+// `EffectInstance::flags`'s bit for a material's box.
 const PALANTIR_MATERIAL: u32 = /*{MATERIAL}*/;
-const PALANTIR_OUTSIDE: u32 = /*{OUTSIDE}*/;
-const PALANTIR_TRIANGLE: u32 = /*{TRIANGLE}*/;
+
+// The shape form the pipeline draws (`ShapeForm`), pinned as two constants, so the template's
+// vertex decode folds its corner count and the driver drops the side the form does not take: a
+// triangle, three of the instance's points; and a material's box that covers outside its rounded
+// rect. Both off draw a box that covers its inside.
+override PALANTIR_TRIANGLE: bool;
+override PALANTIR_OUTSIDE: bool;
 
 // One instance past its shape (`PalantirShapeIn`): its clock (`time`, `opacity`, `scale`), the word
 // its parameters start at, a backdrop effect's backdrop, its flags, and the border width a
@@ -59,11 +63,9 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, instance:
     let pos = shape.rect.xy;
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
-    let outside = (instance.flags & PALANTIR_OUTSIDE) != 0u;
-    // A run draws one corner count's vertices (`EffectInstance::corner_count`).
-    let s = palantir_shape_of(shape, select(4u, 3u, (instance.flags & PALANTIR_TRIANGLE) != 0u));
-    let outset = select(PALANTIR_AA_HALF_WIDTH, 0.0, outside && rotation == 0.0);
-    let t = palantir_template_vertex(s, vi, instance.border_width, outset, outside);
+    let s = palantir_shape_of(shape, select(4u, 3u, PALANTIR_TRIANGLE));
+    let outset = select(PALANTIR_AA_HALF_WIDTH, 0.0, PALANTIR_OUTSIDE && rotation == 0.0);
+    let t = palantir_template_vertex(s, vi, instance.border_width, outset, PALANTIR_OUTSIDE);
     let px = palantir_turned(pos + t.pos, pos + size * 0.5, rotation);
     let ndc = px * (vec2<f32>(2.0, -2.0) / palantir_imm.viewport_size) + vec2<f32>(-1.0, 1.0);
     return PalantirVarying(
@@ -98,7 +100,7 @@ fn palantir_fs(v: PalantirVarying) -> PalantirOut {
     let local = palantir_local(v.clip, v.rect, v.clock.w);
     let scale = v.clock.z;
     // A triangle's corners are no rect's: its effect reads none.
-    let corners = select(v.corners, vec4<f32>(0.0), (v.flags & PALANTIR_TRIANGLE) != 0u);
+    let corners = select(v.corners, vec4<f32>(0.0), PALANTIR_TRIANGLE);
     let input = EffectInput(local / scale, v.rect.zw / scale, corners / scale, v.clock.x, scale);
     /*{BACKDROP_SET}*/let out = /*{CALL}*/;
     /*{MATERIAL_BRANCH}*/var coverage = v.clock.y

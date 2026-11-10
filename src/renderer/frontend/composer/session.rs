@@ -3,7 +3,6 @@
 use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -43,7 +42,7 @@ use crate::renderer::render_buffer::backdrop_row::{
     BackdropRead, BackdropRow, BackdropSource, MaterialLook,
 };
 use crate::renderer::render_buffer::clip_chain::ClipChain;
-use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInstance};
+use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInstance, EffectKey};
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance};
@@ -449,18 +448,14 @@ impl PaintSink for ComposeSession<'_> {
             }
             None => 0,
         };
-        let shape_flags = match p.geometry {
-            PlacedClosed::Box {
-                coverage: Coverage::Inside,
-                ..
-            } => 0,
-            PlacedClosed::Box {
-                coverage: Coverage::Outside,
-                ..
-            } => EffectInstance::OUTSIDE,
-            PlacedClosed::Triangle(_) => EffectInstance::TRIANGLE,
-        };
-        let stage_flag = if p.paint.stage.is_some() {
+        let form = ShapeForm::of(&p.geometry);
+        if form.is_outside() {
+            debug_assert!(
+                p.paint.stage.is_some(),
+                "only a material's box covers its outside"
+            );
+        }
+        let flags = if p.paint.stage.is_some() {
             EffectInstance::MATERIAL
         } else {
             0
@@ -469,12 +464,15 @@ impl PaintSink for ComposeSession<'_> {
             .order(Lane::Tier(PaintTier::Effect), visible);
         let clip = self.clip_chain(visible);
         self.out.effects.push(EffectDrawRow {
-            effect: p.paint.effect,
+            key: EffectKey {
+                effect: p.paint.effect,
+                form,
+            },
             images: p.paint.images,
             instance: EffectInstance {
                 header: shape.header(clip),
                 border_width,
-                flags: stage_flag | shape_flags,
+                flags,
                 time: p.paint.time,
                 opacity: p.paint.opacity,
                 scale,

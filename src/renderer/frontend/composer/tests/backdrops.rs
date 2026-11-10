@@ -4,6 +4,7 @@ use crate::cascade::plane_backdrop::PlaneBackdrop;
 use crate::common::span::Span;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
@@ -26,8 +27,9 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{
     BackdropCapture, BackdropRead, BackdropRow, BackdropSource,
 };
-use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
+use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
@@ -153,8 +155,14 @@ fn a_backdrop_cuts_the_frame_at_its_barrier() {
     assert_eq!(effects.len(), 1);
     assert_eq!(effects[0].last_group, 1);
     assert_eq!(
-        (buf.effects.effect()[0], buf.effects.instance()[0].flags),
-        (EffectId(0), EffectInstance::MATERIAL)
+        (buf.effects.key()[0], buf.effects.instance()[0].flags),
+        (
+            EffectKey {
+                effect: EffectId(0),
+                form: ShapeForm::Box,
+            },
+            EffectInstance::MATERIAL
+        )
     );
     let instance = buf.effects.instance()[0];
     assert_eq!((instance.backdrop_idx, instance.opacity), (0, 1.0));
@@ -318,8 +326,14 @@ fn a_material_over_the_ground_breaks_nothing() {
     assert_eq!(row.capture(), None);
     assert_eq!(row.reads, rect);
     assert_eq!(
-        (buf.effects.effect()[0], buf.effects.instance()[0].flags),
-        (EffectId(0), EffectInstance::MATERIAL)
+        (buf.effects.key()[0], buf.effects.instance()[0].flags),
+        (
+            EffectKey {
+                effect: EffectId(0),
+                form: ShapeForm::Box,
+            },
+            EffectInstance::MATERIAL
+        )
     );
     assert_eq!(buf.effects.instance()[0].backdrop_idx, 0);
     let instance = buf.effects.instance()[0];
@@ -359,11 +373,12 @@ fn an_effect_holds_its_shape_for_the_template() {
     assert_eq!(instance.border_width, 0.0);
 }
 
-/// A triangle's material packs its shape as a triangle quad does, and its instance flags the
-/// triangle, so the effect stage builds three corners: (5, 5), (25, 5), (5, 15) with radius 1 at
-/// scale 2 cover (8, 8) to (52, 32).
+/// A triangle's material packs its shape as a triangle quad does, and its key takes the
+/// triangle's form, so the effect stage builds three corners: (5, 5), (25, 5), (5, 15) with radius
+/// 1 at scale 2 cover (8, 8) to (52, 32). A material's box that covers its outside, drawn after it,
+/// takes the outside form, with the same material flag.
 #[test]
-fn a_triangles_material_packs_as_its_triangle() {
+fn a_materials_key_takes_its_shapes_form() {
     let points = [
         Vec2::new(5.0, 5.0),
         Vec2::new(25.0, 5.0),
@@ -395,16 +410,41 @@ fn a_triangles_material_packs_as_its_triangle() {
                 ),
                 1.0,
             );
+            b.draw(
+                material(
+                    PlacedClosed::Box {
+                        placed: PlacedBox {
+                            rect: Rect::new(60.0, 5.0, 20.0, 20.0),
+                            corners: Corners::all(4.0),
+                        },
+                        coverage: Coverage::Outside,
+                    },
+                    EffectCaptureDraw::Ground,
+                    LoweredBorder::NONE,
+                ),
+                1.0,
+            );
         },
         &params(2.0, UVec2::new(200, 200)),
     );
     let instance = buf.effects.instance()[0];
     let quad = buf.quads.instance()[0];
     assert_eq!(
-        instance.flags,
-        EffectInstance::MATERIAL | EffectInstance::TRIANGLE
+        buf.effects
+            .key()
+            .iter()
+            .map(|key| key.form)
+            .collect::<Vec<_>>(),
+        [ShapeForm::Triangle, ShapeForm::BoxOutside]
     );
-    assert_eq!(instance.corner_count(), 3);
+    assert_eq!(
+        buf.effects
+            .instance()
+            .iter()
+            .map(|i| i.flags)
+            .collect::<Vec<_>>(),
+        [EffectInstance::MATERIAL; 2]
+    );
     assert_eq!(
         instance.header.rect,
         Rect::from_min_max(Vec2::new(8.0, 8.0), Vec2::new(52.0, 32.0))
