@@ -6,7 +6,7 @@
 //!
 //! - `groups/per_item` vs `groups/single`: N clipped cells (a `DrawGroup` each) against N unclipped rects folded into one group and draw.
 //! - `images/distinct` vs `images/shared`: N textures against one. `distinct` is the control that must not regress.
-//! - `text/per_group` vs `text/single`: N clipped text cells (N batches) against N runs in one batch. Net out the per-step rate from the `groups` pair first: splitting batches also churns scissors.
+//! - `text/per_group` vs `text/single`: N clipped text cells, each run cut by its cell's clip on the CPU so all join one batch, against N unclipped runs in one batch: what the cut costs the pass, its group per cell besides.
 //!
 //! Method: GPU instrumentation stays off so no timestamp writes land in the measured pass. Each arm renders `WARMUP_FRAMES`, samples `last_main_pass_cpu` over `EVIDENCE_FRAMES` and reports min and median; min is the keep-or-revert signal. Criterion measures the same window via `iter_custom` but its interval stays wide: use it for ordering and large regressions.
 //!
@@ -44,7 +44,7 @@ const GRID: usize = 16;
 const ITEMS: usize = GRID * GRID;
 const CELL: f32 = PHYSICAL.x as f32 / GRID as f32;
 const TEXEL: u32 = 8;
-/// Text-arm run content. Must shape wider than `CELL` so a clipped cell cuts it in X, which marks the run strict and splits the text batch. The default `SingleLine` overflows rather than wraps.
+/// Text-arm run content. Must shape wider than `CELL` so a clipped cell cuts it in X, which the run's glyphs take on the CPU. The default `SingleLine` overflows rather than wraps.
 const LABEL: &str = "Palantir record pass";
 /// Frames rendered before sampling, enough to settle the glyph atlas, image bind-group cache and buffer growth.
 const WARMUP_FRAMES: usize = 64;
@@ -80,18 +80,17 @@ impl Workload {
         }
     }
 
-    /// Whether each cell clips. Only the per-item arms do: a clip gives each its own scissor (a `DrawGroup`) and cuts `LABEL` in X (strict run, split batch). The image pair is unclipped so it differs only in `TextureId` repeats.
+    /// Whether each cell clips. Only the per-item arms do: a clip gives each its own scissor (a `DrawGroup`) and cuts `LABEL` in X, which the run's glyphs take on the CPU. The image pair is unclipped so it differs only in `TextureId` repeats.
     const fn clipped(self) -> bool {
         matches!(self, Self::GroupPerItem | Self::TextPerGroup)
     }
 
-    /// The draw groups and text batches the arm's frame composes: a clipped cell is a group and
-    /// splits its text batch, an unclipped frame folds into one group, and no text means no
-    /// batch.
+    /// The draw groups and text batches the arm's frame composes: a clipped cell is a group, an
+    /// unclipped frame folds into one, every run joins one batch, and no text means no batch.
     const fn expected(self) -> Counts {
         let (groups, text_batches) = match self {
             Self::GroupPerItem => (ITEMS, 0),
-            Self::TextPerGroup => (ITEMS, ITEMS),
+            Self::TextPerGroup => (ITEMS, 1),
             Self::SingleGroup | Self::ImagesDistinct | Self::ImagesShared => (1, 0),
             Self::TextSingleBatch => (1, 1),
         };

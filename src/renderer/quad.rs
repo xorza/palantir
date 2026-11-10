@@ -11,7 +11,7 @@ use crate::primitives::paint::lut_row::LutRow;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 
-/// Per-instance quad data (64 B), read through `QUAD_INSTANCE_ATTRS` (backend), which takes each field's offset; no tail padding, as vertex strides need only 4-byte alignment.
+/// Per-instance quad data, read through `QUAD_INSTANCE_ATTRS` (backend), which takes each field's offset; no tail padding, as vertex strides need only 4-byte alignment.
 ///
 /// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` is the color, `fill_lut_row` / `fill_axis` ignored.
 ///
