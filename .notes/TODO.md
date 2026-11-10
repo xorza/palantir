@@ -10,7 +10,6 @@
 - optimal resolve strategies
 - box material?
 - Brush::Linear add conveninet ctors
-- instead of stencil mask generate geometry, drop stentil at all
 - flag whether to reduce fps on lowpower
 - material for texts and strokes?
 - Draw::Effect - do we need it if we have box?
