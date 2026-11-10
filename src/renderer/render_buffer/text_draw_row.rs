@@ -15,9 +15,11 @@ use glam::Vec2;
 pub(crate) struct TextDrawRow {
     pub(crate) text: ShapedTextRef,
     pub(crate) origin: Vec2,
-    /// Clip bounds (physical px). The backend only y-culls whole lines against
-    /// this; the pixel clip is the batch scissor
-    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::text_batch::TextBatch::scissor)).
+    /// Clip bounds (physical px). An unturned run culls its lines against them and clips its
+    /// glyphs' quads to them on the CPU (`RasterPass::clip_since`); a turned run culls none, and
+    /// its batch's scissor clips it
+    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::text_batch::TextBatch::scissor)),
+    /// which equals these bounds once a clip cuts the run.
     pub(crate) bounds: URect,
     pub(crate) color: RgbaF16,
     /// Per-run scale on top of the DPI scale: the ancestor `TranslateScale.scale`

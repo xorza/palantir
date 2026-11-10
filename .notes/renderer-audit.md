@@ -65,7 +65,7 @@ source of that rule.
   `ImageDrawRow { form }` beside its texture id, `MeshDrawRow`, `IconDrawRow`, `TextDrawRow`, and
   the curves a bare `Vec<CurveInstance>`. Two names for the stream row (`*Row`, `*DrawRow`), and
   the image's pipeline key is a field named for its type, not its role.
-- **Stale docs.** `RenderStep::TierBatch` says an image draws "one `draw` per row" (runs per form
+- **[fixed in item 11] Stale docs.** `RenderStep::TierBatch` says an image draws "one `draw` per row" (runs per form
   and texture since B6) and a mesh "one `draw_indexed` per `MeshDraw`"; `TextDrawRow::bounds`
   says "the pixel clip is the batch scissor", which `RasterPass::clip_since` replaced for an
   unturned run.
@@ -171,8 +171,9 @@ captured streams prove it.
 10. [x] **Rows named alike**, done. `QuadRow` is `QuadDrawRow`, as every other stream row is a
     `*DrawRow`, and the image's pipeline field is `key` like the quad's and the effect's, its
     batch column `ImageBatch::keys` like `EffectBatch::keys`.
-11. **The stale docs** of `RenderStep::TierBatch` and `TextDrawRow::bounds` say what the code
-    does.
+11. [x] **The stale docs** of `RenderStep::TierBatch` and `TextDrawRow::bounds` say what the code
+    does, done, with `RenderStep::Text` (a draw per stretch of unturned or turned glyphs) and
+    the composer's text-batch comments, which said the text backend clips no run.
 
 Items 1 to 6, 10 and 11 are refactors with no visible change; 7 and 8 change draw counts and need
 their gates; 9 waits for a workload. 7 to 9 wait for the bench session (`PERF.md`, "To measure").

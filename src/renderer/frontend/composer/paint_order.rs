@@ -78,8 +78,8 @@ struct OpenBatch {
     /// push; tells the schedule where to emit the merged render step.
     last_group: u32,
     /// [`TextClip::Cut`] once a cut run has joined. The batch scissor (`open_grid.union()`) must then
-    /// equal that run's bounds, so later runs join only with matching `bounds`; the text shader has
-    /// no per-instance clip.
+    /// equal that run's bounds, so later runs join only with matching `bounds`; a turned run's
+    /// glyphs carry no clip rect of their own.
     clip: TextClip,
 }
 
@@ -336,7 +336,7 @@ impl Ordering<'_> {
             texts: Span::try_from(b.texts_start..texts_end).unwrap(),
             last_group: b.last_group,
             // Already physical and clamped to every run's clip-narrowed bounds, so it is the
-            // batch's GPU scissor (the text backend has no per-run clipping).
+            // batch's GPU scissor, which clips a turned run; an unturned run clips its own glyphs.
             scissor,
         });
     }

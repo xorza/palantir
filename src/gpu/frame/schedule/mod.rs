@@ -25,15 +25,15 @@ pub(crate) enum RenderStep {
     Quads {
         range: Span,
     },
-    /// Render a coalesced text batch in one draw, right after the batch's last group
-    /// draws its quads.
+    /// Render a coalesced text batch, right after the batch's last group draws its quads: one
+    /// draw per stretch of unturned or turned glyphs.
     Text {
         batch: usize,
     },
     /// Replay batch `batch` of `tier` from `RenderBuffer::batches(tier)`. Per tier:
-    /// **Mesh** one `draw_indexed` per `MeshDraw`; **Image** one `draw` per row;
-    /// **Icon** one instanced draw; **Curve** one `draw_indexed` for every
-    /// `CurveInstance`.
+    /// **Mesh** one `draw_indexed` per `MeshDraw`; **Image** one `draw` per run of one form and
+    /// texture; **Icon** one draw per stretch of unturned or turned icons; **Curve** one
+    /// instanced `draw_indexed` over the batch.
     TierBatch {
         tier: PaintTier,
         batch: usize,
