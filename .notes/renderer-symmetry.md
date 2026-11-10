@@ -22,7 +22,7 @@ and an effect hold their shape.
 | B5 Wire | done |
 | B6 Keys | done |
 | B7 Effect forms | done |
-| B8a Material composite | to do, a bug |
+| B8a Material composite | done |
 | B8b One composite | waits for D1 |
 | B9 Strokes | to do |
 
@@ -34,7 +34,7 @@ that does it.
 Every entry of `.notes/ISSUES.md` that touches the renderer, investigated, with the batch that
 deletes it from the log.
 
-- **A material's fill and border overcount the edge: B8a.** Confirmed in
+- **[fixed in B8a] A material's fill and border overcount the edge.** Confirmed in
   `effect/material.wgsl`. With `o` and `i` the outer and inner edge coverage, `palantir_composite`
   writes `(o − i)·Bα + o·Fα·(1 − (o − i)·Bα)`: the fill takes `o` and the border composites over it,
   two coverages of one edge multiplied. An opaque box under an opaque border at its outer edge,
@@ -45,7 +45,9 @@ deletes it from the log.
   that model weights by area, the border over the fill in the band and the fill alone past it:
   `(o − i)·(B + F·(1 − Bα)) + i·F` inside, `(o − i)·(B + F·(1 − Bα)) + (1 − o)·F` outside. Test: the
   two functions' values at those coverages, hand-computed, in the effect tests, failing on the
-  current form. Goldens of every material edge move.
+  current form. Goldens of every material edge move. Landed in B8a: the two functions moved to
+  `effect/composite.wgsl`, which the test probes on the GPU; the four material goldens moved at
+  their edges, by up to 25 of 255 in a channel.
 - **[fixed in B6] `FillKind::FAST_BIT`'s doc claims a shader path.** Confirmed: only the internals reference
   `quad_pipeline/reference.wgsl` reads `FILL_FLAG_FAST`; production reads the bit back on the CPU
   alone, in `ComposeSession::record_opaque_cover`, where `TemplateShape::is_pixel_aligned` gives the
@@ -347,8 +349,8 @@ The visual suite and the composer's captured streams prove it.
    for quads, `ShadowQuad`'s named lanes, `FAST_BIT` out.
 7. [x] **B7 Effect forms**, done. Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
    `OUTSIDE` go.
-8. [ ] **B8a Material composite.** `palantir_composite` and `palantir_composite_outside` take the
-   exact border-box form, with a test of their values; no decision waits.
+8. [x] **B8a Material composite**, done. `palantir_composite` and `palantir_composite_outside` take
+   the exact border-box form, with a test of their values; no decision waits.
    [ ] **B8b One composite**, after decision D1: the quad's `composite` and `composite_outside`
    take the model D1 picks, and one copy serves both families.
 9. [ ] **B9 Strokes.** `StrokeGeometry`, `ShapeRecord::Stroke`, `DrawStrokePayload`; `ArcGeometry`
@@ -366,7 +368,7 @@ each lands.
 - **D1: one fill-and-border composite.** A quad's fill stops at the border's inner edge, and the
   two coverages sum. A material's fill covers the border box, and the border lies over it. A
   translucent border shows what is behind the box on a plain box, and the fill on a material box,
-  so one `Paint` paints two ways. The material's form is also inexact at its edges, which B8a fixes
+  so one `Paint` paints two ways. The material's form was also inexact at its edges, which B8a fixed
   first ("Issues this plan fixes"). Pick:
   CSS's border box (`background-clip: border-box`, the CSS default), weighted by area, `(o − i) ·
   (B + F · (1 − Bα)) + i · F` with `o` and `i` the outer and inner coverage and `B`, `F`

@@ -87,31 +87,3 @@ fn palantir_material_shade(v: PalantirVarying, local: vec2<f32>, backdrop: Palan
     }
     return palantir_composite(d, fill, backdrop.border_color, backdrop.border_width);
 }
-
-// The fill over the whole box, its border band included, and the border over it there: CSS's
-// border-box background, which shows no sharp content through a translucent border.
-fn palantir_composite(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
-    let outer_aa = palantir_edge_coverage(d);
-    let fill_a = fill.a * outer_aa;
-    let under = vec4<f32>(fill.rgb * fill_a, fill_a);
-    if (border_width > 0.0) {
-        let inner_aa = palantir_edge_coverage(d + border_width);
-        let border_a = (outer_aa - inner_aa) * border_color.a;
-        return vec4<f32>(border_color.rgb * border_a, border_a) + under * (1.0 - border_a);
-    }
-    return under;
-}
-
-// The outside twin of `palantir_composite`: the fill outside the border's inner edge, the border
-// over it in its band, and a transparent interior.
-fn palantir_composite_outside(d: f32, fill: vec4<f32>, border_color: vec4<f32>, border_width: f32) -> vec4<f32> {
-    let outer_aa = palantir_edge_coverage(d);
-    if (border_width > 0.0) {
-        let inner_aa = palantir_edge_coverage(d + border_width);
-        let fill_a = (1.0 - inner_aa) * fill.a;
-        let border_a = (outer_aa - inner_aa) * border_color.a;
-        return vec4<f32>(border_color.rgb * border_a, border_a) + vec4<f32>(fill.rgb * fill_a, fill_a) * (1.0 - border_a);
-    }
-    let fill_a = (1.0 - outer_aa) * fill.a;
-    return vec4<f32>(fill.rgb * fill_a, fill_a);
-}

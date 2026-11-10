@@ -49,6 +49,9 @@ const WRAPPER: &str = include_str!("wrapper.wgsl");
 /// material's box; with markers for the fill kinds it reads.
 const MATERIAL: &str = include_str!("material.wgsl");
 
+/// A material's fill and border over its box, which the material path composites through.
+pub(crate) const COMPOSITE: &str = include_str!("composite.wgsl");
+
 /// What a backdrop effect's fragment stage does first for a material's box.
 const MATERIAL_BRANCH: &str = "if ((v.flags & PALANTIR_MATERIAL) != 0u) {\n        \
      return palantir_material(v, local, input, out);\n    }\n    ";
@@ -271,7 +274,7 @@ fn material() -> String {
     ]
     .into_iter()
     .fold(
-        [MATERIAL, COLOR, GRADIENT_LUT, GRADIENT_FILL].concat(),
+        [MATERIAL, COMPOSITE, COLOR, GRADIENT_LUT, GRADIENT_FILL].concat(),
         |text, (marker, value)| text.replace(&format!("/*{{{marker}}}*/"), &format!("{value}u")),
     )
 }
