@@ -6,7 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::float_hash::FloatHash;
 
-/// Per-node fingerprint of cascade inputs from ancestors (transform, clip, disabled, invisible) plus the node's arranged rect and what its layout read from outside its subtree, packed with the resolved `invisible` bit: a 63-bit `FxHash` with `invisible` in the high bit, read in one 8-byte load by encoder and damage.
+/// Per-node fingerprint of cascade inputs from ancestors (transform, clip and its rounded masks, disabled, invisible) plus the node's arranged rect and what its layout read from outside its subtree, packed with the resolved `invisible` bit: a 63-bit `FxHash` with `invisible` in the high bit, read in one 8-byte load by encoder and damage.
 ///
 /// `DamageEngine::compute` skips a subtree when this and `subtree[i]` both match, jumping to `subtree_end[i]`. Packing is sound because `subtree[i]` covers every descendant's `node_hash` (own visibility) and parent invisibility is a hash input.
 #[repr(transparent)]

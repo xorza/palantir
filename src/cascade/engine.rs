@@ -15,6 +15,7 @@ use crate::cascade::rows::hit_row::HitRow;
 use crate::cascade::rows::root_row::RootRow;
 use crate::cascade::rows::scope_row::ScopeRow;
 use crate::cascade::rows::tab_stop_row::TabStopRow;
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::non_max::NonMaxU32;
 use crate::common::tracy;
@@ -25,6 +26,7 @@ use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::key_class::KeyFilter;
 use crate::primitives::input::sense::Sense;
+use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::float_hash;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
@@ -195,6 +197,9 @@ impl<const I: bool> RowSink for TreePatch<'_, I> {
 pub(super) struct CascadeCtx {
     pub(super) transform: TranslateScale,
     pub(super) clip: Option<Rect>,
+    /// The rounded clips around the node, outer to inner, as one fold of each one's screen mask:
+    /// a clip that turns from a rect to a rounded one moves no rect, yet repaints its corners.
+    pub(super) rounded: ContentHash,
     pub(super) inherited: Inherited,
 }
 
@@ -202,6 +207,7 @@ impl CascadeCtx {
     pub(super) const ROOT: Self = Self {
         transform: TranslateScale::IDENTITY,
         clip: None,
+        rounded: ContentHash::from_u64(0),
         inherited: Inherited::ROOT,
     };
 
@@ -227,7 +233,19 @@ impl CascadeCtx {
         ));
         h.write_u64(word(clip[0], clip[1]));
         h.write_u64(word(clip[2], clip[3]));
+        h.write_u64(self.rounded.as_u64());
         h
+    }
+
+    /// The fold [`Self::rounded`] hands a node's descendants: its own with a rounded clip of
+    /// `mask`, the node's screen mask, folded in last.
+    fn rounded_within(self, mask: Rect) -> ContentHash {
+        let mut h = Hasher::new();
+        h.write_u64(self.rounded.as_u64());
+        let lanes = mask.canon_lanes();
+        h.write_u64(u64::from(lanes[0]) | (u64::from(lanes[1]) << 32));
+        h.write_u64(u64::from(lanes[2]) | (u64::from(lanes[3]) << 32));
+        ContentHash::finish(&h)
     }
 }
 
@@ -512,6 +530,10 @@ impl CascadeEngine {
             } else {
                 parent.clip
             };
+            let rounded = match (attrs.clip_mode(), shape_clip) {
+                (ClipMode::Rounded, Some(mask)) => parent.rounded_within(mask),
+                _ => parent.rounded,
+            };
             // Invisible nodes never paint; a `Rect::ZERO` rollup seed keeps a hidden subtree from inflating the ancestor's `subtree_paint_rect` and defeating the cull.
             let ctx = PaintRectCtx {
                 tree,
@@ -568,6 +590,7 @@ impl CascadeEngine {
                 let cascade = CascadeCtx {
                     transform: desc_transform,
                     clip: shape_clip,
+                    rounded,
                     inherited,
                 };
                 self.stack.push(Frame {

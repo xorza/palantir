@@ -349,3 +349,57 @@ fn growing_scroll_content_damages_the_thumb_it_moves() {
         region.iter_rects().collect::<Vec<_>>()
     );
 }
+
+/// A clip that turns between a rect and a rounded one repaints its corners, though neither the
+/// clip's rect nor any row of its subtree moves: a 100x100 host at the origin, a child filling it,
+/// damages the host's whole mask, each way, and inside another rounded clip of the same rect.
+#[test]
+fn a_clip_that_rounds_damages_its_mask() {
+    use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::layout::clip_mode::ClipMode;
+
+    let host = |ui: &mut Ui, mode: ClipMode, id: &str, body: &mut dyn FnMut(&mut Ui)| {
+        Panel::zstack()
+            .id(WidgetId::from_hash(id))
+            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+            .chrome(Chrome {
+                corners: Corners::all(12.0),
+                ..Chrome::new(RED)
+            })
+            .clip(mode)
+            .show(ui, |ui| body(ui));
+    };
+    let build = |ui: &mut Ui, outer: Option<ClipMode>, mode: ClipMode| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            let mut inner = |ui: &mut Ui| {
+                host(ui, mode, "clip-host", &mut |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("inner"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .chrome(Chrome::new(BLUE))
+                        .show(ui);
+                });
+            };
+            match outer {
+                Some(outer) => host(ui, outer, "outer-host", &mut inner),
+                None => inner(ui),
+            }
+        });
+    };
+    for (outer, from, to) in [
+        (None, ClipMode::Rect, ClipMode::Rounded),
+        (None, ClipMode::Rounded, ClipMode::Rect),
+        (Some(ClipMode::Rounded), ClipMode::Rect, ClipMode::Rounded),
+    ] {
+        let mut h = Harness::mono(DISPLAY.physical);
+        frame(&mut h, |ui| build(ui, outer, from));
+        frame(&mut h, |ui| build(ui, outer, to));
+
+        let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+        assert_eq!(
+            rects,
+            [Rect::new(0.0, 0.0, 100.0, 100.0)],
+            "{outer:?}, {from:?} to {to:?}",
+        );
+    }
+}
