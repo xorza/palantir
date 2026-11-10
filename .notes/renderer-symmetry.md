@@ -13,18 +13,74 @@ and an effect hold their shape.
 
 | Batch | State |
 | --- | --- |
+| B0 Docs | next |
 | B1 Geometry | done, `acd517c11` |
-| B2 Records and payloads | done |
-| B3 Packer | next |
+| B2 Records and payloads | done, `a6efe204a` |
+| B10 Backdrop bound | next, a bug |
+| B3 Packer | to do |
 | B4 Turns | to do |
 | B5 Wire | to do |
 | B6 Keys | to do |
 | B7 Effect forms | to do |
-| B8 Composite | waits for D1 |
+| B8a Material composite | to do, a bug |
+| B8b One composite | waits for D1 |
 | B9 Strokes | to do |
 
 Each decision below starts with its state: **[done]**, **[part]** with what is left, or the batch
 that does it.
+
+## Issues this plan fixes
+
+Every entry of `.notes/ISSUES.md` that touches the renderer, investigated, with the batch that
+deletes it from the log.
+
+- **A material's fill and border overcount the edge: B8a.** Confirmed in
+  `effect/material.wgsl`. With `o` and `i` the outer and inner edge coverage, `palantir_composite`
+  writes `(o − i)·Bα + o·Fα·(1 − (o − i)·Bα)`: the fill takes `o` and the border composites over it,
+  two coverages of one edge multiplied. An opaque box under an opaque border at its outer edge,
+  `o = 0.5`, `i = 0`, reads `0.5 + 0.5 · 0.5 = 0.75` where its coverage is 0.5.
+  `palantir_composite_outside` does the same from the other side: at `o = 0.75`, `i = 0.25` it reads
+  `0.5 + 0.75 · 0.5 = 0.875` where the covered area is `1 − i = 0.75`. The fix needs no decision:
+  `AGENTS.md` already fixes a material's model, the fill over the border box, and the exact form of
+  that model weights by area, the border over the fill in the band and the fill alone past it:
+  `(o − i)·(B + F·(1 − Bα)) + i·F` inside, `(o − i)·(B + F·(1 − Bα)) + (1 − o)·F` outside. Test: the
+  two functions' values at those coverages, hand-computed, in the effect tests, failing on the
+  current form. Goldens of every material edge move.
+- **`FillKind::FAST_BIT`'s doc claims a shader path: B6.** Confirmed: only the internals reference
+  `quad_pipeline/reference.wgsl` reads `FILL_FLAG_FAST`; production reads the bit back on the CPU
+  alone, in `ComposeSession::record_opaque_cover`, where `PackedQuad::is_pixel_aligned` gives the
+  same answer. B6 deletes the bit, its doc and the reference shader's fast branch, which the
+  reference, the SDF form the visual suite compares with, has no need of: the fast path is
+  bit-identical to the SDF by its own comment. `record_opaque_cover` reads the alignment it already
+  has.
+- **`.notes/PERF.md` names `QuadForm::BackdropLens` and `BackdropSpectrum`: B0.** Confirmed, and
+  worse than a stale name: the entry states a decision the code has reversed. Glass is the stock
+  effect `effect/stock/glass.wgsl`, one program with its spectrum behind a branch, as the
+  `gpu::backdrop` module doc says under "One glass", and its cost on V3D is not measured
+  (`.notes/TODO.md`). Fix: the entry moves out of "Decisions" as superseded, its Pi numbers kept as
+  the measurement of the form refused, and the open measurement goes under "Open".
+- **The `gpu::backdrop` module doc states a material form the code left: B0.** Found on the way.
+  Its "A material draws through its effect's material stages" says a backdrop effect compiles a
+  second pair of stages for a material, lays a solid fill, and draws a gradient fill as its own
+  quad above. The effect's one fragment stage branches on `PALANTIR_MATERIAL` (`effect/contract.rs`,
+  `MATERIAL_BRANCH`), and `effect/material.wgsl` samples a gradient fill in the material's own
+  draw, as `AGENTS.md` decides ("A material reaches under the border, in one draw", which refuses
+  both the quad and a stage compiled apart). Fix: the bullet states the branch and the one draw,
+  and points at `AGENTS.md` for the refusals.
+- **`TreeSource::narrowest_side` measures a material box with its drop shadow's halo: B10.**
+  Confirmed, and a bug past the measure: the backdrop's `rect` is its shape's paint rect, the box
+  grown by its shadow's halo `h`, and the footprint is that rect grown by `LensOptics::margin` of
+  its narrowest side. The margin falls one pixel for each pixel the narrowest side grows, while the
+  bezel bounds the depth, so a halo that widens the side by `2h` takes `2h` off the margin and adds
+  back only `h` of rect: the footprint ends up to `h` short of what the lens reads past the box, and
+  the composite clamps those reads to the footprint's edge. By the margin's arithmetic, a bezel of
+  4 px, a lean of 20 and a box 10 px across need 16 px past the box (`4 + 20 − 10 + 1`, and a pixel
+  for the bilinear read); a halo of 4 makes the side 18, its margin 8, and the footprint reaches
+  `4 + 8 = 12`. Not yet reproduced in a test; B10's test is that reproduction. Fix: a backdrop's rect is its shape's
+  own covering rect, lifted to the screen, not its paint row's (`ClosedGeometry::local_bounds`,
+  through the shape's lift and clip); the narrowest side and the footprint follow it. A shadow is
+  no part of a backdrop. Test: a glass box narrow enough that the margin is under the reach, with a
+  drop shadow, whose footprint holds the box's own margin, failing on the current rect.
 
 ## Findings
 
@@ -237,8 +293,11 @@ makes these one, and keeps the pipelines above.
 
 ## Plan
 
-Each batch is a refactor that moves no golden, except B8. The visual suite and the composer's
-captured streams prove it.
+Each batch is a refactor that moves no golden, except B8a, B8b and B10, which fix what they say.
+The visual suite and the composer's captured streams prove it.
+
+0. [ ] **B0 Docs.** The `PERF.md` glass entry moves to superseded, and the `gpu::backdrop` doc's
+   material bullet states the one stage's branch and the one draw.
 
 1. [x] **B1 Geometry**, done. `ClosedGeometry` with coverage, `PlacedClosed` with coverage in
    every closed payload; spin out of `QuadGeometry`, which goes with `EffectGeometry`.
@@ -256,9 +315,14 @@ captured streams prove it.
 6. [ ] **B6 Keys.** `ShapeForm`, `FillKind` as a brush tag, the key column for quads, `FAST_BIT` out.
 7. [ ] **B7 Effect forms.** Effect pipelines per `ShapeForm`; `EffectInstance::TRIANGLE` and
    `OUTSIDE` go.
-8. [ ] **B8 Composite**, after decision D1.
+8. [ ] **B8a Material composite.** `palantir_composite` and `palantir_composite_outside` take the
+   exact border-box form, with a test of their values; no decision waits.
+   [ ] **B8b One composite**, after decision D1: the quad's `composite` and `composite_outside`
+   take the model D1 picks, and one copy serves both families.
 9. [ ] **B9 Strokes.** `StrokeGeometry`, `ShapeRecord::Stroke`, `DrawStrokePayload`; `ArcGeometry`
    and `BezierGeometry` go.
+10. [ ] **B10 Backdrop bound.** A backdrop's rect, narrowest side and footprint from its shape's
+    covering rect, its shadow left out, with a test; independent of the rest, and a bug, so early.
 
 B6 and B7 change pipeline counts: a frame with a triangle effect builds a second pipeline of that
 effect. Bench `atomic/main_pass/gpu/*` and `integration/frame/gpu/*` against the parent before
@@ -269,14 +333,13 @@ each lands.
 - **D1: one fill-and-border composite.** A quad's fill stops at the border's inner edge, and the
   two coverages sum. A material's fill covers the border box, and the border lies over it. A
   translucent border shows what is behind the box on a plain box, and the fill on a material box,
-  so one `Paint` paints two ways. The material's form is also inexact at the outer edge: its fill
-  takes `outer_aa` and its border composites over that, so a pixel half inside an opaque box reads
-  0.75 where it should read 0.5, the conflation `c(1 − c)` of two coverages of one edge. Pick:
+  so one `Paint` paints two ways. The material's form is also inexact at its edges, which B8a fixes
+  first ("Issues this plan fixes"). Pick:
   CSS's border box (`background-clip: border-box`, the CSS default), weighted by area, `(o − i) ·
   (B + F · (1 − Bα)) + i · F` with `o` and `i` the outer and inner coverage and `B`, `F`
   premultiplied: the border over the fill in the band, the fill alone inside it, exact, and free of
-  the seam `composite`'s comment names. Cost: every golden with a translucent border moves, and
-  every material edge. Refused: the quad's model for a material, which `AGENTS.md` refused for the
+  the seam `composite`'s comment names. Cost: every golden of a plain box with a translucent
+  border moves. Refused: the quad's model for a material, which `AGENTS.md` refused for the
   sharp content it shows through the border; the material's form as it is.
 - **D2: one ordered lane of runs for every family.** The quad lane replays in record order and
   every other family in a fixed tier order after it (`PaintTier`), closing a group where order

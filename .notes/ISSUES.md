@@ -13,3 +13,9 @@
   (`src/cascade/engine.rs`): the backdrop's screen rect and the lifted bound it compares are both
   its paint rect, which `LoweredPaint::bbox_local` grows by the shadow, so a shadowed glass box's
   narrowest side is its shadow's.
+- **The `gpu::backdrop` module doc's "A material draws through its effect's material stages"
+  states a form the code left** (`src/gpu/backdrop/mod.rs`): it says a backdrop effect compiles a
+  second pair of stages for a material, lays a solid fill, and draws a gradient fill as its own
+  quad above; the effect's one fragment stage branches on `PALANTIR_MATERIAL`
+  (`effect/contract.rs`, `MATERIAL_BRANCH`), and `effect/material.wgsl` samples a gradient fill in
+  the material's own draw.
