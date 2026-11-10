@@ -564,9 +564,10 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
     }
 }
 
-/// An opaque solid box whose physical edges lie on whole pixels, sharp and borderless, covers its
-/// own rect whole, so it drops an under quad of the same rect; any other keeps a half-pixel ramp
-/// inside its edge, which the under quad's pixels reach past. Alignment is on the physical rect.
+/// An opaque solid box whose physical edges lie on whole pixels, sharp, covers its own rect whole,
+/// so it drops an under quad of the same rect, whatever its border, as its fill reaches under it;
+/// any other keeps a half-pixel ramp inside its edge, which the under quad's pixels reach past.
+/// Alignment is on the physical rect.
 #[test]
 fn a_pixel_aligned_sharp_box_covers_its_own_rect() {
     let opaque = BrushSource::Solid(RgbaF32::srgb(0.5, 0.5, 0.5).to_f16());
@@ -616,6 +617,22 @@ fn a_pixel_aligned_sharp_box_covers_its_own_rect() {
             Rect::new(10.0, 10.0, 20.0, 20.0),
             Corners::ZERO,
             Border::new(RgbaF32::WHITE, 1.0),
+            1.0,
+            true,
+        ),
+        (
+            "a translucent border",
+            Rect::new(10.0, 10.0, 20.0, 20.0),
+            Corners::ZERO,
+            Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.5), 1.0),
+            1.0,
+            true,
+        ),
+        (
+            "a translucent border on a fractional rect",
+            Rect::new(10.25, 10.0, 20.0, 20.0),
+            Corners::ZERO,
+            Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.5), 1.0),
             1.0,
             false,
         ),

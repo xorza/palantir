@@ -128,12 +128,14 @@ impl TemplateShape {
         self.rotation == 0.0 && is_invisible(border_width) && self.corners.is_approx_zero()
     }
 
-    /// [`Self::is_sharp`] plus physical edges on whole pixels: the template's coverage is then
-    /// whole at every pixel it shades, with no antialiased edge.
-    pub(super) fn is_pixel_aligned(&self, border_width: f32) -> bool {
+    /// Unturned, with no rounded corner, and physical edges on whole pixels: the template's outer
+    /// coverage is then whole at every pixel it shades, with no antialiased edge, whatever border
+    /// lies inside it.
+    pub(super) fn is_pixel_aligned(&self) -> bool {
         let physical = self.rect.physical;
         let max = physical.max();
-        self.is_sharp(border_width)
+        self.rotation == 0.0
+            && self.corners.is_approx_zero()
             && physical.min.x.is_integral()
             && physical.min.y.is_integral()
             && max.x.is_integral()

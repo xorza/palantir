@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::math::domain::{EPS, is_invisible};
+use crate::primitives::math::domain::EPS;
 use crate::primitives::math::libm_ext::LibmVec2;
 use crate::primitives::math::num::Vec2Ext;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
@@ -251,7 +251,7 @@ impl PaintSink for ComposeSession<'_> {
                 fill_axis: p.paint.fill_axis,
             },
         );
-        self.record_opaque_cover(&p, &shape, border_width);
+        self.record_opaque_cover(&p, &shape);
     }
 
     /// A shadow in the quad stream, among the fills it lies under or over.
@@ -847,27 +847,19 @@ impl ComposeSession<'_> {
     }
 
     /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. A solid box
-    /// only ([`DrawClosedPayload::is_solid_box`]), and a turned
-    /// quad covers no axis-aligned rect of its own. The rounded clips in force keep the cover to what they leave whole
+    /// only ([`DrawClosedPayload::is_solid_box`]), and a turned quad covers no axis-aligned rect
+    /// of its own. Its border insets nothing: an opaque fill reaches under it, so any border's
+    /// band is opaque (`primitives/wgsl/composite.wgsl`). The rounded clips in force keep the
+    /// cover to what they leave whole
     /// ([`RoundedClip::covered`]): past it the quad shows a share of what it covers, which a
     /// prune would drop.
-    fn record_opaque_cover(
-        &mut self,
-        p: &DrawClosedPayload<ClosedFill>,
-        shape: &TemplateShape,
-        border_width: f32,
-    ) {
+    fn record_opaque_cover(&mut self, p: &DrawClosedPayload<ClosedFill>, shape: &TemplateShape) {
         if !p.is_solid_box() || !p.paint.fill.color.is_opaque() || shape.rotation != 0.0 {
             return;
         }
         let inscribed = shape.rect.physical.inscribed_for_corners(shape.corners);
-        let border_inset = if is_invisible(border_width) || p.paint.border.color.is_opaque() {
-            0.0
-        } else {
-            border_width
-        };
-        // A pixel-aligned sharp borderless box has no antialiased edge to inset by.
-        let aa_inset = if shape.is_pixel_aligned(border_width) {
+        // A pixel-aligned sharp box has no antialiased edge to inset by.
+        let aa_inset = if shape.is_pixel_aligned() {
             0.0
         } else {
             AA_HALF_WIDTH
@@ -875,7 +867,7 @@ impl ComposeSession<'_> {
         let cover = self.out.rounded_clips[self.composer.clip.chain().range()]
             .iter()
             .fold(
-                inscribed.deflated_by(Spacing::saturating([border_inset + aa_inset; 4])),
+                inscribed.deflated_by(Spacing::saturating([aa_inset; 4])),
                 |cover, clip| cover.clamp_to(clip.covered()),
             );
         if !cover.is_paint_empty() {

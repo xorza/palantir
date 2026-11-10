@@ -41,10 +41,10 @@ fn alone(quads: &[QuadBuilder]) -> Vec<u8> {
 }
 
 /// An under quad goes when a later quad of its group covers it with opaque paint, and only then.
-/// A cover is the over quad's rect, inset by its corners' cutout, its anti-aliased edge and a
-/// translucent border: radius 10 and the 0.5 px edge inset ≈ 3.43 px a side, radius 20 ≈ 5.86 px.
-/// A border of width 4 at half alpha insets 4.5 px a side, one of width 60 leaves no cover, and an
-/// opaque border insets the edge alone. A pruned under leaves the over quad as it composes alone,
+/// A cover is the over quad's rect, inset by its corners' cutout and its anti-aliased edge:
+/// radius 10 and the 0.5 px edge inset ≈ 3.43 px a side, radius 20 ≈ 5.86 px. A border insets
+/// nothing, as an opaque fill reaches under it, translucent or 60 px wide, so a snapped sharp box
+/// covers its rect whole. A pruned under leaves the over quad as it composes alone,
 /// and a kept one leaves both; neither folds into the clear.
 #[test]
 fn a_later_opaque_cover_drops_what_it_holds() {
@@ -103,16 +103,16 @@ fn a_later_opaque_cover_drops_what_it_holds() {
             true,
         ),
         (
-            "an opaque border's edge is not covered",
+            "an opaque border covers to a pixel-aligned edge",
             quad(full),
             quad(full).border(opaque(4.0)),
-            false,
+            true,
         ),
         (
-            "a translucent border's ring is not covered",
+            "a translucent border over an opaque fill covers its band",
             quad(full),
             quad(full).border(translucent(4.0)),
-            false,
+            true,
         ),
         (
             "a translucent border's interior is covered",
@@ -121,10 +121,10 @@ fn a_later_opaque_cover_drops_what_it_holds() {
             true,
         ),
         (
-            "a border wider than half the rect covers nothing",
+            "a border wider than half the rect covers with the fill under it",
             quad(inner),
             quad(full).border(translucent(60.0)),
-            false,
+            true,
         ),
         // Its interior is a hole, so even a viewport-wide one covers nothing.
         (
