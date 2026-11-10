@@ -3305,9 +3305,10 @@ widget::Caret
         pub line_height: f32
 
 widget::CircleShape
-    struct CircleShape: Clone, Copy, Debug, PaintedBy<Stroke>
+    struct CircleShape: Clone, Copy, Debug, PaintedBy<ImagePaint>, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
         impl<P: IntoPaint> PaintedBy<P> for CircleShape
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
 
 widget::Configurator
     struct Configurator<'a>: Debug
@@ -3390,6 +3391,7 @@ widget::EffectPaint
             pub const fn reach(self, px: f32) -> Self
             pub const fn reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
+        impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
 
@@ -3427,6 +3429,7 @@ widget::ImagePaint
         pub const fn mag_filter(self, mag_filter: ImageFilter) -> Self
         pub const fn downsample(self, downsample: ImageDownsample) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
+        impl PaintedBy<ImagePaint> for CircleShape
         impl PaintedBy<ImagePaint> for RectShape
         impl PaintedBy<ImagePaint> for TriangleShape
 

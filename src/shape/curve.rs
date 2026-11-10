@@ -13,14 +13,16 @@ use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::sealed;
 use glam::Vec2;
 
+/// The path a [`CurveShape`] was built from, as its constructor names it; it draws as one cubic
+/// ([`Self::bezier`]).
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum CurveGeometry {
+pub(crate) enum CurvePath {
     Line { a: Vec2, b: Vec2 },
     CubicBezier(CubicBezier),
     QuadraticBezier(QuadraticBezier),
 }
 
-impl CurveGeometry {
+impl CurvePath {
     /// The one point a curve of no length sits at; `None` for a curve with length.
     pub(crate) fn point(self) -> Option<Vec2> {
         match self {
@@ -35,7 +37,7 @@ impl CurveGeometry {
         }
     }
 
-    /// The cubic every geometry draws as: a line's thirds, a quadratic's degree elevation.
+    /// The cubic every path draws as: a line's thirds, a quadratic's degree elevation.
     pub(crate) fn bezier(self) -> CubicBezier {
         match self {
             Self::Line { a, b } => {
@@ -59,14 +61,14 @@ impl CurveGeometry {
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct CurveShape {
-    pub(crate) geometry: CurveGeometry,
+    pub(crate) path: CurvePath,
     pub(crate) placement: PointPlacement,
 }
 
 impl CurveShape {
-    pub(super) const fn new(geometry: CurveGeometry) -> Self {
+    pub(super) const fn new(path: CurvePath) -> Self {
         Self {
-            geometry,
+            path,
             placement: PointPlacement::NATURAL,
         }
     }

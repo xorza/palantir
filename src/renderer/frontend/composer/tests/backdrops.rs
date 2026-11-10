@@ -19,7 +19,7 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, BackdropOutline, DrawBackdropPayload,
+    BackdropDraw, BackdropGeometry, DrawBackdropPayload,
 };
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, TriangleQuad};
 use crate::renderer::render_buffer::RenderBuffer;
@@ -28,6 +28,8 @@ use crate::renderer::render_buffer::backdrop_row::{
 };
 use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
@@ -59,10 +61,12 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> BackdropTicket {
 fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: BackdropTicket, alpha: f32) {
     buf.draw(
         DrawBackdropPayload {
-            outline: BackdropOutline::Rect {
+            geometry: BackdropGeometry::Box {
                 coverage: Coverage::Inside,
-                rect,
-                corners: Corners::ZERO,
+                placed: PlacedBox {
+                    rect,
+                    corners: Corners::ZERO,
+                },
             },
             spin: None,
             fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
@@ -285,10 +289,12 @@ fn a_material_over_the_ground_breaks_nothing() {
             draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
             b.draw(
                 DrawBackdropPayload {
-                    outline: BackdropOutline::Rect {
+                    geometry: BackdropGeometry::Box {
                         coverage: Coverage::Inside,
-                        rect,
-                        corners: Corners::ZERO,
+                        placed: PlacedBox {
+                            rect,
+                            corners: Corners::ZERO,
+                        },
                     },
                     spin: None,
                     fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
@@ -365,10 +371,10 @@ fn a_triangles_material_packs_as_its_triangle() {
         |b, _| {
             b.draw(
                 DrawBackdropPayload {
-                    outline: BackdropOutline::Triangle {
-                        points,
+                    geometry: BackdropGeometry::Triangle(PlacedTriangle {
+                        centers: points,
                         radius: 1.0,
-                    },
+                    }),
                     spin: None,
                     fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
                     fill_axis: FillAxis::ZERO,

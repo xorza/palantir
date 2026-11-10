@@ -60,13 +60,16 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
 /// image fits in, and its radii. A contained 2×2 image in (0, 0, 100 × 50) is (25, 0, 50 × 50);
 /// square corners clip nothing, so that image carries no shape. A sharp triangle (0, 0), (40, 0),
 /// (0, 20) fits its image in its covering rect, (0, 0, 40 × 20), so contained at (10, 0, 20 × 20),
-/// and carries its corners.
+/// and carries its corners. A circle in the same rect fits its image in its square, (25, 0,
+/// 50 × 50), so a filled image takes that square, and carries it rounded by 25.
 #[test]
 fn an_image_carries_the_shape_that_clips_it() {
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::paint::image::{Image, ImageFit};
     use crate::shape::Shape;
-    use crate::shape::geometry::shape_outline::PlacedOutline;
+    use crate::shape::geometry::box_geometry::PlacedBox;
+    use crate::shape::geometry::closed_geometry::PlacedClosed;
+    use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 
     let mut h = Harness::mono(UVec2::new(200, 200));
     let handle = h
@@ -89,11 +92,15 @@ fn an_image_carries_the_shape_that_clips_it() {
                     Shape::triangle(Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)),
                     ImagePaint::new(handle.clone()).fit(ImageFit::Contain),
                 );
+                ui.add_shape(
+                    Shape::circle().at(at),
+                    ImagePaint::new(handle.clone()).fit(ImageFit::Fill),
+                );
             });
     });
 
     let cmds = h.encode_paint_for(DamageRegion::from(Rect::new(0.0, 0.0, 200.0, 200.0)));
-    assert_eq!(cmds.kinds(), ["Image"; 3]);
+    assert_eq!(cmds.kinds(), ["Image"; 4]);
     let images: Vec<_> = cmds
         .calls
         .iter()
@@ -103,20 +110,29 @@ fn an_image_carries_the_shape_that_clips_it() {
         assert_eq!(image.rect, Rect::new(25.0, 0.0, 50.0, 50.0));
     }
     assert_eq!(
-        images[0].outline,
-        Some(PlacedOutline::Rect {
+        images[0].geometry,
+        Some(PlacedClosed::Box(PlacedBox {
             rect: at,
             corners: Corners::all(6.0),
-        })
+        }))
     );
-    assert_eq!(images[1].outline, None);
+    assert_eq!(images[1].geometry, None);
     assert_eq!(images[2].rect, Rect::new(10.0, 0.0, 20.0, 20.0));
     assert_eq!(
-        images[2].outline,
-        Some(PlacedOutline::Triangle {
-            points: [Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)],
+        images[2].geometry,
+        Some(PlacedClosed::Triangle(PlacedTriangle {
+            centers: [Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::new(0.0, 20.0)],
             radius: 0.0,
-        })
+        }))
+    );
+    let square = Rect::new(25.0, 0.0, 50.0, 50.0);
+    assert_eq!(images[3].rect, square);
+    assert_eq!(
+        images[3].geometry,
+        Some(PlacedClosed::Box(PlacedBox {
+            rect: square,
+            corners: Corners::all(25.0),
+        }))
     );
 }
 

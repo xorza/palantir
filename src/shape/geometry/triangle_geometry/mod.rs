@@ -20,13 +20,28 @@ pub(crate) struct TriangleGeometry {
 }
 
 /// A triangle placed in its owner, owner-local: the corner centers whose dilation by `radius`
-/// is the shape, and that shape's box. The AA fringe is added later in `cascade::paint_rect`,
-/// since it is half a physical pixel and this box is logical.
+/// is the shape.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PlacedTriangle {
     pub(crate) centers: [Vec2; 3],
     pub(crate) radius: f32,
-    pub(crate) bbox: Rect,
+}
+
+impl PlacedTriangle {
+    /// The shape's box: the centers' bounds grown by the radius. The AA fringe is added later in
+    /// `cascade::paint_rect`, since it is half a physical pixel and this box is logical.
+    pub(crate) fn bbox(self) -> Rect {
+        Aabb::of(&self.centers).inflated(self.radius)
+    }
+
+    /// The triangle with its corner centers moved by `by`, as an owner's position places an
+    /// owner-local triangle.
+    pub(crate) fn translated(self, by: Vec2) -> Self {
+        Self {
+            centers: self.centers.map(|q| q + by),
+            radius: self.radius,
+        }
+    }
 }
 
 impl TriangleGeometry {
@@ -42,7 +57,6 @@ impl TriangleGeometry {
         Some(PlacedTriangle {
             centers: points,
             radius,
-            bbox: Aabb::of(&points).inflated(radius),
         })
     }
 

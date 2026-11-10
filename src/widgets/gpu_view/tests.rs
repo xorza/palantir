@@ -44,7 +44,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
     assert!(
         matches!(
             shapes.next(),
-            Some(ShapeRecord::Image {
+            Some(ShapeRecord::ImagePaint {
                 source: ImageSource::GpuView { .. },
                 ..
             }),
@@ -70,7 +70,7 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
                 .tree(Layer::Main)
                 .shapes_of(node)
                 .find_map(|shape| match shape {
-                    ShapeRecord::Image {
+                    ShapeRecord::ImagePaint {
                         source: ImageSource::GpuView { epoch, .. },
                         ..
                     } => Some(*epoch),

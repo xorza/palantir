@@ -37,30 +37,14 @@ impl BoxGeometry {
             coverage,
         } = self;
         h.write_u8(coverage as u8);
-        match local_rect {
-            None => h.write_u8(0),
-            Some(rect) => {
-                h.write_u8(1);
-                rect.hash_visual(h);
-            }
-        }
-        match outline {
-            BoxOutline::Rect(corners) => {
-                h.write_u8(0);
-                corners.hash(h);
-            }
-            BoxOutline::Circle => h.write_u8(1),
-        }
+        local_rect.hash_visual(h);
+        outline.hash_into(h);
     }
 }
 
 impl NanCheck for BoxGeometry {
     fn has_nan(&self) -> bool {
-        let corners_nan = match self.outline {
-            BoxOutline::Rect(corners) => corners.has_nan(),
-            BoxOutline::Circle => false,
-        };
-        self.local_rect.has_nan() || corners_nan
+        self.local_rect.has_nan() || self.outline.has_nan()
     }
 }
 
@@ -80,6 +64,17 @@ pub(crate) struct PlacedBox {
 }
 
 impl BoxOutline {
+    /// Feed the outline into a record's hash.
+    pub(crate) fn hash_into(self, h: &mut Hasher) {
+        match self {
+            Self::Rect(corners) => {
+                h.write_u8(0);
+                corners.hash(h);
+            }
+            Self::Circle => h.write_u8(1),
+        }
+    }
+
     /// The box this outline makes in `rect`: the rect itself with its corners, or the square
     /// centered in it, its side the shorter of the two, rounded by half that side.
     pub(crate) fn place(self, rect: Rect) -> PlacedBox {
@@ -96,6 +91,15 @@ impl BoxOutline {
                     corners: Corners::saturating([0.5 * side; 4]),
                 }
             }
+        }
+    }
+}
+
+impl NanCheck for BoxOutline {
+    fn has_nan(&self) -> bool {
+        match self {
+            Self::Rect(corners) => corners.has_nan(),
+            Self::Circle => false,
         }
     }
 }

@@ -19,8 +19,8 @@ use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
-use crate::shape::geometry::shape_outline::ShapeOutline;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
@@ -142,10 +142,10 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: ContentHash,
     },
-    /// A registered image or a `GpuView` target, per [`ImageSource`], fit to its outline's rect
-    /// and clipped to the outline. `tint` multiplies in linear-RGB premultiplied space.
-    Image {
-        outline: ShapeOutline,
+    /// A registered image or a `GpuView` target, per [`ImageSource`], fit to its geometry's rect
+    /// and clipped to the geometry. `tint` multiplies in linear-RGB premultiplied space.
+    ImagePaint {
+        geometry: ClosedGeometry,
         tint: RgbaF16,
         source: ImageSource,
         fit: ImageFit,
@@ -154,7 +154,7 @@ pub(crate) enum ShapeRecord {
         downsample: ImageDownsample,
     },
     /// A baked SVG icon, rasterized at the exact physical size into the icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup. `tint` multiplies a tintable icon whole and a color icon's alpha only, see [`IconPaint`](crate::widget::IconPaint).
-    Icon {
+    IconPaint {
         local_rect: Option<Rect>,
         handle: IconHandle,
         fit: Fit,
@@ -162,14 +162,13 @@ pub(crate) enum ShapeRecord {
         /// Draws a color icon as its own luminance, see [`IconPaint::desaturate`](crate::widget::IconPaint::desaturate).
         desaturate: bool,
     },
-    /// An app-written effect over a rounded rect: `local_rect = None` paints the owner's rect,
-    /// `Some(r)` paints `r` owner-relative, which may exceed the owner. `params` indexes the
-    /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images
-    /// and its backdrop.
-    Effect {
+    /// An app-written effect over its geometry, a box or a triangle, which may exceed the owner.
+    /// `params` indexes the `RecordStore`'s parameter words; `content_hash` covers the effect,
+    /// those words, its images and its backdrop.
+    EffectPaint {
         /// What a backdrop effect reads under it; `None` for a color effect.
         backdrop: Option<EffectBackdrop>,
-        outline: ShapeOutline,
+        geometry: ClosedGeometry,
         effect: EffectId,
         params: Span,
         /// Into `RecordStore::effect_images`.
@@ -245,7 +244,7 @@ impl ShapeRecord {
                     ..
                 },
             ) if material.captures() => Some(BackdropReader::Material(*material)),
-            Self::Effect {
+            Self::EffectPaint {
                 backdrop: Some(EffectBackdrop::Capture(capture)),
                 ..
             } => Some(BackdropReader::Effect(*capture)),
@@ -325,13 +324,7 @@ impl ShapeRecord {
                 wrap: _,
                 align: _,
             } => {
-                match local_origin {
-                    None => h.write_u8(0),
-                    Some(origin) => {
-                        h.write_u8(1);
-                        origin.hash_visual(&mut h);
-                    }
-                }
+                local_origin.hash_visual(&mut h);
                 color.hash(&mut h);
                 self.hash_layout_inputs(&mut h);
             }
@@ -350,8 +343,8 @@ impl ShapeRecord {
             // `ImageSource`'s discriminant goes in first to keep a texture draw and a
             // view composite apart; the shared placement fields are hashed once, around
             // the split.
-            Self::Image {
-                outline,
+            Self::ImagePaint {
+                geometry,
                 tint,
                 source,
                 fit,
@@ -359,7 +352,7 @@ impl ShapeRecord {
                 mag_filter,
                 downsample,
             } => {
-                outline.hash_into(&mut h);
+                geometry.hash_into(&mut h);
                 tint.hash(&mut h);
                 mem::discriminant(source).hash(&mut h);
                 match source {
@@ -397,14 +390,14 @@ impl ShapeRecord {
             // carries a generation, so a reused slot never names two artworks. The
             // raster size is *not* hashed: it follows from the resolved screen rect and
             // needs a display scale the record lacks.
-            Self::Icon {
+            Self::IconPaint {
                 local_rect,
                 handle,
                 fit,
                 tint,
                 desaturate,
             } => {
-                hash_optional_rect(*local_rect, &mut h);
+                local_rect.hash_visual(&mut h);
                 tint.hash(&mut h);
                 h.write_u32(handle.icon.set.bits());
                 h.write_u16(handle.icon.icon.idx());
@@ -412,15 +405,15 @@ impl ShapeRecord {
             }
             // `content_hash` folds the effect and its parameter words, which live in the
             // `RecordStore`; the span is frame-local.
-            Self::Effect {
-                outline,
+            Self::EffectPaint {
+                geometry,
                 content_hash,
                 backdrop: _,
                 effect: _,
                 params: _,
                 images: _,
             } => {
-                outline.hash_into(&mut h);
+                geometry.hash_into(&mut h);
                 content_hash.hash(&mut h);
             }
             // Geometry + style are hashed inline (every input lives on the record).
@@ -453,7 +446,7 @@ impl ShapeRecord {
                 stroke,
                 ramp,
             } => {
-                hash_optional_rect(*local_rect, &mut h);
+                local_rect.hash_visual(&mut h);
                 start_angle.hash_visual(&mut h);
                 sweep.hash_visual(&mut h);
                 hash_stroke(*stroke, *cap, *ramp, &mut h);
@@ -485,16 +478,6 @@ impl ShapeRecord {
             | (*wrap as u64);
         h.write_u64(face);
         true
-    }
-}
-
-fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
-    match rect {
-        None => h.write_u8(0),
-        Some(rect) => {
-            h.write_u8(1);
-            rect.hash_visual(h);
-        }
     }
 }
 
@@ -554,10 +537,13 @@ impl NanCheck for ShapeRecord {
                 bbox,
                 ..
             } => placement.has_nan() || tint.has_nan() || bbox.has_nan(),
-            Self::Image {
-                outline, tint, fit, ..
-            } => outline.has_nan() || tint.has_nan() || fit.has_nan(),
-            Self::Icon {
+            Self::ImagePaint {
+                geometry,
+                tint,
+                fit,
+                ..
+            } => geometry.has_nan() || tint.has_nan() || fit.has_nan(),
+            Self::IconPaint {
                 local_rect, tint, ..
             } => local_rect.has_nan() || tint.has_nan(),
             Self::Curve {
@@ -580,7 +566,7 @@ impl NanCheck for ShapeRecord {
                 stroke,
                 ..
             } => local_rect.has_nan() || start_angle.is_nan() || sweep.is_nan() || stroke.has_nan(),
-            Self::Effect { outline, .. } => outline.has_nan(),
+            Self::EffectPaint { geometry, .. } => geometry.has_nan(),
         }
     }
 }

@@ -284,13 +284,18 @@ fn triangle_rounding_keeps_the_edges() {
         let Some(ShapeRecord::Quad(QuadShape::Triangle { geometry, .. })) = record else {
             panic!("a triangle lowers to a triangle quad, got {record:?}");
         };
+        let placed = geometry.place(Size::ZERO);
         assert_eq!(
-            geometry.place(Size::ZERO),
+            placed,
             Some(PlacedTriangle {
                 centers,
                 radius: clamped,
-                bbox: expected_bbox,
             }),
+            "radius {radius}"
+        );
+        assert_eq!(
+            placed.map(PlacedTriangle::bbox),
+            Some(expected_bbox),
             "radius {radius}"
         );
     }

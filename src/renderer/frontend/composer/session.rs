@@ -26,7 +26,7 @@ use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, BackdropOutline, DrawBackdropPayload,
+    BackdropDraw, BackdropGeometry, DrawBackdropPayload,
 };
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::DrawEffectPayload;
@@ -53,7 +53,7 @@ use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
-use crate::shape::geometry::shape_outline::PlacedOutline;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::text;
@@ -198,14 +198,14 @@ impl PaintSink for ComposeSession<'_> {
     /// shade, packed as one: it neither folds into the clear nor covers anything opaquely, as what
     /// it reads shows through it.
     fn backdrop(&mut self, p: DrawBackdropPayload) {
-        let geometry = p.geometry();
-        let packed = PackedQuad::pack(&geometry, &self.lowering());
+        let quad = p.quad();
+        let packed = PackedQuad::pack(&quad, &self.lowering());
         let Some(visible) = self.ordering().cull(packed.rect.urect) else {
             return;
         };
         let scale = self.composer.transform.physical_scale();
         // The opacity f16 as a quad holds it.
-        let opacity = geometry.fill_axis.lanes()[3];
+        let opacity = quad.fill_axis.lanes()[3];
         let material = p.material;
         let look = MaterialLook {
             max_luminance: material.max_luminance(),
@@ -250,16 +250,16 @@ impl PaintSink for ComposeSession<'_> {
                 rotation: packed.rotation,
                 params: material.params,
                 backdrop_idx,
-                flags: match p.outline {
-                    BackdropOutline::Rect {
+                flags: match p.geometry {
+                    BackdropGeometry::Box {
                         coverage: Coverage::Inside,
                         ..
                     } => EffectInstance::MATERIAL,
-                    BackdropOutline::Rect {
+                    BackdropGeometry::Box {
                         coverage: Coverage::Outside,
                         ..
                     } => EffectInstance::MATERIAL | EffectInstance::OUTSIDE,
-                    BackdropOutline::Triangle { .. } => {
+                    BackdropGeometry::Triangle(_) => {
                         EffectInstance::MATERIAL | EffectInstance::TRIANGLE
                     }
                 },
@@ -367,9 +367,9 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn image(&mut self, p: DrawImagePayload) {
-        match p.outline {
+        match p.geometry {
             None => self.plain_image(p),
-            Some(outline) => self.shaped_image(p, outline),
+            Some(placed) => self.shaped_image(p, placed),
         }
     }
 
@@ -378,10 +378,10 @@ impl PaintSink for ComposeSession<'_> {
     fn effect(&mut self, p: DrawEffectPayload) {
         let lowering = self.lowering();
         let scale = lowering.transform.physical_scale();
-        let shape = TemplateShape::placed(p.outline, p.spin, &lowering);
-        let shape_flags = match p.outline {
-            PlacedOutline::Rect { .. } => 0,
-            PlacedOutline::Triangle { .. } => EffectInstance::TRIANGLE,
+        let shape = TemplateShape::of(p.geometry, p.spin, &lowering);
+        let shape_flags = match p.geometry {
+            PlacedClosed::Box(_) => 0,
+            PlacedClosed::Triangle(_) => EffectInstance::TRIANGLE,
         };
         let scaled = match p.spin {
             None => ScaledRect::from_physical(shape.rect, lowering.display.physical),
@@ -587,18 +587,18 @@ impl ComposeSession<'_> {
     /// an image edge this far inside left open shows at most 4 of 255 levels of its clamped edge.
     const DECAL_SLACK_PX: f32 = 1.0 / 64.0;
 
-    /// An image clipped to `outline`: its quad is the shape's rect, snapped, or moved and turned
+    /// An image clipped to `placed`: its quad is the shape's rect, snapped, or moved and turned
     /// about its center as a quad's is, with the image's uv carried over the whole rect and its
     /// own rect relative to the quad.
-    fn shaped_image(&mut self, p: DrawImagePayload, outline: PlacedOutline) {
+    fn shaped_image(&mut self, p: DrawImagePayload, placed: PlacedClosed) {
         debug_assert!(p.view.is_none(), "a `GpuView` composites a plain image");
         let lowering = self.lowering();
-        let shape = TemplateShape::placed(outline, p.spin, &lowering);
+        let shape = TemplateShape::of(placed, p.spin, &lowering);
         // The image's rect lies on the pixels its shape's does.
-        let edges = TemplateShape::edges(outline, p.spin, &lowering);
-        let form = match outline {
-            PlacedOutline::Rect { .. } => ImageForm::Box,
-            PlacedOutline::Triangle { .. } => ImageForm::Triangle,
+        let edges = TemplateShape::edges(placed, p.spin, &lowering);
+        let form = match placed {
+            PlacedClosed::Box(_) => ImageForm::Box,
+            PlacedClosed::Triangle(_) => ImageForm::Triangle,
         };
         let image = lowering.scaled_rect_with(p.rect, edges).physical;
         let scaled = match p.spin {

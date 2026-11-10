@@ -1,8 +1,6 @@
 //! A material's draw: a box over what it reads, and what the frame does with it.
 
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -12,9 +10,10 @@ use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, QuadGeometry};
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use glam::Vec2;
 
 /// What a backdrop reads: what is painted under it, by the ticket the backdrop ledger wrote for it,
 /// or the window's ground, while transparency is reduced, with no ticket.
@@ -26,22 +25,21 @@ pub(crate) enum BackdropDraw {
 
 /// The shape a material covers, in logical px.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum BackdropOutline {
-    /// A rounded rect covering `coverage` of itself.
-    Rect {
+pub(crate) enum BackdropGeometry {
+    /// A box, a rect's or a circle's, covering `coverage` of itself.
+    Box {
         coverage: Coverage,
-        rect: Rect,
-        corners: Corners,
+        placed: PlacedBox,
     },
-    /// A triangle placed as a triangle quad is: its corner centers, dilated by `radius`.
-    Triangle { points: [Vec2; 3], radius: f32 },
+    /// A triangle placed as a triangle quad is.
+    Triangle(PlacedTriangle),
 }
 
 /// A material's shape, showing what it reads through `material` under its fill, a color or a
 /// gradient, and its border over the whole shape, faded to `opacity`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawBackdropPayload {
-    pub(crate) outline: BackdropOutline,
+    pub(crate) geometry: BackdropGeometry,
     /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
     pub(crate) fill: GpuFill,
@@ -58,12 +56,11 @@ pub(crate) struct DrawBackdropPayload {
 impl DrawBackdropPayload {
     /// The shape as a quad packs it, which the backdrop's effect instance takes its rect, shape,
     /// turn and border width from, so it lies on the pixels a quad of it does.
-    pub(crate) fn geometry(&self) -> DrawQuadPayload {
-        let (geometry, kind) = match self.outline {
-            BackdropOutline::Rect {
+    pub(crate) fn quad(&self) -> DrawQuadPayload {
+        let (geometry, kind) = match self.geometry {
+            BackdropGeometry::Box {
                 coverage,
-                rect,
-                corners,
+                placed: PlacedBox { rect, corners },
             } => (
                 QuadGeometry::Rect {
                     rect,
@@ -75,10 +72,10 @@ impl DrawBackdropPayload {
                     Coverage::Outside => FillKind::SOLID.with_outside(),
                 },
             ),
-            BackdropOutline::Triangle {
-                points: [a, b, c],
+            BackdropGeometry::Triangle(PlacedTriangle {
+                centers: [a, b, c],
                 radius,
-            } => (
+            }) => (
                 QuadGeometry::Triangle {
                     a,
                     b,
@@ -121,11 +118,11 @@ impl PaintPayload for DrawBackdropPayload {
     /// animation's alpha reads it.
     #[inline]
     fn is_noop(&self) -> bool {
-        let empty = match self.outline {
-            BackdropOutline::Rect { rect, .. } => rect.is_paint_empty(),
+        let empty = match self.geometry {
+            BackdropGeometry::Box { placed, .. } => placed.rect.is_paint_empty(),
             // Its covering rect exists only after transform, and its record and its placement
             // drop a triangle of no area, as a triangle quad's.
-            BackdropOutline::Triangle { .. } => false,
+            BackdropGeometry::Triangle(_) => false,
         };
         empty || is_invisible(self.opacity)
     }

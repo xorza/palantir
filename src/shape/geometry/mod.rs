@@ -4,8 +4,8 @@
 pub(crate) mod arc_geometry;
 pub(crate) mod bezier_geometry;
 pub(crate) mod box_geometry;
+pub(crate) mod closed_geometry;
 pub(crate) mod curve_basis;
 pub(crate) mod placed_stroke;
 pub(crate) mod point_placement;
-pub(crate) mod shape_outline;
 pub(crate) mod triangle_geometry;

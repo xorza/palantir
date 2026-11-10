@@ -94,3 +94,25 @@ fn signed_zeros_hash_alike_for_every_float_hash_type() {
         &Track::new(Sizing::fixed(-0.0)).with_min(-0.0),
     );
 }
+
+/// An option feeds its tag, then its value under the same tolerance: `None` and `Some(ZERO)` hash
+/// apart, `Some` of two values within the zero tolerance hash alike, and the tag is the byte
+/// written first.
+#[test]
+fn an_option_hashes_its_tag_then_its_value() {
+    let sub_eps = Rect::new(EPS * 0.5, 0.0, 0.0, 0.0);
+    let visual = |rect: Option<Rect>| finish_hash(|h| rect.hash_visual(h));
+    assert_ne!(visual(None), visual(Some(Rect::ZERO)));
+    assert_eq!(visual(Some(Rect::ZERO)), visual(Some(sub_eps)));
+    assert_eq!(
+        visual(Some(Rect::ZERO)),
+        finish_hash(|h| {
+            h.write_u8(1);
+            Rect::ZERO.hash_visual(h);
+        })
+    );
+    assert_eq!(visual(None), finish_hash(|h| h.write_u8(0)));
+    let eq = |rect: Option<Rect>| finish_hash(|h| rect.hash_eq(h));
+    assert_ne!(eq(Some(Rect::ZERO)), eq(Some(sub_eps)));
+    assert_ne!(eq(None), eq(Some(Rect::ZERO)));
+}

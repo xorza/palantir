@@ -33,7 +33,9 @@ use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::image_form::ImageForm;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::shape::geometry::shape_outline::PlacedOutline;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::stroke_bounds::StrokeJoints;
@@ -823,10 +825,10 @@ fn a_shaped_image_carries_its_uv_and_decal_over_its_shape() {
                 b.draw(
                     DrawImagePayload {
                         rect: image,
-                        outline: Some(PlacedOutline::Rect {
+                        geometry: Some(PlacedClosed::Box(PlacedBox {
                             rect: Rect::new(5.0, 5.0, 50.0, 25.0),
                             corners: Corners::all(4.0),
-                        }),
+                        })),
                         uv_min: Vec2::ZERO,
                         uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.to_f16(),
@@ -911,10 +913,10 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
             b.draw(
                 DrawImagePayload {
                     rect: Rect::new(4.0, 4.0, 22.0, 12.0),
-                    outline: Some(PlacedOutline::Triangle {
-                        points,
+                    geometry: Some(PlacedClosed::Triangle(PlacedTriangle {
+                        centers: points,
                         radius: 1.0,
-                    }),
+                    })),
                     uv_min: Vec2::ZERO,
                     uv_size: Vec2::ONE,
                     tint: RgbaF32::WHITE.to_f16(),
@@ -962,13 +964,13 @@ fn a_triangle_image_packs_its_shape_as_a_triangle_quad_does() {
 /// that side stays open, as do the top and bottom on the shape's.
 #[test]
 fn an_image_edge_on_its_shape_leaves_the_fade_to_the_shape() {
-    let draw = |rect: Rect, shape: PlacedOutline, spin: Option<Spin>, scale: f32| {
+    let draw = |rect: Rect, shape: PlacedClosed, spin: Option<Spin>, scale: f32| {
         let buf = run(
             |b, _| {
                 b.draw(
                     DrawImagePayload {
                         rect,
-                        outline: Some(shape),
+                        geometry: Some(shape),
                         uv_min: Vec2::ZERO,
                         uv_size: Vec2::ONE,
                         tint: RgbaF32::WHITE.to_f16(),
@@ -986,22 +988,22 @@ fn an_image_edge_on_its_shape_leaves_the_fade_to_the_shape() {
     };
     for i in 0..16 {
         let f = i as f32 * 0.137;
-        let shape = PlacedOutline::Triangle {
-            points: [
+        let shape = PlacedClosed::Triangle(PlacedTriangle {
+            centers: [
                 Vec2::new(5.1 + f, 5.3),
                 Vec2::new(25.7 + f, 5.9 + f),
                 Vec2::new(5.3, 15.1 + f),
             ],
             radius: 1.3 + f * 0.1,
-        };
+        });
         let image = draw(shape.bounds(), shape, None, 1.25);
         assert_eq!(image.decal_min, Vec2::splat(-f32::MAX), "triangle {i}");
         assert_eq!(image.decal_max, Vec2::splat(f32::MAX), "triangle {i}");
     }
-    let shape = PlacedOutline::Rect {
+    let shape = PlacedClosed::Box(PlacedBox {
         rect: Rect::new(5.0, 5.0, 50.0, 25.0),
         corners: Corners::all(4.0),
-    };
+    });
     let image = draw(
         Rect::from_min_max(
             Vec2::new(5.0 + 1.0 / 64.0, 5.0),

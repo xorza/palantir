@@ -24,7 +24,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_backdrop_payload::BackdropDraw;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropOutline, DrawBackdropPayload,
+    BackdropGeometry, DrawBackdropPayload,
 };
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_effect_payload::{
@@ -49,8 +49,8 @@ use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
-use crate::shape::geometry::shape_outline::PlacedOutline;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -151,10 +151,12 @@ fn paint_backdrop(paint: RectPaint, look: BackdropLook, out: &mut impl PaintSink
     let RectPaint { quad, spin, alpha } = paint;
     out.draw(
         DrawBackdropPayload {
-            outline: BackdropOutline::Rect {
+            geometry: BackdropGeometry::Box {
                 coverage: quad.coverage,
-                rect: quad.rect,
-                corners: quad.corners,
+                placed: PlacedBox {
+                    rect: quad.rect,
+                    corners: quad.corners,
+                },
             },
             spin,
             fill: quad.fill.gpu_fill(),
@@ -406,7 +408,7 @@ impl PlaneCtx<'_, '_> {
                         return;
                     };
                     // Placed in the logical placement, as a rect is.
-                    let points = placed.centers.map(|q| owner_rect.min + q);
+                    let placed = placed.translated(owner_rect.min);
                     let fill = self.brush_source(*fill);
                     let site = BackdropSite {
                         owner: id,
@@ -416,10 +418,7 @@ impl PlaneCtx<'_, '_> {
                     if let Some(look) = self.backdrop_look(site, *material) {
                         out.draw(
                             DrawBackdropPayload {
-                                outline: BackdropOutline::Triangle {
-                                    points,
-                                    radius: placed.radius,
-                                },
+                                geometry: BackdropGeometry::Triangle(placed),
                                 spin,
                                 fill: fill.gpu_fill(),
                                 fill_axis: fill.fill_axis(),
@@ -432,7 +431,7 @@ impl PlaneCtx<'_, '_> {
                         );
                     } else {
                         let triangle = DrawQuadPayload::triangle(TriangleQuad {
-                            points,
+                            points: placed.centers,
                             radius: placed.radius,
                             fill,
                             border: *border,
@@ -559,9 +558,9 @@ impl PlaneCtx<'_, '_> {
             }
             // An effect fades, turns and reads its time with its paint animation. A backdrop effect
             // the cascade lists not lies outside every clip.
-            ShapeRecord::Effect {
+            ShapeRecord::EffectPaint {
                 backdrop,
-                outline,
+                geometry,
                 effect,
                 params,
                 images,
@@ -588,12 +587,12 @@ impl PlaneCtx<'_, '_> {
                     }),
                     None => None,
                 };
-                let Some(outline) = outline.place(owner_rect) else {
+                let Some(placed) = geometry.place(owner_rect) else {
                     return;
                 };
                 out.draw(
                     DrawEffectPayload {
-                        outline,
+                        geometry: placed,
                         spin,
                         effect: *effect,
                         params: *params,
@@ -605,7 +604,7 @@ impl PlaneCtx<'_, '_> {
                     alpha,
                 );
             }
-            ShapeRecord::Icon {
+            ShapeRecord::IconPaint {
                 local_rect,
                 handle,
                 fit,
@@ -624,8 +623,8 @@ impl PlaneCtx<'_, '_> {
                     alpha,
                 );
             }
-            ShapeRecord::Image {
-                outline,
+            ShapeRecord::ImagePaint {
+                geometry,
                 tint,
                 source,
                 fit,
@@ -634,13 +633,15 @@ impl PlaneCtx<'_, '_> {
                 downsample,
             } => {
                 // The rect the image fits in, and the shape that clips it, where one does.
-                let Some(placed) = outline.place(owner_rect) else {
+                let Some(placed) = geometry.place(owner_rect) else {
                     return;
                 };
                 let base = placed.bounds();
                 // Square corners clip nothing past the image's own rect.
-                let outline = match placed {
-                    PlacedOutline::Rect { corners, .. } if corners == Corners::ZERO => None,
+                let clip = match placed {
+                    PlacedClosed::Box(PlacedBox { corners, .. }) if corners == Corners::ZERO => {
+                        None
+                    }
                     _ => Some(placed),
                 };
                 // Either source carries its texture id; a `GpuView` also names its owner, whose
@@ -682,7 +683,7 @@ impl PlaneCtx<'_, '_> {
                 out.draw(
                     DrawImagePayload {
                         rect,
-                        outline,
+                        geometry: clip,
                         uv_min,
                         uv_size,
                         tint: *tint,

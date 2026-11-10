@@ -262,10 +262,10 @@ driver serves that command alone; the drive table's `version` names it
   box's one draw. A pair the pipeline cannot draw panics at `add_shape`: a triangle's shadow, a
   polyline's ramp, an icon's corners.
 - **A shape clips its image**, as CSS's `border-radius` clips an `object-fit` image: the image
-  fits the rect, a triangle's covering rect, and a contained one shows nothing past its own rect,
-  its edge faded there. A plain image keeps its one quad. Refused: the corners rounding the fitted
-  image, as SwiftUI's `clipShape` after `aspectRatio` does, which a triangle's image could not
-  follow.
+  fits the rect, a circle's square or a triangle's covering rect, and a contained one shows
+  nothing past its own rect, its edge faded there. A plain image keeps its one quad. Refused: the
+  corners rounding the fitted image, as SwiftUI's `clipShape` after `aspectRatio` does, which a
+  triangle's image could not follow.
 - **A gradient spans its shape's bounds**, turned with the shape: a box's rect, a triangle's
   rounded outline's bounding box, as SVG's `objectBoundingBox` spans a shape's. Refused: the
   owner's rect, which a triangle placed inside it does not fill; the screen's frame, which a turn
@@ -334,8 +334,8 @@ driver serves that command alone; the drive table's `version` names it
 - **The covered side is the shape's**: `Coverage::{Inside, Outside}` on `RectShape`, as Skia's
   inverse fill types belong to the path. Refused: a second constructor of one geometry; a flag
   setter.
-- **Images, icons and effects are paints of a shape**: an image and an effect of a rect or a
-  triangle, an icon of a rect, as Skia's `SkImageShader` and SwiftUI's
+- **Images, icons and effects are paints of a shape**: an image and an effect of a rect, a
+  circle or a triangle, an icon of a rect, as Skia's `SkImageShader` and SwiftUI's
   `ImagePaint` fill a shape. Refused: a `Brush::Image`, as a brush is saved in theme files and
   tweened, which a handle cannot be; an effect as a shape kind with a rect of its own.
 - **A triangle's effect reads its covering rect and no corners**; palantir clips it to the

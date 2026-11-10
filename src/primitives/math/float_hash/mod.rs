@@ -61,5 +61,31 @@ impl FloatHash for Vec2 {
     }
 }
 
+/// A tag byte, 0 for `None` and 1 for `Some`, then the value, so `None` and `Some` of any value
+/// hash apart.
+impl<T: FloatHash> FloatHash for Option<T> {
+    #[inline]
+    fn hash_eq<H: Hasher>(&self, state: &mut H) {
+        match self {
+            None => state.write_u8(0),
+            Some(value) => {
+                state.write_u8(1);
+                value.hash_eq(state);
+            }
+        }
+    }
+
+    #[inline]
+    fn hash_visual<H: Hasher>(&self, state: &mut H) {
+        match self {
+            None => state.write_u8(0),
+            Some(value) => {
+                state.write_u8(1);
+                value.hash_visual(state);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

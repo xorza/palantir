@@ -654,11 +654,11 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    let image =
-        |local_rect, tint, source, fit, min_filter, mag_filter, downsample| ShapeRecord::Image {
-            outline: ShapeOutline::Rect {
+    let image = |local_rect, tint, source, fit, min_filter, mag_filter, downsample| {
+        ShapeRecord::ImagePaint {
+            geometry: ClosedGeometry::Box {
                 local_rect,
-                corners: Corners::ZERO,
+                outline: BoxOutline::Rect(Corners::ZERO),
             },
             tint,
             source,
@@ -666,7 +666,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             min_filter,
             mag_filter,
             downsample,
-        };
+        }
+    };
     let texture = ImageSource::Texture {
         id: TextureId(1),
         size: glam::UVec2::new(2, 3),
@@ -682,7 +683,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ImageDownsample::Single,
     );
     moves(
-        "Image.local_rect",
+        "ImagePaint.geometry.local_rect",
         &base,
         &image(
             rect(1.0),
@@ -694,7 +695,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageDownsample::Single,
         ),
     );
-    let ShapeRecord::Image {
+    let ShapeRecord::ImagePaint {
         tint,
         source,
         fit,
@@ -706,8 +707,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     else {
         unreachable!("`image` builds an image record");
     };
-    let outlined = |outline| ShapeRecord::Image {
-        outline,
+    let shaped = |geometry| ShapeRecord::ImagePaint {
+        geometry,
         tint,
         source,
         fit,
@@ -716,28 +717,36 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         downsample,
     };
     let triangle = |radius| {
-        ShapeOutline::Triangle(TriangleGeometry {
+        ClosedGeometry::Triangle(TriangleGeometry {
             corners: [pt(0.0), pt(1.0), pt(2.0)],
             radius,
             placement: PointPlacement::NATURAL,
         })
     };
     moves(
-        "Image.outline.corners",
+        "ImagePaint.geometry.corners",
         &base,
-        &outlined(ShapeOutline::Rect {
+        &shaped(ClosedGeometry::Box {
             local_rect: rect(0.0),
-            corners: Corners::all(4.0),
+            outline: BoxOutline::Rect(Corners::all(4.0)),
         }),
     );
-    moves("Image.outline.kind", &base, &outlined(triangle(1.0)));
     moves(
-        "Image.outline.triangle",
-        &outlined(triangle(1.0)),
-        &outlined(triangle(2.0)),
+        "ImagePaint.geometry.circle",
+        &base,
+        &shaped(ClosedGeometry::Box {
+            local_rect: rect(0.0),
+            outline: BoxOutline::Circle,
+        }),
+    );
+    moves("ImagePaint.geometry.kind", &base, &shaped(triangle(1.0)));
+    moves(
+        "ImagePaint.geometry.triangle",
+        &shaped(triangle(1.0)),
+        &shaped(triangle(2.0)),
     );
     moves(
-        "Image.tint",
+        "ImagePaint.tint",
         &base,
         &image(
             rect(0.0),
@@ -750,7 +759,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Image.source",
+        "ImagePaint.source",
         &base,
         &image(
             rect(0.0),
@@ -766,7 +775,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Image.source.generation",
+        "ImagePaint.source.generation",
         &base,
         &image(
             rect(0.0),
@@ -783,7 +792,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Image.fit",
+        "ImagePaint.fit",
         &base,
         &image(
             rect(0.0),
@@ -796,7 +805,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Image.min_filter",
+        "ImagePaint.min_filter",
         &base,
         &image(
             rect(0.0),
@@ -809,7 +818,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Image.mag_filter",
+        "ImagePaint.mag_filter",
         &base,
         &image(
             rect(0.0),
@@ -823,7 +832,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     );
     // Both tap modes share the field's bit range in the hash byte; folding them would let one reuse the other's pixels.
     moves(
-        "Image.downsample=Mean",
+        "ImagePaint.downsample=Mean",
         &base,
         &image(
             rect(0.0),
@@ -836,7 +845,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Image.downsample=Peak",
+        "ImagePaint.downsample=Peak",
         &base,
         &image(
             rect(0.0),
@@ -849,7 +858,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Image.downsample Mean vs Peak",
+        "ImagePaint.downsample Mean vs Peak",
         &image(
             rect(0.0),
             white,

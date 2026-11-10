@@ -324,7 +324,8 @@ mod press {
     use crate::primitives::input::keyboard::key::Key;
     use crate::primitives::input::pointer::PointerButton;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::shape::geometry::shape_outline::PlacedOutline;
+    use crate::shape::geometry::box_geometry::PlacedBox;
+    use crate::shape::geometry::closed_geometry::PlacedClosed;
     use crate::theme::Theme;
     use crate::theme::look::press_effect::PressEffect;
     use crate::ui::Ui;
@@ -362,7 +363,7 @@ mod press {
             .iter()
             .filter_map(|call| match call {
                 PaintCall::Effect(p) => {
-                    let PlacedOutline::Rect { rect, corners } = p.outline else {
+                    let PlacedClosed::Box(PlacedBox { rect, corners }) = p.geometry else {
                         panic!("a press effect paints its button's rect");
                     };
                     Some(PressDraw {

@@ -149,10 +149,10 @@ fn shape_mesh_hash_excludes_span_offsets() {
 /// A view composite and a texture draw share `Image`'s discriminant, so [`ImageSource`]'s must separate them and the view's `epoch` must reach the hasher, or a bumped epoch keeps a stale texture.
 #[test]
 fn image_source_hashes_apart_by_source() {
-    let image = |source| ShapeRecord::Image {
-        outline: ShapeOutline::Rect {
+    let image = |source| ShapeRecord::ImagePaint {
+        geometry: ClosedGeometry::Box {
             local_rect: None,
-            corners: Corners::ZERO,
+            outline: BoxOutline::Rect(Corners::ZERO),
         },
         tint: RgbaF32::WHITE.to_f16(),
         source,
@@ -217,10 +217,10 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
                 tint: RgbaF32,
                 min_filter: ImageFilter,
                 mag_filter: ImageFilter| {
-        ShapeRecord::Image {
-            outline: ShapeOutline::Rect {
+        ShapeRecord::ImagePaint {
+            geometry: ClosedGeometry::Box {
                 local_rect: None,
-                corners: Corners::ZERO,
+                outline: BoxOutline::Rect(Corners::ZERO),
             },
             tint: tint.to_f16(),
             source: ImageSource::Texture {

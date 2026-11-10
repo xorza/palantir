@@ -750,8 +750,11 @@ fn each_blend_paints_its_exact_value() {
 /// at the other, (41, 39) at the right angle, so the rounded shape covers `w = 40 − √2` a side.
 /// A rect of the same effect after them, (80, 0, 40 × 40), runs apart, as it draws four corners'
 /// vertices, and paints the over blend at (112, 8), where a triangle's would leave the ground.
+/// A circle in (110, 0, 50 × 40) reads its square, (115, 0, 40 × 40), and its corners, 20 each:
+/// the probe paints `(40 / 80, 40 / 80, 1)` at its center (135, 20), its blue clamped from 20,
+/// and leaves the ground at (153, 2), inside the square, 25.5 px from the center, past its edge.
 #[test]
-fn a_triangle_clips_its_effect() {
+fn a_shape_clips_its_effect() {
     let got = painted(
         |ui| {
             ui.add_shape(
@@ -798,8 +801,21 @@ fn a_triangle_clips_its_effect() {
                     },
                 ),
             );
+            ui.add_shape(
+                Shape::circle().at(Rect::new(110.0, 0.0, 50.0, 40.0)),
+                EffectPaint::new(
+                    BLEND,
+                    Blend {
+                        color: [0.0; 4],
+                        mode: 4,
+                        pad0: 0,
+                        pad1: 0,
+                        pad2: 0,
+                    },
+                ),
+            );
         },
-        &[(8, 32), (32, 8), (48, 32), (112, 8)],
+        &[(8, 32), (32, 8), (48, 32), (112, 8), (135, 20), (153, 2)],
     );
     let want = [
         bytes(RgbaF32::new(0.5, 0.4, 0.4, 1.0)),
@@ -809,7 +825,10 @@ fn a_triangle_clips_its_effect() {
             bytes(RgbaF32::new(side, side, 0.0, 1.0))
         },
         bytes(RgbaF32::new(0.5, 0.4, 0.4, 1.0)),
+        bytes(RgbaF32::new(0.5, 0.5, 1.0, 1.0)),
+        bytes(RgbaF32::new(0.2, 0.4, 0.6, 1.0)),
     ];
+    assert_eq!(got.len(), want.len());
     for (got, want) in got.iter().zip(&want) {
         for lane in 0..4 {
             assert!(

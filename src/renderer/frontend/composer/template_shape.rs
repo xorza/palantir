@@ -7,7 +7,8 @@ use crate::primitives::packed::half_simd::F16x4;
 use crate::renderer::frontend::composer::lowering::Lowering;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
-use crate::shape::geometry::shape_outline::PlacedOutline;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use glam::Vec2;
 
 /// A closed shape in physical px as the shape template takes it: its covering rect, its sharp
@@ -22,37 +23,35 @@ pub(super) struct TemplateShape {
 }
 
 impl TemplateShape {
-    /// `outline` in physical px, turned by `spin` or not: its rect on the pixels [`Self::edges`]
-    /// picks, its corners fit to it; or its triangle.
-    pub(super) fn placed(
-        outline: PlacedOutline,
-        spin: Option<Spin>,
-        lowering: &Lowering<'_>,
-    ) -> Self {
-        match outline {
-            PlacedOutline::Rect { rect, corners } => {
+    /// `placed` packed in physical px, turned by `spin` or not: a box's rect on the pixels
+    /// [`Self::edges`] picks, its corners fit to it; or its triangle.
+    pub(super) fn of(placed: PlacedClosed, spin: Option<Spin>, lowering: &Lowering<'_>) -> Self {
+        match placed {
+            PlacedClosed::Box(PlacedBox { rect, corners }) => {
                 let rect = lowering
-                    .scaled_rect_with(rect, Self::edges(outline, spin, lowering))
+                    .scaled_rect_with(rect, Self::edges(placed, spin, lowering))
                     .physical;
                 Self::rounded_rect(
                     rect,
                     corners.fit_to(rect.size, lowering.transform.physical_scale()),
                 )
             }
-            PlacedOutline::Triangle { points, radius } => Self::triangle(points, radius, lowering),
+            PlacedClosed::Triangle(placed) => {
+                Self::triangle(placed.centers, placed.radius, lowering)
+            }
         }
     }
 
-    /// How `outline`'s edges round: a still rect's to the display's pixels; a turned rect's
+    /// How `placed`'s edges round: a still box's to the display's pixels; a turned box's
     /// exactly, as its edges are not on the pixel grid, and a triangle's, which places itself to
     /// the sub-pixel.
     pub(super) const fn edges(
-        outline: PlacedOutline,
+        placed: PlacedClosed,
         spin: Option<Spin>,
         lowering: &Lowering<'_>,
     ) -> EdgeRounding {
-        match (outline, spin) {
-            (PlacedOutline::Rect { .. }, None) => lowering.display.edge_rounding(),
+        match (placed, spin) {
+            (PlacedClosed::Box(_), None) => lowering.display.edge_rounding(),
             _ => EdgeRounding::Exact,
         }
     }

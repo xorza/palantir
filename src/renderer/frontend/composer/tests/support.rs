@@ -33,7 +33,8 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::shape::geometry::shape_outline::PlacedOutline;
+use crate::shape::geometry::box_geometry::PlacedBox;
+use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::text::key::TextShapeKey;
@@ -140,7 +141,7 @@ fn run_in(
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
     DrawImagePayload {
         rect,
-        outline: None,
+        geometry: None,
         uv_min: Vec2::ZERO,
         uv_size: Vec2::ONE,
         tint: RgbaF32::WHITE.to_f16(),
@@ -312,10 +313,10 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawEffectPayload {
-            outline: PlacedOutline::Rect {
+            geometry: PlacedClosed::Box(PlacedBox {
                 rect: r,
                 corners: Corners::ZERO,
-            },
+            }),
             spin: None,
             effect: EffectId(0),
             params: Span::new(0, 2),
@@ -332,7 +333,7 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
     b.draw(
         DrawImagePayload {
             rect: r,
-            outline: None,
+            geometry: None,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
             tint: RgbaF32::WHITE.to_f16(),

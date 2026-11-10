@@ -4,7 +4,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::geometry::triangle_geometry::TriangleGeometry;
+use crate::shape::geometry::triangle_geometry::{PlacedTriangle, TriangleGeometry};
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
@@ -54,7 +54,7 @@ impl QuadShape {
             }
             Self::Triangle { geometry, .. } => geometry
                 .place(owner_size)
-                .map_or(Rect::ZERO, |placed| placed.bbox),
+                .map_or(Rect::ZERO, PlacedTriangle::bbox),
         }
     }
 }

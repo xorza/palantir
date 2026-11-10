@@ -1,4 +1,5 @@
-//! [`EffectPaint`]: an effect of either kind over a rect. Lowers to `ShapeRecord::Effect`.
+//! [`EffectPaint`]: an effect of either kind over a rect, a circle or a triangle. Lowers to
+//! `ShapeRecord::EffectPaint`.
 
 use std::fmt;
 
@@ -10,18 +11,20 @@ use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::math::domain;
 use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::shape::PaintedBy;
+use crate::shape::circle::CircleShape;
 use crate::shape::draw::Draw;
-use crate::shape::geometry::shape_outline::ShapeOutline;
+use crate::shape::geometry::box_geometry::BoxOutline;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::record::EffectCapture;
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 use crate::shape::triangle::TriangleShape;
 
-/// An app-written effect over a [`RectShape`] or a [`TriangleShape`]
-/// ([`Ui::add_shape`](crate::Ui::add_shape)), with one
-/// instance of its parameters: a color effect ([`Self::new`] of a color effect's name), or a
-/// backdrop effect, which also reads what is painted under it. Paints in record order, as any
+/// An app-written effect over a [`RectShape`], a [`CircleShape`] or a [`TriangleShape`]
+/// ([`Ui::add_shape`](crate::Ui::add_shape)), with one instance of its parameters: a color
+/// effect ([`Self::new`] of a color effect's name), or a backdrop effect, which also reads what is
+/// painted under it. Paints in record order, as any
 /// paint does, and its rect may exceed its node, as a ring does; clipping ancestors clip it.
 /// Refused: a `Brush` variant, which every brush family would have to draw, and which a theme
 /// file saves where no parameters fit: a box's backdrop effect is its [`Material`](crate::Material).
@@ -142,10 +145,28 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Rec
     }
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
-        Draw::Effect {
-            outline: ShapeOutline::Rect {
+        Draw::EffectPaint {
+            geometry: ClosedGeometry::Box {
                 local_rect: self.local_rect,
-                corners: self.corners,
+                outline: BoxOutline::Rect(self.corners),
+            },
+            paint: paint.erased(),
+        }
+    }
+}
+
+impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape {}
+
+/// An effect over a circle: its `EffectInput` holds the circle's square, its corners each half its
+/// side.
+impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for CircleShape {
+    fn check(&self, _paint: &EffectPaint<U, K>) {}
+
+    fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
+        Draw::EffectPaint {
+            geometry: ClosedGeometry::Box {
+                local_rect: self.local_rect,
+                outline: BoxOutline::Circle,
             },
             paint: paint.erased(),
         }
@@ -160,8 +181,8 @@ impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for Tri
     fn check(&self, _paint: &EffectPaint<U, K>) {}
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
-        Draw::Effect {
-            outline: ShapeOutline::Triangle(TriangleGeometry {
+        Draw::EffectPaint {
+            geometry: ClosedGeometry::Triangle(TriangleGeometry {
                 corners: self.corners,
                 radius: self.radius,
                 placement: self.placement,

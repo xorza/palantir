@@ -20,7 +20,7 @@ use crate::shape::curve::CurveShape;
 use crate::shape::effect_paint::ErasedEffectPaint;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::geometry::shape_outline::ShapeOutline;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::mesh::MeshShape;
@@ -65,18 +65,18 @@ pub(crate) enum Draw<'a> {
         shape: &'a MeshShape<'a>,
         tint: RgbaF32,
     },
-    /// An image over a rect or a triangle.
-    Image {
-        outline: ShapeOutline,
+    /// An image over a rect, a circle or a triangle.
+    ImagePaint {
+        geometry: ClosedGeometry,
         paint: &'a ImagePaint,
     },
-    Icon {
+    IconPaint {
         rect: &'a RectShape,
         paint: &'a IconPaint,
     },
-    /// An app's effect over a rect or a triangle.
-    Effect {
-        outline: ShapeOutline,
+    /// An app's effect over a rect, a circle or a triangle.
+    EffectPaint {
+        geometry: ClosedGeometry,
         paint: ErasedEffectPaint<'a>,
     },
 }
@@ -85,6 +85,6 @@ impl Draw<'_> {
     /// Whether the draw reads a paint animation's time, so an animation that drives no channel
     /// still moves it: only an effect does.
     pub(crate) const fn reads_time(&self) -> bool {
-        matches!(self, Self::Effect { .. })
+        matches!(self, Self::EffectPaint { .. })
     }
 }

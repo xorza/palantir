@@ -39,7 +39,7 @@ use crate::primitives::paint::paint::Paint;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::shape::arc::ArcShape;
 use crate::shape::circle::CircleShape;
-use crate::shape::curve::{CurveGeometry, CurveShape};
+use crate::shape::curve::{CurvePath, CurveShape};
 use crate::shape::mesh::MeshShape;
 use crate::shape::polyline::PolylineShape;
 use crate::shape::rect::RectShape;
@@ -56,8 +56,9 @@ use glam::Vec2;
 ///   an [`IconPaint`](crate::widget::IconPaint). An image takes a rect that covers its inside, its
 ///   corners clipping it; an icon a square-cornered rect that covers its inside, and an effect a
 ///   rect that covers its inside: their pipelines clip to no other.
-/// - A circle takes an `IntoPaint` as a round box and a [`Stroke`](crate::Stroke) as a closed
-///   arc.
+/// - A circle takes an `IntoPaint` as a round box, a [`Stroke`](crate::Stroke) as a closed arc,
+///   an `ImagePaint` fit to its square, and an `EffectPaint`, which reads its square and its
+///   corners.
 /// - A triangle takes an `IntoPaint` of a fill, a border and a material, an `ImagePaint`, and an
 ///   `EffectPaint`, which reads the triangle's covering rect and no corners.
 /// - A line, a Bézier, an arc and a polyline take a `Stroke`.
@@ -181,7 +182,7 @@ impl Shape {
     #[track_caller]
     pub const fn line(a: Vec2, b: Vec2) -> CurveShape {
         let (a, b) = (vec2::offset(a), vec2::offset(b));
-        CurveShape::new(CurveGeometry::Line { a, b })
+        CurveShape::new(CurvePath::Line { a, b })
     }
 
     /// A polyline through `points`, logical px from its rect's top-left.
@@ -205,7 +206,7 @@ impl Shape {
     #[track_caller]
     pub const fn cubic_bezier(bezier: CubicBezier) -> CurveShape {
         bezier.validate();
-        CurveShape::new(CurveGeometry::CubicBezier(bezier))
+        CurveShape::new(CurvePath::CubicBezier(bezier))
     }
 
     /// A quadratic Bézier `bezier`, logical px from its rect's top-left.
@@ -216,7 +217,7 @@ impl Shape {
     #[track_caller]
     pub const fn quadratic_bezier(bezier: QuadraticBezier) -> CurveShape {
         bezier.validate();
-        CurveShape::new(CurveGeometry::QuadraticBezier(bezier))
+        CurveShape::new(CurvePath::QuadraticBezier(bezier))
     }
 
     /// A shaped text run in `font`, single-line, top-left.

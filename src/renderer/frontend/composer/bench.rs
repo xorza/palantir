@@ -33,7 +33,7 @@ use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_backdrop_payload::{
-    BackdropDraw, BackdropOutline, DrawBackdropPayload,
+    BackdropDraw, BackdropGeometry, DrawBackdropPayload,
 };
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
@@ -46,6 +46,7 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_border::LoweredBorder;
@@ -351,10 +352,12 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
     let footprint = URect::covering(rect.inflated(PlaneBackdrop::reach(plan, 0)));
     cmds.draw(
         DrawBackdropPayload {
-            outline: BackdropOutline::Rect {
+            geometry: BackdropGeometry::Box {
                 coverage: Coverage::Inside,
-                rect,
-                corners: Corners::ZERO,
+                placed: PlacedBox {
+                    rect,
+                    corners: Corners::ZERO,
+                },
             },
             spin: None,
             fill: BrushSource::Solid(RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16()).gpu_fill(),
@@ -426,7 +429,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
         DrawImagePayload {
             rect,
-            outline: None,
+            geometry: None,
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
             tint: RgbaF32::WHITE.to_f16(),

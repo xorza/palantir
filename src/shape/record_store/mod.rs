@@ -38,7 +38,7 @@ use crate::shape::effect_paint::ErasedEffectPaint;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::BoxGeometry;
-use crate::shape::geometry::shape_outline::ShapeOutline;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::triangle_geometry::{self, TriangleGeometry};
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
@@ -88,11 +88,11 @@ pub(crate) struct RecordStore {
     /// The families of the shaper that shapes what this store records, keyed as a text shape
     /// lowers. `Default` gives a table of its own, for a store no shaper reads.
     families: FamilyKeys,
-    /// Parameter words for `ShapeRecord::Effect`, indexed by the record's `params`: each
+    /// Parameter words for `ShapeRecord::EffectPaint`, indexed by the record's `params`: each
     /// instance's `EffectParams` bytes, as the backend's storage buffer holds them.
     pub(crate) effect_params: Vec<u32>,
-    /// Image storage for `ShapeRecord::Effect`, indexed by the record's `images`: each instance's
-    /// bound images, in slot order.
+    /// Image storage for `ShapeRecord::EffectPaint`, indexed by the record's `images`: each
+    /// instance's bound images, in slot order.
     pub(crate) effect_images: Vec<TextureId>,
 }
 
@@ -145,9 +145,9 @@ impl RecordStore {
             Draw::Polyline { shape, stroke } => self.record_polyline(shape, stroke),
             Draw::Text { shape, color } => self.record_text(shape, color),
             Draw::Mesh { shape, tint } => self.record_mesh(shape, tint),
-            Draw::Image { outline, paint } => self.record_image(outline, paint),
-            Draw::Icon { rect, paint } => self.record_icon(rect, paint),
-            Draw::Effect { outline, paint } => self.record_effect(outline, paint, resolve),
+            Draw::ImagePaint { geometry, paint } => self.record_image(geometry, paint),
+            Draw::IconPaint { rect, paint } => self.record_icon(rect, paint),
+            Draw::EffectPaint { geometry, paint } => self.record_effect(geometry, paint, resolve),
         }
     }
 
@@ -238,10 +238,7 @@ impl RecordStore {
     /// ([`BezierGeometry::place`]): a curve of no length paints its cap there, as a fit can move
     /// its point. A butt cap on no length has no extent, so it drops here.
     fn record_curve(&mut self, shape: &CurveShape, stroke: &Stroke) -> Option<ShapeRecord> {
-        let CurveShape {
-            geometry,
-            placement,
-        } = *shape;
+        let CurveShape { path, placement } = *shape;
         // The width and color enter through `LoweredStroke::lower`.
         let Stroke {
             width: _,
@@ -250,13 +247,13 @@ impl RecordStore {
             cap,
             join: _,
         } = *stroke;
-        if stroke.is_noop() || (cap == LineCap::Butt && geometry.point().is_some()) {
+        if stroke.is_noop() || (cap == LineCap::Butt && path.point().is_some()) {
             return None;
         }
         Some(ShapeRecord::Curve {
             cap,
             geometry: BezierGeometry {
-                bezier: geometry.bezier(),
+                bezier: path.bezier(),
                 placement,
             },
             stroke: LoweredStroke::lower(*stroke),
@@ -396,9 +393,9 @@ impl RecordStore {
         })
     }
 
-    /// The record of `paint` over `outline`; `None` where it paints nothing: a rect of no size, a
+    /// The record of `paint` over `geometry`; `None` where it paints nothing: a box of no size, a
     /// triangle of no area, which no fit gives one, or an invisible tint.
-    fn record_image(&self, outline: ShapeOutline, paint: &ImagePaint) -> Option<ShapeRecord> {
+    fn record_image(&self, geometry: ClosedGeometry, paint: &ImagePaint) -> Option<ShapeRecord> {
         let ImagePaint {
             handle,
             fit,
@@ -409,11 +406,11 @@ impl RecordStore {
         } = paint;
         let (fit, min_filter, mag_filter, downsample, tint) =
             (*fit, *min_filter, *mag_filter, *downsample, *tint);
-        if outline.is_paint_empty() || tint.is_noop() {
+        if geometry.is_paint_empty() || tint.is_noop() {
             return None;
         }
-        Some(ShapeRecord::Image {
-            outline,
+        Some(ShapeRecord::ImagePaint {
+            geometry,
             tint: tint.to_f16(),
             source: ImageSource::Texture {
                 id: handle.id(),
@@ -443,7 +440,7 @@ impl RecordStore {
         if local_rect.is_some_and(Rect::is_paint_empty) || tint.is_noop() {
             return None;
         }
-        Some(ShapeRecord::Icon {
+        Some(ShapeRecord::IconPaint {
             local_rect,
             handle,
             fit,
@@ -452,7 +449,7 @@ impl RecordStore {
         })
     }
 
-    /// The record of `paint` over `outline`, its name resolved in `resolve`, its parameters and
+    /// The record of `paint` over `geometry`, its name resolved in `resolve`, its parameters and
     /// images copied here; `None` where it paints nothing.
     ///
     /// # Panics
@@ -462,7 +459,7 @@ impl RecordStore {
     #[track_caller]
     fn record_effect(
         &mut self,
-        outline: ShapeOutline,
+        geometry: ClosedGeometry,
         paint: ErasedEffectPaint<'_>,
         resolve: Resolve<'_>,
     ) -> Option<ShapeRecord> {
@@ -486,7 +483,8 @@ impl RecordStore {
             name.name.as_str(),
             resolved.image_slots,
         );
-        if outline.is_paint_empty() || (reduced && reduced_transparency == ReducedBackdrop::Nothing)
+        if geometry.is_paint_empty()
+            || (reduced && reduced_transparency == ReducedBackdrop::Nothing)
         {
             return None;
         }
@@ -513,9 +511,9 @@ impl RecordStore {
             Some(EffectBackdrop::Ground) => h.write_u8(2),
             None => {}
         }
-        Some(ShapeRecord::Effect {
+        Some(ShapeRecord::EffectPaint {
             backdrop,
-            outline,
+            geometry,
             effect,
             params: self.stage_effect_params(params),
             images: self.stage_effect_images(images.iter().flatten()),

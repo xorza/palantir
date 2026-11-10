@@ -164,7 +164,7 @@ fn image_dimensions_above_u16_survive_lowering() {
         ),
         Some(0)
     );
-    let ShapeRecord::Image {
+    let ShapeRecord::ImagePaint {
         source: ImageSource::Texture { size, .. },
         ..
     } = shapes.records[0]
@@ -174,15 +174,16 @@ fn image_dimensions_above_u16_survive_lowering() {
     assert_eq!(size, UVec2::new(WIDTH, 1));
 }
 
-/// An image keeps its rect's corners or its triangle in the record, which clip it; a rect that
-/// covers its outside stays refused, as the image pipeline clips to no side.
+/// An image keeps its rect's corners, its circle or its triangle in the record, which clip it; a
+/// rect that covers its outside stays refused, as the image pipeline clips to no side.
 #[test]
 fn an_image_keeps_the_shape_that_clips_it() {
     use crate::internals::panic_probe;
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::geometry::coverage::Coverage;
+    use crate::shape::geometry::box_geometry::BoxOutline;
+    use crate::shape::geometry::closed_geometry::ClosedGeometry;
     use crate::shape::geometry::point_placement::PointPlacement;
-    use crate::shape::geometry::shape_outline::ShapeOutline;
     use crate::shape::geometry::triangle_geometry::TriangleGeometry;
     use crate::shape::sealed::DrawWith;
 
@@ -193,14 +194,14 @@ fn an_image_keeps_the_shape_that_clips_it() {
     let paint = paint_of(4);
     rounded.check(&paint);
     assert_eq!(add(&mut shapes, (rounded, paint), &mut store), Some(0));
-    let ShapeRecord::Image { outline, .. } = shapes.records[0] else {
+    let ShapeRecord::ImagePaint { geometry, .. } = shapes.records[0] else {
         panic!("an image lowers to an image record");
     };
     assert_eq!(
-        outline,
-        ShapeOutline::Rect {
+        geometry,
+        ClosedGeometry::Box {
             local_rect: None,
-            corners: Corners::new(1.0, 2.0, 3.0, 4.0),
+            outline: BoxOutline::Rect(Corners::new(1.0, 2.0, 3.0, 4.0)),
         }
     );
     // A triangle takes an image, its geometry kept for the draw to place; one of no area paints
@@ -212,12 +213,12 @@ fn an_image_keeps_the_shape_that_clips_it() {
         add(&mut shapes, (triangle, paint_of(4)), &mut store),
         Some(1)
     );
-    let ShapeRecord::Image { outline, .. } = shapes.records[1] else {
+    let ShapeRecord::ImagePaint { geometry, .. } = shapes.records[1] else {
         panic!("a triangle's image lowers to an image record");
     };
     assert_eq!(
-        outline,
-        ShapeOutline::Triangle(TriangleGeometry {
+        geometry,
+        ClosedGeometry::Triangle(TriangleGeometry {
             corners,
             radius: 1.0,
             placement: PointPlacement::NATURAL,
@@ -225,6 +226,23 @@ fn an_image_keeps_the_shape_that_clips_it() {
     );
     let flat = Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::new(2.0, 0.0));
     assert_eq!(add(&mut shapes, (flat, paint_of(4)), &mut store), None);
+    // A circle takes an image as a round box; one at a rect of no size paints nothing.
+    let at = Rect::new(1.0, 2.0, 8.0, 4.0);
+    let circle = Shape::circle().at(at);
+    circle.check(&paint_of(4));
+    assert_eq!(add(&mut shapes, (circle, paint_of(4)), &mut store), Some(2));
+    let ShapeRecord::ImagePaint { geometry, .. } = shapes.records[2] else {
+        panic!("a circle's image lowers to an image record");
+    };
+    assert_eq!(
+        geometry,
+        ClosedGeometry::Box {
+            local_rect: Some(at),
+            outline: BoxOutline::Circle,
+        }
+    );
+    let empty = Shape::circle().at(Rect::new(1.0, 2.0, 0.0, 4.0));
+    assert_eq!(add(&mut shapes, (empty, paint_of(4)), &mut store), None);
     panic_probe::assert_panics_with("an image paints the inside of its rect", || {
         Shape::rect()
             .coverage(Coverage::Outside)

@@ -1,4 +1,4 @@
-//! [`IconPaint`]: a baked icon over a rect. Lowers to `ShapeRecord::Icon`.
+//! [`IconPaint`]: a baked icon over a rect. Lowers to `ShapeRecord::IconPaint`.
 
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::icon_handle::IconHandle;
@@ -69,6 +69,6 @@ impl sealed::DrawWith<IconPaint> for RectShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a IconPaint) -> Draw<'a> {
-        Draw::Icon { rect: self, paint }
+        Draw::IconPaint { rect: self, paint }
     }
 }

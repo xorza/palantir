@@ -1,22 +1,25 @@
-//! [`ImagePaint`]: a registered image over a rect. Lowers to `ShapeRecord::Image`.
+//! [`ImagePaint`]: a registered image over a rect, a circle or a triangle. Lowers to
+//! `ShapeRecord::ImagePaint`.
 
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::PaintedBy;
+use crate::shape::circle::CircleShape;
 use crate::shape::draw::Draw;
-use crate::shape::geometry::shape_outline::ShapeOutline;
+use crate::shape::geometry::box_geometry::BoxOutline;
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::rect::RectShape;
 use crate::shape::sealed;
 use crate::shape::triangle::TriangleShape;
 
-/// A registered [`ImageHandle`] painted over a [`RectShape`] or a [`TriangleShape`]
-/// ([`Ui::add_shape`](crate::Ui::add_shape)), as Skia's `SkImageShader` fills a shape. The image
-/// fits the rect, a triangle's covering rect, by its [`ImageFit`], and the shape clips it, as
-/// CSS's `border-radius` clips an `object-fit` image: a contained image shows nothing past its own
-/// rect.
+/// A registered [`ImageHandle`] painted over a [`RectShape`], a [`CircleShape`] or a
+/// [`TriangleShape`] ([`Ui::add_shape`](crate::Ui::add_shape)), as Skia's `SkImageShader` fills a
+/// shape. The image fits the rect, a circle's square or a triangle's covering rect, by its
+/// [`ImageFit`], and the shape clips it, as CSS's `border-radius` clips an `object-fit` image: a
+/// contained image shows nothing past its own rect.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ImagePaint {
@@ -96,10 +99,27 @@ impl sealed::DrawWith<ImagePaint> for RectShape {
     }
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
-        Draw::Image {
-            outline: ShapeOutline::Rect {
+        Draw::ImagePaint {
+            geometry: ClosedGeometry::Box {
                 local_rect: self.local_rect,
-                corners: self.corners,
+                outline: BoxOutline::Rect(self.corners),
+            },
+            paint,
+        }
+    }
+}
+
+impl PaintedBy<ImagePaint> for CircleShape {}
+
+/// An image over a circle, fit to the circle's square and clipped to the circle.
+impl sealed::DrawWith<ImagePaint> for CircleShape {
+    fn check(&self, _paint: &ImagePaint) {}
+
+    fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
+        Draw::ImagePaint {
+            geometry: ClosedGeometry::Box {
+                local_rect: self.local_rect,
+                outline: BoxOutline::Circle,
             },
             paint,
         }
@@ -113,8 +133,8 @@ impl sealed::DrawWith<ImagePaint> for TriangleShape {
     fn check(&self, _paint: &ImagePaint) {}
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
-        Draw::Image {
-            outline: ShapeOutline::Triangle(TriangleGeometry {
+        Draw::ImagePaint {
+            geometry: ClosedGeometry::Triangle(TriangleGeometry {
                 corners: self.corners,
                 radius: self.radius,
                 placement: self.placement,
