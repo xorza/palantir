@@ -14,6 +14,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
+use crate::shape::geometry::stroke_geometry::StrokeGeometry;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::shape::record::ShapeRecord;
 use crate::theme::spinner::SpinnerTheme;
@@ -82,10 +83,9 @@ fn arc_and_spin_follow_the_spinner_theme() {
             .records
             .iter()
             .find_map(|s| match s {
-                ShapeRecord::Arc {
-                    geometry: ArcGeometry { sweep, .. },
+                ShapeRecord::Stroke {
+                    geometry: StrokeGeometry::Arc(ArcGeometry { sweep, .. }),
                     stroke,
-                    ..
                 } => Some((*sweep, stroke.width)),
                 _ => None,
             })
@@ -149,6 +149,41 @@ fn arc_and_spin_follow_the_spinner_theme() {
     assert_ne!(width, width_b);
 }
 
+/// A spinner of no sweep, or of no radius under a stroke as wide as it, draws no arc: the dot its
+/// cap would paint takes the comet's transparent tail, so the spinner records no shape and runs no
+/// turn, and its frame schedules no other.
+#[test]
+fn a_spinner_of_no_length_draws_nothing() {
+    let stock = Theme::stock(ColorScheme::Dark).spinner;
+    for (label, sweep, width) in [
+        ("no sweep", 0.0, None),
+        ("no radius", stock.sweep, Some(24.0)),
+    ] {
+        let mut h = Harness::mono(UVec2::new(100, 100));
+        h.ui_mut().theme_mut().spinner = SpinnerTheme {
+            sweep,
+            ..stock.clone()
+        };
+        let report = h.frame(|ui| {
+            let spinner = Spinner::new().id(WidgetId::from_hash("spin")).size(24.0);
+            match width {
+                Some(px) => spinner.width(px),
+                None => spinner,
+            }
+            .show(ui);
+        });
+        let tree = h.ui().tree(Layer::Main);
+        assert!(tree.shapes.records.is_empty(), "{label}");
+        assert!(tree.paint_animations.entries.is_empty(), "{label}");
+        assert_eq!(report.repaint_at, None, "{label}");
+    }
+    assert_eq!(
+        comet().stops[0].color().a,
+        0.0,
+        "the comet's tail is transparent"
+    );
+}
+
 /// Comet trail: transparent white tail, opaque white head, so the stroke color sets the hue; a translucent base keeps its alpha at the head.
 #[test]
 fn comet_fades_tail_to_head() {
@@ -200,13 +235,13 @@ fn a_fixed_size_sets_the_box_and_the_arc() {
             .records
             .iter()
             .find_map(|s| match s {
-                ShapeRecord::Arc {
+                ShapeRecord::Stroke {
                     geometry:
-                        ArcGeometry {
+                        StrokeGeometry::Arc(ArcGeometry {
                             local_rect: Some(rect),
                             start_angle,
                             sweep,
-                        },
+                        }),
                     ..
                 } => Some(CircularArc::inscribed(*rect, *start_angle, *sweep)),
                 _ => None,

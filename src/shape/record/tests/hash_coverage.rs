@@ -3,15 +3,21 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter};
+use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::shape::geometry::arc_geometry::ArcGeometry;
+use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
+use crate::shape::geometry::stroke_geometry::{PolylineColorSpan, PolylineGeometry};
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
+use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
@@ -21,7 +27,7 @@ use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
-/// Every field of every record moves the hash, or is listed as deliberately excluded and must not. The compiler catches only new fields, not one bound and never hashed. Exclusions: `bbox` is derived, spans are frame-local, `Polyline`/`Mesh` fold bulk inputs into `content_hash`.
+/// Every field of every record moves the hash, or is listed as deliberately excluded and must not. The compiler catches only new fields, not one bound and never hashed. Exclusions: `bbox` is derived, spans are frame-local, a polyline's geometry and `Mesh` fold bulk inputs into `content_hash`.
 #[test]
 fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     #[track_caller]
@@ -268,40 +274,67 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &tri(corners, 1.0, natural, solid, stroke2),
     );
 
-    let poly =
-        |width, color_mode, cap, join, points, colors, bbox, content_hash| ShapeRecord::Polyline {
-            width,
-            color_mode,
-            cap,
-            join,
-            points,
-            colors,
-            bbox,
-            placement: PointPlacement::NATURAL,
-            content_hash: ContentHash::from_u64(content_hash),
-        };
-    let base = poly(
-        1.0,
-        ColorMode::Single,
-        LineCap::Butt,
-        LineJoin::Miter,
-        Span::new(0, 2),
-        Span::new(0, 1),
-        Rect::ZERO,
-        7,
-    );
+    // A stroke's paint, apart from a border's: each of its fields moves the hash of every kind of
+    // path, a ramp by its content hash and never by its frame-local id.
+    let none = CurveRamp::None;
+    let interned = |id, hash| CurveRamp::Interned {
+        id: GradientId(id),
+        hash: ContentHash::from_u64(hash),
+    };
+    let line = LoweredStroke::lower(Stroke::new(RgbaF32::BLACK, 1.0), none);
+    let line_changes = [
+        ("width", LoweredStroke { width: 2.0, ..line }),
+        (
+            "color",
+            LoweredStroke {
+                color: RgbaF32::srgba(1.0, 0.0, 0.0, 1.0).to_f16(),
+                ..line
+            },
+        ),
+        (
+            "cap",
+            LoweredStroke {
+                cap: LineCap::Round,
+                ..line
+            },
+        ),
+        (
+            "join",
+            LoweredStroke {
+                join: LineJoin::Round,
+                ..line
+            },
+        ),
+        (
+            "ramp present",
+            LoweredStroke {
+                ramp: interned(0, 1),
+                ..line
+            },
+        ),
+    ];
+
+    let polyline = PolylineGeometry {
+        points: Span::new(0, 2),
+        colors: PolylineColorSpan::PerPoint(Span::new(0, 2)),
+        bbox: Rect::ZERO,
+        placement: PointPlacement::NATURAL,
+        content_hash: ContentHash::from_u64(7),
+    };
+    let poly = |geometry, stroke| ShapeRecord::Stroke {
+        geometry: StrokeGeometry::Polyline(geometry),
+        stroke,
+    };
+    let base = poly(polyline, line);
     moves(
         "Polyline.content_hash",
         &base,
         &poly(
-            1.0,
-            ColorMode::Single,
-            LineCap::Butt,
-            LineJoin::Miter,
-            Span::new(0, 2),
-            Span::new(0, 1),
-            Rect::ZERO,
-            8,
+            PolylineGeometry {
+                content_hash: ContentHash::from_u64(8),
+                ..polyline
+            },
+            line,
         ),
     );
     for (label, placement) in placements(rect) {
@@ -311,105 +344,47 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             &replaced(base.clone(), placement),
         );
     }
-    // Folded into `content_hash` at lowering; must not be hashed twice.
-    excluded(
-        "Polyline.width",
-        &base,
-        &poly(
-            2.0,
-            ColorMode::Single,
-            LineCap::Butt,
-            LineJoin::Miter,
-            Span::new(0, 2),
-            Span::new(0, 1),
-            Rect::ZERO,
-            7,
+    for (label, stroke) in line_changes {
+        moves(
+            &format!("Polyline.stroke.{label}"),
+            &base,
+            &poly(polyline, stroke),
+        );
+    }
+    // The spans are frame-local, the colors' kind is folded into `content_hash` at lowering, and
+    // `bbox` derives from the points.
+    for (label, geometry) in [
+        (
+            "points span",
+            PolylineGeometry {
+                points: Span::new(99, 2),
+                ..polyline
+            },
         ),
-    );
-    excluded(
-        "Polyline.color_mode",
-        &base,
-        &poly(
-            1.0,
-            ColorMode::PerPoint,
-            LineCap::Butt,
-            LineJoin::Miter,
-            Span::new(0, 2),
-            Span::new(0, 1),
-            Rect::ZERO,
-            7,
+        (
+            "colors span",
+            PolylineGeometry {
+                colors: PolylineColorSpan::PerPoint(Span::new(99, 2)),
+                ..polyline
+            },
         ),
-    );
-    excluded(
-        "Polyline.cap",
-        &base,
-        &poly(
-            1.0,
-            ColorMode::Single,
-            LineCap::Round,
-            LineJoin::Miter,
-            Span::new(0, 2),
-            Span::new(0, 1),
-            Rect::ZERO,
-            7,
+        (
+            "colors kind",
+            PolylineGeometry {
+                colors: PolylineColorSpan::Single,
+                ..polyline
+            },
         ),
-    );
-    excluded(
-        "Polyline.join",
-        &base,
-        &poly(
-            1.0,
-            ColorMode::Single,
-            LineCap::Butt,
-            LineJoin::Round,
-            Span::new(0, 2),
-            Span::new(0, 1),
-            Rect::ZERO,
-            7,
+        (
+            "bbox",
+            PolylineGeometry {
+                bbox: Rect::new(5.0, 5.0, 5.0, 5.0),
+                ..polyline
+            },
         ),
-    );
-    excluded(
-        "Polyline.points span",
-        &base,
-        &poly(
-            1.0,
-            ColorMode::Single,
-            LineCap::Butt,
-            LineJoin::Miter,
-            Span::new(99, 2),
-            Span::new(0, 1),
-            Rect::ZERO,
-            7,
-        ),
-    );
-    excluded(
-        "Polyline.colors span",
-        &base,
-        &poly(
-            1.0,
-            ColorMode::Single,
-            LineCap::Butt,
-            LineJoin::Miter,
-            Span::new(0, 2),
-            Span::new(99, 1),
-            Rect::ZERO,
-            7,
-        ),
-    );
-    excluded(
-        "Polyline.bbox",
-        &base,
-        &poly(
-            1.0,
-            ColorMode::Single,
-            LineCap::Butt,
-            LineJoin::Miter,
-            Span::new(0, 2),
-            Span::new(0, 1),
-            Rect::new(5.0, 5.0, 5.0, 5.0),
-            7,
-        ),
-    );
+    ] {
+        excluded(&format!("Polyline.{label}"), &base, &poly(geometry, line));
+    }
 
     let recorded = |hash| RecordedText {
         span: Span::new(0, 1),
@@ -903,14 +878,12 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    let curve = |cap, bezier, stroke, ramp| ShapeRecord::Curve {
-        cap,
-        geometry: BezierGeometry {
+    let curve = |bezier, stroke| ShapeRecord::Stroke {
+        geometry: StrokeGeometry::Bezier(BezierGeometry {
             bezier,
             placement: PointPlacement::NATURAL,
-        },
+        }),
         stroke,
-        ramp,
     };
     let cubic = CubicBezier {
         p0: Vec2::ZERO,
@@ -918,17 +891,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         p2: Vec2::ZERO,
         p3: Vec2::ZERO,
     };
-    let none = CurveRamp::None;
-    let interned = |id, hash| CurveRamp::Interned {
-        id: GradientId(id),
-        hash: ContentHash::from_u64(hash),
-    };
-    // A native stroke's paint, apart from a border's.
-    let line = |color: RgbaF32, width| LoweredStroke::lower(Stroke::new(color, width));
-    let stroke = line(RgbaF32::BLACK, 1.0);
-    let stroke2 = line(RgbaF32::BLACK, 2.0);
-    let red_stroke = line(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0);
-    let base = curve(LineCap::Butt, cubic, stroke, none);
+    let base = curve(cubic, line);
     for (label, bezier) in [
         (
             "p0",
@@ -962,41 +925,41 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         moves(
             &format!("Curve.bezier.{label}"),
             &base,
-            &curve(LineCap::Butt, bezier, stroke, none),
+            &curve(bezier, line),
         );
     }
+    for (label, stroke) in line_changes {
+        moves(
+            &format!("Curve.stroke.{label}"),
+            &base,
+            &curve(cubic, stroke),
+        );
+    }
+    let ramped = LoweredStroke {
+        ramp: interned(0, 1),
+        ..line
+    };
     moves(
-        "Curve.stroke width",
-        &base,
-        &curve(LineCap::Butt, cubic, stroke2, none),
-    );
-    moves(
-        "Curve.stroke color",
-        &base,
-        &curve(LineCap::Butt, cubic, red_stroke, none),
-    );
-    moves(
-        "Curve.cap",
-        &base,
-        &curve(LineCap::Round, cubic, stroke, none),
-    );
-    // A ramp's content hash moves the hash, its frame-local id does not. Cap and ramp share a byte, so the cap must still move it.
-    let ramped = curve(LineCap::Butt, cubic, stroke, interned(0, 1));
-    moves("Curve.ramp present", &base, &ramped);
-    moves(
-        "Curve.ramp hash",
-        &ramped,
-        &curve(LineCap::Butt, cubic, stroke, interned(0, 2)),
-    );
-    moves(
-        "Curve.cap under a ramp",
-        &ramped,
-        &curve(LineCap::Round, cubic, stroke, interned(0, 1)),
+        "Curve.stroke.ramp hash",
+        &curve(cubic, ramped),
+        &curve(
+            cubic,
+            LoweredStroke {
+                ramp: interned(0, 2),
+                ..line
+            },
+        ),
     );
     excluded(
-        "Curve.ramp id (frame-local)",
-        &ramped,
-        &curve(LineCap::Butt, cubic, stroke, interned(7, 1)),
+        "Curve.stroke.ramp id (frame-local)",
+        &curve(cubic, ramped),
+        &curve(
+            cubic,
+            LoweredStroke {
+                ramp: interned(7, 1),
+                ..line
+            },
+        ),
     );
     for (label, placement) in placements(rect) {
         moves(
@@ -1006,18 +969,16 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         );
     }
 
-    let arc = |cap, geometry, stroke, ramp| ShapeRecord::Arc {
-        cap,
-        geometry,
+    let arc = |geometry, stroke| ShapeRecord::Stroke {
+        geometry: StrokeGeometry::Arc(geometry),
         stroke,
-        ramp,
     };
     let quarter = ArcGeometry {
         local_rect: None,
         start_angle: 0.0,
         sweep: 1.0,
     };
-    let base = arc(LineCap::Butt, quarter, stroke, none);
+    let base = arc(quarter, line);
     for (label, changed) in [
         (
             "local_rect",
@@ -1041,32 +1002,13 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             },
         ),
     ] {
-        moves(
-            &format!("Arc.arc.{label}"),
-            &base,
-            &arc(LineCap::Butt, changed, stroke, none),
-        );
+        moves(&format!("Arc.arc.{label}"), &base, &arc(changed, line));
     }
-    moves(
-        "Arc.cap",
-        &base,
-        &arc(LineCap::Round, quarter, stroke, none),
-    );
-    moves(
-        "Arc.stroke",
-        &base,
-        &arc(LineCap::Butt, quarter, stroke2, none),
-    );
-    moves(
-        "Arc.ramp",
-        &base,
-        &arc(LineCap::Butt, quarter, stroke, interned(0, 1)),
-    );
-    excluded(
-        "Arc.ramp id (frame-local)",
-        &arc(LineCap::Butt, quarter, stroke, interned(0, 1)),
-        &arc(LineCap::Butt, quarter, stroke, interned(7, 1)),
-    );
+    for (label, stroke) in line_changes {
+        moves(&format!("Arc.stroke.{label}"), &base, &arc(quarter, stroke));
+    }
+    // A curve and an arc of one stroke hash apart by their geometry's kind alone.
+    moves("Stroke.geometry kind", &curve(cubic, line), &base);
 }
 
 /// A placement that differs from [`PointPlacement::NATURAL`] in each field, as `rect` places one.
@@ -1092,10 +1034,13 @@ fn placements(rect: impl Fn(f32) -> Option<Rect>) -> [(&'static str, PointPlacem
 /// `record`, a polyline, a mesh or a curve, with its placement set to `to`.
 fn replaced(mut record: ShapeRecord, to: PointPlacement) -> ShapeRecord {
     match &mut record {
-        ShapeRecord::Polyline { placement, .. }
+        ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Polyline(PolylineGeometry { placement, .. }),
+            ..
+        }
         | ShapeRecord::Mesh { placement, .. }
-        | ShapeRecord::Curve {
-            geometry: BezierGeometry { placement, .. },
+        | ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Bezier(BezierGeometry { placement, .. }),
             ..
         } => *placement = to,
         other => panic!("{other:?} has no point placement"),

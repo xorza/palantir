@@ -37,9 +37,10 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::{
+    DrawStrokePayload, PolylinePath, StrokePath,
+};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
@@ -48,10 +49,10 @@ use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::curve_basis::CurveBasis;
+use crate::shape::geometry::stroke_geometry::PolylineColorSpan;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_material::LoweredMaterial;
-use crate::shape::record::ColorMode;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{Criterion, Throughput};
@@ -82,15 +83,15 @@ impl ComposeBench {
         let mut cmds = PaintCapture::default();
         for _ in 0..curve_count {
             cmds.draw(
-                DrawCurvePayload {
+                DrawStrokePayload {
                     origin: Vec2::ZERO,
                     spin: None,
-                    basis: CurveBasis::Cubic(CubicBezier {
+                    path: StrokePath::Curve(CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(16.0, 64.0),
                         p1: Vec2::new(48.0, 64.0),
                         p2: Vec2::new(80.0, 64.0),
                         p3: Vec2::new(112.0, 64.0),
-                    }),
+                    })),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
@@ -297,21 +298,23 @@ impl QuadCase {
                     let x = i as f32 / count as f32 * width;
                     Vec2::new(x, Self::CELL * (1.0 + (i % 2) as f32))
                 }));
-                let c_start = store.polyline_colors.len() as u32;
-                store.polyline_colors.push(RgbaF32::WHITE.to_f16());
                 cmds.draw(
-                    DrawPolylinePayload {
-                        alpha: 1.0,
-                        bbox: Rect::new(0.0, Self::CELL, width, Self::CELL),
+                    DrawStrokePayload {
+                        path: StrokePath::Polyline(PolylinePath {
+                            bbox: Rect::new(0.0, Self::CELL, width, Self::CELL),
+                            fit: FitMap::IDENTITY,
+                            points: Span::new(p_start, count as u32),
+                            colors: PolylineColorSpan::Single,
+                            join: LineJoin::Miter,
+                        }),
                         origin: Vec2::ZERO,
                         spin: None,
-                        fit: FitMap::IDENTITY,
+                        fill: GpuFill {
+                            color: RgbaF32::WHITE.to_f16(),
+                            ..Default::default()
+                        },
                         width: 2.0,
-                        points: Span::new(p_start, count as u32),
-                        colors: Span::new(c_start, 1),
-                        color_mode: ColorMode::Single,
                         cap: LineCap::Butt,
-                        join: LineJoin::Miter,
                     },
                     1.0,
                 );

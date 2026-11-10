@@ -6,7 +6,7 @@ use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::{DrawStrokePayload, StrokePath};
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::geometry::curve_basis::CurveBasis;
@@ -75,13 +75,13 @@ impl CurveBuilder {
             angle,
         });
         b.draw(
-            DrawCurvePayload {
+            DrawStrokePayload {
                 origin: self.origin,
                 spin,
-                basis: self.basis,
+                path: StrokePath::Curve(self.basis),
                 fill: self.fill,
                 width: self.width,
-                ..DrawCurvePayload::default()
+                ..DrawStrokePayload::default()
             },
             1.0,
         );

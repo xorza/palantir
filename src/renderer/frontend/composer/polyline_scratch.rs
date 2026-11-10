@@ -9,7 +9,6 @@ use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
-use crate::shape::record::ColorMode;
 use glam::Vec2;
 
 /// The points of the polyline being lowered in physical px, which of them it keeps, and each kept
@@ -23,18 +22,25 @@ pub(super) struct PolylineScratch {
     colors: Vec<SegmentColors>,
 }
 
-/// How a kept polyline paints: its recorded colors and how they map to segments, a paint
-/// animation's alpha, its physical width, its cap and its join.
+/// How a kept polyline paints: its recorded colors, the stroke's color they multiply, faded by a
+/// paint animation, its physical width, its cap and its join.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PolylineLook<'a> {
-    pub(super) colors: &'a [RgbaF16],
-    pub(super) mode: ColorMode,
-    pub(super) alpha: f32,
+    pub(super) colors: StagedColors<'a>,
+    pub(super) color: RgbaF16,
     pub(super) width: f32,
     pub(super) cap: LineCap,
     pub(super) join: LineJoin,
     /// The rounded clips that cut the polyline.
     pub(super) clip: ClipChain,
+}
+
+/// A polyline's recorded colors: none, one a point, or one a segment.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum StagedColors<'a> {
+    Single,
+    PerPoint(&'a [RgbaF16]),
+    PerSegment(&'a [RgbaF16]),
 }
 
 /// The two ends of one polyline segment's color ramp.
@@ -77,8 +83,7 @@ impl PolylineScratch {
     pub(super) fn emit(&mut self, look: PolylineLook<'_>, curves: &mut Vec<CurveInstance>) {
         let PolylineLook {
             colors: src_colors,
-            mode,
-            alpha,
+            color,
             width,
             cap,
             join,
@@ -97,26 +102,25 @@ impl PolylineScratch {
                 .map(|pair| (points[pair[1] as usize] - points[pair[0] as usize]).normalize()),
         );
         // Each segment's colors, `k -> k+1` indexed through `kept`, worked out once: a segment's
-        // and both its joints' read them. A paint animation's alpha is folded in here.
+        // and both its joints' read them. The stroke's color, a paint animation's fade in it,
+        // multiplies each.
+        let tinted = |recorded: RgbaF16| {
+            RgbaF32::from(recorded)
+                .tinted(RgbaF32::from(color))
+                .to_f16()
+        };
         colors.clear();
-        colors.extend(kept.windows(2).map(|pair| {
-            let colors = match mode {
-                ColorMode::Single => SegmentColors::flat(src_colors[0]),
-                ColorMode::PerPoint => SegmentColors {
-                    start: src_colors[pair[0] as usize],
-                    end: src_colors[pair[1] as usize],
-                },
-                ColorMode::PerSegment => SegmentColors::flat(src_colors[pair[1] as usize - 1]),
-            };
-            if alpha == 1.0 {
-                colors
-            } else {
-                SegmentColors {
-                    start: colors.start.faded(alpha),
-                    end: colors.end.faded(alpha),
-                }
-            }
-        }));
+        let pairs = kept.windows(2);
+        match src_colors {
+            StagedColors::Single => colors.extend(pairs.map(|_| SegmentColors::flat(color))),
+            StagedColors::PerPoint(recorded) => colors.extend(pairs.map(|pair| SegmentColors {
+                start: tinted(recorded[pair[0] as usize]),
+                end: tinted(recorded[pair[1] as usize]),
+            })),
+            StagedColors::PerSegment(recorded) => colors.extend(
+                pairs.map(|pair| SegmentColors::flat(tinted(recorded[pair[1] as usize - 1]))),
+            ),
+        }
         let pts = points.as_slice();
         let kept = kept.as_slice();
         let directions = directions.as_slice();

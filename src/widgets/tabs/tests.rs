@@ -17,6 +17,7 @@ use crate::scene::layer::Layer;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::BoxGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::geometry::stroke_geometry::StrokeGeometry;
 use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::lowered_brush::LoweredBrush;
@@ -197,14 +198,12 @@ fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
     let mut lines = Vec::new();
     for shape in tree.shapes_of(node) {
         match shape {
-            ShapeRecord::Curve {
-                cap,
-                geometry: BezierGeometry { bezier: line, .. },
+            ShapeRecord::Stroke {
+                geometry: StrokeGeometry::Bezier(BezierGeometry { bezier: line, .. }),
                 stroke: drawn,
-                ..
             } => {
                 assert_eq!(
-                    (*cap, drawn.width, drawn.color),
+                    (drawn.cap, drawn.width, drawn.color),
                     (LineCap::Round, stroke, ink)
                 );
                 lines.push([line.p0, line.p3]);

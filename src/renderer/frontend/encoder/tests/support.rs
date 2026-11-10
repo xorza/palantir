@@ -84,10 +84,9 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
             | PaintCall::Shadow(_)
             | PaintCall::Text(_)
             | PaintCall::Mesh(_)
-            | PaintCall::Polyline(_)
+            | PaintCall::Stroke(_)
             | PaintCall::Image { .. }
             | PaintCall::Icon(_)
-            | PaintCall::Curve(_)
             | PaintCall::Effect(_) => {}
         }
     }

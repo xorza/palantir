@@ -10,6 +10,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
+use crate::renderer::frontend::payload::draw_stroke_payload::StrokePath;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
@@ -78,13 +79,24 @@ fn a_turned_strokes_payload_carries_its_pivot_in_the_logical_frame() {
         });
         let cmds = h.encode_paint();
         let spin = match (spun, cmds.calls.as_slice()) {
-            (Spun::Polyline, [PaintCall::Polyline(p)]) => {
-                assert_eq!(p.bbox, Rect::new(10.0, 10.0, 60.0, 20.0), "owner-local box");
+            (Spun::Polyline, [PaintCall::Stroke(p)]) => {
+                let StrokePath::Polyline(path) = p.path else {
+                    panic!("a polyline strokes a polyline, got {:?}", p.path);
+                };
+                assert_eq!(
+                    path.bbox,
+                    Rect::new(10.0, 10.0, 60.0, 20.0),
+                    "owner-local box"
+                );
                 assert_eq!(p.origin, Vec2::new(30.0, 0.0));
                 p.spin
             }
-            (Spun::Arc, [PaintCall::Curve(p)]) => {
-                assert_eq!(p.basis, CurveBasis::Arc(arc), "the basis stays owner-local");
+            (Spun::Arc, [PaintCall::Stroke(p)]) => {
+                assert_eq!(
+                    p.path,
+                    StrokePath::Curve(CurveBasis::Arc(arc)),
+                    "the basis stays owner-local"
+                );
                 assert_eq!(p.origin, Vec2::new(30.0, 0.0));
                 p.spin
             }

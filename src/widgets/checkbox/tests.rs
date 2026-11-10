@@ -1,5 +1,6 @@
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::shape::geometry::stroke_geometry::StrokeGeometry;
 use crate::theme::Theme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::checkbox::Checkbox;
@@ -31,7 +32,10 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
             .records
             .iter()
             .find_map(|s| match s {
-                ShapeRecord::Polyline { points, .. } => Some(*points),
+                ShapeRecord::Stroke {
+                    geometry: StrokeGeometry::Polyline(polyline),
+                    ..
+                } => Some(polyline.points),
                 _ => None,
             })
             .expect("a checked Checkbox records its tick as a polyline");

@@ -3,21 +3,47 @@
 use crate::common::span::Span;
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::line_style::LineJoin;
 use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
     ClosedImage, GpuViewDraw,
 };
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::{
+    DrawStrokePayload, PolylinePath, StrokePath,
+};
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::geometry::stroke_geometry::PolylineColorSpan;
 use glam::Vec2;
+
+/// A white polyline stroke of `points_len` points from the store's start, `width` wide, at
+/// `alpha`.
+fn polyline(points_len: u32, width: f32, alpha: f32) -> DrawStrokePayload {
+    DrawStrokePayload {
+        path: StrokePath::Polyline(PolylinePath {
+            bbox: Rect::ZERO,
+            fit: FitMap::IDENTITY,
+            points: Span::new(0, points_len),
+            colors: PolylineColorSpan::Single,
+            join: LineJoin::Miter,
+        }),
+        fill: GpuFill {
+            color: RgbaF32::new(1.0, 1.0, 1.0, alpha).to_f16(),
+            ..GpuFill::default()
+        },
+        width,
+        ..DrawStrokePayload::default()
+    }
+}
 
 #[test]
 fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
@@ -90,12 +116,7 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
     ];
 
     for case in cases {
-        let payload = DrawPolylinePayload {
-            points: Span::new(0, case.points_len),
-            width: case.width,
-            alpha: case.alpha,
-            ..Default::default()
-        };
+        let payload = polyline(case.points_len, case.width, case.alpha);
         assert_eq!(payload.is_noop(), case.expected_noop, "{case:?}");
     }
 }
@@ -213,13 +234,9 @@ fn the_gate_sees_the_faded_payload() {
     let tint = RgbaF32::from(payload.paint.tint);
     assert_eq!([tint.r, tint.g, tint.b, tint.a], [1.0, 1.0, 1.0, 0.5]);
 
-    // A polyline gates alike: its fade rides the payload's alpha lane, its colors being in the record store.
-    let line = DrawPolylinePayload {
-        points: Span::new(0, 2),
-        width: 1.0,
-        alpha: 1.0,
-        ..Default::default()
-    };
+    // A polyline gates alike: its fade rides its fill's alpha, which its colors in the record store
+    // multiply.
+    let line = polyline(2, 1.0, 1.0);
     let mut faded_out = PaintCapture::default();
     faded_out.draw(line, 0.0);
     assert!(
@@ -229,10 +246,10 @@ fn the_gate_sees_the_faded_payload() {
     );
     let mut half = PaintCapture::default();
     half.draw(line, 0.5);
-    let [PaintCall::Polyline(payload)] = half.calls.as_slice() else {
-        panic!("expected one Polyline call, got {:?}", half.calls);
+    let [PaintCall::Stroke(payload)] = half.calls.as_slice() else {
+        panic!("expected one Stroke call, got {:?}", half.calls);
     };
-    assert_eq!(payload.alpha, 0.5);
+    assert_eq!(RgbaF32::from(payload.fill.color).a, 0.5);
 }
 
 /// The gate turns what it fades: a draw handed a turn reaches the sink with it, a polyline's
@@ -261,12 +278,7 @@ fn the_gate_turns_the_payload() {
             view: None,
         },
     );
-    let line = DrawPolylinePayload {
-        points: Span::new(0, 2),
-        width: 1.0,
-        alpha: 1.0,
-        ..Default::default()
-    };
+    let line = polyline(2, 1.0, 1.0);
 
     let mut sink = PaintCapture::default();
     let animation = DrawAnimation {
@@ -282,7 +294,7 @@ fn the_gate_turns_the_payload() {
         .iter()
         .map(|call| match call {
             PaintCall::Image(p) => p.spin,
-            PaintCall::Polyline(p) => p.spin,
+            PaintCall::Stroke(p) => p.spin,
             other => panic!("unexpected call {other:?}"),
         })
         .collect();

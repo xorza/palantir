@@ -56,11 +56,10 @@ use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::DrawStrokePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
@@ -90,10 +89,10 @@ pub(crate) trait PaintSink {
     /// `RecordStore.mesh_vertices` and `RecordStore.mesh_idxs`.
     fn mesh(&mut self, payload: DrawMeshPayload);
 
-    /// Paint a polyline against already-staged points and colors. The
-    /// `color_mode`-dictated `colors.len` is checked upstream by
-    /// `PolylineShape::per_point` and `PolylineShape::per_segment`.
-    fn polyline(&mut self, payload: DrawPolylinePayload);
+    /// Paint a stroke along a cubic, an arc or a polyline; a polyline's points and colors are
+    /// already staged, their counts checked upstream by `PolylineShape::per_point` and
+    /// `PolylineShape::per_segment`.
+    fn stroke(&mut self, payload: DrawStrokePayload);
 
     /// Paint an image over a box or a triangle, and the `GpuView` it composites, if any.
     fn image(&mut self, payload: DrawClosedPayload<ClosedImage>);
@@ -101,8 +100,6 @@ pub(crate) trait PaintSink {
     /// Paint a baked icon: the sink records which icon at which logical rect,
     /// and the backend rasterizes it once the physical size is known.
     fn icon(&mut self, payload: DrawIconPayload);
-
-    fn curve(&mut self, payload: DrawCurvePayload);
 
     /// Paint an effect over a box or a triangle: an app's paint, or a box's material.
     fn effect(&mut self, payload: DrawClosedPayload<ClosedEffect>);
@@ -127,7 +124,9 @@ pub(crate) trait PaintSink {
 }
 
 /// What a paint animation does to one draw this frame, as the gate ([`PaintSink::draw`]) applies
-/// it: its opacity, `1.0` when still, and its turn.
+/// it: its opacity, `1.0` when still, and its turn, so no encoder arm can forget either; an `f32`
+/// is a fade alone. Refused: a turn passed by hand in each arm; `PaintMod`, the cursor's sample,
+/// which holds the rotation and the time, not the pivot a draw turns about.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawAnimation {
     pub(crate) alpha: f32,

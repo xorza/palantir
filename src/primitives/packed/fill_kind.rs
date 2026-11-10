@@ -8,7 +8,8 @@ use bytemuck::{Pod, Zeroable};
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching paint-payload
 /// fields: **bits 0..8** the family tag (one of the `TAG_*`, via
 /// [`Self::tag`]), **bits 8..16** the `Spread` discriminant (gradient tags only).
-/// A brush alone: the shape's form and a shadow are the quad row's key (`QuadKey`).
+/// A brush alone: the shape's form and a shadow are the quad row's key (`QuadKey`). Refused: a
+/// paint word that carries geometry and composer flags, which the backend read back at upload.
 /// `repr(transparent)` over `u32` so the wire layout is a plain vertex attribute.
 ///
 /// Every number here is substituted into the quad shader (`quad_pipeline/*.wgsl`) rather than

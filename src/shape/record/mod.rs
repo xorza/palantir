@@ -3,7 +3,6 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
-use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -12,16 +11,13 @@ use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::ImageFit;
-use crate::primitives::paint::line_style::{LineCap, LineJoin};
 use crate::primitives::text::recorded_text::RecordedText;
-use crate::shape::geometry::arc_geometry::ArcGeometry;
-use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
+use crate::shape::geometry::stroke_geometry::StrokeGeometry;
 use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::capture_params::CaptureParams;
 use crate::shape::paint::closed_paint::ClosedPaint;
-use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_brush::{BrushHash, LoweredBrush};
 use crate::shape::paint::lowered_stroke::LoweredStroke;
@@ -32,15 +28,15 @@ use std::hash;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
 
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) enum ColorMode {
-    #[default]
-    Single = 0,
-    PerPoint = 1,
-    PerSegment = 2,
-}
-
+/// One draw as the frame recorded it: a geometry and the paint its family draws, geometry outside,
+/// as a payload and a draw row hold them after it, and as Skia Graphite records a draw as its
+/// geometry and its `PaintParams`
+/// ([`Renderer.h`](https://skia.googlesource.com/skia/+/main/src/gpu/graphite/Renderer.h)). The
+/// record keeps the authored pair, and the encoder picks the renderer family from it: an icon of
+/// a rect lowers to the glyph atlas, a box's shadow to the blurred box. Refused: the paint owning
+/// its shape, as Impeller's `Contents::GetGeometry` does, which an image and an effect payload did;
+/// a record per renderer family, which puts the renderer's split in the authoring model.
+///
 /// `#[repr(u8)]` pins the discriminant to one byte (`hot_struct_sizes`). Reorder variants freely: hashes use `mem::discriminant` and are only compared within a process run.
 #[repr(u8)]
 #[derive(Clone, Debug)]
@@ -50,17 +46,12 @@ pub(crate) enum ShapeRecord {
         geometry: ClosedGeometry,
         paint: ClosedPaint,
     },
-    /// Stroked polyline. `points`/`colors` index the `RecordStore`; `colors` has 1 entry for `Single`, `points.len()` for `PerPoint`, `points.len() - 1` for `PerSegment`. `bbox` is the points' AABB as authored, the extent `placement` fits into its rect where the polyline is drawn; damage and composition apply the stroke inflation.
-    Polyline {
-        width: f32,
-        color_mode: ColorMode,
-        cap: LineCap,
-        join: LineJoin,
-        points: Span,
-        colors: Span,
-        bbox: Rect,
-        placement: PointPlacement,
-        content_hash: ContentHash,
+    /// A stroke along a path, a cubic, an arc or a polyline, all drawn on the one curve pipeline;
+    /// damage and composition apply the stroke's reach. A cubic and an arc place against their
+    /// owner where they are drawn, and a polyline fits its points there.
+    Stroke {
+        geometry: StrokeGeometry,
+        stroke: LoweredStroke,
     },
     /// Shaped text run, *authoring inputs only*: measured size and the shaped-buffer key are layout outputs in `Layout.text_shapes`. `wrap` selects shape-once (`Single`) or reshape under a narrower committed width (`Wrap`); `align` positions the glyph bbox (`Auto`/`Stretch` collapse to top-left).
     ///
@@ -87,27 +78,6 @@ pub(crate) enum ShapeRecord {
         /// `Mesh::bbox()` so the encoder doesn't re-scan.
         bbox: Rect,
         content_hash: ContentHash,
-    },
-    /// Native GPU stroke of a cubic Bézier (quadratics promote to cubic, lines degenerate; see
-    /// `CurveShape`'s lowering), fit into its owner where it is drawn
-    /// ([`BezierGeometry::place`]). No joins.
-    Curve {
-        /// End-cap style; `Round`/`Square` extend the strip by `width/2` past each endpoint.
-        cap: LineCap,
-        geometry: BezierGeometry,
-        stroke: LoweredStroke,
-        /// The ramp the stroke color multiplies, sampled along `t`, p0 to p3.
-        ramp: CurveRamp,
-    },
-    /// Native GPU stroke of an [`ArcGeometry`], whose circle resolves against the owner where it
-    /// is drawn ([`ArcGeometry::place`]).
-    Arc {
-        /// End-cap style, as a curve's.
-        cap: LineCap,
-        geometry: ArcGeometry,
-        stroke: LoweredStroke,
-        /// The ramp the stroke color multiplies, sampled along the sweep.
-        ramp: CurveRamp,
     },
 }
 
@@ -159,7 +129,7 @@ impl ShapeRecord {
 
     /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::push`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
     ///
-    /// The schedule is `discriminant → per-variant fields` at every nesting level (`mem::discriminant`, so it cannot drift from the enum). Nothing is persisted, so variants can be added or reordered freely. `Polyline` and `Mesh` hand over a `content_hash` their lowering computed, as their payload bytes live in the `RecordStore` this never sees.
+    /// The schedule is `discriminant → per-variant fields` at every nesting level (`mem::discriminant`, so it cannot drift from the enum). Nothing is persisted, so variants can be added or reordered freely. A polyline's geometry and `Mesh` hand over a `content_hash` their lowering computed, as their payload bytes live in the `RecordStore` this never sees.
     pub(crate) fn content_hash(&self) -> ContentHash {
         let mut h = Hasher::new();
         mem::discriminant(self).hash(&mut h);
@@ -168,24 +138,9 @@ impl ShapeRecord {
                 geometry.hash_into(&mut h);
                 hash_closed_paint(paint, &mut h);
             }
-            // `content_hash` already folds width, color_mode, cap, join, points and
-            // colors; bbox/spans are frame-local. Fields are named rather than `..` so
-            // the compiler rejects a *new* one until someone decides if it belongs in
-            // the hash: a missing field makes two records share a hash, which damage
-            // diff reads as "unchanged".
-            Self::Polyline {
-                content_hash,
-                placement,
-                width: _,
-                color_mode: _,
-                cap: _,
-                join: _,
-                points: _,
-                colors: _,
-                bbox: _,
-            } => {
-                content_hash.hash(&mut h);
-                placement.hash_into(&mut h);
+            Self::Stroke { geometry, stroke } => {
+                geometry.hash_into(&mut h);
+                stroke.hash_into(&mut h);
             }
             // The shaping inputs are layout's as well as paint's, so one method feeds
             // both hashes.
@@ -212,41 +167,6 @@ impl ShapeRecord {
                 placement.hash_into(&mut h);
                 tint.hash(&mut h);
                 content_hash.hash(&mut h);
-            }
-            // Geometry + style are hashed inline (every input lives on the record).
-            // `bbox` is excluded. The ramp goes in by content hash so equal geometry
-            // with different ramps differs.
-            Self::Curve {
-                cap,
-                geometry:
-                    BezierGeometry {
-                        bezier: CubicBezier { p0, p1, p2, p3 },
-                        placement,
-                    },
-                stroke,
-                ramp,
-            } => {
-                for point in [p0, p1, p2, p3] {
-                    point.hash_visual(&mut h);
-                }
-                placement.hash_into(&mut h);
-                hash_stroke(*stroke, *cap, *ramp, &mut h);
-            }
-            Self::Arc {
-                cap,
-                geometry:
-                    ArcGeometry {
-                        local_rect,
-                        start_angle,
-                        sweep,
-                    },
-                stroke,
-                ramp,
-            } => {
-                local_rect.hash_visual(&mut h);
-                start_angle.hash_visual(&mut h);
-                sweep.hash_visual(&mut h);
-                hash_stroke(*stroke, *cap, *ramp, &mut h);
             }
         }
         ContentHash::finish(&h)
@@ -363,19 +283,6 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
     }
 }
 
-/// Fold a native stroke's paint into the shape hash: its width and color, its cap, and its ramp
-/// by content hash.
-fn hash_stroke(stroke: LoweredStroke, cap: LineCap, ramp: CurveRamp, h: &mut Hasher) {
-    stroke.hash_into(h);
-    match ramp {
-        CurveRamp::None => h.write_u8(cap as u8),
-        CurveRamp::Interned { id: _, hash } => {
-            h.write_u8(cap as u8 | 0x80);
-            hash.hash(h);
-        }
-    }
-}
-
 /// Fold a lowered fill into the shape hash via [`LoweredBrush::hash_parts`], which
 /// the chrome hash reads too.
 fn hash_brush(fill: LoweredBrush, h: &mut Hasher) {
@@ -401,12 +308,7 @@ impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {
             Self::Closed { geometry, paint } => geometry.has_nan() || paint.has_nan(),
-            Self::Polyline {
-                width,
-                bbox,
-                placement,
-                ..
-            } => width.is_nan() || bbox.has_nan() || placement.has_nan(),
+            Self::Stroke { geometry, stroke } => geometry.has_nan() || stroke.has_nan(),
             Self::Text {
                 local_origin,
                 color,
@@ -419,26 +321,6 @@ impl NanCheck for ShapeRecord {
                 bbox,
                 ..
             } => placement.has_nan() || tint.has_nan() || bbox.has_nan(),
-            Self::Curve {
-                geometry: BezierGeometry { bezier, placement },
-                stroke,
-                ..
-            } => {
-                let CubicBezier { p0, p1, p2, p3 } = bezier;
-                [p0, p1, p2, p3].iter().any(|p| p.is_nan())
-                    || placement.has_nan()
-                    || stroke.has_nan()
-            }
-            Self::Arc {
-                geometry:
-                    ArcGeometry {
-                        local_rect,
-                        start_angle,
-                        sweep,
-                    },
-                stroke,
-                ..
-            } => local_rect.has_nan() || start_angle.is_nan() || sweep.is_nan() || stroke.has_nan(),
         }
     }
 }

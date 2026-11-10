@@ -4,6 +4,7 @@ use crate::damage::region::DamageRegion;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
+use crate::renderer::frontend::payload::draw_stroke_payload::{DrawStrokePayload, StrokePath};
 use crate::shape::image_paint::ImagePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -234,7 +235,13 @@ fn a_polyline_fits_its_owner_where_it_is_drawn() {
             });
     });
     let cmds = h.encode_paint();
-    let [PaintCall::Polyline(p)] = cmds.calls.as_slice() else {
+    let [
+        PaintCall::Stroke(DrawStrokePayload {
+            path: StrokePath::Polyline(p),
+            ..
+        }),
+    ] = cmds.calls.as_slice()
+    else {
         panic!("one polyline draw, got {:?}", cmds.kinds());
     };
     assert_eq!(

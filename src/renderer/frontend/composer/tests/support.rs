@@ -30,15 +30,18 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
 };
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::{
+    DrawStrokePayload, PolylinePath, StrokePath,
+};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
+use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
-use crate::shape::record::ColorMode;
+use crate::shape::polyline::PolylineColors;
 use crate::shape::record_store::RecordStore;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
@@ -216,14 +219,14 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
     }
 }
 
-/// A polyline command a composer test records: white, one color, butt-capped, mitred and bounded
-/// by its points unless set.
+/// A polyline command a composer test records: white, of no colors of its own, butt-capped,
+/// mitred and bounded by its points unless set.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TestPolyline<'a> {
     points: &'a [Vec2],
     width: f32,
-    colors: &'a [RgbaF32],
-    mode: ColorMode,
+    colors: PolylineColors<'a>,
+    color: RgbaF32,
     cap: LineCap,
     join: LineJoin,
     spin: Option<Spin>,
@@ -235,8 +238,8 @@ impl<'a> TestPolyline<'a> {
         Self {
             points,
             width,
-            colors: &[RgbaF32::WHITE],
-            mode: ColorMode::Single,
+            colors: PolylineColors::Single,
+            color: RgbaF32::WHITE,
             cap: LineCap::Butt,
             join: LineJoin::Miter,
             spin: None,
@@ -244,12 +247,13 @@ impl<'a> TestPolyline<'a> {
         }
     }
 
-    pub(super) const fn colors(self, colors: &'a [RgbaF32], mode: ColorMode) -> Self {
-        Self {
-            colors,
-            mode,
-            ..self
-        }
+    pub(super) const fn colors(self, colors: PolylineColors<'a>) -> Self {
+        Self { colors, ..self }
+    }
+
+    /// The stroke's color, which each of `colors` multiplies.
+    pub(super) const fn color(self, color: RgbaF32) -> Self {
+        Self { color, ..self }
     }
 
     pub(super) const fn cap(self, cap: LineCap) -> Self {
@@ -279,18 +283,13 @@ impl<'a> TestPolyline<'a> {
             points,
             width,
             colors,
-            mode,
+            color,
             cap,
             join,
             spin,
             origin,
         } = self;
-        let p_start = store.polyline_points.len() as u32;
-        store.polyline_points.extend_from_slice(points);
-        let c_start = store.polyline_colors.len() as u32;
-        store
-            .polyline_colors
-            .extend(colors.iter().map(|&c| c.to_f16()));
+        let staged = store.stage_polyline(points, colors);
         let mut lo = points[0];
         let mut hi = points[0];
         for &p in points {
@@ -298,18 +297,22 @@ impl<'a> TestPolyline<'a> {
             hi = hi.max(p);
         }
         b.draw(
-            DrawPolylinePayload {
-                alpha: 1.0,
-                bbox: Rect::from_min_max(lo, hi),
+            DrawStrokePayload {
+                path: StrokePath::Polyline(PolylinePath {
+                    bbox: Rect::from_min_max(lo, hi),
+                    fit: FitMap::IDENTITY,
+                    points: staged.points,
+                    colors: staged.colors,
+                    join,
+                }),
                 origin,
                 spin,
-                fit: FitMap::IDENTITY,
+                fill: GpuFill {
+                    color: color.to_f16(),
+                    ..GpuFill::default()
+                },
                 width,
-                points: Span::new(p_start, points.len() as u32),
-                colors: Span::new(c_start, colors.len() as u32),
-                color_mode: mode,
                 cap,
-                join,
             },
             1.0,
         );

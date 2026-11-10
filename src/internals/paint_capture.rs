@@ -10,11 +10,10 @@ use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::ClosedEffect;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::DrawStrokePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
@@ -73,10 +72,9 @@ paint_calls! {
     Shadow(DrawShadowPayload) => shadow,
     Text(DrawTextPayload) => text,
     Mesh(DrawMeshPayload) => mesh,
-    Polyline(DrawPolylinePayload) => polyline,
+    Stroke(DrawStrokePayload) => stroke,
     Icon(DrawIconPayload) => icon,
     Image(DrawClosedPayload<ClosedImage>) => image,
-    Curve(DrawCurvePayload) => curve,
     Effect(DrawClosedPayload<ClosedEffect>) => effect,
     --
     PopClip => pop_clip,
@@ -104,7 +102,7 @@ pub(crate) mod internals {
     use crate::internals::paint_capture::{PaintCall, PaintCapture};
     use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
     use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+    use crate::renderer::frontend::payload::draw_stroke_payload::DrawStrokePayload;
     use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
     use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
@@ -124,9 +122,9 @@ pub(crate) mod internals {
             }
         }
 
-        pub(crate) fn as_curve(&self) -> Option<&DrawCurvePayload> {
+        pub(crate) fn as_stroke(&self) -> Option<&DrawStrokePayload> {
             match self {
-                Self::Curve(payload) => Some(payload),
+                Self::Stroke(payload) => Some(payload),
                 _ => None,
             }
         }

@@ -18,7 +18,7 @@ use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
 use crate::renderer::frontend::composer::paint_order::{Lane, Ordering, TextClip};
-use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
+use crate::renderer::frontend::composer::polyline_scratch::{PolylineLook, StagedColors};
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::template_shape::TemplateShape;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -28,11 +28,12 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::{
+    DrawStrokePayload, PolylinePath, StrokePath,
+};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
@@ -58,6 +59,8 @@ use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::geometry::curve_basis::CurveBasis;
+use crate::shape::geometry::stroke_geometry::PolylineColorSpan;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
@@ -483,89 +486,11 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
-    fn curve(&mut self, p: DrawCurvePayload) {
-        let p = CurveRun::turn(p);
-        let transform = self.composer.transform.cur();
-        let width_physical = p.width * self.composer.transform.physical_scale();
-        let cap = p.cap;
-        let bbox_urect = StrokeBbox {
-            transform,
-            bbox: p.basis.bbox(),
-            origin: p.origin,
-            width_physical,
-            cap,
-            joints: StrokeJoints::Unjoined,
-            display: self.out.display,
+    fn stroke(&mut self, p: DrawStrokePayload) {
+        match p.path {
+            StrokePath::Curve(basis) => self.curve(basis, &p),
+            StrokePath::Polyline(path) => self.polyline(path, &p),
         }
-        .urect();
-        let Some(visible) = self
-            .ordering()
-            .admit(Lane::Tier(PaintTier::Curve), bbox_urect)
-        else {
-            return;
-        };
-        let run = CurveRun::lower(&p, width_physical, &self.lowering());
-        let clip = self.clip_chain(visible);
-        run.push_into(&mut self.out.curves, clip);
-    }
-
-    fn polyline(&mut self, p: DrawPolylinePayload) {
-        let display = self.out.display;
-        let mode = p.color_mode;
-        let cap = p.cap;
-        let join = p.join;
-        let transform = self.composer.transform.cur();
-        let width_physical = p.width * self.composer.transform.physical_scale();
-
-        // Inflated physical AABB, culled once and ordered once it proves to emit. Inflating by
-        // the stroke fringe means the cull never trims reachable pixels. The points are relative
-        // to `origin`, and so the pivot they turn about; the cull takes their bound at this
-        // frame's angle.
-        let spin = p.spin.map(|spin| spin.relative_to(p.origin));
-        let bbox = StrokeBbox {
-            transform,
-            bbox: spin.map_or(p.bbox, |spin| p.bbox.turned_cover(spin.pivot, spin.angle)),
-            origin: p.origin,
-            width_physical,
-            cap,
-            joints: StrokeJoints::polyline(p.points.len, join),
-            display,
-        }
-        .urect();
-        let Some(visible) = self.ordering().cull(bbox) else {
-            return;
-        };
-
-        let src_points = &self.store.polyline_points[p.points.range()];
-        let src_colors = &self.store.polyline_colors[p.colors.range()];
-
-        // Physical px with the owner origin folded in. No snapping: it would shift thin lines
-        // off-axis.
-        let to_physical = self.composer.transform.physical_map(p.origin);
-        let rotor = spin.map(Spin::rotor);
-        let kept = self.composer.polyline.keep(src_points.iter().map(|&q| {
-            let q = p.fit.apply(q);
-            to_physical.point(rotor.map_or(q, |rotor| rotor.apply(q)))
-        }));
-        if !kept {
-            return;
-        }
-        // Only now that the polyline will emit geometry: an empty or culled one must not split the
-        // batch or group.
-        self.ordering().order(Lane::Tier(PaintTier::Curve), visible);
-        let clip = self.clip_chain(visible);
-        self.composer.polyline.emit(
-            PolylineLook {
-                colors: src_colors,
-                mode,
-                alpha: p.alpha,
-                width: width_physical,
-                cap,
-                join,
-                clip,
-            },
-            &mut self.out.curves,
-        );
     }
 
     fn text(&mut self, t: DrawTextPayload) {
@@ -813,6 +738,95 @@ impl ComposeSession<'_> {
         let idx = self.out.backdrops.len() as u32;
         self.out.backdrops.push(row(source));
         idx
+    }
+
+    /// A cubic or an arc of `p`: turned, culled by its centerline's bounds grown by the stroke,
+    /// and lowered to its sub-instances.
+    fn curve(&mut self, basis: CurveBasis, p: &DrawStrokePayload) {
+        let basis = p.spin.map_or(basis, |spin| {
+            CurveRun::turned(basis, spin.relative_to(p.origin))
+        });
+        let bbox_urect = StrokeBbox {
+            transform: self.composer.transform.cur(),
+            bbox: basis.bbox(),
+            origin: p.origin,
+            width_physical: p.width * self.composer.transform.physical_scale(),
+            cap: p.cap,
+            joints: StrokeJoints::Unjoined,
+            display: self.out.display,
+        }
+        .urect();
+        let Some(visible) = self
+            .ordering()
+            .admit(Lane::Tier(PaintTier::Curve), bbox_urect)
+        else {
+            return;
+        };
+        let run = CurveRun::lower(basis, p, &self.lowering());
+        let clip = self.clip_chain(visible);
+        run.push_into(&mut self.out.curves, clip);
+    }
+
+    /// The polyline of `p` along `path`: its points fitted, turned and taken to physical px, culled
+    /// once and ordered once it proves to emit, then lowered to segments and joints.
+    fn polyline(&mut self, path: PolylinePath, p: &DrawStrokePayload) {
+        let display = self.out.display;
+        let width_physical = p.width * self.composer.transform.physical_scale();
+
+        // Inflating by the stroke fringe means the cull never trims reachable pixels. The points
+        // are relative to `origin`, and so the pivot they turn about; the cull takes their bound
+        // at this frame's angle.
+        let spin = p.spin.map(|spin| spin.relative_to(p.origin));
+        let bbox = StrokeBbox {
+            transform: self.composer.transform.cur(),
+            bbox: spin.map_or(path.bbox, |spin| {
+                path.bbox.turned_cover(spin.pivot, spin.angle)
+            }),
+            origin: p.origin,
+            width_physical,
+            cap: p.cap,
+            joints: StrokeJoints::polyline(path.points.len, path.join),
+            display,
+        }
+        .urect();
+        let Some(visible) = self.ordering().cull(bbox) else {
+            return;
+        };
+
+        let src_points = &self.store.polyline_points[path.points.range()];
+        let colors = &self.store.polyline_colors;
+        let src_colors = match path.colors {
+            PolylineColorSpan::Single => StagedColors::Single,
+            PolylineColorSpan::PerPoint(span) => StagedColors::PerPoint(&colors[span.range()]),
+            PolylineColorSpan::PerSegment(span) => StagedColors::PerSegment(&colors[span.range()]),
+        };
+
+        // Physical px with the owner origin folded in. No snapping: it would shift thin lines
+        // off-axis.
+        let to_physical = self.composer.transform.physical_map(p.origin);
+        let rotor = spin.map(Spin::rotor);
+        let kept = self.composer.polyline.keep(src_points.iter().map(|&q| {
+            let q = path.fit.apply(q);
+            to_physical.point(rotor.map_or(q, |rotor| rotor.apply(q)))
+        }));
+        if !kept {
+            return;
+        }
+        // Only now that the polyline will emit geometry: an empty or culled one must not split the
+        // batch or group.
+        self.ordering().order(Lane::Tier(PaintTier::Curve), visible);
+        let clip = self.clip_chain(visible);
+        self.composer.polyline.emit(
+            PolylineLook {
+                colors: src_colors,
+                color: p.fill.color,
+                width: width_physical,
+                cap: p.cap,
+                join: path.join,
+                clip,
+            },
+            &mut self.out.curves,
+        );
     }
 
     /// Clear fold: an opaque, solid, sharp, unclipped quad covering the viewport is

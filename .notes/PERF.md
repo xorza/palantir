@@ -1,10 +1,10 @@
 # Perf journal
 
-What the optimization runs learned (2026-10-28 to 2026-11-07): how to measure on the hosts,
-where the time goes, what was refused and why, and what is still open. What was kept is in the
-commits, each with its numbers per host. Runs 1 to 10 measured the frame fixture, 1,245 nodes, which
-the showcase's first page, 246 nodes, has since replaced, so only run 11's numbers compare with a
-new run.
+What the optimization runs learned: how to measure on the hosts, where the time goes, what was
+refused and why, and what is open or waits for a measurement. What was kept is in the commits,
+each with its numbers per host. Runs 1 to 10 measured the old frame fixture, 1,245 nodes; the
+showcase's first page, 246 nodes, replaced it, so only run 11's numbers compare with a new run, and
+an older number here reads as a share, not a time.
 
 ## Measuring
 
@@ -29,14 +29,14 @@ new run.
     governor `performance`. A bench build takes 6.0 GiB of system memory cold and 5.8 GiB after,
     read off `MemAvailable`, as `rustc` runs under the `sccache` daemon outside cargo's process
     tree.
-  - Earlier: board, a VideoCore single-board computer; one core, governor `ondemand`; it builds
-    nothing, its binaries are cross-built against a sysroot copied from it (glibc 2.41) with
-    `clang` and `lld`, or on the mac with `zig cc -target aarch64-linux-gnu.2.41` behind a wrapper
-    that drops `--fix-cortex-a53-843419` and `-Wl,-O1`, and run from worktrees at the builder's
-    paths, which `CARGO_MANIFEST_DIR` names. mac, a larger Apple laptop; its `sccache` wants
-    the package manager's `bin` on the `PATH`. A macOS Local Network permission belongs to the app that
-    started the `tmux` server: a server started before it gets `No route to host` to every LAN
-    address until it restarts.
+  - board: a VideoCore single-board computer; one core, governor `ondemand`. It builds nothing:
+    its binaries are cross-built against a sysroot copied from it (glibc 2.41) with `clang` and
+    `lld`, or on a Mac with `zig cc -target aarch64-linux-gnu.2.41` behind a wrapper that drops
+    `--fix-cortex-a53-843419` and `-Wl,-O1`, and run from worktrees at the builder's paths, which
+    `CARGO_MANIFEST_DIR` names.
+  - mac: a larger Apple laptop, the damage sweep's. A macOS Local Network permission belongs to
+    the app that started the `tmux` server: a server started before it gets `No route to host` to
+    every LAN address until it restarts.
 - **Noise floors** (ABBA A/A):
 
   | host | CPU cases | GPU cases |
@@ -83,8 +83,8 @@ new run.
 
 ## Where the time is
 
-- **The CPU frame** (local `frame/cpu/hovering` 116 µs, LBR call stacks): record is nearly all
-  of it. `open_node` 21.6 %, `Ui::response_for` 10.1 %, `post_record` 9.7 %, `Text::show`
+- **The CPU frame** (old fixture, local `frame/cpu/hovering` 116 µs, LBR call stacks): record is
+  nearly all of it. `open_node` 21.6 %, `Ui::response_for` 10.1 %, `post_record` 9.7 %, `Text::show`
   5.4 %, `Button::show` 4.9 %, the text shape's push 4.7 %, `widget_id` 3.8 %, the fixture's own
   `format!` and id hashing about 5 %, and before it was made one test, the chrome check
   `Widget::record` runs on every chromed widget, 4.4 %. Flat at an IPC above 4: only fewer
@@ -100,22 +100,10 @@ new run.
   `cpu/resizing` 261 µs local; layout 40 % and record 35 % on the fanless. Before, shaping was 37 %:
   a 60 s transition moves a font size one 1/64 px step about every 6 frames, and a run off
   screen expired after probation and shaped again.
-- **Current CPU numbers** (ABBA medians at `5ab2bdeef`):
-
-  | case | local | fanless | handheld | windows |
-  | --- | --- | --- | --- | --- |
-  | `frame/cpu/cached` | 97.9 µs | 120.0 µs | 238.3 µs | 160.6 µs |
-  | `frame/cpu/hovering` | 112.2 µs | 133.6 µs | 271.8 µs | 182.5 µs |
-  | `frame/cpu/scrolling` | 166.6 µs | 194.8 µs | 379.8 µs | 246.4 µs |
-  | `frame/cpu/typing` | 276.6 µs | 322.9 µs | 634.8 µs | 422.8 µs |
-  | `frame/cpu/theming` | 286.1 µs | 307.4 µs | 713.2 µs | 411.9 µs |
-  | `backdrop_frame/cpu/glass/hover` | 116.7 µs | 138.6 µs | 275.1 µs | 187.0 µs |
-
-- **The main pass on the AMD iGPU** (`main_pass_batch`, a whole fixture repaint): quads 151 µs,
-  shadows 115 µs, text 9 µs. The quads are raster-bound: a shader that returns its fill at once
-  times the same, and blending off saves 40 µs (27 %); 4.1 M fragments over 1.12 screens, 0.4 M
-  under a later opaque interior. The shadows: 79 µs of raster, 46 µs of coverage math. Every
-  fragment shader sits at 24 to 48 VGPRs and 20 to 32 waves a SIMD, with no spills.
+- **The main pass on the AMD iGPU** (old fixture, `main_pass_batch`): the quads are
+  raster-bound, as a shader that returns its fill at once times the same, and blending off saves
+  27 % of them; the shadows are two thirds raster, a third coverage math. Every fragment shader
+  sits at 24 to 48 VGPRs and 20 to 32 waves a SIMD, with no spills.
 - **Backdrop passes** (`.notes/research/2026-10-28-backdrops.md`): a blur pass costs the Apple
   laptop about 48 µs whatever it draws and the AMD iGPU about 6 µs; on the AMD iGPU a frame's
   backdrop work is the composite, then the blurs, then the captures (cards: 793, 610 and 248 µs).
@@ -130,17 +118,14 @@ new run.
   target. A blur residual at 2048² takes 70 ms at σ 1 and 153 ms at σ 4, each tap a
   `textureLoad` of `Rgba16Float`.
 
-- **The GPU frames** (run 10): a GPU frame waits for its device each frame, so the CPU and the
-  GPU never overlap in the bench. On the APUs the CPU half is most of it: on a handheld the CPU is
-  busy 77 % of `frame/gpu/hovering`, record at an IPC of 1.6 against 2.6 in the CPU frame at the
-  same 2.4 GHz, and the wgpu, RADV and kernel calls about 1.4 M instructions a frame more than
-  the CPU harness. The passes of a partial frame are small (`main_pass/gpu/partial` 7 µs local,
-  37 µs fanless, 13 µs handheld, 17 µs windows); the copy of the whole backbuffer onto the target is not:
-  without it `frame/gpu/hovering` and `partial` run 16 to 33 % faster on every host
-  (diagnostic). A whole repaint's main pass takes 0.68 ms on the fanless, 1.0 ms on the handheld and
-  1.04 ms on windows, of it the quads 426 and 553 µs and the shadows 356 and 297 µs on the handheld and
-  windows; windows's `frame/gpu/scrolling` spends 1.6 ms of its 2.9 outside the passes and the CPU
-  half, in its submit and fence wait.
+- **The GPU frames** (run 10, old fixture): a GPU frame waits for its device each frame, so the
+  CPU and the GPU never overlap in the bench. On the APUs the CPU half is most of it: on a handheld
+  the CPU is busy 77 % of `frame/gpu/hovering`, record at an IPC of 1.6 against 2.6 in the CPU
+  frame. The passes of a partial frame are small; the copy of the whole backbuffer onto the
+  target is not: without it `frame/gpu/hovering` and `partial` run 16 to 33 % faster on every host
+  (diagnostic). Of a whole repaint's main pass the quads and the shadows are most, about half and
+  a third; windows's `frame/gpu/scrolling` spends over half its time in its submit and fence
+  wait.
 
 - **The GPU frames on the intel** (run 11): the frame waits on the device for 1.3 to 1.9 ms of its
   1.6 to 2.3 ms, and the GPU runs at 300 of its 1400 MHz all run long, as the kernel's frequency
@@ -397,7 +382,7 @@ new run.
   undid glass's pipelines of its own, `QuadForm::BackdropLens` and `BackdropSpectrum`, which had
   refused the branch as V3D spilled its registers on every backdrop, and which measured Pi glass
   frames −26 to −41 % together with the spectrum buffer (Decisions). Not measured on V3D since
-  (`.notes/TODO.md`).
+  ("To measure").
 - **The glass pipeline spills on V3D**: 1410 instructions, 32:74 spills:fills, two threads.
 - **Glass's σ is the plan's most costly**: σ 4 physical runs the residual at level 0, 25 taps an
   axis; the bilinear pair at the 8 sub-texel bits the board and handheld report moves a pair's weight by
@@ -415,6 +400,20 @@ new run.
   coverage math is about 40 µs of the shadows' 115 µs on the AMD iGPU.
 - **A shadow corner stream per shadow, not per quad**: in a frame with a shadow every quad
   uploads 16 B of `CornerTables` that only shadow instances read. No bench shows the upload.
+- **One ordered lane of runs for every family**: the quad lane replays in record order and every
+  other family in a fixed tier order after it (`PaintTier`), closing a group where order would
+  break. WebRender batches every kind in one list with a look-back, which would remove the
+  quad-first asymmetry and the tier conflict test. Structural, and no workload asks for it. Gate:
+  the draw count and the main pass on the showcase pages
+  (`.notes/research/2026-11-10-draw-calls.md`).
+- **The rect form for a sharp fill**: a sharp unturned solid box draws the template's 138
+  vertices where a plain image draws four, as `FillForm` refuses `ShapeForm::Rect`. Gate: the
+  main pass on V3D, whose vertex floor is 4.8 ms ("The board's vertex floor"); the vertex stage
+  costs nothing measurable on an Apple GPU.
+- **A material box's footprint takes in its drop shadow's halo**: a backdrop's rect is its
+  shape's paint rect, so its capture and its damage hold the halo the box does not read. A rect of
+  the box alone needs each node's shape lift and clip, which the cascade keeps only as a scale
+  (`PlaneCascade::shape_scales`).
 - **`Ordering::order` inlined into the curve lowering**: x86 needs it inlined (as a call,
   `curves/alone` +20 %), the fanless's `curves/alone` runs 21 % slower so and its `same_tier_mesh`
   23 % faster; no profile says why.
@@ -429,3 +428,17 @@ new run.
 - **Shader costs with a profiler**: RGP on the AMD iGPU and Xcode's Metal System Trace on the fanless
   would split the main pass and `backdrop_frame/gpu/*/under`, which spends 1.6 ms over `hover`
   on the fanless.
+
+## To measure
+
+- One glass shader with its spectrum branch on V3D (`gpu::backdrop`, "One glass").
+- The f32 corner points of a closed shape on V3D (`Quad` 64 → 100 B, step `3c010b1d1`).
+- Step `3c010b1d1` against its parent: `atomic/main_pass/gpu/*`, `integration/frame/gpu/*`.
+- The quad keys (`adb0e9bae`) against their parent on the composer's CPU cases,
+  `atomic/composer/cpu/*`.
+- The effect pipelines per shape form (`76abc89e6`) against its parent: `atomic/main_pass/gpu/*`,
+  `integration/frame/gpu/*`, `integration/backdrop_frame/gpu/*`. Its base worktree and both bench
+  binaries are in `tmp/b7/`.
+- The one stroke payload, 84 → 104 B a stroke draw, on `atomic/composer/cpu/curves/*` and
+  `atomic/composer/cpu/quads/polyline/*`.
+- The hot structs, for packing (`internals::hot_struct_sizes`).

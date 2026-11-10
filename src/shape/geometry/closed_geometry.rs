@@ -12,6 +12,13 @@ use std::hash::Hasher as _;
 
 /// The closed shape a paint covers, owner-relative. What an image or an effect shows fits the
 /// shape's rect: a box's own, or a triangle's covering rect, as its gradient spans it.
+///
+/// One enum per family and stage over a struct per kind that owns its math, as `std`'s `IpAddr`
+/// wraps `Ipv4Addr` and `Ipv6Addr`; [`StrokeGeometry`] is the strokes'. Refused: the variants
+/// inline, which turns each kind's methods into enum matches; one geometry enum for every family,
+/// whose pairs with paints no family draws would be representable.
+///
+/// [`StrokeGeometry`]: crate::shape::geometry::stroke_geometry::StrokeGeometry
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum ClosedGeometry {
     /// A rect's or a circle's box, and the side of it the paint covers.

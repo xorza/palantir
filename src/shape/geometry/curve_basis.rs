@@ -7,10 +7,7 @@ use glam::Vec2;
 
 /// Which parametric basis a stroke traces: the half that differs between a Bézier and an arc. Both lower to a `CurveInstance` on the one curve pipeline, selected by its `kind` lane.
 ///
-/// The encoder builds it from a [`ShapeRecord::Curve`]'s fitted Bézier or a [`ShapeRecord::Arc`]'s placed circle and carries it through `DrawCurvePayload` to the composer. Owner-local: the composer folds in origin and transform before scaling to physical px.
-///
-/// [`ShapeRecord::Curve`]: crate::shape::record::ShapeRecord::Curve
-/// [`ShapeRecord::Arc`]: crate::shape::record::ShapeRecord::Arc
+/// The encoder builds it from a stroke record's fitted Bézier or placed circle and carries it through `DrawStrokePayload` to the composer. Owner-local: the composer folds in origin and transform before scaling to physical px.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CurveBasis {
     /// Cubic Bézier control points. Quadratics promote and lines degenerate to this at lowering.
@@ -30,7 +27,7 @@ impl CurveBasis {
 }
 
 impl Default for CurveBasis {
-    /// A degenerate cubic at the origin: the `Default` for a `DrawCurvePayload` literal, never drawn.
+    /// A degenerate cubic at the origin: the `Default` for a `DrawStrokePayload` literal, never drawn.
     fn default() -> Self {
         Self::Cubic(CubicBezier {
             p0: Vec2::ZERO,

@@ -1,5 +1,5 @@
 //! [`CurveShape`]: a line or a Bézier, which a [`Stroke`] draws; every geometry lowers to one
-//! `ShapeRecord::Curve`.
+//! stroke record of a Bézier.
 
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;

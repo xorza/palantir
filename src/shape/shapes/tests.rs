@@ -13,6 +13,7 @@ use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
+use crate::shape::geometry::stroke_geometry::{PolylineColorSpan, StrokeGeometry};
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::image_source::ImageSource;
@@ -25,7 +26,6 @@ use crate::shape::shapes::Shapes;
 use glam::UVec2;
 use glam::Vec2;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::slice;
 
 #[derive(Clone, Copy, Debug)]
 enum ColorSource {
@@ -53,7 +53,7 @@ impl ColorSource {
 
     fn stored_colors_len(self, points_len: usize) -> u32 {
         match self {
-            Self::Single => 1,
+            Self::Single => 0,
             Self::PerPoint => points_len as u32,
             Self::PerSegment => points_len.saturating_sub(1) as u32,
         }
@@ -61,7 +61,9 @@ impl ColorSource {
 }
 
 /// The color-cardinality contract is checked by the color setter, whatever the point count; an
-/// accepted polyline under two points is dropped, and one of two or more lowers its colors.
+/// accepted polyline under two points is dropped, and one of two or more stages its colors as
+/// authored, none for one color, and keeps the stroke's color, which multiplies them where they
+/// are drawn.
 #[test]
 fn polyline_color_cardinality_is_enforced_at_the_setter() {
     let points = [Vec2::ZERO, Vec2::new(10.0, 10.0)];
@@ -70,12 +72,6 @@ fn polyline_color_cardinality_is_enforced_at_the_setter() {
         RgbaF32::new(1.0, 1.0, 1.0, 1.0),
         RgbaF32::new(0.5, 1.0, 0.5, 1.0),
         RgbaF32::new(0.0, 0.5, 1.0, 0.5),
-    ];
-    // `tint` × each color; every product is a power-of-two fraction, exact in f16.
-    let tinted = [
-        RgbaF32::new(0.5, 0.25, 1.0, 0.5),
-        RgbaF32::new(0.25, 0.25, 0.5, 0.5),
-        RgbaF32::new(0.0, 0.125, 1.0, 0.25),
     ];
 
     for points_len in 0..=2 {
@@ -125,26 +121,26 @@ fn polyline_color_cardinality_is_enforced_at_the_setter() {
                 );
 
                 if stored {
-                    let ShapeRecord::Polyline {
-                        points: point_span,
-                        colors: color_span,
-                        ..
+                    let ShapeRecord::Stroke {
+                        geometry: StrokeGeometry::Polyline(polyline),
+                        stroke,
                     } = &shapes.records[0]
                     else {
                         panic!("accepted polyline lowered to another record variant");
                     };
-                    assert_eq!(point_span.len, points_len as u32);
-                    assert_eq!(color_span.len, source.stored_colors_len(points_len));
-                    let expected = match source {
-                        ColorSource::Single => slice::from_ref(&tint),
-                        ColorSource::PerPoint | ColorSource::PerSegment => &tinted[..colors_len],
+                    assert_eq!(polyline.points.len, points_len as u32);
+                    assert_eq!(stroke.color, tint.to_f16());
+                    let staged = match (source, polyline.colors) {
+                        (ColorSource::Single, PolylineColorSpan::Single) => &[][..],
+                        (ColorSource::PerPoint, PolylineColorSpan::PerPoint(span))
+                        | (ColorSource::PerSegment, PolylineColorSpan::PerSegment(span)) => {
+                            &store.polyline_colors[span.range()]
+                        }
+                        (source, colors) => panic!("{source:?} staged as {colors:?}"),
                     };
-                    let expected: Vec<RgbaF16> = expected.iter().map(|&c| c.to_f16()).collect();
-                    assert_eq!(
-                        &store.polyline_colors[color_span.range()],
-                        expected.as_slice(),
-                        "{source:?}: staged colors are the stroke color times each color",
-                    );
+                    let expected: Vec<RgbaF16> =
+                        colors[..colors_len].iter().map(|&c| c.to_f16()).collect();
+                    assert_eq!(staged, expected.as_slice(), "{source:?}");
                 }
             }
         }

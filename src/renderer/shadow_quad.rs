@@ -9,7 +9,9 @@ use bytemuck::{Pod, Zeroable};
 /// A shadow's instance, a [`Quad`]'s size, so it lies in the quad stream among the fills it
 /// paints under or over, in record order. The shadow pipelines read it through their own
 /// attributes (`SHADOW_INSTANCE_ATTRS`), its lanes named as a shadow's. Refused: a shadow's lanes
-/// under a fill's names, its offset, blur and spread in a gradient's axis.
+/// under a fill's names, its offset, blur and spread in a gradient's axis; a stream of its own,
+/// which would move shadows to a tier and close a group at each shadowed box; a Rust union with a
+/// `Quad`, whose reads are `unsafe`.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Pod, Zeroable)]
 pub(crate) struct ShadowQuad {

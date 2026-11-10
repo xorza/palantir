@@ -5,6 +5,7 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 use crate::primitives::paint::color::RgbaF32;
+use crate::shape::polyline::PolylineColors;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::RecordedGradients;
@@ -14,7 +15,7 @@ use glam::Vec2;
 fn stores_are_isolated() {
     let mut first = RecordStore::default();
     let second = RecordStore::default();
-    first.stage_polyline(&[Vec2::new(3.0, 5.0)], &[], RgbaF32::WHITE);
+    first.stage_polyline(&[Vec2::new(3.0, 5.0)], PolylineColors::Single);
 
     assert_eq!(first.polyline_points.as_slice(), &[Vec2::new(3.0, 5.0)]);
     assert!(second.polyline_points.is_empty());

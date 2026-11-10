@@ -23,10 +23,12 @@ use crate::renderer::frontend::encoder::tests::support::{
     as_rect, as_shadow, count_draw_rects, quad_rect,
 };
 use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_stroke_payload::StrokePath;
 use crate::renderer::gradient_atlas::tests::support::{distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 use crate::scene::layer::Layer;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
+use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::GradientId;
@@ -239,9 +241,16 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         ],
         "both rects fill solid, the outside one covering its outside",
     );
-    // A Line rides the GPU curve pipeline as a degenerate cubic: a DrawCurve, never a DrawPolyline.
-    assert_eq!(cmds.kinds(), ["Fill", "Fill", "Curve", "Curve"]);
-    let [solid, ramp] = [2, 3].map(|i| cmds.calls[i].as_curve().unwrap().fill);
+    // A Line rides the GPU curve pipeline as a degenerate cubic, never a polyline.
+    assert_eq!(cmds.kinds(), ["Fill", "Fill", "Stroke", "Stroke"]);
+    let strokes = [2, 3].map(|i| cmds.calls[i].as_stroke().unwrap());
+    assert!(
+        strokes
+            .iter()
+            .all(|p| matches!(p.path, StrokePath::Curve(CurveBasis::Cubic(_)))),
+        "{strokes:?}"
+    );
+    let [solid, ramp] = strokes.map(|p| p.fill);
     assert_eq!(
         (solid.kind, solid.color),
         (FillKind::SOLID, RgbaF32::srgb(1.0, 0.0, 0.0).to_f16()),

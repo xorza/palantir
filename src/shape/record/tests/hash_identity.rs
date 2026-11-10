@@ -3,6 +3,7 @@
 use crate::common::hash;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::coverage::Coverage;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::texture_id::TextureId;
@@ -12,8 +13,11 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::shape::geometry::arc_geometry::ArcGeometry;
+use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
+use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
@@ -87,14 +91,13 @@ fn quad_shapes_hash_apart() {
     }
 }
 
-/// A degenerate cubic and an arc of no sweep share their stroke, cap and ramp, so only the
-/// record's discriminant tells them apart.
+/// A degenerate cubic and an arc of no sweep share their stroke, so only the geometry's kind
+/// tells them apart.
 #[test]
 fn curve_and_arc_records_hash_apart() {
-    let stroke = LoweredStroke::lower(Stroke::new(RgbaF32::WHITE, 2.0));
-    let curve = ShapeRecord::Curve {
-        cap: LineCap::Butt,
-        geometry: BezierGeometry {
+    let stroke = LoweredStroke::lower(Stroke::new(RgbaF32::WHITE, 2.0), CurveRamp::None);
+    let curve = ShapeRecord::Stroke {
+        geometry: StrokeGeometry::Bezier(BezierGeometry {
             bezier: CubicBezier {
                 p0: Vec2::ZERO,
                 p1: Vec2::ZERO,
@@ -102,19 +105,16 @@ fn curve_and_arc_records_hash_apart() {
                 p3: Vec2::ZERO,
             },
             placement: PointPlacement::NATURAL,
-        },
+        }),
         stroke,
-        ramp: CurveRamp::None,
     };
-    let arc = ShapeRecord::Arc {
-        cap: LineCap::Butt,
-        geometry: ArcGeometry {
+    let arc = ShapeRecord::Stroke {
+        geometry: StrokeGeometry::Arc(ArcGeometry {
             local_rect: None,
             start_angle: 0.0,
             sweep: 0.0,
-        },
+        }),
         stroke,
-        ramp: CurveRamp::None,
     };
     assert_ne!(curve.content_hash(), arc.content_hash());
 }

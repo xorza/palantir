@@ -28,11 +28,10 @@ use crate::primitives::text::recorded_text::RecordedText;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::ClosedImage;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::DrawStrokePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -212,10 +211,9 @@ const PINS: &[Pin] = &[
     pin::<DrawClosedPayload<ClosedFill>>("payload::DrawClosedPayload<ClosedFill>", 84, 4),
     pin::<DrawShadowPayload>("payload::DrawShadowPayload", 60, 4),
     pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
-    pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 84, 4),
+    pin::<DrawStrokePayload>("payload::DrawStrokePayload", 104, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 80, 4),
     pin::<DrawClosedPayload<ClosedImage>>("payload::DrawClosedPayload<ClosedImage>", 120, 8),
-    pin::<DrawCurvePayload>("payload::DrawCurvePayload", 84, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
     pin::<Quad>("renderer::Quad", 104, 4),
     pin::<CurveInstance>("renderer::CurveInstance", 80, 4),

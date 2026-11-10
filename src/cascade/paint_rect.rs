@@ -15,6 +15,7 @@ use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
+use crate::shape::geometry::stroke_geometry::{PolylineGeometry, StrokeGeometry};
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
@@ -259,48 +260,38 @@ impl PaintRectCtx<'_> {
                         let swept = spun_if_animated(inked, idx);
                         inflate_text_damage(shape.to_screen(swept, None), swept.size, shape_clip)
                     }
-                    ShapeRecord::Polyline {
-                        width,
-                        cap,
-                        join,
-                        points,
-                        bbox,
-                        placement,
-                        ..
-                    } => {
-                        // The AA fringe is physical: inflate only after the centerline and stroke width reach screen space.
-                        let fitted = placement.map(*bbox, layout_rect.size).apply_rect(*bbox);
-                        let centerline = shape.to_screen(spun_if_animated(fitted, idx), None);
-                        let screen = StrokeReach {
-                            width: *width * shape_transform.scale(),
-                            fringe: AA_HALF_WIDTH / display_scale,
-                            cap: *cap,
-                            joints: StrokeJoints::polyline(points.len, *join),
+                    ShapeRecord::Stroke { geometry, stroke } => match geometry {
+                        StrokeGeometry::Polyline(PolylineGeometry {
+                            points,
+                            bbox,
+                            placement,
+                            ..
+                        }) => {
+                            // The AA fringe is physical: inflate only after the centerline and
+                            // stroke width reach screen space.
+                            let fitted = placement.map(*bbox, layout_rect.size).apply_rect(*bbox);
+                            let centerline = shape.to_screen(spun_if_animated(fitted, idx), None);
+                            let screen = StrokeReach {
+                                width: stroke.width * shape_transform.scale(),
+                                fringe: AA_HALF_WIDTH / display_scale,
+                                cap: stroke.cap,
+                                joints: StrokeJoints::polyline(points.len, stroke.join),
+                            }
+                            .bbox(centerline);
+                            clip_screen(screen, shape_clip)
                         }
-                        .bbox(centerline);
-                        clip_screen(screen, shape_clip)
-                    }
-                    // Placed against the owner as the encoder places them.
-                    ShapeRecord::Curve {
-                        cap,
-                        geometry,
-                        stroke,
-                        ..
-                    } => native_screen(
-                        geometry.place(layout_rect.size, *cap, stroke.width),
-                        *cap,
-                        stroke.width,
-                    ),
-                    ShapeRecord::Arc {
-                        cap,
-                        geometry,
-                        stroke,
-                        ..
-                    } => native_screen(
-                        geometry.place(layout_rect.size, *cap, stroke.width),
-                        *cap,
-                        stroke.width,
-                    ),
+                        // Placed against the owner as the encoder places them.
+                        StrokeGeometry::Bezier(geometry) => native_screen(
+                            geometry.place(layout_rect.size, stroke.cap, stroke.width),
+                            stroke.cap,
+                            stroke.width,
+                        ),
+                        StrokeGeometry::Arc(geometry) => native_screen(
+                            geometry.place(layout_rect.size, stroke.cap, stroke.width),
+                            stroke.cap,
+                            stroke.width,
+                        ),
+                    },
                     // A triangle's bbox carries its corner radius but not the physical AA fringe,
                     // added here like the stroked kinds above, whatever paints it.
                     ShapeRecord::Closed {

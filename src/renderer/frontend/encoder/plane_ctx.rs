@@ -13,7 +13,6 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
-use crate::primitives::paint::line_style::LineCap;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
@@ -28,11 +27,12 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::Closed
 use crate::renderer::frontend::payload::draw_closed_payload::closed_image::{
     ClosedImage, GpuViewDraw,
 };
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_shadow_payload::DrawShadowPayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::{
+    DrawStrokePayload, PolylinePath, StrokePath,
+};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
@@ -46,6 +46,7 @@ use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
+use crate::shape::geometry::stroke_geometry::{PolylineGeometry, StrokeGeometry};
 use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::capture_params::EffectBackdrop;
 use crate::shape::paint::closed_paint::ClosedPaint;
@@ -99,13 +100,13 @@ struct BackdropLook {
     read: EffectCaptureDraw,
 }
 
-/// A curve or an arc record placed in its owner, with the stroke that draws it.
+/// A stroke record as one paint call draws it: its path, its lowered stroke, and what its paint
+/// animation does to it this frame.
 #[derive(Clone, Copy, Debug)]
-struct NativeStroke {
-    place: PlacedStroke,
-    cap: LineCap,
+struct StrokeItem {
+    geometry: StrokeGeometry,
     stroke: LoweredStroke,
-    ramp: CurveRamp,
+    animation: DrawAnimation,
 }
 
 /// A closed shape's fill as one paint call draws it: the shape in the logical frame, its lowered
@@ -211,43 +212,62 @@ impl PlaneCtx<'_, '_> {
         }
     }
 
-    /// Draw `native` in `owner_rect`, faded and turned by `animation`: its curve on the curve
-    /// pipeline, owner-local, the basis crossing verbatim so cull, spin and sub-instance sizing
-    /// stay one code path; or its cap's dot as a box, in the stroke color times the ramp at its
-    /// start.
-    fn paint_native_stroke(
-        &mut self,
-        native: NativeStroke,
-        owner_rect: Rect,
-        animation: DrawAnimation,
-        out: &mut impl PaintSink,
-    ) {
-        let NativeStroke {
-            place,
-            cap,
+    /// Draw `item` in `owner_rect`, faded and turned by its animation. A polyline crosses with
+    /// its staged points and colors, fitted to the owner. A cubic or an arc places in the owner: its
+    /// curve on the curve pipeline, owner-local, the basis crossing verbatim so cull, spin and
+    /// sub-instance sizing stay one code path; or its cap's dot as a box, in the stroke color times
+    /// the ramp at its start.
+    fn paint_stroke(&mut self, item: StrokeItem, owner_rect: Rect, out: &mut impl PaintSink) {
+        let StrokeItem {
+            geometry,
             stroke,
-            ramp,
-        } = native;
-        match place {
-            PlacedStroke::Curve(basis) => {
-                let ramp_row = match ramp {
-                    CurveRamp::None => None,
-                    CurveRamp::Interned { id, hash: _ } => Some(self.gradient_row(id)),
-                };
+            animation,
+        } = item;
+        let ramp_row = match stroke.ramp {
+            CurveRamp::None => None,
+            CurveRamp::Interned { id, hash: _ } => Some(self.gradient_row(id)),
+        };
+        let payload = |path| DrawStrokePayload {
+            path,
+            origin: owner_rect.min,
+            spin: None,
+            fill: GpuFill::curve(stroke.color, ramp_row),
+            width: stroke.width,
+            cap: stroke.cap,
+        };
+        let place = match geometry {
+            StrokeGeometry::Polyline(PolylineGeometry {
+                points,
+                colors,
+                bbox,
+                placement,
+                content_hash: _,
+            }) => {
+                debug_assert!(ramp_row.is_none(), "a polyline draws no ramp");
+                let fit = placement.map(bbox, owner_rect.size);
                 out.draw(
-                    DrawCurvePayload {
-                        basis,
-                        origin: owner_rect.min,
-                        spin: None,
-                        fill: GpuFill::curve(stroke.color, ramp_row),
-                        width: stroke.width,
-                        cap,
-                    },
+                    payload(StrokePath::Polyline(PolylinePath {
+                        bbox: fit.apply_rect(bbox),
+                        fit,
+                        points,
+                        colors,
+                        join: stroke.join,
+                    })),
                     animation,
                 );
+                return;
             }
+            StrokeGeometry::Bezier(geometry) => {
+                geometry.place(owner_rect.size, stroke.cap, stroke.width)
+            }
+            StrokeGeometry::Arc(geometry) => {
+                geometry.place(owner_rect.size, stroke.cap, stroke.width)
+            }
+        };
+        match place {
+            PlacedStroke::Curve(basis) => out.draw(payload(StrokePath::Curve(basis)), animation),
             PlacedStroke::Dot(PlacedBox { rect, corners }) => {
-                let color = match ramp {
+                let color = match stroke.ramp {
                     CurveRamp::None => stroke.color,
                     CurveRamp::Interned { id, hash: _ } => RgbaF32::from(stroke.color)
                         .tinted(self.gradients.ramp(id).color_at(0.0))
@@ -517,35 +537,15 @@ impl PlaneCtx<'_, '_> {
                     animation,
                 );
             }
-            ShapeRecord::Polyline {
-                width,
-                color_mode,
-                cap,
-                join,
-                points,
-                colors,
-                bbox,
-                placement,
-                content_hash: _,
-            } => {
-                let fit = placement.map(*bbox, owner_rect.size);
-                out.draw(
-                    DrawPolylinePayload {
-                        bbox: fit.apply_rect(*bbox),
-                        origin: owner_rect.min,
-                        spin: None,
-                        fit,
-                        width: *width,
-                        points: *points,
-                        colors: *colors,
-                        color_mode: *color_mode,
-                        cap: *cap,
-                        join: *join,
-                        alpha: 1.0,
-                    },
+            ShapeRecord::Stroke { geometry, stroke } => self.paint_stroke(
+                StrokeItem {
+                    geometry: *geometry,
+                    stroke: *stroke,
                     animation,
-                );
-            }
+                },
+                owner_rect,
+                out,
+            ),
             ShapeRecord::Mesh {
                 placement,
                 tint,
@@ -567,34 +567,6 @@ impl PlaneCtx<'_, '_> {
                     },
                     animation,
                 );
-            }
-            ShapeRecord::Curve {
-                cap,
-                geometry,
-                stroke,
-                ramp,
-            } => {
-                let native = NativeStroke {
-                    place: geometry.place(owner_rect.size, *cap, stroke.width),
-                    cap: *cap,
-                    stroke: *stroke,
-                    ramp: *ramp,
-                };
-                self.paint_native_stroke(native, owner_rect, animation, out);
-            }
-            ShapeRecord::Arc {
-                cap,
-                geometry,
-                stroke,
-                ramp,
-            } => {
-                let native = NativeStroke {
-                    place: geometry.place(owner_rect.size, *cap, stroke.width),
-                    cap: *cap,
-                    stroke: *stroke,
-                    ramp: *ramp,
-                };
-                self.paint_native_stroke(native, owner_rect, animation, out);
             }
         }
     }

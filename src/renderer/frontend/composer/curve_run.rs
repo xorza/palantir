@@ -4,7 +4,8 @@ use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::Lowering;
-use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::DrawStrokePayload;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
@@ -20,17 +21,13 @@ pub(super) struct CurveRun {
 }
 
 impl CurveRun {
-    /// `p` with its turn applied to its basis, about its pivot relative to its origin: a cubic's
-    /// control points turned, as a Bézier is affine-invariant, an arc's center turned and its
-    /// angles shifted, as a circle stays one. The composer culls the turned basis by its bounds at
-    /// this frame's angle.
-    pub(super) fn turn(p: DrawCurvePayload) -> DrawCurvePayload {
-        let Some(spin) = p.spin else {
-            return p;
-        };
-        let spin = spin.relative_to(p.origin);
+    /// `basis` turned by `spin`, its pivot relative to the payload's origin: a cubic's control
+    /// points turned, as a Bézier is affine-invariant, an arc's center turned and its angles
+    /// shifted, as a circle stays one. The composer culls the turned basis by its bounds at this
+    /// frame's angle.
+    pub(super) fn turned(basis: CurveBasis, spin: Spin) -> CurveBasis {
         let rotor = spin.rotor();
-        let basis = match p.basis {
+        match basis {
             CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }) => {
                 let [p0, p1, p2, p3] = [p0, p1, p2, p3].map(|q| rotor.apply(q));
                 CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 })
@@ -40,28 +37,18 @@ impl CurveRun {
                 start_angle: arc.start_angle + spin.angle,
                 ..arc
             }),
-        };
-        DrawCurvePayload {
-            basis,
-            spin: None,
-            ..p
         }
     }
 
-    /// Lower `p`, turned already ([`Self::turn`]), `width_physical` wide, under `lowering`: its
-    /// control points or arc in physical px, and as many sub-instances as its length needs.
-    pub(super) fn lower(
-        p: &DrawCurvePayload,
-        width_physical: f32,
-        lowering: &Lowering<'_>,
-    ) -> Self {
+    /// Lower `basis`, `p`'s curve turned already ([`Self::turned`]), under `lowering`: its control
+    /// points or arc in physical px, and as many sub-instances as its length needs.
+    pub(super) fn lower(basis: CurveBasis, p: &DrawStrokePayload, lowering: &Lowering<'_>) -> Self {
         let cap = p.cap;
         // Owner origin folds in here so the record stays owner-local. No snapping: it would warp
         // the traced shape.
-        debug_assert!(p.spin.is_none(), "a curve lowers turned");
         let to_physical = lowering.transform.physical_map(p.origin);
         let proto = CurveInstance {
-            width: width_physical,
+            width: p.width * lowering.transform.physical_scale(),
             color0: p.fill.color,
             color1: p.fill.color,
             caps: CurveCaps::new(cap, CapEnds::Both),
@@ -69,7 +56,7 @@ impl CurveRun {
             fill_lut_row: p.fill.lut_row,
             ..bytemuck::Zeroable::zeroed()
         };
-        match p.basis {
+        match basis {
             CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }) => {
                 let ctrl = [p0, p1, p2, p3].map(|q| to_physical.point(q));
                 let [p0, p1, p2, p3] = ctrl;

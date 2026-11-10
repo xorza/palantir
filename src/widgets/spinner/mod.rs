@@ -100,8 +100,9 @@ impl<'a> Spinner<'a> {
             .default_size((Sizing::fixed(diameter), Sizing::fixed(diameter)))
             .show(ui, None, |ui| {
                 let SpinnerCircle { center, radius } = SpinnerCircle::new(extent, diameter, width);
-                // An arc of no length paints its cap as a dot, which a turn cannot rotate yet
-                // (`.notes/TODO.md`), so it paints nothing, as before dots existed.
+                // An arc of no length, of no sweep or no radius, paints its cap as a dot in the
+                // comet's color at its start, the transparent tail: it would show nothing and
+                // turn forever, so it is not drawn.
                 if is_invisible(radius) || is_invisible(sweep.abs()) {
                     return;
                 }

@@ -5,6 +5,7 @@ use crate::common::span::Span;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::fit::FitMap;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -15,11 +16,14 @@ use crate::renderer::frontend::composer::tests::support::{
     TestPolyline, clip, image, params, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_stroke_payload::{
+    DrawStrokePayload, PolylinePath, StrokePath,
+};
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::shape::record::ColorMode;
+use crate::shape::geometry::stroke_geometry::PolylineColorSpan;
+use crate::shape::polyline::PolylineColors;
 use crate::shape::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
@@ -167,7 +171,11 @@ fn a_join_between_colors_averages_them_premultiplied() {
         ],
         4.0,
     )
-    .colors(&[red, RgbaF32::TRANSPARENT, red], ColorMode::PerSegment)
+    .colors(PolylineColors::PerSegment(&[
+        red,
+        RgbaF32::TRANSPARENT,
+        red,
+    ]))
     .cap(LineCap::Round)
     .join(LineJoin::Round)
     .record(&mut commands, &mut store);
@@ -250,7 +258,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let buf = run(
         |b, store| {
             TestPolyline::new(&pts, 4.0)
-                .colors(&[red, green, green, blue], ColorMode::PerPoint)
+                .colors(PolylineColors::PerPoint(&[red, green, green, blue]))
                 .join(LineJoin::Round)
                 .record(b, store);
         },
@@ -274,7 +282,7 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let buf = run(
         |b, store| {
             TestPolyline::new(&pts, 4.0)
-                .colors(&[red, green, blue], ColorMode::PerSegment)
+                .colors(PolylineColors::PerSegment(&[red, green, blue]))
                 .join(LineJoin::Round)
                 .record(b, store);
         },
@@ -297,6 +305,45 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         join.color0,
         RgbaF16::new(0.5, 0.0, 0.5, 1.0),
         "PerSegment chrome = linear midpoint of adjacent segment colors",
+    );
+
+    // The stroke's color multiplies each recorded color where it is drawn, and stands alone for a
+    // polyline of no colors: `tint = (0.5, 0.25, 1, 0.5)` takes red to `(0.5, 0, 0, 0.5)`, green to
+    // `(0, 0.25, 0, 0.5)` and blue to `(0, 0, 1, 0.5)`, each exact in f16.
+    let tint = RgbaF32::new(0.5, 0.25, 1.0, 0.5);
+    let (per_point, per_segment) = ([red, green, green, blue], [red, green, blue]);
+    let segments = |colors| {
+        let buf = run(
+            |b, store| {
+                TestPolyline::new(&pts, 4.0)
+                    .colors(colors)
+                    .color(tint)
+                    .record(b, store);
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        buf.curves
+            .iter()
+            .filter(|c| c.kind == CurveKind::SEGMENT)
+            .map(|c| (c.color0, c.color1))
+            .collect::<Vec<_>>()
+    };
+    let [red_t, green_t, blue_t] = [
+        RgbaF16::new(0.5, 0.0, 0.0, 0.5),
+        RgbaF16::new(0.0, 0.25, 0.0, 0.5),
+        RgbaF16::new(0.0, 0.0, 1.0, 0.5),
+    ];
+    assert_eq!(
+        segments(PolylineColors::PerPoint(&per_point)),
+        [(red_t, green_t), (green_t, blue_t)]
+    );
+    assert_eq!(
+        segments(PolylineColors::PerSegment(&per_segment)),
+        [(red_t, red_t), (blue_t, blue_t)]
+    );
+    assert_eq!(
+        segments(PolylineColors::Single),
+        [(tint.to_f16(), tint.to_f16()); 2]
     );
 }
 
@@ -703,13 +750,20 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
         let buf = run(
             |b, arena| {
                 arena.polyline_points.push(Vec2::ZERO);
-                arena.polyline_colors.push(RgbaF32::WHITE.to_f16());
-                b.polyline(DrawPolylinePayload {
-                    bbox: Rect::new(0.0, 0.0, 4.0, 4.0),
+                b.stroke(DrawStrokePayload {
+                    path: StrokePath::Polyline(PolylinePath {
+                        bbox: Rect::new(0.0, 0.0, 4.0, 4.0),
+                        fit: FitMap::IDENTITY,
+                        points: Span::new(0, points_len),
+                        colors: PolylineColorSpan::Single,
+                        join: LineJoin::Miter,
+                    }),
                     origin: Vec2::ZERO,
+                    fill: GpuFill {
+                        color: RgbaF32::WHITE.to_f16(),
+                        ..GpuFill::default()
+                    },
                     width: 2.0,
-                    points: Span::new(0, points_len),
-                    colors: Span::new(0, 1),
                     ..Default::default()
                 });
             },
@@ -730,7 +784,6 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
 /// it, so each draws.
 #[test]
 fn a_turned_draw_is_culled_by_its_bound_at_its_angle() {
-    use crate::primitives::geometry::fit::FitMap;
     use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
     use crate::renderer::render_buffer::curve_kind::CurveKind;
 

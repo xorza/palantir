@@ -3,6 +3,11 @@
 //! [`Composer`] owns the scratch a compose pass is built in; a
 //! [`ComposeSession`] is one pass, holding that scratch together with the
 //! buffer it fills, and [`geometry`] is the arithmetic both are cut with.
+//!
+//! A turned draw is culled by its bound at this frame's angle: a rect's turned bound, a curve's
+//! turned control points or arc, a polyline's points turned. The cascade keeps the square a draw
+//! sweeps (`Rect::spun_cover`), as a paint rect must hold across an animation's frames. Refused:
+//! the swept square here, which admits draws that paint nothing in the damage.
 
 use crate::display::frame_stamp::FrameStamp;
 use crate::image_registry::texture_limit::TextureLimit;

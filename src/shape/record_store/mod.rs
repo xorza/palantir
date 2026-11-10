@@ -25,7 +25,7 @@ use crate::primitives::geometry::coverage::Coverage;
 use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::domain::is_invisible;
-use crate::primitives::math::float_hash::{self, FloatHash};
+use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::LineCap;
@@ -39,6 +39,9 @@ use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::bezier_geometry::BezierGeometry;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::geometry::stroke_geometry::{
+    PolylineColorSpan, PolylineGeometry, StrokeGeometry,
+};
 use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::lower;
@@ -50,7 +53,6 @@ use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
-use crate::shape::record::ColorMode;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::recorded_gradients::RecordedGradients;
 use crate::shape::record_store::text_store::TextStore;
@@ -59,7 +61,6 @@ use crate::text::family_keys::FamilyKeys;
 use crate::text::shaping_font::ShapingFont;
 use glam::Vec2;
 use std::hash::{Hash as _, Hasher as _};
-use std::slice;
 
 /// The payload columns and the only API that appends to them. Every writer
 /// holds `&mut Forest`, so the borrow checker excludes concurrent writes.
@@ -71,11 +72,11 @@ pub(crate) struct RecordStore {
     pub(crate) mesh_vertices: Vec<MeshVertex>,
     /// Index storage for `ShapeRecord::Mesh`, indexed by the record's `idxs`.
     pub(crate) mesh_idxs: Vec<u32>,
-    /// Point storage for `ShapeRecord::Polyline`, indexed by the record's `points`.
+    /// Point storage for a polyline's `PolylineGeometry`, indexed by its `points`.
     pub(crate) polyline_points: Vec<Vec2>,
-    /// Color storage for `ShapeRecord::Polyline`: 1, `points.len()` or
-    /// `points.len() - 1` per `ColorMode`, stored as `RgbaF16` (the `CurveInstance`
-    /// lane form) so packing happens once at lowering.
+    /// Color storage for a polyline's `PolylineGeometry`, indexed by its `colors`: `points.len()`
+    /// or `points.len() - 1` a polyline, stored as `RgbaF16` (the `CurveInstance` lane form) so
+    /// packing happens once at lowering.
     pub(crate) polyline_colors: Vec<RgbaF16>,
     /// Interned record-scoped gradient payloads, indexed by `LoweredBrush::Gradient`
     /// (set by `shape::lower::brush`). Cross-tree, so chrome and shape lowering
@@ -104,7 +105,7 @@ pub(crate) struct MeshSpans {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PolylineSpans {
     pub(crate) points: Span,
-    pub(crate) colors: Span,
+    pub(crate) colors: PolylineColorSpan,
 }
 
 /// Where a draw's effect names resolve, and what is reduced, as [`RecordStore::record`] records
@@ -198,25 +199,15 @@ impl RecordStore {
     /// its point. A butt cap on no length has no extent, so it drops here.
     fn record_curve(&mut self, shape: &CurveShape, stroke: &Stroke) -> Option<ShapeRecord> {
         let CurveShape { path, placement } = *shape;
-        // The width and color enter through `LoweredStroke::lower`.
-        let Stroke {
-            width: _,
-            color: _,
-            ramp,
-            cap,
-            join: _,
-        } = *stroke;
-        if stroke.is_noop() || (cap == LineCap::Butt && path.point().is_some()) {
+        if stroke.is_noop() || (stroke.cap == LineCap::Butt && path.point().is_some()) {
             return None;
         }
-        Some(ShapeRecord::Curve {
-            cap,
-            geometry: BezierGeometry {
+        Some(ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Bezier(BezierGeometry {
                 bezier: path.bezier(),
                 placement,
-            },
-            stroke: LoweredStroke::lower(*stroke),
-            ramp: ramp.map_or(CurveRamp::None, |ramp| lower::ramp(self, &ramp)),
+            }),
+            stroke: self.lower_stroke(stroke),
         })
     }
 
@@ -228,13 +219,9 @@ impl RecordStore {
         if stroke.is_noop() || (stroke.cap == LineCap::Butt && is_invisible(arc.sweep.abs())) {
             return None;
         }
-        Some(ShapeRecord::Arc {
-            cap: stroke.cap,
-            geometry: arc,
-            stroke: LoweredStroke::lower(*stroke),
-            ramp: stroke.ramp.map_or(CurveRamp::None, |stroke_ramp| {
-                lower::ramp(self, &stroke_ramp)
-            }),
+        Some(ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Arc(arc),
+            stroke: self.lower_stroke(stroke),
         })
     }
 
@@ -251,13 +238,6 @@ impl RecordStore {
             bbox,
             placement,
         } = *shape;
-        let Stroke {
-            width,
-            color,
-            ramp: _,
-            cap,
-            join,
-        } = *stroke;
         let invisible = match colors {
             PolylineColors::Single => false,
             PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
@@ -267,44 +247,40 @@ impl RecordStore {
         if stroke.is_noop() || points.len() < 2 || invisible {
             return None;
         }
-        let (mode, color_slice): (ColorMode, &[RgbaF32]) = match &colors {
-            PolylineColors::Single => (ColorMode::Single, slice::from_ref(&RgbaF32::WHITE)),
-            PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
-            PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
-        };
-
-        // Dropped above under two points, and the color setters checked the count.
-        debug_assert!(
-            points.len() >= 2,
-            "polyline with < 2 points reached lowering"
-        );
+        // The shape's pair check refused both.
+        debug_assert!(stroke.ramp.is_none(), "a polyline draws no ramp");
         debug_assert!(colors.matches(points.len()));
-        let staged = self.stage_polyline(points, color_slice, color);
-        let lowered_colors = &self.polyline_colors[staged.colors.range()];
+        let staged = self.stage_polyline(points, colors);
 
         let mut h = Hasher::new();
         for &point in points {
             point.hash_visual(&mut h);
         }
-        h.pod_slice(lowered_colors);
-        let style = (u64::from(float_hash::canon_bits(width)) << 24)
-            | ((mode as u64) << 16)
-            | ((cap as u64) << 8)
-            | (join as u64);
-        h.write_u64(style);
-        let content_hash = ContentHash::finish(&h);
-
-        Some(ShapeRecord::Polyline {
-            width,
-            color_mode: mode,
-            cap,
-            join,
-            points: staged.points,
-            colors: staged.colors,
-            bbox,
-            placement,
-            content_hash,
+        let (tag, span) = match staged.colors {
+            PolylineColorSpan::Single => (0, Span::default()),
+            PolylineColorSpan::PerPoint(span) => (1, span),
+            PolylineColorSpan::PerSegment(span) => (2, span),
+        };
+        h.write_u8(tag);
+        h.pod_slice(&self.polyline_colors[span.range()]);
+        Some(ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Polyline(PolylineGeometry {
+                points: staged.points,
+                colors: staged.colors,
+                bbox,
+                placement,
+                content_hash: ContentHash::finish(&h),
+            }),
+            stroke: self.lower_stroke(stroke),
         })
+    }
+
+    /// `stroke` lowered, its ramp interned here.
+    fn lower_stroke(&mut self, stroke: &Stroke) -> LoweredStroke {
+        let ramp = stroke
+            .ramp
+            .map_or(CurveRamp::None, |ramp| lower::ramp(self, &ramp));
+        LoweredStroke::lower(*stroke, ramp)
     }
 
     /// The record of `shape` inked in `color`, its text recorded here; `None` where it shapes
@@ -546,19 +522,26 @@ impl RecordStore {
         MeshSpans { vertices, idxs }
     }
 
-    /// Copy one polyline's points and colors in, each color multiplied by `tint`
-    /// and packed once here. Returns the spans a `ShapeRecord::Polyline` carries.
+    /// Copy one polyline's points and colors in, each color packed once here. Returns the spans
+    /// a polyline's `PolylineGeometry` carries.
     pub(crate) fn stage_polyline(
         &mut self,
         points: &[Vec2],
-        colors: &[RgbaF32],
-        tint: RgbaF32,
+        colors: PolylineColors<'_>,
     ) -> PolylineSpans {
         let staged_points = Span::new(self.polyline_points.len() as u32, points.len() as u32);
         self.polyline_points.extend_from_slice(points);
-        let staged_colors = Span::new(self.polyline_colors.len() as u32, colors.len() as u32);
-        self.polyline_colors
-            .extend(colors.iter().map(|&c| c.tinted(tint).to_f16()));
+        let mut stage = |colors: &[RgbaF32]| {
+            let span = Span::new(self.polyline_colors.len() as u32, colors.len() as u32);
+            self.polyline_colors
+                .extend(colors.iter().map(|&color| color.to_f16()));
+            span
+        };
+        let staged_colors = match colors {
+            PolylineColors::Single => PolylineColorSpan::Single,
+            PolylineColors::PerPoint(colors) => PolylineColorSpan::PerPoint(stage(colors)),
+            PolylineColors::PerSegment(colors) => PolylineColorSpan::PerSegment(stage(colors)),
+        };
         PolylineSpans {
             points: staged_points,
             colors: staged_colors,

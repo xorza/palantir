@@ -1,8 +1,11 @@
 //! [`BezierGeometry`]: a curve record's geometry, which fits its owner where it is drawn.
 
+use crate::common::hash::Hasher;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::vec2;
+use crate::primitives::math::float_hash::FloatHash;
+use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::line_style::LineCap;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
@@ -28,6 +31,22 @@ impl BezierGeometry {
             return PlacedStroke::dot(p0, cap, width);
         }
         PlacedStroke::Curve(CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }))
+    }
+
+    /// Feed the geometry into a record's hash.
+    pub(crate) fn hash_into(self, h: &mut Hasher) {
+        let CubicBezier { p0, p1, p2, p3 } = self.bezier;
+        for point in [p0, p1, p2, p3] {
+            point.hash_visual(h);
+        }
+        self.placement.hash_into(h);
+    }
+}
+
+impl NanCheck for BezierGeometry {
+    fn has_nan(&self) -> bool {
+        let CubicBezier { p0, p1, p2, p3 } = self.bezier;
+        [p0, p1, p2, p3].iter().any(|p| p.is_nan()) || self.placement.has_nan()
     }
 }
 

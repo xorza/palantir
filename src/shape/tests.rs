@@ -22,11 +22,13 @@ use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::geometry::point_placement::PointPlacement;
+use crate::shape::geometry::stroke_geometry::StrokeGeometry;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
 use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_brush::LoweredBrush;
+use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::Resolve;
@@ -564,10 +566,13 @@ fn curves_lower_to_a_cubic_and_its_tight_bbox() {
         ),
     ];
     for (label, shape, want_bezier, want_bbox) in cases {
-        let Some(ShapeRecord::Curve {
-            geometry,
-            ramp: CurveRamp::None,
-            ..
+        let Some(ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Bezier(geometry),
+            stroke:
+                LoweredStroke {
+                    ramp: CurveRamp::None,
+                    ..
+                },
         }) = lower((shape, stroke))
         else {
             panic!("{label}: a curve without a ramp lowers to a ramp-less curve record");
@@ -588,12 +593,10 @@ fn arcs_and_circles_lower_to_an_arc_record() {
     let rect = Rect::new(10.0, 20.0, 30.0, 40.0);
     let stroke = Stroke::new(RgbaF32::WHITE, 2.0).with_cap(LineCap::Round);
     let record = |pair| match pair {
-        Some(ShapeRecord::Arc {
-            cap,
-            geometry,
+        Some(ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Arc(geometry),
             stroke,
-            ..
-        }) => (cap, geometry, stroke.width),
+        }) => (stroke.cap, geometry, stroke.width),
         other => panic!("an arc lowers to an arc record, got {other:?}"),
     };
     assert_eq!(
@@ -662,7 +665,11 @@ fn a_curve_of_no_length_paints_its_cap_alone() {
         ),
     ];
     for (label, shape, cap, want_corners) in cases {
-        let Some(ShapeRecord::Curve { geometry, .. }) = lower((shape, wide.with_cap(cap))) else {
+        let Some(ShapeRecord::Stroke {
+            geometry: StrokeGeometry::Bezier(geometry),
+            ..
+        }) = lower((shape, wide.with_cap(cap)))
+        else {
             panic!("{label}: a capped curve of no length keeps its record");
         };
         assert_eq!(
