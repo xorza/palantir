@@ -22,7 +22,6 @@ use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
-use crate::renderer::frontend::composer::packed_quad::PackedQuad;
 use crate::renderer::frontend::composer::paint_order::{Lane, Ordering, TextClip};
 use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
@@ -71,7 +70,7 @@ use std::num::NonZeroU32;
 
 /// One compose pass in flight: the [`Composer`]'s scratch bound to the buffer
 /// being filled, the record payloads, and the display. Paint arrives through
-/// [`PaintSink`] in authoring order: each draw is lowered here (`lowering`, `packed_quad`,
+/// [`PaintSink`] in authoring order: each draw is lowered here (`lowering`, `template_shape`,
 /// `curve_run`, `polyline_scratch`) and ordered through [`Ordering`].
 #[derive(Debug)]
 #[must_use = "a session leaves its last batch and group open until `finish`"]
@@ -81,12 +80,13 @@ pub(crate) struct ComposeSession<'a> {
     pub(super) out: &'a mut RenderBuffer,
 }
 
-/// What a quad's instance carries past its shape: its fill word, its border's color and its
-/// fill's axis, a gradient's or a shadow's.
+/// What a quad's instance carries past its shape: its fill word, its border, physical px wide, and
+/// its fill's axis, a gradient's or a shadow's.
 #[derive(Clone, Copy, Debug)]
 struct QuadLanes {
     fill: GpuFill,
     border_color: RgbaF16,
+    border_width: f32,
     fill_axis: FillAxis,
 }
 
@@ -239,19 +239,21 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn fill(&mut self, p: DrawClosedPayload<ClosedFill>) {
-        let packed = PackedQuad::pack(&p, p.paint.border, &self.lowering());
-        if self.fold_into_clear(&p, &packed) {
+        let lowering = self.lowering();
+        let shape = TemplateShape::of(p.geometry, p.spin, &lowering).turned(p.spin, &lowering);
+        let border_width = p.paint.border.width * lowering.transform.physical_scale();
+        if self.fold_into_clear(&p, &shape, border_width) {
             return;
         }
         // The clipped rect is also the overlap test's rect, so an ancestor-clipped quad does not
         // force a needless flush.
-        let Some(visible) = self.ordering().admit(Lane::Quad, packed.rect.urect) else {
+        let Some(visible) = self.ordering().admit(Lane::Quad, shape.rect.urect) else {
             return;
         };
         let clip = self.clip_chain(visible);
         // Fragment fast path: a solid, sharp, borderless, pixel-aligned box has coverage exactly
         // 1.0, so the shader returns the fill directly.
-        let fast = p.is_solid_box() && packed.is_pixel_aligned();
+        let fast = p.is_solid_box() && shape.is_pixel_aligned(border_width);
         // The instance carries the shape's side and kind in its fill word, which picks its form.
         let kind = match p.geometry {
             PlacedClosed::Box {
@@ -270,10 +272,11 @@ impl PaintSink for ComposeSession<'_> {
                 ..p.paint.fill
             },
             border_color: p.paint.border.color,
+            border_width,
             fill_axis: p.paint.fill_axis,
         };
-        self.push_quad(&packed, lanes, clip);
-        self.record_opaque_cover(&p, &packed);
+        self.push_quad(&shape, lanes, clip);
+        self.record_opaque_cover(&p, &shape, border_width);
     }
 
     /// A shadow in the quad stream, among the fills it lies under or over.
@@ -283,9 +286,9 @@ impl PaintSink for ComposeSession<'_> {
         // shader finds its source again.
         let fill_axis = FillAxis::from(p.shadow.geometry_f16)
             .scaled_saturating(lowering.transform.physical_scale());
-        let packed =
-            PackedQuad::shadow(&p, ShadowGeometry::from_lanes(fill_axis.lanes()), &lowering);
-        let Some(visible) = self.ordering().admit(Lane::Quad, packed.rect.urect) else {
+        let shape =
+            TemplateShape::shadow(&p, ShadowGeometry::from_lanes(fill_axis.lanes()), &lowering);
+        let Some(visible) = self.ordering().admit(Lane::Quad, shape.rect.urect) else {
             return;
         };
         let clip = self.clip_chain(visible);
@@ -300,9 +303,10 @@ impl PaintSink for ComposeSession<'_> {
                 lut_row: LutRow::FALLBACK,
             },
             border_color: LoweredBorder::NONE.color,
+            border_width: 0.0,
             fill_axis,
         };
-        self.push_quad(&packed, lanes, clip);
+        self.push_quad(&shape, lanes, clip);
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -421,9 +425,10 @@ impl PaintSink for ComposeSession<'_> {
     fn effect(&mut self, p: DrawClosedPayload<ClosedEffect>) {
         let lowering = self.lowering();
         let scale = lowering.transform.physical_scale();
-        let packed = PackedQuad::pack(&p, p.paint.border(), &lowering);
-        let physical = packed.rect.physical;
-        let Some(visible) = self.ordering().cull(packed.rect.urect) else {
+        let shape = TemplateShape::of(p.geometry, p.spin, &lowering).turned(p.spin, &lowering);
+        let border_width = p.paint.border().width * scale;
+        let physical = shape.rect.physical;
+        let Some(visible) = self.ordering().cull(shape.rect.urect) else {
             return;
         };
         let look = p.paint.stage.map(|stage| MaterialLook {
@@ -432,7 +437,7 @@ impl PaintSink for ComposeSession<'_> {
             fill: stage.fill,
             fill_axis: stage.fill_axis,
             border_color: stage.border.color,
-            border_width: packed.border_width,
+            border_width,
         });
         // A backdrop is listed before it is ordered, so its own paint is not among what it shares a
         // break past.
@@ -492,15 +497,15 @@ impl PaintSink for ComposeSession<'_> {
             images: p.paint.images,
             instance: EffectInstance {
                 rect: physical,
-                corners: packed.corners.to_array(),
-                points: packed.points,
-                inradius: packed.inradius,
-                border_width: packed.border_width,
+                corners: shape.corners.to_array(),
+                points: shape.points,
+                inradius: shape.inradius,
+                border_width,
                 flags: stage_flag | shape_flags,
                 time: p.paint.time,
                 opacity: p.paint.opacity,
                 scale,
-                rotation: packed.rotation,
+                rotation: shape.rotation,
                 params: p.paint.params.start,
                 backdrop_idx,
                 clip,
@@ -663,7 +668,7 @@ impl ComposeSession<'_> {
         );
         let placed = p.geometry;
         let lowering = self.lowering();
-        let shape = TemplateShape::of(placed, p.spin, &lowering);
+        let unturned = TemplateShape::of(placed, p.spin, &lowering);
         // The image's rect lies on the pixels its shape's does.
         let edges = TemplateShape::edges(placed, p.spin, &lowering);
         let form = match placed {
@@ -671,21 +676,19 @@ impl ComposeSession<'_> {
             PlacedClosed::Triangle(_) => ImageForm::Triangle,
         };
         let image = lowering.scaled_rect_with(p.paint.rect, edges).physical;
-        let scaled = match p.spin {
-            None => ScaledRect::from_physical(shape.rect, lowering.display.physical),
-            Some(spin) => lowering.turned_rect(shape.rect, spin),
-        };
         if image.is_paint_empty() {
             return;
         }
+        // The image's place in the shape, before a turn moves the two together.
+        let size = Vec2::from(unturned.rect.physical.size);
+        let lo = image.min - unturned.rect.physical.min;
+        let shape = unturned.turned(p.spin, &lowering);
         let Some(visible) = self
             .ordering()
-            .admit(Lane::Tier(PaintTier::Image), scaled.urect)
+            .admit(Lane::Tier(PaintTier::Image), shape.rect.urect)
         else {
             return;
         };
-        let size = Vec2::from(shape.rect.size);
-        let lo = image.min - shape.rect.min;
         let hi = lo + Vec2::from(image.size);
         let uv_per_px = p.paint.uv_size / Vec2::from(image.size);
         let slack = Self::DECAL_SLACK_PX;
@@ -696,12 +699,12 @@ impl ComposeSession<'_> {
             id: p.paint.handle,
             form,
             instance: ImageInstance {
-                rect: scaled.physical,
+                rect: shape.rect.physical,
                 uv_min: p.paint.uv_min - lo * uv_per_px,
                 uv_size: size * uv_per_px,
                 tint: p.paint.tint,
                 flags: p.paint.flags,
-                rotation: p.spin.map_or(0.0, |spin| spin.angle),
+                rotation: shape.rotation,
                 points: shape.points,
                 corners: shape.corners,
                 inradius: shape.inradius,
@@ -808,25 +811,26 @@ impl ComposeSession<'_> {
         });
     }
 
-    /// Push the quad of `packed` under `lanes`, cut by the rounded clips of `clip`.
-    fn push_quad(&mut self, packed: &PackedQuad, lanes: QuadLanes, clip: ClipChain) {
+    /// Push the quad of `shape` under `lanes`, cut by the rounded clips of `clip`.
+    fn push_quad(&mut self, shape: &TemplateShape, lanes: QuadLanes, clip: ClipChain) {
         let QuadLanes {
             fill,
             border_color,
+            border_width,
             fill_axis,
         } = lanes;
         self.out.quads.push(Quad {
-            rect: packed.rect.physical,
+            rect: shape.rect.physical,
             fill: fill.color,
-            corners: packed.corners,
+            corners: shape.corners,
             border_color,
-            border_width: packed.border_width,
+            border_width,
             fill_kind: fill.kind,
             fill_lut_row: fill.lut_row,
             fill_axis,
-            rotation: packed.rotation,
-            points: packed.points,
-            inradius: packed.inradius,
+            rotation: shape.rotation,
+            points: shape.points,
+            inradius: shape.inradius,
             clip,
         });
     }
@@ -869,8 +873,13 @@ impl ComposeSession<'_> {
     /// group in flight references the `rounded_clips` state the discard wipes.
     ///
     /// Returns `true` when folded; the quad must not be emitted.
-    fn fold_into_clear(&mut self, p: &DrawClosedPayload<ClosedFill>, packed: &PackedQuad) -> bool {
-        let physical = packed.rect.physical;
+    fn fold_into_clear(
+        &mut self,
+        p: &DrawClosedPayload<ClosedFill>,
+        shape: &TemplateShape,
+        border_width: f32,
+    ) -> bool {
+        let physical = shape.rect.physical;
         let covers_viewport = physical.min.x <= EPS
             && physical.min.y <= EPS
             && physical.max().x >= self.out.display.physical.as_vec2().x - EPS
@@ -879,7 +888,7 @@ impl ComposeSession<'_> {
             || self.composer.clip.top().is_some()
             || !p.is_solid_box()
             || !p.paint.fill.color.is_opaque()
-            || !packed.is_sharp()
+            || !shape.is_sharp(border_width)
         {
             return false;
         }
@@ -894,17 +903,21 @@ impl ComposeSession<'_> {
     /// edge to inset by. The rounded clips in force keep the cover to what they leave whole
     /// ([`RoundedClip::covered`]): past it the quad shows a share of what it covers, which a
     /// prune would drop.
-    fn record_opaque_cover(&mut self, p: &DrawClosedPayload<ClosedFill>, packed: &PackedQuad) {
-        if !p.is_solid_box() || !p.paint.fill.color.is_opaque() || packed.rotation != 0.0 {
+    fn record_opaque_cover(
+        &mut self,
+        p: &DrawClosedPayload<ClosedFill>,
+        shape: &TemplateShape,
+        border_width: f32,
+    ) {
+        if !p.is_solid_box() || !p.paint.fill.color.is_opaque() || shape.rotation != 0.0 {
             return;
         }
         let quad = self.out.quads.last().expect("the quad just pushed");
-        let inscribed = packed.rect.physical.inscribed_for_corners(packed.corners);
-        let border_inset = if is_invisible(packed.border_width) || p.paint.border.color.is_opaque()
-        {
+        let inscribed = shape.rect.physical.inscribed_for_corners(shape.corners);
+        let border_inset = if is_invisible(border_width) || p.paint.border.color.is_opaque() {
             0.0
         } else {
-            packed.border_width
+            border_width
         };
         let aa_inset = if quad.fill_kind.is_fast() {
             0.0

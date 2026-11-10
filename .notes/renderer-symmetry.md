@@ -17,8 +17,8 @@ and an effect hold their shape.
 | B1 Geometry | done, `acd517c11` |
 | B2 Records and payloads | done, `a6efe204a` |
 | B10 Backdrop bound | done |
-| B3 Packer | next |
-| B4 Turns | to do |
+| B3 Packer | done |
+| B4 Turns | next |
 | B5 Wire | to do |
 | B6 Keys | to do |
 | B7 Effect forms | to do |
@@ -48,7 +48,7 @@ deletes it from the log.
   current form. Goldens of every material edge move.
 - **`FillKind::FAST_BIT`'s doc claims a shader path: B6.** Confirmed: only the internals reference
   `quad_pipeline/reference.wgsl` reads `FILL_FLAG_FAST`; production reads the bit back on the CPU
-  alone, in `ComposeSession::record_opaque_cover`, where `PackedQuad::is_pixel_aligned` gives the
+  alone, in `ComposeSession::record_opaque_cover`, where `TemplateShape::is_pixel_aligned` gives the
   same answer. B6 deletes the bit, its doc and the reference shader's fast branch, which the
   reference, the SDF form the visual suite compares with, has no need of: the fast path is
   bit-identical to the SDF by its own comment. `record_opaque_cover` reads the alignment it already
@@ -115,7 +115,7 @@ Smaller faults of the same origin:
   shadow and a shadow on a triangle are representable, and `QuadForm::of` panics on them.
 - **[B6] `FillKind::FAST_BIT` reaches the wire, and no production shader reads it.** Only the internals
   reference (`quad_pipeline/reference.wgsl`) reads it. The CPU reads it back in
-  `ComposeSession::record_opaque_cover`, where `PackedQuad::is_pixel_aligned` gives the same answer.
+  `ComposeSession::record_opaque_cover`, where `TemplateShape::is_pixel_aligned` gives the same answer.
 - **[open] A box's fill and border have two homes**: `DrawQuadPayload` without a material,
   `MaterialStage` inside `DrawEffectPayload` with one.
 - **[B6] `QuadForm::BoxOutside` merges two brushes** and reads the tag at run time, while the inside
@@ -251,7 +251,7 @@ makes these one, and keeps the pipelines above.
   it now, which admits draws that paint nothing in the damage; `StrokeBounds`, a cull bound stored
   where the composer derives it from the geometry. Cost: the polyline keeps its record's `bbox` in
   its geometry, as a scan of its points is O(n).
-- **[part: closed shapes done; strokes in B9, `PackedQuad` in B3] One enum per family and stage, over a struct per kind that owns its math.** Record:
+- **[part: closed shapes done; strokes in B9] One enum per family and stage, over a struct per kind that owns its math.** Record:
   `ClosedGeometry { Box(BoxGeometry), Triangle(TriangleGeometry) }`, and `StrokeGeometry {
   Bezier(BezierGeometry), Arc(ArcGeometry), Polyline { … } }`. Placed: `PlacedClosed { Box {
   placed: PlacedBox, coverage }, Triangle(PlacedTriangle) }` and `PlacedStroke`. As `std`'s
@@ -264,9 +264,11 @@ makes these one, and keeps the pipelines above.
   enum matches and a triangle's placement into a free function of four parameters, the struct
   again; one geometry enum for every family, whose pairs with paints no family draws would be
   representable.
-- **[B3] One packer.** `TemplateShape::of(PlacedClosed, spin)` packs every closed draw, with one edge
-  rounding rule; `PackedQuad` keeps the fill's own lanes. Refused: `DrawEffectPayload::quad`,
-  which builds a transparent quad to reach a second packer.
+- **[done] One packer.** `TemplateShape::of(PlacedClosed, spin)` packs every closed draw, a fill,
+  a shaped image and an effect, with one edge rounding rule, and `TemplateShape::turned` turns it;
+  a shadow's box packs through it too (`TemplateShape::shadow`). The border's width is the
+  paint's, beside the shape. Refused: `DrawEffectPayload::quad`, which built a transparent quad to
+  reach a second packer, and `PackedQuad`, the second packer.
 - **[B5] One wire header.** `ShapeHeader { rect, points, radii: Corners, inradius, rotation, clip }`
   opens `Quad`, `ImageInstance` and `EffectInstance` at the same attribute locations, and one
   WGSL function reads it into a `PalantirShape`. The radii are f16 in all three, as the effect's
@@ -286,7 +288,7 @@ makes these one, and keeps the pipelines above.
   `EffectInstance::corner_count` reading flags.
 - **[part: the payload's word since B1; the `Quad`'s in B6] `FillKind` is a brush tag.** It keeps solid, linear, radial, conic, ramp and the spread. The
   outside and triangle bits move to `ShapeForm`; the shadow tags move to `QuadDraw::Shadow`;
-  `FAST_BIT` goes, and `record_opaque_cover` reads `PackedQuad::is_pixel_aligned`. Refused: a
+  `FAST_BIT` goes, and `record_opaque_cover` reads `TemplateShape::is_pixel_aligned`. Refused: a
   paint word that carries geometry and a composer flag.
 - **[part: kept; its named lanes in B6] Shadows stay in the quad stream.** Inside a group, the quad lane replays in record order, and
   a drop shadow paints under its box and an inset shadow over its fill. A stream of its own would
@@ -313,8 +315,8 @@ The visual suite and the composer's captured streams prove it.
    `RectPaint`, `BoxPaint`, `DrawQuadPayload`, `DrawImagePayload`, `DrawEffectPayload` and
    `DrawEffectPayload::quad` go. `PackedQuad` packs a closed shape and a shadow apart from their
    lanes, which a fill and a shadow each write.
-3. [ ] **B3 Packer.** `TemplateShape::of` for every closed draw, a fill's and an effect's too;
-   `PackedQuad` goes.
+3. [x] **B3 Packer**, done. `TemplateShape::of` and `turned` for every closed draw, a fill's, an
+   image's, an effect's and a shadow's box; `PackedQuad` goes.
 4. [ ] **B4 Turns.** `PaintMod` through the gate, one pivot frame, the turned cull bound in the
    composer; `StrokeBounds` goes.
 5. [ ] **B5 Wire.** `ShapeHeader` in Rust and WGSL; one reader replaces `instance_shape`,

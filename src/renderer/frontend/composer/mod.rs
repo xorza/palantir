@@ -23,7 +23,6 @@ mod geometry;
 mod higher_kind_rects;
 mod lowering;
 mod occlusion_pruner;
-mod packed_quad;
 mod paint_order;
 mod physical_map;
 mod polyline_scratch;
