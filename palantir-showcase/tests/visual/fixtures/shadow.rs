@@ -644,9 +644,9 @@ fn baked_cutout_tables_match_the_shaded_cutout() {
     assert!(differing > 0, "no pixel read a table");
 }
 
-/// One shadow of the grid sweep.
+/// One shadow of the template sweep.
 #[derive(Clone, Copy, Debug)]
-struct GridCase {
+struct TemplateCase {
     inset: bool,
     blur: f32,
     corners: f32,
@@ -657,20 +657,20 @@ struct GridCase {
 
 /// A shadow cell of the sweep, in logical px: wide enough for the largest
 /// blur's reach (`4σ`, 72 px at σ = 18) on both sides.
-const GRID_CELL: f32 = 360.0;
-const GRID_COLS: usize = 6;
+const SWEEP_CELL: f32 = 360.0;
+const SWEEP_COLS: usize = 6;
 
-/// Cases the grid's cells must agree with the full form on: drop and inset
-/// over σ = 0, 0.2 (below `CUTOUT_MIN_SIGMA`), 2 and 18, radius 0, 4 and 30;
-/// then boxes whose corner cells meet or overlap (`2·(r + reach)` is 25 px at
-/// σ = 2, r = 4), offsets past `reach`, spreads either way, and radii larger
-/// than their box.
-fn grid_cases() -> Vec<GridCase> {
+/// Cases the template must agree with the full form on: drop and inset over
+/// σ = 0, 0.2 (below `CUTOUT_MIN_SIGMA`), 2 and 18, radius 0, 4 and 30; then
+/// boxes whose corner rings meet or overlap (`2·(r + reach)` is 25 px at σ = 2,
+/// r = 4), offsets past `reach`, whose outlines do not nest, spreads either
+/// way, and radii larger than their box.
+fn template_cases() -> Vec<TemplateCase> {
     let mut cases = Vec::new();
     for inset in [false, true] {
         for blur in [0.0, 0.2, 2.0, 18.0] {
             for corners in [0.0, 4.0, 30.0] {
-                cases.push(GridCase {
+                cases.push(TemplateCase {
                     inset,
                     blur,
                     corners,
@@ -681,7 +681,7 @@ fn grid_cases() -> Vec<GridCase> {
             }
         }
     }
-    let base = GridCase {
+    let base = TemplateCase {
         inset: false,
         blur: 2.0,
         corners: 4.0,
@@ -691,38 +691,45 @@ fn grid_cases() -> Vec<GridCase> {
     };
     for inset in [false, true] {
         cases.extend([
-            GridCase { inset, ..base },
-            GridCase {
+            TemplateCase { inset, ..base },
+            TemplateCase {
                 inset,
                 size: Vec2::new(24.0, 26.0),
                 ..base
             },
-            GridCase {
+            TemplateCase {
                 inset,
                 blur: 18.0,
                 size: Vec2::new(10.0, 8.0),
                 ..base
             },
-            GridCase {
+            TemplateCase {
                 inset,
                 size: Vec2::new(100.0, 70.0),
                 offset: Vec2::new(30.0, -20.0),
                 ..base
             },
-            GridCase {
+            TemplateCase {
                 inset,
                 size: Vec2::new(100.0, 70.0),
                 spread: -4.0,
                 ..base
             },
-            GridCase {
+            // A spread that takes a drop shadow's box to no height, which blurs to nothing.
+            TemplateCase {
+                inset,
+                size: Vec2::new(100.0, 70.0),
+                spread: -40.0,
+                ..base
+            },
+            TemplateCase {
                 inset,
                 size: Vec2::new(100.0, 70.0),
                 spread: 6.0,
                 corners: 12.0,
                 ..base
             },
-            GridCase {
+            TemplateCase {
                 inset,
                 blur: 8.0,
                 size: Vec2::new(40.0, 40.0),
@@ -734,14 +741,14 @@ fn grid_cases() -> Vec<GridCase> {
     cases
 }
 
-fn grid_case_rect(i: usize, case: GridCase) -> Rect {
-    let cell = Vec2::new((i % GRID_COLS) as f32, (i / GRID_COLS) as f32) * GRID_CELL;
-    let min = cell + (Vec2::splat(GRID_CELL) - case.size) * 0.5;
+fn template_case_rect(i: usize, case: TemplateCase) -> Rect {
+    let cell = Vec2::new((i % SWEEP_COLS) as f32, (i / SWEEP_COLS) as f32) * SWEEP_CELL;
+    let min = cell + (Vec2::splat(SWEEP_CELL) - case.size) * 0.5;
     Rect::new(min.x, min.y, case.size.x, case.size.y)
 }
 
 /// Add `case`'s shadow alone, its box at `at`.
-fn grid_case_shadow(ui: &mut Ui, case: GridCase, at: Rect) {
+fn template_case_shadow(ui: &mut Ui, case: TemplateCase, at: Rect) {
     ui.add_shape(
         Shape::rect().at(at).corners(case.corners),
         Paint::NONE.with_shadow(Shadow {
@@ -756,13 +763,13 @@ fn grid_case_shadow(ui: &mut Ui, case: GridCase, at: Rect) {
 
 /// The sweep, then two shadows seen through clips: a scissor across one's
 /// edge cells, a rounded clip over another.
-fn grid_sweep(ui: &mut Ui) {
-    let cases = grid_cases();
+fn template_sweep(ui: &mut Ui) {
+    let cases = template_cases();
     fixtures::canvas(ui, |ui| {
         for (i, &case) in cases.iter().enumerate() {
-            grid_case_shadow(ui, case, grid_case_rect(i, case));
+            template_case_shadow(ui, case, template_case_rect(i, case));
         }
-        let clipped = GridCase {
+        let clipped = TemplateCase {
             inset: false,
             blur: 18.0,
             corners: 30.0,
@@ -770,8 +777,8 @@ fn grid_sweep(ui: &mut Ui) {
             offset: Vec2::new(6.0, 10.0),
             spread: 2.0,
         };
-        let row = cases.len().div_ceil(GRID_COLS) as f32 * GRID_CELL;
-        for (x, rounded) in [(0.0, false), (GRID_CELL, true)] {
+        let row = cases.len().div_ceil(SWEEP_COLS) as f32 * SWEEP_CELL;
+        for (x, rounded) in [(0.0, false), (SWEEP_CELL, true)] {
             Panel::canvas()
                 .id_salt(("clip", rounded))
                 .at((x + 40.0, row + 40.0))
@@ -786,7 +793,7 @@ fn grid_sweep(ui: &mut Ui) {
                     ClipMode::Rect
                 })
                 .show(ui, |ui| {
-                    grid_case_shadow(
+                    template_case_shadow(
                         ui,
                         clipped,
                         Rect::new(60.0, 50.0, clipped.size.x, clipped.size.y),
@@ -796,30 +803,31 @@ fn grid_sweep(ui: &mut Ui) {
     });
 }
 
-/// A shadow drawn as its grid of cells equals the one-cell full form to one
-/// 8-bit level per channel: cells treat the Gaussian past `reach` as zero (at
-/// most 3.2e-5 coverage). A pixel shaded by two cells would blend twice and
-/// move the purple past a level, so the tolerance proves each is shaded once.
-/// Inside the source, short of its corners, the two agree exactly.
+/// A shadow drawn as its template equals the one-quad full form to one 8-bit
+/// level per channel: the template treats the Gaussian past `reach` as zero (at
+/// most 3.2e-5 coverage), past its corners' arcs as the quad does past its
+/// edges. A pixel shaded by two triangles would blend twice and move the purple
+/// past a level, so the tolerance proves each is shaded once. Inside the
+/// source, short of its corners, the two agree exactly.
 #[test]
-fn a_shadow_grid_matches_the_full_form() {
-    let cases = grid_cases();
-    let rows = cases.len().div_ceil(GRID_COLS) + 1;
+fn a_shadow_template_matches_the_full_form() {
+    let cases = template_cases();
+    let rows = cases.len().div_ceil(SWEEP_COLS) + 1;
     let size = UVec2::new(
-        (GRID_COLS as f32 * GRID_CELL) as u32,
-        (rows as f32 * GRID_CELL) as u32,
+        (SWEEP_COLS as f32 * SWEEP_CELL) as u32,
+        (rows as f32 * SWEEP_CELL) as u32,
     );
-    let mut grid = VisualRig::new();
+    let mut template = VisualRig::new();
     let mut full = VisualRig::new();
-    full.host.disable_shadow_grid();
-    let [grid, full] = [&mut grid, &mut full]
-        .map(|harness| harness.size(size).clear(CLEAR).frame(grid_sweep).image);
-    let most = channel_deltas(&grid, &full).max().unwrap();
+    full.host.disable_shadow_template();
+    let [template, full] = [&mut template, &mut full]
+        .map(|harness| harness.size(size).clear(CLEAR).frame(template_sweep).image);
+    let most = channel_deltas(&template, &full).max().unwrap();
     assert!(most <= 1, "a channel moved {most} levels");
     for (i, case) in cases.iter().enumerate().filter(|(_, case)| !case.inset) {
-        let source = grid_case_rect(i, *case);
-        // The source less its corners, two pixels in from each straight edge: the hole and the
-        // bands the edge cells leave, where the full form clips to nothing.
+        let source = template_case_rect(i, *case);
+        // The source less its corners, two pixels in from each straight edge: the hole, where the
+        // full form clips to nothing.
         let corner = case.corners + 2.0;
         let across = [
             Rect::new(
@@ -839,7 +847,7 @@ fn a_shadow_grid_matches_the_full_form() {
             for y in band.min.y as u32..band.max().y as u32 {
                 for x in band.min.x as u32..band.max().x as u32 {
                     assert_eq!(
-                        grid.get_pixel(x, y),
+                        template.get_pixel(x, y),
                         full.get_pixel(x, y),
                         "case {i} {case:?}: pixel ({x}, {y}) inside the source",
                     );

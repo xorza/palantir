@@ -1,5 +1,6 @@
-// Drop and inset shadows: the closed-form blur of a rounded box, drawn as the cells of a grid
-// around a hole that paints nothing (`vs_shadow`, `fs_shadow`, `fs_shadow_tables`).
+// Drop and inset shadows: the closed-form blur of a rounded box, drawn as the shape template's
+// rim between two outlines around a hole that paints nothing (`vs_shadow`, `fs_shadow`,
+// `fs_shadow_tables`).
 
 // σ below which `filter_cdf` takes its σ = 0 limit, the bare pixel box.
 // The two differ by about σ there, far under an 8-bit step, and the
@@ -47,12 +48,12 @@ const NO_CUTOUT_TABLE: u32 = /*{NO_CUTOUT_TABLE}*/;
 // every backend. Bound to the shadow pipeline only.
 @group(1) @binding(0) var cutout_atlas: texture_2d<f32>;
 
-// Whether a shadow skips the part of its quad that paints nothing and
-// takes the cheaper forms where the cutoff at `reach` makes them exact
-// (`vs_shadow`, `shadow_coverage`), or draws one quad of the full form
-// everywhere: the reference the two are tested against, built only by the
-// crate's internals.
-override SHADOW_GRID: bool = true;
+// Whether a shadow draws as its template, which leaves out where it paints
+// nothing, and takes the cheaper forms where the cutoff at `reach` makes
+// them exact (`vs_shadow`, `shadow_coverage`), or draws one quad of the
+// full form everywhere: the reference the two are tested against, built
+// only by the crate's internals.
+override SHADOW_TEMPLATE: bool = true;
 
 // Which form of `filter_cdf` a tables entry carries for its edges
 // (`tables_edge_cdf`): the series, for `ShadowEntry::TablesWide`, or the
@@ -73,9 +74,6 @@ const FILTER_SERIES_MIN_SIGMA: f32 = /*{FILTER_SERIES_MIN_SIGMA}*/;
 // one `exp` where the difference takes two and two reciprocals. Later than
 // `FILTER_SERIES_MIN_SIGMA`, whose difference loses more, as it grows with σ.
 const FILTER_PDF_SERIES_MIN_SIGMA: f32 = 5.0;
-
-// A cell's two triangles, as indices into `CORNERS`.
-const CELL_TRIANGLES = array<u32, 6>(0u, 1u, 2u, 2u, 1u, 3u);
 
 const SQRT_HALF: f32 = 0.70710678;
 const INV_SQRT_TAU: f32 = 0.39894228;
@@ -108,8 +106,8 @@ struct ShadowIn {
 // What a shadow's fragments read: `vs_shadow`'s geometry, worked out once
 // per vertex. Every position is in pixels, and a fragment takes its own as
 // the pixel center less one of them, which is exact and the same however
-// the quad was cut into cells, where an interpolated position carries the
-// rounding of whichever triangle covered the pixel.
+// the template cut the shadow into triangles, where an interpolated
+// position carries the rounding of whichever triangle covered the pixel.
 struct ShadowOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) @interpolate(flat) fill: vec4<f32>,
@@ -140,28 +138,34 @@ struct ShadowOut {
 };
 
 // `vs` for the shadow pipeline, which also binds the per-instance cutout
-// tables (`CutoutTables`). A shadow draws as the eight cells of a 3×3
-// grid around a hole that paints nothing, six vertices each
-// (`QuadPipeline::draw_shadows`).
+// tables (`CutoutTables`). A shadow draws as the shape template's rings and
+// bands between two outlines (`shape_template.wgsl`), indexed
+// (`QuadPipeline::draw_run`), around a hole that paints nothing; the
+// fragment stage reads the pixel center, so the template only bounds it.
 //
-// A drop shadow's hole is its source inset by its largest radius and
-// `PALANTIR_AA_HALF_WIDTH`: at every pixel center there the source SDF is at most
-// `−PALANTIR_AA_HALF_WIDTH`, so the clip in `shadow_pixel` zeroes it, and skipping it
-// changes no pixel. Its four edge cells stop short of the hole too, a pixel
-// past `PALANTIR_AA_HALF_WIDTH` inside the source: between the corners the source's
-// edge is straight, so the same clip zeroes the band they leave. An inset
-// shadow's hole is its core (`ShadowOut::core`), where the blurred box
-// covers everything and the shadow is zero by its form. A hole that is
-// empty, or a reference build (`SHADOW_GRID` off), puts all four inner
-// lines on the quad's far corner, which leaves one cell: the whole quad.
+// A drop shadow lies between its source `PALANTIR_AA_HALF_WIDTH` in and its
+// box grown by the pixel's square, `PALANTIR_AA_HALF_WIDTH` along each axis,
+// then by `SHADOW_REACH_SIGMAS·σ`: the Minkowski sum of the box, the pixel's
+// square and the Gaussian's disk, whose corners' centers move out
+// diagonally, as a square pixel overlaps a corner from
+// `PALANTIR_AA_HALF_WIDTH·√2` away. At every pixel center inside the inner
+// outline the source's distance is at most `−PALANTIR_AA_HALF_WIDTH`, so the
+// clip in `shadow_pixel` zeroes it, and past the outer outline the Gaussian
+// is past `reach`, which the shadow takes as zero, as the quad's own bounds
+// do. An inset shadow lies between its core (`ShadowOut::core`), where the
+// blurred box covers everything and the shadow is zero by its form, and its
+// source `PALANTIR_AA_HALF_WIDTH` out, past which its source's coverage, an
+// edge ramp of its distance, is zero.
 //
-// The inner lines are clamped into the quad. A clamp keeps the order of a
-// hole that is not empty, so the cells tile the quad less the hole and the
-// edge cells' bands. Every vertex is a pair of these lines, so two cells
-// that share an edge share its line exactly and the rasterizer shades each
-// pixel once. An edge cell's short side ends partway along a corner cell's,
-// so a turned shadow, whose lines turn apart in float, keeps its edge cells
-// whole.
+// Where the inner outline does not nest in the outer one
+// (`shadow_outlines_nest`), as a drop shadow whose offset passes its halo,
+// or the hole is empty, the inner outline is the outer one and the
+// template's interior is drawn too: the whole region inside the outer
+// outline. Otherwise each interior vertex collapses onto one point, so its
+// triangles have no area. A drop shadow whose box has no area blurs to
+// nothing, and an inset shadow paints nowhere in a source of none: every
+// vertex collapses. A reference build (`SHADOW_TEMPLATE` off) draws the
+// quad's bounds as a strip of four.
 @vertex
 fn vs_shadow(
     @builtin(vertex_index) vi: u32,
@@ -174,7 +178,6 @@ fn vs_shadow(
     let rotation = shape.inradius_rotation.y;
     let radius = shape.radius;
     let geometry = unpack_f16x4(shadow.geometry_packed);
-    let bounds = shaded_bounds(pos, size, rotation);
     let half = size * 0.5;
     let center = pos + half;
     let kind = shadow.kind;
@@ -185,54 +188,55 @@ fn vs_shadow(
     let core_lo = -sb.half + vec2<f32>(max(r.x, r.w), max(r.x, r.y)) + vec2<f32>(reach);
     let core_hi = sb.half - vec2<f32>(max(r.y, r.z), max(r.w, r.z)) - vec2<f32>(reach);
 
-    var hole_lo = center + sb.center + core_lo;
-    var hole_hi = center + sb.center + core_hi;
     // An inset shadow's source is its quad. A drop shadow's quad is the
     // source moved by `offset` and grown by the halo, so the source sits
-    // `offset` back from its center.
+    // `offset` back from its center. The outlines lie in the quad's own
+    // frame, from its top-left.
     var source_center = center;
     var source_half = half;
+    var inner: ShadowOutline;
+    var depth: f32;
+    var outer: ShadowOutline;
+    var outer_reach: f32;
+    // Where the shadow paints nothing: a drop shadow's box, or an inset
+    // shadow's source, of no area.
+    var empty: bool;
     if (kind == SHADOW_DROP) {
         source_half = shadow_source_half(half, geometry);
         source_center = center - geometry.xy;
-        let inset = max(max(radius.x, radius.y), max(radius.z, radius.w)) + PALANTIR_AA_HALF_WIDTH;
-        hole_lo = source_center - source_half + vec2<f32>(inset);
-        hole_hi = source_center + source_half - vec2<f32>(inset);
+        inner = ShadowOutline(half - geometry.xy, source_half, radius);
+        depth = PALANTIR_AA_HALF_WIDTH;
+        outer = ShadowOutline(half + sb.center, sb.half + vec2<f32>(PALANTIR_AA_HALF_WIDTH), sb.radius);
+        outer_reach = SHADOW_REACH_SIGMAS * sigma;
+        empty = any(sb.half <= vec2<f32>(0.0));
+    } else {
+        inner = ShadowOutline(half + sb.center + (core_lo + core_hi) * 0.5, (core_hi - core_lo) * 0.5, vec4<f32>(0.0));
+        depth = 0.0;
+        outer = ShadowOutline(half, half, radius);
+        outer_reach = PALANTIR_AA_HALF_WIDTH;
+        empty = any(half <= vec2<f32>(0.0));
     }
-    if (!SHADOW_GRID || any(hole_lo >= hole_hi)) {
-        hole_lo = bounds.hi;
-        hole_hi = bounds.hi;
-    }
-    let inner_lo = clamp(hole_lo, bounds.lo, bounds.hi);
-    let inner_hi = clamp(hole_hi, bounds.lo, bounds.hi);
-    var xs = array<f32, 4>(bounds.lo.x, inner_lo.x, inner_hi.x, bounds.hi.x);
-    var ys = array<f32, 4>(bounds.lo.y, inner_lo.y, inner_hi.y, bounds.hi.y);
-    var edge_lo = inner_lo;
-    var edge_hi = inner_hi;
-    if (kind == SHADOW_DROP && rotation == 0.0) {
-        let deep = vec2<f32>(PALANTIR_AA_HALF_WIDTH + 1.0);
-        edge_lo = clamp(source_center - source_half + deep, bounds.lo, inner_lo);
-        edge_hi = clamp(source_center + source_half - deep, inner_hi, bounds.hi);
+    let hole = all(inner.half > vec2<f32>(depth)) && shadow_outlines_nest(outer, outer_reach, inner, depth);
+    if (!hole) {
+        inner = outer;
+        depth = 0.0;
     }
 
-    // The grid's cells in row order, past the center one: the hole.
-    let draw_cell = vi / 6u;
-    let cell = draw_cell + u32(draw_cell >= 4u);
-    let cx = cell % 3u;
-    let cy = cell / 3u;
-    let unit = CORNERS[CELL_TRIANGLES[vi % 6u]];
-    let line = vec2<u32>(cx + u32(unit.x), cy + u32(unit.y));
-    var vertex = vec2<f32>(xs[line.x], ys[line.y]);
-    // An edge cell's inner side: the left and right cells sit in the middle row, the top and
-    // bottom ones in the middle column.
-    if (cy == 1u) {
-        vertex.x = select(select(vertex.x, edge_hi.x, line.x == 2u), edge_lo.x, line.x == 1u);
-    }
-    if (cx == 1u) {
-        vertex.y = select(select(vertex.y, edge_hi.y, line.y == 2u), edge_lo.y, line.y == 1u);
-    }
     var out: ShadowOut;
-    out.clip = palantir_clip_from_px(palantir_turned(vertex, center, rotation));
+    if (SHADOW_TEMPLATE) {
+        let v = palantir_template_vertex(
+            PalantirTemplateOutlines(shadow_outline_shape(inner), depth, shadow_outline_shape(outer), outer_reach),
+            vi,
+        );
+        out.clip = palantir_clip_from_px(palantir_turned(pos + v.pos, center, rotation));
+        if (empty || (hole && v.region == PALANTIR_REGION_INTERIOR)) {
+            out.clip = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        }
+    } else {
+        let bounds = shaded_bounds(pos, size, rotation);
+        let corner = select(bounds.lo, bounds.hi, CORNERS[vi] > vec2<f32>(0.5));
+        out.clip = palantir_clip_from_px(palantir_turned(corner, center, rotation));
+    }
     out.turn = vec4<f32>(center, cos(rotation), sin(rotation));
     out.chain = shape.chain;
     out.fill = unpack_f16x4(shadow.color_packed);
@@ -248,9 +252,51 @@ fn vs_shadow(
     out.core = select(
         vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN),
         vec4<f32>(core_lo, core_hi),
-        SHADOW_GRID,
+        SHADOW_TEMPLATE,
     );
     return out;
+}
+
+// One of a shadow's two outlines: a box of half-extents `half` about
+// `center`, in its quad's frame from the top-left, with the corner radii
+// `radius`, `(tl, tr, br, bl)`.
+struct ShadowOutline {
+    center: vec2<f32>,
+    half: vec2<f32>,
+    radius: vec4<f32>,
+};
+
+// `o` as the template reads a shape: its sharp points clockwise from the
+// top-left.
+fn shadow_outline_shape(o: ShadowOutline) -> PalantirShape {
+    var s: PalantirShape;
+    s.n = 4u;
+    s.p0 = o.center - o.half;
+    s.p1 = vec2<f32>(o.center.x + o.half.x, o.center.y - o.half.y);
+    s.p2 = o.center + o.half;
+    s.p3 = vec2<f32>(o.center.x - o.half.x, o.center.y + o.half.y);
+    s.radius = o.radius;
+    s.inradius = min(o.half.x, o.half.y);
+    return s;
+}
+
+// Whether the template between `inner` `depth` in and `outer` `reach` out
+// tiles the region between them. Each corner's ring joins its inner chain,
+// the arc of radius `max(r − depth, 0)` about its center, to its outer
+// chain, radius `R + reach` about its own, along the corner's two edge
+// normals. It holds where each inner center lies no farther out than its
+// outer center along both normals, and the inner arc inside the outer one
+// along both: `d · n ≤ min(0, R + reach − r')` for `d` the inner center less
+// the outer. Along every direction between the two normals, `d · n` takes its
+// largest value at one of them, as `d` points against both, so the inner arc
+// lies inside the outer one throughout.
+fn shadow_outlines_nest(outer: ShadowOutline, reach: f32, inner: ShadowOutline, depth: f32) -> bool {
+    let sx = vec4<f32>(-1.0, 1.0, 1.0, -1.0);
+    let sy = vec4<f32>(-1.0, -1.0, 1.0, 1.0);
+    let dx = sx * (inner.center.x - outer.center.x) + (vec4<f32>(inner.half.x) - inner.radius) - (vec4<f32>(outer.half.x) - outer.radius);
+    let dy = sy * (inner.center.y - outer.center.y) + (vec4<f32>(inner.half.y) - inner.radius) - (vec4<f32>(outer.half.y) - outer.radius);
+    let slack = min(vec4<f32>(0.0), outer.radius + vec4<f32>(reach) - max(inner.radius - vec4<f32>(depth), vec4<f32>(0.0)));
+    return all(dx <= slack) && all(dy <= slack);
 }
 
 // `p` turned back by `turn` (`ShadowOut::turn`), the inverse of `turned`.
@@ -595,8 +641,8 @@ fn blurred_box_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma:
 // the radii fitted to it. A drop shadow's box is its source grown by the
 // spread, centered on the quad, which is the source moved by `offset` and
 // grown by the halo. An inset shadow's is the hole: the source shrunk by
-// the spread, moved by `offset`. `vs_shadow` lays the cells out from it and
-// hands it to the fragments, so the two cannot disagree.
+// the spread, moved by `offset`. `vs_shadow` builds its outlines from it
+// and hands it to the fragments, so the two cannot disagree.
 struct ShadowBox {
     center: vec2<f32>,
     half: vec2<f32>,

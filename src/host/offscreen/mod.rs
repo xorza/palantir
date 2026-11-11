@@ -477,9 +477,9 @@ pub(crate) mod internals {
             self.window.frames.disable_cutout_tables();
         }
 
-        /// Draws every shadow as one cell instead of its grid; the visual suite's reference.
-        pub fn disable_shadow_grid(&mut self) {
-            self.device.backend_mut().disable_shadow_grid();
+        /// Draws every shadow as one quad instead of its template; the visual suite's reference.
+        pub fn disable_shadow_template(&mut self) {
+            self.device.backend_mut().disable_shadow_template();
         }
 
         /// Draws every box, circle and triangle as one quad instead of its template; the visual

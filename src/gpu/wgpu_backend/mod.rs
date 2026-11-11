@@ -1313,10 +1313,10 @@ pub(crate) mod internals {
     use crate::gpu::wgpu_backend::WgpuBackend;
 
     impl WgpuBackend {
-        /// Draw every shadow as one cell of the full form instead of its grid: the reference the
-        /// grid is compared with. Builds every format's pipelines again.
-        pub(crate) fn disable_shadow_grid(&mut self) {
-            self.programs.quad.disable_shadow_grid();
+        /// Draw every shadow as one quad of the full form instead of its template: the reference
+        /// the template is compared with. Builds every format's pipelines again.
+        pub(crate) fn disable_shadow_template(&mut self) {
+            self.programs.quad.disable_shadow_template();
             self.rebuild_pipelines();
         }
 

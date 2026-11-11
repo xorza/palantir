@@ -1,6 +1,6 @@
 use crate::common::span::Span;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
-use crate::gpu::pipeline::quad_pipeline::quad_draw::{self, QuadDraw, ShadowCells};
+use crate::gpu::pipeline::quad_pipeline::quad_draw::{self, QuadDraw, ShapeCells};
 use crate::gpu::pipeline::runs::{Run, Runs};
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::quad_draw_row::QuadKey;
@@ -31,7 +31,7 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
     ];
     let solid = QuadDraw::Fill(FillForm::BOX_SOLID);
     let mut draws = Vec::new();
-    let taken = quad_draw::fill(&mut draws, &keys, &entries, ShadowCells::Grid);
+    let taken = quad_draw::fill(&mut draws, &keys, &entries, ShapeCells::Template);
     assert_eq!(taken.iter().len(), 4);
     assert_eq!(
         taken.iter().collect::<Vec<_>>(),
@@ -70,7 +70,7 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
         ]
     );
 
-    let taken = quad_draw::fill(&mut draws, &keys, &entries, ShadowCells::Whole);
+    let taken = quad_draw::fill(&mut draws, &keys, &entries, ShapeCells::OneQuad);
     let general = QuadDraw::Shadow(ShadowEntry::General);
     assert_eq!(
         taken.iter().collect::<Vec<_>>(),
@@ -79,9 +79,12 @@ fn each_quad_draws_through_its_form_or_its_shadow_entry() {
     assert_eq!(
         draws[1..4],
         [general; 3],
-        "one cell: every shadow the general entry"
+        "one quad: every shadow the general entry"
     );
-    assert_eq!(draws[0], solid, "a form does not move with the grid");
+    assert_eq!(
+        draws[0], solid,
+        "a form does not move with the shadows' cells"
+    );
 }
 
 /// Each draw's index is its place in `ALL`: the four fill forms, then the three shadow entries, so

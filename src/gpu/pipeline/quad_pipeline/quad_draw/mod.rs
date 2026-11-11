@@ -115,18 +115,10 @@ impl Iterator for QuadDrawsIter {
 
 impl ExactSizeIterator for QuadDrawsIter {}
 
-/// How a shadow draws: the grid of cells around its hole, or one cell of the full form, the
-/// reference the grid is compared with, which only internals pick.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ShadowCells {
-    Grid,
-    #[cfg(feature = "internals")]
-    Whole,
-}
-
-/// How a box, a circle or a triangle draws: as its template, the regions where its distance has
-/// a closed form (`vs_template`), or as one quad over its bounds that measures the distance at
-/// each pixel, the reference the template is compared with, which only internals pick.
+/// How a box, a circle or a triangle, or a shadow, draws: as its template, the regions where a
+/// fill's distance has a closed form (`vs_template`) or a shadow's rim around the hole where it
+/// paints nothing (`vs_shadow`), or as one quad over its bounds that measures each pixel in full,
+/// the reference the template is compared with, which only internals pick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ShapeCells {
     Template,
@@ -134,22 +126,34 @@ pub(crate) enum ShapeCells {
     OneQuad,
 }
 
+impl ShapeCells {
+    /// The primitives a draw of these cells assembles: the template's indexed triangles, or the
+    /// quad's strip of four.
+    pub(crate) const fn topology(self) -> wgpu::PrimitiveTopology {
+        match self {
+            Self::Template => wgpu::PrimitiveTopology::TriangleList,
+            #[cfg(feature = "internals")]
+            Self::OneQuad => wgpu::PrimitiveTopology::TriangleStrip,
+        }
+    }
+}
+
 /// Write the draw of each quad of `keys` into `draws`: a shadow through its `entries` row, every
-/// one through the general entry where the shadows draw [`ShadowCells::Whole`], a fill through
+/// one through the general entry where the shadows draw [`ShapeCells::OneQuad`], a fill through
 /// its form. Returns the draws taken.
 pub(crate) fn fill(
     draws: &mut Vec<QuadDraw>,
     keys: &[QuadKey],
     entries: &[ShadowEntry],
-    cells: ShadowCells,
+    cells: ShapeCells,
 ) -> QuadDraws {
     draws.clear();
     draws.extend(keys.iter().enumerate().map(|(i, &key)| match key {
         QuadKey::Fill(form) => QuadDraw::Fill(form),
         QuadKey::Shadow => match cells {
-            ShadowCells::Grid => QuadDraw::Shadow(entries[i]),
+            ShapeCells::Template => QuadDraw::Shadow(entries[i]),
             #[cfg(feature = "internals")]
-            ShadowCells::Whole => QuadDraw::Shadow(ShadowEntry::General),
+            ShapeCells::OneQuad => QuadDraw::Shadow(ShadowEntry::General),
         },
     }));
     draws.iter().copied().collect()

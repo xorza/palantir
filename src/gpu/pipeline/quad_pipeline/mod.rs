@@ -17,9 +17,7 @@ use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vert
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
-use crate::gpu::pipeline::quad_pipeline::quad_draw::{
-    QuadDraw, QuadDraws, ShadowCells, ShapeCells,
-};
+use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws, ShapeCells};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
@@ -167,8 +165,9 @@ pub(crate) struct QuadPipeline {
     shadow_layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
-    /// How shadows draw (`vs_shadow`): [`ShadowCells::Whole`] only in internals, which build the one-cell reference.
-    shadow_cells: ShadowCells,
+    /// How shadows draw (`vs_shadow`): [`ShapeCells::OneQuad`] only in internals, which build
+    /// the one-quad reference.
+    shadow_cells: ShapeCells,
     /// How the forms draw (`vs_template`): [`ShapeCells::OneQuad`] only in internals, which build
     /// the one-quad reference.
     shape_cells: ShapeCells,
@@ -218,10 +217,21 @@ impl QuadPipeline {
 
     /// Draw `instances` of `form` through the pipeline bound.
     fn draw_fill<'a>(&'a self, rec: &mut PassRecorder<'a>, form: FillForm, instances: Range<u32>) {
-        match self.shape_cells {
+        self.draw_shapes(rec, self.shape_cells, form.shape(), instances);
+    }
+
+    /// Draw `instances` of `form` as `cells` says: its whole template, indexed, or one quad.
+    fn draw_shapes<'a>(
+        &'a self,
+        rec: &mut PassRecorder<'a>,
+        cells: ShapeCells,
+        form: ShapeForm,
+        instances: Range<u32>,
+    ) {
+        match cells {
             ShapeCells::Template => {
                 self.indices
-                    .draw(rec, form.shape(), TemplateCover::Whole, instances);
+                    .draw(rec, form, TemplateCover::Whole, instances);
             }
             #[cfg(feature = "internals")]
             ShapeCells::OneQuad => rec.draw(0..4, instances),
@@ -274,7 +284,7 @@ impl QuadPipeline {
                 &[Some(textures.frame()), Some(cutouts.layout())],
             ),
             cutouts,
-            shadow_cells: ShadowCells::Grid,
+            shadow_cells: ShapeCells::Template,
             shape_cells: ShapeCells::Template,
             indices: TemplateIndices::new(gpu),
         }
@@ -314,11 +324,7 @@ impl QuadPipeline {
                             ("FILL_BRUSH", f64::from(form.brush() as u32)),
                         ],
                         vertex_buffers: &instance,
-                        topology: match self.shape_cells {
-                            ShapeCells::Template => wgpu::PrimitiveTopology::TriangleList,
-                            #[cfg(feature = "internals")]
-                            ShapeCells::OneQuad => wgpu::PrimitiveTopology::TriangleStrip,
-                        },
+                        topology: self.shape_cells.topology(),
                         ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
                     },
                 );
@@ -337,8 +343,8 @@ impl QuadPipeline {
                         fragment_entry,
                         constants: &[
                             (
-                                "SHADOW_GRID",
-                                f64::from(u8::from(self.shadow_cells == ShadowCells::Grid)),
+                                "SHADOW_TEMPLATE",
+                                f64::from(u8::from(self.shadow_cells == ShapeCells::Template)),
                             ),
                             ("TABLES_SERIES", f64::from(u8::from(series))),
                         ],
@@ -346,6 +352,7 @@ impl QuadPipeline {
                             Some(SHADOW_INSTANCE_LAYOUT),
                             Some(CutoutTables::CORNER_LAYOUT),
                         ],
+                        topology: self.shadow_cells.topology(),
                         ..PipelineRecipe::color(label, &self.shader, &self.shadow_layout, format)
                     },
                 );
@@ -413,7 +420,7 @@ impl QuadPipeline {
 
     /// Bind the pipeline `run`'s draw picks of `pipelines` over the instance buffer, with the
     /// groups the draw reads past the frame group, and draw it: a shadow reads the cutout tables
-    /// and draws the eight cells around its hole.
+    /// and draws a box's template, its rim around its hole (`vs_shadow`).
     pub(crate) fn draw_run<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
@@ -429,14 +436,16 @@ impl QuadPipeline {
             QuadDraw::Fill(form) => self.draw_fill(rec, form, instances.u32_range()),
             QuadDraw::Shadow(_) => {
                 self.cutouts.bind(rec);
-                rec.draw(0..SHADOW_GRID_VERTICES, instances.u32_range());
+                self.draw_shapes(
+                    rec,
+                    self.shadow_cells,
+                    ShapeForm::Box,
+                    instances.u32_range(),
+                );
             }
         }
     }
 }
-
-/// Vertices per shadow instance: a 3×3 grid less the center, two triangles per cell.
-const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
 /// The quad's header, then its fill's and its border's lanes.
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = {
@@ -557,7 +566,7 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::QuadVariants;
     #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
-    use crate::gpu::pipeline::quad_pipeline::quad_draw::{ShadowCells, ShapeCells};
+    use crate::gpu::pipeline::quad_pipeline::quad_draw::ShapeCells;
 
     #[cfg(test)]
     impl QuadVariants {
@@ -574,9 +583,10 @@ pub(crate) mod internals {
             self.cutouts.held_len()
         }
 
-        /// Draw every shadow as one cell of the full form, the reference the grid is compared with. Affects variants built afterwards.
-        pub(crate) const fn disable_shadow_grid(&mut self) {
-            self.shadow_cells = ShadowCells::Whole;
+        /// Draw every shadow as one quad of the full form, the reference the template is compared
+        /// with. Affects variants built afterwards.
+        pub(crate) const fn disable_shadow_template(&mut self) {
+            self.shadow_cells = ShapeCells::OneQuad;
         }
 
         /// Draw every box, circle and triangle as one quad that measures its distance at each

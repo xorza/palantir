@@ -83,9 +83,13 @@ runs a fragment where it paints nothing.
 - **A shadow keeps its fragment stage; the template only bounds it.** Its coverage is worked out
   from the pixel center as now, so a region's distance is not read and the outlines need not
   share centers. An inset shadow's outlines are the blurred hole's core and the source grown by
-  the antialiasing reach; a drop shadow's the source and the shadow's box grown by its halo.
-  Where the outer outline does not hold the inner, a drop shadow whose offset passes its halo,
-  it draws the shadow box's template whole, interior included, with the source clip as now.
+  the antialiasing reach; a drop shadow's the source and the shadow's box grown by the pixel's
+  square, the antialiasing reach along each axis, then by `4σ`: the Minkowski sum, whose corners
+  reach `√2` times the antialiasing reach past the arc, as a square pixel touches a corner from
+  there — the plain reach lost an unblurred 30 px corner's arc pixels by 3 levels. Where the outer
+  outline does not hold the inner (`shadow_outlines_nest`), a drop shadow whose offset passes its
+  halo, it draws the outer outline's template whole, interior included, with the source clip as
+  now; elsewhere the interior's vertices collapse to a point.
 - **Only where the bench approves**: shadows move to the template only if `effect_pass/gpu/shadow`
   and the guard cases improve beyond the floor on one host and regress on none; the template's
   vertex stage cost a fifth of V3D's main pass before it was indexed (`.notes/PERF.md`), and a
@@ -179,18 +183,28 @@ Each step lands on its own, with the gate green, and its own commit.
   the old effect zeroed every pixel whose center sat inside the card, the halo leaves that cut to
   palantir's edge coverage.
 
-### 5. Shadows on the template, measured
+### 5. Shadows on the template, measured — done, taken
 
-- A spike in a worktree: `vs_shadow` builds the two outlines of each kind and draws the rings
-  and bands, or a drop shadow's whole template where its outer outline does not hold its source.
-  ABBA of `effect_pass/gpu/shadow`, `integration/backdrop_frame/gpu/*` and the guard cases on the
-  apple and the board.
-- Taken: the grid leaves `shadow.wgsl`, `SHADOW_GRID_VERTICES` goes, and the reference build's
-  one-quad shadow (`ShadowCells::Whole`) stays the visual suite's reference. Tests: the shadow
-  goldens byte-identical; a probe that a drop shadow whose offset passes its halo takes the whole
-  template.
-- Refused: the grid stays and takes the larger hole of the decision above, with a test of a pill's
-  hole and the same goldens.
+- `vs_shadow` builds the two outlines of each kind and draws the box's template, its interior
+  collapsed where the outlines nest, through `TemplateIndices`; the grid and
+  `SHADOW_GRID_VERTICES` are gone. The reference build draws one quad over the shadow's bounds,
+  a strip, as a fill's does: `ShadowCells` folded into `ShapeCells`, `SHADOW_GRID` became
+  `SHADOW_TEMPLATE`. A drop shadow whose box has no area, or an inset shadow whose source has
+  none, collapses every vertex.
+- Tests: `a_shadow_template_matches_the_full_form` holds the template to the one-quad reference
+  within one level over the sweep, which holds offsets whose outlines do not nest and now a spread
+  that takes the box to no height; the goldens unchanged.
+- Measured, ABBA against step 4:
+
+  | case | apple | board |
+  | --- | --- | --- |
+  | `effect_pass/gpu/shadow` | 318 → 286 µs, −9.9 % | 15.60 → 14.83 ms, −5.0 % |
+  | `effect_pass/gpu/none` | +1.8 %, within its floor | −0.02 % |
+  | `backdrop_frame/gpu/{cards,modal}/scrolling` | — | +0.03 %, −0.01 % |
+  | guard: main pass, frames | within the floor | −0.04 to +0.34 %, an A/A of `partial` 0.6 % |
+
+  The grid already left out most of a card's inside; the template takes the corners' squares
+  outside the arcs and inside the source.
 
 ### 6. Docs
 
