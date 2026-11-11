@@ -391,6 +391,9 @@ pub(crate) struct EffectStores<'a> {
     pub(crate) images: &'a WgpuImageStore,
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 #[cfg(test)]
 mod tests {
     use crate::effect::contract::{self, ContractSpec, ParamsLayout};

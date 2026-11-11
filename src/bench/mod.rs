@@ -27,7 +27,7 @@ use crate::cascade;
 use crate::gpu::backdrop;
 use crate::gpu::backdrop::backdrop_blur;
 use crate::gpu::frame::schedule;
-use crate::gpu::pipeline::{curve_pipeline, image_pipeline};
+use crate::gpu::pipeline::{curve_pipeline, effect_pipeline, image_pipeline};
 use crate::gpu::raster::{raster_atlas, text_backend};
 use crate::layout::cache as measure_cache;
 use crate::primitives::packed::half_simd;
@@ -55,6 +55,7 @@ pub fn run<S: Scene>(c: &mut Criterion) {
     composer::bench::atomic(c);
     curve_pipeline::bench::atomic(c, &backends);
     damage::bench::atomic(c);
+    effect_pipeline::bench::atomic(c, &backends);
     frontend::bench::atomic::<S>(c);
     gradient_atlas::bench::atomic(c);
     half_simd::bench::atomic(c);
