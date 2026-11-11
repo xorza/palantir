@@ -24,6 +24,8 @@ pub(crate) mod panic_probe;
 pub(crate) mod scratch_report;
 #[cfg(test)]
 pub(crate) mod size_trio;
+#[cfg(test)]
+pub(crate) mod srgb_reference;
 
 use crate::text;
 use crate::ui::Ui;

@@ -11,7 +11,6 @@
 - box material?
 - material for texts and strokes?
 - consolidate gpu atlas
-- fallback to paint for effects and materials
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows

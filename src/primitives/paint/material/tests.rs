@@ -1,5 +1,6 @@
 use crate::effect::effect_registry::EffectRegistry;
 use crate::internals::panic_probe::assert_panics_with;
+use crate::internals::srgb_reference;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::lerp::Lerp;
@@ -487,24 +488,6 @@ fn a_fallback_alpha_rounds_up_to_the_grid_as_f16_reads_it() {
     assert_eq!(grid_alpha_at_or_above(1.0), 1.0);
 }
 
-/// IEC 61966-2-1 in `f64`, written out here as a reference apart from palantir's own.
-fn srgb_encode(c: f64) -> f64 {
-    if c <= 0.003_130_8 {
-        12.92 * c
-    } else {
-        1.055 * c.libm_powf(1.0 / 2.4) - 0.055
-    }
-}
-
-fn srgb_decode(e: f64) -> f64 {
-    let e = e.clamp(0.0, 1.0);
-    if e <= 0.040_45 {
-        e / 12.92
-    } else {
-        ((e + 0.055) / 1.055).libm_powf(2.4)
-    }
-}
-
 /// A saturated fill, whose zero channels sit in the sRGB curve's linear toe, takes a ceiling and
 /// a floor, and each holds the ink at 4.5:1: a backdrop of each primary, secondary and white,
 /// scaled to the bound, mixed under the fill and stored a whole encoded step off on every
@@ -545,7 +528,7 @@ fn a_saturated_fill_holds_the_ink_at_the_text_contrast() {
         let alpha = f64::from(fill.a);
         let mixed: [f64; 3] =
             std::array::from_fn(|i| (1.0 - alpha) * backdrop[i] + alpha * channels(fill)[i]);
-        luminance(mixed.map(|c| srgb_decode(srgb_encode(c) + step)))
+        luminance(mixed.map(|c| srgb_reference::decode(srgb_reference::encode(c) + step)))
     };
 
     let light = RgbaF32::hex(0xebebeb);

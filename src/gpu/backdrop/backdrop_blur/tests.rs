@@ -5,6 +5,7 @@ use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::gpu::texel;
+use crate::internals::srgb_reference;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::Libm;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -61,12 +62,7 @@ fn pixels_of(surface: UVec2) -> Vec<[u8; 4]> {
 }
 
 fn srgb_decode(byte: u8) -> f64 {
-    let c = f64::from(byte) / 255.0;
-    if c <= 0.04045 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).libm_powf(2.4)
-    }
+    srgb_reference::decode(f64::from(byte) / 255.0)
 }
 
 /// One channel of a 2D image, row-major.

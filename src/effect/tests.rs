@@ -24,6 +24,7 @@ use crate::host::harness::harness_builder::Depth;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::paint_capture::PaintCall;
 use crate::internals::panic_probe::assert_panics_with;
+use crate::internals::srgb_reference;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
 use crate::primitives::effect::effect_name::{EffectName, InlineEffectName};
 use crate::primitives::effect::effect_params::{EffectParam, EffectParams, ParamType};
@@ -1184,15 +1185,25 @@ fn an_effect_past_its_node_meets_its_ancestors_clip() {
         }
     };
     let blue = [0, 0, 255, 255];
-    let ground = bytes(RgbaF32::new(0.2, 0.4, 0.6, 1.0));
-    assert_eq!(
-        painted(ring(ClipMode::Rect), &[(50, 10), (100, 10), (50, 35)]),
-        [blue, ground, ground]
-    );
-    assert_eq!(
-        painted(ring(ClipMode::Rounded), &[(40, 15), (1, 1)]),
-        [blue, ground],
-        "the rounded clip's corner cuts the effect"
+    let ground = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
+    // Either neighbor of `123.56, 169.62, 203.42`, and no byte past them.
+    assert!(stores([124, 170, 203, 255], ground));
+    assert!(stores([123, 169, 204, 255], ground));
+    assert!(!stores([125, 170, 203, 255], ground));
+    assert!(!stores([124, 168, 203, 255], ground));
+    let [inside, past, below] = painted(ring(ClipMode::Rect), &[(50, 10), (100, 10), (50, 35)])
+        .try_into()
+        .unwrap();
+    assert_eq!(inside, blue);
+    assert!(stores(past, ground), "past the clip: {past:?}");
+    assert!(stores(below, ground), "below the rect: {below:?}");
+    let [middle, corner] = painted(ring(ClipMode::Rounded), &[(40, 15), (1, 1)])
+        .try_into()
+        .unwrap();
+    assert_eq!(middle, blue);
+    assert!(
+        stores(corner, ground),
+        "the rounded clip's corner cuts the effect: {corner:?}"
     );
 }
 
@@ -1496,10 +1507,8 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
             shape.animate(looping);
         }
     });
-    assert_eq!(
-        h.read_back().get_pixel(8, 8).0,
-        bytes(RgbaF32::new(0.75, 0.0, 0.0, 1.0))
-    );
+    let got = h.read_back().get_pixel(8, 8).0;
+    assert!(stores(got, RgbaF32::new(0.75, 0.0, 0.0, 1.0)), "{got:?}");
 }
 
 /// A moving effect repaints its own rect each paint-only frame, past its node and with its
@@ -1684,7 +1693,8 @@ fn an_image_lost_with_its_device_paints_nothing_until_written_again() {
     h.recover(fresh.handles());
     assert!(!red.is_resident());
     h.prime(2, paint);
-    assert_eq!(h.read_back().get_pixel(8, 8).0, bytes(ground));
+    let lost = h.read_back().get_pixel(8, 8).0;
+    assert!(stores(lost, ground), "the ground: {lost:?}");
 
     red.update(&solid(0xff0000)).unwrap();
     h.prime(2, paint);
@@ -1809,6 +1819,25 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
 fn bytes(color: RgbaF32) -> [u8; 4] {
     let srgb = color.to_srgba8();
     [srgb.r, srgb.g, srgb.b, srgb.a]
+}
+
+/// Whether `got` is a byte a target may store for `color`: each channel one of the two bytes
+/// nearest its exact encoding, as Vulkan lets a conversion to a normalized format return either
+/// (`convertFloatToUint`, "Conversion From Floating-Point to Normalized Fixed-Point"). Mesa's anv
+/// was seen to round down where palantir's encoding rounds to nearest: `(0.2, 0.4, 0.6)` encodes
+/// to `123.56, 169.62, 203.42`, read back `[123, 169, 203]` there and `[124, 170, 203]` elsewhere.
+/// For a color the target receives as written, its encoding clear of a whole byte; a value a
+/// shader computes, off by its arithmetic, takes a byte either side of its expected one.
+fn stores(got: [u8; 4], color: RgbaF32) -> bool {
+    let exact = [
+        srgb_reference::encode(f64::from(color.r)),
+        srgb_reference::encode(f64::from(color.g)),
+        srgb_reference::encode(f64::from(color.b)),
+        f64::from(color.a),
+    ];
+    got.iter()
+        .zip(exact)
+        .all(|(&byte, value)| (f64::from(byte) - value * 255.0).abs() < 1.0)
 }
 
 /// A backdrop effect reads what is painted under it and past its rect within its reach, and a
@@ -2140,10 +2169,9 @@ fn a_turn_turns_an_effect_as_a_quad() {
         }
     });
     let image = h.read_back();
-    assert_eq!(
-        [image.get_pixel(16, 2).0, image.get_pixel(2, 16).0],
-        [bytes(RgbaF32::new(0.0, 0.0, 1.0, 1.0)), bytes(ground)]
-    );
+    assert_eq!(image.get_pixel(16, 2).0, [0, 0, 255, 255]);
+    let left = image.get_pixel(2, 16).0;
+    assert!(stores(left, ground), "where the band lay: {left:?}");
 }
 
 /// The reach is measured from the effect's rect, not from the pixels it rounds out to: with no
