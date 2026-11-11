@@ -383,10 +383,11 @@ impl Ui {
 
     /// Whether this frame paints with transparency reduced: [`UiPreferences::transparency`]
     /// resolved against
-    /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then
-    /// every [`Material`](crate::Material) paints as a solid fill, as CSS
-    /// `prefers-reduced-transparency` asks and as WinUI's acrylic falls back to its
-    /// `FallbackColor`: no capture and no blur run. Under [reduced power](Self::is_power_reduced)
+    /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then no
+    /// capture and no blur run, as CSS `prefers-reduced-transparency` asks, and every
+    /// [`Material`](crate::Material) paints what its [`ReducedBackdrop`](crate::ReducedBackdrop)
+    /// says: by default its effect over the window's ground, opaque under its fill, or its fill
+    /// alone, translucent. Under [reduced power](Self::is_power_reduced)
     /// the system's answer reads as reduced, as Windows' Energy saver turns transparency effects
     /// off, so only a pick by hand keeps transparency whole. App-global.
     #[inline]

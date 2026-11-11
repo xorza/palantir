@@ -9,7 +9,8 @@ use palantir::glam::Vec2;
 use palantir::widget::{GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     Align, Border, Button, Chrome, Configure, Corners, EffectName, Lens, Material, Menu, MenuItem,
-    MenuTheme, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Switch, Text, Ui, WidgetId, fmt,
+    MenuTheme, Panel, PopupTrigger, Rect, ReducedBackdrop, RgbaF32, Sizing, Switch, Text, Ui,
+    WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -67,6 +68,36 @@ pub fn build(ui: &mut Ui, k: Kit) {
                     })
                     .with_blur(1.0),
                     RgbaF32::new(1.0, 1.0, 1.0, 0.1),
+                );
+            });
+        });
+
+    Section::new("Reduced transparency")
+        .apis(&[
+            api!(Material::with_reduced_transparency),
+            api!(ReducedBackdrop::Ground),
+            api!(ReducedBackdrop::Nothing),
+        ])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "One frosted box with a translucent fill and a hairline, twice: only what each \
+                 paints with transparency reduced differs. Pick Less on the rail's Transparency \
+                 row. Ground then frosts the window's clear color in place of the page, so the \
+                 box turns opaque and hides the page; Nothing drops the material, so the page \
+                 shows sharp through the bare fill. The border stays on both.",
+            );
+            let reduced = Material::frosted(16.0);
+            let fill = RgbaF32::new(1.0, 1.0, 1.0, 0.48);
+            support::tiles(ui, |ui| {
+                look(ui, k, "Ground, the default", reduced, fill);
+                look(
+                    ui,
+                    k,
+                    "Nothing",
+                    reduced.with_reduced_transparency(ReducedBackdrop::Nothing),
+                    fill,
                 );
             });
         });
