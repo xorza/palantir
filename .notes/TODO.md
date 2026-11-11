@@ -11,6 +11,7 @@
 - box material?
 - Brush::Linear add conveninet ctors
 - material for texts and strokes?
+- consolidate gpu atlas
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
