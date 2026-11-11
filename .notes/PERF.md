@@ -370,6 +370,19 @@ an older number here reads as a share, not a time.
   every template instance, quads, shaped images and effects alike, and a second place a shape's
   geometry is worked out, for half a percent of one GPU's frame.
 
+- **Halos and shadows on the template** (2026-11-11, the apple and the board, ABBA,
+  `atomic/effect_pass/gpu/*`: 28 cards at 2560 × 1440, each glowing or casting a drop shadow 24 px
+  past its edge). The template between two outlines (`1ec40141c`) moved the guard within each
+  floor, board `main_pass/gpu/scrolling` +0.02 %, and kept V3D's vertex shaders at their
+  instruction counts (`V3D_DEBUG=shaderdb`, 367 in binning, 441 to 505 rendering); on the apple it
+  is not bit for bit, its fast math scheduling the rewrite otherwise. The halo (`08b1f7f29`)
+  against the glow over its card's rect grown by the reach: apple 230 → 152.5 µs, −34 %, board
+  12.48 → 7.84 ms, −37 %, the glows alone −49 % and −47 %. The halo as a bit of the instance's
+  flags in one pipeline, refused: the plain glows +4.2 % on the apple, +1.0 % on the board, a
+  varying more read by every fragment. Shadows on the template (`74590267f`) against the 3 × 3
+  grid: apple 318 → 286 µs, −9.9 %, board 15.60 → 14.83 ms, −5.0 %, the guard within the floor;
+  the grid already left out most of a card's inside, so the template saves the corners' squares.
+
 - **Shape templates indexed** (run 12; `e2e0d0a0c`, `955437499`, `d6a91df8d`): the template
   draws its 64 points a box through an index buffer where it drew 138 vertices, its arc
   directions are sums of unit vectors, and a transparent solid fill's interior collapses. V3D's

@@ -330,8 +330,20 @@ driver serves that command alone; the drive table's `version` names it
   64 vertices a box where a vertex per triangle corner took 138, and its arcs' directions are
   sums of unit vectors, with no trigonometry: on V3D its vertex stage, about 500 instructions run
   in binning and again per tile, was a fifth of the main pass, and the two took a whole repaint
-  7 % faster there (`.notes/PERF.md`, "Shape templates indexed"). The one-quad SDF form stays as
-  the reference the visual suite compares with. Refused: arcs cut into chords, as Impeller cuts
+  7 % faster there (`.notes/PERF.md`, "Shape templates indexed"). The template lies between two
+  rounded outlines that share their corners' normals, its interior optional: a fill's are its shape
+  inset by its border and the antialiasing reach and grown by the reach; an effect's halo and a
+  shadow draw the rim alone, the index range before the interior, so no fragment runs in the hole,
+  as Graphite builds a fill and a stroke from one template whose stroke leaves the center
+  collapsed
+  ([source](https://skia.googlesource.com/skia/+/main/src/gpu/graphite/render/AnalyticRRectRenderStep.cpp)). A shadow's outlines only bound its fragment stage, which works its coverage out from
+  the pixel center: a drop shadow lies between its source the reach in and its box grown by the
+  pixel's square and `4σ`, the Minkowski sum, as a square pixel touches a corner from `√2` times
+  the reach; an inset shadow between its blurred hole's core and its source grown by the reach;
+  where the two do not nest, the whole template (`.notes/PERF.md`, "Halos and shadows on the
+  template"). The one-quad SDF form stays as the reference the visual suite compares fills and
+  shadows with. Refused: a shadow's 3 × 3 grid around a hole, which ran fragments in its corner
+  squares and left a pill no hole; a vertex stage per use; arcs cut into chords, as Impeller cuts
   circles, which errs by its tolerance and grows with the radius; MSAA, which changes every
   pipeline's antialiasing; mesh shaders, experimental in wgpu and on no GL device.
 - **A closed shape is a sharp convex polygon and a radius at each corner, worked out on the
@@ -345,7 +357,7 @@ driver serves that command alone; the drive table's `version` names it
   fragment its region and distance; the paint, a solid, a gradient (`quad_paint`), an image
   (`image_paint`), a material or an app effect, is one function of the point. A pipeline is one
   geometry and one paint, pinned per form (a fill's `FillForm`, its `ShapeForm` and `FillBrush`;
-  an image's `ShapeForm`; an effect's `EffectKey`, its effect and `ShapeForm`), as Skia Graphite
+  an image's `ShapeForm`; an effect's `EffectKey`, its effect, `ShapeForm` and `TemplateCover`), as Skia Graphite
   pairs a RenderStep with a paint key and WebRender a quad with a pattern.
   Refused: every paint behind one dynamic branch, which VideoCore's register count refused (54
   temporaries for all forms, 22 for a solid); a pipeline per shape kind.
@@ -379,6 +391,21 @@ driver serves that command alone; the drive table's `version` names it
   `BackdropFilter`, CSS `backdrop-filter`), whose type-erased bytes no theme file holds and no
   tween blends; a closed set of material looks (SwiftUI, WinUI), which drops app materials; a
   built-in filter type beside app effects, two forms of one thing.
+- **A halo is a paint's, of the shape it surrounds.** `EffectPaint::outside(reach)` paints a
+  color effect outside its rect or circle alone, out to `reach`, as CSS draws an outset
+  `box-shadow` outside the border box only. The effect reads the shape's own rect and corners,
+  `pos` running outside `0..size`, and palantir cuts the shape's edge by the template's coverage
+  inverted, whatever the effect returns there. The reach grows every reader of the draw's rect:
+  the paint rect, the cull, the order and the clip tests. The halo is a pipeline constant, as a
+  form is: `PALANTIR_HALO` on a `TemplateCover::Rim` key. The bench's glow drawn as its card's halo
+  runs 34 % faster on an Apple GPU and 37 % on V3D than over the card's rect grown by its reach
+  (`.notes/PERF.md`, "Halos and shadows on the template"). Refused: a shape of two edges, Skia's
+  `drawDRRect`
+  ([example](https://skia.googlesource.com/skia/+/main/docs/examples/Canvas_drawDRRect_b.cpp))
+  and Android's `drawDoubleRoundRect`, a shape kind more whose effect learns the inner rect
+  through its params; the halo as a bit of the instance's flags, which every plain effect's
+  fragment then read; a backdrop effect's halo, until its capture takes the reach in; a
+  triangle's, whose effect reads no corners to find its edge by.
 - **A box's fill reaches under its border; a material too, in one draw.** A fill, a color or a
   gradient, covers the whole box, a material under it, and the border lies over them, as CSS's
   background (`background-clip: border-box`, its default) and `backdrop-filter` cover the border
