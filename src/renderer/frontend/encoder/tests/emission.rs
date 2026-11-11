@@ -41,7 +41,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let gradient = RecordedGradient {
         axis: FillAxis::from_lanes([1.0, 0.0, 0.0, 1.0]),
         kind: FillKind::linear(Spread::Pad),
-        ramp: ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE),
+        ramp: ColorRamp::from([RgbaF32::BLACK, RgbaF32::WHITE]),
     };
     let gradients = [gradient];
     let mut atlas = CpuGradientAtlas::default();
@@ -194,15 +194,14 @@ fn manually_pushed_shapes_emit_expected_cmds() {
             );
             ui.add_shape(
                 Shape::line(Vec2::new(0.0, 5.0), Vec2::new(20.0, 5.0)),
-                Stroke::new(tint, 2.0)
-                    .with_ramp(ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
+                Stroke::new(tint, 2.0).with_ramp(ColorRamp::from([RgbaF32::BLACK, RgbaF32::WHITE])),
             );
             ui.add_shape(
                 Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
-                Stroke::new(tint, 2.0).with_ramp(ColorRamp::two_stop(
+                Stroke::new(tint, 2.0).with_ramp(ColorRamp::from([
                     RgbaF32::TRANSPARENT,
                     RgbaF32::TRANSPARENT,
-                )),
+                ])),
             );
             ui.add_shape(
                 Shape::line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)),
@@ -271,25 +270,25 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
                 Shape::rect()
                     .at(Rect::new(10.0, 20.0, 30.0, 40.0))
                     .corners(4.0),
-                Paint::NONE.with_shadow(Shadow {
+                Shadow {
                     color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -1.0,
                     inset: false,
-                }),
+                },
             );
             ui.add_shape(
                 Shape::rect()
                     .at(Rect::new(10.0, 20.0, 30.0, 40.0))
                     .corners(4.0),
-                Paint::NONE.with_shadow(Shadow {
+                Shadow {
                     color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
                     blur: 8.0,
                     spread: -2.0,
                     inset: true,
-                }),
+                },
             );
             Block::new()
                 .id(WidgetId::from_hash("host"))
@@ -383,13 +382,18 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         },
     ];
     for case in &cases {
-        let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 6.0);
+        let shadow_of = if case.inset {
+            Shadow::inset
+        } else {
+            Shadow::drop
+        };
+        let shadow = shadow_of(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 6.0);
         let chrome = Chrome {
             corners: case.corners,
             paint: Paint {
                 fill: RgbaF32::WHITE.into(),
                 border: case.border,
-                shadow: if case.inset { shadow.inset() } else { shadow },
+                shadow,
                 material: None,
             },
         };

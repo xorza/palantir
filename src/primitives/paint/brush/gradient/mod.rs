@@ -4,7 +4,6 @@
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::stops::Stop;
 use std::hash;
 
 pub(crate) mod color_ramp;
@@ -126,14 +125,12 @@ impl<G> Gradient<G> {
 }
 
 impl<G: GradientGeometry> Gradient<G> {
-    /// The one general constructor the per-kind `new` shorthands land in; asserts
-    /// two through eight stops.
-    #[track_caller]
-    fn from_stops(geometry: G, stops: impl IntoIterator<Item = Stop>) -> Self {
+    /// The one general constructor the per-kind `new` shorthands land in.
+    const fn from_ramp(geometry: G, ramp: ColorRamp) -> Self {
         Self {
             geometry,
-            ramp: ColorRamp::new(stops),
-            spread: Spread::default(),
+            ramp,
+            spread: Spread::Pad,
         }
     }
 

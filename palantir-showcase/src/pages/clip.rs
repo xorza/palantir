@@ -6,8 +6,8 @@ use crate::support::{DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
 use palantir::{
-    Align, Block, Border, Brush, Chrome, ComboBox, Configure, Corners, LineCap, LinearGradient,
-    Paint, Panel, Rect, RgbaF32, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
+    Align, Block, Border, Chrome, ComboBox, Configure, Corners, LineCap, LinearGradient, Paint,
+    Panel, Rect, RgbaF32, Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
 };
 
 const CARD: f32 = 200.0;
@@ -265,7 +265,7 @@ fn four_radii(ui: &mut Ui, k: Kit) {
             layer(ui, |ui| {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(-20.0, -20.0, size.x + 40.0, size.y + 40.0)),
-                    Brush::Linear(LinearGradient::two_stop(0.6, k.swatch.red, k.swatch.teal)),
+                    LinearGradient::new(0.6, [k.swatch.red, k.swatch.teal]),
                 );
                 for i in 0..8 {
                     let x = i as f32 * 28.0 - 40.0;
@@ -376,7 +376,7 @@ fn shapes_in_circle(ui: &mut Ui, k: Kit) {
                 Shape::rect()
                     .at(Rect::new(95.0, 95.0, 70.0, 70.0))
                     .corners(Corners::all(14.0)),
-                Paint::NONE.with_border(Border::new(k.swatch.teal, 5.0)),
+                Border::new(k.swatch.teal, 5.0),
             );
         });
     });

@@ -37,11 +37,12 @@ fn backdrops(ui: &mut Ui, shell: &mut Shell, look: Look, under: RgbaF32) {
                         Rect::new(500.0, 200.0, 320.0, 220.0),
                     ] {
                         let paint = match look {
-                            Look::Plain => Paint::NONE.with_material(Material::blur(12.0)),
+                            Look::Plain => Paint::from(Material::blur(12.0)),
                             Look::Frosted => Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
                                 .with_material(Material::frosted(16.0)),
-                            Look::Glass => Paint::NONE
-                                .with_material(Material::glass(Lens::WINDOW_GLASS).with_blur(2.0)),
+                            Look::Glass => {
+                                Paint::from(Material::glass(Lens::WINDOW_GLASS).with_blur(2.0))
+                            }
                         };
                         ui.add_shape(Shape::rect().at(rect), paint);
                     }

@@ -36,7 +36,7 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
                 );
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 90.0, 200.0, 20.0)),
-                    LinearGradient::two_stop(0.0, white, clear),
+                    LinearGradient::horizontal([white, clear]),
                 );
             });
         })

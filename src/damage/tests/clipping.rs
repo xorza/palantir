@@ -8,7 +8,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::paint::Paint;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
@@ -92,13 +91,13 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().corners(0.0),
-                        Paint::NONE.with_shadow(Shadow {
+                        Shadow {
                             color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                             offset: Vec2::new(12.0, -7.0),
                             blur: 8.0,
                             spread: 2.0,
                             inset: false,
-                        }),
+                        },
                     );
                 });
         }),
@@ -181,13 +180,13 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                                 .show(ui, |ui| {
                                     ui.add_shape(
                                         Shape::rect().corners(0.0),
-                                        Paint::NONE.with_shadow(Shadow {
+                                        Shadow {
                                             color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                                             offset: Vec2::ZERO,
                                             blur,
                                             spread: 0.0,
                                             inset: false,
-                                        }),
+                                        },
                                     );
                                 });
                         });

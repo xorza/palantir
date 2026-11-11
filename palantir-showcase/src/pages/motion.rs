@@ -192,11 +192,7 @@ fn turn(ui: &mut Ui, k: Kit) {
                 cell(ui, "shadow", &mut |ui| {
                     if let Some(shape) = ui.add_shape(
                         Shape::rect().at(source).corners(Corners::all(6.0)),
-                        Paint::NONE.with_shadow(Shadow::drop(
-                            RgbaF32::BLACK,
-                            Vec2::new(6.0, 6.0),
-                            6.0,
-                        )),
+                        Shadow::drop(RgbaF32::BLACK, Vec2::new(6.0, 6.0), 6.0),
                     ) {
                         shape.animate(spin);
                     }

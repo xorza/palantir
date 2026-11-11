@@ -332,7 +332,6 @@ mod tests {
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
-    use crate::primitives::paint::paint::Paint;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
     use crate::shape::Shape;
     use crate::shape::effect_paint::EffectPaint;
@@ -417,10 +416,7 @@ mod tests {
 
         host.frame(target.as_target(), &mut |ui: &mut Ui| {
             ui.add_shape(Shape::rect(), RgbaF32::WHITE);
-            ui.add_shape(
-                Shape::rect(),
-                Paint::NONE.with_material(Material::blur(3.0)),
-            );
+            ui.add_shape(Shape::rect(), Material::blur(3.0));
         });
         assert_eq!(store(&host), [false, false, true, true, false, true, true]);
 

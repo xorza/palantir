@@ -718,13 +718,12 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
                 [2.0, -1.0, 2.0, 1.0],
             );
             p.shadow = LoweredShadow::lower(
-                Shadow::drop(
+                Shadow::inset(
                     RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
                     Vec2::new(2.0, -1.0),
                     2.0,
                 )
-                .with_spread(1.0)
-                .inset(),
+                .with_spread(1.0),
             );
             b.draw(p, 1.0);
         },

@@ -65,7 +65,7 @@ pub(crate) struct CaptureParams {
 /// past the shape by what its bend and the shape's size give.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CaptureReach {
-    /// A fixed reach in logical px, as [`EffectPaint::reach`](crate::widget::EffectPaint::reach)
+    /// A fixed reach in logical px, as [`EffectPaint::max_sample_offset`](crate::widget::EffectPaint::max_sample_offset)
     /// sets it.
     Px(f32),
     /// A material's lens, `(bezel, thickness, refractive_index, dispersion)` in logical px, as
@@ -88,7 +88,7 @@ impl CaptureReach {
     /// else [`LensOptics::reach`], at its densest color; zero with no bezel.
     #[expect(
         clippy::cast_sign_loss,
-        reason = "a reach is a length, which `EffectPaint::reach` checks, and a scale is positive"
+        reason = "a reach is a length, which `EffectPaint::max_sample_offset` checks, and a scale is positive"
     )]
     pub(crate) fn margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
         match self {

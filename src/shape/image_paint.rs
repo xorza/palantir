@@ -88,6 +88,12 @@ impl PaintedBy<ImagePaint> for RectShape {}
 
 /// An image over a rect, its corners rounding it.
 impl sealed::DrawWith<ImagePaint> for RectShape {
+    type Prepared = ImagePaint;
+
+    fn prepare(paint: ImagePaint) -> ImagePaint {
+        paint
+    }
+
     fn check(&self, _paint: &ImagePaint) {}
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
@@ -102,6 +108,12 @@ impl PaintedBy<ImagePaint> for CircleShape {}
 
 /// An image over a circle, fit to the circle's square and clipped to the circle.
 impl sealed::DrawWith<ImagePaint> for CircleShape {
+    type Prepared = ImagePaint;
+
+    fn prepare(paint: ImagePaint) -> ImagePaint {
+        paint
+    }
+
     fn check(&self, _paint: &ImagePaint) {}
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {
@@ -116,6 +128,12 @@ impl PaintedBy<ImagePaint> for TriangleShape {}
 
 /// An image over a triangle, fit to its covering rect and clipped to it.
 impl sealed::DrawWith<ImagePaint> for TriangleShape {
+    type Prepared = ImagePaint;
+
+    fn prepare(paint: ImagePaint) -> ImagePaint {
+        paint
+    }
+
     fn check(&self, _paint: &ImagePaint) {}
 
     fn draw<'a>(&'a self, paint: &'a ImagePaint) -> Draw<'a> {

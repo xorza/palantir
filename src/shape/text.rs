@@ -87,6 +87,12 @@ impl PaintedBy<RgbaF32> for TextShape {}
 
 /// A text run inked in a color.
 impl sealed::DrawWith<RgbaF32> for TextShape {
+    type Prepared = RgbaF32;
+
+    fn prepare(paint: RgbaF32) -> RgbaF32 {
+        paint
+    }
+
     /// # Panics
     ///
     /// Unless the ink is a [color](crate::widget::domain::color).

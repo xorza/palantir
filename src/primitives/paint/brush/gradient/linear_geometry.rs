@@ -3,9 +3,9 @@
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::paint::brush::gradient::Gradient;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
-use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::color::RgbaF32;
+use std::f32::consts::FRAC_PI_2;
 use std::hash;
 
 /// Geometry of a linear gradient: color runs along `angle` radians (0 = →, π/2 = ↓), spanning the brush owner's bounding rect end to end.
@@ -41,23 +41,34 @@ impl Geometry for LinearGeometry {
 }
 
 impl LinearGradient {
-    /// General constructor.
+    /// A gradient along `angle` radians through `ramp`: `ramp` an array of colors
+    /// spread evenly, an array of [`Stop`](crate::Stop)s placed where they say, or a [`ColorRamp`].
     ///
     /// # Panics
     ///
-    /// As [`GradientStops::new`](crate::GradientStops::new).
+    /// As [`ColorRamp::new`](crate::ColorRamp::new).
     #[track_caller]
-    pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
-        Self::from_stops(LinearGeometry { angle }, stops)
+    pub fn new(angle: f32, ramp: impl Into<ColorRamp>) -> Self {
+        Self::from_ramp(LinearGeometry { angle }, ramp.into())
     }
 
-    /// 2-stop shorthand: `c0` at offset 0, `c1` at 1; the common UI-gradient case.
+    /// Left to right, angle 0, as Compose's `Brush.horizontalGradient`.
     ///
     /// # Panics
     ///
-    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    /// As [`Self::new`].
     #[track_caller]
-    pub fn two_stop(angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self {
-        Self::new(angle, [Stop::new(0.0, c0), Stop::new(1.0, c1)])
+    pub fn horizontal(ramp: impl Into<ColorRamp>) -> Self {
+        Self::new(0.0, ramp)
+    }
+
+    /// Top to bottom, angle π/2, as Compose's `Brush.verticalGradient`.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[track_caller]
+    pub fn vertical(ramp: impl Into<ColorRamp>) -> Self {
+        Self::new(FRAC_PI_2, ramp)
     }
 }

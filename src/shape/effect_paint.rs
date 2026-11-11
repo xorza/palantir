@@ -22,15 +22,15 @@ use crate::shape::triangle::TriangleShape;
 /// An app-written effect over a [`RectShape`], a [`CircleShape`] or a [`TriangleShape`]
 /// ([`Ui::add_shape`](crate::Ui::add_shape)), with one instance of its parameters: a color
 /// effect ([`Self::new`] of a color effect's name), or a backdrop effect, which also reads what is
-/// painted under it. Paints in record order, as any paint does, and its rect may exceed its node,
-/// as a ring does; clipping ancestors clip it. A [`Material`](crate::Material) is the theme form of
+/// painted under it. Paints in record order, as any paint does, over its shape, or around it alone
+/// as its halo ([`Self::outside`]); clipping ancestors clip it. A [`Material`](crate::Material) is the theme form of
 /// a backdrop effect, which a box wears under its fill and border, and draws as an `EffectPaint`
 /// does. Refused: a `Brush` variant, which every brush family would have to draw, and which a
 /// theme file saves where no parameters fit.
 ///
 /// A backdrop effect is a backdrop capture: what is painted under it is copied out of the frame at
 /// its place in paint order, blurred by its [σ](Self::blur), and kept across frames until
-/// something under its [reach](Self::reach) changes, as a material's is.
+/// something under its reads ([`Self::max_sample_offset`]) changes, as a material's is.
 ///
 /// Its time comes from a [`PaintAnimation`](crate::widget::PaintAnimation) through
 /// [`AddedShape::animate`](crate::widget::AddedShape::animate), [`PaintAnimation::clock`] when only
@@ -119,9 +119,8 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
         self
     }
 
-    /// Read up to `px` past the effect's rect, as a ring's glow or a lens's bent ray does
-    /// (SwiftUI's `maxSampleOffset`), rounded out to whole physical px; a read past it reads its
-    /// edge. 0 by default: the effect reads under its own rect alone. The capture grows by it, so
+    /// Read up to `px` past each pixel of the effect's rect, as a lens's bent ray does, SwiftUI's
+    /// `maxSampleOffset`, rounded out to whole physical px; a read past it reads its edge. 0 by default: the effect reads under its own rect alone. The capture grows by it, so
     /// damage under it repaints.
     /// Refused: one bound per effect, which its largest shape sets for all; the whole surface, as
     /// Flutter reads without a `ClipRect`, which captures and blurs what no shape reads.
@@ -130,7 +129,7 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
     ///
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
-    pub const fn reach(mut self, px: f32) -> Self {
+    pub const fn max_sample_offset(mut self, px: f32) -> Self {
         self.capture.reach = CaptureReach::Px(domain::length(px));
         self
     }
@@ -160,6 +159,12 @@ impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape 
 
 /// An effect over a rect, which bounds it by its corners.
 impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for RectShape {
+    type Prepared = EffectPaint<U, K>;
+
+    fn prepare(paint: EffectPaint<U, K>) -> EffectPaint<U, K> {
+        paint
+    }
+
     fn check(&self, _paint: &EffectPaint<U, K>) {}
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
@@ -175,6 +180,12 @@ impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShap
 /// An effect over a circle: its `EffectInput` holds the circle's square, its corners each half its
 /// side.
 impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for CircleShape {
+    type Prepared = EffectPaint<U, K>;
+
+    fn prepare(paint: EffectPaint<U, K>) -> EffectPaint<U, K> {
+        paint
+    }
+
     fn check(&self, _paint: &EffectPaint<U, K>) {}
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
@@ -190,6 +201,12 @@ impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleSh
 /// An effect over a triangle: its `EffectInput` holds the triangle's covering rect, with no corners,
 /// and palantir clips the effect to the triangle.
 impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for TriangleShape {
+    type Prepared = EffectPaint<U, K>;
+
+    fn prepare(paint: EffectPaint<U, K>) -> EffectPaint<U, K> {
+        paint
+    }
+
     /// Unless the paint paints over the triangle: its halo would need corners its effect reads
     /// none of.
     #[track_caller]

@@ -72,7 +72,7 @@ fn bordered(ui: &mut Ui, k: Kit) {
 fn outline(ui: &mut Ui, k: Kit) {
     ui.add_shape(
         Shape::triangle(A, B, C).radius(8.0_f32),
-        Paint::NONE.with_border(Border::new(k.swatch.orange, 3.0)),
+        Border::new(k.swatch.orange, 3.0),
     );
 }
 

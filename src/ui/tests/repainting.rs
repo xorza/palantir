@@ -12,7 +12,6 @@ use crate::primitives::input::keyboard::key::Key;
 use crate::primitives::input::policy::InputPolicy;
 use crate::primitives::input::policy::InputSignal;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -290,13 +289,10 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
-                .chrome(
-                    Chrome::NONE.with_fill(Brush::Linear(LinearGradient::two_stop(
-                        0.0,
-                        RgbaF32::srgb(1.0, 0.0, 0.0),
-                        RgbaF32::srgb(0.0, 0.0, 1.0),
-                    ))),
-                )
+                .chrome(Chrome::NONE.with_fill(LinearGradient::horizontal([
+                    RgbaF32::srgb(1.0, 0.0, 0.0),
+                    RgbaF32::srgb(0.0, 0.0, 1.0),
+                ])))
                 .show(ui);
             let label = ui.fmt(format_args!("retained {}", 7));
             Text::new(label)
@@ -361,7 +357,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         Panel::hstack().size(20.0).show(ui, |ui| {
             ui.add_shape(
                 Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
+                LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
             );
             support::add_blink_shape(ui, half);
         });
@@ -382,15 +378,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             for idx in 0..INITIAL_ATLAS_ROWS - 1 {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
-                    LinearGradient::two_stop(
-                        0.0,
+                    LinearGradient::horizontal([
                         RgbaF32::from_srgba8(SrgbaU8::rgb(
                             idx as u8,
                             (idx >> u8::BITS) as u8,
                             (idx >> (u8::BITS * 2)) as u8,
                         )),
                         RgbaF32::WHITE,
-                    ),
+                    ]),
                 );
             }
         });

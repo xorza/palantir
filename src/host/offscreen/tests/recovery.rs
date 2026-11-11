@@ -164,7 +164,7 @@ impl App for Scene {
                 ui.add_shape(Shape::rect().at(Rect::new(4.0, 4.0, 12.0, 12.0)), self.tile);
                 ui.add_shape(
                     Shape::rect().at(Rect::new(20.0, 4.0, 40.0, 12.0)),
-                    LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
+                    LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
                 );
                 for i in 0..4 {
                     Block::new()
@@ -230,7 +230,7 @@ impl App for Scene {
                     .show(ui);
                 ui.add_shape(
                     Shape::rect().at(Rect::new(96.0, 60.0, 40.0, 30.0)),
-                    Paint::NONE.with_material(Material::blur(2.0)),
+                    Material::blur(2.0),
                 );
             });
     }

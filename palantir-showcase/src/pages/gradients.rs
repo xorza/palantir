@@ -19,7 +19,12 @@ const GREEN: RgbaF32 = RgbaF32::hex(0x46c46c);
 
 pub fn build(ui: &mut Ui, k: Kit) {
     Section::new("Linear")
-        .apis(&[api!(type LinearGradient), api!(LinearGradient::two_stop)])
+        .apis(&[
+            api!(type LinearGradient),
+            api!(LinearGradient::new as fn(f32, [RgbaF32; 2]) -> LinearGradient),
+            api!(LinearGradient::horizontal as fn([RgbaF32; 2]) -> LinearGradient),
+            api!(LinearGradient::vertical as fn([RgbaF32; 2]) -> LinearGradient),
+        ])
         .show(ui, k, |ui| {
             support::note(ui, k, "The angle is in radians from the +x axis.");
             support::tiles(ui, |ui| {
@@ -30,7 +35,10 @@ pub fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Radial")
-        .apis(&[api!(type RadialGradient)])
+        .apis(&[
+            api!(type RadialGradient),
+            api!(RadialGradient::centered as fn([RgbaF32; 2]) -> RadialGradient),
+        ])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -45,7 +53,10 @@ pub fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Conic")
-        .apis(&[api!(type ConicGradient)])
+        .apis(&[
+            api!(type ConicGradient),
+            api!(ConicGradient::centered as fn([RgbaF32; 2]) -> ConicGradient),
+        ])
         .show(ui, k, |ui| {
             support::note(ui, k, "A sweep about a center from a start angle.");
             support::tiles(ui, |ui| {
@@ -130,16 +141,16 @@ fn live(ui: &mut Ui, k: Kit) {
                 }
                 .show(ui, k, &mut l.angle);
                 let space = l.space.1;
-                let brush = LinearGradient::two_stop((l.angle).to_radians(), l.from, l.to)
+                let brush = LinearGradient::new((l.angle).to_radians(), [l.from, l.to])
                     .with_interpolation(space);
                 DemoCell::new("the knobs' brush")
                     .size(360.0, TILE)
-                    .show(ui, k, |ui| gradient_frame(ui, filled(Brush::Linear(brush))));
+                    .show(ui, k, |ui| gradient_frame(ui, filled(brush)));
             });
         });
 }
 
-fn filled(brush: Brush) -> Chrome {
+fn filled(brush: impl Into<Brush>) -> Chrome {
     Chrome::NONE
         .with_corners(Corners::all(support::RADIUS))
         .with_fill(brush)
@@ -153,41 +164,20 @@ fn gradient_frame(ui: &mut Ui, chrome: Chrome) {
 }
 
 fn horizontal(ui: &mut Ui) {
-    gradient_frame(
-        ui,
-        filled(Brush::Linear(LinearGradient::two_stop(0.0, NAVY, BLUE))),
-    );
+    gradient_frame(ui, filled(LinearGradient::horizontal([NAVY, BLUE])));
 }
 
 fn vertical(ui: &mut Ui) {
-    gradient_frame(
-        ui,
-        filled(Brush::Linear(LinearGradient::two_stop(
-            FRAC_PI_2, NAVY, BLUE,
-        ))),
-    );
+    gradient_frame(ui, filled(LinearGradient::vertical([NAVY, BLUE])));
 }
 
 fn diagonal(ui: &mut Ui) {
-    gradient_frame(
-        ui,
-        filled(Brush::Linear(LinearGradient::two_stop(
-            FRAC_PI_4, ORANGE, YELLOW,
-        ))),
-    );
+    gradient_frame(ui, filled(LinearGradient::new(FRAC_PI_4, [ORANGE, YELLOW])));
 }
 
 /// Radial centered at (0.5, 0.5), radius 0.5 (touches the square's mid-edges); bright core, dark rim.
 fn radial_centered(ui: &mut Ui) {
-    gradient_frame(
-        ui,
-        filled(Brush::Radial(RadialGradient::two_stop(
-            Vec2::splat(0.5),
-            Vec2::splat(0.5),
-            YELLOW,
-            NAVY,
-        ))),
-    );
+    gradient_frame(ui, filled(RadialGradient::centered([YELLOW, NAVY])));
 }
 
 /// Off-center radial: the core hugs the top-left, the rim reaches further along the diagonal.
@@ -201,71 +191,51 @@ fn radial_offset(ui: &mut Ui) {
             Stop::new(1.0, NAVY),
         ],
     );
-    gradient_frame(ui, filled(Brush::Radial(g)));
+    gradient_frame(ui, filled(g));
 }
 
 /// Elliptical radius, wider than tall; stretches the core into an oval.
 fn radial_ellipse(ui: &mut Ui) {
-    let g = RadialGradient::new(
-        Vec2::splat(0.5),
-        Vec2::new(0.55, 0.25),
-        [Stop::new(0.0, GREEN), Stop::new(1.0, NAVY)],
-    );
-    gradient_frame(ui, filled(Brush::Radial(g)));
+    let g = RadialGradient::new(Vec2::splat(0.5), Vec2::new(0.55, 0.25), [GREEN, NAVY]);
+    gradient_frame(ui, filled(g));
 }
 
 /// Conic color wheel: six saturated stops sweep clockwise from +x, stop 0 == stop 1 so the seam hides at angle 0.
 fn conic_wheel(ui: &mut Ui) {
-    let g = ConicGradient::new(
-        Vec2::splat(0.5),
-        0.0,
-        [
-            Stop::new(0.0, RED),
-            Stop::new(0.166, YELLOW),
-            Stop::new(0.333, GREEN),
-            Stop::new(0.5, RgbaF32::hex(0x22ccdd)),
-            Stop::new(0.666, BLUE),
-            Stop::new(0.833, RgbaF32::hex(0xd14fdf)),
-            Stop::new(1.0, RED),
-        ],
-    );
-    gradient_frame(ui, filled(Brush::Conic(g)));
+    let g = ConicGradient::centered([
+        RED,
+        YELLOW,
+        GREEN,
+        RgbaF32::hex(0x22ccdd),
+        BLUE,
+        RgbaF32::hex(0xd14fdf),
+        RED,
+    ]);
+    gradient_frame(ui, filled(g));
 }
 
 /// Conic with non-zero `start_angle`: the same sweep rotated; pins the `(theta - start_angle) / TAU` shader math.
 fn conic_rotated(ui: &mut Ui) {
-    let g = ConicGradient::new(
-        Vec2::splat(0.5),
-        FRAC_PI_2,
-        [
-            Stop::new(0.0, NAVY),
-            Stop::new(0.5, YELLOW),
-            Stop::new(1.0, NAVY),
-        ],
-    );
-    gradient_frame(ui, filled(Brush::Conic(g)));
+    let g = ConicGradient::new(Vec2::splat(0.5), FRAC_PI_2, [NAVY, YELLOW, NAVY]);
+    gradient_frame(ui, filled(g));
 }
 
 /// Radial whose stops end at r = 0.25; everything beyond mirrors back in.
 fn reflect(ui: &mut Ui) {
-    let g = RadialGradient::new(
-        Vec2::splat(0.5),
-        Vec2::splat(0.25),
-        [Stop::new(0.0, BLUE), Stop::new(1.0, ORANGE)],
-    )
-    .with_spread(Spread::Reflect);
-    gradient_frame(ui, filled(Brush::Radial(g)));
+    let g = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.25), [BLUE, ORANGE])
+        .with_spread(Spread::Reflect);
+    gradient_frame(ui, filled(g));
 }
 
 /// Radial whose stops end at r = 0.125; past it the ramp starts over, giving rings. A linear axis spans the box exactly, so `t` never leaves 0..1 and no spread mode shows.
 fn repeat(ui: &mut Ui) {
-    let g = RadialGradient::two_stop(Vec2::splat(0.5), Vec2::splat(0.125), NAVY, BLUE)
+    let g = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.125), [NAVY, BLUE])
         .with_spread(Spread::Repeat);
-    gradient_frame(ui, filled(Brush::Radial(g)));
+    gradient_frame(ui, filled(g));
 }
 
 /// Red to green in Oklab: no muddy gray midpoint as in a linear-RGB blend.
 fn oklab(ui: &mut Ui) {
-    let g = LinearGradient::two_stop(0.0, RED, GREEN).with_interpolation(Interpolation::Oklab);
-    gradient_frame(ui, filled(Brush::Linear(g)));
+    let g = LinearGradient::horizontal([RED, GREEN]).with_interpolation(Interpolation::Oklab);
+    gradient_frame(ui, filled(g));
 }

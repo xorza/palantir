@@ -878,6 +878,7 @@ impl Ui {
         reason = "a shape and a paint are builder values, taken by value as a builder is; the draw borrows them for the call"
     )]
     pub fn add_shape<S: PaintedBy<P>, P>(&mut self, shape: S, paint: P) -> Option<AddedShape<'_>> {
+        let paint = S::prepare(paint);
         shape.check(&paint);
         let draw = shape.draw(&paint);
         let reads_time = draw.reads_time();

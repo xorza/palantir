@@ -15,7 +15,6 @@ use std::f64::consts::SQRT_2;
 use crate::fixtures;
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::Paint;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
 const CLEAR: RgbaF32 = RgbaF32::WHITE;
@@ -37,10 +36,7 @@ fn render(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
 fn render_shadow(source: Rect, corners: impl Into<Corners>, shadow: Shadow) -> RgbaImage {
     let corners = corners.into();
     render(CLEAR, |ui| {
-        ui.add_shape(
-            Shape::rect().at(source).corners(corners),
-            Paint::NONE.with_shadow(shadow),
-        );
+        ui.add_shape(Shape::rect().at(source).corners(corners), shadow);
     })
 }
 
@@ -113,14 +109,12 @@ fn inset_offset_matches_translated_zero_offset_pixels_inside_source() {
     let shifted = render_shadow(
         source,
         11.0,
-        Shadow::drop(INK, pixel_offset.as_vec2(), 6.0)
-            .with_spread(8.0)
-            .inset(),
+        Shadow::inset(INK, pixel_offset.as_vec2(), 6.0).with_spread(8.0),
     );
     let reference = render_shadow(
         source,
         11.0,
-        Shadow::drop(INK, Vec2::ZERO, 6.0).with_spread(8.0).inset(),
+        Shadow::inset(INK, Vec2::ZERO, 6.0).with_spread(8.0),
     );
 
     let region = Rect::new(60.0, 50.0, 85.0, 70.0);
@@ -167,14 +161,12 @@ fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
     let inset = render_shadow(
         inset_source,
         11.0,
-        Shadow::drop(INK, Vec2::ZERO, blur)
-            .with_spread(spread)
-            .inset(),
+        Shadow::inset(INK, Vec2::ZERO, blur).with_spread(spread),
     );
     let inset_reference = render_shadow(
         inset_source.inflated(-spread),
         11.0 - spread,
-        Shadow::drop(INK, Vec2::ZERO, blur).inset(),
+        Shadow::inset(INK, Vec2::ZERO, blur),
     );
     let region = inset_source.inflated(-12.0);
     goldens::assert_same(
@@ -280,7 +272,7 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
                             Shape::rect()
                                 .at(Rect::new(4.0, 4.0, 132.0, 92.0))
                                 .corners(12.0),
-                            Paint::NONE.with_shadow(shadow),
+                            shadow,
                         );
                     }
                 });
@@ -313,10 +305,7 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
                     .chrome(Chrome::rounded(fill, Corners::all(radius)).with_shadow(shadow))
                     .show(ui, |_| {});
             } else {
-                ui.add_shape(
-                    Shape::rect().at(source).corners(radius),
-                    Paint::NONE.with_shadow(shadow),
-                );
+                ui.add_shape(Shape::rect().at(source).corners(radius), shadow);
                 ui.add_shape(Shape::rect().at(source).corners(radius), fill);
             }
         })
@@ -489,7 +478,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
     let img = render_shadow(
         closed,
         6.0,
-        Shadow::drop(INK, Vec2::ZERO, 4.0).with_spread(25.0).inset(),
+        Shadow::inset(INK, Vec2::ZERO, 4.0).with_spread(25.0),
     );
     for (x, y) in [(39, 129), (40, 130), (30, 140)] {
         probe(&img, x, y, 1.0, "closed inset hole");
@@ -510,7 +499,7 @@ fn an_inset_shadow_shares_its_source_edge_ramp() {
     let shadow = render_shadow(
         source,
         14.0,
-        Shadow::drop(INK, Vec2::ZERO, 3.0).with_spread(60.0).inset(),
+        Shadow::inset(INK, Vec2::ZERO, 3.0).with_spread(60.0),
     );
     let most = channel_deltas(&shadow, &filled).max().unwrap();
     if most > 1 {
@@ -547,7 +536,7 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
     let source = Rect::new(60.0, 40.0, 100.0, 100.0);
     let img = render(RgbaF32::BLACK, |ui| {
         let glow = Shadow::drop(RgbaF32::WHITE, Vec2::ZERO, 8.0);
-        ui.add_shape(Shape::rect().at(source), Paint::NONE.with_shadow(glow));
+        ui.add_shape(Shape::rect().at(source), glow);
     });
     let reference = BlurredBox {
         rect: source,
@@ -588,13 +577,13 @@ fn cutout_grid(ui: &mut Ui) {
                         Shape::rect()
                             .at(Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0))
                             .corners(radius),
-                        Paint::NONE.with_shadow(Shadow {
+                        Shadow {
                             color: INK,
                             offset: Vec2::new(3.0, 5.0),
                             blur,
                             spread: if inset { 4.0 } else { 2.0 },
                             inset,
-                        }),
+                        },
                     );
                 }
             }
@@ -613,13 +602,13 @@ fn cutout_grid(ui: &mut Ui) {
         ] {
             ui.add_shape(
                 Shape::rect().at(source).corners(corners),
-                Paint::NONE.with_shadow(Shadow {
+                Shadow {
                     color: INK,
                     offset: Vec2::new(3.0, 5.0),
                     blur: 16.0,
                     spread: if inset { 4.0 } else { 2.0 },
                     inset,
-                }),
+                },
             );
         }
     });
@@ -751,13 +740,13 @@ fn template_case_rect(i: usize, case: TemplateCase) -> Rect {
 fn template_case_shadow(ui: &mut Ui, case: TemplateCase, at: Rect) {
     ui.add_shape(
         Shape::rect().at(at).corners(case.corners),
-        Paint::NONE.with_shadow(Shadow {
+        Shadow {
             color: RgbaF32::srgba(0.1, 0.0, 0.3, 0.85),
             offset: case.offset,
             blur: case.blur,
             spread: case.spread,
             inset: case.inset,
-        }),
+        },
     );
 }
 

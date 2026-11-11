@@ -8,7 +8,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad, fill_rows};
 use crate::renderer::gradient_atlas::*;
-use glam::Vec2;
 use std::collections::HashSet;
 
 /// Row 0 is reserved magenta, created at construction and flagged dirty so the first frame's GPU
@@ -45,9 +44,9 @@ fn register_same_gradient_twice_reuses_row() {
 #[test]
 fn near_identical_keys_never_share_a_row() {
     let mut atlas = CpuGradientAtlas::default();
-    let base = LinearGradient::two_stop(0.0, SrgbaU8::rgb(10, 20, 30).into(), RgbaF32::WHITE);
+    let base = LinearGradient::horizontal([SrgbaU8::rgb(10, 20, 30).into(), RgbaF32::WHITE]);
     let one_byte_off =
-        LinearGradient::two_stop(0.0, SrgbaU8::rgb(10, 20, 31).into(), RgbaF32::WHITE);
+        LinearGradient::horizontal([SrgbaU8::rgb(10, 20, 31).into(), RgbaF32::WHITE]);
 
     let mut rows = HashSet::new();
     for g in [&base, &one_byte_off] {
@@ -103,7 +102,7 @@ fn register_dedups_across_variants() {
         Stop::new(1.0, SrgbaU8::rgb(0, 128, 255)),
     ];
     let linear = LinearGradient::new(0.3, stops);
-    let radial = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), stops);
+    let radial = RadialGradient::centered(stops);
     let curve = ColorRamp::new(stops);
     assert_eq!(
         linear.ramp.interpolation,

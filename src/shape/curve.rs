@@ -96,6 +96,12 @@ impl PaintedBy<Stroke> for CurveShape {}
 
 /// A line or a Bézier drawn with a [`Stroke`].
 impl sealed::DrawWith<Stroke> for CurveShape {
+    type Prepared = Stroke;
+
+    fn prepare(paint: Stroke) -> Stroke {
+        paint
+    }
+
     #[track_caller]
     fn check(&self, stroke: &Stroke) {
         stroke.validate();

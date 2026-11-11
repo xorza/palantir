@@ -34,14 +34,33 @@ impl ColorRamp {
         }
     }
 
-    /// `c0` at 0 and `c1` at 1.
+    /// A ramp through `colors` spread evenly from 0 to 1, as Flutter's, SwiftUI's and Skia's
+    /// gradients spread colors given no positions.
     ///
     /// # Panics
     ///
-    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    /// Panics unless there are two through eight `colors`, each a
+    /// [color](crate::widget::domain::color).
     #[track_caller]
-    pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
-        Self::new([Stop::new(0.0, c0), Stop::new(1.0, c1)])
+    pub fn evenly(colors: impl IntoIterator<Item = RgbaF32>) -> Self {
+        let mut held = [RgbaF32::TRANSPARENT; MAX_STOPS];
+        let mut len = 0;
+        for color in colors {
+            assert!(
+                len < MAX_STOPS,
+                "gradient stop count exceeds MAX_STOPS = {MAX_STOPS}"
+            );
+            held[len] = color;
+            len += 1;
+        }
+        assert!(len >= 2, "gradient requires at least 2 stops, got {len}");
+        let last = (len - 1) as f32;
+        let mut stops = [Stop::default(); MAX_STOPS];
+        // A loop, not a closure, so each stop's check reports the caller's line.
+        for idx in 0..len {
+            stops[idx] = Stop::new(idx as f32 / last, held[idx]);
+        }
+        Self::new(stops.into_iter().take(len))
     }
 
     /// The straight color `t` maps to, as the ramp interpolates it, before the bake rounds it
@@ -79,6 +98,22 @@ impl ColorRamp {
             i += 1;
         }
         true
+    }
+}
+
+/// `colors` spread evenly ([`ColorRamp::evenly`]).
+impl<const N: usize> From<[RgbaF32; N]> for ColorRamp {
+    #[track_caller]
+    fn from(colors: [RgbaF32; N]) -> Self {
+        Self::evenly(colors)
+    }
+}
+
+/// `stops` where they say ([`ColorRamp::new`]).
+impl<const N: usize> From<[Stop; N]> for ColorRamp {
+    #[track_caller]
+    fn from(stops: [Stop; N]) -> Self {
+        Self::new(stops)
     }
 }
 
@@ -162,15 +197,15 @@ mod tests {
     /// either end the end's color. `gradient_atlas`'s bake tests hold each texel to it.
     #[test]
     fn a_ramps_color_at_t_blends_its_stops() {
-        let linear = ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)
+        let linear = ColorRamp::from([RgbaF32::BLACK, RgbaF32::WHITE])
             .with_interpolation(Interpolation::Linear);
         assert_eq!(linear.color_at(0.25), RgbaF32::new(0.25, 0.25, 0.25, 1.0));
         assert_eq!(linear.color_at(-1.0), RgbaF32::BLACK);
         assert_eq!(linear.color_at(2.0), RgbaF32::WHITE);
-        let fade = ColorRamp::two_stop(
+        let fade = ColorRamp::from([
             RgbaF32::new(1.0, 0.0, 0.0, 1.0),
             RgbaF32::new(0.0, 0.0, 1.0, 0.0),
-        )
+        ])
         .with_interpolation(Interpolation::Linear);
         assert_eq!(fade.color_at(0.2), RgbaF32::new(1.0, 0.0, 0.0, 0.8));
     }

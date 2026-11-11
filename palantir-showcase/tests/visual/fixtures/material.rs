@@ -47,7 +47,7 @@ fn materials_match_golden() {
                 backdrop_scene(ui, size);
                 ui.add_shape(
                     Shape::rect().at(Rect::new(10.0, 20.0, 90.0, 80.0)),
-                    Paint::NONE.with_material(Material::blur(6.0)),
+                    Material::blur(6.0),
                 );
                 ui.add_shape(
                     Shape::rect().at(Rect::new(110.0, 20.0, 90.0, 80.0)),
@@ -58,13 +58,12 @@ fn materials_match_golden() {
                     Shape::rect()
                         .at(Rect::new(210.0, 20.0, 90.0, 80.0))
                         .corners(Corners::all(16.0)),
-                    Paint::NONE
-                        .with_border(Border::new(RgbaF32::WHITE, 2.0))
+                    Paint::from(Border::new(RgbaF32::WHITE, 2.0))
                         .with_material(Material::blur(8.0)),
                 );
                 ui.add_shape(
                     Shape::rect().at(Rect::new(410.0, 20.0, 90.0, 80.0)),
-                    Paint::NONE.with_material(Material::blur(3.0)),
+                    Material::blur(3.0),
                 );
                 ui.add_shape(
                     Shape::rect().at(Rect::new(440.0, 40.0, 90.0, 40.0)),
@@ -73,7 +72,7 @@ fn materials_match_golden() {
                 );
                 ui.add_shape(
                     Shape::rect().at(Rect::new(560.0, 0.0, 80.0, 60.0)),
-                    Paint::NONE.with_material(Material::blur(16.0)),
+                    Material::blur(16.0),
                 );
             });
     });
@@ -97,7 +96,7 @@ fn triangle_materials_match_golden() {
                         Vec2::new(100.0, 105.0),
                         Vec2::new(55.0, 15.0),
                     ),
-                    Paint::NONE.with_material(Material::blur(6.0)),
+                    Material::blur(6.0),
                 );
                 ui.add_shape(
                     Shape::triangle(
@@ -123,7 +122,7 @@ fn triangle_materials_match_golden() {
                                 Vec2::new(50.0, 5.0),
                             )
                             .radius(8.0_f32),
-                            Paint::NONE.with_material(Material::blur(8.0)),
+                            Material::blur(8.0),
                         ) {
                             shape.animate(PaintAnimation::turn(1.0 / 12.0, 1.0 / 12.0));
                         }
@@ -173,28 +172,26 @@ fn glass_matches_golden() {
                     Shape::rect()
                         .at(Rect::new(16.0, 30.0, 130.0, 60.0))
                         .corners(Corners::all(30.0)),
-                    Paint::NONE.with_material(Material::glass(Lens {
+                    Material::glass(Lens {
                         bezel: 30.0,
                         thickness: 18.0,
                         refractive_index: 1.5,
                         dispersion: 0.06,
                         highlight: 0.6,
-                    })),
+                    }),
                 );
                 ui.add_shape(
                     Shape::rect()
                         .at(Rect::new(170.0, 16.0, 130.0, 90.0))
                         .corners(Corners::all(16.0)),
-                    Paint::NONE.with_material(
-                        Material::glass(Lens {
-                            bezel: 12.0,
-                            thickness: 10.0,
-                            refractive_index: 1.4,
-                            dispersion: 0.0,
-                            highlight: 0.8,
-                        })
-                        .with_blur(2.0),
-                    ),
+                    Material::glass(Lens {
+                        bezel: 12.0,
+                        thickness: 10.0,
+                        refractive_index: 1.4,
+                        dispersion: 0.0,
+                        highlight: 0.8,
+                    })
+                    .with_blur(2.0),
                 );
             });
     });

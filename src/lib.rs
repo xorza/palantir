@@ -201,6 +201,7 @@ pub mod widget {
     pub use crate::primitives::math::lerp::Lerp;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
+    pub use crate::shape::PaintedBy;
     pub use crate::shape::Shape;
     pub use crate::shape::arc::ArcShape;
     pub use crate::shape::circle::CircleShape;
@@ -219,7 +220,6 @@ pub mod widget {
     pub use crate::shape::rect::RectShape;
     pub use crate::shape::text::TextShape;
     pub use crate::shape::triangle::TriangleShape;
-    pub use crate::shape::{IntoPaint, PaintedBy};
     pub use crate::text::glyph_font::GlyphFont;
     pub use crate::text::glyphs::TextGlyphs;
     pub use crate::text::glyphs::glyph_line::GlyphLine;

@@ -154,7 +154,7 @@ impl RecordStore {
         resolve: Resolve<'_>,
     ) -> Option<ShapeRecord> {
         let paint = match paint {
-            ClosedPaintRef::Fill(paint) => self.record_fill(geometry, &paint, resolve),
+            ClosedPaintRef::Fill(paint) => self.record_fill(geometry, paint, resolve),
             ClosedPaintRef::Image(paint) => self.record_image(geometry, paint),
             ClosedPaintRef::Icon(paint) => self.record_icon(geometry, paint),
             ClosedPaintRef::Effect(paint) => self.record_effect(geometry, paint, resolve),

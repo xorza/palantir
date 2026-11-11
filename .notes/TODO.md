@@ -9,7 +9,6 @@
 - md viewer
 - optimal resolve strategies
 - box material?
-- Brush::Linear add conveninet ctors
 - material for texts and strokes?
 - consolidate gpu atlas
 

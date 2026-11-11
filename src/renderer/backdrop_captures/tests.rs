@@ -10,7 +10,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::paint::Paint;
 use crate::renderer::backdrop_captures::{
     BackdropCaptures, BackdropDamage, BackdropTicket, Settled,
 };
@@ -409,10 +408,7 @@ fn a_backdrop_whose_key_moves_takes_a_new_result() {
                                 ui.add_shape(Shape::rect().at(lead), RgbaF32::WHITE);
                             }
                             let backdrop = Rect::new(40.0, 40.0, 40.0, 40.0);
-                            ui.add_shape(
-                                Shape::rect().at(backdrop),
-                                Paint::NONE.with_material(Material::blur(4.0)),
-                            );
+                            ui.add_shape(Shape::rect().at(backdrop), Material::blur(4.0));
                             let square = Rect::new(60.0, 60.0, 10.0, 10.0);
                             ui.add_shape(Shape::rect().at(square), over);
                         });

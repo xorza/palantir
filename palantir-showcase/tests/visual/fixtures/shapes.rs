@@ -328,10 +328,10 @@ fn arc_shapes_match_golden() {
                 Shape::circle().at(Rect::new(15.0, 40.0, 60.0, 60.0)),
                 Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
             );
-            let comet = ColorRamp::two_stop(
+            let comet = ColorRamp::from([
                 RgbaF32::srgb(1.0, 0.85, 0.2).with_alpha(0.0),
                 RgbaF32::srgb(1.0, 0.85, 0.2),
-            );
+            ]);
             ui.add_shape(
                 Shape::arc(-FRAC_PI_2, 1.5 * PI).at(Rect::new(100.0, 40.0, 60.0, 60.0)),
                 Stroke::new(RgbaF32::WHITE, 8.0)
@@ -470,20 +470,20 @@ fn template_sweep(ui: &mut Ui) {
         );
         ui.add_shape(
             Shape::rect().at(cell(next(), 56.0, 40.0)).corners(10.0),
-            LinearGradient::two_stop(
+            LinearGradient::new(
                 0.6,
-                RgbaF32::srgba(1.0, 0.3, 0.2, 0.9),
-                RgbaF32::srgba(0.1, 0.8, 0.4, 0.5),
+                [
+                    RgbaF32::srgba(1.0, 0.3, 0.2, 0.9),
+                    RgbaF32::srgba(0.1, 0.8, 0.4, 0.5),
+                ],
             ),
         );
         ui.add_shape(
             Shape::circle().at(cell(next(), 50.0, 50.0)),
-            RadialGradient::two_stop(
-                Vec2::splat(0.5),
-                Vec2::splat(0.5),
+            RadialGradient::centered([
                 RgbaF32::srgba(1.0, 1.0, 1.0, 0.9),
                 RgbaF32::srgba(0.2, 0.3, 1.0, 0.4),
-            ),
+            ]),
         );
         if let Some(shape) = ui.add_shape(
             Shape::rect().at(cell(next(), 44.0, 30.0)).corners(8.0),

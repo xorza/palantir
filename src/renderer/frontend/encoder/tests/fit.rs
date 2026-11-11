@@ -267,7 +267,7 @@ fn an_arc_of_no_sweep_paints_its_dot_in_the_ramp_start() {
     use crate::shape::Shape;
 
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
-    let ramp = ColorRamp::two_stop(red, RgbaF32::new(0.0, 0.0, 1.0, 1.0));
+    let ramp = ColorRamp::from([red, RgbaF32::new(0.0, 0.0, 1.0, 1.0)]);
     let mut h = Harness::mono(UVec2::new(100, 100));
     h.frame(|ui| {
         Panel::canvas()

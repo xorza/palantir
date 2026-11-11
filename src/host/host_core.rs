@@ -74,7 +74,6 @@ mod tests {
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::paint::Paint;
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::Shape;
     use crate::text::font_scope::FontScope;
@@ -192,11 +191,11 @@ mod tests {
                         Shape::rect()
                             .at(Rect::new(50.0, 50.0, 400.0, 300.0))
                             .corners(8.0),
-                        Paint::NONE.with_shadow(Shadow {
+                        Shadow {
                             color: RgbaF32::BLACK,
                             blur: 16.0,
                             ..Shadow::NONE
-                        }),
+                        },
                     );
                 });
         };

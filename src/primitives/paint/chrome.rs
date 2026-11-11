@@ -359,16 +359,15 @@ mod tests {
         let fills: [(Brush, [usize; 2]); 4] = [
             (ink.into(), [LANE, LANE]),
             (
-                LinearGradient::two_stop(0.5, ink, RgbaF32::WHITE).into(),
+                LinearGradient::new(0.5, [ink, RgbaF32::WHITE]).into(),
                 [ANGLE, ANGLE],
             ),
             (
-                RadialGradient::two_stop(Vec2::splat(0.5), Vec2::splat(0.5), ink, RgbaF32::WHITE)
-                    .into(),
+                RadialGradient::centered([ink, RgbaF32::WHITE]).into(),
                 [LANE, LENGTH_LANE],
             ),
             (
-                ConicGradient::two_stop(Vec2::splat(0.5), 0.5, ink, RgbaF32::WHITE).into(),
+                ConicGradient::new(Vec2::splat(0.5), 0.5, [ink, RgbaF32::WHITE]).into(),
                 [LANE, ANGLE],
             ),
         ];
@@ -444,7 +443,7 @@ mod tests {
         assert_eq!(rounded.corners, Corners::all(6.0));
 
         let bordered = rounded.with_border(Border::new(RgbaF32::BLACK, 2.0));
-        let gradient = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
+        let gradient = LinearGradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]);
         let refilled = bordered.clone().with_fill(gradient.clone());
         assert_eq!(refilled.paint.fill, Brush::Linear(gradient));
         assert_eq!(refilled.with_fill(bordered.paint.fill.clone()), bordered);

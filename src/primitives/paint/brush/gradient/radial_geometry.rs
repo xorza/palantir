@@ -3,9 +3,8 @@
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::Gradient;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
-use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
 
@@ -43,24 +42,24 @@ impl Geometry for RadialGeometry {
 }
 
 impl RadialGradient {
-    /// General constructor.
+    /// A gradient out from `center` to `radius` through `ramp`: `ramp` an array of colors
+    /// spread evenly, an array of [`Stop`](crate::Stop)s placed where they say, or a [`ColorRamp`].
     ///
     /// # Panics
     ///
-    /// As [`GradientStops::new`](crate::GradientStops::new).
+    /// As [`ColorRamp::new`](crate::ColorRamp::new).
     #[track_caller]
-    pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self {
-        Self::from_stops(RadialGeometry { center, radius }, stops)
+    pub fn new(center: Vec2, radius: Vec2, ramp: impl Into<ColorRamp>) -> Self {
+        Self::from_ramp(RadialGeometry { center, radius }, ramp.into())
     }
 
-    /// 2-stop shorthand: `c0` at `center`, `c1` at `radius` out; `Vec2::splat(0.5)` for both is
-    /// the inscribed circle.
+    /// The inscribed ellipse: from the center out to each side's midpoint.
     ///
     /// # Panics
     ///
-    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    /// As [`Self::new`].
     #[track_caller]
-    pub fn two_stop(center: Vec2, radius: Vec2, c0: RgbaF32, c1: RgbaF32) -> Self {
-        Self::new(center, radius, [Stop::new(0.0, c0), Stop::new(1.0, c1)])
+    pub fn centered(ramp: impl Into<ColorRamp>) -> Self {
+        Self::new(Vec2::splat(0.5), Vec2::splat(0.5), ramp)
     }
 }

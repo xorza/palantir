@@ -9,7 +9,6 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::paint::Paint;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -64,10 +63,7 @@ impl Scene {
                         .id(WidgetId::from_hash(("backdrop", i)))
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            ui.add_shape(
-                                Shape::rect().at(rect),
-                                Paint::NONE.with_material(Material::blur(SIGMA)),
-                            );
+                            ui.add_shape(Shape::rect().at(rect), Material::blur(SIGMA));
                             if i == 0 {
                                 ui.add_shape(Shape::rect().at(OVER), self.over);
                                 if self.blink
@@ -224,10 +220,7 @@ fn a_clipped_blink_before_a_backdrop_leaves_it() {
                     .id(WidgetId::from_hash(("backdrop", 0)))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        ui.add_shape(
-                            Shape::rect().at(BACKDROP),
-                            Paint::NONE.with_material(Material::blur(SIGMA)),
-                        );
+                        ui.add_shape(Shape::rect().at(BACKDROP), Material::blur(SIGMA));
                     });
             });
     };
@@ -296,10 +289,7 @@ fn a_backdrop_whose_row_moves_is_stale() {
                     if lead {
                         ui.add_shape(Shape::rect().at(far), BLUE);
                     }
-                    ui.add_shape(
-                        Shape::rect().at(BACKDROP),
-                        Paint::NONE.with_material(Material::blur(SIGMA)),
-                    );
+                    ui.add_shape(Shape::rect().at(BACKDROP), Material::blur(SIGMA));
                 });
         }
     };
@@ -341,16 +331,10 @@ fn a_child_canvas_change_under_a_later_ancestor_backdrop_stales_it() {
                         .id(WidgetId::from_hash("inner"))
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            ui.add_shape(
-                                Shape::rect().at(INNER),
-                                Paint::NONE.with_material(Material::blur(SIGMA)),
-                            );
+                            ui.add_shape(Shape::rect().at(INNER), Material::blur(SIGMA));
                             ui.add_shape(Shape::rect().at(SQUARE), fill);
                         });
-                    ui.add_shape(
-                        Shape::rect().at(OUTER),
-                        Paint::NONE.with_material(Material::blur(SIGMA)),
-                    );
+                    ui.add_shape(Shape::rect().at(OUTER), Material::blur(SIGMA));
                 });
         }
     };
@@ -388,16 +372,10 @@ fn backdrops_out_of_row_order_walk_quietly() {
                     .id(WidgetId::from_hash("inner"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        ui.add_shape(
-                            Shape::rect().at(INNER),
-                            Paint::NONE.with_material(Material::blur(SIGMA)),
-                        );
+                        ui.add_shape(Shape::rect().at(INNER), Material::blur(SIGMA));
                         ui.add_shape(Shape::rect().at(SQUARE), BLUE);
                     });
-                ui.add_shape(
-                    Shape::rect().at(OUTER),
-                    Paint::NONE.with_material(Material::blur(SIGMA)),
-                );
+                ui.add_shape(Shape::rect().at(OUTER), Material::blur(SIGMA));
             });
     };
     let mut h = Harness::mono(DISPLAY.physical);

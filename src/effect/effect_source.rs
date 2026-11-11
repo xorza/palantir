@@ -34,8 +34,9 @@ use crate::primitives::effect::effect_params::EffectParams;
 /// - for a [`BackdropEffect`](crate::BackdropEffect), `effect_backdrop(pos)`: what is painted
 ///   under the shape at `pos`, logical px from its rect's top-left, linear and opaque, blurred by
 ///   its paint's [σ](crate::widget::EffectPaint::blur), and read within its
-///   [reach](crate::widget::EffectPaint::reach), a read past it reading its edge. A sample
-///   that needs no uniform control flow, so a loop or a branch may read it.
+///   [`max_sample_offset`](crate::widget::EffectPaint::max_sample_offset), a read past it
+///   reading its edge. A sample that needs no uniform control flow, so a loop or a branch may
+///   read it.
 ///
 /// The WGSL declares no binding of its own, as palantir binds every resource an effect reads;
 /// one is [`EffectError::Binding`](crate::EffectError::Binding).

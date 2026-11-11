@@ -3,18 +3,19 @@
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
+use crate::primitives::paint::paint::Paint;
+use crate::shape::PaintedBy;
 use crate::shape::draw::ClosedPaintRef;
 use crate::shape::draw::Draw;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::geometry::triangle_geometry::TriangleGeometry;
 use crate::shape::sealed;
-use crate::shape::{IntoPaint, PaintedBy};
 use glam::Vec2;
 
 /// A triangle, its corners logical px from its rect's top-left, with optional uniform corner
 /// rounding: the owner's arranged rect or [`Self::at`] a rect of its own, its corners fit into it
-/// by [`Self::fit`]. A [`Paint`](crate::Paint) of a fill, a border and a material covers it
+/// by [`Self::fit`]. A [`Paint`] of a fill, a border and a material covers it
 /// ([`Ui::add_shape`](crate::Ui::add_shape)), or an [`ImagePaint`](crate::widget::ImagePaint); a
 /// gradient fill spans the bounding box of the rounded triangle, as SVG's `objectBoundingBox`
 /// spans a shape's, and an image fits it.
@@ -76,24 +77,29 @@ impl TriangleShape {
     }
 }
 
-impl<P: IntoPaint> PaintedBy<P> for TriangleShape {}
+impl<P: Into<Paint>> PaintedBy<P> for TriangleShape {}
 
 /// A triangle of `P`: its fill, its border and its material.
-impl<P: IntoPaint> sealed::DrawWith<P> for TriangleShape {
+impl<P: Into<Paint>> sealed::DrawWith<P> for TriangleShape {
+    type Prepared = Paint;
+
+    fn prepare(paint: P) -> Paint {
+        paint.into()
+    }
+
     /// # Panics
     ///
     /// Unless the paint holds its kinds and has no shadow, which a triangle casts none of.
     #[track_caller]
-    fn check(&self, paint: &P) {
-        let paint = paint.to_paint();
+    fn check(&self, paint: &Paint) {
         paint.validate();
         assert!(paint.shadow.is_noop(), "a triangle casts no shadow");
     }
 
-    fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
+    fn draw<'a>(&'a self, paint: &'a Paint) -> Draw<'a> {
         Draw::Closed {
             geometry: ClosedGeometry::Triangle(self.geometry()),
-            paint: ClosedPaintRef::Fill(paint.to_paint()),
+            paint: ClosedPaintRef::Fill(paint),
         }
     }
 }

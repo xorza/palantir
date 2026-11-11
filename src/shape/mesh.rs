@@ -51,6 +51,12 @@ impl PaintedBy<RgbaF32> for MeshShape<'_> {}
 
 /// A mesh whose vertex colors a tint multiplies.
 impl sealed::DrawWith<RgbaF32> for MeshShape<'_> {
+    type Prepared = RgbaF32;
+
+    fn prepare(paint: RgbaF32) -> RgbaF32 {
+        paint
+    }
+
     /// # Panics
     ///
     /// Unless the tint is a [color](crate::widget::domain::color).

@@ -57,10 +57,7 @@ const RIGHT: Rect = Rect::new(30.0, 4.0, 30.0, 40.0);
 fn a_backdrop_beside_a_backdrop_shows_it_blurred() {
     let sigma = 3.0;
     let left = |ui: &mut Ui| {
-        ui.add_shape(
-            Shape::rect().at(LEFT),
-            Paint::NONE.with_material(Material::blur(sigma)),
-        );
+        ui.add_shape(Shape::rect().at(LEFT), Material::blur(sigma));
     };
     let gpu = headless_test_gpu();
     let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
@@ -74,10 +71,7 @@ fn a_backdrop_beside_a_backdrop_shows_it_blurred() {
         canvas(ui, |ui| {
             stripes(ui, 64);
             left(ui);
-            ui.add_shape(
-                Shape::rect().at(RIGHT),
-                Paint::NONE.with_material(Material::blur(sigma)),
-            );
+            ui.add_shape(Shape::rect().at(RIGHT), Material::blur(sigma));
         });
     });
     let at = |p: Vec2| {
@@ -106,10 +100,7 @@ fn backdrops_apart_blur_together() {
         canvas(ui, |ui| {
             stripes(ui, 64);
             for rect in [left, right] {
-                ui.add_shape(
-                    Shape::rect().at(rect),
-                    Paint::NONE.with_material(Material::blur(sigma)),
-                );
+                ui.add_shape(Shape::rect().at(rect), Material::blur(sigma));
             }
         });
     });
@@ -153,7 +144,7 @@ fn a_backdrop_inside_a_rounded_clip_blurs_inside_it() {
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(0.0, 0.0, 64.0, 48.0)),
-                        Paint::NONE.with_material(Material::blur(sigma)),
+                        Material::blur(sigma),
                     );
                 });
         });
@@ -248,12 +239,12 @@ fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
                 stripes(ui, 1100);
                 ui.add_shape(
                     Shape::rect().at(Rect::new(4.0, 4.0, 16.0, 40.0)),
-                    Paint::NONE.with_material(Material::blur(2.0)),
+                    Material::blur(2.0),
                 );
                 if wide {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(36.0, 4.0, 1060.0, 40.0)),
-                        Paint::NONE.with_material(Material::blur(2.0)),
+                        Material::blur(2.0),
                     );
                 }
                 let dot = if dot { RgbaF32::WHITE } else { RgbaF32::BLACK };

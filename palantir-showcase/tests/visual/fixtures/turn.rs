@@ -79,13 +79,8 @@ fn triangle_gradients_match_golden() {
             Vec2::new(50.0, 15.0),
         )
     };
-    let linear = LinearGradient::two_stop(0.0, RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15));
-    let radial = RadialGradient::two_stop(
-        Vec2::splat(0.5),
-        Vec2::splat(0.5),
-        RgbaF32::hex(0xfacc15),
-        RgbaF32::hex(0x2563eb),
-    );
+    let linear = LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]);
+    let radial = RadialGradient::centered([RgbaF32::hex(0xfacc15), RgbaF32::hex(0x2563eb)]);
     GoldenName::TriangleGradients.assert_scene(UVec2::new(320, 120), |ui| {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "linear", |ui| {
@@ -127,7 +122,7 @@ fn turned_quads_match_golden() {
             owner(ui, "gradient", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source),
-                    LinearGradient::two_stop(0.0, RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)),
+                    LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -135,7 +130,7 @@ fn turned_quads_match_golden() {
             owner(ui, "drop", |ui| {
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source).corners(Corners::all(6.0)),
-                    Paint::NONE.with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(8.0, 8.0), 6.0)),
+                    Shadow::drop(RgbaF32::BLACK, Vec2::new(8.0, 8.0), 6.0),
                 ) {
                     shape.animate(thirty_degrees());
                 }
@@ -155,9 +150,7 @@ fn turned_quads_match_golden() {
                 }
                 if let Some(shape) = ui.add_shape(
                     Shape::rect().at(source).corners(Corners::all(6.0)),
-                    Paint::NONE.with_shadow(
-                        Shadow::drop(RgbaF32::BLACK, Vec2::new(6.0, 6.0), 5.0).inset(),
-                    ),
+                    Shadow::inset(RgbaF32::BLACK, Vec2::new(6.0, 6.0), 5.0),
                 ) {
                     shape.animate(thirty_degrees());
                 }

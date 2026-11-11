@@ -14,11 +14,10 @@ pub(super) fn fresh_row() -> LutRowTexels {
 pub(crate) fn distinct_grad(i: u32) -> LinearGradient {
     assert!(i < 1 << 24, "{i} does not fit three color bytes");
     let [r, g, b, _] = i.to_le_bytes();
-    LinearGradient::two_stop(
-        0.0,
+    LinearGradient::horizontal([
         SrgbaU8::rgb(r, g, b).into(),
         RgbaF32::new(0.0, 1.0, 0.0, 1.0),
-    )
+    ])
 }
 
 /// Register `distinct_grad(0)` through `distinct_grad(n - 1)`, in order.

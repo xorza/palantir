@@ -62,6 +62,12 @@ impl PaintedBy<IconPaint> for RectShape {}
 
 /// An icon over a rect, square-cornered.
 impl sealed::DrawWith<IconPaint> for RectShape {
+    type Prepared = IconPaint;
+
+    fn prepare(paint: IconPaint) -> IconPaint {
+        paint
+    }
+
     /// # Panics
     ///
     /// Unless the rect is square-cornered, which an icon's pipeline draws.

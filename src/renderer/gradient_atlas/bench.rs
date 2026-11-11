@@ -22,7 +22,6 @@ use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::CpuGradientAtlas;
@@ -47,10 +46,7 @@ const CHURN_BASE: u32 = 1_000_000;
 fn gradient_for(seed: u32) -> ColorRamp {
     let a = SrgbaU8::rgb(seed as u8, (seed >> 8) as u8, (seed >> 16) as u8);
     let b = SrgbaU8::rgb((seed >> 4) as u8, (seed >> 12) as u8, 0x40);
-    ColorRamp::new([
-        Stop::new(0.0, RgbaF32::from_srgba8(a)),
-        Stop::new(1.0, RgbaF32::from_srgba8(b)),
-    ])
+    ColorRamp::from([RgbaF32::from_srgba8(a), RgbaF32::from_srgba8(b)])
 }
 
 /// Atlas grown to `capacity` and filled to one row short of full.

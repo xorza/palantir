@@ -177,7 +177,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     ) -> EffectPaint<Water, BackdropEffect>
             ),
             api!(
-                EffectPaint::reach
+                EffectPaint::max_sample_offset
                     as fn(
                         EffectPaint<Water, BackdropEffect>,
                         f32,
@@ -190,7 +190,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 k,
                 "A backdrop effect reads what is painted under it. Rings run out from the center \
                  and bend the picture along their slope, reading up to 6 px past each pixel, the \
-                 reach the shape declares.",
+                 largest offset the paint declares.",
             );
             DemoCell::new("water").size(CELL, CELL).show(ui, k, |ui| {
                 Panel::canvas()
@@ -307,7 +307,7 @@ fn water(ui: &mut Ui, k: Kit) {
                 pad1: 0.0,
             },
         )
-        .reach(WATER_AMPLITUDE),
+        .max_sample_offset(WATER_AMPLITUDE),
     ) {
         shape.animate(looping(WATER_LOOP_S));
     }

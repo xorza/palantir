@@ -5,7 +5,6 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Kit, Knob, Section, Surface};
-use palantir::Paint;
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
@@ -103,10 +102,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 
 /// The card's shadow `s` alone, as one shape of a stack.
 fn card_shadow(ui: &mut Ui, s: Shadow) {
-    ui.add_shape(
-        Shape::rect().at(CARD).corners(card_corners()),
-        Paint::NONE.with_shadow(s),
-    );
+    ui.add_shape(Shape::rect().at(CARD).corners(card_corners()), s);
 }
 
 fn card_fill(ui: &mut Ui) {
@@ -131,12 +127,11 @@ const fn elevated_shadow() -> Shadow {
 }
 
 const fn inset_shadow() -> Shadow {
-    Shadow::drop(
+    Shadow::inset(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.45),
         Vec2::new(0.0, 3.0),
         8.0,
     )
-    .inset()
 }
 
 /// Standard soft drop shadow — Material Design "elevation 2".

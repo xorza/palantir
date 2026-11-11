@@ -19,6 +19,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
@@ -33,7 +34,7 @@ use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::Resolve;
 use crate::shape::record_store::recorded_gradients::GradientId;
-use crate::shape::sealed::DrawWith as _;
+use crate::shape::sealed::DrawWith;
 use crate::widget_core::widget::Widget;
 use glam::UVec2;
 use glam::Vec2;
@@ -107,21 +108,18 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
     ];
     let center = Vec2::splat(0.5);
     let hashes = [
-        brush(&mut store, &Brush::Linear(LinearGradient::new(0.0, stops)))
+        brush(&mut store, &LinearGradient::horizontal(stops).into())
             .hash_parts()
             .payload,
         brush(
             &mut store,
-            &Brush::Radial(RadialGradient::new(center, center, stops)),
+            &RadialGradient::new(center, center, stops).into(),
         )
         .hash_parts()
         .payload,
-        brush(
-            &mut store,
-            &Brush::Conic(ConicGradient::new(center, 0.0, stops)),
-        )
-        .hash_parts()
-        .payload,
+        brush(&mut store, &ConicGradient::new(center, 0.0, stops).into())
+            .hash_parts()
+            .payload,
         match ramp(&mut store, &ColorRamp::new(stops)) {
             CurveRamp::Interned { hash, .. } => hash.as_u64(),
             CurveRamp::None => panic!("a ramp always interns"),
@@ -183,7 +181,10 @@ fn a_material_lowers_as_it_reads() {
             effects: &effects,
             reductions,
         };
-        store.record(Shape::rect().draw(&frosted.paint), resolve)
+        store.record(
+            DrawWith::<Paint>::draw(&Shape::rect(), &frosted.paint),
+            resolve,
+        )
     };
     for (reductions, captures) in [(Reductions::FULL, true), (reduced, false)] {
         let Some(ShapeRecord::Closed {
@@ -240,13 +241,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         .with_border(Border::new(RgbaF32::WHITE, 1.0))
         .with_shadow(shadow);
     let with_shadow = |shadow| base.clone().with_shadow(shadow);
-    let gradient = Brush::Linear(LinearGradient::new(
-        0.0,
-        [
-            Stop::new(0.0, RgbaF32::BLACK),
-            Stop::new(1.0, RgbaF32::WHITE),
-        ],
-    ));
+    let gradient: Brush = LinearGradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]).into();
     let variants = [
         ("base", base.clone()),
         (
@@ -347,13 +342,13 @@ fn a_nan_chrome_field_panics_at_the_record_door() {
 fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
     let mut store = RecordStore::default();
     let colors = [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)];
-    let base = LinearGradient::two_stop(0.25, colors[0], colors[1]);
+    let base = LinearGradient::new(0.25, [colors[0], colors[1]]);
     let first = gradient_id(&mut store, &Brush::Linear(base.clone()));
     assert_eq!(gradient_id(&mut store, &Brush::Linear(base.clone())), first);
 
     let changed_geometry = gradient_id(
         &mut store,
-        &Brush::Linear(LinearGradient::two_stop(0.75, colors[0], colors[1])),
+        &LinearGradient::new(0.75, [colors[0], colors[1]]).into(),
     );
     assert_ne!(changed_geometry, first);
 
@@ -378,21 +373,11 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
 
     let radial = gradient_id(
         &mut store,
-        &Brush::Radial(RadialGradient::two_stop(
-            Vec2::splat(0.5),
-            Vec2::splat(0.5),
-            colors[0],
-            colors[1],
-        )),
+        &RadialGradient::centered([colors[0], colors[1]]).into(),
     );
     let conic = gradient_id(
         &mut store,
-        &Brush::Conic(ConicGradient::two_stop(
-            Vec2::splat(0.5),
-            0.0,
-            colors[0],
-            colors[1],
-        )),
+        &ConicGradient::centered([colors[0], colors[1]]).into(),
     );
     assert!(!mode_ids.contains(&radial));
     assert!(!mode_ids.contains(&conic));

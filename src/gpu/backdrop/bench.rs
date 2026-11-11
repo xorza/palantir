@@ -68,10 +68,7 @@ impl<S: Scene> State<S> {
                             .id_salt("backdrop-capture-bench-backdrop")
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                ui.add_shape(
-                                    Shape::rect(),
-                                    Paint::NONE.with_material(Material::blur(SIGMA)),
-                                );
+                                ui.add_shape(Shape::rect(), Material::blur(SIGMA));
                             });
                         Panel::canvas()
                             .id_salt("backdrop-capture-bench-rest")

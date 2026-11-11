@@ -8,7 +8,7 @@ use palantir::LineJoin;
 use palantir::Stroke;
 use palantir::glam::Vec2;
 use palantir::widget::{CubicBezier, QuadraticBezier, Shape};
-use palantir::{ColorRamp, ComboBox, Configure, Rect, RgbaF32, Sizing, Stop, Text, Ui, WidgetId};
+use palantir::{ColorRamp, ComboBox, Configure, Rect, RgbaF32, Sizing, Text, Ui, WidgetId};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     live(ui, k);
@@ -231,18 +231,14 @@ fn gradient_cubic(ui: &mut Ui, k: Kit) {
             p3: P3,
         }),
         Stroke::new(RgbaF32::WHITE, 8.0)
-            .with_ramp(ColorRamp::two_stop(k.swatch.red, k.swatch.teal))
+            .with_ramp(ColorRamp::from([k.swatch.red, k.swatch.teal]))
             .with_cap(LineCap::Round),
     );
 }
 
 /// Three-stop ramp, through the same atlas and bake path as rounded-rect fills.
 fn gradient_multistop(ui: &mut Ui, k: Kit) {
-    let ramp = ColorRamp::new([
-        Stop::new(0.0, k.swatch.red),
-        Stop::new(0.5, k.swatch.orange),
-        Stop::new(1.0, k.swatch.teal),
-    ]);
+    let ramp = ColorRamp::from([k.swatch.red, k.swatch.orange, k.swatch.teal]);
     ui.add_shape(
         Shape::quadratic_bezier(QuadraticBezier {
             p0: Q0,
@@ -272,7 +268,7 @@ fn arcs(ui: &mut Ui, k: Kit) {
         Stroke::new(k.swatch.teal, 3.0),
     );
     // 3/4 sweep with a ramp along the arc (the spinner's comet): transparent tail to full head, round caps; white ramp, stroke color sets the hue.
-    let comet = ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE);
+    let comet = ColorRamp::from([RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE]);
     ui.add_shape(
         Shape::arc(-FRAC_PI_2, 1.5 * PI).at(around(Vec2::new(120.0, 40.0), 28.0)),
         Stroke::new(k.swatch.orange, 6.0)

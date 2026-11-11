@@ -40,11 +40,9 @@ impl FillCase {
     fn chrome(self) -> Chrome {
         let fill = match self {
             Self::Solid => Brush::Solid(RgbaF32::srgb(0.12, 0.24, 0.48)),
-            Self::Gradient => Brush::Linear(LinearGradient::two_stop(
-                0.5,
-                RgbaF32::hex(0x1a1a2e),
-                RgbaF32::hex(0x4c5cdb),
-            )),
+            Self::Gradient => {
+                LinearGradient::new(0.5, [RgbaF32::hex(0x1a1a2e), RgbaF32::hex(0x4c5cdb)]).into()
+            }
         };
         Chrome::new(fill)
     }

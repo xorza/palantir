@@ -89,7 +89,7 @@ mod tests {
         let drop = Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 2.0);
         let cast = |shadow| DrawShadowPayload::new(sliver, LoweredShadow::lower(shadow));
         assert!(!cast(drop).is_noop());
-        assert!(cast(drop.inset()).is_noop());
+        assert!(cast(Shadow::inset(RgbaF32::BLACK, Vec2::ZERO, 2.0)).is_noop());
         assert!(cast(Shadow::drop(RgbaF32::TRANSPARENT, Vec2::ZERO, 2.0)).is_noop());
 
         let shadow = cast(drop);

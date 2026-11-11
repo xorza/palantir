@@ -15,7 +15,6 @@ use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::lens_optics::{LINE_D, LensOptics};
 use crate::primitives::paint::material::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
-use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -58,7 +57,7 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
                 }
                 ui.add_shape(
                     Shape::rect().at(BACKDROP).corners(Corners::all(16.0)),
-                    Paint::NONE.with_material(Material::glass(lens).with_blur(blur)),
+                    Material::glass(lens).with_blur(blur),
                 );
             });
     };

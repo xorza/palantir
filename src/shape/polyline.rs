@@ -149,6 +149,12 @@ impl PolylineColors<'_> {
 impl PaintedBy<Stroke> for PolylineShape<'_> {}
 
 impl sealed::DrawWith<Stroke> for PolylineShape<'_> {
+    type Prepared = Stroke;
+
+    fn prepare(paint: Stroke) -> Stroke {
+        paint
+    }
+
     /// # Panics
     ///
     /// Unless the stroke holds its kinds and draws no ramp, and each vertex color times the

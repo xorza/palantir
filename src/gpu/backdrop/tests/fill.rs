@@ -35,11 +35,8 @@ fn boxed(paint: Paint) -> impl FnMut(&mut Ui) {
 #[test]
 fn a_gradient_fill_draws_in_the_material_draw() {
     let gpu = headless_test_gpu();
-    let gradient = LinearGradient::two_stop(
-        0.0,
-        RgbaF32::srgb(1.0, 0.1, 0.0),
-        RgbaF32::srgb(0.0, 0.2, 1.0),
-    );
+    let gradient =
+        LinearGradient::horizontal([RgbaF32::srgb(1.0, 0.1, 0.0), RgbaF32::srgb(0.0, 0.2, 1.0)]);
     let mut plain = window(&gpu, SIZE, CLEAR);
     plain.frame(boxed(Paint::from(gradient.clone())));
     let mut material = window(&gpu, SIZE, CLEAR);

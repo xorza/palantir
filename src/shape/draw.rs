@@ -11,8 +11,6 @@
 //!   either owns them, an allocation per shape per frame, or borrows them and needs a second
 //!   record type for the store to patch with indexes.
 
-use std::borrow::Cow;
-
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
@@ -29,12 +27,7 @@ use crate::shape::text::TextShape;
 /// One pair [`Ui::add_shape`](crate::Ui::add_shape) takes, borrowed from its caller: the pipeline
 /// that draws it, its geometry and its paint. Each pair's `DrawWith::draw` makes one, so the
 /// record store lowers every pair through one match, compiled once.
-#[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "a draw lives on the stack for one `add_shape` and is matched once; boxing its effect \
-              would allocate per shape"
-)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum Draw<'a> {
     /// A rect, a circle or a triangle, and the paint that covers it.
     Closed {
@@ -66,10 +59,10 @@ pub(crate) enum Draw<'a> {
 }
 
 /// The paint of a [`Draw::Closed`], borrowed from its caller.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum ClosedPaintRef<'a> {
     /// A box's or a triangle's fill, border, shadow and material.
-    Fill(Cow<'a, Paint>),
+    Fill(&'a Paint),
     Image(&'a ImagePaint),
     /// An icon, of a square-cornered rect alone.
     Icon(&'a IconPaint),

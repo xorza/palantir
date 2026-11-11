@@ -13,7 +13,6 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use glam::Vec2;
 use std::time::Duration;
 
 /// Fields left out of the motion arithmetic update on retarget mid-spring, not on settle
@@ -128,11 +127,7 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
         "test setup must carry positive border velocity",
     );
 
-    let gradient = Brush::Linear(LinearGradient::two_stop(
-        0.0,
-        RgbaF32::BLACK,
-        RgbaF32::WHITE,
-    ));
+    let gradient: Brush = LinearGradient::horizontal([RgbaF32::BLACK, RgbaF32::WHITE]).into();
     let target = Chrome {
         corners: Corners::ZERO,
         paint: Paint {
@@ -171,12 +166,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         chrome: Chrome::new(RgbaF32::BLACK),
         text: TextStyle::stock(ColorScheme::Dark).with_color(RgbaF32::BLACK),
     };
-    let gradient = Brush::Radial(RadialGradient::two_stop(
-        Vec2::splat(0.5),
-        Vec2::splat(0.5),
-        RgbaF32::BLACK,
-        RgbaF32::WHITE,
-    ));
+    let gradient: Brush = RadialGradient::centered([RgbaF32::BLACK, RgbaF32::WHITE]).into();
     let target = AnimatedLook {
         chrome: Chrome::new(gradient.clone()),
         text: TextStyle::stock(ColorScheme::Dark).with_color(RgbaF32::WHITE),

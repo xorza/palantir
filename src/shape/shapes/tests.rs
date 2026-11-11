@@ -4,7 +4,6 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::border::Border;
-use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{Image, ImageFit};
@@ -14,6 +13,7 @@ use crate::primitives::reduction::Reductions;
 use crate::shape::Shape;
 use crate::shape::geometry::stroke_geometry::{PolylineColorSpan, StrokeGeometry};
 use crate::shape::image_paint::ImagePaint;
+use crate::shape::internals;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::polyline::PolylineShape;
@@ -183,14 +183,13 @@ fn an_image_keeps_the_shape_that_clips_it() {
     use crate::shape::geometry::closed_geometry::ClosedGeometry;
     use crate::shape::geometry::point_placement::PointPlacement;
     use crate::shape::geometry::triangle_geometry::TriangleGeometry;
-    use crate::shape::sealed::DrawWith;
 
     let mut shapes = Shapes::default();
     let mut store = RecordStore::default();
     let paint_of = |side| ImagePaint::new(handle(side));
     let rounded = Shape::rect().corners(Corners::new(1.0, 2.0, 3.0, 4.0));
     let paint = paint_of(4);
-    rounded.check(&paint);
+    let _ = internals::check(&rounded, paint.clone());
     assert_eq!(add(&mut shapes, (rounded, paint), &mut store), Some(0));
     let ShapeRecord::Closed {
         geometry,
@@ -210,7 +209,7 @@ fn an_image_keeps_the_shape_that_clips_it() {
     // nothing.
     let corners = [Vec2::ZERO, Vec2::new(4.0, 0.0), Vec2::new(0.0, 4.0)];
     let triangle = Shape::triangle(corners[0], corners[1], corners[2]).radius(1.0);
-    triangle.check(&paint_of(4));
+    let _ = internals::check(&triangle, paint_of(4));
     assert_eq!(
         add(&mut shapes, (triangle, paint_of(4)), &mut store),
         Some(1)
@@ -235,7 +234,7 @@ fn an_image_keeps_the_shape_that_clips_it() {
     // A circle takes an image as a round box; one at a rect of no size paints nothing.
     let at = Rect::new(1.0, 2.0, 8.0, 4.0);
     let circle = Shape::circle().at(at);
-    circle.check(&paint_of(4));
+    let _ = internals::check(&circle, paint_of(4));
     assert_eq!(add(&mut shapes, (circle, paint_of(4)), &mut store), Some(2));
     let ShapeRecord::Closed {
         geometry,
@@ -289,7 +288,7 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::COLOR_RULE, || {
         check(&(
             Shape::rect().at(ok_rect),
-            Paint::NONE.with_border(Border::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0)),
+            Border::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0),
         ));
     });
     // 65520 is the least magnitude that packs to an infinite f16 lane; 65504 is the greatest
@@ -311,17 +310,11 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
         check(&(
             Shape::rect().at(ok_rect),
-            LinearGradient::two_stop(N, white, RgbaF32::BLACK),
+            LinearGradient::new(N, [white, RgbaF32::BLACK]),
         ));
     });
     let half = Vec2::splat(0.5);
-    let radial = |center, radius| {
-        RadialGradient::new(
-            center,
-            radius,
-            [Stop::new(0.0, white), Stop::new(1.0, RgbaF32::BLACK)],
-        )
-    };
+    let radial = |center, radius| RadialGradient::new(center, radius, [white, RgbaF32::BLACK]);
     for (center, radius) in [(Vec2::new(wide, 0.5), half), (half, Vec2::new(0.5, wide))] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
             check(&(Shape::rect().at(ok_rect), radial(center, radius)));
@@ -330,11 +323,7 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::LANE_RULE, || {
         check(&(
             Shape::rect().at(ok_rect),
-            ConicGradient::new(
-                Vec2::new(0.5, -wide),
-                0.0,
-                [Stop::new(0.0, white), Stop::new(1.0, RgbaF32::BLACK)],
-            ),
+            ConicGradient::new(Vec2::new(0.5, -wide), 0.0, [white, RgbaF32::BLACK]),
         ));
     });
     check(&(
@@ -351,7 +340,7 @@ fn builders_refuse_what_they_check() {
         }),
     ] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
-            check(&(Shape::rect().at(ok_rect), Paint::NONE.with_material(filter)));
+            check(&(Shape::rect().at(ok_rect), filter));
         });
     }
     for (rule, shadow) in [
@@ -401,10 +390,10 @@ fn builders_refuse_what_they_check() {
         panic_probe::assert_panics_with(rule, || {
             check(&(
                 Shape::rect(),
-                Paint::NONE.with_shadow(Shadow {
+                Shadow {
                     color: white,
                     ..shadow
-                }),
+                },
             ));
         });
     }
@@ -421,7 +410,7 @@ fn builders_refuse_what_they_check() {
         (widest.offset, widest.blur, widest.spread),
         "the widest shadow packs exactly"
     );
-    check(&(Shape::rect(), Paint::NONE.with_shadow(widest)));
+    check(&(Shape::rect(), widest));
     for (start_angle, sweep) in [(N, 1.0), (0.0, f32::INFINITY)] {
         panic_probe::assert_panics_with(domain::ANGLE_RULE, || Shape::arc(start_angle, sweep));
     }
@@ -480,10 +469,7 @@ fn builders_refuse_what_they_check() {
             ));
         },
         || {
-            check(&(
-                Shape::rect().at(Rect::new(0.0, 0.0, N, 8.0)),
-                Paint::NONE.with_shadow(Shadow::NONE),
-            ));
+            check(&(Shape::rect().at(Rect::new(0.0, 0.0, N, 8.0)), Shadow::NONE));
         },
         || {
             let mut h = Harness::mono(UVec2::ONE);
@@ -560,8 +546,8 @@ fn thin() -> Stroke {
 
 /// Check a shape and its paint as [`Ui::add_shape`](crate::Ui::add_shape) does.
 #[track_caller]
-fn check<S: DrawWith<P>, P>((shape, paint): &(S, P)) {
-    shape.check(paint);
+fn check<S: DrawWith<P>, P: Clone>((shape, paint): &(S, P)) {
+    let _ = internals::check(shape, paint.clone());
 }
 
 /// Add a shape and its paint to `shapes`, under full reductions and no effects.
@@ -575,6 +561,7 @@ fn add<S: DrawWith<P>, P>(
         effects: &effects,
         reductions: Reductions::FULL,
     };
+    let paint = S::prepare(paint);
     let record = store.record(shape.draw(&paint), resolve)?;
     Some(shapes.push(record))
 }

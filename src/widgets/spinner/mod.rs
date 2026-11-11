@@ -157,7 +157,7 @@ impl SpinnerCircle {
 /// Comet-trail ramp, transparent at the tail and opaque at the head. White, so
 /// it multiplies the stroke color; shared across themes.
 fn comet() -> ColorRamp {
-    ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE)
+    ColorRamp::from([RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE])
 }
 
 #[cfg(test)]

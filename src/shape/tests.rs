@@ -23,6 +23,7 @@ use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::geometry::point_placement::PointPlacement;
 use crate::shape::geometry::stroke_geometry::StrokeGeometry;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
+use crate::shape::internals;
 use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
@@ -51,6 +52,7 @@ fn lower_in<S: DrawWith<P>, P>(
         effects: &effects,
         reductions: Reductions::FULL,
     };
+    let paint = S::prepare(paint);
     store.record(shape.draw(&paint), resolve)
 }
 
@@ -185,9 +187,9 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
 /// does, so the two share one gradient.
 #[test]
 fn a_triangle_records_its_gradient_as_a_rect_does() {
-    let gradient = LinearGradient::two_stop(0.5, RgbaF32::WHITE, RgbaF32::BLACK);
+    let gradient = LinearGradient::new(0.5, [RgbaF32::WHITE, RgbaF32::BLACK]);
     let triangle = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0);
-    triangle.check(&gradient);
+    let _ = internals::check(&triangle, gradient.clone());
     let mut store = RecordStore::default();
     let Some(ShapeRecord::Closed {
         geometry: ClosedGeometry::Triangle(_),
@@ -226,9 +228,9 @@ fn a_triangle_records_its_gradient_as_a_rect_does() {
 fn a_triangle_wears_a_material_as_a_rect_does() {
     use crate::primitives::paint::material::Material;
 
-    let paint = Paint::NONE.with_material(Material::blur(4.0));
+    let paint = Paint::from(Material::blur(4.0));
     let triangle = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0);
-    triangle.check(&paint);
+    let _ = internals::check(&triangle, paint.clone());
     let Some(record) = lower((triangle, paint.clone())) else {
         panic!("a triangle of a material records it");
     };
@@ -472,8 +474,8 @@ fn text_noop_rejects_invalid_metrics() {
 /// A curve paints nothing when its stroke does or the ramp its color multiplies is transparent everywhere.
 #[test]
 fn curve_noop_follows_the_stroke_and_the_ramp() {
-    let visible = ColorRamp::two_stop(RgbaF32::TRANSPARENT, RgbaF32::WHITE);
-    let transparent = ColorRamp::two_stop(RgbaF32::TRANSPARENT, RgbaF32::TRANSPARENT);
+    let visible = ColorRamp::from([RgbaF32::TRANSPARENT, RgbaF32::WHITE]);
+    let transparent = ColorRamp::from([RgbaF32::TRANSPARENT, RgbaF32::TRANSPARENT]);
     let cases = [
         ("transparent_stroke", RgbaF32::TRANSPARENT, 1.0, None, true),
         ("visible_stroke", RgbaF32::WHITE, 1.0, None, false),
@@ -731,6 +733,48 @@ fn a_rect_shapes_bbox_takes_in_its_drop_shadow() {
     };
     let drop = Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0);
     assert_eq!(bbox(drop), Rect::new(-16.0, -14.0, 132.0, 92.0));
-    assert_eq!(bbox(drop.inset()), Rect::new(0.0, 0.0, 100.0, 60.0));
+    assert_eq!(
+        bbox(Shadow::inset(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0)),
+        Rect::new(0.0, 0.0, 100.0, 60.0)
+    );
     assert_eq!(bbox(Shadow::NONE), Rect::new(0.0, 0.0, 100.0, 60.0));
+}
+
+/// A border, a shadow or a material paints a box as that part alone: `add_shape` takes each where
+/// a paint goes, and it records what the paint of that part alone records. An inset shadow is a
+/// drop shadow's values turned inward.
+#[test]
+fn a_box_takes_each_paint_part_alone() {
+    use crate::primitives::paint::border::Border;
+    use crate::primitives::paint::material::Material;
+
+    let border = Border::new(RgbaF32::BLACK, 2.0);
+    let shadow = Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0);
+    let material = Material::blur(4.0);
+    assert_eq!(Paint::from(border), Paint::NONE.with_border(border));
+    assert_eq!(Paint::from(shadow), Paint::NONE.with_shadow(shadow));
+    assert_eq!(Paint::from(material), Paint::NONE.with_material(material));
+    assert_eq!(
+        internals::check(&Shape::rect(), border),
+        Paint::NONE.with_border(border)
+    );
+    assert_eq!(
+        internals::check(&Shape::rect(), shadow),
+        Paint::NONE.with_shadow(shadow)
+    );
+    assert_eq!(
+        internals::check(&Shape::circle(), material),
+        Paint::NONE.with_material(material)
+    );
+    assert!(lower((Shape::rect(), border)).is_some(), "a border paints");
+
+    let inset = Shadow::inset(RgbaF32::BLACK, Vec2::new(0.0, 2.0), 4.0);
+    assert_eq!(
+        inset,
+        Shadow {
+            inset: true,
+            ..shadow
+        }
+    );
+    assert!(!shadow.inset, "a drop shadow casts outward");
 }

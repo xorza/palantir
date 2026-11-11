@@ -548,13 +548,10 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let mut slid = f64::NAN;
     let mut dragged = f64::NAN;
     let mut coords = ColorCoords::new(ColorModel::Okhsv, f32::NAN, f32::INFINITY, f32::NAN);
-    let gradient = LinearGradient::new(
-        0.0,
-        [
-            Stop::new(f32::NAN, RgbaF32::WHITE),
-            Stop::new(f32::INFINITY, RgbaF32::BLACK),
-        ],
-    );
+    let gradient = LinearGradient::horizontal([
+        Stop::new(f32::NAN, RgbaF32::WHITE),
+        Stop::new(f32::INFINITY, RgbaF32::BLACK),
+    ]);
     let mut scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("worst"))

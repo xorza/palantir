@@ -13,7 +13,6 @@ use palantir::{
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
-use palantir::Paint;
 use palantir::Stroke;
 use palantir::widget::ImagePaint;
 
@@ -50,12 +49,10 @@ impl Knobs {
 
 fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     // Translucent and varying in both axes, so every damaged pixel blends a value of its own over the clear.
-    let veil = RadialGradient::two_stop(
-        Vec2::splat(0.5),
-        Vec2::splat(0.5),
+    let veil = RadialGradient::centered([
         RgbaF32::srgba(1.0, 1.0, 1.0, 0.6),
         RgbaF32::srgba(0.3, 0.6, 1.0, 0.05),
-    );
+    ]);
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
@@ -168,7 +165,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
                     Shape::rect()
                         .at(Rect::new(0.0, 0.0, at.size.w, at.size.h))
                         .corners(radius),
-                    Paint::NONE.with_shadow(shadow(blur)),
+                    shadow(blur),
                 );
             });
     };

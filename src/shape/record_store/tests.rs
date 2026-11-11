@@ -24,7 +24,7 @@ fn stores_are_isolated() {
 /// A hit is confirmed by equality, so distinct gradients on one hash never share an id; dedup is by hash, so a colliding pair each mint a fresh record (wasted rows, never a wrong one).
 #[test]
 fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
-    let ramp = ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
+    let ramp = ColorRamp::from([RgbaF32::BLACK, RgbaF32::WHITE]);
     let first = RecordedGradient {
         axis: FillAxis::from_lanes([1.0, 0.0, 0.0, 1.0]),
         kind: FillKind::linear(Spread::Pad),
@@ -82,7 +82,7 @@ fn gradient_interner_dedups_at_every_table_width() {
         RecordedGradient {
             axis: FillAxis::from_lanes([i as f32, 0.0, 0.0, 1.0]),
             kind: FillKind::linear(Spread::Pad),
-            ramp: ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE),
+            ramp: ColorRamp::from([RgbaF32::BLACK, RgbaF32::WHITE]),
         }
     }
 

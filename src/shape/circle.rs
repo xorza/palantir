@@ -3,18 +3,19 @@
 use std::f32::consts::TAU;
 
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
+use crate::shape::PaintedBy;
 use crate::shape::draw::ClosedPaintRef;
 use crate::shape::draw::Draw;
 use crate::shape::geometry::arc_geometry::ArcGeometry;
 use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::sealed;
-use crate::shape::{IntoPaint, PaintedBy};
 
 /// The largest circle centered in the owner's arranged rect, or [`Self::at`] a rect of its own,
 /// as SwiftUI's `Circle` fits the rect it is offered and WPF's `Ellipse` fills its slot. A
-/// [`Paint`](crate::Paint) covers it as a round box, its border inside its edge; a [`Stroke`] draws it as a
+/// [`Paint`] covers it as a round box, its border inside its edge; a [`Stroke`] draws it as a
 /// closed arc, centered on the circle; an [`ImagePaint`](crate::widget::ImagePaint) fits its
 /// square and the circle clips it, as an [`EffectPaint`](crate::widget::EffectPaint) is.
 #[derive(Clone, Copy, Debug)]
@@ -49,19 +50,25 @@ impl CircleShape {
     }
 }
 
-impl<P: IntoPaint> PaintedBy<P> for CircleShape {}
+impl<P: Into<Paint>> PaintedBy<P> for CircleShape {}
 
 /// A round box of `P`.
-impl<P: IntoPaint> sealed::DrawWith<P> for CircleShape {
-    #[track_caller]
-    fn check(&self, paint: &P) {
-        paint.to_paint().validate();
+impl<P: Into<Paint>> sealed::DrawWith<P> for CircleShape {
+    type Prepared = Paint;
+
+    fn prepare(paint: P) -> Paint {
+        paint.into()
     }
 
-    fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a> {
+    #[track_caller]
+    fn check(&self, paint: &Paint) {
+        paint.validate();
+    }
+
+    fn draw<'a>(&'a self, paint: &'a Paint) -> Draw<'a> {
         Draw::Closed {
             geometry: ClosedGeometry::Box(self.geometry()),
-            paint: ClosedPaintRef::Fill(paint.to_paint()),
+            paint: ClosedPaintRef::Fill(paint),
         }
     }
 }
@@ -70,6 +77,12 @@ impl PaintedBy<Stroke> for CircleShape {}
 
 /// A closed arc drawn with a [`Stroke`].
 impl sealed::DrawWith<Stroke> for CircleShape {
+    type Prepared = Stroke;
+
+    fn prepare(paint: Stroke) -> Stroke {
+        paint
+    }
+
     #[track_caller]
     fn check(&self, stroke: &Stroke) {
         stroke.validate();

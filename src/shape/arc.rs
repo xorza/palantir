@@ -45,6 +45,12 @@ impl PaintedBy<Stroke> for ArcShape {}
 
 /// An arc drawn with a [`Stroke`].
 impl sealed::DrawWith<Stroke> for ArcShape {
+    type Prepared = Stroke;
+
+    fn prepare(paint: Stroke) -> Stroke {
+        paint
+    }
+
     #[track_caller]
     fn check(&self, stroke: &Stroke) {
         stroke.validate();

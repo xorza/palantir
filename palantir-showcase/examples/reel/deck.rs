@@ -13,7 +13,7 @@ use palantir::Stroke;
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
-    Align, App, Block, Border, Brush, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox,
+    Align, App, Block, Border, Button, Checkbox, Chrome, ClipMode, ColorScheme, ComboBox,
     Configure, Corners, DockOperation, DockState, DockView, FontFamily, GpuView, Justify, Layer,
     Lens, LinearGradient, Material, Metrics, Palette, Panel, Preference, RgbaF32, Scroll,
     ScrollbarTheme, Shadow, Sizing, Slider, Switch, Text, TextEdit, TextSteps, Theme, Ui,
@@ -466,11 +466,11 @@ impl Deck {
                             .chrome(Chrome {
                                 corners: Corners::all(28.0),
                                 paint: Paint {
-                                    fill: Brush::Linear(LinearGradient::two_stop(
+                                    fill: LinearGradient::new(
                                         0.6,
-                                        RgbaF32::hex(0x6d8cff),
-                                        RgbaF32::hex(0xec4899),
-                                    )),
+                                        [RgbaF32::hex(0x6d8cff), RgbaF32::hex(0xec4899)],
+                                    )
+                                    .into(),
                                     border: Border::NONE,
                                     shadow: Shadow::drop(
                                         RgbaF32::BLACK.with_alpha(0.5),

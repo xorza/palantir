@@ -186,3 +186,24 @@ where
         Self::from(Brush::from(gradient))
     }
 }
+
+/// A box of `border` alone: no fill, shadow or material.
+impl From<Border> for Paint {
+    fn from(border: Border) -> Self {
+        Self::NONE.with_border(border)
+    }
+}
+
+/// A box of `shadow` alone: no fill, border or material.
+impl From<Shadow> for Paint {
+    fn from(shadow: Shadow) -> Self {
+        Self::NONE.with_shadow(shadow)
+    }
+}
+
+/// A box of `material` alone: no fill, border or shadow.
+impl From<Material> for Paint {
+    fn from(material: Material) -> Self {
+        Self::NONE.with_material(material)
+    }
+}

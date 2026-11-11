@@ -2,7 +2,6 @@
 //! name used with other types; the time each frame reads, reduced motion and the power-saver
 //! alternative; on a device, each blend, a clip, a recovery, a reload, the time and the images.
 
-use crate::primitives::paint::paint::Paint;
 use crate::shape::effect_paint::EffectPaint;
 use std::error;
 use std::rc::Rc;
@@ -1837,7 +1836,7 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
             ui.add_shape(Shape::rect().at(Rect::new(26.0, 0.0, 6.0, 16.0)), green);
             ui.add_shape(
                 Shape::rect().at(Rect::new(4.0, 0.0, 12.0, 16.0)),
-                EffectPaint::new(SHIFT, Shift { dx }).reach(8.0),
+                EffectPaint::new(SHIFT, Shift { dx }).max_sample_offset(8.0),
             );
         }
     };
@@ -1975,10 +1974,7 @@ fn a_backdrop_effect_blurs_as_a_material() {
         ui.add_shape(Shape::rect(), EffectPaint::new(SHIFT, SHARP).blur(3.0));
     });
     let filter = row(&|ui| {
-        ui.add_shape(
-            Shape::rect(),
-            Paint::NONE.with_material(Material::blur(3.0)),
-        );
+        ui.add_shape(Shape::rect(), Material::blur(3.0));
     });
     let sharp = row(&|_| {});
     assert_eq!(effect, filter);
@@ -2082,7 +2078,7 @@ fn a_reach_past_the_window_reads_its_edge() {
         ui.add_shape(Shape::rect().at(Rect::new(26.0, 0.0, 6.0, 16.0)), green);
         ui.add_shape(
             Shape::rect().at(Rect::new(16.0, 0.0, 16.0, 16.0)),
-            EffectPaint::new(SHIFT, Shift { dx: 12.0 }).reach(8.0),
+            EffectPaint::new(SHIFT, Shift { dx: 12.0 }).max_sample_offset(8.0),
         );
     });
     assert_eq!(h.read_back().get_pixel(28, 8).0, bytes(green));
@@ -2147,7 +2143,7 @@ fn the_reach_runs_from_the_exact_rect() {
         );
         ui.add_shape(
             Shape::rect().at(Rect::new(4.0, 0.0, 11.5, 16.0)),
-            EffectPaint::new(SHIFT, Shift { dx: 12.0 }).reach(8.0),
+            EffectPaint::new(SHIFT, Shift { dx: 12.0 }).max_sample_offset(8.0),
         );
     });
     assert_eq!(h.read_back().get_pixel(14, 8).0, bytes(blue));

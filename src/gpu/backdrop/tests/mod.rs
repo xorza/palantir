@@ -59,10 +59,7 @@ fn scene(ui: &mut Ui, sigma: Option<f32>) {
                 );
             }
             if let Some(sigma) = sigma {
-                ui.add_shape(
-                    Shape::rect().at(BACKDROP),
-                    Paint::NONE.with_material(Material::blur(sigma)),
-                );
+                ui.add_shape(Shape::rect().at(BACKDROP), Material::blur(sigma));
             }
         });
 }
@@ -302,10 +299,7 @@ fn layered(ui: &mut Ui, under: RgbaF32, backdrop: Rect, sigma: f32, over: RgbaF3
                     RgbaF32::WHITE,
                 );
             }
-            ui.add_shape(
-                Shape::rect().at(backdrop),
-                Paint::NONE.with_material(Material::blur(sigma)),
-            );
+            ui.add_shape(Shape::rect().at(backdrop), Material::blur(sigma));
             ui.add_shape(Shape::rect().at(Rect::new(30.0, 20.0, 6.0, 6.0)), over);
         });
 }
@@ -421,7 +415,7 @@ fn a_backdrop_over_a_backdrop_repaints_as_a_whole_frame() {
                     ui.add_shape(Shape::rect().at(Rect::new(8.0, 8.0, 6.0, 6.0)), under);
                     ui.add_shape(
                         Shape::rect().at(Rect::new(4.0, 4.0, 30.0, 30.0)),
-                        Paint::NONE.with_material(Material::blur(3.0)),
+                        Material::blur(3.0),
                     );
                     ui.add_shape(
                         Shape::rect().at(Rect::new(26.0, 6.0, 8.0, 8.0)),
@@ -429,7 +423,7 @@ fn a_backdrop_over_a_backdrop_repaints_as_a_whole_frame() {
                     );
                     ui.add_shape(
                         Shape::rect().at(Rect::new(20.0, 14.0, 36.0, 28.0)),
-                        Paint::NONE.with_material(Material::blur(6.0)),
+                        Material::blur(6.0),
                     );
                     ui.add_shape(Shape::rect().at(Rect::new(40.0, 30.0, 6.0, 6.0)), over);
                 });

@@ -32,10 +32,6 @@ use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::vec2;
-use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
-use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::paint::Paint;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::shape::arc::ArcShape;
 use crate::shape::circle::CircleShape;
@@ -51,35 +47,22 @@ use glam::Vec2;
 /// A shape that `P` covers, as [`Ui::add_shape`](crate::Ui::add_shape) joins them: each pair a
 /// shape's pipeline draws, listed as this trait's implementors. Sealed.
 ///
-/// - A rect takes an [`IntoPaint`], a [`Paint`] or a fill alone; an
+/// - A rect takes anything `Into<`[`Paint`](crate::Paint)`>`: the paint, or a color, a brush, a
+///   gradient, a border, a shadow or a material as that part alone; an
 ///   [`EffectPaint`](crate::widget::EffectPaint); an [`ImagePaint`](crate::widget::ImagePaint);
 ///   an [`IconPaint`](crate::widget::IconPaint). An image's rect clips it by its corners; an icon
 ///   takes a square-cornered rect, as its pipeline clips to no corners.
-/// - A circle takes an `IntoPaint` as a round box, a [`Stroke`](crate::Stroke) as a closed arc,
-///   an `ImagePaint` fit to its square, and an `EffectPaint`, which reads its square and its
-///   corners.
-/// - A triangle takes an `IntoPaint` of a fill, a border and a material, an `ImagePaint`, and an
-///   `EffectPaint`, which reads the triangle's covering rect and no corners.
+/// - A circle takes anything `Into<Paint>` as a round box, a [`Stroke`](crate::Stroke) as a
+///   closed arc, an `ImagePaint` fit to its square, and an `EffectPaint`, which reads its square
+///   and its corners.
+/// - A triangle takes anything `Into<Paint>` of a fill, a border and a material, an
+///   `ImagePaint`, and an `EffectPaint`, which reads the triangle's covering rect and no corners.
 /// - A line, a Bézier, an arc and a polyline take a `Stroke`.
-/// - Text takes its color, a mesh its tint, each an [`RgbaF32`].
+/// - Text takes its color, a mesh its tint, each an [`RgbaF32`](crate::RgbaF32).
 pub trait PaintedBy<P>: sealed::DrawWith<P> {}
 
-/// What converts into a box's [`Paint`]: the paint itself, or a color, a
-/// [`Brush`] or a gradient as a fill alone. Sealed.
-pub trait IntoPaint: sealed::ToPaint {}
-
-impl IntoPaint for Paint {}
-impl IntoPaint for RgbaF32 {}
-impl IntoPaint for Brush {}
-impl<G: GradientGeometry + Clone> IntoPaint for Gradient<G> where Paint: From<Self> {}
-
 pub(crate) mod sealed {
-    use crate::primitives::paint::brush::Brush;
-    use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
-    use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::paint::Paint;
     use crate::shape::draw::Draw;
-    use std::borrow::Cow;
 
     #[expect(
         private_interfaces,
@@ -87,49 +70,21 @@ pub(crate) mod sealed {
         reason = "nothing outside the crate can name the sealed trait, so the crate-private types in its signature cannot leak"
     )]
     pub trait DrawWith<P> {
+        /// What `P` becomes before the draw borrows it: a box's [`Paint`](crate::Paint), or `P`
+        /// itself.
+        type Prepared;
+
+        /// `paint` as this shape draws it, moved, so a box converts its paint once and copies
+        /// none.
+        fn prepare(paint: P) -> Self::Prepared;
+
         /// Panic unless `paint` holds its kinds and is one this shape's pipeline draws, at the
         /// caller's `add_shape`; the shape checked its own values where it was built.
         #[track_caller]
-        fn check(&self, paint: &P);
+        fn check(&self, paint: &Self::Prepared);
 
         /// This shape covered by `paint`, as the one [`Draw`] the record store records.
-        fn draw<'a>(&'a self, paint: &'a P) -> Draw<'a>;
-    }
-
-    #[expect(
-        unnameable_types,
-        reason = "the seal: `IntoPaint` names it as its supertrait"
-    )]
-    pub trait ToPaint {
-        /// This value as a box's paint, borrowed where it is one.
-        fn to_paint(&self) -> Cow<'_, Paint>;
-    }
-
-    impl ToPaint for Paint {
-        fn to_paint(&self) -> Cow<'_, Paint> {
-            Cow::Borrowed(self)
-        }
-    }
-
-    impl ToPaint for RgbaF32 {
-        fn to_paint(&self) -> Cow<'_, Paint> {
-            Cow::Owned(Paint::from(*self))
-        }
-    }
-
-    impl ToPaint for Brush {
-        fn to_paint(&self) -> Cow<'_, Paint> {
-            Cow::Owned(Paint::from(self.clone()))
-        }
-    }
-
-    impl<G: GradientGeometry + Clone> ToPaint for Gradient<G>
-    where
-        Paint: From<Self>,
-    {
-        fn to_paint(&self) -> Cow<'_, Paint> {
-            Cow::Owned(Paint::from(self.clone()))
-        }
+        fn draw<'a>(&'a self, paint: &'a Self::Prepared) -> Draw<'a>;
     }
 }
 
@@ -229,6 +184,20 @@ impl Shape {
     /// A colored triangle `mesh`, its vertices logical px from its rect's top-left.
     pub const fn mesh(mesh: &Mesh) -> MeshShape<'_> {
         MeshShape::new(mesh)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::shape::sealed::DrawWith;
+
+    /// `paint` prepared and checked against `shape` as `Ui::add_shape` does, handed back
+    /// prepared.
+    #[track_caller]
+    pub(crate) fn check<S: DrawWith<P>, P>(shape: &S, paint: P) -> S::Prepared {
+        let paint = S::prepare(paint);
+        shape.check(&paint);
+        paint
     }
 }
 

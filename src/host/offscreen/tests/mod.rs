@@ -1,6 +1,5 @@
 //! The offscreen host's frames, targets and screenshots.
 
-use crate::primitives::paint::paint::Paint;
 use std::cell::Cell;
 
 use super::*;
@@ -280,7 +279,7 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
                     );
                     ui.add_shape(
                         Shape::rect().at(Rect::new(4.0, 4.0, 16.0, 12.0)),
-                        Paint::NONE.with_material(Material::blur(1.0)),
+                        Material::blur(1.0),
                     );
                 });
         }

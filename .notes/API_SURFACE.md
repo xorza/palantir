@@ -163,6 +163,7 @@ Border
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
         pub const fn new(color: RgbaF32, width: f32) -> Self
+        impl From<Border> for Paint
 
 BoundNum
     enum BoundNum<'a>: Debug, From<&'a mut f32>, From<&'a mut f64>, From<&'a mut i32>, From<&'a mut i64>
@@ -172,7 +173,7 @@ BoundNum
         F64(&'a mut f64)
 
 Brush
-    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, IntoPaint, Lerp, PartialEq, Serialize
+    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, Lerp, PartialEq, Serialize
         Solid(RgbaF32)
         Linear(LinearGradient)
         Radial(RadialGradient)
@@ -354,10 +355,12 @@ ColorRamp
         pub stops: GradientStops
         pub interpolation: Interpolation
         pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self
-        pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
+        pub fn evenly(colors: impl IntoIterator<Item = RgbaF32>) -> Self
         pub fn color_at(&self, t: f32) -> RgbaF32
         pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
+        impl<const N: usize> From<[RgbaF32; N]> for ColorRamp
+        impl<const N: usize> From<[Stop; N]> for ColorRamp
 
 ColorScheme
     enum ColorScheme: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -985,14 +988,15 @@ Gradient
         pub ramp: ColorRamp
         pub spread: Spread
         impl Gradient<ConicGeometry>
-            pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
-            pub fn two_stop(center: Vec2, start_angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self
+            pub fn new(center: Vec2, start_angle: f32, ramp: impl Into<ColorRamp>) -> Self
+            pub fn centered(ramp: impl Into<ColorRamp>) -> Self
         impl Gradient<LinearGeometry>
-            pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
-            pub fn two_stop(angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self
+            pub fn new(angle: f32, ramp: impl Into<ColorRamp>) -> Self
+            pub fn horizontal(ramp: impl Into<ColorRamp>) -> Self
+            pub fn vertical(ramp: impl Into<ColorRamp>) -> Self
         impl Gradient<RadialGeometry>
-            pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self
-            pub fn two_stop(center: Vec2, radius: Vec2, c0: RgbaF32, c1: RgbaF32) -> Self
+            pub fn new(center: Vec2, radius: Vec2, ramp: impl Into<ColorRamp>) -> Self
+            pub fn centered(ramp: impl Into<ColorRamp>) -> Self
         pub const fn with_spread(self, spread: Spread) -> Self
         pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
@@ -1002,7 +1006,6 @@ Gradient
         impl<'de, G> Deserialize<'de> where G: Deserialize<'de>
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
-        impl<G: GradientGeometry + Clone> IntoPaint for Gradient<G> where Paint: From<Self>
         impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>, Paint: From<Gradient<G>>
         impl<G: GradientGeometry> From<Gradient<G>> for Paint where Brush: From<Gradient<G>>
         impl<G: GradientGeometry> Hash for Gradient<G>
@@ -1487,6 +1490,7 @@ Material
         pub const fn with_min_luminance(self, luminance: f32) -> Self
         pub fn with_min_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Self
         pub const fn at_rest(self) -> Self
+        impl From<Material> for Paint
 
 MaterialInput
     struct MaterialInput: Clone, Copy, Debug, Default, Deserialize<'de>, EffectParams, Lerp, PartialEq, Pod, Serialize, Zeroable
@@ -1697,7 +1701,7 @@ PLATFORM
     const PLATFORM: Platform
 
 Paint
-    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Brush>, From<RgbaF32>, IntoPaint, Lerp, PartialEq, Serialize
+    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<Material>, From<RgbaF32>, From<Shadow>, Lerp, PartialEq, Serialize
         pub fill: Brush
         pub border: Border
         pub shadow: Shadow
@@ -2081,7 +2085,7 @@ ResponseState
         pub fn press_fraction(&self, band: f32) -> Option<Vec2>
 
 RgbaF32
-    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, IntoPaint, Lerp, ParamValue, PartialEq, Pod, Serialize, Zeroable
+    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, Lerp, ParamValue, PartialEq, Pod, Serialize, Zeroable
         pub r: f32
         pub g: f32
         pub b: f32
@@ -2218,9 +2222,10 @@ Shadow
         pub inset: bool
         pub const NONE: Self
         pub const fn drop(color: RgbaF32, offset: Vec2, blur: f32) -> Self
+        pub const fn inset(color: RgbaF32, offset: Vec2, blur: f32) -> Self
         pub const fn with_spread(self, spread: f32) -> Self
-        pub const fn inset(self) -> Self
         pub const fn is_noop(&self) -> bool
+        impl From<Shadow> for Paint
 
 ShadowGeometry
     struct ShadowGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -3308,7 +3313,7 @@ widget::Caret
 widget::CircleShape
     struct CircleShape: Clone, Copy, Debug, PaintedBy<ImagePaint>, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
-        impl<P: IntoPaint> PaintedBy<P> for CircleShape
+        impl<P: Into<Paint>> PaintedBy<P> for CircleShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
 
 widget::Configurator
@@ -3386,7 +3391,7 @@ widget::EffectPaint
             pub const fn outside(self, reach: f32) -> Self
         impl<U: EffectParams> EffectPaint<U, BackdropEffect>
             pub const fn blur(self, sigma: f32) -> Self
-            pub const fn reach(self, px: f32) -> Self
+            pub const fn max_sample_offset(self, px: f32) -> Self
             pub const fn reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
@@ -3430,9 +3435,6 @@ widget::ImagePaint
         impl PaintedBy<ImagePaint> for CircleShape
         impl PaintedBy<ImagePaint> for RectShape
         impl PaintedBy<ImagePaint> for TriangleShape
-
-widget::IntoPaint
-    trait IntoPaint: ToPaint
 
 widget::Lerp
     trait Lerp: Sized
@@ -3560,7 +3562,7 @@ widget::RectShape
     struct RectShape: Clone, Copy, Debug, PaintedBy<IconPaint>, PaintedBy<ImagePaint>
         pub const fn at(self, rect: Rect) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
-        impl<P: IntoPaint> PaintedBy<P> for RectShape
+        impl<P: Into<Paint>> PaintedBy<P> for RectShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape
 
 widget::Shape
@@ -3634,7 +3636,7 @@ widget::TriangleShape
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
         pub const fn radius(self, radius: f32) -> Self
-        impl<P: IntoPaint> PaintedBy<P> for TriangleShape
+        impl<P: Into<Paint>> PaintedBy<P> for TriangleShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleShape
 
 widget::Widget

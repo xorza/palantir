@@ -13,10 +13,10 @@ use crate::primitives::paint::material::reduced_backdrop::{BackdropMode, Reduced
 use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::reduction::{Reduction, Reductions};
+use crate::shape;
 use crate::shape::Shape;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::record_store::RecordStore;
-use crate::shape::sealed::DrawWith as _;
 
 /// `material` lowered through effect 0, capturing, with its input staged in a store of its own.
 fn lowered(material: &Material) -> LoweredMaterial {
@@ -128,7 +128,7 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
     ] {
         for entry in ["rect", "chrome"] {
             let panic = std::panic::catch_unwind(|| match entry {
-                "rect" => Shape::rect().check(&Paint::NONE.with_material(material)),
+                "rect" => _ = shape::internals::check(&Shape::rect(), material),
                 _ => Chrome::NONE.with_material(material).validate(),
             })
             .expect_err(entry);

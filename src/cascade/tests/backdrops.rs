@@ -34,7 +34,7 @@ fn listed(scale: f32, rect: Rect, filter: Material) -> Listed {
 /// [`listed`] with the backdrop inside a canvas that clips to `clip` logical px square when some.
 fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: Material) -> Listed {
     listed_drawn(scale, clip, |ui| {
-        ui.add_shape(Shape::rect().at(rect), Paint::NONE.with_material(filter));
+        ui.add_shape(Shape::rect().at(rect), filter);
     })
 }
 
@@ -188,11 +188,7 @@ fn a_backdrops_lens_margin_is_its_own_shapes() {
     let shadowed = listed_drawn(1.0, None, |ui| {
         ui.add_shape(
             Shape::rect().at(Rect::new(40.0, 40.0, 100.0, 10.0)),
-            Paint::NONE.with_material(glass).with_shadow(Shadow::drop(
-                RgbaF32::BLACK,
-                Vec2::ZERO,
-                1.0,
-            )),
+            Paint::from(glass).with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 1.0)),
         );
     });
     assert_eq!(shadowed.backdrop.rect, Rect::new(36.0, 36.0, 108.0, 18.0));
@@ -208,7 +204,7 @@ fn a_backdrops_lens_margin_is_its_own_shapes() {
         ui.add_shape(
             Shape::triangle(Vec2::ZERO, Vec2::new(60.0, 0.0), Vec2::new(0.0, 60.0))
                 .at(Rect::new(40.0, 40.0, 60.0, 60.0)),
-            Paint::NONE.with_material(glass),
+            glass,
         );
     });
     assert_eq!(

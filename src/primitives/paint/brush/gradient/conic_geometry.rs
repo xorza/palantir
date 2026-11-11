@@ -3,9 +3,8 @@
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::Gradient;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
-use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::f32::consts::TAU;
 use std::hash;
@@ -48,33 +47,30 @@ impl Geometry for ConicGeometry {
 }
 
 impl ConicGradient {
-    /// General constructor.
+    /// A sweep around `center` from `start_angle` radians, one turn through `ramp`: `ramp` an array of colors
+    /// spread evenly, an array of [`Stop`](crate::Stop)s placed where they say, or a [`ColorRamp`].
     ///
     /// # Panics
     ///
-    /// As [`GradientStops::new`](crate::GradientStops::new).
+    /// As [`ColorRamp::new`](crate::ColorRamp::new).
     #[track_caller]
-    pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
-        Self::from_stops(
+    pub fn new(center: Vec2, start_angle: f32, ramp: impl Into<ColorRamp>) -> Self {
+        Self::from_ramp(
             ConicGeometry {
                 center,
                 start_angle,
             },
-            stops,
+            ramp.into(),
         )
     }
 
-    /// 2-stop shorthand: `c0` at `start_angle`, `c1` one turn on, swept around `center`.
+    /// About the center, from angle 0, pointing right.
     ///
     /// # Panics
     ///
-    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    /// As [`Self::new`].
     #[track_caller]
-    pub fn two_stop(center: Vec2, start_angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self {
-        Self::new(
-            center,
-            start_angle,
-            [Stop::new(0.0, c0), Stop::new(1.0, c1)],
-        )
+    pub fn centered(ramp: impl Into<ColorRamp>) -> Self {
+        Self::new(Vec2::splat(0.5), 0.0, ramp)
     }
 }

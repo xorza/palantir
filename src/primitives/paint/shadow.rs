@@ -85,15 +85,18 @@ impl Shadow {
         }
     }
 
+    /// An inset shadow of `color` inside the shape's boundary, blurred by `blur` (σ) and shifted
+    /// by `offset`, with no spread, as CSS's `box-shadow: inset …`.
+    pub const fn inset(color: RgbaF32, offset: Vec2, blur: f32) -> Self {
+        Self {
+            inset: true,
+            ..Self::drop(color, offset, blur)
+        }
+    }
+
     /// Inflates (positive) or deflates (negative) the source rect by `spread` logical px.
     pub const fn with_spread(mut self, spread: f32) -> Self {
         self.spread = spread;
-        self
-    }
-
-    /// Paints inside the shape boundary instead of outside it.
-    pub const fn inset(mut self) -> Self {
-        self.inset = true;
         self
     }
 

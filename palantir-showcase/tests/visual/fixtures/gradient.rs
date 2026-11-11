@@ -62,7 +62,7 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
                     );
                     ui.add_shape(
                         Shape::rect().at(rect),
-                        LinearGradient::two_stop(0.0, color, color),
+                        LinearGradient::horizontal([color, color]),
                     );
                 }
             });
@@ -99,7 +99,7 @@ fn a_gradient_samples_its_lut_at_texel_centers() {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(
                     Shape::rect().at(Rect::new(0.0, 0.0, 1024.0, 16.0)),
-                    LinearGradient::new(0.0, [Stop::new(0.25, red), Stop::new(0.25, blue)]),
+                    LinearGradient::horizontal([Stop::new(0.25, red), Stop::new(0.25, blue)]),
                 );
             });
         })
@@ -136,7 +136,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
                     Shape::rect()
                         .at(Rect::new(0.0, 0.0, 180.0, 100.0))
                         .corners(12.0),
-                    LinearGradient::two_stop(0.0, RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)),
+                    LinearGradient::horizontal([RgbaF32::hex(0xff5e44), RgbaF32::hex(0xfacc15)]),
                 );
             });
     });

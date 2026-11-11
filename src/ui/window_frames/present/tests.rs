@@ -963,7 +963,6 @@ mod cutout_census_tests {
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::paint::Paint;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
@@ -1011,11 +1010,11 @@ mod cutout_census_tests {
                             Shape::rect()
                                 .at(Rect::new(10.0 + 70.0 * card as f32, 40.0, 40.0, 30.0))
                                 .corners(8.0),
-                            Paint::NONE.with_shadow(Shadow {
+                            Shadow {
                                 color: RgbaF32::BLACK,
                                 blur: 4.0,
                                 ..Shadow::NONE
-                            }),
+                            },
                         );
                     }
                     let fill = if tick.get() {
@@ -1345,7 +1344,6 @@ mod escalation_tests {
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
-    use crate::primitives::paint::paint::Paint;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_buffer::backdrop_row::BackdropSource;
     use crate::renderer::render_plan::RenderPlan;
@@ -1404,7 +1402,7 @@ mod escalation_tests {
                 for i in 0..count {
                     ui.add_shape(
                         Shape::rect().at(Rect::new(20.0 + 40.0 * i as f32, 0.0, 8.0, SIDE)),
-                        Paint::NONE.with_material(Material::blur(2.0)),
+                        Material::blur(2.0),
                     );
                 }
             });
@@ -1659,7 +1657,6 @@ mod capture_path_tests {
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::material::Material;
-    use crate::primitives::paint::paint::Paint;
     use crate::renderer::frontend::Frontend;
     use crate::shape::Shape;
     use crate::ui::Ui;
@@ -1702,10 +1699,7 @@ mod capture_path_tests {
                         Shape::rect().at(Rect::new(0.0, 0.0, 4.0, 4.0)),
                         RgbaF32::WHITE,
                     );
-                    ui.add_shape(
-                        Shape::rect().at(backdrop),
-                        Paint::NONE.with_material(Material::blur(2.0)),
-                    );
+                    ui.add_shape(Shape::rect().at(backdrop), Material::blur(2.0));
                 });
         };
         let stamp = frames.stamp(&spec);
