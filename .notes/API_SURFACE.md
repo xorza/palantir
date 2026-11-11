@@ -3382,6 +3382,8 @@ widget::EffectPaint
         impl<U: EffectParams, K: EffectKind> EffectPaint<U, K>
             pub const fn new(name: EffectName<U, K>, params: U) -> Self
             pub fn images<const N: usize>(self, images: [ImageHandle; N]) -> Self
+        impl<U: EffectParams> EffectPaint<U, ColorEffect>
+            pub const fn outside(self, reach: f32) -> Self
         impl<U: EffectParams> EffectPaint<U, BackdropEffect>
             pub const fn blur(self, sigma: f32) -> Self
             pub const fn reach(self, px: f32) -> Self

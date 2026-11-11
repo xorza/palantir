@@ -348,6 +348,7 @@ pub(super) fn effect(b: &mut PaintCapture, r: Rect) {
                 images: Span::new(0, 0),
                 backdrop: None,
                 stage: None,
+                outside: None,
                 opacity: 1.0,
                 time: 0.0,
             },

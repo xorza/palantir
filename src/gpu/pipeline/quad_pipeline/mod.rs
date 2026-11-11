@@ -34,6 +34,7 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::quad_draw_row::QuadDrawRow;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
@@ -218,7 +219,10 @@ impl QuadPipeline {
     /// Draw `instances` of `form` through the pipeline bound.
     fn draw_fill<'a>(&'a self, rec: &mut PassRecorder<'a>, form: FillForm, instances: Range<u32>) {
         match self.shape_cells {
-            ShapeCells::Template => self.indices.draw(rec, form.shape(), instances),
+            ShapeCells::Template => {
+                self.indices
+                    .draw(rec, form.shape(), TemplateCover::Whole, instances);
+            }
             #[cfg(feature = "internals")]
             ShapeCells::OneQuad => rec.draw(0..4, instances),
         }

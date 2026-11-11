@@ -407,6 +407,7 @@ impl RecordStore {
             capture,
             reduced_transparency,
             images,
+            outside,
         } = paint;
         // Resolved and checked in every mode and before the empty test, so a logic error panics
         // whatever is reduced and wherever it lies.
@@ -440,8 +441,12 @@ impl RecordStore {
         if let Some(backdrop) = backdrop {
             backdrop.hash(&mut h);
         }
+        if let Some(reach) = outside {
+            h.write_u32(reach.to_bits());
+        }
         Some(ClosedPaint::Effect {
             backdrop,
+            outside,
             effect,
             params: self.stage_effect_params(params),
             images: self.stage_effect_images(images.iter().flatten()),

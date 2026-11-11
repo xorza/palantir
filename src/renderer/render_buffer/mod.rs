@@ -42,6 +42,7 @@ pub(crate) mod rounded_clip;
 pub(crate) mod row_spin;
 pub(crate) mod shape_form;
 pub(crate) mod shape_header;
+pub(crate) mod template_cover;
 pub(crate) mod text_batch;
 pub(crate) mod text_draw_row;
 

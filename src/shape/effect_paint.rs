@@ -50,6 +50,9 @@ pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     reduced_transparency: ReducedBackdrop,
     /// The images bound, in slot order, each slot past the last `None`.
     images: [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
+    /// A color effect's halo: how far past its shape it paints, logical px, outside the shape
+    /// alone; `None` paints over the shape.
+    outside: Option<f32>,
 }
 
 impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
@@ -61,6 +64,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
             capture: CaptureParams::ZERO,
             reduced_transparency: ReducedBackdrop::Ground,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
+            outside: None,
         }
     }
 
@@ -80,6 +84,25 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
         for (slot, image) in self.images.iter_mut().zip(images) {
             *slot = Some(image);
         }
+        self
+    }
+}
+
+impl<U: EffectParams> EffectPaint<U, ColorEffect> {
+    /// Paint outside the shape alone, out to `reach` past its edge: a halo, as a glow or a ring
+    /// around a card, which runs the effect nowhere under the shape. The effect still reads the
+    /// shape's own rect and corners, so `EffectInput::pos` lies outside `0..size`, and its
+    /// distance from the shape is the rounded rect's of `size` and `corners`; it should fade to
+    /// nothing by `reach`, past which the halo stops. Palantir cuts the shape's edge, antialiased,
+    /// whatever the effect returns there, as CSS draws an outset `box-shadow` outside the border
+    /// box alone. A rect or a circle; a triangle's halo panics, as its effect reads no corners.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `reach` is a [length](crate::widget::domain::length).
+    #[track_caller]
+    pub const fn outside(mut self, reach: f32) -> Self {
+        self.outside = Some(domain::length(reach));
         self
     }
 }
@@ -128,6 +151,7 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectPaint<U, K> {
             .field("capture", &self.capture)
             .field("reduced_transparency", &self.reduced_transparency)
             .field("images", &self.images)
+            .field("outside", &self.outside)
             .finish_non_exhaustive()
     }
 }
@@ -166,7 +190,12 @@ impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for TriangleSh
 /// An effect over a triangle: its `EffectInput` holds the triangle's covering rect, with no corners,
 /// and palantir clips the effect to the triangle.
 impl<U: EffectParams, K: EffectKind> sealed::DrawWith<EffectPaint<U, K>> for TriangleShape {
-    fn check(&self, _paint: &EffectPaint<U, K>) {}
+    /// Unless the paint paints over the triangle: its halo would need corners its effect reads
+    /// none of.
+    #[track_caller]
+    fn check(&self, paint: &EffectPaint<U, K>) {
+        assert!(paint.outside.is_none(), "a triangle's effect has no halo");
+    }
 
     fn draw<'a>(&'a self, paint: &'a EffectPaint<U, K>) -> Draw<'a> {
         Draw::Closed {
@@ -185,6 +214,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
             capture,
             reduced_transparency,
             images,
+            outside,
         } = self;
         ErasedEffectPaint {
             name: name.typed(),
@@ -193,6 +223,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
             capture: *capture,
             reduced_transparency: *reduced_transparency,
             images,
+            outside: *outside,
         }
     }
 }
@@ -207,4 +238,6 @@ pub(crate) struct ErasedEffectPaint<'a> {
     pub(crate) capture: CaptureParams,
     pub(crate) reduced_transparency: ReducedBackdrop,
     pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
+    /// A halo's reach, logical px; `None` paints over the shape.
+    pub(crate) outside: Option<f32>,
 }

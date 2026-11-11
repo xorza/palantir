@@ -7,7 +7,9 @@ use std::mem::offset_of;
 
 use crate::common::span::Span;
 use crate::effect::MAX_IMAGE_SLOTS;
-use crate::effect::contract::{BACKDROPS_GROUP, IMAGES_GROUP, TRIANGLE_OVERRIDE, WORDS_GROUP};
+use crate::effect::contract::{
+    BACKDROPS_GROUP, HALO_OVERRIDE, IMAGES_GROUP, TRIANGLE_OVERRIDE, WORDS_GROUP,
+};
 use crate::effect::effect_store::EffectModule;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
@@ -25,6 +27,7 @@ use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 
 /// The device effects build on, and the layouts every effect's pipeline builds over: the frame
 /// group, which holds the gradient atlas a material's box reads, the images at [`IMAGES_GROUP`]
@@ -118,8 +121,8 @@ const BLEND: wgpu::BlendState = wgpu::BlendState {
 };
 
 /// The effect's header, then its clock `(time, opacity, scale)`, its parameters' first word, its
-/// backdrop's row, its flags and a material's border width.
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = {
+/// backdrop's row, its flags, a material's border width and a halo's reach.
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = {
     let h = shape_template::HEADER_ATTRS;
     let at = shape_template::HEADER_LOCATIONS;
     [
@@ -153,6 +156,11 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = {
             at + 4,
             wgpu::VertexFormat::Float32,
             offset_of!(EffectInstance, border_width),
+        ),
+        vertex_attr(
+            at + 5,
+            wgpu::VertexFormat::Float32,
+            offset_of!(EffectInstance, reach),
         ),
     ]
 };
@@ -195,7 +203,12 @@ impl EffectDevice {
     pub(crate) fn ensure(&self, variant: &mut ClipVariant, target: EffectTarget<'_>) {
         let EffectTarget {
             module,
-            key: EffectKey { effect, form },
+            key:
+                EffectKey {
+                    effect,
+                    form,
+                    cover,
+                },
             format,
             halves,
         } = target;
@@ -203,13 +216,21 @@ impl EffectDevice {
             form != ShapeForm::Rect,
             "an effect draws its shape's template"
         );
+        assert!(
+            module.kind == KindId::Color || cover == TemplateCover::Whole,
+            "a halo is a color effect's"
+        );
         if halves.iter().all(|&clipping| variant.is_built(clipping)) {
             return;
         }
         let pinned = |on: bool| f64::from(u8::from(on));
-        let shape = [(TRIANGLE_OVERRIDE, pinned(form == ShapeForm::Triangle))];
+        let shape = [
+            (TRIANGLE_OVERRIDE, pinned(form == ShapeForm::Triangle)),
+            (HALO_OVERRIDE, pinned(cover == TemplateCover::Rim)),
+        ];
         let backdrop = [
             shape[0],
+            shape[1],
             (
                 "PALANTIR_DITHER_SRGB8",
                 pinned(format.is_srgb() && format.target_pixel_byte_cost() == Some(4)),
@@ -220,7 +241,7 @@ impl EffectDevice {
             KindId::Color => &shape,
             KindId::Backdrop => &backdrop,
         };
-        let label = format!("palantir.effect.{}.{form:?}", effect.0);
+        let label = format!("palantir.effect.{}.{form:?}.{cover:?}", effect.0);
         let shader = self
             .gpu
             .device
@@ -338,8 +359,8 @@ impl EffectPipeline {
     }
 
     /// Draw one batch, one `draw` per run of instances of one key over one set of images, each
-    /// through its key's pipeline with its form's vertices. A run whose image is not on the device
-    /// is skipped, as an image draw is.
+    /// through its key's pipeline with its form's vertices, a halo's rim alone. A run whose image
+    /// is not on the device is skipped, as an image draw is.
     pub(crate) fn draw_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
@@ -379,7 +400,8 @@ impl EffectPipeline {
                     backdrops.expect("a frame with a backdrop effect prepares its backdrops");
                 rec.group_once(BACKDROPS_GROUP, backdrops);
             }
-            self.indices.draw(rec, key.form, run.instances.u32_range());
+            self.indices
+                .draw(rec, key.form, key.cover, run.instances.u32_range());
         }
     }
 }
@@ -406,9 +428,11 @@ mod tests {
     use crate::primitives::identity::effect_id::EffectId;
     use crate::renderer::render_buffer::effect_draw_row::EffectKey;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
+    use crate::renderer::render_buffer::template_cover::TemplateCover;
 
     /// A color and a backdrop effect each build the halves of a box and of a triangle a target
     /// names, the clipless half first and the clipped one after it; a rect's one quad is refused.
+    /// A color effect builds a box's halo; a backdrop effect's halo is refused.
     #[test]
     fn an_effect_builds_the_half_its_target_names() {
         let gpu = headless_test_gpu();
@@ -429,15 +453,17 @@ mod tests {
                 spec(kind),
             )
             .unwrap();
-            let target = |form, halves| EffectTarget {
+            let covered = |form, cover, halves| EffectTarget {
                 module: &module,
                 key: EffectKey {
                     effect: EffectId(0),
                     form,
+                    cover,
                 },
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 halves,
             };
+            let target = |form, halves| covered(form, TemplateCover::Whole, halves);
             for form in [ShapeForm::Box, ShapeForm::Triangle] {
                 let mut variant = ClipVariant::NONE;
                 device.ensure(&mut variant, target(form, &[Clipping::Off]));
@@ -450,6 +476,19 @@ mod tests {
                 let mut rect = ClipVariant::NONE;
                 device.ensure(&mut rect, target(ShapeForm::Rect, &[Clipping::Off]));
             });
+            let mut halo = ClipVariant::NONE;
+            let rim = covered(ShapeForm::Box, TemplateCover::Rim, &[Clipping::Off]);
+            match kind {
+                KindId::Color => {
+                    device.ensure(&mut halo, rim);
+                    assert!(halo.is_built(Clipping::Off), "a color effect's halo");
+                }
+                KindId::Backdrop => {
+                    panic_probe::assert_panics_with("a halo is a color effect's", || {
+                        device.ensure(&mut halo, rim);
+                    });
+                }
+            }
         }
     }
 }

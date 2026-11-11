@@ -30,6 +30,9 @@ pub(crate) struct ClosedEffect {
     pub(crate) backdrop: Option<EffectCaptureDraw>,
     /// A material's stage around what the effect shows; `None` for an app's paint.
     pub(crate) stage: Option<MaterialStage>,
+    /// A color effect's halo, logical px past the shape, outside it alone; `None` paints over
+    /// the shape.
+    pub(crate) outside: Option<f32>,
     /// A paint animation's fade, which scales the coverage, a material's stage alike.
     pub(crate) opacity: f32,
     /// Seconds into the paint animation's pass, which the effect reads; 0 when unanimated.
@@ -85,6 +88,7 @@ impl ClosedEffect {
                 max_luminance: material.max_luminance(),
                 min_luminance: material.min_luminance(),
             }),
+            outside: None,
             opacity: 1.0,
             time: 0.0,
         }

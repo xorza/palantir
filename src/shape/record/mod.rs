@@ -276,6 +276,7 @@ fn hash_closed_paint(paint: &ClosedPaint, h: &mut Hasher) {
         ClosedPaint::Effect {
             content_hash,
             backdrop: _,
+            outside: _,
             effect: _,
             params: _,
             images: _,

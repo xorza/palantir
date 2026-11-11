@@ -34,6 +34,7 @@ use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::quad_draw_row::QuadKey;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use glam::{UVec2, Vec2};
@@ -586,6 +587,62 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     );
 }
 
+/// A halo at scale 2 lands as a rim's row, its shape its own and its reach in physical px, and is
+/// culled by what it covers. Over `(5, 6, 10, 8)` reaching 3, the row draws the rim of the box at
+/// `(10, 12, 20, 16)` out to 6. A box whose right edge lies 2 logical px left of the view, at
+/// `(−12, 20, 10, 8)`, reaches 1 px into it with a 3 px halo and lands; with a 1 px one it covers
+/// nothing on the view and is culled. A reach of 0.1, 0.2 physical, lands at the antialiasing
+/// reach, 0.5, so the outer half of the shape's edge draws whole.
+#[test]
+fn a_halo_lands_as_a_rim_culled_by_its_reach() {
+    let halo = |rect: Rect, outside: f32| DrawClosedPayload {
+        geometry: PlacedClosed::Box(PlacedBox {
+            rect,
+            corners: Corners::ZERO,
+        }),
+        spin: None,
+        paint: ClosedEffect {
+            effect: EffectId(3),
+            params: Span::new(0, 0),
+            images: Span::new(0, 0),
+            backdrop: None,
+            stage: None,
+            outside: Some(outside),
+            opacity: 1.0,
+            time: 0.0,
+        },
+    };
+    let buf = run(
+        |b, _arena| {
+            b.draw(halo(Rect::new(5.0, 6.0, 10.0, 8.0), 3.0), 1.0);
+            b.draw(halo(Rect::new(-12.0, 20.0, 10.0, 8.0), 3.0), 1.0);
+            b.draw(halo(Rect::new(-12.0, 20.0, 10.0, 8.0), 1.0), 1.0);
+            b.draw(halo(Rect::new(40.0, 6.0, 10.0, 8.0), 0.1), 1.0);
+        },
+        &params(2.0, UVec2::new(400, 400)),
+    );
+    let rim = EffectKey {
+        effect: EffectId(3),
+        form: ShapeForm::Box,
+        cover: TemplateCover::Rim,
+    };
+    assert_eq!(buf.effects.key(), [rim; 3]);
+    let rows: Vec<(Rect, f32)> = buf
+        .effects
+        .instance()
+        .iter()
+        .map(|instance| (instance.header.rect, instance.reach))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            (Rect::new(10.0, 12.0, 20.0, 16.0), 6.0),
+            (Rect::new(-24.0, 40.0, 20.0, 16.0), 6.0),
+            (Rect::new(80.0, 12.0, 20.0, 16.0), 0.5),
+        ]
+    );
+}
+
 /// An effect at scale 2 lands as one row: its rect in physical px, `(5, 6, 10, 8)` doubled to
 /// `(10, 12, 20, 16)`; its corners `(4, 6, 6, 4)` doubled to `(8, 12, 12, 8)`, then fitted as CSS
 /// fits them: the right side's two 12s sum 24 against its 16 px, so every radius scales by
@@ -609,6 +666,7 @@ fn an_effect_lands_as_one_physical_row() {
                         images: Span::new(4, 2),
                         backdrop: None,
                         stage: None,
+                        outside: None,
                         opacity: 1.0,
                         time: 1.25,
                     },
@@ -627,6 +685,7 @@ fn an_effect_lands_as_one_physical_row() {
             EffectKey {
                 effect: EffectId(3),
                 form: ShapeForm::Box,
+                cover: TemplateCover::Whole,
             },
             0
         )

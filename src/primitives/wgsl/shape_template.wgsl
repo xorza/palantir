@@ -265,6 +265,12 @@ fn palantir_template_coverage(region: u32, geo: vec2<f32>, ring_r: f32) -> f32 {
     return palantir_edge_coverage(palantir_template_distance(region, geo, ring_r));
 }
 
+// The coverage of what lies outside the shape at a fragment of its template's rings and bands,
+// the complement of `palantir_template_coverage` there: a halo's, which draws no interior.
+fn palantir_template_outside_coverage(region: u32, geo: vec2<f32>, ring_r: f32) -> f32 {
+    return palantir_edge_coverage(-palantir_template_distance(region, geo, ring_r));
+}
+
 // A box's straight `fill` under its border at a fragment of its template, premultiplied: the fill
 // alone in the interior, which lies inside past the border and every edge's reach, and
 // `palantir_composite` at the shape's distance elsewhere.

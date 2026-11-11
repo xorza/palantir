@@ -3,7 +3,8 @@
 // are logical px; colors are linear, premultiplied.
 
 struct EffectInput {
-    // The pixel's center from the effect rect's top-left.
+    // The pixel's center from the effect rect's top-left; outside `0..size` on a halo
+    // (`EffectPaint::outside`), whose rect is its shape's.
     pos: vec2<f32>,
     // The effect rect's size: a triangle's covering rect.
     size: vec2<f32>,

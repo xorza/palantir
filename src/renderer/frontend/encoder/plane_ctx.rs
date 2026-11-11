@@ -467,6 +467,7 @@ impl PlaneCtx<'_, '_> {
                     // backdrop effect the cascade lists not lies outside every clip.
                     ClosedPaint::Effect {
                         backdrop,
+                        outside,
                         effect,
                         params,
                         images,
@@ -494,6 +495,7 @@ impl PlaneCtx<'_, '_> {
                                     images: *images,
                                     backdrop,
                                     stage: None,
+                                    outside: *outside,
                                     opacity: 1.0,
                                     time: paint_mod.time,
                                 },

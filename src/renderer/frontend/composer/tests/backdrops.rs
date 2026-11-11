@@ -29,6 +29,7 @@ use crate::renderer::render_buffer::backdrop_row::{
 use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
@@ -159,6 +160,7 @@ fn a_backdrop_cuts_the_frame_at_its_barrier() {
             EffectKey {
                 effect: EffectId(0),
                 form: ShapeForm::Box,
+                cover: TemplateCover::Whole,
             },
             EffectInstance::MATERIAL
         )
@@ -330,6 +332,7 @@ fn a_material_over_the_ground_breaks_nothing() {
             EffectKey {
                 effect: EffectId(0),
                 form: ShapeForm::Box,
+                cover: TemplateCover::Whole,
             },
             EffectInstance::MATERIAL
         )
@@ -475,6 +478,7 @@ fn a_material_and_a_backdrop_effect_share_one_path() {
                         images: Span::default(),
                         backdrop: Some(read(1)),
                         stage: None,
+                        outside: None,
                         opacity: 1.0,
                         time: 0.0,
                     },

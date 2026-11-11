@@ -902,6 +902,110 @@ fn a_shape_clips_its_effect() {
     }
 }
 
+/// A halo paints outside its shape alone, out to its reach, the shape's edge cut by its outside
+/// coverage, over the linear ground `g = (0.2, 0.4, 0.6)`. With the over blend of
+/// `c = (0.4, 0.2, 0.1, 0.5)`, row 20 across a box from x 40 to 80 reaching 6 px:
+/// - columns 60 and 40, inside the box, column 40's center 0.5 inside its edge, where the
+///   outside coverage is `0.5 − 0.5 = 0`: the ground;
+/// - columns 39 and 34, past the edge and inside the reach, its outer side at 34: over,
+///   `c + g · 0.5 = (0.5, 0.4, 0.4)`; column 33, past the reach: the ground.
+///
+/// A circle of radius 16 about (116, 20) with a 4 px halo hugs its arc: the pixel centered at
+/// (103.5, 7.5), 17.68 px from the center, is over, and the one at (107.5, 11.5), 12.02 px from
+/// it, is inside the circle, the ground. The one at (104.5, 8.5), `11.5 · √2 = 16.263` px from
+/// it, 0.263 outside, takes the coverage 0.763: `0.763 · c + g · (1 − 0.763 · 0.5)`, `(0.4289,
+/// 0.4, 0.4474)`. A box of 20 × 20 at (130, 10) with a 6 px halo reads its
+/// own frame: the probe paints `(20 / 80, 20 / 80, 0)` at column 127, 3 px outside its left edge,
+/// where the grown rect would read 32 / 80.
+#[test]
+fn a_halo_paints_outside_its_shape_alone() {
+    let over = Blend {
+        color: [0.4, 0.2, 0.1, 0.5],
+        mode: 0,
+        pad0: 0,
+        pad1: 0,
+        pad2: 0,
+    };
+    let probe = Blend {
+        color: [0.0; 4],
+        mode: 4,
+        ..over
+    };
+    let got = painted(
+        |ui| {
+            ui.add_shape(
+                Shape::rect().at(Rect::new(40.0, 10.0, 40.0, 20.0)),
+                EffectPaint::new(BLEND, over).outside(6.0),
+            );
+            ui.add_shape(
+                Shape::circle().at(Rect::new(100.0, 4.0, 32.0, 32.0)),
+                EffectPaint::new(BLEND, over).outside(4.0),
+            );
+            ui.add_shape(
+                Shape::rect().at(Rect::new(130.0, 10.0, 20.0, 20.0)),
+                EffectPaint::new(BLEND, probe).outside(6.0),
+            );
+        },
+        &[
+            (60, 20),
+            (40, 20),
+            (39, 20),
+            (34, 20),
+            (33, 20),
+            (103, 7),
+            (107, 11),
+            (104, 8),
+            (127, 20),
+        ],
+    );
+    let ground = bytes(RgbaF32::new(0.2, 0.4, 0.6, 1.0));
+    let full = bytes(RgbaF32::new(0.5, 0.4, 0.4, 1.0));
+    let want = [
+        ground,
+        ground,
+        full,
+        full,
+        ground,
+        full,
+        ground,
+        bytes(RgbaF32::new(0.4289, 0.4, 0.4474, 1.0)),
+        bytes(RgbaF32::new(0.25, 0.25, 0.0, 1.0)),
+    ];
+    assert_eq!(got.len(), want.len());
+    for (i, (got, want)) in got.iter().zip(&want).enumerate() {
+        for lane in 0..4 {
+            assert!(
+                got[lane].abs_diff(want[lane]) <= 1,
+                "pixel {i}: got {got:?}, want {want:?}"
+            );
+        }
+    }
+}
+
+/// A triangle's effect reads no corners, so it has no halo.
+#[test]
+fn a_triangles_halo_panics() {
+    let mut h = Harness::new(UVec2::new(8, 8));
+    h.ui()
+        .load_effect(BLEND, EffectSource::new(BLEND_WGSL))
+        .unwrap();
+    let blend = Blend {
+        color: [0.0; 4],
+        mode: 0,
+        pad0: 0,
+        pad1: 0,
+        pad2: 0,
+    };
+    assert_panics_with("a triangle's effect has no halo", || {
+        h.frame(|ui| {
+            ui.add_shape(
+                Shape::triangle(Vec2::ZERO, Vec2::new(4.0, 4.0), Vec2::new(0.0, 4.0)),
+                EffectPaint::new(BLEND, blend).outside(2.0),
+            );
+        });
+    });
+}
+
 /// The flat ripple paints Compose's disc over the linear ground `g = (0.2, 0.4, 0.6)` of a 160 ×
 /// 40 rect, its color white at α 0.5, pressed at (20, 20) with Material's 0.225 s enter and 0.15 s
 /// exit, at each time a held pass sets:
@@ -1424,6 +1528,51 @@ fn a_moving_effect_damages_its_rect_alone() {
     assert_eq!(report.paint(), FramePaint::Partial);
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(rects, [Rect::new(1.5, 1.5, 7.0, 7.0)]);
+}
+
+/// A moving halo repaints its shape grown by its reach and the antialiasing reach: a loop over
+/// `(6, 6, 4, 4)` reaching 3 px, at scale 1, damages `(2.5, 2.5, 11, 11)` at 16 ms, `6 − 3 − 0.5`
+/// and `4 + 2 · 3 + 2 · 0.5`.
+#[test]
+fn a_moving_halo_damages_its_reach() {
+    let looping = PaintAnimation::clock()
+        .with_period(Duration::from_secs(2))
+        .with_repeat(PaintRepeat::Forever);
+    let record = |ui: &mut Ui| {
+        if let Some(shape) = ui.add_shape(
+            Shape::rect().at(Rect::new(6.0, 6.0, 4.0, 4.0)),
+            EffectPaint::new(BLEND, BLUE).outside(3.0),
+        ) {
+            shape.animate(looping);
+        }
+    };
+    let mut h = blend_window();
+    h.frame(record);
+    let report = h.at(Duration::from_millis(16)).frame(record);
+    assert_eq!(report.paint(), FramePaint::Partial);
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    assert_eq!(rects, [Rect::new(2.5, 2.5, 11.0, 11.0)]);
+}
+
+/// A halo's reach is part of its shape's content: a still halo over `(6, 6, 4, 4)` that grows its
+/// reach from 1 to 2 px repaints the larger rect, `(3.5, 3.5, 9, 9)`, which holds the last one;
+/// were the reach not hashed, the tree's rollups would hold and keep the last rect.
+#[test]
+fn a_halos_reach_is_its_content() {
+    let record = |reach: f32| {
+        move |ui: &mut Ui| {
+            ui.add_shape(
+                Shape::rect().at(Rect::new(6.0, 6.0, 4.0, 4.0)),
+                EffectPaint::new(BLEND, BLUE).outside(reach),
+            );
+        }
+    };
+    let mut h = blend_window();
+    h.frame(record(1.0));
+    let report = h.frame(record(2.0));
+    assert_eq!(report.paint(), FramePaint::Partial);
+    let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
+    assert_eq!(rects, [Rect::new(3.5, 3.5, 9.0, 9.0)]);
 }
 
 const PAIR: EffectName<()> = EffectName::named("pair").expect("the name fits");

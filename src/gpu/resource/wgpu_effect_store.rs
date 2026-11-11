@@ -12,6 +12,7 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 
 /// The [`EffectStore`] a host's registry loads through and its backend draws from. It keeps each
 /// effect's module, and builds the pipelines some use wants at one place, the start of a frame's
@@ -109,7 +110,7 @@ impl WgpuEffectStore {
         }
         let mut built = FormatEffects {
             format,
-            effects: vec![ClipVariant::NONE; modules.len() * ShapeForm::ALL.len()],
+            effects: vec![ClipVariant::NONE; modules.len() * EffectKey::FORMS],
         };
         for slot in wanted.ones() {
             let key = EffectKey::of_slot(slot);
@@ -232,7 +233,7 @@ impl EffectStore for WgpuEffectStore {
             id.idx() <= modules.len(),
             "the registry hands out ids in order"
         );
-        let slots = (modules.len() + 1) * ShapeForm::ALL.len();
+        let slots = (modules.len() + 1) * EffectKey::FORMS;
         if id.idx() == modules.len() {
             modules.push(module.clone());
             wanted.grow(slots);
@@ -245,8 +246,8 @@ impl EffectStore for WgpuEffectStore {
             module.clone_into(&mut modules[id.idx()]);
             // Each wanted form of an effect reloaded drops its pipelines, and builds its new
             // module at the next prepare.
-            for form in ShapeForm::ALL {
-                let key = EffectKey { effect: id, form };
+            let first = EffectKey::FORMS * id.idx();
+            for key in (first..first + EffectKey::FORMS).map(EffectKey::of_slot) {
                 if let Some(attached) = attached {
                     for built in &mut attached.formats {
                         built.effects[key.slot()] = ClipVariant::NONE;
@@ -263,6 +264,7 @@ impl EffectStore for WgpuEffectStore {
         self.state.borrow_mut().want(EffectKey {
             effect: id,
             form: ShapeForm::Box,
+            cover: TemplateCover::Whole,
         });
     }
 }
@@ -274,6 +276,7 @@ pub(crate) mod internals {
     use crate::primitives::identity::effect_id::EffectId;
     use crate::renderer::render_buffer::effect_draw_row::EffectKey;
     use crate::renderer::render_buffer::shape_form::ShapeForm;
+    use crate::renderer::render_buffer::template_cover::TemplateCover;
 
     impl WgpuEffectStore {
         /// Whether each loaded effect's pipeline of `form`, at its id, has the half `clipping`
@@ -285,6 +288,7 @@ pub(crate) mod internals {
                     let key = EffectKey {
                         effect: EffectId(u32::try_from(idx).unwrap()),
                         form,
+                        cover: TemplateCover::Whole,
                     };
                     self.built_alike(|format| &format.effects[key.slot()], clipping)
                 })

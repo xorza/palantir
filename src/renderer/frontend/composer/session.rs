@@ -55,6 +55,7 @@ use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::geometry::box_geometry::PlacedBox;
@@ -402,10 +403,18 @@ impl PaintSink for ComposeSession<'_> {
     fn effect(&mut self, p: DrawClosedPayload<ClosedEffect>) {
         let lowering = self.lowering();
         let scale = lowering.transform.physical_scale();
-        let shape = TemplateShape::of(p.geometry, p.spin, &lowering).turned(p.spin, &lowering);
+        let unturned = TemplateShape::of(p.geometry, p.spin, &lowering);
+        // A halo reaches past its shape, so it is culled, ordered and clipped by what it covers.
+        let halo = p.paint.outside.map(|outside| outside * scale);
+        let covered = halo.map(|reach| unturned.halo(reach, p.spin, &lowering));
+        let shape = unturned.turned(p.spin, &lowering);
         let border_width = p.paint.border().width * scale;
         let physical = shape.rect.physical;
-        let Some(visible) = self.ordering().cull(shape.rect.urect) else {
+        let Some(visible) = self.ordering().cull(
+            covered
+                .as_ref()
+                .map_or(shape.rect.urect, |covered| covered.urect),
+        ) else {
             return;
         };
         let look = p.paint.stage.map(|stage| MaterialLook {
@@ -463,11 +472,19 @@ impl PaintSink for ComposeSession<'_> {
             key: EffectKey {
                 effect: p.paint.effect,
                 form,
+                cover: if halo.is_some() {
+                    TemplateCover::Rim
+                } else {
+                    TemplateCover::Whole
+                },
             },
             images: p.paint.images,
             instance: EffectInstance {
                 header: shape.header(clip),
                 border_width,
+                // At least the antialiasing reach, so a halo draws the whole outer half of the
+                // shape's edge.
+                reach: halo.map_or(0.0, |reach| reach.max(AA_HALF_WIDTH)),
                 flags,
                 time: p.paint.time,
                 opacity: p.paint.opacity,

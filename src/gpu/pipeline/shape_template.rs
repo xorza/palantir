@@ -10,6 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::wgsl;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 use glam::Vec2;
 use std::mem::offset_of;
 use std::ops::Range;
@@ -26,8 +27,12 @@ const _: () = assert!(wgsl::ARC_SEGMENTS == 2);
 const fn triangle_count(n: u32) -> u32 {
     let rings = n * (2 * wgsl::ARC_SEGMENTS + 1);
     let bands = n * 4;
-    let interior = n * (wgsl::ARC_SEGMENTS + 1) - 2;
-    rings + bands + interior
+    rings + bands + interior_count(n)
+}
+
+/// The interior fan's triangles of the template of `n` corners, which its index buffer lists last.
+const fn interior_count(n: u32) -> u32 {
+    n * (wgsl::ARC_SEGMENTS + 1) - 2
 }
 
 /// The points of the template of `n` corners, each one vertex: per corner its ring's outer and
@@ -112,30 +117,40 @@ impl TemplateIndices {
         }
     }
 
-    /// Draw `instances` of `form`: a rect's strip of four, or its template, indexed.
+    /// Draw `instances` of `form`, `cover` of each: a rect's strip of four, or its template,
+    /// indexed.
     pub(crate) fn draw<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
         form: ShapeForm,
+        cover: TemplateCover,
         instances: Range<u32>,
     ) {
         match form {
-            ShapeForm::Rect => rec.draw(0..4, instances),
+            ShapeForm::Rect => {
+                debug_assert_eq!(cover, TemplateCover::Whole, "a rect's strip has no rim");
+                rec.draw(0..4, instances);
+            }
             ShapeForm::Box | ShapeForm::Triangle => {
                 rec.index(&self.buffer, wgpu::IndexFormat::Uint16);
-                rec.draw_indexed(Self::range(form), 0, instances);
+                rec.draw_indexed(Self::range(form, cover), 0, instances);
             }
         }
     }
 
-    /// Where `form`'s template lies in the buffer.
-    const fn range(form: ShapeForm) -> Range<u32> {
-        let box_end = BOX_INDEX_COUNT as u32;
-        match form {
-            ShapeForm::Box => 0..box_end,
-            ShapeForm::Triangle => box_end..box_end + TRIANGLE_INDEX_COUNT as u32,
+    /// Where `cover` of `form`'s template lies in the buffer: the interior's triangles last, so a
+    /// rim is the whole less them.
+    const fn range(form: ShapeForm, cover: TemplateCover) -> Range<u32> {
+        let (start, n) = match form {
+            ShapeForm::Box => (0, 4),
+            ShapeForm::Triangle => (BOX_INDEX_COUNT as u32, 3),
             ShapeForm::Rect => unreachable!(),
-        }
+        };
+        let triangles = match cover {
+            TemplateCover::Whole => triangle_count(n),
+            TemplateCover::Rim => triangle_count(n) - interior_count(n),
+        };
+        start..start + 3 * triangles
     }
 }
 
@@ -187,19 +202,41 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use crate::gpu::pipeline::shader_body::ShaderBody;
-    use crate::gpu::pipeline::shape_template::{self, INDICES, point_count, triangle_count};
+    use crate::gpu::pipeline::shape_template::{
+        self, INDICES, TemplateIndices, point_count, triangle_count,
+    };
     use crate::primitives::wgsl::SHAPE_TEMPLATE;
+    use crate::renderer::render_buffer::shape_form::ShapeForm;
+    use crate::renderer::render_buffer::template_cover::TemplateCover;
     use std::collections::BTreeSet;
 
     /// A box's template is 4 rings of 5 triangles, 4 bands of 4 and an interior fan of 10, over
     /// 64 points: per corner a ring's 4 outer and 3 inner, per edge a hexagon, and 3 inner points
-    /// a corner for the fan. A triangle's 3 rings, 3 bands and a fan of 7, over 21 + 18 + 9.
+    /// a corner for the fan. A triangle's 3 rings, 3 bands and a fan of 7, over 21 + 18 + 9. A rim
+    /// draws the rings and bands alone, the fan's triangles listed last: a box's 36 of 46, a
+    /// triangle's 27 of 34, from past the box's 138 indices.
     #[test]
     fn each_form_draws_its_template_over_its_points() {
         assert_eq!(triangle_count(4), 20 + 16 + 10);
         assert_eq!(point_count(4), 28 + 24 + 12);
         assert_eq!(triangle_count(3), 15 + 12 + 7);
         assert_eq!(point_count(3), 21 + 18 + 9);
+        assert_eq!(
+            TemplateIndices::range(ShapeForm::Box, TemplateCover::Whole),
+            0..138
+        );
+        assert_eq!(
+            TemplateIndices::range(ShapeForm::Box, TemplateCover::Rim),
+            0..108
+        );
+        assert_eq!(
+            TemplateIndices::range(ShapeForm::Triangle, TemplateCover::Whole),
+            138..240
+        );
+        assert_eq!(
+            TemplateIndices::range(ShapeForm::Triangle, TemplateCover::Rim),
+            138..219
+        );
     }
 
     /// Each triangle names the points `palantir_template_vertex` lays out, every point once at

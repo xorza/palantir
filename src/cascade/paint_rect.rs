@@ -328,15 +328,21 @@ impl PaintRectCtx<'_> {
                         ),
                         shape_clip,
                     ),
-                    // The box's rect, a circle's square, grown by the physical antialiasing reach
-                    // its stages draw, as a triangle's is.
+                    // The box's rect, a circle's square, grown by a halo's reach and by the
+                    // physical antialiasing reach its stages draw, as a triangle's is.
                     ShapeRecord::Closed {
                         geometry: ClosedGeometry::Box(geometry),
-                        paint: ClosedPaint::Effect { .. },
+                        paint: ClosedPaint::Effect { outside, .. },
                     } => clip_screen(
                         shape
                             .to_screen(
-                                spun_if_animated(geometry.place(layout_rect.size).rect, idx),
+                                spun_if_animated(
+                                    geometry
+                                        .place(layout_rect.size)
+                                        .rect
+                                        .inflated(outside.unwrap_or(0.0)),
+                                    idx,
+                                ),
                                 None,
                             )
                             .inflated(AA_HALF_WIDTH / display_scale),

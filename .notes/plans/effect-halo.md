@@ -101,10 +101,12 @@ runs a fragment where it paints nothing.
 - **The reach reaches every reader of the draw's rect**: the cascade's paint rect, the composer's
   cull, its order and its clip tests (`RoundedClip::holds`) take the shape's rect grown by the
   reach, which for a box's 90° corners bounds the outer chain exactly.
-- **A halo is a run of its own, not a pipeline**: the halo and the plain draws of one effect share
-  its pipeline; the instance carries the outer reach (physical px; the antialiasing reach for a
-  plain draw, which a material's border width already rides beside) and a `HALO` flag, and the run
-  key, not `EffectKey`, splits them for the shorter index range.
+- **A halo is a pipeline constant, as a form is**: `EffectKey` takes a `TemplateCover`, `Whole`
+  or `Rim`, beside its form, and a halo's pipeline pins `PALANTIR_HALO`, which folds its outer
+  reach from the instance and its outside coverage in; a plain draw's pipeline reads neither.
+  The instance carries the halo's reach in physical px. Refused, measured in step 3: the halo as a
+  bit of the instance's flags in one pipeline, whose every fragment then read the flags, a varying
+  more: the bench's plain glows +4.2 % on the apple, +1.0 % on the board.
 
 ## Steps
 
@@ -140,19 +142,31 @@ Each step lands on its own, with the gate green, and its own commit.
   On V3D every template vertex shader keeps its instruction count (`V3D_DEBUG=shaderdb`, 367 in
   binning, 441 to 505 rendering), the corner a fill works out twice folded into one.
 
-### 3. The halo
+### 3. The halo — done
 
-- `EffectPaint::<U, ColorEffect>::outside(reach)`, `reach` a length (`domain`), panicking past
-  its kind; `check` refuses a triangle.
-- Lowering carries the reach to `ClosedEffect`; `cascade/paint_rect.rs` and
-  `ComposeSession::effect` grow the shape's rect by it; `EffectInstance` takes the outer reach and
-  `HALO` (its pin in `internals::hot_struct_sizes` moves); the effect batch's run key takes the
-  flag; `palantir_vs` passes the outer reach and `palantir_fs` inverts the coverage on `HALO`.
-- The bench gains `halo`: the same glow with `.outside(REACH)` over the card, its shader reading
-  the card's frame.
-- Tests: the paint rect of a box's halo, hand-computed; a triangle's halo panics; on the GPU, a
-  halo's pixels against the `rect` glow with the box's outside coverage applied by hand, equal
-  outside the box, none inside it, half at a pixel the edge halves.
+- `EffectPaint::<U, ColorEffect>::outside(reach)`, `reach` a length (`domain`); a triangle's
+  halo panics in `check`.
+- The reach rides `ClosedPaint::Effect` (hashed into its content) and `ClosedEffect`;
+  `cascade/paint_rect.rs` grows the shape's rect by it; `ComposeSession::effect` culls, orders and
+  clips by the shape's rect grown by it (`TemplateShape::halo`) and writes a `Rim` key and the
+  reach in physical px, at least the antialiasing reach, to `EffectInstance::reach` (100 B, its
+  pin moved). `palantir_vs` takes the reach and `palantir_fs` the outside coverage
+  (`palantir_template_outside_coverage`) where `PALANTIR_HALO` is pinned; `TemplateIndices::draw`
+  takes the cover and draws a rim's rings and bands alone.
+- The bench gains `halo`, the glow as the card's halo over the card's own frame (`HaloGlow`).
+- Tests: on the GPU, a halo's pixels (inside its box, past its edge, at its reach, around a
+  circle's arc, and the effect reading its shape's frame); a moving halo's damage and a reach that
+  grows, each rect hand-computed; a triangle's halo panics; a halo's row at scale 2, culled by
+  its reach; a key's slot over form and cover; a color effect builds a halo and a backdrop
+  effect's is refused; the rim's index ranges.
+- Measured, ABBA against step 2 and the arms in one binary:
+
+  | case | apple | board |
+  | --- | --- | --- |
+  | `effect_pass/gpu/rect` → `halo` | 230 → 152.5 µs, −34 % | 12.48 → 7.84 ms, −37 % |
+  | the glows alone, less `none` | 160 → 82 µs, −49 % | 9.80 → 5.16 ms, −47 % |
+  | `effect_pass/gpu/rect` against step 2 | −0.1 to +1.7 % | −0.01 % |
+  | guard: main pass, frame | within the floor | −0.05 %, −0.29 % |
 
 ### 4. The ring
 

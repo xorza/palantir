@@ -44,11 +44,14 @@ pub(crate) enum ClosedPaint {
         desaturate: bool,
     },
     /// An app-written effect over the shape, which may exceed the owner. `params` indexes the
-    /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images
-    /// and its backdrop.
+    /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images,
+    /// its backdrop and its halo.
     Effect {
         /// What a backdrop effect reads under it; `None` for a color effect.
         backdrop: Option<EffectBackdrop>,
+        /// A color effect's halo, logical px past the shape, outside it alone; `None` paints over
+        /// the shape.
+        outside: Option<f32>,
         effect: EffectId,
         params: Span,
         /// Into `RecordStore::effect_images`.
@@ -86,7 +89,9 @@ impl NanCheck for ClosedPaint {
             }) => fill.has_nan() || border.has_nan() || shadow.has_nan() || material.has_nan(),
             Self::Image { tint, fit, .. } => tint.has_nan() || fit.has_nan(),
             Self::Icon { tint, .. } => tint.has_nan(),
-            Self::Effect { backdrop, .. } => backdrop.has_nan(),
+            Self::Effect {
+                backdrop, outside, ..
+            } => backdrop.has_nan() || outside.is_some_and(f32::is_nan),
         }
     }
 }

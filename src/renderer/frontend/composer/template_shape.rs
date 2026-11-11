@@ -80,6 +80,22 @@ impl TemplateShape {
         .turned(p.spin, lowering)
     }
 
+    /// The rect a halo reaching `reach` physical px past this unturned shape covers, turned as
+    /// the shape is by `spin`: what its draw is culled, ordered and clipped by. A box's outer
+    /// chain, at its corners' radii grown by the reach, stays inside its rect grown by the reach.
+    pub(super) fn halo(
+        &self,
+        reach: f32,
+        spin: Option<Spin>,
+        lowering: &Lowering<'_>,
+    ) -> ScaledRect {
+        let grown = self.rect.physical.inflated(reach);
+        match spin {
+            None => ScaledRect::from_physical(grown, lowering.display.physical),
+            Some(spin) => lowering.turned_rect(grown, spin),
+        }
+    }
+
     /// How `placed`'s edges round: a still box's to the display's pixels; a turned box's
     /// exactly, as its edges are not on the pixel grid, and a triangle's, which places itself to
     /// the sub-pixel.

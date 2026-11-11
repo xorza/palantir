@@ -65,6 +65,7 @@ fn quad_shapes_hash_apart() {
         }),
         paint: ClosedPaint::Effect {
             backdrop: None,
+            outside: None,
             effect: EffectId(0),
             params: Span::default(),
             images: Span::default(),

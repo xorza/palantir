@@ -24,6 +24,7 @@ use crate::primitives::wgsl;
 use crate::renderer::render_buffer::image_draw_row::ImageInstance;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
+use crate::renderer::render_buffer::template_cover::TemplateCover;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::mem::offset_of;
@@ -161,7 +162,8 @@ impl ImagePipeline {
             };
             rec.pipeline(pipelines(form));
             rec.group_once(IMAGE_GROUP, bind_group);
-            self.indices.draw(rec, form, run.instances.u32_range());
+            self.indices
+                .draw(rec, form, TemplateCover::Whole, run.instances.u32_range());
         }
     }
 }

@@ -88,6 +88,10 @@ pub(crate) const MATERIAL_FLAG: u32 = 1;
 /// points, where a box has four.
 pub(crate) const TRIANGLE_OVERRIDE: &str = "PALANTIR_TRIANGLE";
 
+/// The override constant that pins a pipeline to a halo, its template's rings and bands alone
+/// out to the instance's reach, under the shape's outside coverage.
+pub(crate) const HALO_OVERRIDE: &str = "PALANTIR_HALO";
+
 /// The group an effect's parameter words bind at, past the backdrops.
 pub(crate) const WORDS_GROUP: u32 = 3;
 

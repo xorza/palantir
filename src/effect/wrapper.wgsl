@@ -12,15 +12,21 @@ const PALANTIR_MATERIAL: u32 = /*{MATERIAL}*/;
 // decode folds its corner count: a triangle, three of the instance's points, or a box.
 override PALANTIR_TRIANGLE: bool;
 
+// Whether the pipeline draws a halo (`TemplateCover::Rim`), pinned as a constant: the template's
+// rings and bands alone, its outer chain the instance's reach out, under the shape's outside
+// coverage.
+override PALANTIR_HALO: bool;
+
 // One instance past its shape (`PalantirShapeIn`): its clock (`time`, `opacity`, `scale`), the word
-// its parameters start at, a backdrop effect's backdrop, its flags, and the border width a
-// material's box wears.
+// its parameters start at, a backdrop effect's backdrop, its flags, the border width a material's
+// box wears, and a halo's reach.
 struct PalantirInstance {
     @location(6) clock: vec3<f32>,
     @location(7) params: u32,
     @location(8) backdrop_idx: u32,
     @location(9) flags: u32,
     @location(10) border_width: f32,
+    @location(11) reach: f32,
 }
 
 struct PalantirVarying {
@@ -52,7 +58,13 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, instance:
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
     let s = palantir_shape_of(shape, select(4u, 3u, PALANTIR_TRIANGLE));
-    let t = palantir_template_vertex(palantir_fill_outlines(s, instance.border_width), vi);
+    // A halo's outer chain lies its reach past the shape, a whole template's the antialiasing
+    // reach.
+    var outlines = palantir_fill_outlines(s, instance.border_width);
+    if (PALANTIR_HALO) {
+        outlines.reach = instance.reach;
+    }
+    let t = palantir_template_vertex(outlines, vi);
     return PalantirVarying(
         palantir_clip_from_px(palantir_turned(pos + t.pos, pos + size * 0.5, rotation)),
         shape.rect,
@@ -87,8 +99,10 @@ fn palantir_fs(v: PalantirVarying) -> PalantirOut {
     let corners = select(v.corners, vec4<f32>(0.0), PALANTIR_TRIANGLE);
     let input = EffectInput(local / scale, v.rect.zw / scale, corners / scale, v.clock.x, scale);
     /*{BACKDROP_SET}*/let out = /*{CALL}*/;
-    /*{MATERIAL_BRANCH}*/let coverage = v.clock.y
-        * palantir_template_coverage(v.region, v.geo, v.ring_r)
-        * palantir_clip_coverage(palantir_frag_px(v.clip), v.chain);
+    /*{MATERIAL_BRANCH}*/var shape = palantir_template_coverage(v.region, v.geo, v.ring_r);
+    if (PALANTIR_HALO) {
+        shape = palantir_template_outside_coverage(v.region, v.geo, v.ring_r);
+    }
+    let coverage = v.clock.y * shape * palantir_clip_coverage(palantir_frag_px(v.clip), v.chain);
     return PalantirOut(out.color * coverage, vec4<f32>(1.0) - coverage * (vec4<f32>(1.0) - out.under));
 }

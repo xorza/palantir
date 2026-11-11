@@ -5,6 +5,8 @@
 //! - `none`: the cards alone, the floor;
 //! - `rect`: each card's glow an effect over the card grown by [`REACH`], so its fragment stage
 //!   runs under the card too, which is drawn over it;
+//! - `halo`: the same glow as the card's halo (`EffectPaint::outside`), which runs it outside the
+//!   card alone and reads the card's own frame;
 //! - `shadow`: each card's drop shadow reaching as far, the quad pipeline's grid around a hole,
 //!   for reference.
 //!
@@ -100,22 +102,77 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
 }
 ";
 
+/// The glow as a halo's: the same light measured from the card's own frame, which its input
+/// holds, its fade by the halo's reach, so it paints what [`GLOW`] does outside the card.
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
+#[repr(C)]
+struct HaloGlow {
+    color_a: [f32; 4],
+    color_b: [f32; 4],
+    reach: f32,
+    falloff: f32,
+    pad0: f32,
+    pad1: f32,
+}
+
+const HALO_GLOW: EffectName<HaloGlow> =
+    EffectName::named("bench halo glow").expect("the name fits");
+
+const HALO_GLOW_WGSL: &str = "
+struct Params {
+    color_a: vec4<f32>,
+    color_b: vec4<f32>,
+    reach: f32,
+    falloff: f32,
+    pad0: f32,
+    pad1: f32,
+}
+
+fn rounded_box(p: vec2<f32>, half: vec2<f32>, r: f32) -> f32 {
+    let q = abs(p) - half + vec2<f32>(r);
+    return length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+fn effect(input: EffectInput, params: Params) -> EffectOutput {
+    let p = input.pos - input.size * 0.5;
+    let d = rounded_box(p, input.size * 0.5, input.corners.x);
+    let outside = max(d, 0.0);
+    let band = saturate(1.5 - abs(d - 1.0) * input.scale);
+    let fade = exp(-outside / params.falloff) * saturate(1.0 - outside / params.reach);
+    let glow = max(fade * select(0.0, 0.8, d > 0.0), band);
+    let k = 0.5 + 0.5 * sin(atan2(p.y, p.x) + input.time);
+    let color = mix(params.color_a, params.color_b, k);
+    let a = color.a * glow;
+    return effect_over(vec4<f32>(color.rgb * a, a));
+}
+";
+
 /// How a card's glow is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GlowArm {
     None,
     Rect,
+    Halo,
     Shadow,
 }
 
 impl GlowArm {
-    const ALL: [Self; 3] = [Self::None, Self::Rect, Self::Shadow];
+    const ALL: [Self; 4] = [Self::None, Self::Rect, Self::Halo, Self::Shadow];
 
     const fn label(self) -> &'static str {
         match self {
             Self::None => "none",
             Self::Rect => "rect",
+            Self::Halo => "halo",
             Self::Shadow => "shadow",
+        }
+    }
+
+    /// The effect draws a frame of the arm makes.
+    const fn effects(self) -> usize {
+        match self {
+            Self::Rect | Self::Halo => CARDS,
+            Self::None | Self::Shadow => 0,
         }
     }
 }
@@ -131,13 +188,22 @@ fn card(i: usize) -> Rect {
 /// The scene's frame under `arm`: every card, with its glow drawn as the arm says.
 fn record(ui: &mut Ui, arm: GlowArm) {
     let fill = RgbaF32::srgb(0.2, 0.22, 0.26);
+    let (color_a, color_b, falloff) = ([0.2, 0.5, 1.0, 1.0], [0.95, 0.35, 0.55, 1.0], 8.0);
     let glow = Glow {
-        color_a: [0.2, 0.5, 1.0, 1.0],
-        color_b: [0.95, 0.35, 0.55, 1.0],
+        color_a,
+        color_b,
         inset: REACH,
         radius: RADIUS,
-        falloff: 8.0,
+        falloff,
         pad0: 0.0,
+    };
+    let halo = HaloGlow {
+        color_a,
+        color_b,
+        reach: REACH,
+        falloff,
+        pad0: 0.0,
+        pad1: 0.0,
     };
     let shadow = Shadow::drop(
         RgbaF32::new(0.0, 0.0, 0.0, 0.6),
@@ -160,6 +226,10 @@ fn record(ui: &mut Ui, arm: GlowArm) {
                             Shape::rect().at(card.inflated(REACH)),
                             EffectPaint::new(GLOW, glow),
                         );
+                        ui.add_shape(shape, fill);
+                    }
+                    GlowArm::Halo => {
+                        ui.add_shape(shape, EffectPaint::new(HALO_GLOW, halo).outside(REACH));
                         ui.add_shape(shape, fill);
                     }
                     GlowArm::Shadow => {
@@ -191,6 +261,10 @@ impl WholeFrames {
             .ui()
             .load_effect(GLOW, EffectSource::new(GLOW_WGSL))
             .expect("the bench's glow loads");
+        window
+            .ui()
+            .load_effect(HALO_GLOW, EffectSource::new(HALO_GLOW_WGSL))
+            .expect("the bench's halo glow loads");
         Self { window, odd: false }
     }
 
@@ -204,10 +278,9 @@ impl WholeFrames {
         let paint = self.window.frame(|ui| record(ui, arm)).paint();
         assert_eq!(paint, FramePaint::Full, "effect scene {}", arm.label());
         let effects = self.window.render_buffer().effects.len();
-        let want = if arm == GlowArm::Rect { CARDS } else { 0 };
         assert_eq!(
             effects,
-            want,
+            arm.effects(),
             "effect scene {}: its effect draws",
             arm.label()
         );
@@ -253,6 +326,7 @@ fn effect_pass_batch(c: &mut Criterion, backends: &Backends) {
     let mut group = Kind::Atomic.group(c, "effect_pass_batch", Scale::Frame);
     for (kind, arm) in [
         (BatchKind::Effect, GlowArm::Rect),
+        (BatchKind::Effect, GlowArm::Halo),
         (BatchKind::Shadows, GlowArm::Shadow),
     ] {
         let case = format!("{}/{}", kind.label(), arm.label());
