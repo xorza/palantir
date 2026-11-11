@@ -97,38 +97,68 @@ fn palantir_shape_corner(s: PalantirShape, i: u32) -> PalantirCorner {
 // template, so the triangles that share it share its arithmetic, and the rasterizer shades each
 // pixel along their shared edge once.
 //   - `PALANTIR_POINT_OUTER`, `j` in `0..=PALANTIR_ARC_SEGMENTS + 1`: the outer chain of corner
-//     `k`, `PALANTIR_AA_HALF_WIDTH` past its arc. The ends lie on the two normals; between them
-//     the vertices of the polygon that circumscribes the arc.
+//     `outer`, `reach` past its arc. The ends lie on the two normals; between them the vertices of
+//     the polygon that circumscribes the arc.
 //   - `PALANTIR_POINT_INNER`, `j` in `0..=PALANTIR_ARC_SEGMENTS`: the inner chain, inscribed in
-//     the arc `depth` inside the shape, or the arc's center where the corner is not that deep.
-//   - `PALANTIR_POINT_DEEP`: where the two edges' lines `depth` inside the shape meet, or the
+//     the arc of corner `inner` `depth` inside it, or the arc's center where the corner is not
+//     that deep.
+//   - `PALANTIR_POINT_DEEP`: where `inner`'s two edges' lines `depth` inside it meet, or the
 //     medial axis where the shape is not that deep.
 // The arc's directions are sums of unit vectors, normalized: `h` halves the sweep from `na` to
 // `nb`, and `na + h` and `h + nb` halve each half, `2 cos(sweep / 4)` long, so the circumscribing
 // vertex `reach / cos(sweep / 4)` out along one is that sum times `2 reach / |sum|²`. No
 // trigonometry, which V3D runs as long polynomials in each vertex; `wgsl::ARC_SEGMENTS` is 2 for
 // these forms.
-fn palantir_template_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, depth: f32) -> vec2<f32> {
+fn palantir_template_point(
+    inner: PalantirCorner,
+    outer: PalantirCorner,
+    inradius: f32,
+    kind: u32,
+    j: u32,
+    depth: f32,
+    reach: f32,
+) -> vec2<f32> {
     // The sharp corner's direction from the arc's center, scaled so the corner sits a unit
     // depth past both edges' lines.
-    let m = (k.na + k.nb) / (1.0 + dot(k.na, k.nb));
+    let m = (inner.na + inner.nb) / (1.0 + dot(inner.na, inner.nb));
     if (kind == PALANTIR_POINT_DEEP) {
-        return k.c + max(k.r - depth, k.r - inradius) * m;
+        return inner.c + max(inner.r - depth, inner.r - inradius) * m;
     }
-    let h = normalize(k.na + k.nb);
+    let h = normalize(inner.na + inner.nb);
     if (kind == PALANTIR_POINT_INNER) {
-        let dir = select(select(k.nb, h, j == 1u), k.na, j == 0u);
-        return k.c + max(k.r - depth, 0.0) * dir;
+        let dir = select(select(inner.nb, h, j == 1u), inner.na, j == 0u);
+        return inner.c + max(inner.r - depth, 0.0) * dir;
     }
-    let reach = k.r + PALANTIR_AA_HALF_WIDTH;
+    let out_r = outer.r + reach;
     if (j == 0u) {
-        return k.c + reach * k.na;
+        return outer.c + out_r * outer.na;
     }
     if (j == PALANTIR_ARC_SEGMENTS + 1u) {
-        return k.c + reach * k.nb;
+        return outer.c + out_r * outer.nb;
     }
-    let sum = select(h + k.nb, k.na + h, j == 1u);
-    return k.c + (2.0 * reach / dot(sum, sum)) * sum;
+    let h_out = normalize(outer.na + outer.nb);
+    let sum = select(h_out + outer.nb, outer.na + h_out, j == 1u);
+    return outer.c + (2.0 * out_r / dot(sum, sum)) * sum;
+}
+
+// The two outlines a template lies between: its inner chain `depth` inside `inner`, its outer
+// chain `reach` outside `outer`. `inner`'s corner count is both's, and the two share their
+// corners' normals, so the strip between the chains tiles the region. A region's distance is
+// measured from `inner`'s corners, the shape's own where the two share their corners' centers, as
+// a fill's and a halo's do; outlines that do not, a shadow's, leave it unread. A shape's fill is
+// `palantir_fill_outlines`.
+struct PalantirTemplateOutlines {
+    inner: PalantirShape,
+    depth: f32,
+    outer: PalantirShape,
+    reach: f32,
+};
+
+// The outlines of `s`'s fill under a border `border_width` wide: the inner chain past the border
+// and the antialiasing reach, where the interior returns the fill alone, the outer chain the
+// antialiasing reach past the edge.
+fn palantir_fill_outlines(s: PalantirShape, border_width: f32) -> PalantirTemplateOutlines {
+    return PalantirTemplateOutlines(s, border_width + PALANTIR_AA_HALF_WIDTH, s, PALANTIR_AA_HALF_WIDTH);
 }
 
 // The template's triangles, each corner's ring, each edge's band and the interior fan, draw
@@ -153,9 +183,10 @@ struct PalantirTemplateVertex {
     ring_r: f32,
 };
 
-// Point `u` of the template of `s`, whose border is `border_width` wide.
-fn palantir_template_vertex(s: PalantirShape, u: u32, border_width: f32) -> PalantirTemplateVertex {
-    let depth = border_width + PALANTIR_AA_HALF_WIDTH;
+// Point `u` of the template between `o`'s outlines.
+fn palantir_template_vertex(o: PalantirTemplateOutlines, u: u32) -> PalantirTemplateVertex {
+    let s = o.inner;
+    let depth = o.depth;
     let rings = s.n * PALANTIR_RING_POINTS;
     let bands = s.n * PALANTIR_BAND_POINTS;
     var out: PalantirTemplateVertex;
@@ -195,7 +226,15 @@ fn palantir_template_vertex(s: PalantirShape, u: u32, border_width: f32) -> Pala
         kind = select(PALANTIR_POINT_DEEP, PALANTIR_POINT_INNER, palantir_shape_corner(s, i).r >= depth);
     }
     let k = palantir_shape_corner(s, i);
-    out.pos = palantir_template_point(k, s.inradius, kind, j, depth);
+    out.pos = palantir_template_point(
+        k,
+        palantir_shape_corner(o.outer, i),
+        s.inradius,
+        kind,
+        j,
+        depth,
+        o.reach,
+    );
     out.ring_r = k.r;
     if (out.region == PALANTIR_REGION_RING) {
         out.geo = out.pos - k.c;

@@ -52,7 +52,7 @@ fn palantir_vs(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, instance:
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
     let s = palantir_shape_of(shape, select(4u, 3u, PALANTIR_TRIANGLE));
-    let t = palantir_template_vertex(s, vi, instance.border_width);
+    let t = palantir_template_vertex(palantir_fill_outlines(s, instance.border_width), vi);
     return PalantirVarying(
         palantir_clip_from_px(palantir_turned(pos + t.pos, pos + size * 0.5, rotation)),
         shape.rect,

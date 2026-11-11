@@ -110,24 +110,35 @@ runs a fragment where it paints nothing.
 
 Each step lands on its own, with the gate green, and its own commit.
 
-### 1. The bench
+### 1. The bench — done (`0669dfb16`)
 
 - `atomic/effect_pass/gpu/<arm>` and `atomic/effect_pass_batch/gpu/<kind>/<arm>`
   (`gpu/pipeline/effect_pipeline/bench.rs`), arms `none`, `rect` and `shadow`; it asserts each
-  arm's paint and its effect draws. Written; it lands first so base and candidate run the same
-  cases.
+  arm's paint and its effect draws.
 - `atomic/effect_pass` joins the GPU row of `palantir-showcase/benches/AGENTS.md`.
 
-### 2. The template between two outlines
+### 2. The template between two outlines — done
 
-- `palantir_template_vertex(inner, outer, u)`: the inner chain on `inner`'s corners, the outer
-  chain on `outer`'s, each corner worked out by `palantir_shape_corner`; a fill passes its shape
-  inset by its depth and grown by the antialiasing reach, as the one `depth` and the constant
-  reach do now.
-- `TemplateIndices` gains the rings-and-bands range beside the whole one.
-- Tests: the existing GPU cross-check holds every fill vertex bit for bit to its current output;
-  a probe of a halo's points against hand-computed ones, its outer chain `reach` past the shape;
-  `cargo visual` byte-identical.
+- `palantir_template_vertex(o, u)` over `PalantirTemplateOutlines { inner, depth, outer, reach }`:
+  the inner chain `depth` inside `inner`'s corners, the outer chain `reach` outside `outer`'s,
+  each corner worked out by `palantir_shape_corner`, the regions' distances `inner`'s. A fill's
+  outlines are `palantir_fill_outlines(s, border_width)`, its shape twice with the depth and the
+  reach the one `depth` and the constant reach were; the quad, the shaped image and the effect
+  wrapper take them.
+- The rings-and-bands range of `TemplateIndices` moves to step 3, where a halo first draws it, as
+  a range nothing draws would be dead code.
+- Tests: `a_halos_outlines_place_its_chains`, a probe of a halo's chains and distances against
+  hand-computed values, and of an outer outline moved apart from the inner; the cross-check against
+  the trigonometric template holds; `cargo visual` passes.
+- Not bit for bit, as planned: the rewrite is equal in IEEE arithmetic, but Apple's fast-math
+  compiler schedules it otherwise and moved 120 of 1,408 vertex lanes of six shapes by at most
+  1.8e-6 of the value (a one-off probe against the step-1 function), and one pixel of
+  `glass_matches_golden` by one level, whose local golden was rewritten. Guard, ABBA against
+  `284cf1c1e`: board `main_pass/gpu/scrolling` +0.02 %, `frame/gpu/scrolling` +0.00 %, `resizing`
+  −0.02 %, `effect_pass/gpu/*` within ±0.07 %; apple main pass −0.46 %, frames −0.09 and −0.20 %,
+  `effect_pass/gpu/*` −0.7 to +2.1 %, within its GPU floor, the shadow arm's pipeline untouched.
+  On V3D every template vertex shader keeps its instruction count (`V3D_DEBUG=shaderdb`, 367 in
+  binning, 441 to 505 rendering), the corner a fill works out twice folded into one.
 
 ### 3. The halo
 

@@ -316,7 +316,7 @@ fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
     s.p3 = q[1].zw;
     s.radius = q[2];
     s.inradius = q[3].x;
-    let now = palantir_template_vertex(s, u32(q[4].y), q[3].y);
+    let now = palantir_template_vertex(palantir_fill_outlines(s, q[3].y), u32(q[4].y));
     let then = before_vertex(s, u32(q[4].x), q[3].y);
     probe_out[id.x] = array<vec4<f32>, 4>(
         vec4<f32>(f32(now.region), now.ring_r, now.pos),
@@ -407,6 +407,116 @@ fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
                     "{at:?}: {now:?} {now_geo:?} against {then:?} {then_geo:?}",
                 );
             }
+        }
+    }
+
+    const OUTLINES_PROBE: &str = "
+@group(0) @binding(14) var<storage, read> probe_in: array<array<vec4<f32>, 4>>;
+@group(0) @binding(15) var<storage, read_write> probe_out: array<array<vec4<f32>, 2>>;
+@compute @workgroup_size(1)
+fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
+    let q = probe_in[id.x];
+    var inner: PalantirShape;
+    inner.n = 4u;
+    inner.p0 = vec2<f32>(0.0, 0.0);
+    inner.p1 = vec2<f32>(100.0, 0.0);
+    inner.p2 = vec2<f32>(100.0, 60.0);
+    inner.p3 = vec2<f32>(0.0, 60.0);
+    inner.radius = vec4<f32>(10.0);
+    inner.inradius = 30.0;
+    var outer = inner;
+    outer.p0 += q[1].xy;
+    outer.p1 += q[1].xy;
+    outer.p2 += q[1].xy;
+    outer.p3 += q[1].xy;
+    let v = palantir_template_vertex(
+        PalantirTemplateOutlines(inner, q[0].y, outer, q[0].z),
+        u32(q[0].x),
+    );
+    probe_out[id.x] = array<vec4<f32>, 2>(
+        vec4<f32>(f32(v.region), v.ring_r, v.pos),
+        vec4<f32>(v.geo, 0.0, 0.0),
+    );
+}
+";
+
+    /// A halo's outlines, on the GPU: a 100 × 60 box of radius 10 with its inner chain the
+    /// antialiasing reach, 0.5, inside its edge and its outer chain 20 past it, each value
+    /// hand-computed. The top-left corner's arc is centered at `(10, 10)` between the normals
+    /// `(−1, 0)` and `(0, −1)`; its outer chain runs at 30 from the center: the ends at
+    /// `(−20, 10)` and `(10, −20)`, and the two circumscribing points `2 · 30 / |s|² · s` out
+    /// along `s = n + h`, `h` the bisector `(−1, −1)/√2`, `|s|² = 2 + √2`, which reach
+    /// `(−20, 10 − 30(√2 − 1))` and its mirror. Its inner chain runs at `10 − 0.5`: `(0.5, 10)`,
+    /// `10 − 9.5/√2` on both axes, `(10, 0.5)`. A ring's `geo` is the point from the center. The
+    /// top band's outer ends lie 20 above the edge and its inner ones 0.5 below it, which its
+    /// distance reads as 20 and −0.5. An outer outline moved by `(5, 3)` moves the outer chain
+    /// alone.
+    #[test]
+    fn a_halos_outlines_place_its_chains() {
+        /// One point of the probe and what it should read.
+        #[derive(Clone, Copy, Debug)]
+        struct Case {
+            point: u32,
+            /// How far the outer outline moves from the inner.
+            shift: [f32; 2],
+            region: f32,
+            pos: [f32; 2],
+            geo: [f32; 2],
+        }
+        const RING: f32 = 2.0;
+        const BAND: f32 = 1.0;
+        let at = |point, shift, region, pos, geo| Case {
+            point,
+            shift,
+            region,
+            pos,
+            geo,
+        };
+        let quarter = 10.0 - 30.0 * (2f32.sqrt() - 1.0);
+        let inside = 10.0 - 9.5 / 2f32.sqrt();
+        let still = [0.0; 2];
+        let cases = [
+            at(0, still, RING, [-20.0, 10.0], [-30.0, 0.0]),
+            at(1, still, RING, [-20.0, quarter], [-30.0, quarter - 10.0]),
+            at(2, still, RING, [quarter, -20.0], [quarter - 10.0, -30.0]),
+            at(3, still, RING, [10.0, -20.0], [0.0, -30.0]),
+            at(4, still, RING, [0.5, 10.0], [-9.5, 0.0]),
+            at(5, still, RING, [inside; 2], [inside - 10.0; 2]),
+            at(6, still, RING, [10.0, 0.5], [0.0, -9.5]),
+            at(28, still, BAND, [10.0, -20.0], [20.0, 0.0]),
+            at(29, still, BAND, [90.0, -20.0], [20.0, 0.0]),
+            at(30, still, BAND, [90.0, 0.5], [-0.5, 0.0]),
+            at(33, still, BAND, [10.0, 0.5], [-0.5, 0.0]),
+            at(0, [5.0, 3.0], RING, [-15.0, 13.0], [-25.0, 3.0]),
+            at(4, [5.0, 3.0], RING, [0.5, 10.0], [-9.5, 0.0]),
+        ];
+        let inputs: Vec<[[f32; 4]; 4]> = cases
+            .iter()
+            .map(|c| {
+                [
+                    [c.point as f32, 0.5, 20.0, 0.0],
+                    [c.shift[0], c.shift[1], 0.0, 0.0],
+                    [0.0; 4],
+                    [0.0; 4],
+                ]
+            })
+            .collect();
+        let shader = ShaderBody {
+            label: "palantir.template",
+            wgsl: "",
+            includes: &[SHAPE_TEMPLATE],
+            constants: &[shape_template::CONSTANT],
+        };
+        let got: Vec<[[f32; 4]; 2]> = shader.probe(OUTLINES_PROBE, &inputs);
+        // Within 1e-5 of the larger of 1 and the value: the rounding of the f32 normalize and
+        // division, and of a GPU that compiles with fast math.
+        let near = |g: f32, w: f32| (g - w).abs() <= 1e-5 * w.abs().max(1.0);
+        for (c, [a, b]) in cases.iter().zip(got) {
+            assert_eq!([a[0], a[1]], [c.region, 10.0], "{c:?}: region, radius");
+            assert!(near(a[2], c.pos[0]), "{c:?}: x {}", a[2]);
+            assert!(near(a[3], c.pos[1]), "{c:?}: y {}", a[3]);
+            assert!(near(b[0], c.geo[0]), "{c:?}: geo x {}", b[0]);
+            assert!(near(b[1], c.geo[1]), "{c:?}: geo y {}", b[1]);
         }
     }
 }

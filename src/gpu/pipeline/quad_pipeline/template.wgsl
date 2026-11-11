@@ -36,7 +36,7 @@ fn vs_template(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: Qua
     let size = shape.rect.zw;
     let rotation = shape.inradius_rotation.y;
     let s = palantir_shape_of(shape, select(4u, 3u, form_is_triangle()));
-    let v = palantir_template_vertex(s, vi, quad.border_width);
+    let v = palantir_template_vertex(palantir_fill_outlines(s, quad.border_width), vi);
     var out: TemplateOut;
     out.region = v.region;
     out.geo = v.geo;

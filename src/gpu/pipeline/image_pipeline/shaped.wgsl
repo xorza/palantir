@@ -36,7 +36,7 @@ fn shaped_vertex(vi: u32, shape: PalantirShapeIn, in: VsIn, n: u32) -> ShapedOut
     let rect_min = shape.rect.xy;
     let rect_size = shape.rect.zw;
     // No border: the image covers the whole shape.
-    let v = palantir_template_vertex(palantir_shape_of(shape, n), vi, 0.0);
+    let v = palantir_template_vertex(palantir_fill_outlines(palantir_shape_of(shape, n), 0.0), vi);
     var out: ShapedOut;
     out.region = v.region;
     out.geo = v.geo;
