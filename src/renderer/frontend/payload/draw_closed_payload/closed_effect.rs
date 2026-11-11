@@ -54,8 +54,8 @@ pub(crate) enum EffectCaptureDraw {
 /// What palantir lays around a material's effect: the luminance bounds it holds what the effect
 /// shows to, then the box's fill, a color or a gradient, and its border over the whole shape. A
 /// material box's fill and border live here, not in a `ClosedFill`, as the material draws them in
-/// its own draw (`AGENTS.md`, "A box's fill reaches under its border; a material too, in one
-/// draw"); the two routes share one composite.
+/// its own draw (`src/shape/AGENTS.md`, "A box's fill reaches under its border, a material under
+/// both, in one draw"); the two routes share one composite.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MaterialStage {
     pub(crate) fill: GpuFill,

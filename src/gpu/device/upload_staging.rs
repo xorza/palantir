@@ -5,7 +5,7 @@ use wgpu::util::StagingBelt;
 /// A frame's upload staging: the staging belt for the uploads a chunk holds, and a buffer of its
 /// own for each larger one, dropped once the frame is submitted. wgpu's belt makes a chunk as
 /// large as an allocation that passes its chunk size and keeps every chunk it recalls for its
-/// life, so one frame's 32 MiB upload would stay mapped memory for the window's life; AGENTS.md's
+/// life, so one frame's 32 MiB upload would stay mapped memory for the window's life; `src/gpu/AGENTS.md`'s
 /// "Scratch decays" refuses that. Refused: rebuilding the belt after it sits idle, which still
 /// keeps the high-water mark for a window of frames and drops the small chunks every frame needs.
 #[derive(Debug)]

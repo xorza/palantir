@@ -1,7 +1,7 @@
 //! `DynamicBuffer`: a `wgpu::Buffer` plus power-of-two growth and decay. `upload_parts` grows
 //! the buffer when the parts exceed capacity and writes them from offset 0: through the staging belt, or
 //! into the new buffer as it is created on a grow frame. At the end of each expiry window it
-//! steps down to the window's peak, as AGENTS.md's "Scratch decays" asks of per-frame scratch:
+//! steps down to the window's peak, as `src/gpu/AGENTS.md`'s "Scratch decays" asks of per-frame scratch:
 //! one frame of a million glyph quads leaves no 32 MiB buffer for the window's life. No
 //! content-hash dedup: a belt memcpy is cheaper than FxHash of the same bytes, so gating by hash
 //! is net-negative.

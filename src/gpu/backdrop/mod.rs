@@ -54,8 +54,8 @@
 //!   quad of the box would, so the corners, border, AA, turn, window, rounded clips and scissors
 //!   hold as for any quad. A per-frame slot table carries each backdrop's atlas origin, lattice,
 //!   the bounds, the fill and the border (`MaterialLook`). Refused: a stage of palantir's own per
-//!   look, a second form of one thing; and, as `AGENTS.md` ("A box's fill reaches under its border;
-//!   a material too, in one draw") holds, the gradient as a quad above and a material stage compiled apart. Cost: an opaque quad over a material no longer prunes it, as the occlusion pruner reads quads,
+//!   look, a second form of one thing; and, as `src/shape/AGENTS.md` ("A box's fill reaches under its border,
+//!   a material under both, in one draw") holds, the gradient as a quad above and a material stage compiled apart. Cost: an opaque quad over a material no longer prunes it, as the occlusion pruner reads quads,
 //!   so a covered material captures and blurs.
 //! - **One glass, with its spectrum behind a branch.** The stock glass reads the spectrum only
 //!   where its lens disperses. Cost, not yet measured: before, glass of one index and glass that
