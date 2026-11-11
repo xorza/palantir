@@ -27,14 +27,14 @@ struct Listed {
 
 /// The one backdrop a frame of `filter` at `rect` lists, on a surface of 200² physical px at
 /// `scale`.
-fn listed(scale: f32, rect: Rect, filter: Material) -> Listed {
+fn listed(scale: f32, rect: Rect, filter: &Material) -> Listed {
     listed_under(scale, None, rect, filter)
 }
 
 /// [`listed`] with the backdrop inside a canvas that clips to `clip` logical px square when some.
-fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: Material) -> Listed {
+fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: &Material) -> Listed {
     listed_drawn(scale, clip, |ui| {
-        ui.add_shape(Shape::rect().at(rect), filter);
+        ui.add_shape(Shape::rect().at(rect), filter.clone());
     })
 }
 
@@ -70,7 +70,7 @@ fn listed_drawn(scale: f32, clip: Option<f32>, draw: impl Fn(&mut Ui)) -> Listed
 #[test]
 fn a_backdrop_lists_its_plan_and_footprint() {
     let Listed { backdrop, physical } =
-        listed(2.0, Rect::new(20.0, 20.0, 40.0, 20.0), Material::blur(5.0));
+        listed(2.0, Rect::new(20.0, 20.0, 40.0, 20.0), &Material::blur(5.0));
     let plan = BlurPlan::new(10.0);
     assert_eq!(plan.levels(), 2);
     assert_eq!(backdrop.plan, plan);
@@ -97,7 +97,7 @@ fn a_backdrops_plan_takes_its_sigma_unrounded() {
     let Listed { backdrop, .. } = listed(
         1.25,
         Rect::new(20.0, 20.0, 20.0, 20.0),
-        Material::blur(sigma),
+        &Material::blur(sigma),
     );
     assert_eq!(backdrop.plan, BlurPlan::new(physical));
 }
@@ -110,7 +110,7 @@ fn a_backdrop_past_every_plan_coerces_to_the_widest() {
     let Listed { backdrop, physical } = listed(
         2.0,
         Rect::new(20.0, 20.0, 40.0, 20.0),
-        Material::blur(65504.0).with_lens(Lens {
+        &Material::blur(65504.0).with_lens(Lens {
             thickness: 65504.0,
             refractive_index: 65504.0,
             ..Lens::WINDOW_GLASS
@@ -152,7 +152,7 @@ fn a_glass_backdrops_footprint_holds_what_its_lens_reads() {
             10,
         ),
     ] {
-        let Listed { physical, .. } = listed_under(1.0, clip, rect, glass);
+        let Listed { physical, .. } = listed_under(1.0, clip, rect, &glass);
         let rect = URect::covering(match clip {
             Some(side) => Rect::new(40.0, 40.0, side - 40.0, 60.0),
             None => rect,
@@ -188,7 +188,7 @@ fn a_backdrops_lens_margin_is_its_own_shapes() {
     let shadowed = listed_drawn(1.0, None, |ui| {
         ui.add_shape(
             Shape::rect().at(Rect::new(40.0, 40.0, 100.0, 10.0)),
-            Paint::from(glass).with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 1.0)),
+            Paint::from(glass.clone()).with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 1.0)),
         );
     });
     assert_eq!(shadowed.backdrop.rect, Rect::new(36.0, 36.0, 108.0, 18.0));
@@ -204,7 +204,7 @@ fn a_backdrops_lens_margin_is_its_own_shapes() {
         ui.add_shape(
             Shape::triangle(Vec2::ZERO, Vec2::new(60.0, 0.0), Vec2::new(0.0, 60.0))
                 .at(Rect::new(40.0, 40.0, 60.0, 60.0)),
-            glass,
+            glass.clone(),
         );
     });
     assert_eq!(

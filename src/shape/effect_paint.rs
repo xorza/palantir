@@ -5,11 +5,12 @@ use std::fmt;
 
 use crate::effect::MAX_IMAGE_SLOTS;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind, KindId};
+use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::{EffectName, TypedName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::math::domain;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::material::material_fallback::MaterialFallback;
 use crate::shape::PaintedBy;
 use crate::shape::circle::CircleShape;
 use crate::shape::draw::{ClosedPaintRef, Draw};
@@ -36,8 +37,9 @@ use crate::shape::triangle::TriangleShape;
 /// [`AddedShape::animate`](crate::widget::AddedShape::animate), [`PaintAnimation::clock`] when only
 /// the time moves; a turn turns it about its owner's center, as a quad turns. While motion or
 /// power use is reduced it paints the alternative its source names for it
-/// ([`ReducedPaint`](crate::ReducedPaint)); while transparency is reduced, a backdrop effect does
-/// what its [`reduced_transparency`](Self::reduced_transparency) says.
+/// ([`ReducedPaint`](crate::ReducedPaint)); while transparency is reduced, a backdrop effect paints
+/// its [fallback](Self::fallback) over its shape in its place, the theme's by default, as a
+/// [`Material`](crate::Material) does.
 ///
 /// [`PaintAnimation::clock`]: crate::widget::PaintAnimation::clock
 #[must_use]
@@ -46,8 +48,9 @@ pub struct EffectPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     params: U,
     /// What a backdrop effect reads under it; zero for a color effect, which reads none.
     capture: CaptureParams,
-    /// What a backdrop effect paints while transparency is reduced; a color effect reads none.
-    reduced_transparency: ReducedBackdrop,
+    /// What a backdrop effect paints in its place while transparency is reduced; `()` for a color
+    /// effect, which reads nothing under it.
+    fallback: K::Fallback,
     /// The images bound, in slot order, each slot past the last `None`.
     images: [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
     /// A color effect's halo: how far past its shape it paints, logical px, outside the shape
@@ -62,7 +65,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
             name,
             params,
             capture: CaptureParams::ZERO,
-            reduced_transparency: ReducedBackdrop::Ground,
+            fallback: K::FALLBACK,
             images: [const { None }; MAX_IMAGE_SLOTS as usize],
             outside: None,
         }
@@ -134,11 +137,11 @@ impl<U: EffectParams> EffectPaint<U, BackdropEffect> {
         self
     }
 
-    /// What the effect paints while transparency is reduced: by default it reads the window's
-    /// ground in place of what is painted under it ([`ReducedBackdrop::Ground`]), or it paints
-    /// nothing ([`ReducedBackdrop::Nothing`]). Neither captures or blurs.
-    pub const fn reduced_transparency(mut self, backdrop: ReducedBackdrop) -> Self {
-        self.reduced_transparency = backdrop;
+    /// Paint `fallback` over the shape in the effect's place while transparency is reduced, in
+    /// place of the theme's, as [`Material::with_fallback`](crate::Material::with_fallback) does;
+    /// [`Brush::TRANSPARENT`] paints nothing then.
+    pub fn fallback(mut self, fallback: impl Into<Brush>) -> Self {
+        self.fallback = MaterialFallback::Brush(fallback.into());
         self
     }
 }
@@ -148,7 +151,7 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectPaint<U, K> {
         f.debug_struct("EffectPaint")
             .field("name", &self.name)
             .field("capture", &self.capture)
-            .field("reduced_transparency", &self.reduced_transparency)
+            .field("fallback", &self.fallback)
             .field("images", &self.images)
             .field("outside", &self.outside)
             .finish_non_exhaustive()
@@ -229,16 +232,15 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
             name,
             params,
             capture,
-            reduced_transparency,
+            fallback,
             images,
             outside,
         } = self;
         ErasedEffectPaint {
             name: name.typed(),
-            kind: K::ID,
             params: bytemuck::bytes_of(params),
             capture: *capture,
-            reduced_transparency: *reduced_transparency,
+            fallback: K::fallback(fallback),
             images,
             outside: *outside,
         }
@@ -250,10 +252,10 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ErasedEffectPaint<'a> {
     pub(crate) name: TypedName,
-    pub(crate) kind: KindId,
     pub(crate) params: &'a [u8],
     pub(crate) capture: CaptureParams,
-    pub(crate) reduced_transparency: ReducedBackdrop,
+    /// A backdrop effect's fallback; `None` for a color effect, which reads nothing under it.
+    pub(crate) fallback: Option<&'a MaterialFallback>,
     pub(crate) images: &'a [Option<ImageHandle>; MAX_IMAGE_SLOTS as usize],
     /// A halo's reach, logical px; `None` paints over the shape.
     pub(crate) outside: Option<f32>,

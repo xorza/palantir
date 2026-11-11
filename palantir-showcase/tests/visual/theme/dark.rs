@@ -967,6 +967,7 @@ pub(super) fn theme() -> Theme {
             slant: FontSlant::Normal,
         },
         window_bg: RgbaF32::hex(0x14141a),
+        material_fallback: RgbaF32::hexa(0x26263af0),
         transition: AnimationSpec::THEME,
         panel_chrome: None,
         panel_clip: ClipMode::None,

@@ -10,7 +10,7 @@ use crate::primitives::effect::effect_params::EffectParams;
 
 /// An effect's WGSL, the image slots its shapes bind, and what paints while motion or power use is
 /// reduced. What a backdrop effect paints while transparency is reduced is each use's
-/// ([`ReducedBackdrop`](crate::ReducedBackdrop)).
+/// ([`MaterialFallback`](crate::MaterialFallback)).
 /// Consumed by [`Ui::load_effect`](crate::Ui::load_effect).
 ///
 /// The WGSL declares `fn effect(input: EffectInput, params: Params) -> EffectOutput`, where
@@ -136,7 +136,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
 /// is added, and a move of either preference records every window again. An alternative paints as
 /// itself: its own alternatives do not apply. Refused: a theme slot for each mode, which doubles
 /// every slot; a branch at each call site; transparency among them, as what a backdrop shows while
-/// it is reduced depends on each use's role ([`ReducedBackdrop`](crate::ReducedBackdrop)).
+/// it is reduced depends on each use's role ([`MaterialFallback`](crate::MaterialFallback)).
 pub enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect> {
     /// The effect itself, as cheap enough already.
     Same,

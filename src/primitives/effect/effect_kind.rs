@@ -38,9 +38,21 @@ mod sealed {
     )]
     pub trait Kind: 'static {
         const ID: KindId;
+        /// What a paint of the kind paints in its place while transparency is reduced: nothing
+        /// for a color effect, which reads nothing under it; a fallback for a backdrop effect.
+        type Fallback: Clone + fmt::Debug;
+
+        /// What a paint of the kind starts with: the theme's surface for a backdrop effect.
+        const FALLBACK: Self::Fallback;
+
+        /// The fallback `fallback` names; `None` for a color effect.
+        fn fallback(fallback: &Self::Fallback) -> Option<&MaterialFallback>;
     }
 
+    use std::fmt;
+
     use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
+    use crate::primitives::paint::material::material_fallback::MaterialFallback;
 
     #[expect(
         private_interfaces,
@@ -48,6 +60,13 @@ mod sealed {
     )]
     impl Kind for ColorEffect {
         const ID: KindId = KindId::Color;
+        type Fallback = ();
+
+        const FALLBACK: () = ();
+
+        fn fallback((): &()) -> Option<&MaterialFallback> {
+            None
+        }
     }
     #[expect(
         private_interfaces,
@@ -55,6 +74,13 @@ mod sealed {
     )]
     impl Kind for BackdropEffect {
         const ID: KindId = KindId::Backdrop;
+        type Fallback = MaterialFallback;
+
+        const FALLBACK: MaterialFallback = MaterialFallback::ThemeSurface;
+
+        fn fallback(fallback: &MaterialFallback) -> Option<&MaterialFallback> {
+            Some(fallback)
+        }
     }
 }
 

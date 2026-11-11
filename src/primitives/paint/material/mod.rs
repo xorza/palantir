@@ -45,25 +45,34 @@
 //! - **Linear light.** The capture, the blur and the composite run in linear light, as the rest
 //!   of the pipeline blends, so a blur keeps the energy of bright detail. Refused: blurring
 //!   sRGB-encoded values to imitate a browser's look.
-//! - **The default themes frost their floats, and reduced transparency reads the ground.** The
-//!   stock menus, popups, tooltips and modal wear `Metrics::float_material`, as WinUI's flyouts
-//!   wear acrylic. While transparency is reduced, by the system's setting or
-//!   `UiPreferences::transparency`, no capture or blur runs, and a material does what its
-//!   [`ReducedBackdrop`] says: by default its effect reads the window's ground, the clear color,
-//!   so the box is the material over a bare window, opaque, exact for any effect, with no color
-//!   for an author to pick in each scheme. Refused: the fill made opaque, which painted a light
-//!   fill white and an absent fill black; a fallback color per use, as WinUI's
-//!   `AcrylicBrush.FallbackColor` (<https://learn.microsoft.com/windows/apps/design/style/acrylic>),
-//!   which each app picks per scheme; a switch in the theme, as the choice is the person's or the
-//!   system's, as CSS's `prefers-reduced-transparency` is.
+//! - **The default themes frost their floats.** The stock menus, popups, tooltips and modal wear
+//!   `Metrics::float_material`, as WinUI's flyouts wear acrylic.
+//! - **Reduced transparency draws a material's box as a plain box.** While transparency is
+//!   reduced, by the system's setting or `UiPreferences::transparency`, no capture, blur or effect
+//!   runs: the box's fill and material give way to [`Material::fallback`], its border and shadow
+//!   as they are, one draw of the plain box pipeline, as WinUI's acrylic turns into its
+//!   `FallbackColor`, tint included
+//!   (<https://learn.microsoft.com/windows/apps/design/style/acrylic>), and a CSS author restyles
+//!   `background` under `prefers-reduced-transparency`. By default the fallback is the theme's
+//!   surface, `Theme::material_fallback`, its float surface translucent at the least alpha that
+//!   holds its text at 4.5:1 over any page ([`fallback_alpha`]), so a material reads as the theme
+//!   with no color to pick per scheme and stays readable where its luminance bounds, which hold ink
+//!   over a capture alone, no longer apply; a float's is its own panel at the least alpha that
+//!   holds its own ink; a scrim names its own dim. A brush, so a gradient look keeps one. Refused:
+//!   the fallback under the fill in the material's own draw, a stage branch, slot lanes and a stock
+//!   no-op effect for what one plain box draws; two draws, whose antialiased edges composite
+//!   twice; the effect over the window's ground, which drifted from the theme's colors and ran the
+//!   effect each frame; a choice of the ground or nothing, which named no color; a transparent
+//!   default, which leaves a box's ink unheld; a switch in the theme, as the choice is the
+//!   person's or the system's, as CSS's `prefers-reduced-transparency` is.
 //! - **A tween snaps the effect and blends the rest**, as a theme transition snaps a
 //!   [`PressEffect`](crate::PressEffect). An absent material blends through the target at rest
 //!   ([`Material::at_rest`]).
 
 pub(crate) mod lens;
 pub(crate) mod lens_optics;
+pub(crate) mod material_fallback;
 pub(crate) mod material_input;
-pub(crate) mod reduced_backdrop;
 
 use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
@@ -72,11 +81,12 @@ use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::libm_ext::Libm;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_fallback::MaterialFallback;
 use crate::primitives::paint::material::material_input::MaterialInput;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 
 /// A backdrop effect a box wears under its fill: the pixels painted before it in paint order,
 /// blurred by the capture's σ, shown through the effect, held within its luminance bounds, under
@@ -94,9 +104,9 @@ use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 /// Plain data, checked where it enters a shape or a [`Chrome`](crate::Chrome): `blur` is a
 /// [length](crate::widget::domain::length), each luminance bound a
 /// [factor](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
-/// packs into one, and the input holds its own checks. The effect must be loaded where the box
-/// records, as an [`EffectPaint`](crate::widget::EffectPaint)'s effect must.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+/// packs into one, the input and the fallback hold their own checks. The effect must be loaded
+/// where the box records, as an [`EffectPaint`](crate::widget::EffectPaint)'s effect must.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct Material {
     /// The backdrop effect that shows what the material reads.
@@ -131,14 +141,15 @@ pub struct Material {
         deserialize_with = "crate::primitives::math::domain::file::optional_lane_factor"
     )]
     pub min_luminance: Option<f32>,
-    /// What the material paints while transparency is reduced; [`ReducedBackdrop::Ground`] by
-    /// default.
-    #[serde(default, skip_serializing_if = "ReducedBackdrop::is_ground")]
-    pub reduced_transparency: ReducedBackdrop,
+    /// What the box paints in place of its fill while transparency is reduced, a plain box with
+    /// no material then: the theme's surface by default.
+    #[serde(default, skip_serializing_if = "MaterialFallback::is_theme_surface")]
+    pub fallback: MaterialFallback,
 }
 
 impl Material {
-    /// The effect `effect` reading `input`, sharp, with no luminance bound.
+    /// The effect `effect` reading `input`, sharp, with no luminance bound, falling back to the
+    /// theme's surface while transparency is reduced.
     pub const fn new(
         effect: EffectName<MaterialInput, BackdropEffect>,
         input: MaterialInput,
@@ -149,7 +160,7 @@ impl Material {
             input,
             max_luminance: None,
             min_luminance: None,
-            reduced_transparency: ReducedBackdrop::Ground,
+            fallback: MaterialFallback::ThemeSurface,
         }
     }
 
@@ -159,19 +170,11 @@ impl Material {
         Self::new(EffectName::BLUR, MaterialInput::IDENTITY).with_blur(sigma)
     }
 
-    /// Frosted glass: the pixels behind blurred by σ `sigma` logical px, their color deepened
-    /// by Apple's 1.8 and grained, so a fill over it reads as a material:
+    /// Frosted glass: the pixels behind blurred by σ `sigma` logical px, read through
+    /// [`MaterialInput::FROSTED`], so a fill over it reads as a material:
     /// [`EffectName::FROSTED`].
     pub const fn frosted(sigma: f32) -> Self {
-        Self::new(
-            EffectName::FROSTED,
-            MaterialInput {
-                saturation: 1.8,
-                noise: 0.04,
-                lens: Lens::NONE,
-            },
-        )
-        .with_blur(sigma)
+        Self::new(EffectName::FROSTED, MaterialInput::FROSTED).with_blur(sigma)
     }
 
     /// Clear glass: the pixels behind, sharp, seen through `lens`: [`EffectName::GLASS`];
@@ -210,9 +213,10 @@ impl Material {
         self
     }
 
-    /// This material reading `backdrop` while transparency is reduced.
-    pub const fn with_reduced_transparency(mut self, backdrop: ReducedBackdrop) -> Self {
-        self.reduced_transparency = backdrop;
+    /// This material falling back to `fallback` while transparency is reduced, in place of the
+    /// theme's surface: the box's fill then, with no material.
+    pub fn with_fallback(mut self, fallback: impl Into<Brush>) -> Self {
+        self.fallback = MaterialFallback::Brush(fallback.into());
         self
     }
 
@@ -244,20 +248,8 @@ impl Material {
     }
 
     /// [`Self::with_max_luminance_for`], or why it cannot hold `ink`.
-    pub(crate) fn max_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
-        let alpha = fill.a;
-        if !(0.0..1.0).contains(&alpha) {
-            return Err(InkBound::FillNotTranslucent { alpha });
-        }
-        let wanted = (ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05;
-        let Some(ground) = before_storing(wanted).filter(|&ground| ground >= ceiling_bend()) else {
-            return Err(InkBound::InkTooDark { ground: wanted });
-        };
-        let fill_luminance = fill.luminance();
-        if fill_luminance > ground {
-            return Err(InkBound::InkFailsOnFill);
-        }
-        Ok(self.with_max_luminance((ground - alpha * fill_luminance) / (1.0 - alpha)))
+    pub(crate) fn max_luminance_for(&self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
+        Ok(self.clone().with_max_luminance(ceiling_for(ink, fill)?))
     }
 
     /// This material with what it shows held to at least `luminance`, a relative luminance.
@@ -290,24 +282,13 @@ impl Material {
     }
 
     /// [`Self::with_min_luminance_for`], or why it cannot hold `ink`.
-    pub(crate) fn min_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
-        let alpha = fill.a;
-        if !(0.0..1.0).contains(&alpha) {
-            return Err(InkBound::FillNotTranslucent { alpha });
-        }
-        let Some(ground) = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05) else {
-            return Err(InkBound::InkFailsOnFill);
-        };
-        let fill_luminance = fill.luminance();
-        if fill_luminance < ground {
-            return Err(InkBound::InkFailsOnFill);
-        }
-        Ok(self.with_min_luminance(((ground - alpha * fill_luminance) / (1.0 - alpha)).max(0.0)))
+    pub(crate) fn min_luminance_for(&self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
+        Ok(self.clone().with_min_luminance(floor_for(ink, fill)?))
     }
 
     /// The bound that holds `ink` at 4.5:1 over any backdrop under `fill`: a ceiling for ink
     /// lighter than the fill, a floor for ink darker, or why neither can.
-    pub(crate) fn holding(self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
+    pub(crate) fn holding(&self, ink: RgbaF32, fill: RgbaF32) -> Result<Self, InkBound> {
         if ink.luminance() > fill.luminance() {
             self.max_luminance_for(ink, fill)
         } else {
@@ -317,7 +298,7 @@ impl Material {
 
     /// This material with no blur, its input at [`MaterialInput::IDENTITY`] and no bound: what an
     /// absent material blends through toward it, as an absent chrome blends through
-    /// `Chrome::NONE`. Its effect and its `reduced_transparency` stay.
+    /// `Chrome::NONE`. Its effect and its fallback stay.
     pub const fn at_rest(self) -> Self {
         Self {
             blur: 0.0,
@@ -328,8 +309,8 @@ impl Material {
         }
     }
 
-    /// Whether `blur` is a length, each luminance bound a factor, each a lane, and the input
-    /// valid: [`Self::validate`]'s test.
+    /// Whether `blur` is a length, each luminance bound a factor, each a lane, and the input and
+    /// the fallback valid: [`Self::validate`]'s test.
     #[inline]
     pub(crate) const fn is_valid(&self) -> bool {
         // An absent bound checks as 0, a factor; by hand, as `Option::unwrap_or` is not `const`.
@@ -344,10 +325,11 @@ impl Material {
             bound(self.max_luminance),
             bound(self.min_luminance),
         ]) & self.input.is_valid()
+            & self.fallback.is_valid()
     }
 
     /// Panics unless `blur` is a length, each luminance bound a factor, each a lane, and the
-    /// input valid.
+    /// input and the fallback valid.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
@@ -359,6 +341,7 @@ impl Material {
             domain::lane(domain::factor(luminance));
         }
         self.input.validate();
+        self.fallback.validate();
     }
 
     /// Coerce each blended value into its kind, as a curve overshooting below a floor leaves
@@ -371,6 +354,97 @@ impl Material {
         }
         self.input.coerce();
     }
+}
+
+/// The ceiling [`Material::with_max_luminance_for`] derives: the highest relative luminance what
+/// shows under `fill` may reach for `ink` to hold 4.5:1 on the composite, as an 8-bit target
+/// stores it; or why none can.
+fn ceiling_for(ink: RgbaF32, fill: RgbaF32) -> Result<f32, InkBound> {
+    let alpha = fill.a;
+    if !(0.0..1.0).contains(&alpha) {
+        return Err(InkBound::FillNotTranslucent { alpha });
+    }
+    let ground = brightest_ground(ink)?;
+    let fill_luminance = fill.luminance();
+    // A fill of no alpha covers nothing, so the ink reads on what shows under it alone.
+    if alpha > 0.0 && fill_luminance > ground {
+        return Err(InkBound::InkFailsOnFill);
+    }
+    Ok((ground - alpha * fill_luminance) / (1.0 - alpha))
+}
+
+/// The floor [`Material::with_min_luminance_for`] derives: the lowest relative luminance what
+/// shows under `fill` may reach for `ink` to hold 4.5:1 on the composite, as an 8-bit target
+/// stores it, 0 where the fill alone clears it; or why none can.
+fn floor_for(ink: RgbaF32, fill: RgbaF32) -> Result<f32, InkBound> {
+    let alpha = fill.a;
+    if !(0.0..1.0).contains(&alpha) {
+        return Err(InkBound::FillNotTranslucent { alpha });
+    }
+    let ground = darkest_ground(ink)?;
+    let fill_luminance = fill.luminance();
+    // A fill of no alpha covers nothing, so the ink reads on what shows under it alone.
+    if alpha > 0.0 && fill_luminance < ground {
+        return Err(InkBound::InkFailsOnFill);
+    }
+    Ok(((ground - alpha * fill_luminance) / (1.0 - alpha)).max(0.0))
+}
+
+/// The brightest level a composite may reach and still hold `ink`, lighter than it, at 4.5:1 as an
+/// 8-bit target stores it; or why no level is exact.
+fn brightest_ground(ink: RgbaF32) -> Result<f32, InkBound> {
+    let wanted = (ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05;
+    before_storing(wanted)
+        .filter(|&ground| ground >= ceiling_bend())
+        .ok_or(InkBound::InkTooDark { ground: wanted })
+}
+
+/// The darkest level a composite may reach and still hold `ink`, darker than it, at 4.5:1 as an
+/// 8-bit target stores it; or why none can, past white.
+fn darkest_ground(ink: RgbaF32) -> Result<f32, InkBound> {
+    after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05).ok_or(InkBound::InkFailsOnFill)
+}
+
+/// The least alpha at which `surface` holds `ink` at 4.5:1 over any page, as an 8-bit target
+/// stores the composite: the fallback a material's box draws as while transparency is reduced.
+/// What shows is the surface at `a` over the page, so a light ink is held over a white page,
+/// `a·Y(surface) + (1 − a) ≤ c`, and a dark one over a black page, `a·Y(surface) ≥ f`, with `c`
+/// and `f` the brightest and the darkest ground the ink holds on. Opaque where no alpha holds it:
+/// the surface itself is then the most the fallback can do, as a float the material cannot hold
+/// stays its opaque panel. The alpha rounds up to the 8-bit grid a theme file keeps a color on,
+/// and up again where its f16 would read lower, so the composite never lands past the bound.
+pub(crate) fn fallback_alpha(ink: RgbaF32, surface: RgbaF32) -> f32 {
+    let surface_luminance = surface.luminance();
+    let alpha = if ink.luminance() > surface_luminance {
+        match brightest_ground(ink) {
+            Ok(ceiling) if surface_luminance <= ceiling => {
+                (1.0 - ceiling) / (1.0 - surface_luminance)
+            }
+            _ => 1.0,
+        }
+    } else {
+        // Every darkest ground is at least `4.5 · 0.05 − 0.05 = 0.175`, so the division is safe.
+        match darkest_ground(ink) {
+            Ok(floor) if surface_luminance >= floor => floor / surface_luminance,
+            _ => 1.0,
+        }
+    };
+    grid_alpha_at_or_above(alpha.clamp(0.0, 1.0))
+}
+
+/// The least `k / 255` whose f16, as the GPU reads a color, is at least `alpha`, a fraction: the
+/// 8-bit grid a theme file keeps a color on, rounded up so the alpha it stores never reads lower.
+fn grid_alpha_at_or_above(alpha: f32) -> f32 {
+    debug_assert!(
+        (0.0..=1.0).contains(&alpha),
+        "an alpha is a fraction: {alpha}"
+    );
+    let mut step = (alpha * 255.0).ceil();
+    // Ends by 255, whose f16 is 1.
+    while half::f16::from_f32(step / 255.0).to_f32() < alpha {
+        step += 1.0;
+    }
+    step / 255.0
 }
 
 /// Why a luminance bound cannot hold an ink at 4.5:1 over any backdrop.
@@ -401,19 +475,18 @@ impl InkBound {
     }
 }
 
-/// `blur` and the input blend; the effect and `reduced_transparency` switch at `t = 0.5`, as two
-/// effects do not blend. An absent floor blends through 0, which lifts nothing; the ceiling
-/// switches at `t = 0.5`, as its neutral, no bound, is no lane value. A blend is coerced into the
-/// material's domain, as its coercion where it paints.
+/// `blur`, the input and the fallback blend, the fallback as a [`MaterialFallback`] does; the
+/// effect switches at `t = 0.5`, as two effects do not blend. An absent floor blends through 0,
+/// which lifts nothing; the ceiling switches at `t = 0.5`, as its neutral, no bound, is no lane
+/// value. A blend is coerced into the material's domain, as its coercion where it paints.
 impl Lerp for Material {
     #[inline]
     fn lerp(a: &Self, b: &Self, t: f32) -> Self {
-        let (a, b) = (*a, *b);
         if t == 0.0 {
-            return a;
+            return a.clone();
         }
         if t == 1.0 {
-            return b;
+            return b.clone();
         }
         let snap = if t < 0.5 { a } else { b };
         let mut blend = Self {
@@ -425,7 +498,7 @@ impl Lerp for Material {
                 (None, None) => None,
                 (a, b) => Some(f32::lerp(&a.unwrap_or(0.0), &b.unwrap_or(0.0), t)),
             },
-            reduced_transparency: snap.reduced_transparency,
+            fallback: MaterialFallback::lerp(&a.fallback, &b.fallback, t),
         };
         blend.coerce();
         blend
@@ -438,16 +511,16 @@ impl Lerp for Option<Material> {
     #[inline]
     fn lerp(a: &Self, b: &Self, t: f32) -> Self {
         if t == 0.0 {
-            return *a;
+            return a.clone();
         }
         if t == 1.0 {
-            return *b;
+            return b.clone();
         }
-        match (*a, *b) {
+        match (a, b) {
             (None, None) => None,
-            (Some(a), Some(b)) => Some(Material::lerp(&a, &b, t)),
-            (Some(a), None) => Some(Material::lerp(&a, &a.at_rest(), t)),
-            (None, Some(b)) => Some(Material::lerp(&b.at_rest(), &b, t)),
+            (Some(a), Some(b)) => Some(Material::lerp(a, b, t)),
+            (Some(a), None) => Some(Material::lerp(a, &a.clone().at_rest(), t)),
+            (None, Some(b)) => Some(Material::lerp(&b.clone().at_rest(), b, t)),
         }
     }
 }
@@ -457,11 +530,11 @@ impl Lerp for Option<Material> {
 impl Animatable for Option<Material> {
     #[inline]
     fn sub(&self, other: &Self) -> Self {
-        let (a, b) = match (*self, *other) {
+        let (a, b) = match (self, other) {
             (None, None) => return None,
-            (Some(a), Some(b)) => (a, b),
-            (Some(a), None) => (a, a.at_rest()),
-            (None, Some(b)) => (b.at_rest(), b),
+            (Some(a), Some(b)) => (a.clone(), b.clone()),
+            (Some(a), None) => (a.clone(), a.clone().at_rest()),
+            (None, Some(b)) => (b.clone().at_rest(), b.clone()),
         };
         Some(Material {
             blur: a.blur - b.blur,
@@ -475,10 +548,10 @@ impl Animatable for Option<Material> {
     }
     #[inline]
     fn add(&self, other: &Self) -> Self {
-        let Some(offset) = *other else {
-            return *self;
+        let Some(offset) = other else {
+            return self.clone();
         };
-        let base = self.unwrap_or_else(|| offset.at_rest());
+        let base = self.clone().unwrap_or_else(|| offset.clone().at_rest());
         Some(Material {
             blur: base.blur + offset.blur,
             input: MaterialInput {
@@ -491,7 +564,7 @@ impl Animatable for Option<Material> {
     }
     #[inline]
     fn scale(&self, k: f32) -> Self {
-        self.map(|m| Material {
+        self.clone().map(|m| Material {
             blur: m.blur * k,
             input: MaterialInput {
                 saturation: m.input.saturation * k,
@@ -503,7 +576,7 @@ impl Animatable for Option<Material> {
     }
     #[inline]
     fn magnitude_squared(&self) -> f32 {
-        self.map_or(0.0, |m| {
+        self.as_ref().map_or(0.0, |m| {
             m.blur * m.blur
                 + m.input.saturation * m.input.saturation
                 + m.input.noise * m.input.noise
@@ -527,7 +600,7 @@ impl Animatable for Option<Material> {
     clippy::trivially_copy_pass_by_ref,
     reason = "serde's `skip_serializing_if` hands the field by reference"
 )]
-fn is_sharp(sigma: &f32) -> bool {
+pub(crate) fn is_sharp(sigma: &f32) -> bool {
     *sigma == 0.0
 }
 
@@ -537,6 +610,7 @@ impl NanCheck for Material {
             || self.max_luminance.is_some_and(f32::is_nan)
             || self.min_luminance.is_some_and(f32::is_nan)
             || self.input.has_nan()
+            || self.fallback.has_nan()
     }
 }
 

@@ -1,4 +1,5 @@
-//! Reduced transparency, as the system asks or a preference picks: every backdrop paints solid.
+//! Reduced transparency, as the system asks or a preference picks: every material paints its
+//! fallback, with no capture or blur.
 
 use glam::UVec2;
 
@@ -8,15 +9,15 @@ use crate::host::harness::harness_builder::Depth;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::ui::Ui;
 use crate::ui::ui_preferences::UiPreferences;
 use crate::widget_core::configure::Configure;
@@ -25,14 +26,15 @@ use crate::widgets::panel::Panel;
 const SURFACE: UVec2 = UVec2::new(200, 100);
 
 /// A frosted panel's material captures what is under it under full transparency. The system's ask
-/// records the next frame again with the material over the ground, which captures nothing, a pick
-/// of full over that ask brings the capture back, and a pick of reduced over a system that asks
-/// nothing takes it away again.
+/// records the next frame again with the material painting its fallback, which captures nothing,
+/// a pick of full over that ask brings the capture back, and a pick of reduced over a system that
+/// asks nothing takes it away again.
 #[test]
-fn reduced_transparency_records_every_backdrop_solid() {
+fn reduced_transparency_records_every_material_by_its_fallback() {
     let id = WidgetId::from_hash("backdrop");
-    let backdrop =
-        Chrome::new(RgbaF32::hex(0x204060).with_alpha8(184)).with_material(Material::frosted(20.0));
+    let panel = RgbaF32::hex(0x204060);
+    let backdrop = Chrome::new(panel.with_alpha8(184))
+        .with_material(Material::frosted(20.0).with_fallback(panel));
     let record = |ui: &mut Ui| {
         Panel::vstack()
             .id(id)
@@ -43,7 +45,7 @@ fn reduced_transparency_records_every_backdrop_solid() {
     let filtered = |h: &Harness| {
         let node = h.node_of(id).expect("the backdrop recorded").node;
         let row = h.ui().tree(Layer::Main).chrome(node).expect("a chrome row");
-        row.material.is_some_and(LoweredMaterial::captures)
+        row.material.is_some()
     };
     let mut h = Harness::mono(SURFACE);
     h.prime(2, record);
@@ -77,17 +79,16 @@ fn reduced_transparency_records_every_backdrop_solid() {
     assert!(!filtered(&h), "a pick of reduced");
 }
 
-/// While transparency is reduced a material reads the window's ground, the clear, in place of what
-/// is painted under it, and runs no blur: over a red square, a blurred backdrop under a
-/// quarter-white fill paints the bytes the same backdrop paints at full transparency over nothing,
-/// where it reads the clear. One that asks for nothing then paints its fill over the red square, as
-/// a plain translucent rect does. The square stops short of the window's edge, so it folds into no
-/// clear.
+/// While transparency is reduced a material's box draws as a plain box of its fallback, its fill
+/// gone, and runs no blur: over a red square, a quarter-white box falling back to opaque blue paints
+/// the bytes a plain blue rect does; one falling back to half black those of a plain half-black
+/// rect; one falling back to a gradient those of a rect of that gradient; and one falling back to
+/// nothing paints none, the red showing. The square stops short of the window's edge, so it folds
+/// into no clear.
 #[test]
-fn a_material_reads_the_ground_while_transparency_is_reduced() {
+fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced() {
     let gpu = headless_test_gpu();
     let fill = RgbaF32::WHITE.with_alpha(0.25);
-    let blur = Material::blur(4.0);
     let paint = |reduced: bool, under: bool, chrome: Chrome| {
         let mut h = Harness::builder(UVec2::new(32, 16))
             .mono()
@@ -110,14 +111,31 @@ fn a_material_reads_the_ground_while_transparency_is_reduced() {
         });
         (h.read_back().get_pixel(12, 8).0, h.backdrop_blurs())
     };
-    let (ground, blurs) = paint(true, true, Chrome::new(fill).with_material(blur));
-    assert_eq!(blurs, 0, "the ground needs no blur");
-    let (over_nothing, _) = paint(false, false, Chrome::new(fill).with_material(blur));
-    assert_eq!(ground, over_nothing);
-    let (red, _) = paint(false, true, Chrome::new(RgbaF32::TRANSPARENT));
-    assert_ne!(ground, red, "the ground is no red");
-    let dim = blur.with_reduced_transparency(ReducedBackdrop::Nothing);
-    let (kept, _) = paint(true, true, Chrome::new(fill).with_material(dim));
-    let (plain, _) = paint(false, true, Chrome::new(fill));
-    assert_eq!(kept, plain);
+    let reduced = |fallback: Brush| {
+        paint(
+            true,
+            true,
+            Chrome::new(fill).with_material(Material::blur(4.0).with_fallback(fallback)),
+        )
+    };
+    let plain = |brush: Brush| paint(false, true, Chrome::new(brush)).0;
+    let blue: Brush = RgbaF32::new(0.0, 0.0, 1.0, 1.0).into();
+    let (opaque, blurs) = reduced(blue.clone());
+    assert_eq!(blurs, 0, "a fallback needs no blur");
+    assert_eq!(opaque, plain(blue), "an opaque fallback");
+    let half_black: Brush = RgbaF32::BLACK.with_alpha(0.5).into();
+    assert_eq!(
+        reduced(half_black.clone()).0,
+        plain(half_black),
+        "a translucent one"
+    );
+    let ramp: Brush = LinearGradient::horizontal([
+        RgbaF32::new(1.0, 0.0, 0.0, 1.0),
+        RgbaF32::new(0.0, 0.0, 1.0, 1.0),
+    ])
+    .into();
+    assert_eq!(reduced(ramp.clone()).0, plain(ramp), "a gradient");
+    let red = plain(Brush::TRANSPARENT);
+    assert_eq!(reduced(Brush::TRANSPARENT).0, red, "nothing");
+    assert_ne!(opaque, red, "the fallback hides the red");
 }

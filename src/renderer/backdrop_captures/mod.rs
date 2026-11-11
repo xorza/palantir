@@ -46,7 +46,7 @@ use crate::display::Display;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{BackdropCapture, BackdropRead};
+use crate::renderer::render_buffer::backdrop_row::BackdropCapture;
 use crate::renderer::render_plan::RenderPlan;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
@@ -117,7 +117,7 @@ pub(crate) enum Settled {
 
 /// One window's backdrop ledger: the captures its backdrops hold, and this frame's
 /// [`BackdropTicket`]s. The backend keeps the results and follows each row's
-/// [`read`](crate::renderer::render_buffer::backdrop_row::BackdropRow::read).
+/// [`source`](crate::renderer::render_buffer::backdrop_row::BackdropRow::source).
 #[derive(Debug, Default)]
 pub(crate) struct BackdropCaptures {
     held: FxHashMap<BackdropKey, Held>,
@@ -217,15 +217,10 @@ impl BackdropCaptures {
         }
         let surface = buffer.display.physical;
         for row in &buffer.backdrops {
-            if let BackdropRead::Capture {
-                capture:
-                    BackdropCapture {
-                        key, plan, region, ..
-                    },
-                source,
-            } = row.read
-                && source.is_new()
-            {
+            if row.source.is_new() {
+                let BackdropCapture {
+                    key, plan, region, ..
+                } = row.capture;
                 self.held.insert(
                     key,
                     Held {

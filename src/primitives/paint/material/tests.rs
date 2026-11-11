@@ -4,35 +4,33 @@ use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::libm_ext::Libm;
+use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_fallback::MaterialFallback;
 use crate::primitives::paint::material::material_input::MaterialInput;
-use crate::primitives::paint::material::reduced_backdrop::{BackdropMode, ReducedBackdrop};
 use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape;
 use crate::shape::Shape;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
-use crate::shape::record_store::RecordStore;
+use crate::shape::record_store::{RecordStore, Resolve};
 
-/// `material` lowered through effect 0, capturing, with its input staged in a store of its own.
-fn lowered(material: &Material) -> LoweredMaterial {
-    let mut store = RecordStore::default();
-    LoweredMaterial::lower(
-        &mut store,
-        material,
-        MaterialRead {
-            effect: EffectId(0),
-            mode: BackdropMode::Capture,
-        },
-    )
+/// `material` lowered through effect 0, with its input staged in `store`.
+fn captured_in(store: &mut RecordStore, material: &Material) -> LoweredMaterial {
+    LoweredMaterial::lower(store, material, EffectId(0))
 }
 
-/// The constructors name their stock effects and set exactly their own fields, each `with_*` its
-/// own.
+/// [`captured_in`] a store of its own.
+fn captured(material: &Material) -> LoweredMaterial {
+    captured_in(&mut RecordStore::default(), material)
+}
+
+/// The constructors name their stock effects and set exactly their own fields, the theme's
+/// fallback included, each `with_*` its own, `with_fallback` a brush of the author's in its place.
 #[test]
 fn the_constructors_and_setters_set_their_own_fields() {
     assert_eq!(
@@ -43,7 +41,7 @@ fn the_constructors_and_setters_set_their_own_fields() {
             input: MaterialInput::IDENTITY,
             max_luminance: None,
             min_luminance: None,
-            reduced_transparency: ReducedBackdrop::Ground,
+            fallback: MaterialFallback::ThemeSurface,
         }
     );
     assert_eq!(
@@ -78,7 +76,7 @@ fn the_constructors_and_setters_set_their_own_fields() {
         .with_max_luminance(0.2)
         .with_min_luminance(0.1)
         .with_lens(lens)
-        .with_reduced_transparency(ReducedBackdrop::Nothing);
+        .with_fallback(RgbaF32::WHITE);
     assert_eq!(
         set,
         Material {
@@ -91,7 +89,7 @@ fn the_constructors_and_setters_set_their_own_fields() {
             },
             max_luminance: Some(0.2),
             min_luminance: Some(0.1),
-            reduced_transparency: ReducedBackdrop::Nothing,
+            fallback: MaterialFallback::Brush(Brush::Solid(RgbaF32::WHITE)),
         }
     );
     assert_eq!(
@@ -107,10 +105,17 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
     let base = Material::blur(1.0);
     for (material, rule) in [
         (Material::blur(-1.0), "a length must"),
-        (base.with_saturation(f32::NAN), "a factor must"),
-        (base.with_noise(-0.5), "a factor must"),
-        (base.with_max_luminance(-0.1), "a factor must"),
-        (base.with_min_luminance(f32::INFINITY), "a factor must"),
+        (base.clone().with_saturation(f32::NAN), "a factor must"),
+        (base.clone().with_noise(-0.5), "a factor must"),
+        (base.clone().with_max_luminance(-0.1), "a factor must"),
+        (
+            base.clone().with_min_luminance(f32::INFINITY),
+            "a factor must",
+        ),
+        (
+            base.with_fallback(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
+            "a color must",
+        ),
         (
             Material::glass(Lens {
                 thickness: f32::INFINITY,
@@ -128,8 +133,8 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
     ] {
         for entry in ["rect", "chrome"] {
             let panic = std::panic::catch_unwind(|| match entry {
-                "rect" => _ = shape::internals::check(&Shape::rect(), material),
-                _ => Chrome::NONE.with_material(material).validate(),
+                "rect" => _ = shape::internals::check(&Shape::rect(), material.clone()),
+                _ => Chrome::NONE.with_material(material.clone()).validate(),
             })
             .expect_err(entry);
             let message = panic
@@ -142,50 +147,40 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
     }
 }
 
-/// What a material reads follows the reductions: what is under it while transparency runs whole,
-/// the ground while it is reduced, and nothing where its use asks for none then. Its effect
-/// resolves through the registry, so the stock blur is effect 2, past the two ripples.
+/// What a material reads follows the reductions: its effect over what is under it while
+/// transparency runs whole, its effect resolved through the registry, where the stock blur is
+/// effect 2, past the two ripples; and its fallback while transparency is reduced, with the
+/// theme's surface at hand for one that names none.
 #[test]
-fn a_material_reads_the_ground_or_nothing_while_transparency_is_reduced() {
+fn a_material_reads_its_fallback_while_transparency_is_reduced() {
     let effects = EffectRegistry::default();
-    let reduced = Reductions {
-        transparency: Reduction::Reduced,
-        ..Reductions::FULL
+    let theme = RgbaF32::new(0.1, 0.2, 0.3, 0.75);
+    let resolve = |transparency| Resolve {
+        effects: &effects,
+        reductions: Reductions {
+            transparency,
+            ..Reductions::FULL
+        },
+        material_fallback: theme,
     };
-    let blur = Material::blur(4.0);
-    let id = effects
+    let blur_id = effects
         .resolve(EffectName::BLUR.typed(), Reductions::FULL)
         .expect("the stock blur paints")
         .id;
-    assert_eq!(id.0, 2);
+    assert_eq!(blur_id.0, 2);
+    let blur = Material::blur(4.0);
     assert_eq!(
-        MaterialRead::resolve(&blur, &effects, Reductions::FULL),
-        Some(MaterialRead {
-            effect: id,
-            mode: BackdropMode::Capture
-        })
+        MaterialRead::resolve(&blur, resolve(Reduction::Full)),
+        Some(MaterialRead::Capture { effect: blur_id })
     );
     assert_eq!(
-        MaterialRead::resolve(&blur, &effects, reduced),
-        Some(MaterialRead {
-            effect: id,
-            mode: BackdropMode::Ground
-        })
+        MaterialRead::resolve(&blur, resolve(Reduction::Reduced)),
+        Some(MaterialRead::Fallback { theme })
     );
-    let dim = blur.with_reduced_transparency(ReducedBackdrop::Nothing);
-    assert_eq!(
-        MaterialRead::resolve(&dim, &effects, Reductions::FULL),
-        Some(MaterialRead {
-            effect: id,
-            mode: BackdropMode::Capture
-        })
-    );
-    assert_eq!(MaterialRead::resolve(&dim, &effects, reduced), None);
-    // A name nothing loaded panics in every mode, a use that paints nothing included.
-    let gone = Material::new(EffectName::named("gone").unwrap(), MaterialInput::IDENTITY)
-        .with_reduced_transparency(ReducedBackdrop::Nothing);
+    // A name nothing loaded panics in every mode.
+    let gone = Material::new(EffectName::named("gone").unwrap(), MaterialInput::IDENTITY);
     assert_panics_with("no effect is loaded under `gone`", || {
-        MaterialRead::resolve(&gone, &effects, reduced)
+        MaterialRead::resolve(&gone, resolve(Reduction::Reduced))
     });
 }
 
@@ -205,7 +200,7 @@ fn a_luminance_floor_rounds_up_where_it_lowers() {
             min_luminance: floor,
             ..Material::blur(1.0)
         };
-        assert_eq!(lowered(&material).min_luminance(), want, "{floor:?}");
+        assert_eq!(captured(&material).min_luminance(), want, "{floor:?}");
     }
 }
 
@@ -228,7 +223,7 @@ fn a_luminance_ceiling_rounds_down_where_it_lowers() {
             max_luminance: ceiling,
             ..Material::blur(1.0)
         };
-        assert_eq!(lowered(&material).max_luminance(), want, "{ceiling:?}");
+        assert_eq!(captured(&material).max_luminance(), want, "{ceiling:?}");
     }
 }
 
@@ -254,18 +249,11 @@ fn a_material_coerces_into_its_kinds_where_it_paints() {
         },
         max_luminance: None,
         min_luminance: Some(-0.04),
-        reduced_transparency: ReducedBackdrop::Ground,
+        fallback: MaterialFallback::ThemeSurface,
     };
     let mut store = RecordStore::default();
-    let lowered = LoweredMaterial::lower(
-        &mut store,
-        &past,
-        MaterialRead {
-            effect: EffectId(0),
-            mode: BackdropMode::Capture,
-        },
-    );
-    assert_eq!(lowered.capture().map(|capture| capture.sigma), Some(0.0));
+    let lowered = captured_in(&mut store, &past);
+    assert_eq!(lowered.capture.sigma, 0.0);
     assert_eq!(lowered.min_luminance(), 0.0);
     let start = lowered.params.start as usize;
     assert_eq!(lowered.params.len, 7);
@@ -276,26 +264,41 @@ fn a_material_coerces_into_its_kinds_where_it_paints() {
     assert_eq!(words, [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0]);
 }
 
-/// The blur, the input and an absent floor blend, the floor through 0, while the effect, the
-/// ceiling and `reduced_transparency` switch at `t = 0.5`. Halfway from a floor of 0.4 to none is
+/// The blur, the input, the fallback and an absent floor blend, the floor through 0, while the
+/// effect and the ceiling switch at `t = 0.5`. Halfway from a floor of 0.4 to none is
 /// `0.4 · 0.5 = 0.2`; halfway from frosted at σ 4 to blur at σ 2 is σ 3, saturation
-/// `(1.8 + 1) / 2 = 1.4` and grain `0.04 / 2 = 0.02`. An absent material blends through the other
+/// `(1.8 + 1) / 2 = 1.4` and grain `0.04 / 2 = 0.02`, and from a black fallback to a white one
+/// the grey two colors blend to, while the theme's fallback and a brush switch at `t = 0.5`. An absent material blends through the other
 /// end at rest: a quarter of the way to the default glass is a bezel of `24 · ¼ = 6`, a thickness
 /// of `16 · ¼ = 4`, an index of `1 + 0.5 · ¼ = 1.125`, a dispersion of `0.06 · ¼ = 0.015` and a
 /// highlight of `0.6 · ¼ = 0.15`. The ends stay exact.
 #[test]
 fn a_material_blends_its_numbers_and_snaps_its_effect() {
     let plain = Material::blur(4.0);
-    let floored = plain.with_min_luminance(0.4);
+    let floored = plain.clone().with_min_luminance(0.4);
     assert_eq!(
         Material::lerp(&floored, &plain, 0.5).min_luminance,
         Some(0.2)
     );
     assert_eq!(Material::lerp(&floored, &plain, 0.0), floored);
     assert_eq!(Material::lerp(&floored, &plain, 1.0), plain);
-    let frosted = Material::frosted(4.0);
-    let blur = Material::blur(2.0);
+    let frosted = Material::frosted(4.0).with_fallback(RgbaF32::BLACK);
+    let blur = Material::blur(2.0).with_fallback(RgbaF32::WHITE);
     let half = Material::lerp(&frosted, &blur, 0.5);
+    assert_eq!(
+        half.fallback,
+        MaterialFallback::Brush(Brush::Solid(RgbaF32::lerp(
+            &RgbaF32::BLACK,
+            &RgbaF32::WHITE,
+            0.5
+        )))
+    );
+    let themed = Material::blur(2.0);
+    assert_eq!(
+        Material::lerp(&themed, &blur, 0.49).fallback,
+        MaterialFallback::ThemeSurface
+    );
+    assert_eq!(Material::lerp(&themed, &blur, 0.5).fallback, blur.fallback);
     assert_eq!(half.effect, EffectName::BLUR);
     assert_eq!(
         Material::lerp(&frosted, &blur, 0.49).effect,
@@ -306,7 +309,7 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
     assert_eq!(half.input.noise, 0.02);
     let glass = Material::glass(Lens::WINDOW_GLASS);
     assert_eq!(
-        Option::<Material>::lerp(&None, &Some(glass), 0.25).map(|m| m.input.lens),
+        Option::<Material>::lerp(&None, &Some(glass.clone()), 0.25).map(|m| m.input.lens),
         Some(Lens {
             bezel: 6.0,
             thickness: 4.0,
@@ -316,11 +319,11 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
         })
     );
     assert_eq!(
-        Option::<Material>::lerp(&None, &Some(glass), 1.0),
+        Option::<Material>::lerp(&None, &Some(glass.clone()), 1.0),
         Some(glass)
     );
     assert_eq!(Option::<Material>::lerp(&None, &None, 0.5), None);
-    let ceiling = plain.with_max_luminance(0.5);
+    let ceiling = plain.clone().with_max_luminance(0.5);
     assert_eq!(
         Material::lerp(&ceiling, &plain, 0.49).max_luminance,
         Some(0.5)
@@ -334,12 +337,12 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
 fn a_chrome_with_only_a_material_paints() {
     let base = Chrome::new(RgbaF32::WHITE);
     let material = Material::frosted(8.0);
-    let with = base.clone().with_material(material);
+    let with = base.clone().with_material(material.clone());
     assert_eq!(
         with,
         Chrome {
             paint: Paint {
-                material: Some(material),
+                material: Some(material.clone()),
                 ..base.paint
             },
             ..base
@@ -384,7 +387,8 @@ fn a_ceiling_for_an_ink_holds_it_at_the_text_contrast() {
 /// `4.5 · (0.053564 + 0.05) − 0.05 = 0.416038`; byte 173 is the lowest at or over it, and the
 /// composite must reach byte 174, `0.42326767`. Under a `#e4e6e8` fill, `Y = 0.78913804`, at 0.3
 /// the floor is `(0.42326767 − 0.3 · 0.78913804) / 0.7 = 0.26646608`; at 0.72 the fill alone
-/// clears it, so the floor is 0. A ground at the floor stores byte 174.
+/// clears it, so the floor is 0. A ground at the floor stores byte 174. A fill of no alpha covers
+/// nothing, whatever its color, so the floor is the ground itself, 0.42326767.
 #[test]
 fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
     let ink = RgbaF32::hex(0x3d4248);
@@ -404,6 +408,9 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
     let thick = RgbaF32::hex(0xe4e6e8).with_alpha(0.72);
     let clear = Material::frosted(20.0).with_min_luminance_for(ink, thick);
     assert_eq!(clear.min_luminance, Some(0.0));
+    let bare = Material::frosted(20.0).with_min_luminance_for(ink, RgbaF32::TRANSPARENT);
+    let floor = bare.min_luminance.expect("a floor");
+    assert!((floor - level(174).r).abs() < 2e-8, "{floor}");
 }
 
 /// Every refusal of a bound comes back as its case, none as a panic. A floor for `#808080`
@@ -444,6 +451,40 @@ fn each_refused_bound_returns_its_case() {
         ),
         "ceiling for a dark grey"
     );
+}
+
+/// A fallback's alpha holds the ink over the worst page. Light `#a4a4a4` ink grounds at byte 57,
+/// `0.04091520` (above); over a white page the `#383838` surface at `a` shows
+/// `a · 0.0395462 + (1 − a)`, so `a ≥ (1 − 0.0409152) / (1 − 0.0395462) = 0.9985747`, 254.64
+/// steps, so 255/255. Dark `#3d4248` ink grounds at byte 174, `0.42326767`; over a black page the
+/// `#e4e6e8` surface shows `a · 0.7891380`, so `a ≥ 0.5363671`, 136.77 steps, so 137/255. Where
+/// no alpha holds the ink, the surface fails it even opaque, the fallback is opaque: white ink on
+/// a white surface, and dark ink on a black one.
+#[test]
+fn a_fallback_takes_the_least_alpha_that_holds_its_ink() {
+    use crate::primitives::paint::material::fallback_alpha;
+    assert_eq!(
+        fallback_alpha(RgbaF32::hex(0xa4a4a4), RgbaF32::hex(0x383838)),
+        1.0
+    );
+    assert_eq!(
+        fallback_alpha(RgbaF32::hex(0x3d4248), RgbaF32::hex(0xe4e6e8)),
+        137.0 / 255.0
+    );
+    assert_eq!(fallback_alpha(RgbaF32::WHITE, RgbaF32::WHITE), 1.0);
+    assert_eq!(fallback_alpha(RgbaF32::BLACK, RgbaF32::BLACK), 1.0);
+}
+
+/// An alpha rounds up to the 8-bit grid, and up again where that step's f16 reads lower: 86/255
+/// is 0.3372549, whose f16 is 0.3371582, so 0.3372 takes 87/255 and 0.3371 takes 86/255. 0 and 1
+/// stay.
+#[test]
+fn a_fallback_alpha_rounds_up_to_the_grid_as_f16_reads_it() {
+    use crate::primitives::paint::material::grid_alpha_at_or_above;
+    assert_eq!(grid_alpha_at_or_above(0.3372), 87.0 / 255.0);
+    assert_eq!(grid_alpha_at_or_above(0.3371), 86.0 / 255.0);
+    assert_eq!(grid_alpha_at_or_above(0.0), 0.0);
+    assert_eq!(grid_alpha_at_or_above(1.0), 1.0);
 }
 
 /// IEC 61966-2-1 in `f64`, written out here as a reference apart from palantir's own.

@@ -49,8 +49,8 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::{Material, fallback_alpha};
 use crate::theme::button::ButtonTheme;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::color_picker::ColorPickerTheme;
@@ -165,6 +165,13 @@ pub struct Theme {
     /// The window's background, which each frame clears to; [`Palette::window_bg`] in a stock
     /// theme.
     pub window_bg: RgbaF32,
+    /// What the box of a [`Material`] that names no fallback of its own paints in place of its
+    /// fill while transparency is reduced
+    /// ([`MaterialFallback::ThemeSurface`](crate::MaterialFallback::ThemeSurface)): in a theme from
+    /// parts the popup panel's fill at the least alpha that holds [`Palette::text`] at 4.5:1 over
+    /// any page, opaque where none does, so the box reads as the theme's float surface,
+    /// translucent and readable.
+    pub material_fallback: RgbaF32,
     /// The spec a change to this theme runs under, whether [`Ui::set_theme`](crate::Ui::set_theme)
     /// or a turn of the scheme brought it, as CSS reads the new values of `transition-*`
     /// (<https://www.w3.org/TR/css-transitions-1/>). [`AnimationSpec::THEME`] in a stock theme. A
@@ -431,7 +438,7 @@ impl Theme {
     /// enters, and each float takes the material, as [`FloatMaterial::dress`] requires.
     #[track_caller]
     pub fn dress_floats(&mut self, material: FloatMaterial) {
-        material.material.validate();
+        material.validate();
         let shortcut = self.menu.item.shortcut;
         let channel = self.color_picker.label.apply(&self.text).color;
         let tooltip_ink = self.tooltip.text.apply(&self.text).color;
@@ -464,6 +471,7 @@ impl Theme {
             expander: _,
             focus_ring: _,
             window_bg: _,
+            material_fallback: _,
             transition: _,
             panel_chrome: _,
             panel_clip: _,
@@ -565,6 +573,7 @@ impl Theme {
             focus_ring: FocusRingTheme::from_parts(p, m),
             text: TextStyle::from_parts(p, m),
             window_bg: p.window_bg,
+            material_fallback: material_fallback(p, m),
             transition: AnimationSpec::THEME,
             panel_chrome: None,
             panel_clip: ClipMode::None,
@@ -577,6 +586,18 @@ impl Theme {
     pub fn stock(scheme: ColorScheme) -> Self {
         Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
+}
+
+/// The popup panel's fill at the least alpha that holds the palette's text at 4.5:1 over any page,
+/// opaque where none does.
+fn material_fallback(p: &Palette, m: &Metrics) -> RgbaF32 {
+    let surface = p
+        .popup_panel(m)
+        .paint
+        .fill
+        .as_solid()
+        .expect("the popup panel's fill is a color");
+    surface.with_alpha(fallback_alpha(p.text, surface))
 }
 
 /// [`Theme`] as a file holds it, read straight into a `Theme` by serde's remote derive
@@ -615,6 +636,7 @@ struct UncheckedTheme {
     focus_ring: FocusRingTheme,
     text: TextStyle,
     window_bg: RgbaF32,
+    material_fallback: RgbaF32,
     transition: AnimationSpec,
     // This and the next are left out of a file when absent, as `Theme` writes them.
     #[serde(default)]

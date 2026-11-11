@@ -25,41 +25,19 @@ pub(crate) struct BackdropCapture {
     pub(crate) region: URect,
 }
 
-/// A backdrop the composer met: a captured one, or one over the window's ground. Its effect
-/// instance's `backdrop` is its index in
+/// A backdrop the composer met: its captured result, by the capture the backdrop ledger decided
+/// and where it comes from this frame. Its effect instance's `backdrop` is its index in
 /// [`RenderBuffer::backdrops`](crate::renderer::render_buffer::RenderBuffer::backdrops).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BackdropRow {
     /// The physical rect the composite reads, a read past it reading its edge: a backdrop
-    /// effect's rect grown by its reach, a material's footprint, or the rect over the ground.
+    /// effect's rect grown by its reach, or a material's footprint.
     pub(crate) reads: Rect,
     /// What a material's stage holds its result to and lays over it; `None` for an app's backdrop
     /// effect's paint, which reads it as it likes.
     pub(crate) look: Option<MaterialLook>,
-    /// What it reads.
-    pub(crate) read: BackdropRead,
-}
-
-/// What a backdrop reads: its captured result, by the capture the backdrop ledger decided and where
-/// it comes from this frame, or the window's ground, the clear, while transparency is reduced,
-/// which captures nothing and holds no result.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum BackdropRead {
-    Capture {
-        capture: BackdropCapture,
-        source: BackdropSource,
-    },
-    Ground,
-}
-
-impl BackdropRow {
-    /// The backdrop's capture; `None` over the ground.
-    pub(crate) const fn capture(&self) -> Option<&BackdropCapture> {
-        match &self.read {
-            BackdropRead::Capture { capture, .. } => Some(capture),
-            BackdropRead::Ground => None,
-        }
-    }
+    pub(crate) capture: BackdropCapture,
+    pub(crate) source: BackdropSource,
 }
 
 /// What a material's stage does to what its effect shows, as the composer hands it on, lengths in
@@ -127,7 +105,7 @@ pub(crate) mod internals {
     use crate::primitives::identity::backdrop_key::BackdropKey;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::render_buffer::backdrop_row::{
-        BackdropCapture, BackdropRead, BackdropRow, BackdropSource, MaterialLook,
+        BackdropCapture, BackdropRow, BackdropSource, MaterialLook,
     };
     use crate::shape::paint::blur_plan::BlurPlan;
 
@@ -139,37 +117,24 @@ pub(crate) mod internals {
             Self {
                 reads: footprint.into(),
                 look: Some(MaterialLook::PLAIN),
-                read: BackdropRead::Capture {
-                    capture: BackdropCapture {
-                        key: BackdropKey {
-                            owner: WidgetId::from_hash("backdrop"),
-                            shape: i,
-                        },
-                        footprint,
-                        plan,
-                        region: plan
-                            .region(footprint, footprint.max())
-                            .expect("a fixture's footprint paints"),
+                capture: BackdropCapture {
+                    key: BackdropKey {
+                        owner: WidgetId::from_hash("backdrop"),
+                        shape: i,
                     },
-                    source: BackdropSource::Held,
+                    footprint,
+                    plan,
+                    region: plan
+                        .region(footprint, footprint.max())
+                        .expect("a fixture's footprint paints"),
                 },
-            }
-        }
-
-        /// Where the backdrop's result comes from; `None` over the ground.
-        pub(crate) const fn source(&self) -> Option<BackdropSource> {
-            match self.read {
-                BackdropRead::Capture { source, .. } => Some(source),
-                BackdropRead::Ground => None,
+                source: BackdropSource::Held,
             }
         }
 
         /// This backdrop taking its result from `source`.
-        pub(crate) fn with_source(mut self, source: BackdropSource) -> Self {
-            let BackdropRead::Capture { source: held, .. } = &mut self.read else {
-                panic!("a backdrop fixture reads a backdrop");
-            };
-            *held = source;
+        pub(crate) const fn with_source(mut self, source: BackdropSource) -> Self {
+            self.source = source;
             self
         }
     }

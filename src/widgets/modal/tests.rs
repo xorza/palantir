@@ -9,10 +9,8 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::scene::layer::Layer;
 use crate::shape::paint::lowered_brush::LoweredBrush;
-use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
@@ -49,41 +47,41 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
 /// A modal takes no placement, so the layer default makes its barrier cover the screen; the root
 /// paints the scrim, a chrome. The theme's dims in half-clear black with no material; a color
 /// passed in dims in that color; a blurred scrim paints its fill over the window seen through its
-/// material, a backdrop; and under reduced transparency a scrim that asks for nothing then drops
-/// its material and keeps its fill half clear, while one that keeps its material reads the ground.
+/// material, a backdrop; and under reduced transparency a scrim draws as a plain box of its
+/// fallback, with no material: its own dim, or a dimmer one it names.
 #[test]
 fn the_barrier_root_covers_the_whole_surface_in_the_scrim() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
     let id = WidgetId::from_hash("modal-full-surface");
     let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
-    let blurred = Chrome::new(custom)
-        .with_material(Material::blur(8.0).with_reduced_transparency(ReducedBackdrop::Nothing));
-    let grounded = Chrome::new(custom).with_material(Material::blur(8.0));
+    let blurred = Chrome::new(custom).with_material(Material::blur(8.0).with_fallback(custom));
+    let dimmer = RgbaF32::BLACK.with_alpha(0.75);
+    let dims_more = Chrome::new(custom).with_material(Material::blur(8.0).with_fallback(dimmer));
     let themed = Chrome::new(RgbaF32::BLACK.with_alpha8(128));
-    // What the scrim's material reads: a backdrop that captures, the ground, or none.
+    // Whether the scrim's row wears its material, which captures.
     for (label, explicit, reduced, fill, reads) in [
-        ("themed", None, false, themed.paint.fill.clone(), None),
+        ("themed", None, false, themed.paint.fill.clone(), false),
         (
             "a color",
             Some(Chrome::from(custom)),
             false,
             custom.into(),
-            None,
-        ),
-        (
-            "blurred",
-            Some(blurred.clone()),
             false,
-            custom.into(),
-            Some(true),
         ),
-        ("blurred, reduced", Some(blurred), true, custom.into(), None),
+        ("blurred", Some(blurred.clone()), false, custom.into(), true),
         (
-            "grounded, reduced",
-            Some(grounded),
+            "blurred, reduced",
+            Some(blurred),
             true,
             custom.into(),
-            Some(false),
+            false,
+        ),
+        (
+            "a dimmer fallback, reduced",
+            Some(dims_more),
+            true,
+            dimmer.into(),
+            false,
         ),
     ] {
         let mut h = Harness::mono(SURFACE);
@@ -115,11 +113,7 @@ fn the_barrier_root_covers_the_whole_surface_in_the_scrim() {
             "{label}: scrim {:?}, want {want:?}",
             row.fill,
         );
-        assert_eq!(
-            row.material.map(LoweredMaterial::captures),
-            reads,
-            "{label}"
-        );
+        assert_eq!(row.material.is_some(), reads, "{label}");
     }
 }
 

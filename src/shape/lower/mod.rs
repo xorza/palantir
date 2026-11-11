@@ -106,7 +106,8 @@ impl LoweredPaint {
 
 /// Lower `paint`, whose material reads `material` this record (`None` where it paints none): the
 /// one lowering every box shares, sharing gradient lowering with every shape, so all share one
-/// pool.
+/// pool. A material reading its fallback leaves a plain box: the fallback in place of the fill,
+/// and no material.
 pub(crate) fn lower_paint(
     store: &mut RecordStore,
     paint: &Paint,
@@ -116,15 +117,17 @@ pub(crate) fn lower_paint(
         !paint.has_nan(),
         "a Paint reaches lowering validated, by `Widget::record` or `Ui::add_shape`: {paint:?}",
     );
-    let material = paint
-        .material
-        .as_ref()
-        .zip(material)
-        .map(|(authored, read)| LoweredMaterial::lower(store, authored, read));
-    let fill = if paint.is_noop() {
-        brush(store, &Brush::TRANSPARENT)
-    } else {
-        brush(store, &paint.fill)
+    let authored = paint.material.as_ref().zip(material);
+    let (fill, material) = match authored {
+        Some((authored, MaterialRead::Capture { effect })) => (
+            brush(store, &paint.fill),
+            Some(LoweredMaterial::lower(store, authored, effect)),
+        ),
+        Some((authored, MaterialRead::Fallback { theme })) => {
+            (brush(store, &authored.fallback.brush(theme)), None)
+        }
+        None if paint.is_noop() => (brush(store, &Brush::TRANSPARENT), None),
+        None => (brush(store, &paint.fill), None),
     };
     LoweredPaint {
         fill,

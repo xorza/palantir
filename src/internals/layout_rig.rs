@@ -225,6 +225,7 @@ impl NodeRecorder<'_> {
             let resolve = Resolve {
                 effects: &EffectRegistry::default(),
                 reductions: Reductions::default(),
+                material_fallback: RgbaF32::TRANSPARENT,
             };
             let shape = Shape::text(text, font).wrap(run.wrap);
             rec.forest.add_draw(shape.draw(&RgbaF32::WHITE), resolve);

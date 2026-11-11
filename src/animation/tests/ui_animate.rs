@@ -210,7 +210,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         chrome: Chrome {
             paint: Paint {
                 fill: RgbaF32::hex(0xff0000).into(),
-                ..chrome.paint
+                ..chrome.paint.clone()
             },
             ..chrome
         },

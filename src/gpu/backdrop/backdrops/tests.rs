@@ -15,7 +15,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow, BackdropSource};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 use std::mem::offset_of;
@@ -45,11 +45,9 @@ fn prepare(backdrops: &mut Backdrops, gpu: &TestGpu, owner: RenderOwnerId, rows:
     let mut buffer = RenderBuffer::new();
     buffer.display = Display::from_physical(SURFACE, 1.0);
     buffer.backdrops.extend_from_slice(rows);
-    buffer.live_backdrops.refill(
-        rows.iter()
-            .filter_map(BackdropRow::capture)
-            .map(|capture| capture.key),
-    );
+    buffer
+        .live_backdrops
+        .refill(rows.iter().map(|row| row.capture.key));
     gpu.frame(|ctx| {
         backdrops.prepare(
             ctx,
@@ -74,9 +72,8 @@ fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
 
 /// Two windows' backdrops under one key keep a result each, in slots apart: a frame of one leaves
 /// the other's, its backdrops leaving drops only its own, and retiring a window drops the rest of
-/// its. Frames with no backdrop make no resources; a frame of a backdrop over the ground makes the
-/// composite's, shows the clear as the target holds it, and makes no blur; the first that captures
-/// makes the blur, and both stay.
+/// its. A frame with no backdrop makes no resources; the first that captures makes the composite's
+/// and the blur, and both stay.
 #[test]
 fn each_window_keeps_its_own_results() {
     let gpu = headless_test_gpu();
@@ -85,20 +82,6 @@ fn each_window_keeps_its_own_results() {
     let mut backdrops = Backdrops::new(&gpu, &TextureBinding::new(&gpu));
     prepare(&mut backdrops, &gpu, a, &[]);
     assert!(backdrops.resources.is_none(), "no backdrop, no resources");
-    let ground = BackdropRow {
-        reads: URect::new(0, 0, 30, 30).into(),
-        look: None,
-        read: BackdropRead::Ground,
-    };
-    prepare(&mut backdrops, &gpu, a, &[ground]);
-    let resources = backdrops.resources.as_ref().expect("the composite's");
-    assert!(resources.blur.is_none(), "the ground blurs nothing");
-    assert_eq!(backdrops.slots[0].lattice, 0.0);
-    assert_eq!(
-        backdrops.slots[0].clear,
-        held_clear(CLEAR.to_f16(), TargetFormat::RGBA8_SRGB)
-    );
-    assert!(backdrops.cache.is_empty(), "the ground holds no result");
     prepare(&mut backdrops, &gpu, a, &[captured(0)]);
     assert!(
         backdrops

@@ -40,15 +40,11 @@ pub(crate) struct ClosedEffect {
 }
 
 /// What a backdrop effect's draw reads: what is painted under it, by the ticket the backdrop
-/// ledger wrote for it, up to its reach past its rect; or the window's ground, while transparency
-/// is reduced, under its rect alone.
+/// ledger wrote for it, up to its reach past its rect.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum EffectCaptureDraw {
-    Capture {
-        ticket: BackdropTicket,
-        reach: CaptureReach,
-    },
-    Ground,
+pub(crate) struct EffectCaptureDraw {
+    pub(crate) ticket: BackdropTicket,
+    pub(crate) reach: CaptureReach,
 }
 
 /// What palantir lays around a material's effect: the luminance bounds it holds what the effect

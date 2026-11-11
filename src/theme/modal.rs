@@ -25,9 +25,9 @@ pub struct ModalTheme {
     /// material costs a capture and a blur of the whole window on each frame where something under
     /// the scrim changes: 394 µs and 732 µs of device time at 3840 × 2160 on a mobile AMD iGPU
     /// (`integration/backdrop_frame/gpu/modal`, `.notes/research/2026-10-28-backdrops.md`), and
-    /// nothing on a frame where nothing does. Its
-    /// [`ReducedBackdrop::Nothing`](crate::ReducedBackdrop::Nothing) keeps the dim translucent
-    /// while transparency is reduced, as iOS keeps it, where the ground would hide the window.
+    /// nothing on a frame where nothing does. A scrim's material names the scrim's own dim as its
+    /// fallback, so it keeps dimming while transparency is reduced, as iOS keeps it, where the
+    /// theme's surface would hide the window.
     pub scrim: Chrome,
     /// Padding inside the panel, applied when the builder leaves it unset.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]

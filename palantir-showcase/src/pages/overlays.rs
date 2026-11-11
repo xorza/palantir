@@ -77,9 +77,9 @@ fn material_section(ui: &mut Ui, k: Kit) {
                 "Menus, combo lists, popups, the picker, tooltips and the modal float on frosted \
                  glass, its blur held so their text keeps 4.5:1 over any page. Reduce \
                  transparency, as the system's setting or Less on the rail's Transparency row \
-                 asks, and nothing is captured or blurred: each float frosts the window's clear \
-                 color in place of the page, under its fill, so it paints opaque; every page \
-                 follows.",
+                 asks, and nothing is captured or blurred: each float draws as its plain panel, \
+                 as translucent as it can be and still hold its text at 4.5:1 over any page; \
+                 every page follows.",
             );
         });
 }

@@ -1,10 +1,14 @@
 //! The type, geometry and motion roster every theme recipe draws from, beside the [`Palette`](crate::Palette)'s colors. [`Metrics::DEFAULT`] is a 4 px grid on the Fluent 2 type ramp.
 
 use crate::animation::animation_spec::AnimationSpec;
+use crate::primitives::effect::effect_kind::BackdropEffect;
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::{InkBound, Material};
+use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::{InkBound, Material, fallback_alpha, is_sharp};
 use glam::Vec2;
 
 /// The type, spacing, rounding, line, shadow, float material and transition steps of a theme, as
@@ -122,24 +126,37 @@ pub struct ShadowGeometry {
     pub blur: f32,
 }
 
-/// A float's material without its ink: [`Self::material`], any [`Material`], under the surface's
-/// own fill at [`Self::fill_alpha`], its luminance bound derived from the dimmest ink the surface
-/// paints.
+/// A float's [`Material`] without what each float gives it: [`Self::effect`] reading
+/// [`Self::input`], blurred by [`Self::blur`], under the surface's own fill at
+/// [`Self::fill_alpha`], its luminance bound derived from the dimmest ink the surface paints and
+/// its fallback the surface's own fill at the least alpha that holds that ink over any page, so a
+/// float draws as its plain panel, translucent and readable, while transparency is reduced.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FloatMaterial {
-    /// The material, as [`Material::blur`], [`Material::frosted`] or [`Material::glass`] makes
-    /// it, or an app's effect. Its luminance bounds are replaced by the one each float's ink
-    /// needs.
-    pub material: Material,
+    /// The backdrop effect, a stock one as [`EffectName::FROSTED`], or an app's.
+    pub effect: EffectName<MaterialInput, BackdropEffect>,
+    /// The capture's Gaussian σ in logical px, as [`Material::blur`](field@Material::blur) takes
+    /// it.
+    #[serde(
+        default,
+        deserialize_with = "crate::primitives::math::domain::file::lane_length",
+        skip_serializing_if = "is_sharp"
+    )]
+    pub blur: f32,
+    /// What the effect reads besides, as [`Material::input`] holds it.
+    #[serde(default, skip_serializing_if = "MaterialInput::is_identity")]
+    pub input: MaterialInput,
     /// The alpha of the surface's fill over the material; a fraction, and 1 shows nothing through.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
     pub fill_alpha: f32,
 }
 
 impl FloatMaterial {
-    /// `panel` in this material: its solid fill at [`Self::fill_alpha`] over [`Self::material`],
-    /// bound so `ink`, the dimmest ink the surface paints, reads at 4.5:1 over any backdrop: a
-    /// ceiling for ink lighter than the fill, a floor for ink darker.
+    /// `panel` in this material: its solid fill at [`Self::fill_alpha`] over the effect, bound so
+    /// `ink`, the dimmest ink the surface paints, reads at 4.5:1 over any backdrop: a ceiling for
+    /// ink lighter than the fill, a floor for ink darker; and for the material's fallback the
+    /// solid fill at the least alpha that holds `ink` over any page, which the panel draws as its
+    /// plain fill while transparency is reduced, translucent and readable.
     ///
     /// # Panics
     ///
@@ -154,19 +171,28 @@ impl FloatMaterial {
 
     /// [`Self::dress`], or why it cannot.
     pub(crate) fn try_dress(self, panel: &Chrome, ink: RgbaF32) -> Result<Chrome, MaterialRefusal> {
-        let fill = panel
+        let solid = panel
             .paint
             .fill
             .as_solid()
             .ok_or(MaterialRefusal::FillNotSolid)?;
-        let fill = fill.with_alpha(self.fill_alpha);
-        let unbound = Material {
-            max_luminance: None,
-            min_luminance: None,
-            ..self.material
-        };
-        let material = unbound.holding(ink, fill).map_err(MaterialRefusal::Ink)?;
+        let fill = solid.with_alpha(self.fill_alpha);
+        let fallback = solid.with_alpha(fallback_alpha(ink, solid));
+        let material = Material::new(self.effect, self.input)
+            .with_blur(self.blur)
+            .with_fallback(fallback)
+            .holding(ink, fill)
+            .map_err(MaterialRefusal::Ink)?;
         Ok(panel.clone().with_fill(fill).with_material(material))
+    }
+
+    /// Panics unless `blur` is a [length](crate::widget::domain::length) and a
+    /// [lane](crate::widget::domain::lane), and the input valid, as a [`Material`] checks them
+    /// where it enters.
+    #[track_caller]
+    pub(crate) const fn validate(&self) {
+        domain::lane(domain::length(self.blur));
+        self.input.validate();
     }
 }
 
@@ -245,7 +271,9 @@ impl Metrics {
         // text, as Fluent puts acrylic under its flyouts
         // (https://learn.microsoft.com/windows/apps/develop/ui/in-app-acrylic).
         float_material: Some(FloatMaterial {
-            material: Material::frosted(20.0),
+            effect: EffectName::FROSTED,
+            blur: 20.0,
+            input: MaterialInput::FROSTED,
             fill_alpha: 184.0 / 255.0,
         }),
         // Fluent's button transitions its fill, border and ink over `durationFaster`, 100 ms:

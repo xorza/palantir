@@ -55,7 +55,7 @@ use crate::scene::tree::tree_fingerprint::TreeFingerprint;
 use crate::shape::lower;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
+use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::shapes::Shapes;
@@ -550,11 +550,9 @@ impl Tree {
             .child(cols.attrs, cols.layout.meta.visibility());
         // A chrome whose material captures reads a backdrop at the node's first row.
         if !inherited.invisible
-            && ex.chrome.is_some_and(|row| {
-                self.chrome_table[row.idx()]
-                    .material
-                    .is_some_and(LoweredMaterial::captures)
-            })
+            && ex
+                .chrome
+                .is_some_and(|row| self.chrome_table[row.idx()].material.is_some())
         {
             self.backdrops.push(BackdropEntry {
                 node: new_id,

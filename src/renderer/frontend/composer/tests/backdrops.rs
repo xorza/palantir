@@ -9,7 +9,6 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::border::Border;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::backdrop_captures::BackdropTicket;
 use crate::renderer::frontend::composer::tests::support::{
@@ -23,9 +22,7 @@ use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::{
 };
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{
-    BackdropCapture, BackdropRead, BackdropRow, BackdropSource,
-};
+use crate::renderer::render_buffer::backdrop_row::{BackdropCapture, BackdropSource};
 use crate::renderer::render_buffer::effect_draw_row::{EffectInstance, EffectKey};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -88,19 +85,11 @@ const fn sharp(rect: Rect) -> PlacedClosed {
 /// A backdrop at `rect` under `ticket`, faded by `alpha`; the ticket holds its plan, so its own σ
 /// is any.
 fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: BackdropTicket, alpha: f32) {
-    let read = EffectCaptureDraw::Capture {
+    let read = EffectCaptureDraw {
         ticket,
         reach: CaptureReach::Px(0.0),
     };
     buf.draw(material(sharp(rect), read, LoweredBorder::NONE), alpha);
-}
-
-/// The source of `row`, a backdrop's.
-fn source(row: &BackdropRow) -> BackdropSource {
-    match row.read {
-        BackdropRead::Capture { source, .. } => source,
-        BackdropRead::Ground => panic!("a backdrop, not the ground"),
-    }
 }
 
 /// A capturing backdrop at `rect` and σ `sigma`, faded by `alpha`.
@@ -113,7 +102,7 @@ fn backdrop(buf: &mut PaintCapture, rect: Rect, sigma: f32, alpha: f32) {
 fn barriers(buf: &RenderBuffer) -> Vec<u32> {
     buf.backdrops
         .iter()
-        .map(|row| match source(row) {
+        .map(|row| match row.source {
             BackdropSource::Capture { barrier } => barrier,
             BackdropSource::Clear => 0,
             source => panic!("a capturing backdrop, not {source:?}"),
@@ -147,8 +136,8 @@ fn a_backdrop_cuts_the_frame_at_its_barrier() {
     assert_eq!(buf.text_batches[0].last_group, 0);
     assert_eq!(buf.backdrops.len(), 1);
     let row = buf.backdrops[0];
-    assert_eq!(source(&row), BackdropSource::Capture { barrier: 1 });
-    assert_eq!(row.capture(), Some(&ticket.capture));
+    assert_eq!(row.source, BackdropSource::Capture { barrier: 1 });
+    assert_eq!(row.capture, ticket.capture);
     let look = row.look.expect("a material's backdrop has a look");
     assert_eq!((look.max_luminance, look.min_luminance), (65504.0, 0.0));
     let effects = buf.batches(PaintTier::Effect);
@@ -190,8 +179,8 @@ fn a_held_backdrop_breaks_nothing() {
     assert_eq!(buf.batches(PaintTier::Effect)[0].last_group, 0);
     assert_eq!(buf.groups[1].quads.range(), 1..2);
     let row = buf.backdrops[0];
-    assert_eq!(source(&row), BackdropSource::Held);
-    assert_eq!(row.capture().map(|c| c.region), Some(ticket.capture.region));
+    assert_eq!(row.source, BackdropSource::Held);
+    assert_eq!(row.capture.region, ticket.capture.region);
 }
 
 /// A quad after a backdrop covering one before it leaves it alone: the backdrop's capture copies
@@ -249,7 +238,7 @@ fn the_clear_fold_hides_the_backdrops_before_it() {
         },
         &params(1.0, UVec2::new(100, 100)),
     );
-    let sources: Vec<BackdropSource> = buf.backdrops.iter().map(source).collect();
+    let sources: Vec<BackdropSource> = buf.backdrops.iter().map(|row| row.source).collect();
     assert_eq!(sources, [BackdropSource::Hidden]);
     assert!(buf.quads.is_empty());
     assert!(buf.effects.is_empty());
@@ -298,60 +287,6 @@ fn a_backdrop_shares_the_last_break_when_nothing_since_touches_it() {
     );
 }
 
-/// A material over the ground, while transparency is reduced, lists a row of the ground over its
-/// own rect: it holds no capture, breaks no group, and its effect row reads that row through its
-/// material's effect, between the quads around it in one group. Its instance holds its shape as
-/// the template takes it: the 40 × 20 rect's corners, its inradius half the short side, 10, and its
-/// border's width, 3, which the template keeps out of its interior.
-#[test]
-fn a_material_over_the_ground_breaks_nothing() {
-    let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 90.0, 90.0));
-            b.draw(
-                material(
-                    sharp(rect),
-                    EffectCaptureDraw::Ground,
-                    LoweredBorder::lower(Border::new(RgbaF32::WHITE, 3.0)),
-                ),
-                1.0,
-            );
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.backdrops.len(), 1);
-    let row = buf.backdrops[0];
-    assert_eq!(row.read, BackdropRead::Ground);
-    assert_eq!(row.capture(), None);
-    assert_eq!(row.reads, rect);
-    assert_eq!(
-        (buf.effects.key()[0], buf.effects.instance()[0].flags),
-        (
-            EffectKey {
-                effect: EffectId(0),
-                form: ShapeForm::Box,
-                cover: TemplateCover::Whole,
-            },
-            EffectInstance::MATERIAL
-        )
-    );
-    assert_eq!(buf.effects.instance()[0].backdrop_idx, 0);
-    let instance = buf.effects.instance()[0];
-    assert_eq!(
-        instance.header.points,
-        [
-            Vec2::ZERO,
-            Vec2::new(40.0, 0.0),
-            Vec2::new(40.0, 20.0),
-            Vec2::new(0.0, 20.0)
-        ]
-    );
-    assert_eq!(instance.header.inradius, 10.0);
-    assert_eq!(instance.border_width, 3.0);
-}
-
 /// An app's effect holds its shape as the template takes it, its rect's corners at scale 2, its
 /// inradius half the short side, and no border: (5, 5, 30 × 10) is (10, 10, 60 × 20).
 #[test]
@@ -394,7 +329,10 @@ fn a_materials_key_takes_its_shapes_form() {
                         centers: points,
                         radius: 1.0,
                     }),
-                    EffectCaptureDraw::Ground,
+                    EffectCaptureDraw {
+                        ticket: ticket(0, Rect::new(0.0, 0.0, 200.0, 200.0), 4.0, false),
+                        reach: CaptureReach::Px(0.0),
+                    },
                     LoweredBorder::NONE,
                 ),
                 1.0,
@@ -418,7 +356,10 @@ fn a_materials_key_takes_its_shapes_form() {
                         rect: Rect::new(60.0, 5.0, 20.0, 20.0),
                         corners: Corners::all(4.0),
                     }),
-                    EffectCaptureDraw::Ground,
+                    EffectCaptureDraw {
+                        ticket: ticket(1, Rect::new(0.0, 0.0, 200.0, 200.0), 4.0, false),
+                        reach: CaptureReach::Px(0.0),
+                    },
                     LoweredBorder::NONE,
                 ),
                 1.0,
@@ -461,7 +402,7 @@ fn a_materials_key_takes_its_shapes_form() {
 #[test]
 fn a_material_and_a_backdrop_effect_share_one_path() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
-    let read = |i| EffectCaptureDraw::Capture {
+    let read = |i| EffectCaptureDraw {
         ticket: ticket(i, rect, 4.0, true),
         reach: CaptureReach::Px(0.0),
     };

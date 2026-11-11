@@ -351,8 +351,8 @@ pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit
 pub use primitives::paint::line_style::{LineCap, LineJoin};
 pub use primitives::paint::material::Material;
 pub use primitives::paint::material::lens::Lens;
+pub use primitives::paint::material::material_fallback::MaterialFallback;
 pub use primitives::paint::material::material_input::MaterialInput;
-pub use primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 pub use primitives::paint::paint::Paint;
 pub use primitives::paint::shadow::Shadow;
 pub use primitives::paint::stroke::Stroke;

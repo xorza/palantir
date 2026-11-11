@@ -51,6 +51,7 @@ fn lower_in<S: DrawWith<P>, P>(
     let resolve = Resolve {
         effects: &effects,
         reductions: Reductions::FULL,
+        material_fallback: RgbaF32::TRANSPARENT,
     };
     let paint = S::prepare(paint);
     store.record(shape.draw(&paint), resolve)
@@ -257,7 +258,6 @@ fn a_triangle_wears_a_material_as_a_rect_does() {
         panic!("a rect of a material records it");
     };
     assert_eq!(material, rect_material);
-    assert!(material.captures());
     assert!(record.reads_backdrop());
 }
 
@@ -753,7 +753,10 @@ fn a_box_takes_each_paint_part_alone() {
     let material = Material::blur(4.0);
     assert_eq!(Paint::from(border), Paint::NONE.with_border(border));
     assert_eq!(Paint::from(shadow), Paint::NONE.with_shadow(shadow));
-    assert_eq!(Paint::from(material), Paint::NONE.with_material(material));
+    assert_eq!(
+        Paint::from(material.clone()),
+        Paint::NONE.with_material(material.clone())
+    );
     assert_eq!(
         internals::check(&Shape::rect(), border),
         Paint::NONE.with_border(border)
@@ -763,7 +766,7 @@ fn a_box_takes_each_paint_part_alone() {
         Paint::NONE.with_shadow(shadow)
     );
     assert_eq!(
-        internals::check(&Shape::circle(), material),
+        internals::check(&Shape::circle(), material.clone()),
         Paint::NONE.with_material(material)
     );
     assert!(lower((Shape::rect(), border)).is_some(), "a border paints");

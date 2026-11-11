@@ -6,11 +6,11 @@ use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::Paint;
 use palantir::glam::Vec2;
-use palantir::widget::{GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
+use palantir::widget::{EffectPaint, GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
-    Align, Border, Button, Chrome, Configure, Corners, EffectName, Lens, Material, Menu, MenuItem,
-    MenuTheme, Panel, PopupTrigger, Rect, ReducedBackdrop, RgbaF32, Sizing, Switch, Text, Ui,
-    WidgetId, fmt,
+    Align, BackdropEffect, Border, Button, Chrome, Configure, Corners, EffectName, Lens,
+    LinearGradient, Material, MaterialFallback, Menu, MenuItem, MenuTheme, Panel, PopupTrigger,
+    Rect, RgbaF32, Sizing, Switch, Text, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -38,7 +38,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
                 "Each box wears a stock material, a backdrop effect that shows the pixels \
                  painted before it under its fill, which colors them. The page under it turns, so \
                  each box blurs again every frame; a box over a still page costs nothing. With \
-                 transparency reduced, each shows over the window's ground instead.",
+                 transparency reduced, each paints the theme's fallback instead.",
             );
             support::tiles(ui, |ui| {
                 look(
@@ -74,29 +74,50 @@ pub fn build(ui: &mut Ui, k: Kit) {
 
     Section::new("Reduced transparency")
         .apis(&[
-            api!(Material::with_reduced_transparency),
-            api!(ReducedBackdrop::Ground),
-            api!(ReducedBackdrop::Nothing),
+            api!(Material::with_fallback as fn(Material, RgbaF32) -> Material),
+            api!(type MaterialFallback),
+            api!(
+                EffectPaint::fallback
+                    as fn(
+                        EffectPaint<(), BackdropEffect>,
+                        RgbaF32,
+                    ) -> EffectPaint<(), BackdropEffect>
+            ),
         ])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "One frosted box with a translucent fill and a hairline, twice: only what each \
-                 paints with transparency reduced differs. Pick Less on the rail's Transparency \
-                 row. Ground then frosts the window's clear color in place of the page, so the \
-                 box turns opaque and hides the page; Nothing drops the material, so the page \
-                 shows sharp through the bare fill. The border stays on both.",
+                "Pick Less on the rail's Transparency row: no capture, blur or effect runs, and \
+                 each frosted box draws as a plain box of its fallback, its hairline kept. By \
+                 default the theme's surface: its float color, as translucent as it can be and \
+                 still hold the theme's text at 4.5:1 over any page. A box may name its own, a \
+                 gradient or a tint here, as a scrim names its own dim.",
             );
-            let reduced = Material::frosted(16.0);
+            let frosted = Material::frosted(16.0);
             let fill = RgbaF32::new(1.0, 1.0, 1.0, 0.48);
+            let tint = |color: RgbaF32| color.with_alpha(0.85);
+            let own = LinearGradient::new(0.125, [tint(k.t.accent), tint(k.t.raised)]);
             support::tiles(ui, |ui| {
-                look(ui, k, "Ground, the default", reduced, fill);
                 look(
                     ui,
                     k,
-                    "Nothing",
-                    reduced.with_reduced_transparency(ReducedBackdrop::Nothing),
+                    "the theme's surface, the default",
+                    frosted.clone(),
+                    fill,
+                );
+                look(
+                    ui,
+                    k,
+                    "its own: a gradient",
+                    frosted.clone().with_fallback(own),
+                    fill,
+                );
+                look(
+                    ui,
+                    k,
+                    "its own: a tint",
+                    frosted.with_fallback(k.t.accent.with_alpha(0.4)),
                     fill,
                 );
             });

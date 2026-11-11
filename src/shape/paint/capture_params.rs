@@ -1,57 +1,11 @@
 //! [`CaptureParams`]: what a backdrop effect's capture is planned from, a material's and an
-//! `EffectPaint`'s alike, and [`EffectBackdrop`], what it reads this record.
+//! `EffectPaint`'s alike.
 
 use std::hash;
 
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::material::lens_optics::LensOptics;
-use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
-
-/// What a backdrop effect reads under it this record: what is painted there, captured, or the
-/// window's ground while transparency is reduced, which takes no capture and makes no backdrop.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum EffectBackdrop {
-    Capture(CaptureParams),
-    Ground,
-}
-
-impl EffectBackdrop {
-    /// What a use reads in `mode`, capturing as `capture` says where it captures.
-    pub(crate) const fn of(mode: BackdropMode, capture: CaptureParams) -> Self {
-        match mode {
-            BackdropMode::Capture => Self::Capture(capture),
-            BackdropMode::Ground => Self::Ground,
-        }
-    }
-
-    /// The capture it takes; `None` over the ground.
-    pub(crate) const fn capture(self) -> Option<CaptureParams> {
-        match self {
-            Self::Capture(capture) => Some(capture),
-            Self::Ground => None,
-        }
-    }
-}
-
-/// A capture's σ, then its reach, with a tag apart from `None` and from each other.
-impl hash::Hash for EffectBackdrop {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        match self {
-            Self::Capture(capture) => {
-                state.write_u8(1);
-                capture.hash(state);
-            }
-            Self::Ground => state.write_u8(2),
-        }
-    }
-}
-
-impl NanCheck for EffectBackdrop {
-    fn has_nan(&self) -> bool {
-        self.capture().is_some_and(|capture| capture.has_nan())
-    }
-}
 
 /// What the cascade plans a backdrop effect's capture from, in logical px, a material's and an
 /// `EffectPaint`'s alike: the σ of its blur and how far past its shape its composite reads.
@@ -142,7 +96,7 @@ mod tests {
 
     use crate::primitives::packed::half_simd::F16x4;
     use crate::primitives::paint::material::lens_optics::LensOptics;
-    use crate::shape::paint::capture_params::{CaptureParams, CaptureReach, EffectBackdrop};
+    use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 
     /// A fixed reach rounds out to whole physical px whatever the shape's side: 2.3 logical px at
     /// scale 2 is 4.6, so 5, and 2.5 is exactly 5. A lens with no bezel reads nothing past the
@@ -169,25 +123,22 @@ mod tests {
         assert_ne!(optics.reach(index), 0, "the lens reads past its shape");
     }
 
-    /// A read hashes apart by each thing it captures: the ground from a capture, the σ, the reach,
-    /// and a fixed reach from a lens, both of all-zero bits.
+    /// A capture hashes apart by each thing it reads: the σ, the reach, and a fixed reach from a
+    /// lens, both of all-zero bits.
     #[test]
-    fn a_read_hashes_by_what_it_captures() {
-        let hash = |backdrop: EffectBackdrop| {
-            BuildHasherDefault::<DefaultHasher>::default().hash_one(backdrop)
+    fn a_capture_hashes_by_what_it_reads() {
+        let hash = |capture: CaptureParams| {
+            BuildHasherDefault::<DefaultHasher>::default().hash_one(capture)
         };
-        let capture = |sigma, reach| {
-            EffectBackdrop::Capture(CaptureParams {
-                sigma,
-                reach: CaptureReach::Px(reach),
-            })
+        let capture = |sigma, reach| CaptureParams {
+            sigma,
+            reach: CaptureReach::Px(reach),
         };
         let base = hash(capture(4.0, 2.0));
         assert_eq!(base, hash(capture(4.0, 2.0)));
-        assert_ne!(base, hash(EffectBackdrop::Ground));
         assert_ne!(base, hash(capture(5.0, 2.0)));
         assert_ne!(base, hash(capture(4.0, 3.0)));
-        let zero = |reach| hash(EffectBackdrop::Capture(CaptureParams { sigma: 0.0, reach }));
+        let zero = |reach| hash(CaptureParams { sigma: 0.0, reach });
         assert_ne!(
             zero(CaptureReach::Px(0.0)),
             zero(CaptureReach::Lens(F16x4::from_lanes([0.0; 4]))),

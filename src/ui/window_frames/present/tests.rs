@@ -1492,7 +1492,7 @@ mod escalation_tests {
             .buffer
             .backdrops
             .iter()
-            .filter(|row| row.source() == Some(BackdropSource::Held))
+            .filter(|row| row.source == BackdropSource::Held)
             .count();
         assert_eq!(frontend.buffer.backdrops.len(), 10);
         assert_eq!(held, 0);

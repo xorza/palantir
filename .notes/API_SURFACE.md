@@ -846,7 +846,9 @@ Fit
 
 FloatMaterial
     struct FloatMaterial: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
-        pub material: Material
+        pub effect: EffectName<MaterialInput, BackdropEffect>
+        pub blur: f32
+        pub input: MaterialInput
         pub fill_alpha: f32
         pub fn dress(self, panel: &Chrome, ink: RgbaF32) -> Chrome
 
@@ -1469,13 +1471,13 @@ Locator
         impl<X> From<WidgetId> for Locator<X>
 
 Material
-    struct Material: Clone, Copy, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
+    struct Material: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub effect: EffectName<MaterialInput, BackdropEffect>
         pub blur: f32
         pub input: MaterialInput
         pub max_luminance: Option<f32>
         pub min_luminance: Option<f32>
-        pub reduced_transparency: ReducedBackdrop
+        pub fallback: MaterialFallback
         pub const fn new(effect: EffectName<MaterialInput, BackdropEffect>, input: MaterialInput) -> Self
         pub const fn blur(sigma: f32) -> Self
         pub const fn frosted(sigma: f32) -> Self
@@ -1484,7 +1486,7 @@ Material
         pub const fn with_saturation(self, saturation: f32) -> Self
         pub const fn with_noise(self, noise: f32) -> Self
         pub const fn with_lens(self, lens: Lens) -> Self
-        pub const fn with_reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
+        pub fn with_fallback(self, fallback: impl Into<Brush>) -> Self
         pub const fn with_max_luminance(self, luminance: f32) -> Self
         pub fn with_max_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Self
         pub const fn with_min_luminance(self, luminance: f32) -> Self
@@ -1492,12 +1494,18 @@ Material
         pub const fn at_rest(self) -> Self
         impl From<Material> for Paint
 
+MaterialFallback
+    enum MaterialFallback: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
+        ThemeSurface
+        Brush(Brush)
+
 MaterialInput
     struct MaterialInput: Clone, Copy, Debug, Default, Deserialize<'de>, EffectParams, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub saturation: f32
         pub noise: f32
         pub lens: Lens
         pub const IDENTITY: Self
+        pub const FROSTED: Self
 
 Menu
     struct Menu<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2021,11 +2029,6 @@ Rect
         pub const fn intersect(self, other: Self) -> Option<Self>
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
-
-ReducedBackdrop
-    enum ReducedBackdrop: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
-        Ground
-        Nothing
 
 ReducedPaint
     enum ReducedPaint<U: EffectParams, K: EffectKind = ColorEffect>
@@ -2819,6 +2822,7 @@ Theme
         pub focus_ring: FocusRingTheme
         pub text: TextStyle
         pub window_bg: RgbaF32
+        pub material_fallback: RgbaF32
         pub transition: AnimationSpec
         pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
@@ -3392,7 +3396,7 @@ widget::EffectPaint
         impl<U: EffectParams> EffectPaint<U, BackdropEffect>
             pub const fn blur(self, sigma: f32) -> Self
             pub const fn max_sample_offset(self, px: f32) -> Self
-            pub const fn reduced_transparency(self, backdrop: ReducedBackdrop) -> Self
+            pub fn fallback(self, fallback: impl Into<Brush>) -> Self
         impl<U: EffectParams, K: EffectKind> Debug for EffectPaint<U, K>
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for RectShape

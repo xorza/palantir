@@ -63,9 +63,6 @@
 //!   the lens's registers for every backdrop and V3D spilled it, a blurred backdrop's composite 2.2
 //!   times as long on the Pi; the frost is its own effect now, and glass of one index may still
 //!   spill there. If it does, the spectrum becomes a stock effect of its own.
-//! - **The ground is the clear.** While transparency is reduced, a backdrop reads the window's
-//!   clear, as a backdrop with nothing painted before it does: no capture, no blur, no backdrop in
-//!   the ledger, and a row of its own (`BackdropRead::Ground`).
 //! - **Glass refracts by a closed form.** The bezel's height is a squircle `(1 − (1 − x)⁴)^¼` of
 //!   the inward distance; its slope along the SDF gradient is the normal, Snell's law gives the
 //!   bent ray, and thickness times its tangent the displacement (kube.io bakes the same into a
@@ -96,7 +93,7 @@
 //!   with it.
 //! - **A still backdrop costs nothing, and an app with none pays for nothing.** The atlas and the
 //!   slot table are made on the first frame with a backdrop, and the blur's pipelines on the first
-//!   that blurs, so a material over the ground compiles no blur. The capture and the levels hold
+//!   that blurs, so a frame of held results compiles no blur. The capture and the levels hold
 //!   one break's footprints from the first texel the break reads, and grow by 256-texel steps to
 //!   the largest break seen, so a resize drag makes them again only now and then; the atlas grows
 //!   with the largest result. No allocation after warmup. Refused: a capture and levels of the

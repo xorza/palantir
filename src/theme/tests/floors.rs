@@ -1,9 +1,12 @@
 use std::fmt::Write as _;
 
+use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
+use crate::primitives::paint::material::material_fallback::MaterialFallback;
+use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::{Material, fallback_alpha};
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
 use crate::theme::color_scheme::ColorScheme;
@@ -186,7 +189,8 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
         let mut dressed = t.clone();
         dressed.dress_floats(material);
         assert_eq!(dressed, t, "{scheme:?}");
-        // The stock floats wear the frost, none left opaque by an ink it cannot hold.
+        // The stock floats wear the frost, none left opaque by an ink it cannot hold, over a
+        // fallback of their own panel at the alpha that holds the ink they paint.
         for (float, panel) in [
             ("menu", &t.menu.panel),
             ("popup", &t.popup.panel),
@@ -194,15 +198,18 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
             ("tooltip", &t.tooltip.panel),
             ("modal", &t.modal.panel),
         ] {
+            let material = panel.paint.material.as_ref().expect(float);
+            assert_eq!(material.blur, 20.0, "{float} {scheme:?}");
+            let fill = panel.paint.fill.as_solid().expect(float);
+            assert_eq!(fill.a, 184.0 / 255.0, "{float} {scheme:?}");
+            let MaterialFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
+                panic!("{float} {scheme:?}: a fallback of its panel");
+            };
+            assert_eq!(fallback.with_alpha(1.0), fill.with_alpha(1.0), "{float}");
             assert_eq!(
-                panel.paint.material.map(|m| m.blur),
-                Some(20.0),
-                "{float} {scheme:?}"
-            );
-            assert_eq!(
-                panel.paint.fill.as_solid().map(|fill| fill.a),
-                Some(184.0 / 255.0),
-                "{float} {scheme:?}"
+                fallback.a,
+                (fallback.a * 255.0).round() / 255.0,
+                "{float}: on the grid"
             );
         }
     }
@@ -243,7 +250,9 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
                 .expect("a solid fill")
                 .with_alpha(0.6);
             assert_eq!(after.paint.fill.as_solid(), Some(fill), "{scheme:?}");
-            let material = Material::frosted(20.0);
+            let solid = before.paint.fill.as_solid().expect("a solid fill");
+            let alpha = fallback_alpha(ink, solid);
+            let material = Material::frosted(20.0).with_fallback(solid.with_alpha(alpha));
             let want = match scheme {
                 ColorScheme::Dark => material.with_max_luminance_for(ink, fill),
                 ColorScheme::Light => material.with_min_luminance_for(ink, fill),
@@ -265,49 +274,47 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
     let mut theme = Theme::stock(ColorScheme::Dark);
     let ink = Palette::DARK.text;
     theme.menu.item.shortcut = ink;
-    let fill = theme
-        .menu
-        .panel
-        .paint
-        .fill
-        .as_solid()
-        .expect("solid")
-        .with_alpha(0.6);
+    let solid = theme.menu.panel.paint.fill.as_solid().expect("solid");
+    let fill = solid.with_alpha(0.6);
     theme.dress_floats(FROSTED);
-    let frosted = Material::frosted(20.0);
+    let alpha = fallback_alpha(ink, solid);
+    let frosted = Material::frosted(20.0).with_fallback(solid.with_alpha(alpha));
     assert_eq!(
         theme.menu.panel.paint.material,
-        Some(frosted.with_max_luminance_for(ink, fill))
+        Some(frosted.clone().with_max_luminance_for(ink, fill))
     );
     assert_ne!(
         theme.menu.panel.paint.material,
         Some(frosted.with_max_luminance_for(Palette::DARK.text_muted, fill))
     );
 
-    // Any material: glass that keeps its dim while transparency is reduced, and a floor it names
-    // that the ink's ceiling replaces.
-    let glass = Material::glass(Lens::WINDOW_GLASS)
-        .with_reduced_transparency(ReducedBackdrop::Nothing)
-        .with_min_luminance(0.5);
+    // Any effect: glass, its input as the float material names it, over the tooltip's own fill.
     let mut theme = Theme::stock(ColorScheme::Dark);
+    let solid = theme.tooltip.panel.paint.fill.as_solid().expect("solid");
     theme.dress_floats(FloatMaterial {
-        material: glass,
+        effect: EffectName::GLASS,
+        blur: 0.0,
+        input: MaterialInput {
+            lens: Lens::WINDOW_GLASS,
+            ..MaterialInput::IDENTITY
+        },
         fill_alpha: 0.6,
     });
-    let fill = theme.tooltip.panel.paint.fill.as_solid().expect("solid");
-    let unbound = Material {
-        min_luminance: None,
-        ..glass
-    };
     assert_eq!(
         theme.tooltip.panel.paint.material,
-        Some(unbound.with_max_luminance_for(Palette::DARK.text, fill))
+        Some(
+            Material::glass(Lens::WINDOW_GLASS)
+                .with_fallback(solid.with_alpha(fallback_alpha(Palette::DARK.text, solid)))
+                .with_max_luminance_for(Palette::DARK.text, solid.with_alpha(0.6))
+        )
     );
 }
 
 /// The frosted material the tests dress floats in: σ 20 under a 0.6 fill.
 const FROSTED: FloatMaterial = FloatMaterial {
-    material: Material::frosted(20.0),
+    effect: EffectName::FROSTED,
+    blur: 20.0,
+    input: MaterialInput::FROSTED,
     fill_alpha: 0.6,
 };
 
@@ -321,8 +328,9 @@ fn dress_floats_refuses_a_bad_blur_or_fill_alpha() {
     ] {
         let panic = std::panic::catch_unwind(|| {
             Theme::from_parts(p, &Metrics::DEFAULT).dress_floats(FloatMaterial {
-                material: Material::frosted(sigma),
+                blur: sigma,
                 fill_alpha: alpha,
+                ..FROSTED
             });
         })
         .expect_err("refused");

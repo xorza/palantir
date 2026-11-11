@@ -19,7 +19,6 @@ use crate::common::hash::Hasher;
 use crate::common::span::Span;
 use crate::effect::effect_registry::EffectRegistry;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::identity::texture_id::TextureId;
@@ -45,7 +44,6 @@ use crate::shape::icon_paint::IconPaint;
 use crate::shape::image_paint::ImagePaint;
 use crate::shape::lower;
 use crate::shape::mesh::MeshShape;
-use crate::shape::paint::capture_params::EffectBackdrop;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
@@ -107,12 +105,16 @@ pub(crate) struct PolylineSpans {
     pub(crate) colors: PolylineColorSpan,
 }
 
-/// Where a draw's effect names resolve, and what is reduced, as [`RecordStore::record`] records
-/// it: the two travel together down to each effect and material the draw names.
+/// Where a draw's effect names resolve, what is reduced, and the theme's material fallback, as
+/// [`RecordStore::record`] records it: they travel together down to each effect and material the
+/// draw names.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Resolve<'a> {
     pub(crate) effects: &'a EffectRegistry,
     pub(crate) reductions: Reductions,
+    /// What a material or a backdrop effect that names no fallback paints while transparency is
+    /// reduced ([`Theme::material_fallback`](crate::Theme::material_fallback)).
+    pub(crate) material_fallback: RgbaF32,
 }
 
 impl RecordStore {
@@ -176,14 +178,20 @@ impl RecordStore {
         paint: &Paint,
         resolve: Resolve<'_>,
     ) -> Option<ClosedPaint> {
-        let read = paint.material.as_ref().and_then(|material| {
-            MaterialRead::resolve(material, resolve.effects, resolve.reductions)
-        });
+        let read = paint
+            .material
+            .as_ref()
+            .and_then(|material| MaterialRead::resolve(material, resolve));
+        // A material reading its fallback paints it in place of the fill, as a plain box.
+        let fill_noop = match (&paint.material, read) {
+            (Some(material), Some(MaterialRead::Fallback { theme })) => {
+                material.fallback.is_noop(theme)
+            }
+            _ => paint.fill.is_noop(),
+        };
+        let captures = matches!(read, Some(MaterialRead::Capture { .. }));
         if geometry.is_paint_empty()
-            || (paint.fill.is_noop()
-                && paint.border.is_noop()
-                && paint.shadow.is_noop()
-                && read.is_none())
+            || (fill_noop && !captures && paint.border.is_noop() && paint.shadow.is_noop())
         {
             return None;
         }
@@ -387,7 +395,8 @@ impl RecordStore {
     }
 
     /// The record of `paint` over `geometry`, its name resolved in `resolve`, its parameters and
-    /// images copied here; `None` where it paints nothing.
+    /// images copied here; a backdrop effect's fallback alone over `geometry` while transparency
+    /// is reduced; `None` where it paints nothing.
     ///
     /// # Panics
     ///
@@ -402,30 +411,38 @@ impl RecordStore {
     ) -> Option<ClosedPaint> {
         let ErasedEffectPaint {
             name,
-            kind,
             params,
             capture,
-            reduced_transparency,
+            fallback,
             images,
             outside,
         } = paint;
         // Resolved and checked in every mode and before the empty test, so a logic error panics
         // whatever is reduced and wherever it lies.
-        let resolved = resolve.effects.resolve(name, resolve.reductions)?;
-        let bound = images.iter().flatten().count();
-        assert!(
-            bound == usize::from(resolved.image_slots),
-            "`{}` paints an effect that binds {} images, and the paint binds {bound}",
-            name.name.as_str(),
-            resolved.image_slots,
-        );
-        let backdrop = match kind {
-            KindId::Color => None,
-            KindId::Backdrop => Some(EffectBackdrop::of(
-                reduced_transparency.mode(resolve.reductions.transparency)?,
-                capture,
-            )),
-        };
+        let resolved = resolve.effects.resolve(name, resolve.reductions);
+        if let Some(resolved) = resolved {
+            let bound = images.iter().flatten().count();
+            assert!(
+                bound == usize::from(resolved.image_slots),
+                "`{}` paints an effect that binds {} images, and the paint binds {bound}",
+                name.name.as_str(),
+                resolved.image_slots,
+            );
+        }
+        if let Some(fallback) = fallback
+            && resolve.reductions.transparency.is_reduced()
+        {
+            if geometry.is_paint_empty() || fallback.is_noop(resolve.material_fallback) {
+                return None;
+            }
+            return Some(ClosedPaint::Fill(lower::lower_paint(
+                self,
+                &Paint::from(fallback.brush(resolve.material_fallback)),
+                None,
+            )));
+        }
+        let resolved = resolved?;
+        let backdrop = fallback.map(|_| capture);
         if geometry.is_paint_empty() {
             return None;
         }

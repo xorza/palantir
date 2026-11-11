@@ -18,7 +18,6 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
-use crate::primitives::paint::material::reduced_backdrop::BackdropMode;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::reduction::{Reduction, Reductions};
@@ -130,45 +129,44 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
 }
 
 /// A sane chrome reaches the row unchanged and every field reaches the hash.
-/// A chrome's material lowers as it reads this record, its fill as authored either way: through
-/// its effect over what is under it, a backdrop; over the ground, while transparency is reduced, no
-/// backdrop; or not at all, where its use paints nothing then, leaving the translucent fill. A rect
-/// shape lowers the same way, its read resolved in the registry, where the stock frost is effect 3.
+/// A chrome's material lowers as it reads this record: through its effect over what is under it,
+/// a backdrop, its fill as authored; as a plain box, its fallback in place of its fill and no
+/// material, while transparency is reduced, the theme's surface for one that names none; or not
+/// at all, where its effect's alternative paints nothing, its fill as authored. A rect shape
+/// lowers the same way, its read resolved in the registry, where the stock frost is effect 3. A
+/// fallback reaches the row's hash as its fill, and a capture's row hashes by none of it.
 #[test]
 fn a_material_lowers_as_it_reads() {
-    let color = RgbaF32::hex(0x204060).with_alpha8(184);
-    let frosted = Chrome::new(color).with_material(Material::frosted(20.0));
+    let panel = RgbaF32::hex(0x204060);
+    let color = panel.with_alpha8(184);
+    let theme = RgbaF32::hex(0x101820).with_alpha8(200);
+    let own = Chrome::new(color).with_material(Material::frosted(20.0).with_fallback(panel));
+    let themed = Chrome::new(color).with_material(Material::frosted(20.0));
     let solid = |brush: LoweredBrush| match brush {
         LoweredBrush::Solid(color) => color,
         LoweredBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
     };
     let id = EffectId(3);
     let mut store = RecordStore::default();
-    for (read, captures) in [
+    let fallback = MaterialRead::Fallback { theme };
+    for (chrome_, read, material, fill) in [
         (
-            Some(MaterialRead {
-                effect: id,
-                mode: BackdropMode::Capture,
-            }),
-            Some(true),
+            &own,
+            Some(MaterialRead::Capture { effect: id }),
+            Some(id),
+            color,
         ),
-        (
-            Some(MaterialRead {
-                effect: id,
-                mode: BackdropMode::Ground,
-            }),
-            Some(false),
-        ),
-        (None, None),
+        (&own, Some(fallback), None, panel),
+        (&themed, Some(fallback), None, theme),
+        (&own, None, None, color),
     ] {
-        let row = chrome(&mut store, &frosted, Border::NONE, read);
+        let row = chrome(&mut store, chrome_, Border::NONE, read);
         assert_eq!(
-            row.material.map(LoweredMaterial::captures),
-            captures,
+            row.material.map(LoweredMaterial::effect),
+            material,
             "{read:?}"
         );
-        assert_eq!(row.material.map(LoweredMaterial::effect), read.map(|_| id));
-        assert_eq!(solid(row.fill), color.to_f16(), "{read:?}");
+        assert_eq!(solid(row.fill), fill.to_f16(), "{read:?}");
     }
 
     let effects = EffectRegistry::default();
@@ -180,25 +178,58 @@ fn a_material_lowers_as_it_reads() {
         let resolve = Resolve {
             effects: &effects,
             reductions,
+            material_fallback: theme,
         };
-        store.record(
-            DrawWith::<Paint>::draw(&Shape::rect(), &frosted.paint),
-            resolve,
-        )
+        store.record(DrawWith::<Paint>::draw(&Shape::rect(), &own.paint), resolve)
     };
-    for (reductions, captures) in [(Reductions::FULL, true), (reduced, false)] {
+    for (reductions, material, fill) in
+        [(Reductions::FULL, Some(id), color), (reduced, None, panel)]
+    {
         let Some(ShapeRecord::Closed {
             geometry: ClosedGeometry::Box(_),
-            paint: ClosedPaint::Fill(LoweredPaint { fill, material, .. }),
+            paint:
+                ClosedPaint::Fill(LoweredPaint {
+                    fill: lowered,
+                    material: worn,
+                    ..
+                }),
         }) = rect(&mut store, reductions)
         else {
             panic!("a rect lowers to a rect quad");
         };
-        let material = material.expect("a frosted rect wears its material");
-        assert_eq!(material.captures(), captures);
-        assert_eq!(material.effect(), id);
-        assert_eq!(solid(fill), color.to_f16());
+        assert_eq!(worn.map(LoweredMaterial::effect), material);
+        assert_eq!(solid(lowered), fill.to_f16());
     }
+
+    // A fallback of nothing leaves nothing to paint but a border: no record without one.
+    let bare =
+        Paint::from(color).with_material(Material::frosted(20.0).with_fallback(Brush::TRANSPARENT));
+    let resolve = Resolve {
+        effects: &effects,
+        reductions: reduced,
+        material_fallback: theme,
+    };
+    let bordered = bare.clone().with_border(Border::new(RgbaF32::WHITE, 1.0));
+    let rect_shape = Shape::rect();
+    let draw = |paint| DrawWith::<Paint>::draw(&rect_shape, paint);
+    assert!(store.record(draw(&bare), resolve).is_none());
+    assert!(store.record(draw(&bordered), resolve).is_some());
+
+    let recolored =
+        Chrome::new(color).with_material(Material::frosted(20.0).with_fallback(RgbaF32::BLACK));
+    let mut hash =
+        |authored: &Chrome, read| chrome(&mut store, authored, Border::NONE, Some(read)).hash;
+    assert_ne!(
+        hash(&own, fallback),
+        hash(&recolored, fallback),
+        "the fallback it paints"
+    );
+    let capture = MaterialRead::Capture { effect: id };
+    assert_eq!(
+        hash(&own, capture),
+        hash(&recolored, capture),
+        "a fallback it does not paint"
+    );
 }
 
 #[test]
@@ -307,10 +338,13 @@ fn chrome_lowering_keeps_an_authored_field() {
     let hashes: Vec<_> = variants
         .iter()
         .map(|(label, authored)| {
-            let read = authored.paint.material.map(|_| MaterialRead {
-                effect: EffectId(2),
-                mode: BackdropMode::Capture,
-            });
+            let read = authored
+                .paint
+                .material
+                .as_ref()
+                .map(|_| MaterialRead::Capture {
+                    effect: EffectId(2),
+                });
             (
                 *label,
                 chrome(&mut store, authored, Border::NONE, read).hash,

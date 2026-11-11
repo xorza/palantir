@@ -39,7 +39,6 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::material_input::MaterialInput;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::EffectCaptureDraw;
@@ -1864,55 +1863,85 @@ fn a_backdrop_effect_reads_under_its_reach_and_clamps_past_it() {
 
 const SHARP: Shift = Shift { dx: 0.0 };
 
-/// While transparency is reduced a backdrop effect's paint reads the window's ground, which takes
-/// no ticket and lists no backdrop, or paints nothing where it asks for nothing then. At full
-/// transparency it captures what is under it.
+/// While transparency is reduced a backdrop effect paints its fallback over its shape as a plain
+/// fill, which runs no effect, takes no ticket and lists no backdrop: the theme's material
+/// fallback where it names none, its own where it names one, and nothing for one that paints
+/// nothing. At full transparency it captures what is under it.
 #[test]
-fn a_backdrop_effect_reads_the_ground_or_nothing_while_transparency_is_reduced() {
+fn a_backdrop_effect_paints_its_fallback_while_transparency_is_reduced() {
     let mut h = Harness::mono(UVec2::new(16, 16));
     h.ui()
         .load_effect(SHIFT, EffectSource::new(SHIFT_WGSL))
         .unwrap();
-    let reads = |h: &Harness| -> Vec<Option<EffectCaptureDraw>> {
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 0.5);
+    let calls = |h: &Harness| -> Vec<&'static str> {
         h.encode_paint()
             .calls
             .iter()
-            .filter_map(|call| match call {
-                PaintCall::Effect(p) => Some(p.paint.backdrop),
-                _ => None,
-            })
+            .map(PaintCall::kind)
+            .filter(|kind| *kind == "Fill" || *kind == "Effect")
             .collect()
     };
-    let paint = || EffectPaint::new(SHIFT, SHARP).blur(2.0);
+    let paint = |fallback: RgbaF32| EffectPaint::new(SHIFT, SHARP).blur(2.0).fallback(fallback);
     h.frame(|ui| {
-        ui.add_shape(Shape::rect(), paint());
+        ui.add_shape(Shape::rect(), paint(red));
     });
+    let reads: Vec<_> = h
+        .encode_paint()
+        .calls
+        .iter()
+        .filter_map(|call| match call {
+            PaintCall::Effect(p) => Some(p.paint.backdrop),
+            _ => None,
+        })
+        .collect();
     assert!(matches!(
-        reads(&h).as_slice(),
-        [Some(EffectCaptureDraw::Capture {
+        reads.as_slice(),
+        [Some(EffectCaptureDraw {
             reach: CaptureReach::Px(0.0),
             ..
         })]
     ));
     h.set_system_transparency_reduced(true);
     h.frame(|ui| {
-        ui.add_shape(Shape::rect(), paint());
+        ui.add_shape(Shape::rect(), paint(red));
     });
-    assert_eq!(reads(&h), [Some(EffectCaptureDraw::Ground)]);
+    let fills = |h: &Harness| -> Vec<_> {
+        h.encode_paint()
+            .calls
+            .iter()
+            .filter_map(|call| match call {
+                PaintCall::Fill(p) => Some(p.paint.fill.color),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(fills(&h), [red.to_f16()], "the fallback, as a plain fill");
+    assert_eq!(calls(&h), ["Fill"], "and no effect");
     h.frame(|ui| {
-        ui.add_shape(
-            Shape::rect(),
-            paint().reduced_transparency(ReducedBackdrop::Nothing),
-        );
+        ui.add_shape(Shape::rect(), EffectPaint::new(SHIFT, SHARP));
     });
-    assert_eq!(reads(&h), []);
+    let theme = h.ui().theme().material_fallback;
+    assert_eq!(
+        fills(&h),
+        [theme.to_f16()],
+        "the theme's where it names none"
+    );
+    h.frame(|ui| {
+        ui.add_shape(Shape::rect(), paint(RgbaF32::TRANSPARENT));
+    });
+    assert_eq!(
+        calls(&h),
+        Vec::<&str>::new(),
+        "a fallback of nothing paints nothing"
+    );
     // A name nothing loaded is a logic error in every mode, a use that paints nothing included.
     let gone = EffectName::<Shift, BackdropEffect>::named("gone").unwrap();
     assert_panics_with("no effect is loaded under `gone`", || {
         h.frame(|ui| {
             ui.add_shape(
                 Shape::rect(),
-                EffectPaint::new(gone, SHARP).reduced_transparency(ReducedBackdrop::Nothing),
+                EffectPaint::new(gone, SHARP).fallback(RgbaF32::TRANSPARENT),
             );
         });
     });

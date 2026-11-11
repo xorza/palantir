@@ -14,10 +14,10 @@ use crate::renderer::backdrop_captures::{
     BackdropCaptures, BackdropDamage, BackdropTicket, Settled,
 };
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::backdrop_row::BackdropRow;
 use crate::renderer::render_buffer::backdrop_row::BackdropSource::{
     self, Capture, Clear, Held, Hidden,
 };
-use crate::renderer::render_buffer::backdrop_row::{BackdropRead, BackdropRow};
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
@@ -104,10 +104,8 @@ fn frame(
             BackdropRow {
                 reads: ticket.capture.footprint.into(),
                 look: None,
-                read: BackdropRead::Capture {
-                    capture: ticket.capture,
-                    source,
-                },
+                capture: ticket.capture,
+                source,
             }
         }));
     captures.settle(&buffer);
@@ -425,10 +423,7 @@ fn a_backdrop_whose_key_moves_takes_a_new_result() {
         h.render_buffer()
             .backdrops
             .iter()
-            .map(|row| match row.read {
-                BackdropRead::Capture { capture, source } => (capture.key.shape, source),
-                BackdropRead::Ground => panic!("a backdrop, not the ground"),
-            })
+            .map(|row| (row.capture.key.shape, row.source))
             .collect()
     };
     let captured = Capture { barrier: 1 };

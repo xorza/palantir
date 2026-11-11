@@ -134,7 +134,7 @@ fn glass_ray(pos: vec2<f32>, outward: vec2<f32>, inward: f32, lens: vec4<f32>, t
 // of moments by the stretch's length, which `f32` cannot hold below a thousandth; there the weight
 // is flat enough to take half the stretch's area. The last stretch is a part one, so no contour
 // marks where the step count grows with the spread. A spread under a thousandth of a physical px
-// shows nothing, so the material keeps one read at D, as it does over the ground.
+// shows nothing, so the material keeps one read at D.
 fn glass_spectrum(pos: vec2<f32>, outward: vec2<f32>, inward: f32, lens: vec4<f32>, scale: f32) -> vec3<f32> {
     let spread = abs(
         glass_displacement(lens, inward, glass_index(lens, 1.0))

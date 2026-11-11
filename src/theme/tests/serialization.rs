@@ -6,7 +6,6 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
-use crate::primitives::paint::material::reduced_backdrop::ReducedBackdrop;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::text::font_family::FontFamily;
@@ -56,47 +55,49 @@ fn default_theme_roundtrips_through_ron() {
 
 #[test]
 fn widget_look_serde_roundtrip() {
-    let cases =
-        [
-            WidgetLook::default(),
-            WidgetLook {
-                chrome: Chrome {
-                    corners: Corners::all(6.0),
-                    paint: Paint {
-                        fill: RgbaF32::hex(0x336699).into(),
-                        border: Border::new(RgbaF32::hex(0xffffff), 1.5),
-                        shadow: Shadow::NONE,
-                        material: None,
-                    },
+    let cases = [
+        WidgetLook::default(),
+        WidgetLook {
+            chrome: Chrome {
+                corners: Corners::all(6.0),
+                paint: Paint {
+                    fill: RgbaF32::hex(0x336699).into(),
+                    border: Border::new(RgbaF32::hex(0xffffff), 1.5),
+                    shadow: Shadow::NONE,
+                    material: None,
                 },
-                text: TextStyleOverrides::NONE.with_font_size(20.0),
             },
-            WidgetLook {
-                chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
-                    .with_material(Material::frosted(12.0).with_max_luminance(0.05).with_lens(
-                        Lens {
+            text: TextStyleOverrides::NONE.with_font_size(20.0),
+        },
+        WidgetLook {
+            chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
+                .with_material(
+                    Material::frosted(12.0)
+                        .with_fallback(RgbaF32::hex(0x203040))
+                        .with_max_luminance(0.05)
+                        .with_lens(Lens {
                             dispersion: 0.0,
                             ..Lens::WINDOW_GLASS
-                        },
-                    )),
-                text: TextStyleOverrides::NONE,
+                        }),
+                ),
+            text: TextStyleOverrides::NONE,
+        },
+        WidgetLook {
+            chrome: Chrome::NONE,
+            text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0x808080)),
+        },
+        WidgetLook {
+            chrome: Chrome::NONE,
+            text: TextStyleOverrides {
+                family: Some(FontFamily::MONO),
+                weight: Some(FontWeight::BOLD),
+                slant: Some(FontSlant::Italic),
+                ..TextStyleOverrides::NONE
+                    .with_font_size(13.0)
+                    .with_line_height_factor(1.5)
             },
-            WidgetLook {
-                chrome: Chrome::NONE,
-                text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0x808080)),
-            },
-            WidgetLook {
-                chrome: Chrome::NONE,
-                text: TextStyleOverrides {
-                    family: Some(FontFamily::MONO),
-                    weight: Some(FontWeight::BOLD),
-                    slant: Some(FontSlant::Italic),
-                    ..TextStyleOverrides::NONE
-                        .with_font_size(13.0)
-                        .with_line_height_factor(1.5)
-                },
-            },
-        ];
+        },
+    ];
     for look in cases {
         let serialized = pretty(&look);
         let parsed: WidgetLook = ron::from_str(&serialized).expect("parse");
@@ -111,43 +112,68 @@ fn widget_look_serde_roundtrip() {
     }
 }
 
-/// A material in a file names its effect and only what differs from its defaults, and each field
-/// is checked by its kind: a blur a length, saturation, noise and a luminance ceiling factors, a
-/// lens's index at least 1 and its dispersion and highlight fractions. An effect is a name a file
-/// cannot leave out, which the theme's set checks against the loaded effects.
+/// A material in a file names its effect and its fallback and only what differs from its
+/// defaults, and each field is checked by its kind: a blur a length, saturation, noise and a
+/// luminance ceiling factors, a lens's index at least 1 and its dispersion and highlight
+/// fractions. An effect is a name a file cannot leave out, which the theme's set checks against
+/// the loaded effects; a file that leaves the fallback out reads the theme's.
 #[test]
 fn materials_load_by_their_kinds() {
-    let blur = |rest: &str| format!("(effect: \"palantir.blur\"{rest})");
+    let blur = |rest: &str| {
+        format!("(effect: \"palantir.blur\", fallback: Brush(Solid(\"#000000\")){rest})")
+    };
     for (label, ron, want) in [
-        ("blur alone", blur(", blur: 8.0"), Some(Material::blur(8.0))),
+        (
+            "blur alone",
+            blur(", blur: 8.0"),
+            Some(Material::blur(8.0).with_fallback(RgbaF32::BLACK)),
+        ),
         (
             "gray",
             blur(", input: (saturation: 0.0)"),
-            Some(Material::blur(0.0).with_saturation(0.0)),
+            Some(
+                Material::blur(0.0)
+                    .with_fallback(RgbaF32::BLACK)
+                    .with_saturation(0.0),
+            ),
         ),
         (
             "default lens",
-            "(effect: \"palantir.glass\", input: (lens: ()))".to_owned(),
-            Some(Material::glass(Lens::WINDOW_GLASS)),
+            "(effect: \"palantir.glass\", fallback: Brush(Solid(\"#000000\")), input: (lens: ()))"
+                .to_owned(),
+            Some(Material::glass(Lens::WINDOW_GLASS).with_fallback(RgbaF32::BLACK)),
         ),
         (
-            "keeps its dim",
-            blur(", reduced_transparency: Nothing"),
-            Some(Material::blur(0.0).with_reduced_transparency(ReducedBackdrop::Nothing)),
+            "the theme's fallback",
+            "(effect: \"palantir.blur\", blur: 8.0)".to_owned(),
+            Some(Material::blur(8.0)),
         ),
-        ("no effect", "(blur: 8.0)".to_owned(), None),
+        (
+            "named the theme's",
+            "(effect: \"palantir.blur\", fallback: ThemeSurface)".to_owned(),
+            Some(Material::blur(0.0)),
+        ),
+        (
+            "no effect",
+            "(fallback: Brush(Solid(\"#000000\")), blur: 8.0)".to_owned(),
+            None,
+        ),
         ("negative blur", blur(", blur: -1.0"), None),
         ("NaN saturation", blur(", input: (saturation: NaN)"), None),
         ("negative noise", blur(", input: (noise: -0.1)"), None),
         (
             "ceiling",
             blur(", max_luminance: Some(0.05)"),
-            Some(Material::blur(0.0).with_max_luminance(0.05)),
+            Some(
+                Material::blur(0.0)
+                    .with_fallback(RgbaF32::BLACK)
+                    .with_max_luminance(0.05),
+            ),
         ),
         (
             "no ceiling",
             blur(", max_luminance: None"),
-            Some(Material::blur(0.0)),
+            Some(Material::blur(0.0).with_fallback(RgbaF32::BLACK)),
         ),
         (
             "negative ceiling",

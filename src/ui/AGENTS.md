@@ -6,8 +6,9 @@ How a person's and a system's reductions reach a frame.
   answer unless the app picks one, as the color scheme is; all of them, the frame rate among
   them, are one `UiPreferences`, read and written whole. Reduced motion snaps transitions and
   stops decorative motion, an animation its author marks essential running on; reduced
-  transparency shows a material over the window's ground with no capture or blur, as WinUI's
-  acrylic turns solid ([acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)).
+  transparency draws each material's box as a plain box of its fallback, with no capture, blur or
+  effect, as WinUI's acrylic turns into its fallback color
+  ([acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)).
   Refused: switches in the `Theme`, a person's choice in a theme file that a transition blends.
 - **Reduced power follows the OS power-saver mode**, a mode the person sets, so the system
   decides it. Facts and sources: "Power saving" in

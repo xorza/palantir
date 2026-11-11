@@ -2,10 +2,13 @@ use glam::Vec2;
 
 use crate::animation::animation_spec::AnimationSpec;
 
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_fallback::MaterialFallback;
+use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::{
@@ -74,7 +77,9 @@ const DISTINCT: Metrics = Metrics {
         blur: 23.0,
     },
     float_material: Some(FloatMaterial {
-        material: Material::blur(31.0),
+        effect: EffectName::BLUR,
+        blur: 31.0,
+        input: MaterialInput::IDENTITY,
         fill_alpha: 0.5,
     }),
     transition: AnimationSpec::MEDIUM,
@@ -191,7 +196,9 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(got, want, "{slot}");
     }
     assert_eq!(t.dock.ghost_offset, Vec2::new(5.0, 7.0));
-    // Each float wears the material's blur, and its fill at the material's fill.
+    // Each float wears the material's blur, and its fill at the material's fill alpha over a
+    // fallback of that fill at the alpha that holds its ink, so it shows as its panel while
+    // transparency is reduced.
     for (slot, panel) in [
         ("menu", &t.menu.panel),
         ("popup", &t.popup.panel),
@@ -199,13 +206,18 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("tooltip", &t.tooltip.panel),
         ("modal", &t.modal.panel),
     ] {
-        assert_eq!(
-            panel.paint.material.map(|m| m.blur),
-            Some(31.0),
-            "{slot} blur"
-        );
+        let material = panel.paint.material.as_ref().expect(slot);
+        assert_eq!(material.blur, 31.0, "{slot} blur");
         let fill = panel.paint.fill.as_solid().expect(slot);
         assert_eq!(fill.a, 0.5, "{slot} fill");
+        let MaterialFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
+            panic!("{slot}: a fallback of its panel");
+        };
+        assert_eq!(
+            fallback.with_alpha(1.0),
+            fill.with_alpha(1.0),
+            "{slot} fallback"
+        );
     }
     assert_eq!(t.text.font_size, 27.0, "the ambient text is the body tier");
     let captions = [

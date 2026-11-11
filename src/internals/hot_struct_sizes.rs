@@ -150,8 +150,9 @@ const PINS: &[Pin] = &[
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    // 116 of them the material, 64 of those its effect's inline name.
-    pin::<Chrome>("primitives::Chrome", 240, 4),
+    // 172 of them the material, 64 of those its effect's inline name and 56 its fallback, a brush
+    // and its tag.
+    pin::<Chrome>("primitives::Chrome", 296, 4),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
@@ -180,22 +181,22 @@ const PINS: &[Pin] = &[
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 144, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 160, 8),
     // 116 of them the chrome's material.
-    pin::<Panel>("widgets::Panel", 368, 8),
-    pin::<Block>("widgets::Block", 368, 8),
-    pin::<Grid>("widgets::Grid", 368, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 424, 8),
+    pin::<Panel>("widgets::Panel", 424, 8),
+    pin::<Block>("widgets::Block", 424, 8),
+    pin::<Grid>("widgets::Grid", 424, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 480, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
-    pin::<Popup<'static>>("widgets::Popup", 408, 8),
-    pin::<Modal<'static>>("widgets::Modal", 624, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 584, 8),
+    pin::<Popup<'static>>("widgets::Popup", 464, 8),
+    pin::<Modal<'static>>("widgets::Modal", 736, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 640, 8),
     pin::<GpuView>("widgets::GpuView", 152, 8),
-    pin::<Menu<'static>>("widgets::Menu", 488, 8),
+    pin::<Menu<'static>>("widgets::Menu", 544, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 176, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 392, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 368, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 424, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

@@ -35,9 +35,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::material::lens_optics::SPECTRUM_SAMPLES;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{
-    BackdropRead, BackdropRow, BackdropSource, MaterialLook,
-};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource, MaterialLook};
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
 use std::cmp::Reverse;
@@ -71,9 +69,7 @@ impl BackdropSlot {
     fn of(row: &BackdropRow, kept: Kept) -> Self {
         let (offset, lattice, clear) = match kept {
             Kept::Slot(slot) => {
-                let capture = row
-                    .capture()
-                    .expect("a result in the atlas is a backdrop's");
+                let capture = row.capture;
                 let apron = UVec2::splat(capture.plan.apron());
                 let offset = (slot.min + apron).as_vec2() - capture.region.min.as_vec2();
                 (offset, capture.plan.lattice() as f32, [0.0; 3])
@@ -234,7 +230,7 @@ pub(crate) struct Backdrops {
 /// What [`Backdrops`] holds on the device once a frame has a backdrop: the results atlas, the slot
 /// table, and the group their quads read them through with its sampler and the spectrum a lens
 /// spreads ([`SpectrumCell`]), written once; and the blur, made at the first frame that blurs, as a
-/// frame of backdrops over the ground and of held results blurs nothing.
+/// frame of held results blurs nothing.
 #[derive(Debug)]
 struct BackdropResources {
     blur: Option<BackdropBlur>,
@@ -411,25 +407,16 @@ impl Backdrops {
         let shrank = self.shrink_atlas(ctx);
         // Every result the frame reads is stamped first, so making room for one never evicts
         // another.
-        for capture in buffer.backdrops.iter().filter_map(BackdropRow::capture) {
+        for capture in buffer.backdrops.iter().map(|row| row.capture) {
             if let Some(cached) = self.cache.get_mut(&(owner, capture.key)) {
                 cached.used = self.prepared;
             }
         }
         let surface = buffer.display.physical;
         for row in &buffer.backdrops {
-            let (capture, source) = match row.read {
-                BackdropRead::Capture { capture, source } => (capture, source),
-                // The ground is the clear, as a backdrop with nothing painted before it shows, and
-                // it holds no result.
-                BackdropRead::Ground => {
-                    self.slots.push(BackdropSlot::of(
-                        row,
-                        Kept::Clear(held_clear(clear, format)),
-                    ));
-                    continue;
-                }
-            };
+            let BackdropRow {
+                capture, source, ..
+            } = *row;
             let at = (owner, capture.key);
             let kept = match source {
                 BackdropSource::Capture { barrier } => {

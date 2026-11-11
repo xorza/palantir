@@ -39,7 +39,6 @@ use crate::scene::tree::node_id::NodeId;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::closed_paint::ClosedPaint;
-use crate::shape::paint::lowered_material::LoweredMaterial;
 use crate::shape::record::ShapeRecord;
 use std::hash::Hasher as _;
 
@@ -648,7 +647,7 @@ impl TreeSource<'_> {
                 BackdropOrigin::Chrome => tree
                     .chrome(entry.node)
                     .and_then(|row| row.material)
-                    .and_then(LoweredMaterial::capture),
+                    .map(|material| material.capture),
                 BackdropOrigin::Shape => {
                     tree.shapes.records[entry.shape_idx as usize].backdrop_capture()
                 }

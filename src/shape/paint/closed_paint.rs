@@ -9,7 +9,7 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::lower::LoweredPaint;
-use crate::shape::paint::capture_params::{CaptureParams, EffectBackdrop};
+use crate::shape::paint::capture_params::CaptureParams;
 use crate::shape::paint::image_source::ImageSource;
 
 /// The paint of a closed shape's record, which the shape in [`ShapeRecord::Closed`] holds beside
@@ -47,8 +47,8 @@ pub(crate) enum ClosedPaint {
     /// `RecordStore`'s parameter words; `content_hash` covers the effect, those words, its images,
     /// its backdrop and its halo.
     Effect {
-        /// What a backdrop effect reads under it; `None` for a color effect.
-        backdrop: Option<EffectBackdrop>,
+        /// What a backdrop effect captures under it; `None` for a color effect.
+        backdrop: Option<CaptureParams>,
         /// A color effect's halo, logical px past the shape, outside it alone; `None` paints over
         /// the shape.
         outside: Option<f32>,
@@ -68,9 +68,9 @@ impl ClosedPaint {
             Self::Fill(LoweredPaint {
                 material: Some(material),
                 ..
-            }) => material.capture(),
+            }) => Some(material.capture),
             Self::Effect {
-                backdrop: Some(EffectBackdrop::Capture(capture)),
+                backdrop: Some(capture),
                 ..
             } => Some(*capture),
             _ => None,

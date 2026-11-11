@@ -70,6 +70,14 @@ impl MaterialInput {
         lens: Lens::NONE,
     };
 
+    /// Frosted glass's input, which [`Material::frosted`](crate::Material::frosted) reads: the
+    /// color deepened by Apple's 1.8 and grained by 0.04, so a fill over it reads as a material.
+    pub const FROSTED: Self = Self {
+        saturation: 1.8,
+        noise: 0.04,
+        lens: Lens::NONE,
+    };
+
     /// [`Self::IDENTITY`], as serde's container default names a function.
     const fn identity() -> Self {
         Self::IDENTITY

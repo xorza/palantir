@@ -560,6 +560,7 @@ fn add<S: DrawWith<P>, P>(
     let resolve = Resolve {
         effects: &effects,
         reductions: Reductions::FULL,
+        material_fallback: RgbaF32::TRANSPARENT,
     };
     let paint = S::prepare(paint);
     let record = store.record(shape.draw(&paint), resolve)?;

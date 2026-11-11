@@ -39,9 +39,7 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::{
-    BackdropRead, BackdropRow, BackdropSource, MaterialLook,
-};
+use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource, MaterialLook};
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::effect_draw_row::{EffectDrawRow, EffectInstance, EffectKey};
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
@@ -428,34 +426,22 @@ impl PaintSink for ComposeSession<'_> {
         // A backdrop is listed before it is ordered, so its own paint is not among what it shares a
         // break past.
         let backdrop_idx = match p.paint.backdrop {
-            Some(backdrop) => {
-                // The rect, or its turn's cover, grown by its reach.
+            Some(EffectCaptureDraw { ticket, reach }) => {
+                // The rect, or its turn's cover, grown by its reach, inside the capture by half a
+                // pixel, so a read at the window's edge blends no texel past it.
                 let cover = match p.spin {
                     None => physical,
                     Some(spin) => physical.turned_cover(physical.center(), spin.angle),
                 };
-                match backdrop {
-                    // Inside the capture by half a pixel, so a read at the window's edge blends no
-                    // texel past it.
-                    EffectCaptureDraw::Capture { ticket, reach } => {
-                        let reads = cover
-                            .inflated(reach.margin(scale, None) as f32)
-                            .clamp_to(Rect::from(ticket.capture.footprint).deflated(0.5));
-                        self.list_backdrop(visible, ticket, |source| BackdropRow {
-                            reads,
-                            look,
-                            read: BackdropRead::Capture {
-                                capture: ticket.capture,
-                                source,
-                            },
-                        })
-                    }
-                    EffectCaptureDraw::Ground => self.list_ground(BackdropRow {
-                        reads: cover,
-                        look,
-                        read: BackdropRead::Ground,
-                    }),
-                }
+                let reads = cover
+                    .inflated(reach.margin(scale, None) as f32)
+                    .clamp_to(Rect::from(ticket.capture.footprint).deflated(0.5));
+                self.list_backdrop(visible, ticket, |source| BackdropRow {
+                    reads,
+                    look,
+                    capture: ticket.capture,
+                    source,
+                })
             }
             None => 0,
         };
@@ -719,18 +705,6 @@ impl ComposeSession<'_> {
         self.out.quads.push(QuadDrawRow { key, instance });
     }
 
-    /// List `row`, a backdrop over the window's ground, which takes no capture and breaks no
-    /// pass; its index is its effect instance's `backdrop`.
-    fn list_ground(&mut self, row: BackdropRow) -> u32 {
-        debug_assert!(
-            row.read == BackdropRead::Ground,
-            "a ground row reads the ground"
-        );
-        let idx = self.out.backdrops.len() as u32;
-        self.out.backdrops.push(row);
-        idx
-    }
-
     /// List the backdrop of `ticket`, seen at `visible`, as `row` makes it from the source paint
     /// order gives it ([`Ordering::backdrop_source`]); its index is its effect instance's
     /// `backdrop`.
@@ -919,9 +893,7 @@ impl ComposeSession<'_> {
     /// still be ahead.
     fn discard_composed(&mut self) {
         for row in &mut self.out.backdrops {
-            if let BackdropRead::Capture { source, .. } = &mut row.read {
-                *source = BackdropSource::Hidden;
-            }
+            row.source = BackdropSource::Hidden;
         }
         self.out.discard_scene();
         self.composer.order.start_frame(self.out.display.physical);

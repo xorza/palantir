@@ -48,7 +48,6 @@ use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::placed_stroke::PlacedStroke;
 use crate::shape::geometry::stroke_geometry::{PolylineGeometry, StrokeGeometry};
 use crate::shape::lower::LoweredPaint;
-use crate::shape::paint::capture_params::EffectBackdrop;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
@@ -93,7 +92,7 @@ pub(super) struct PlaneCtx<'a, 'g> {
 }
 
 /// What makes a shape a material's: its material, and what it reads, the ticket the backdrop
-/// ledger wrote for it or the ground.
+/// ledger wrote for it.
 #[derive(Clone, Copy, Debug)]
 struct BackdropLook {
     material: LoweredMaterial,
@@ -136,12 +135,9 @@ impl PlaneCtx<'_, '_> {
         material: Option<LoweredMaterial>,
     ) -> Option<BackdropLook> {
         let material = material?;
-        let read = match material.capture() {
-            Some(capture) => EffectCaptureDraw::Capture {
-                ticket: self.backdrop_ticket(site)?,
-                reach: capture.reach,
-            },
-            None => EffectCaptureDraw::Ground,
+        let read = EffectCaptureDraw {
+            ticket: self.backdrop_ticket(site)?,
+            reach: material.capture.reach,
         };
         Some(BackdropLook { material, read })
     }
@@ -474,16 +470,15 @@ impl PlaneCtx<'_, '_> {
                         content_hash: _,
                     } => {
                         let backdrop = match backdrop {
-                            Some(EffectBackdrop::Capture(capture)) => {
+                            Some(capture) => {
                                 let Some(ticket) = self.backdrop_ticket(site) else {
                                     return;
                                 };
-                                Some(EffectCaptureDraw::Capture {
+                                Some(EffectCaptureDraw {
                                     ticket,
                                     reach: capture.reach,
                                 })
                             }
-                            Some(EffectBackdrop::Ground) => Some(EffectCaptureDraw::Ground),
                             None => None,
                         };
                         out.draw(

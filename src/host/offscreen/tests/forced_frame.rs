@@ -11,7 +11,6 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
-use crate::renderer::render_buffer::backdrop_row::BackdropSource;
 use crate::shape::Shape;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
@@ -122,7 +121,7 @@ fn a_forced_frame_stales_the_backdrops_its_change_touches() {
         host.last_render_buffer()
             .backdrops
             .iter()
-            .filter(|row| row.source().is_some_and(BackdropSource::is_new))
+            .filter(|row| row.source.is_new())
             .count()
     };
     // The first partial frame after a direct one repaints whole, as the backbuffer is stale, and

@@ -429,7 +429,7 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
     let plan = BlurPlan::new(4.0);
     let footprint = URect::covering(rect.inflated(PlaneBackdrop::reach(plan, 0)));
     let material = LoweredMaterial::fixture(4.0);
-    let read = EffectCaptureDraw::Capture {
+    let read = EffectCaptureDraw {
         ticket: BackdropTicket {
             capture: BackdropCapture {
                 key: BackdropKey {
@@ -444,7 +444,7 @@ fn push_backdrop(cmds: &mut PaintCapture, rect: Rect, i: u32) {
             },
             captures: false,
         },
-        reach: material.capture().expect("the fixture captures").reach,
+        reach: material.capture.reach,
     };
     cmds.draw(
         DrawClosedPayload::new(

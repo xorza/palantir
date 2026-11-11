@@ -477,7 +477,7 @@ fn a_chrome_backdrop_paints_as_a_rect_backdrop() {
                 Panel::canvas()
                     .id_salt("backdrop-chrome-backdrop")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .chrome(Chrome::rounded(fill, Corners::all(8.0)).with_material(filter))
+                    .chrome(Chrome::rounded(fill, Corners::all(8.0)).with_material(filter.clone()))
                     .show(ui, |_| {});
             });
     });
@@ -493,7 +493,7 @@ fn a_chrome_backdrop_paints_as_a_rect_backdrop() {
                     .show(ui, |ui| {
                         ui.add_shape(
                             Shape::rect().corners(8.0),
-                            Paint::from(fill).with_material(filter),
+                            Paint::from(fill).with_material(filter.clone()),
                         );
                     });
             });
