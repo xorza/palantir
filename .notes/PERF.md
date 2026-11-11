@@ -88,8 +88,10 @@ an older number here reads as a share, not a time.
   - apple: `xctrace record --template 'Metal System Trace'` over one case, then
     `xctrace export --xpath '…/table[@schema="metal-gpu-intervals"]'` gives each command
     buffer's vertex, fragment and blit intervals and its CPU-to-GPU latency; the Time Profiler's
-    `time-profile` table holds a `tagged-backtrace` a sample. The parsers sit in the run's
-    `tools/` (`xct.py`, `gpuint.py`, `gputl.py`, `tpflat.py`).
+    `time-profile` table holds a `tagged-backtrace` a sample. The export writes each value once
+    with an `id` and every repeat as a `ref` to it, so a reader resolves refs before it groups
+    rows: by `channel-name`, `event-label` and `cmdbuffer-id`, summing `duration` and reading
+    `start-latency`.
   - board: `perf stat` takes the A76's `l1d_cache_refill`, `l2d_cache_refill`,
     `l1i_cache_refill`, `stall_backend` and `stall_frontend` in user mode (`perf_event_paranoid`
     is −1); `perf record -e <event>:u -c 2003` samples where each lands. `V3D_DEBUG=vs,shaderdb`
