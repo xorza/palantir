@@ -1,5 +1,7 @@
 //! A square texture of packed rectangles: its shelf packer, its edge grown by doubling up to a
-//! soft byte budget, past it up to a hard one, and the copy of its texels into the grown texture.
+//! soft byte budget, past it up to a hard one, and the copy of its texels into the grown texture,
+//! as Impeller grows its atlas. Pages beside it, as Skia and WebRender add, wait for a workload
+//! past one texture (`.notes/research/2026-10-28-atlas-growth.md`).
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::shelf_packer::ShelfPacker;

@@ -29,8 +29,8 @@ declaration, good-looking and fast. I made it.
   between their min- and max-content widths as auto table columns do, Fill
   items share the rest as WPF star tracks do, and nothing shrinks below its
   min-content floor.
-- **Fast** — a full 2560×1440 app screen costs 18–81 µs of CPU per frame
-  when nothing changed and 44–194 µs while the window resizes, and a
+- **Fast** — a full 2560×1440 app screen costs 20–85 µs of CPU per frame
+  when nothing changed and 50–212 µs while the window resizes, and a
   steady-state frame allocates nothing. See [Performance](#performance).
 - **Widgets included** — buttons, text and text editing, sliders, checkboxes,
   combo boxes, scroll and pan-zoom views, grids, tabs, a dock, popups, modals,
@@ -41,6 +41,12 @@ declaration, good-looking and fast. I made it.
   first drawn. Gradients and filters included.
 - **Materials** — blur, frosted glass and refracting glass on any rect or
   widget chrome, with a luminance ceiling that keeps text on it legible.
+- **Your own shaders** — a WGSL effect paints any rect, circle or triangle,
+  over what is beneath it or as a glow around it, with your parameters, images
+  and a clock, and palantir clips and antialiases its edge.
+- **Shapes** — rounded rects, circles, arcs, triangles, lines, curves and
+  polylines, with gradients, images, drop and inset shadows, and rounded clips
+  that cut anything inside them.
 - **Keyboard all the way** — `Tab` reaches every widget, dialogs and menus
   trap focus, and widgets take the keys WAI-ARIA gives their role.
 - **IME text** — an input method composes inline in a `TextEdit`,
@@ -132,23 +138,23 @@ drained before the next iteration.
 |                     | Apple M5<br>Metal | Raspberry Pi 5<br>V3D, Vulkan | Steam Deck<br>RADV, Vulkan | Intel i9-13980HX<br>RTX 4090 Laptop, Vulkan |
 | ------------------- | ----------------: | ----------------------------: | -------------------------: | ------------------------------------------: |
 | **CPU pipeline**    |                   |                               |                            |                                             |
-| `cached`            |           18.2 µs |                       80.7 µs |                    51.7 µs |                                     22.5 µs |
-| `hovering`          |           21.7 µs |                        102 µs |                    64.8 µs |                                     27.1 µs |
-| `partial`           |           28.4 µs |                        138 µs |                    87.4 µs |                                     34.0 µs |
-| `alternating`       |           31.9 µs |                        150 µs |                     138 µs |                                     38.7 µs |
-| `scrolling`         |           34.7 µs |                        155 µs |                    99.0 µs |                                     42.6 µs |
-| `resizing`          |           43.9 µs |                        194 µs |                     127 µs |                                     52.5 µs |
-| `typing`            |           52.2 µs |                        241 µs |                     154 µs |                                     63.8 µs |
-| `theming`           |           70.6 µs |                        343 µs |                     224 µs |                                     99.2 µs |
+| `cached`            |           20.0 µs |                       85.0 µs |                    51.7 µs |                                     22.5 µs |
+| `hovering`          |           23.3 µs |                        106 µs |                    64.8 µs |                                     27.1 µs |
+| `partial`           |           30.5 µs |                        142 µs |                    87.4 µs |                                     34.0 µs |
+| `alternating`       |           35.6 µs |                        160 µs |                     138 µs |                                     38.7 µs |
+| `scrolling`         |           40.2 µs |                        170 µs |                    99.0 µs |                                     42.6 µs |
+| `resizing`          |           49.7 µs |                        212 µs |                     127 µs |                                     52.5 µs |
+| `typing`            |           57.6 µs |                        251 µs |                     154 µs |                                     63.8 µs |
+| `theming`           |           75.8 µs |                        362 µs |                     224 µs |                                     99.2 µs |
 | **CPU + GPU frame** |                   |                               |                            |                                             |
-| `cached`            |           18.3 µs |                       83.2 µs |                    66.9 µs |                                     22.7 µs |
-| `hovering`          |            261 µs |                       2.46 ms |                     661 µs |                                      140 µs |
-| `partial`           |            276 µs |                       2.74 ms |                     753 µs |                                      152 µs |
-| `alternating`       |            348 µs |                       6.73 ms |                    1.04 ms |                                      156 µs |
-| `scrolling`         |            315 µs |                       5.49 ms |                     797 µs |                                      171 µs |
-| `resizing`          |            318 µs |                       5.27 ms |                     930 µs |                                      185 µs |
-| `typing`            |            292 µs |                       2.65 ms |                     894 µs |                                      197 µs |
-| `theming`           |            398 µs |                       6.19 ms |                    1.57 ms |                                      373 µs |
+| `cached`            |           20.0 µs |                       86.9 µs |                    66.9 µs |                                     22.7 µs |
+| `hovering`          |            269 µs |                       2.42 ms |                     661 µs |                                      140 µs |
+| `partial`           |            278 µs |                       2.70 ms |                     753 µs |                                      152 µs |
+| `alternating`       |            331 µs |                       5.41 ms |                    1.04 ms |                                      156 µs |
+| `scrolling`         |            296 µs |                       4.20 ms |                     797 µs |                                      171 µs |
+| `resizing`          |            307 µs |                       4.29 ms |                     930 µs |                                      185 µs |
+| `typing`            |            296 µs |                       2.60 ms |                     894 µs |                                      197 µs |
+| `theming`           |            400 µs |                       5.13 ms |                    1.57 ms |                                      373 µs |
 
 - **Scenarios.** `cached` changes nothing, so layout hits its cache and
   damage skips the paint. `hovering` moves the pointer between two widgets,
@@ -158,8 +164,10 @@ drained before the next iteration.
   measure runs again. `typing` types a character into a focused field, then
   deletes it. `theming` blends two themes at a new phase every frame, so text
   reshapes and rasterizes anew.
-- **Run.** Each number is the median of one full run. The Apple M5 runs
-  unpinned; every other machine runs pinned to one core.
+- **Run.** Each number is the median of one full run; the Apple M5 runs
+  unpinned, the better of two runs, and every other machine pinned to one
+  core. The Apple M5 and Raspberry Pi 5 columns were measured on 2026-11-11;
+  the Steam Deck and Intel columns earlier, on an older build.
 - **Build.** The x86 build sets `-C target-cpu=x86-64-v3` (see
   [Recommended build flag](#recommended-build-flag)); an aarch64 build sets
   no flag.
@@ -243,7 +251,6 @@ and the comparison reports exactly which pixels moved.
 
 Known gaps, not design rejections:
 
-- **Accessibility** — no AccessKit / screen-reader support yet.
 - **Rich text** — one family / size / color per `Text`; no inline spans.
 - **Visual caret motion in bidirectional text** — `TextEdit`'s arrow keys
   step graphemes in logical order, so inside a right-to-left run `←` moves

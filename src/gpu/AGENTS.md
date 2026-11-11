@@ -43,8 +43,7 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   ([`effect_node.h`](https://chromium.googlesource.com/chromium/src/+/HEAD/cc/trees/effect_node.h))
   and Skia's analytic clip
   ([Graphite `ClipStack.h`](https://skia.googlesource.com/skia/+/main/src/gpu/graphite/ClipStack.h)).
-  Refused: a stencil, which keeps or drops a whole pixel and breaks batches at each clip;
-  geometry cut to the clip, which cannot cut an arc antialiased; a mask texture or an offscreen
+  Refused: geometry cut to the clip, which cannot cut an arc antialiased; a mask texture or an offscreen
   layer, a pass and a texture a clip. Cost: where two draws cross one edge pixel, the lower shows
   through by `c(1 − c)`, as in Skia and Chromium.
 - **An instance names its chain of clips**, and nested clips multiply. Refused: the clip inline

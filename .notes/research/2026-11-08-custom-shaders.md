@@ -20,9 +20,9 @@ date. wgpu facts are read from wgpu 29.0.4 in the cargo registry, and palantir p
   rect of the surface. `frag_px` gives a fragment's surface position on every target. Every
   fragment writes premultiplied color, as the blend is `PREMULTIPLIED_ALPHA_BLENDING`. Color is
   linear light, and the GPU encodes sRGB at the swapchain write.
-- **Pipelines per format and per stencil mode.** `FormatPipelines` holds every pipeline for one
-  swapchain format, so an sRGB and an HDR window bind different sets. `StencilVariant` pairs a
-  base pipeline with a stencil-test twin for rounded clips. Both are built on the first frame
+- **Pipelines per format and per clip mode.** `FormatPipelines` holds every pipeline for one
+  swapchain format, so an sRGB and an HDR window bind different sets. `ClipVariant` pairs a
+  base pipeline with a twin that cuts rounded clips. Both are built on the first frame
   whose census asks for them, not at startup.
 - **Paint animation.** `shape::paint_animation` is a pure function of `now` at encode time, so
   an irregular `dt` does not drift. It drives alpha and rotation only. Its module doc refuses
@@ -168,7 +168,7 @@ date. wgpu facts are read from wgpu 29.0.4 in the cargo registry, and palantir p
 ### Unity
 
 - UI Toolkit draws through one uber-shader with dynamic branches, up to eight textures a batch.
-  A stencil mask change breaks a batch. A rectangular mask does not, as the shader does it.
+  A mask change breaks a batch, unless the mask is rectangular, which the shader applies.
 - On uGUI, a custom shader breaks batches. Unity's answer: batches need one shader, so limit
   the custom shader to a block of elements to break only around it.
 - Sources: [UI Toolkit performance](https://docs.unity3d.com/kr/current/Manual/best-practice-guides/ui-toolkit-for-advanced-unity-developers/optimizing-performance.html),

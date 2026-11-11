@@ -18,7 +18,7 @@ pub(crate) enum Clipping {
 /// `primitives/wgsl/frame.wgsl` reads to return a clip coverage of 1 the compiler folds away, and
 /// on. A frame whose draws name no rounded clip binds the first, as the clip's code cost a whole
 /// frame with none 16 to 23 % of its main pass on an Apple GPU, a fragment register load even where
-/// it ran no clip (`.notes/research/2026-11-10-rounded-clip.md`). Speed alone: both halves give the
+/// it ran no clip (`.notes/PERF.md`, "The clip folded away where no draw names one"). Speed alone: both halves give the
 /// same pixels for a draw of no chain.
 ///
 /// Each half is built on the first frame that draws through it ([`Self::ensure`]), as the frame's

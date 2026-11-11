@@ -199,19 +199,6 @@ an older number here reads as a share, not a time.
   | `theming` | 75.7 | 392 | 360 | 5,125 |
   | main pass, `scrolling` | | 90.2 | | 3,796 |
 
-- **Numbers before run 12** (2026-11-11, `perf-frame` at `b66a26613`, ABBA medians; µs):
-
-  | arm | apple cpu | apple gpu | intel cpu | intel gpu | board cpu | board gpu |
-  | --- | --- | --- | --- | --- | --- | --- |
-  | `cached` | 20.0 | 20.3 | 37.8 | 38.7 | 83.6 | 86.4 |
-  | `hovering` | 23.5 | 268 | 45.6 | 1,638 | 105 | 2,408 |
-  | `partial` | 30.8 | 278 | 57.4 | 1,696 | 141 | 2,695 |
-  | `alternating` | 35.6 | 341 | 67.5 | 2,270 | 159 | 5,754 |
-  | `scrolling` | 40.3 | 307 | 76.4 | 1,793 | 169 | 4,529 |
-  | `resizing` | 49.5 | 317 | 92.8 | 1,985 | 211 | 4,603 |
-  | `typing` | 57.6 | 298 | 109 | 1,767 | 250 | 2,584 |
-  | `theming` | 75.5 | 406 | 167 | 2,221 | 360 | 5,454 |
-
 - **The GPU frames on the intel** (run 11): the frame waits on the device for 1.3 to 1.9 ms of its
   1.6 to 2.3 ms, and the GPU runs at 300 of its 1400 MHz all run long, as the kernel's frequency
   control picks for a device busy part of each frame. A pass writes about 8 pixels a GPU clock, so
@@ -279,16 +266,12 @@ an older number here reads as a share, not a time.
     ring on a large circle;
   - the region and the ring radius packed into one varying: −0.6 %; an interior zigzag in place
     of the fan: no change;
-  - the clip mask and the strokes as templates: no bench on this GPU draws a rounded clip or
-    enough strokes, and the curve pipeline's batch timer needs the in-pass timestamps Metal
-    lacks; the strokes' join seams moved 235 levels in an earlier try.
+  - the strokes as templates: no bench on this GPU draws enough strokes, and the curve
+    pipeline's batch timer needs the in-pass timestamps Metal lacks; the strokes' join seams
+    moved 235 levels in an earlier try.
 
 - **Shadows: the blur's reciprocals per instance**, handed on flat from `vs_shadow`: bit-exact,
   nothing gained (board 17.11 → 17.08 ms, fanless +2.0 %). The SFU does not bound the tabled shadows.
-- **Shadows: fewer `vs_shadow` invocations** through an index buffer over the cells' 24 corners:
-  the vertex stage costs nothing measurable on V3D.
-- **Shadows: discard a pixel its source clips**: −1.9 % before the edge cells were tightened,
-  which left only the corner cells' few such pixels.
 - **Blur: one residual loop for every device**: the mirrored loop takes V3D's σ 4 at 2048² from
   232 to 153 ms and the Apple laptop's from 6.2 to 14.3; the windowed one wins the Apple laptop 20 % and loses V3D
   2 to 3 %. Each device takes its own (Decisions).
@@ -328,8 +311,6 @@ an older number here reads as a share, not a time.
   up to 235 levels; testing `@builtin(position)` moves seam pixels against the goldens.
 - **Mean and peak image taps**: the bench reads a 5120² texture 24 times a frame, the AMD iGPU's
   memory bandwidth; only a mip chain reads less.
-- **Clip per instance in the shader** (GPUI's content mask): 340 ns a group on Vulkan, but the
-  fixture's main pass records in 23 µs of a 2.1 ms frame.
 - **A hit-test rect column for SIMD**: a miss scans 0.5 ns a row; a few hundred rows cost under
   0.3 µs.
 - **A byte compare before `AnimatedLook::eq`**: the look holds padding.
@@ -411,12 +392,11 @@ an older number here reads as a share, not a time.
     two run against master −38 % on the intel and −52 % on the Apple laptop, below the step's
     parent; the frame cases within ±0.6 %.
 
-- **The rounded clip as coverage, the clip folded away where no draw names one** (an Apple laptop,
-  ABBA, `.notes/research/2026-11-10-rounded-clip.md`): against the stencil, `record_pass/gpu/rounded`
-  −61 %, `clip_pass/gpu/inside` −26 %, `clip_frame/gpu/inside/scrolling` −14 %, the frame cases of a
-  page with no rounded clip within ±0.3 %; `clip_pass/gpu/nested`, three clips none holding the next
-  over every draw's edge, +17 %. One pipeline for both cost a frame with no rounded clip 16 to
-  23 % of its main pass, and an early return on no chain 7 %, as the clip's registers stayed.
+- **The clip folded away where no draw names one** (2026-11-10, an Apple laptop, ABBA): with one
+  pipeline for both, the clip's code cost a frame with no rounded clip 16 to 23 % of its main pass,
+  and an early return on no chain 7 %, as the clip's registers stayed; a coverage that returns 1 at
+  once took `main_pass/gpu/scrolling` −19 %. With the clip folded away, the frame cases of a page
+  with no rounded clip run within ±0.3 % of a build with no clip at all.
 - **A draw inside its clips names none** (same host): `clip_pass/gpu/inside` −12 %, at
   `clip_frame/cpu/*/scrolling` +3 to +4 %.
 
@@ -520,8 +500,8 @@ an older number here reads as a share, not a time.
   `frame/gpu/scrolling` ran 12.4 % faster and its main pass 19.6 % (diagnostic); the handheld, windows
   and local moved within their floors. Realizing it exactly takes each opaque quad's core drawn
   first with a depth value, so the later draws, the quad's own blended edge among them, skip the
-  pixels it covers (Skia Graphite's opaque pass): a depth attachment beside the rounded-clip
-  stencil, a depth state in every pipeline and a value per instance. A core-and-ring split with
+  pixels it covers (Skia Graphite's opaque pass): a depth attachment, a depth state in every
+  pipeline and a value per instance. A core-and-ring split with
   no depth puts a pipeline switch after each such quad. Not spiked. On the intel, blending off takes
   8.6 % off `frame/gpu/scrolling`'s device wait, of which the opaque interiors are most, as the
   showcase's sidebar and its two large cards hold 1.8 of the frame's 2.3 MP of quads.
@@ -570,8 +550,8 @@ an older number here reads as a share, not a time.
   quad-first asymmetry and the tier conflict test. Structural, and no workload asks for it. Gate:
   the draw count and the main pass on the showcase pages
   (`.notes/research/2026-11-10-draw-calls.md`).
-- **The rect form for a sharp fill**: a sharp unturned solid box draws the template's 138
-  vertices where a plain image draws four, as `FillForm` refuses `ShapeForm::Rect`. Gate: the
+- **The rect form for a sharp fill**: a sharp unturned solid box draws the template's 64 points
+  where a plain image draws four, as `FillForm` refuses `ShapeForm::Rect`. Gate: the
   main pass on V3D, whose vertex floor is 4.8 ms ("The board's vertex floor"); the vertex stage
   costs nothing measurable on an Apple GPU.
 - **A material box's footprint takes in its drop shadow's halo**: a backdrop's rect is its
@@ -582,7 +562,8 @@ an older number here reads as a share, not a time.
   `curves/alone` +20 %), the fanless's `curves/alone` runs 21 % slower so and its `same_tier_mesh`
   23 % faster; no profile says why.
 - **The board's tabled shadows** run at 2 threads where V3D runs 4 at 16 registers; a lean entry
-  for the edge cells could run on 4, at twice the shadow draws. Ceiling: 15.0 against 17.1 ms.
+  for the straight bands could run on 4, at twice the shadow draws. Ceiling, measured on the
+  grid the template replaced: 15.0 against 17.1 ms.
 - **The board's pass breaks**: each backdrop capture ends the main pass, 3.8 ms on V3D. Painting
   what lies under the backdrops into capture canvases first trades the breaks for drawing each
   footprint twice.
@@ -597,13 +578,14 @@ an older number here reads as a share, not a time.
 
 - One glass shader with its spectrum branch on V3D (`gpu::backdrop`, "One glass").
 - The f32 corner points of a closed shape on V3D (`Quad` 64 → 100 B, step `3c010b1d1`).
-- The renderer audit's batching items (`.notes/renderer-audit.md`, 7 to 9), each built only once
-  its bench approves it:
+- Three batching changes, each built only once its bench approves it:
   - Quad runs joined again on `QuadDraw` in the backend, so a shadow's cutout entry splits no run
     its key joins: the Shadows page's 15 runs toward 11, against `atomic/composer/cpu/quads/*` and
     `integration/frame/gpu/*`, which pay a second reorder of each group's quads, corner tables
-    and entries.
-  - Icons in the raster lane, batched across groups as text is: the draws on the Icons and Dock
-    pages and a toolbar of icons in clipped groups.
-  - Opaque images occluding the quads under them: a full-bleed photo over cards, on the AMD
-    iGPU's main pass.
+    and entries. Refused: the entry decided in the composer, which would move the cutout plan, a
+    backend's knowledge of its atlas, into the frontend.
+  - Icons in the raster lane, batched across groups as text is, as WebRender batches images and
+    text in one list: the draws on the Icons and Dock pages and a toolbar of icons in clipped
+    groups. Cost: icon and text batches order against each other.
+  - Opaque images occluding the quads under them, the image's opacity learned at upload: a
+    full-bleed photo over cards, on the AMD iGPU's main pass. No showcase page has one.

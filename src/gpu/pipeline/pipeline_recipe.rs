@@ -3,7 +3,7 @@
 use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
 use crate::gpu::device::gpu::Gpu;
 
-/// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend); [`Self::build`] fills the project-wide defaults (single color target, no depth or stencil, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
+/// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend); [`Self::build`] fills the project-wide defaults (single color target, no depth attachment, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
 #[derive(Clone, Debug)]
 pub(crate) struct PipelineRecipe<'a> {
     pub(crate) label: &'a str,
@@ -79,8 +79,8 @@ impl<'a> PipelineRecipe<'a> {
                     topology: self.topology,
                     ..Default::default()
                 },
-                // No pass attaches a depth or a stencil texture: a rounded clip is a coverage term
-                // each fragment takes.
+                // No pass attaches a depth texture: a rounded clip is a coverage term each
+                // fragment takes.
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 multiview_mask: None,
