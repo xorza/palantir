@@ -103,7 +103,11 @@ serde = { version = "1.0", default-features = false, features = [
     "alloc",
     "derive",
 ] }
-soa-rs = { version = "1.0", default-features = false }
+# soa-rs 1.0.1 with `push` inlined and its growth cold, as `Vec::push` is: out of line, the quad and
+# image pushes built each row on the stack and copied it in (composer quads 4 to 8 % and images
+# 25 % on an Apple GPU laptop). Back to the crates.io release once
+# https://github.com/tim-harding/soa-rs/pull/51 ships.
+soa-rs = { git = "https://github.com/xorza/soa-rs", rev = "14ee818f237d79713002d93cf6405a59ea841639", default-features = false }
 static_assertions = { version = "1.1", default-features = false }
 strum = { version = "0.28", default-features = false, features = ["derive"] }
 swash = { version = "0.2", default-features = false, features = [

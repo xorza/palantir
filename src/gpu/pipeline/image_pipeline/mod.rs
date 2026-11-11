@@ -15,7 +15,7 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::pipeline::shape_template;
+use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
@@ -59,6 +59,8 @@ impl<'a> ImageTextures<'a> {
 #[derive(Debug)]
 pub(crate) struct ImagePipeline {
     family: InstancedPipeline<ImageInstance>,
+    /// The shape template's triangles, which a shaped image draws.
+    indices: TemplateIndices,
 }
 
 impl ImagePipeline {
@@ -91,6 +93,7 @@ impl ImagePipeline {
                     capacity: 16,
                 },
             ),
+            indices: TemplateIndices::new(gpu),
         }
     }
 
@@ -158,7 +161,7 @@ impl ImagePipeline {
             };
             rec.pipeline(pipelines(form));
             rec.group_once(IMAGE_GROUP, bind_group);
-            rec.draw(0..shape_template::vertices(form), run.instances.u32_range());
+            self.indices.draw(rec, form, run.instances.u32_range());
         }
     }
 }

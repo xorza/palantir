@@ -5,11 +5,14 @@
 
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
-use crate::gpu::pipeline::quad_pipeline::QuadBinding;
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::pipeline_recipe::Pipeline;
+use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::Vec2;
@@ -36,24 +39,18 @@ const DIM_ALPHA: f32 = 0.4;
 /// viewport.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OverlayDraw<'a> {
-    pub(crate) binding: QuadBinding<'a>,
+    pub(crate) quad: &'a QuadPipeline,
+    pub(crate) pipeline: &'a Pipeline,
+    pub(crate) frame_group: &'a wgpu::BindGroup,
     pub(crate) viewport: ViewportPush,
-    /// The vertices the solid pipeline draws each quad with.
-    pub(crate) vertices: u32,
 }
 
 impl<'a> OverlayDraw<'a> {
-    /// Bind, push the viewport (wgpu rejects `set_immediates` before a pipeline is
-    /// bound), then draw `instances` of `buffer`, the frame's quad stream.
-    pub(crate) fn quads(
-        self,
-        pass: &mut wgpu::RenderPass<'a>,
-        buffer: &'a wgpu::Buffer,
-        instances: Range<u32>,
-    ) {
-        self.binding.bind(pass, buffer);
-        self.viewport.push_into(pass);
-        pass.draw(0..self.vertices, instances);
+    /// Draw `instances` of the frame's quad stream in `pass`, which has bound nothing.
+    pub(crate) fn quads(self, pass: wgpu::RenderPass<'a>, instances: Range<u32>) {
+        let mut rec = PassRecorder::new(pass, self.viewport);
+        rec.group(FRAME_GROUP, self.frame_group);
+        self.quad.draw_boxes(&mut rec, self.pipeline, instances);
     }
 }
 

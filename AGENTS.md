@@ -326,7 +326,11 @@ driver serves that command alone; the drive table's `version` names it
   and an interior, each holding a closed form of the shape's distance, so an interior fragment
   returns its fill, a band interpolates its distance and a ring measures one length. Its fragment
   reads only its form's varyings, its colors packed as f16: on an Apple GPU a fragment pays for
-  each varying it reads (`.notes/PERF.md`, "Shape templates"). The one-quad SDF form stays as
+  each varying it reads (`.notes/PERF.md`, "Shape templates"). It draws indexed over its points,
+  64 vertices a box where a vertex per triangle corner took 138, and its arcs' directions are
+  sums of unit vectors, with no trigonometry: on V3D its vertex stage, about 500 instructions run
+  in binning and again per tile, was a fifth of the main pass, and the two took a whole repaint
+  7 % faster there (`.notes/PERF.md`, "Shape templates indexed"). The one-quad SDF form stays as
   the reference the visual suite compares with. Refused: arcs cut into chords, as Impeller cuts
   circles, which errs by its tolerance and grows with the radius; MSAA, which changes every
   pipeline's antialiasing; mesh shaders, experimental in wgpu and on no GL device.
@@ -335,8 +339,8 @@ driver serves that command alone; the drive table's `version` names it
   2048 px, and four radii in f16. A rect is its four corners, a circle a square with half its side
   at each, a triangle its three points pushed out by its radius. The vertex stage takes each
   edge's normal from its two points, one path for every kind. Refused: a kind tag the vertex
-  stage branches on; normals in the instance, 16 B for arithmetic the vertex stage does for free
-  (`.notes/PERF.md`, "the vertex stage costs nothing measurable on V3D").
+  stage branches on; normals in the instance, 32 B a shape for −0.9 % of V3D's main pass and
+  nothing on an Apple GPU (`.notes/PERF.md`, "Normals in the instance").
 - **Coverage is geometry, paint a function the fragment calls.** The template hands each
   fragment its region and distance; the paint, a solid, a gradient (`quad_paint`), an image
   (`image_paint`), a material or an app effect, is one function of the point. A pipeline is one

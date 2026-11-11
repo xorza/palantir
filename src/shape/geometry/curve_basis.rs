@@ -18,6 +18,9 @@ pub(crate) enum CurveBasis {
 
 impl CurveBasis {
     /// Tight bbox of the centerline, no stroke inflation.
+    // Inlined so `self` stays in registers: out of line, the caller wrote it field by field and
+    // this fn read it back in wider loads, which store-to-load forwarding refuses.
+    #[inline(always)]
     pub(crate) fn bbox(self) -> Rect {
         match self {
             Self::Cubic(bezier) => bezier.bbox(),

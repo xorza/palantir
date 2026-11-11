@@ -22,7 +22,7 @@ use crate::gpu::pipeline::quad_pipeline::quad_draw::{
 };
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::pipeline::shape_template;
+use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::geometry::rect::Rect;
@@ -30,7 +30,6 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl;
-use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::quad_draw_row::QuadDrawRow;
@@ -79,24 +78,6 @@ impl QuadVariants {
     /// census built.
     pub(crate) const fn get(&self, draw: QuadDraw, clipping: Clipping) -> &Pipeline {
         self.draws[draw.idx() as usize].get(clipping)
-    }
-}
-
-/// A quad pipeline and the frame group it reads, bound together with the instance stream in a
-/// pass of its own, which binds no frame group for it.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct QuadBinding<'a> {
-    pub(crate) pipeline: &'a Pipeline,
-    pub(crate) frame_group: &'a wgpu::BindGroup,
-}
-
-impl<'a> QuadBinding<'a> {
-    /// Bind the pipeline, the frame group and `buffer` as the instance stream, for a pass of one
-    /// draw, which has nothing bound to skip.
-    pub(crate) fn bind(self, pass: &mut wgpu::RenderPass<'a>, buffer: &'a wgpu::Buffer) {
-        pass.set_pipeline(&self.pipeline.pipeline);
-        pass.set_bind_group(FRAME_GROUP, self.frame_group, &[]);
-        pass.set_vertex_buffer(0, buffer.slice(..));
     }
 }
 
@@ -190,18 +171,12 @@ pub(crate) struct QuadPipeline {
     /// How the forms draw (`vs_template`): [`ShapeCells::OneQuad`] only in internals, which build
     /// the one-quad reference.
     shape_cells: ShapeCells,
+    /// The template's triangles over its points, which every form but the one-quad reference
+    /// draws.
+    indices: TemplateIndices,
 }
 
 impl QuadPipeline {
-    /// The vertices `form` draws each instance with.
-    pub(crate) const fn form_vertices(&self, form: FillForm) -> u32 {
-        match self.shape_cells {
-            ShapeCells::Template => shape_template::vertices(form.shape()),
-            #[cfg(feature = "internals")]
-            ShapeCells::OneQuad => 4,
-        }
-    }
-
     /// This family's shader body.
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.quad.shader",
@@ -226,19 +201,33 @@ impl QuadPipeline {
             .extras
             .clear
             .expect("a frame that pre-clears uploads its clear quad");
+        self.draw_boxes(rec, pipeline, at..at + 1);
+    }
+
+    /// Bind `pipeline`, a solid box's, over the instance stream and draw `instances` of it.
+    pub(crate) fn draw_boxes<'a>(
+        &'a self,
+        rec: &mut PassRecorder<'a>,
+        pipeline: &'a Pipeline,
+        instances: Range<u32>,
+    ) {
         self.bind(rec, pipeline);
-        rec.draw(0..self.form_vertices(FillForm::BOX_SOLID), at..at + 1);
+        self.draw_fill(rec, FillForm::BOX_SOLID, instances);
+    }
+
+    /// Draw `instances` of `form` through the pipeline bound.
+    fn draw_fill<'a>(&'a self, rec: &mut PassRecorder<'a>, form: FillForm, instances: Range<u32>) {
+        match self.shape_cells {
+            ShapeCells::Template => self.indices.draw(rec, form.shape(), instances),
+            #[cfg(feature = "internals")]
+            ShapeCells::OneQuad => rec.draw(0..4, instances),
+        }
     }
 
     /// Bind `pipeline` over the instance stream in the main pass, which holds the frame group.
     fn bind<'a>(&'a self, rec: &mut PassRecorder<'a>, pipeline: &'a Pipeline) {
         rec.pipeline(pipeline);
         rec.vertex(0, &self.instance_buffer.buffer);
-    }
-
-    /// The instance stream, the frame's quads and its extras.
-    pub(crate) const fn instances(&self) -> &wgpu::Buffer {
-        &self.instance_buffer.buffer
     }
 
     /// The instances of the frame's dim quad, which a frame that dims uploads.
@@ -283,6 +272,7 @@ impl QuadPipeline {
             cutouts,
             shadow_cells: ShadowCells::Grid,
             shape_cells: ShapeCells::Template,
+            indices: TemplateIndices::new(gpu),
         }
     }
 
@@ -432,7 +422,7 @@ impl QuadPipeline {
         }
         self.bind(rec, pipelines.quad(draw));
         match draw {
-            QuadDraw::Fill(form) => rec.draw(0..self.form_vertices(form), instances.u32_range()),
+            QuadDraw::Fill(form) => self.draw_fill(rec, form, instances.u32_range()),
             QuadDraw::Shadow(_) => {
                 self.cutouts.bind(rec);
                 rec.draw(0..SHADOW_GRID_VERTICES, instances.u32_range());
@@ -596,8 +586,9 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::common::span::Span;
-    use crate::gpu::pipeline::quad_pipeline::{ExtraSpans, QuadExtras};
+    use crate::gpu::pipeline::quad_pipeline::{ExtraSpans, QuadExtras, QuadPipeline};
     use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::quad::Quad;
 
     /// The extras follow the frame's 3 quads in order: the clear at 3, the outline at 4; no dim
@@ -658,5 +649,33 @@ mod tests {
                 format!("palantir.quad.pipeline.{shape}_{brush}"),
             );
         }
+    }
+
+    /// A fill is transparent, and its template's interior collapses, at an alpha of zero of
+    /// either sign whatever its color; the smallest f16 above zero, `2⁻²⁴ ≈ 5.96e-8`, and an opaque fill
+    /// paint. On the GPU, over the packing the instance carries.
+    #[test]
+    fn a_transparent_fill_is_its_alpha_at_zero() {
+        const PROBE: &str = "
+@group(0) @binding(14) var<storage, read> probe_in: array<vec2<u32>>;
+@group(0) @binding(15) var<storage, read_write> probe_out: array<u32>;
+@compute @workgroup_size(1)
+fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
+    probe_out[id.x] = u32(fill_is_transparent(probe_in[id.x]));
+}
+";
+        let pack = |color: RgbaF32| bytemuck::cast::<_, [u32; 2]>(color.to_f16());
+        let smallest = RgbaF32::new(0.0, 0.0, 0.0, 5.960_464_5e-8);
+        let cases = [
+            (RgbaF32::TRANSPARENT, 1),
+            (RgbaF32::new(1.0, 0.5, 0.25, 0.0), 1),
+            (RgbaF32::new(0.0, 0.0, 0.0, -0.0), 1),
+            (smallest, 0),
+            (RgbaF32::new(0.2, 0.4, 0.6, 1.0), 0),
+        ];
+        let inputs: Vec<[u32; 2]> = cases.iter().map(|&(color, _)| pack(color)).collect();
+        let got: Vec<u32> = QuadPipeline::SHADER.probe(PROBE, &inputs);
+        let want: Vec<u32> = cases.iter().map(|&(_, want)| want).collect();
+        assert_eq!(got, want);
     }
 }

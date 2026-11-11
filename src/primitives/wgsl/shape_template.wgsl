@@ -1,8 +1,8 @@
 // The template a closed shape's vertex stage builds, the same for every pipeline that draws one:
-// per corner a ring, per edge a band, and an interior fan (`palantir_template_vertex`). Every
-// includer's instance opens with the shape (`ShapeHeader`), which `palantir_shape_of` reads, and
-// its fragment stage takes the shape's coverage or a box's fill from the regions; it reads
-// `ANTIALIAS` and `COMPOSITE`.
+// per corner a ring, per edge a band, and an interior fan (`palantir_template_vertex`), drawn
+// indexed (`shape_template::TemplateIndices`). Every includer's instance opens with the shape
+// (`ShapeHeader`), which `palantir_shape_of` reads, and its fragment stage takes the shape's
+// coverage or a box's fill from the regions; it reads `ANTIALIAS` and `COMPOSITE`.
 
 // The regions of a shape's template (`palantir_template_vertex`).
 const PALANTIR_REGION_INTERIOR: u32 = 0u;
@@ -93,22 +93,9 @@ fn palantir_shape_corner(s: PalantirShape, i: u32) -> PalantirCorner {
     return k;
 }
 
-// The unit direction a fraction `f` of the way from `na` to `nb` along the arc between them,
-// exactly `na` and `nb` at the ends, so a point shared with a band lands where the band's does.
-fn palantir_arc_dir(na: vec2<f32>, nb: vec2<f32>, f: f32) -> vec2<f32> {
-    if (f <= 0.0) {
-        return na;
-    }
-    if (f >= 1.0) {
-        return nb;
-    }
-    let sweep = acos(clamp(dot(na, nb), -1.0, 1.0));
-    return (sin((1.0 - f) * sweep) * na + sin(f * sweep) * nb) / sin(sweep);
-}
-
-// A point of the template, in the quad's own frame. Every vertex goes through this one call, so
-// two triangles that share a point compute it from the same arithmetic and the same inputs, and
-// the rasterizer shades each pixel along their shared edge once.
+// A point of the template, in the quad's own frame. Every point is one vertex of the indexed
+// template, so the triangles that share it share its arithmetic, and the rasterizer shades each
+// pixel along their shared edge once.
 //   - `PALANTIR_POINT_OUTER`, `j` in `0..=PALANTIR_ARC_SEGMENTS + 1`: the outer chain of corner
 //     `k`, `PALANTIR_AA_HALF_WIDTH` past its arc. The ends lie on the two normals; between them
 //     the vertices of the polygon that circumscribes the arc.
@@ -116,16 +103,22 @@ fn palantir_arc_dir(na: vec2<f32>, nb: vec2<f32>, f: f32) -> vec2<f32> {
 //     the arc `depth` inside the shape, or the arc's center where the corner is not that deep.
 //   - `PALANTIR_POINT_DEEP`: where the two edges' lines `depth` inside the shape meet, or the
 //     medial axis where the shape is not that deep.
+// The arc's directions are sums of unit vectors, normalized: `h` halves the sweep from `na` to
+// `nb`, and `na + h` and `h + nb` halve each half, `2 cos(sweep / 4)` long, so the circumscribing
+// vertex `reach / cos(sweep / 4)` out along one is that sum times `2 reach / |sum|²`. No
+// trigonometry, which V3D runs as long polynomials in each vertex; `wgsl::ARC_SEGMENTS` is 2 for
+// these forms.
 fn palantir_template_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, depth: f32) -> vec2<f32> {
-    let segments = f32(PALANTIR_ARC_SEGMENTS);
     // The sharp corner's direction from the arc's center, scaled so the corner sits a unit
     // depth past both edges' lines.
     let m = (k.na + k.nb) / (1.0 + dot(k.na, k.nb));
     if (kind == PALANTIR_POINT_DEEP) {
         return k.c + max(k.r - depth, k.r - inradius) * m;
     }
+    let h = normalize(k.na + k.nb);
     if (kind == PALANTIR_POINT_INNER) {
-        return k.c + max(k.r - depth, 0.0) * palantir_arc_dir(k.na, k.nb, f32(j) / segments);
+        let dir = select(select(k.nb, h, j == 1u), k.na, j == 0u);
+        return k.c + max(k.r - depth, 0.0) * dir;
     }
     let reach = k.r + PALANTIR_AA_HALF_WIDTH;
     if (j == 0u) {
@@ -134,22 +127,22 @@ fn palantir_template_point(k: PalantirCorner, inradius: f32, kind: u32, j: u32, 
     if (j == PALANTIR_ARC_SEGMENTS + 1u) {
         return k.c + reach * k.nb;
     }
-    let half_step = 0.5 * acos(clamp(dot(k.na, k.nb), -1.0, 1.0)) / segments;
-    return k.c + (reach / cos(half_step)) * palantir_arc_dir(k.na, k.nb, (f32(j) - 0.5) / segments);
+    let sum = select(h + k.nb, k.na + h, j == 1u);
+    return k.c + (2.0 * reach / dot(sum, sum)) * sum;
 }
 
-// The triangles of a template of `n` corners, in vertex order: each corner's ring, a strip of
-// `2 * PALANTIR_ARC_SEGMENTS + 1` triangles between its outer and inner chains; each edge's band, 4
-// triangles over the hexagon from its two outer ends in to its two inner ends and the two deep
-// points; then the interior, a fan over every corner's inner chain, or its deep point where the
-// corner is not deep enough. `shape_template::vertices` counts them.
-const PALANTIR_RING_TRIANGLES: u32 = 2u * PALANTIR_ARC_SEGMENTS + 1u;
-const PALANTIR_BAND_TRIANGLES: u32 = 4u;
-
-// A band's hexagon `[O_e, O_next, I_next, D_next, D_e, I_e]`, its 4 triangles as 3 nibbles each:
-// `O` an outer end, `I` an inner end and `D` a deep point, which is the inner end where its
-// corner is deep enough.
-const PALANTIR_BAND_HEXAGON = vec4<u32>(0x210u, 0x520u, 0x325u, 0x435u);
+// The template's triangles, each corner's ring, each edge's band and the interior fan, draw
+// indexed over its points, each point of a region one vertex (`shape_template::indices` holds the
+// triangles):
+//   - per corner, its ring's outer chain, `PALANTIR_ARC_SEGMENTS + 2` points, then its inner
+//     chain, `PALANTIR_ARC_SEGMENTS + 1`;
+//   - per edge, its band's hexagon `[O_e, O_next, I_next, D_next, D_e, I_e]`: `O` an outer end,
+//     `I` an inner end and `D` a deep point, which is the inner end where its corner is deep
+//     enough;
+//   - the interior fan's points, every corner's inner chain, or its deep point where the corner
+//     is not deep enough.
+const PALANTIR_RING_POINTS: u32 = 2u * PALANTIR_ARC_SEGMENTS + 3u;
+const PALANTIR_BAND_POINTS: u32 = 6u;
 
 // One vertex of the template: its region, its point, and for a ring the arc it reads, for a band
 // the edge's distance at the point.
@@ -160,33 +153,28 @@ struct PalantirTemplateVertex {
     ring_r: f32,
 };
 
-// Vertex `vi` of the template of `s`, whose border is `border_width` wide.
-fn palantir_template_vertex(s: PalantirShape, vi: u32, border_width: f32) -> PalantirTemplateVertex {
+// Point `u` of the template of `s`, whose border is `border_width` wide.
+fn palantir_template_vertex(s: PalantirShape, u: u32, border_width: f32) -> PalantirTemplateVertex {
     let depth = border_width + PALANTIR_AA_HALF_WIDTH;
-    let tri = vi / 3u;
-    let at = vi % 3u;
-    let rings = s.n * PALANTIR_RING_TRIANGLES;
-    let bands = s.n * PALANTIR_BAND_TRIANGLES;
+    let rings = s.n * PALANTIR_RING_POINTS;
+    let bands = s.n * PALANTIR_BAND_POINTS;
     var out: PalantirTemplateVertex;
     var kind = PALANTIR_POINT_OUTER;
     var i = 0u;
     var j = 0u;
     // The edge a band vertex measures its distance to.
     var edge = 0u;
-    if (tri < rings) {
+    if (u < rings) {
         out.region = PALANTIR_REGION_RING;
-        i = tri / PALANTIR_RING_TRIANGLES;
-        let t = tri % PALANTIR_RING_TRIANGLES;
-        let step = t / 2u;
-        // `(o_s, o_s+1, q_s)` on even steps, `(q_s, o_s+1, q_s+1)` on odd ones.
-        let odd = t % 2u == 1u;
-        let inner = (odd && at != 1u) || (!odd && at == 2u);
+        i = u / PALANTIR_RING_POINTS;
+        let p = u % PALANTIR_RING_POINTS;
+        let inner = p >= PALANTIR_ARC_SEGMENTS + 2u;
         kind = select(PALANTIR_POINT_OUTER, PALANTIR_POINT_INNER, inner);
-        j = step + u32(at == 1u || (odd && at == 2u));
-    } else if (tri < rings + bands) {
+        j = select(p, p - (PALANTIR_ARC_SEGMENTS + 2u), inner);
+    } else if (u < rings + bands) {
         out.region = PALANTIR_REGION_BAND;
-        edge = (tri - rings) / PALANTIR_BAND_TRIANGLES;
-        let h = (PALANTIR_BAND_HEXAGON[(tri - rings) % PALANTIR_BAND_TRIANGLES] >> (4u * at)) & 0xfu;
+        edge = (u - rings) / PALANTIR_BAND_POINTS;
+        let h = (u - rings) % PALANTIR_BAND_POINTS;
         let next = (edge + 1u) % s.n;
         let first = h == 1u || h == 2u || h == 3u;
         i = select(edge, next, first);
@@ -201,7 +189,7 @@ fn palantir_template_vertex(s: PalantirShape, vi: u32, border_width: f32) -> Pal
         }
     } else {
         out.region = PALANTIR_REGION_INTERIOR;
-        let fan = select(0u, tri - rings - bands + at, at > 0u);
+        let fan = u - rings - bands;
         i = fan / (PALANTIR_ARC_SEGMENTS + 1u);
         j = fan % (PALANTIR_ARC_SEGMENTS + 1u);
         kind = select(PALANTIR_POINT_DEEP, PALANTIR_POINT_INNER, palantir_shape_corner(s, i).r >= depth);

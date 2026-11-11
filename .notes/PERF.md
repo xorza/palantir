@@ -29,11 +29,16 @@ an older number here reads as a share, not a time.
     governor `performance`. A bench build takes 6.0 GiB of system memory cold and 5.8 GiB after,
     read off `MemAvailable`, as `rustc` runs under the `sccache` daemon outside cargo's process
     tree.
-  - board: a VideoCore single-board computer; one core, governor `ondemand`. It builds nothing:
-    its binaries are cross-built against a sysroot copied from it (glibc 2.41) with `clang` and
-    `lld`, or on a Mac with `zig cc -target aarch64-linux-gnu.2.41` behind a wrapper that drops
-    `--fix-cortex-a53-843419` and `-Wl,-O1`, and run from worktrees at the builder's paths, which
-    `CARGO_MANIFEST_DIR` names.
+  - board: a VideoCore single-board computer; core 3, governor `performance` from the kernel
+    command line (`cpufreq.default_governor`). It builds nothing, as a fat-LTO link there takes
+    too long: its binaries are cross-built on a Mac with `zig cc -target aarch64-linux-gnu.2.41`
+    behind a wrapper that drops `--fix-cortex-a53-843419`, `-Wl,-O1` and cc-rs's
+    `--target=<triple>`, 4 minutes and 4.5 GB a build. A bench binary reads no file at run time,
+    so it runs from any path; only tests read `CARGO_MANIFEST_DIR`.
+  - apple: a recent Apple laptop, Metal, unpinned; a bench build peaks at 3.9 GB in one process
+    and takes 2 minutes warm. Its Xcode runs `xctrace` (Metal System Trace, Time Profiler); a
+    board cross-build here and a local build together peak at 8.9 GiB of the process trees,
+    `sccache` and `zig` included.
   - mac: a larger Apple laptop, the damage sweep's. A macOS Local Network permission belongs to
     the app that started the `tmux` server: a server started before it gets `No route to host` to
     every LAN address until it restarts.
@@ -46,7 +51,8 @@ an older number here reads as a share, not a time.
   | handheld | under 0.7 %; `frame/cpu/alternating` and `backdrop_frame/cpu/blur/cached` bimodal, 12 to 15 % | median 0.7 %, up to 11 % on `*/cached` |
   | windows | under 0.7 % | median 1 %, up to 8 %, 23 % on `pair_near/scrolling` |
   | board | under 0.3 % | under 0.3 %, `glass/hover` 0.7 %, `record_pass` 5 % |
-  | intel | under 1 %, `frame/cpu/partial` 1.9 %, `typing` 1.7 % | under 1.5 %, `frame/gpu/alternating` 6.3 % |
+  | intel | under 1 %, `frame/cpu/partial` 1.9 %, `typing` 1.7 % | under 1.5 %, `frame/gpu/alternating` 6.3 %, `frame/gpu/partial` 17 %, `backdrop_frame/gpu/blur/moving` 15 % |
+  | apple | under 1.2 % | `frame/gpu` under 2.9 %, `main_pass/gpu/partial` 48 % |
 
 - **CPU A/B across binaries moves by code placement.** A change a case never runs moved it 4 %
   (`backdrop_frame/cpu/*/cached`), a commit that only added a GPU bench moved `layout/cached`
@@ -72,14 +78,24 @@ an older number here reads as a share, not a time.
     once, or blending off, splits raster from ALU. V3D: `V3D_DEBUG=shaderdb` with
     `MESA_SHADER_CACHE_DISABLE=true` prints instructions, threads and spills, `nir` names each
     entry point.
-  - intel: `INTEL_DEBUG=wm` with `MESA_SHADER_CACHE_DISABLE=true` prints each fragment shader's
+  - intel: `perf_event_paranoid` is 2, so a call graph needs `--user-callchains`, or perf
+    refuses every event. `INTEL_DEBUG=wm` with `MESA_SHADER_CACHE_DISABLE=true` prints each fragment shader's
     SIMD widths, instructions and spills; `/sys/class/drm/card*/gt_act_freq_mhz` reads the GPU's
     clock during a run. `perf report --children` over an LBR capture does not finish; a script that
     sums `perf script`'s call chains does. A frame case runs 1 s of warm-up and 3 s of samples
     whatever `--measurement-time` says, as its `Scale` sets both, so a capture of its frames alone
     starts after the setup and ends before the analysis (`perf record -D`).
-  - Missing: no Xcode on the fanless, so no Metal trace; RGP opens captures only in its GUI; the
-    distribution's RenderDoc ships no Python module.
+  - apple: `xctrace record --template 'Metal System Trace'` over one case, then
+    `xctrace export --xpath '…/table[@schema="metal-gpu-intervals"]'` gives each command
+    buffer's vertex, fragment and blit intervals and its CPU-to-GPU latency; the Time Profiler's
+    `time-profile` table holds a `tagged-backtrace` a sample. The parsers sit in the run's
+    `tools/` (`xct.py`, `gpuint.py`, `gputl.py`, `tpflat.py`).
+  - board: `perf stat` takes the A76's `l1d_cache_refill`, `l2d_cache_refill`,
+    `l1i_cache_refill`, `stall_backend` and `stall_frontend` in user mode (`perf_event_paranoid`
+    is −1); `perf record -e <event>:u -c 2003` samples where each lands. `V3D_DEBUG=vs,shaderdb`
+    prints a vertex shader's QPU code beside its counts.
+  - Missing: no Xcode on the fanless, so no Metal trace there; RGP opens captures only in its GUI;
+    the distribution's RenderDoc ships no Python module.
 
 ## Where the time is
 
@@ -127,6 +143,73 @@ an older number here reads as a share, not a time.
   a third; windows's `frame/gpu/scrolling` spends over half its time in its submit and fence
   wait.
 
+- **Where the CPU frame's cycles are not** (2026-11-11, the intel's counters over each
+  `frame/cpu` arm): IPC 3.3 to 3.5, 2.9 for `theming`; L1 misses 1.3 to 2.4 % of loads, the
+  last-level cache read 0.01 to 0.3 times per 1k instructions, the dTLB under 0.01. The frame
+  fits in the L2: data layout and cache locality move nothing, and fewer instructions still are
+  the only lever. Store-forward blocks run at 8 to 12 per 1k instructions, from a large value
+  written field by field and read back whole: `Forest::add_draw`'s record 13 % of them, memcpy of
+  an `AnimatedLook` 7 %, `FamilyKeys::key`'s memcmp 7 %, `lower::chrome`, `Button::show`,
+  `Paint::is_valid` and `Shapes::push` 4 to 5 % each. Removing three of those sources moved the
+  frames under 1.5 % (Rejected): at this IPC the blocks overlap other work.
+- **The board's main pass is its fixed cost** (`main_pass/gpu/scrolling` 4.13 ms on the
+  showcase page): every quad fragment returning at once takes 9 % off it, every text fragment
+  6 %, both 12 %; the rest is the raster, the tile loads and stores, and the vertices. Its
+  pipelines on V3D: one fragment shader of 2148 instructions at 2 threads with 15:25
+  spills:fills, one of 613 at 2 threads, the rest 9 to 420 at 4 threads, none spilling.
+- **The board's main pass, taken apart** (run 12, `main_pass/gpu/scrolling`, diagnostic builds
+  switched by `PALANTIR_SPIKE`): no draw at all, the clear, the tile stores of 2560 × 1440 and
+  the submit, 1.84 of its 4.13 ms, about the store bandwidth of 14.7 MB; the template's vertex
+  stage computed twice +0.87 ms, so the vertices were about a fifth of it (now indexed and
+  without trigonometry, `TemplateIndices`). Of the 3.81 ms left, the boxes' interiors are 1.40
+  ms, which is fill: their fragments return the fill at once, blending off moves 0.01 ms and a
+  fragment that returns a constant everywhere takes 0.40 ms off the whole pass. The showcase
+  page's 74 boxes cover 2.42 of its 3.69 MP, the sidebar and three cards 1.96 of it. Its partial
+  frames do not draw: with every draw skipped, `frame/gpu/hovering` and `partial` move under
+  0.5 %, so their 2.4 to 2.7 ms are the canvas and the copy of the backbuffer to the target.
+- **The apple's GPU frames** (run 12, Metal System Trace): each command buffer waits 117 to 190
+  µs from its commit to its start on the GPU, more than the GPU works: a whole repaint's main
+  pass is 11 to 12 µs of vertices and 73 to 79 µs of fragments, a partial frame's 4 µs and the
+  blit of the backbuffer to the target 65 µs, the upload's blit 1.5 µs. The bench waits for the
+  device each frame, so `frame/gpu/*` there reads the latency more than the work.
+- **The board's CPU frame** (run 12, `perf stat` over `frame/cpu/*` on core 3): IPC 2.0 to 2.2;
+  L1D refills 7 to 9 per 1k instructions, L2 refills 4.5 to 7.5, the last level 0.1 to 0.3;
+  backend stalls 15 to 24 % of cycles, frontend 8 to 13 %, L1I refills 5 to 11 per 1k
+  instructions, the dTLB nothing. The L2 refills land where the L1I refills do (the showcase's
+  page closures, `EditField::pass`, `Forest::widget_id`), so the L2 serves code as much as data;
+  the L1D refills follow the cycles (`response_for`, `post_record`, `open_node`). A layout
+  change that cut the data a frame compares, the chrome hashes as a column, moved no frame
+  (Rejected), as data layout moved none on the intel.
+- **Current numbers** (run 12, `perf-frame` at `eebd66bfd`, ABBA medians against `f33148a82`;
+  µs). Against it the board's whole repaints run 6.2 to 7.3 % faster and its main pass 8.2 %, the
+  apple's 1.1 to 1.7 % and 4.9 %; the board's CPU frames read +0.1 to +1.2 %, which no change of
+  the run reaches (the CPU harness runs no GPU code), so code placement:
+
+  | arm | apple cpu | apple gpu | board cpu | board gpu |
+  | --- | --- | --- | --- | --- |
+  | `cached` | 19.9 | 20.1 | 83.7 | 86.7 |
+  | `hovering` | 23.3 | 262 | 106 | 2,405 |
+  | `partial` | 30.6 | 277 | 142 | 2,704 |
+  | `alternating` | 35.5 | 331 | 160 | 5,402 |
+  | `scrolling` | 39.8 | 298 | 170 | 4,195 |
+  | `resizing` | 49.4 | 307 | 212 | 4,274 |
+  | `typing` | 57.3 | 296 | 251 | 2,583 |
+  | `theming` | 75.7 | 392 | 360 | 5,125 |
+  | main pass, `scrolling` | | 90.2 | | 3,796 |
+
+- **Numbers before run 12** (2026-11-11, `perf-frame` at `b66a26613`, ABBA medians; µs):
+
+  | arm | apple cpu | apple gpu | intel cpu | intel gpu | board cpu | board gpu |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | `cached` | 20.0 | 20.3 | 37.8 | 38.7 | 83.6 | 86.4 |
+  | `hovering` | 23.5 | 268 | 45.6 | 1,638 | 105 | 2,408 |
+  | `partial` | 30.8 | 278 | 57.4 | 1,696 | 141 | 2,695 |
+  | `alternating` | 35.6 | 341 | 67.5 | 2,270 | 159 | 5,754 |
+  | `scrolling` | 40.3 | 307 | 76.4 | 1,793 | 169 | 4,529 |
+  | `resizing` | 49.5 | 317 | 92.8 | 1,985 | 211 | 4,603 |
+  | `typing` | 57.6 | 298 | 109 | 1,767 | 250 | 2,584 |
+  | `theming` | 75.5 | 406 | 167 | 2,221 | 360 | 5,454 |
+
 - **The GPU frames on the intel** (run 11): the frame waits on the device for 1.3 to 1.9 ms of its
   1.6 to 2.3 ms, and the GPU runs at 300 of its 1400 MHz all run long, as the kernel's frequency
   control picks for a device busy part of each frame. A pass writes about 8 pixels a GPU clock, so
@@ -153,6 +236,36 @@ an older number here reads as a share, not a time.
   | `theming` | 148.0 µs | 2,216 µs |
 
 ## Rejected
+
+- **Run 12, the board and the apple, ABBA:**
+  - the chrome rows' hashes in a column of their own, compared as one slice where
+    `RollupInputs::hold_for` read 8 B of each 104 B row: every CPU frame within ±0.5 % on the
+    board (floor 0.3 %), within ±1 % on the apple;
+  - `DamageRegion::add` scanning its rects as branch-free lanes, bit for bit the fold
+    (`theming` folds 126 to 146 rects into 8 a frame, 5 % of it on both hosts): `region_add`
+    `min_growth` −22 %, `cascade` +26 %, `append` +8 %, `damage/full_repaint` +2.6 %,
+    `frame/cpu/theming` +0.4 %;
+  - the backbuffer drawn to the target on V3D (`BackbufferOut::Draw`), never measured on a tiler
+    but Apple's: `frame/gpu/hovering` 2.41 → 4.07 ms, `partial` and `typing` alike, +68 %;
+  - a box interior laid out as a cap a corner, a central quad and two side strips in place of
+    the fan from one corner, as a tiler bins a triangle into every tile it touches: V3D's main
+    pass −0.48 %, the apple's −0.48 %, but a gradient or an image interpolates its varyings by
+    the triangle, so 22 to 44 pixels of four goldens moved by 1 or 2 levels. The ceiling, the
+    interior as two triangles with every pixel wrong, was −1.9 %;
+  - no blending for the quads on V3D (diagnostic): −0.3 % of the main pass.
+
+- **Three store-forward sources of the CPU frame** (2026-11-11, ABBA over `integration/frame/*`,
+  `atomic/record/cpu/frame` and `atomic/animation/cpu/steady`, apple, intel and board):
+  - `Shapes::push` and `Tree::push_shape` inlined, so the record stays in `add_draw`: CPU frames
+    apple −0.4 to −1.5 %, intel −0.4 to −1.0 %, board +0.3 to +1.1 %;
+  - the animation tick reading its request in place and returning nothing for a resting row,
+    no `T` copied in or out: `animation/cpu/steady` apple +21 %, intel −10.7 %, board −3.1 %, the
+    frames within ±0.5 %;
+  - `InlineName` aligned to 8 and compared and hashed as eight words, `FamilyKeys::key` taking
+    `&FontFamily`: CPU frames +1 to +2.5 % on every host.
+- **One quad per box on the board** (`ShapeCells::OneQuad` for every form, diagnostic): its
+  `main_pass/gpu/scrolling` +8.4 %, `frame/gpu/scrolling` +7.4 %; the template's vertices cost
+  V3D less than the distance every pixel would measure.
 
 - **Shape templates, the rest of the plan** (fanless, ABBA):
   - the template in the effect stage: with no coverage math at all, `backdrop_frame/gpu`'s
@@ -247,6 +360,41 @@ an older number here reads as a share, not a time.
   SIMD8 and SIMD16 forms spill nothing, and one texel load serves a mask glyph either way.
 
 ## Decisions
+
+- **Normals in the instance, refused** (run 12): each edge's outward normal worked out on the
+  CPU and read by the template from 32 B more a quad, in place of a `length` and a division per
+  edge in every vertex. Board `main_pass/gpu/scrolling` −0.92 %, `frame/gpu/scrolling` −0.46 %;
+  apple main pass +0.0 %, its frames +0.3 %, within the floor. Refused for 31 % more bytes in
+  every template instance, quads, shaped images and effects alike, and a second place a shape's
+  geometry is worked out, for half a percent of one GPU's frame.
+
+- **Shape templates indexed** (run 12; `e2e0d0a0c`, `955437499`, `d6a91df8d`): the template
+  draws its 64 points a box through an index buffer where it drew 138 vertices, its arc
+  directions are sums of unit vectors, and a transparent solid fill's interior collapses. V3D's
+  vertex stage for the template is about 500 instructions, run in binning and per tile; the
+  first two took its binning shader from 506 to 433 and its render shader from 556 to 503.
+  Against `f33148a82`, ABBA: board `main_pass/gpu/scrolling` −7.8 %, `frame/gpu/scrolling`
+  −7.2 %, `resizing` −6.9 %, `theming` and `alternating` −5.9 %, `clip_frame/gpu/rect/scrolling`
+  −3.7 %; apple main pass −3.7 %, its whole repaints −1.1 to −1.4 %; the collapse −0.4 % of the
+  board's main pass and −1.1 % of the apple's. Bit for bit in the visual suite on the apple.
+
+- **The renderer plan's steps, each against its parent** (2026-11-11; an Apple laptop unpinned
+  and the intel, ABBA, the outliers again at three rounds):
+  - the f32 corner points (`3c010b1d1`, off master, squashed into `c11023bb1`): the main pass and
+    the frame within ±0.5 % on both;
+  - the effect pipelines per shape form (`76abc89e6`): within noise on both. The intel's
+    backdrop frames are no floor to read a change off: an A/A of `blur/moving` read +14.7 %;
+  - the quad keys (`adb0e9bae`): the intel's composer cases 0 to −4 %; the Apple laptop's quads
+    +4 to +9 %, as the stream turned into a `Soa` whose `push` soa-rs 1.0.1 leaves out of line, so
+    a row went through the stack. A fork with `push` inlined and its growth cold, as `Vec::push`,
+    gives the Apple laptop's quads −4 to −8 % and images −25 %, the intel's −1 % and −4 %
+    (the workspace `Cargo.toml`, until tim-harding/soa-rs#51 ships);
+  - the one stroke payload (`061887796`): `curves/alone` +28 % on the intel and +9 % on the Apple
+    laptop. A curve's basis and its `StrokeBbox` reached `CubicBezier::bbox` and
+    `StrokeBbox::urect` out of line, written field by field and read back in wider loads, which
+    store-to-load forwarding refuses: half the bbox's samples sat on its first load. Inlined, the
+    two run against master −38 % on the intel and −52 % on the Apple laptop, below the step's
+    parent; the frame cases within ±0.6 %.
 
 - **The rounded clip as coverage, the clip folded away where no draw names one** (an Apple laptop,
   ABBA, `.notes/research/2026-11-10-rounded-clip.md`): against the stencil, `record_pass/gpu/rounded`
@@ -363,7 +511,8 @@ an older number here reads as a share, not a time.
   8.6 % off `frame/gpu/scrolling`'s device wait, of which the opaque interiors are most, as the
   showcase's sidebar and its two large cards hold 1.8 of the frame's 2.3 MP of quads.
 - **The partial frame's copy-out**: 16 to 33 % of a partial frame on every host, and 75 % on the
-  intel, whose GPU writes about 8 pixels a clock at 300 MHz. wgpu hands out
+  intel, whose GPU writes about 8 pixels a clock at 300 MHz; on the board the whole of it, as its
+  partial frames do not draw (run 12). wgpu hands out
   each swapchain image uninitialized, so a partial frame writes all of it; only buffer age or a
   present with damage regions, neither of which wgpu exposes, would let it write less.
 
@@ -433,14 +582,6 @@ an older number here reads as a share, not a time.
 
 - One glass shader with its spectrum branch on V3D (`gpu::backdrop`, "One glass").
 - The f32 corner points of a closed shape on V3D (`Quad` 64 → 100 B, step `3c010b1d1`).
-- Step `3c010b1d1` against its parent: `atomic/main_pass/gpu/*`, `integration/frame/gpu/*`.
-- The quad keys (`adb0e9bae`) against their parent on the composer's CPU cases,
-  `atomic/composer/cpu/*`.
-- The effect pipelines per shape form (`76abc89e6`) against its parent: `atomic/main_pass/gpu/*`,
-  `integration/frame/gpu/*`, `integration/backdrop_frame/gpu/*`.
-- The one stroke payload, 84 → 104 B a stroke draw, on `atomic/composer/cpu/curves/*` and
-  `atomic/composer/cpu/quads/polyline/*`.
-- The hot structs, for packing (`internals::hot_struct_sizes`).
 - The renderer audit's batching items (`.notes/renderer-audit.md`, 7 to 9), each built only once
   its bench approves it:
   - Quad runs joined again on `QuadDraw` in the backend, so a shadow's cutout entry splits no run

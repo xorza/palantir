@@ -76,7 +76,7 @@ use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
-use crate::gpu::pipeline::quad_pipeline::{self, QuadBinding, QuadExtras, QuadPipeline, QuadRun};
+use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
@@ -930,26 +930,21 @@ impl WgpuBackend {
         color_view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
     ) {
-        let mut pass = begin_load_pass(encoder, "palantir.renderer.dim.pass", color_view);
-        self.overlay_draw(draw).quads(
-            &mut pass,
-            self.programs.quad.instances(),
-            self.programs.quad.dim(),
-        );
+        let pass = begin_load_pass(encoder, "palantir.renderer.dim.pass", color_view);
+        self.overlay_draw(draw)
+            .quads(pass, self.programs.quad.dim());
     }
 
     /// The solid quad binding both debug-overlay passes draw through.
     const fn overlay_draw<'a>(&'a self, draw: FrameDraw<'a>) -> OverlayDraw<'a> {
         OverlayDraw {
-            binding: QuadBinding {
-                pipeline: draw
-                    .fmt
-                    .for_frame(Clipping::Off, draw.effects)
-                    .quad(QuadDraw::Fill(FillForm::BOX_SOLID)),
-                frame_group: self.frame_group.group(),
-            },
+            quad: &self.programs.quad,
+            pipeline: draw
+                .fmt
+                .for_frame(Clipping::Off, draw.effects)
+                .quad(QuadDraw::Fill(FillForm::BOX_SOLID)),
+            frame_group: self.frame_group.group(),
             viewport: draw.viewport,
-            vertices: self.programs.quad.form_vertices(FillForm::BOX_SOLID),
         }
     }
 
@@ -1149,16 +1144,13 @@ impl WgpuBackend {
         surface_view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
     ) {
-        let mut pass = begin_load_pass(
+        let pass = begin_load_pass(
             encoder,
             "palantir.renderer.overlay.damage_rect",
             surface_view,
         );
-        self.overlay_draw(draw).quads(
-            &mut pass,
-            self.programs.quad.instances(),
-            self.programs.quad.outlines(),
-        );
+        self.overlay_draw(draw)
+            .quads(pass, self.programs.quad.outlines());
     }
 
     /// The device and queue every window of this backend presents through.

@@ -51,7 +51,19 @@ fn vs_template(@builtin(vertex_index) vi: u32, shape: PalantirShapeIn, quad: Qua
     out.inv_size = q.inv_size;
     out.chain = shape.chain;
     out.clip = palantir_clip_from_px(palantir_turned(pos + v.pos, pos + size * 0.5, rotation));
+    // A transparent solid fill paints nothing inside its border, so its interior collapses to
+    // one point, a triangle of no area that the rasterizer drops before it reaches a tile.
+    if (v.region == PALANTIR_REGION_INTERIOR && FILL_BRUSH != FILL_BRUSH_GRADIENT
+        && fill_is_transparent(quad.fill_packed)) {
+        out.clip = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
     return out;
+}
+
+// Whether the packed straight-alpha fill's alpha, the high half of its second word, is zero of
+// either sign, so the fill adds nothing over what is behind.
+fn fill_is_transparent(fill_packed: vec2<u32>) -> bool {
+    return (fill_packed.y & 0x7fff0000u) == 0u;
 }
 
 // A template fragment: what `template_color` draws, cut by the quad's rounded clips.

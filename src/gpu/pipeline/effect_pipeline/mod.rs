@@ -15,7 +15,7 @@ use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, Pipeline, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
-use crate::gpu::pipeline::shape_template;
+use crate::gpu::pipeline::shape_template::{self, TemplateIndices};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::effect_image_groups::{EffectImageGroups, EffectImages};
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -255,6 +255,8 @@ pub(crate) struct EffectPipeline {
     /// Bound over `words`; made again when the buffer grows or shrinks.
     group: Option<wgpu::BindGroup>,
     group_capacity: usize,
+    /// The shape template's triangles, which every effect draws over its shape.
+    indices: TemplateIndices,
 }
 
 /// One batch of effect draws: the frame's per-draw key column, this batch's slice of it, each
@@ -288,6 +290,7 @@ impl EffectPipeline {
             images: Vec::new(),
             group: None,
             group_capacity: 0,
+            indices: TemplateIndices::new(gpu),
         }
     }
 
@@ -376,10 +379,7 @@ impl EffectPipeline {
                     backdrops.expect("a frame with a backdrop effect prepares its backdrops");
                 rec.group_once(BACKDROPS_GROUP, backdrops);
             }
-            rec.draw(
-                0..shape_template::vertices(key.form),
-                run.instances.u32_range(),
-            );
+            self.indices.draw(rec, key.form, run.instances.u32_range());
         }
     }
 }

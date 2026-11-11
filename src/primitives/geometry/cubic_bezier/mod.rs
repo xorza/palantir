@@ -34,6 +34,9 @@ impl CubicBezier {
     /// `B'(t)/3 = (p1 - p0) + 2t(p0 - 2p1 + p2) + t²(-p0 + 3p1 - 3p2 + p3)`,
     /// so per axis: `a = -p0 + 3p1 - 3p2 + p3`, `b = 2(p0 - 2p1 + p2)`,
     /// `c = p1 - p0`.
+    // Inlined so `self` stays in registers: out of line, the caller wrote it field by field and
+    // this fn read it back in wider loads, which store-to-load forwarding refuses.
+    #[inline(always)]
     pub(crate) fn bbox(self) -> Rect {
         let Self { p0, p1, p2, p3 } = self;
         // One up-front NaN screen: `min`/`max` would drop a NaN endpoint and the `t` filter rejects NaN roots, so an interior control point would go unseen; folding it into the bounds would loosen the box to the control hull.

@@ -44,7 +44,8 @@ pub(crate) const SHAPE_TEMPLATE: &str = include_str!("shape_template.wgsl");
 /// Segments of each corner's arc in [`SHAPE_TEMPLATE`], substituted as `ARC_SEGMENTS`. At 2, the
 /// polygon around a quarter arc reaches `1 / cos(22.5°) − 1`, 8 %, past its reach, and the one
 /// inside it falls 8 % short of its depth, both of a ring the fragment measures; at 3 both shrink
-/// to 3.5 % for 12 more vertices a box.
+/// to 3.5 % for 12 more points a box, and the arc's directions need more than the halvings
+/// `palantir_template_point` writes out.
 pub(crate) const ARC_SEGMENTS: u32 = 2;
 
 #[cfg(test)]

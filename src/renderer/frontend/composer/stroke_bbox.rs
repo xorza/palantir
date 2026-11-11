@@ -30,6 +30,9 @@ impl StrokeBbox {
     /// Physical-px painted bounds: folds in `origin` and the active transform,
     /// applies the shared stroke/cap/join/AA bound, clamps to the viewport. Shared
     /// by curve and polyline paths so their cull and overlap bounds agree.
+    // Inlined so `self` stays in registers: out of line, the caller wrote it field by field and
+    // this fn read it back in wider loads, which store-to-load forwarding refuses.
+    #[inline(always)]
     pub(super) fn urect(self) -> URect {
         let Self {
             transform,
