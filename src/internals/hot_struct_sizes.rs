@@ -12,18 +12,27 @@ use crate::damage::region::{CollapsedDamage, DamageRegion};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::layout::cache::measure_snapshot::MeasureSnapshot;
+use crate::primitives::effect::effect_kind::BackdropEffect;
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::input::interaction::response::Response;
 use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::paint;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::renderer::frontend::payload::draw_closed_payload::DrawClosedPayload;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_fill::ClosedFill;
@@ -52,16 +61,24 @@ use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::seen_ids::IdEntry;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::node_record::NodeRecord;
+use crate::shape::draw::Draw;
+use crate::shape::icon_paint::IconPaint;
+use crate::shape::image_paint::ImagePaint;
+use crate::shape::lower::LoweredPaint;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
+use crate::text::font_family::FontFamily;
 use crate::text::key::TextShapeKey;
 use crate::text::render::PlacedGlyph;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaped_text::ShapedText;
+use crate::theme::look::WidgetLook;
 use crate::theme::look::animated_look::AnimatedLook;
+use crate::theme::look::look_plan::LookPlan;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::ui::window_frames::WindowFrames;
 use crate::widget_core::widget::Widget;
@@ -150,9 +167,33 @@ const PINS: &[Pin] = &[
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    // 172 of them the material, 64 of those its effect's inline name and 56 its fallback, a brush
-    // and its tag.
-    pin::<Chrome>("primitives::Chrome", 296, 4),
+    // A paint and its corners. Every look holds one and every themed widget wears one a frame,
+    // so its size is copied through recording and animation: a paint 116 B larger measured
+    // record +2.8 to +4.6 % and animation +1 to +26 % (`.notes/PERF.md`, "A paint carries a
+    // short effect name").
+    pin::<Chrome>("primitives::Chrome", 256, 4),
+    pin::<paint::Paint>("primitives::Paint", 248, 4),
+    pin::<Border>("primitives::Border", 20, 4),
+    pin::<Shadow>("primitives::Shadow", 36, 4),
+    // Of which the effect's inline name, `InlineEffectName`, and 56 the fallback, a brush and its
+    // tag.
+    pin::<Option<Material>>("primitives::Option<Material>", 132, 4),
+    pin::<EffectName<MaterialInput, BackdropEffect>>("primitives::EffectName", 24, 1),
+    pin::<MaterialInput>("primitives::MaterialInput", 28, 4),
+    pin::<Stroke>("primitives::Stroke", 64, 4),
+    pin::<ImagePaint>("shape::ImagePaint", 48, 8),
+    pin::<IconPaint>("shape::IconPaint", 36, 4),
+    // What `add_shape` hands the record store, matched once a shape.
+    pin::<Draw<'static>>("shape::Draw", 200, 8),
+    pin::<LoweredPaint>("shape::LoweredPaint", 88, 8),
+    // A look, its plan and what it wears, each built or copied per themed widget a frame.
+    pin::<WidgetLook>("theme::WidgetLook", 364, 4),
+    pin::<LookPlan>("theme::LookPlan", 488, 8),
+    pin::<AnimatedLook>("theme::AnimatedLook", 348, 4),
+    pin::<TextStyle>("theme::TextStyle", 92, 4),
+    pin::<FontFamily>("text::FontFamily", 64, 1),
+    // Every `show` returns one.
+    pin::<Response>("input::Response", 160, 8),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
@@ -181,22 +222,22 @@ const PINS: &[Pin] = &[
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 144, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 160, 8),
     // 116 of them the chrome's material.
-    pin::<Panel>("widgets::Panel", 424, 8),
-    pin::<Block>("widgets::Block", 424, 8),
-    pin::<Grid>("widgets::Grid", 424, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 480, 8),
+    pin::<Panel>("widgets::Panel", 384, 8),
+    pin::<Block>("widgets::Block", 384, 8),
+    pin::<Grid>("widgets::Grid", 384, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 440, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
-    pin::<Popup<'static>>("widgets::Popup", 464, 8),
-    pin::<Modal<'static>>("widgets::Modal", 736, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 640, 8),
+    pin::<Popup<'static>>("widgets::Popup", 424, 8),
+    pin::<Modal<'static>>("widgets::Modal", 656, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 600, 8),
     pin::<GpuView>("widgets::GpuView", 152, 8),
-    pin::<Menu<'static>>("widgets::Menu", 544, 8),
+    pin::<Menu<'static>>("widgets::Menu", 504, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 176, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 392, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 424, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 384, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

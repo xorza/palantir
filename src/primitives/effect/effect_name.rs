@@ -10,6 +10,12 @@ use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind, EffectType
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::inline_name::InlineName;
 
+/// An effect's name as it sits inline: 23 bytes and its length, 24 in all, as a material holds
+/// one in every paint that wears it and each copy of that paint moves it (`.notes/PERF.md`, "A
+/// paint carries a short effect name"). Refused: the 63 bytes a font family takes, which made a
+/// material half of every paint.
+pub(crate) type InlineEffectName = InlineName<23>;
+
 /// Which effect to paint, by name: the name is the effect's identity, as [`FontFamily`]'s is a
 /// family's. `U` is its parameter struct and `K` its kind, so a shape that names it takes
 /// parameters of the right type, which rustc checks. `Copy` and made by a `const fn`, so an app
@@ -18,18 +24,18 @@ use crate::primitives::identity::inline_name::InlineName;
 ///
 /// [`FontFamily`]: crate::FontFamily
 pub struct EffectName<U: EffectParams, K: EffectKind = ColorEffect> {
-    name: InlineName,
+    name: InlineEffectName,
     types: PhantomData<fn() -> (U, K)>,
 }
 
 impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
     /// The longest name an effect holds, in bytes.
-    pub const MAX_NAME_LEN: usize = InlineName::MAX_LEN;
+    pub const MAX_NAME_LEN: usize = InlineEffectName::MAX_LEN;
 
     /// The effect called `name`. `None` for an empty name or one longer than
     /// [`Self::MAX_NAME_LEN`] bytes.
     pub const fn named(name: &str) -> Option<Self> {
-        match InlineName::new(name) {
+        match InlineEffectName::new(name) {
             Some(name) => Some(Self::from_inline(name)),
             None => None,
         }
@@ -40,7 +46,7 @@ impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
         self.name.as_str()
     }
 
-    pub(crate) const fn inline(self) -> InlineName {
+    pub(crate) const fn inline(self) -> InlineEffectName {
         self.name
     }
 
@@ -52,7 +58,7 @@ impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
         }
     }
 
-    const fn from_inline(name: InlineName) -> Self {
+    const fn from_inline(name: InlineEffectName) -> Self {
         Self {
             name,
             types: PhantomData,
@@ -64,7 +70,7 @@ impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
 /// name of any type compiles once.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TypedName {
-    pub(crate) name: InlineName,
+    pub(crate) name: InlineEffectName,
     pub(crate) types: EffectTypes,
 }
 
@@ -115,17 +121,21 @@ impl<'de, U: EffectParams, K: EffectKind> serde::Deserialize<'de> for EffectName
 struct NameVisitor;
 
 impl de::Visitor<'_> for NameVisitor {
-    type Value = InlineName;
+    type Value = InlineEffectName;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("an effect name of 1 to 63 bytes")
+        write!(
+            f,
+            "an effect name of 1 to {} bytes",
+            InlineEffectName::MAX_LEN
+        )
     }
 
     fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {
-        InlineName::new(name).ok_or_else(|| {
+        InlineEffectName::new(name).ok_or_else(|| {
             E::custom(format_args!(
                 "an effect name must be 1 to {} bytes, got {}",
-                InlineName::MAX_LEN,
+                InlineEffectName::MAX_LEN,
                 name.len()
             ))
         })
@@ -141,11 +151,12 @@ mod tests {
 
     type Ripple = EffectName<()>;
 
-    /// A name is 1 to 63 bytes: 63 fit, 64 do not, and an empty name names no effect. Serde
+    /// A name is 1 to 23 bytes: 23 fit, 24 do not, and an empty name names no effect. Serde
     /// carries the name alone and refuses one that does not fit.
     #[test]
     fn a_name_fits_and_serializes_as_itself() {
         const RIPPLE: Ripple = Ripple::named("ripple").expect("the name fits");
+        assert_eq!(Ripple::MAX_NAME_LEN, 23);
         let longest = "e".repeat(Ripple::MAX_NAME_LEN);
         assert_eq!(Ripple::named(&longest).unwrap().name(), longest);
         assert_eq!(Ripple::named(&format!("{longest}e")), None);
@@ -158,7 +169,7 @@ mod tests {
         assert_eq!(ron::from_str::<Ripple>(&encoded).expect("parse"), RIPPLE);
         let water: EffectName<(), BackdropEffect> = ron::from_str("\"water\"").expect("parse");
         assert_eq!(water.name(), "water");
-        let long = format!("\"{}\"", "e".repeat(64));
+        let long = format!("\"{}\"", "e".repeat(24));
         assert!(ron::from_str::<Ripple>(&long).is_err());
     }
 }

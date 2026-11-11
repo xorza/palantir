@@ -5,15 +5,18 @@ use std::fmt;
 
 use crate::primitives::identity::inline_name::InlineName;
 
+/// The longest family name, in bytes: room for a system font's full name.
+const NAME_LEN: usize = 63;
+
 /// Which family to shape in, by name. `Copy`: the name sits inline, so a family needs no table
 /// to name it, and a deserialized style resolves wherever it is shaped. Each shaper keys the
 /// families it meets on its own. Serializes as its name.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FontFamily(InlineName);
+pub struct FontFamily(InlineName<NAME_LEN>);
 
 impl FontFamily {
     /// The longest name a family holds, in bytes.
-    pub const MAX_NAME_LEN: usize = InlineName::MAX_LEN;
+    pub const MAX_NAME_LEN: usize = NAME_LEN;
 
     /// Bundled Inter.
     pub const SANS: Self = Self::named("Inter").expect("the bundled name fits");
@@ -67,7 +70,7 @@ impl de::Visitor<'_> for NameVisitor {
     type Value = FontFamily;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("a font family name of 1 to 63 bytes")
+        write!(f, "a font family name of 1 to {NAME_LEN} bytes")
     }
 
     fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {

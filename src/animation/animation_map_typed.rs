@@ -1,6 +1,5 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
-use crate::animation::animated::Animated;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_row::{self, AnimationRow, MotionRow, Retarget};
 use crate::animation::animation_slot::AnimationSlot;
@@ -59,26 +58,26 @@ impl<T: Animatable> AnimationMapTyped<T> {
     ///
     /// For a target that is not finite, checked past the steady path, so a settled row pays
     /// nothing.
+    ///
+    /// The value to show this frame lands in `request.target`, which a settled row leaves as the
+    /// caller passed it; returns whether the row is settled. In place, so a row at rest copies no
+    /// look: each hop of a by-value target was a `memcpy` of the whole look (`.notes/PERF.md`, "A
+    /// look animates in place").
     #[track_caller]
     pub(crate) fn tick(
         &mut self,
-        request: AnimationRequest<T>,
+        request: &mut AnimationRequest<T>,
         spec: AnimationSpec,
         clock: AnimationClock,
-    ) -> Animated<T> {
-        let AnimationRequest {
-            id,
-            slot,
-            target,
-            key,
-            motion: _,
-        } = request;
+    ) -> bool {
+        let id = request.id;
+        let slot = request.slot;
+        let key = request.key;
+        let target = &mut request.target;
         let AnimationClock {
             dt,
             render_frame_id,
         } = clock;
-        // `T: Animatable` is `Clone`, not `Copy`: consuming a T field needs an explicit
-        // `.clone()`, free for Copy types and a deliberate memcpy for heavy ones.
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
                 v.insert(AnimationRow {
@@ -87,65 +86,56 @@ impl<T: Animatable> AnimationMapTyped<T> {
                     motion: None,
                     ticked_at: render_frame_id,
                 });
-                return Animated {
-                    value: target,
-                    settled: true,
-                };
+                return true;
             }
             Entry::Occupied(o) => o.into_mut(),
         };
         let already_advanced = row.ticked_at == render_frame_id;
         row.ticked_at = render_frame_id;
 
-        // Steady-state fast path: a resting row with the same target is a no-op. Retarget
-        // detection still runs so a new target starts a motion.
-        //
-        // Returns the caller's `target`, which skips a clone per widget per frame.
-        if row.motion.is_none() && row.target == target {
+        // Steady-state fast path: a resting row with the same target is a no-op, the caller's
+        // target the value. Retarget detection still runs so a new target starts a motion.
+        if row.motion.is_none() && row.target == *target {
             row.key = key;
-            return Animated {
-                value: target,
-                settled: true,
-            };
+            return true;
         }
         // Past the steady path, which a finite target takes and NaN, never equal to itself,
         // never does: such a target would retarget and repaint every frame. Through `sub`, so
         // `inf - inf` is caught too.
         assert!(
-            target.sub(&target).magnitude_squared().is_finite(),
+            target.sub(target).magnitude_squared().is_finite(),
             "animation target of {id:?} {slot:?} is not finite",
         );
 
-        if key.is_some() && key == row.key && row.target != target {
+        if key.is_some() && key == row.key && row.target != *target {
             let Some(motion) = &row.motion else {
                 row.target = target.clone();
-                return Animated {
-                    value: target,
-                    settled: true,
-                };
+                return true;
             };
-            let cur = motion.cur(&target);
-            row.target = target;
-            return row.advance_once(cur, already_advanced, dt);
+            let cur = motion.cur(target);
+            row.target = target.clone();
+            let step = row.advance_once(cur, already_advanced, dt);
+            *target = step.value;
+            return step.settled;
         }
 
         let old_key = row.key;
         row.key = key;
         let mut cur = row.cur();
-        if row.target != target {
+        if row.target != *target {
             let from_rest = row.motion.is_none();
             // On the stack until it proves to run, so a target that drifts under the floor each
             // frame allocates nothing.
             let mut fresh = None;
             let motion = match &mut row.motion {
                 Some(motion) => &mut **motion,
-                None => fresh.insert(MotionRow::new(spec.motion, &cur, &target)),
+                None => fresh.insert(MotionRow::new(spec.motion, &cur, target)),
             };
             motion.retarget(
                 &mut Retarget {
                     cur: &mut cur,
                     old_target: &row.target,
-                    target: &target,
+                    target,
                     old_key,
                     key,
                     at_rest: from_rest,
@@ -155,25 +145,22 @@ impl<T: Animatable> AnimationMapTyped<T> {
             // Snap-if-close, on the retarget alone: a change too small to see settles at
             // once. A running motion ends by its own rule; checked mid-curve this floor cut
             // `OutBack` short where it crosses the target toward the overshoot.
-            let close = motion.close_enough(&animation_row::offset(&cur, &target));
-            row.target = target;
+            let close = motion.close_enough(&animation_row::offset(&cur, target));
+            row.target = target.clone();
             if close {
                 row.motion = None;
-                return Animated {
-                    value: row.target.clone(),
-                    settled: true,
-                };
+                return true;
             }
             if let Some(motion) = fresh {
                 row.motion = Some(Box::new(motion));
-                return Animated {
-                    value: cur,
-                    settled: false,
-                };
+                *target = cur;
+                return false;
             }
         }
 
-        row.advance_once(cur, already_advanced, dt)
+        let step = row.advance_once(cur, already_advanced, dt);
+        *target = step.value;
+        step.settled
     }
 }
 
@@ -219,11 +206,28 @@ pub(crate) mod internals {
                 .max()
                 .unwrap_or(0)
                 + 1;
-            let clock = AnimationClock {
-                dt,
-                render_frame_id,
-            };
-            self.tick(request, spec, clock)
+            self.ticked(
+                request,
+                spec,
+                AnimationClock {
+                    dt,
+                    render_frame_id,
+                },
+            )
+        }
+
+        /// [`Self::tick`] of `request`, its value and whether it settled, on `clock`.
+        pub(crate) fn ticked(
+            &mut self,
+            mut request: AnimationRequest<T>,
+            spec: AnimationSpec,
+            clock: AnimationClock,
+        ) -> Animated<T> {
+            let settled = self.tick(&mut request, spec, clock);
+            Animated {
+                value: request.target,
+                settled,
+            }
         }
     }
 }

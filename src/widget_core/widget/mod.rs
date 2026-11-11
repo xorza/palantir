@@ -279,11 +279,10 @@ impl Widget {
                 }
             }
         }
-        ui.animate(
-            AnimationRequest::new(id, Self::LOOK_SLOT, target).with_key(key),
-            transition,
-        )
-        .value
+        let mut request = AnimationRequest::new(id, Self::LOOK_SLOT, target).with_key(key);
+        // Settled or not, the value is in the request; `animate_in_place` owes the repaint.
+        let _ = ui.animate_in_place(&mut request, transition);
+        request.target
     }
 
     /// Whether `shortcut` was pressed and granted to this widget, for a widget that

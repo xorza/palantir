@@ -226,6 +226,18 @@ an older number here reads as a share, not a time.
 
 ## Rejected
 
+- **A smaller `Response`** (2026-11-11, intel core 2, ABBA against `70a8b430e`): `response_for`
+  is 6.8 % of a hover frame, but flat over its lookups and branches, with no copy in it, and a
+  `ResponseState` grown by 64 B, to 216, moved record and every CPU frame within ±0.5 %, the
+  pairs disagreeing. Its 152 B are written once a widget; a compaction of its public fields would
+  buy nothing measurable.
+
+- **A name compared and hashed over its own bytes** (2026-11-11, intel core 2, ABBA against
+  `3a089549d`): a hover frame spends 1.8 % in libc's compare of a font family's whole 63-byte
+  name, `spec_eq<u8, u8, 63>`, on each look's equality. Comparing the slice of its length instead
+  took `animation/cpu/steady` +4.7 % and the frames −0.2 to +0.9 %: the slice adds a length test
+  and a variable-length compare where the array's is fixed.
+
 - **Run 12, the board and the apple, ABBA:**
   - the chrome rows' hashes in a column of their own, compared as one slice where
     `RollupInputs::hold_for` read 8 B of each 104 B row: every CPU frame within ±0.5 % on the
@@ -343,6 +355,30 @@ an older number here reads as a share, not a time.
   SIMD8 and SIMD16 forms spill nothing, and one texel load serves a mask glyph either way.
 
 ## Decisions
+
+- **A look animates in place** (2026-11-11, intel core 2, ABBA against `3a089549d`). The
+  animation tick takes its request by reference and writes the value to show into its target,
+  returning whether the row settled; `Widget::wear` goes through `Ui::animate_in_place`, and
+  `Ui::animate` calls it and returns the value. A look at rest compares in place and copies
+  nothing, where a by-value target was copied into the request, into the tick and back out, each
+  a `memcpy` of the whole look, 2.5 % of a hover frame in libc. `animation/cpu/steady` −20 %,
+  `instant` −32 %, `duration` −1.6 %, `spring` −2.2 %; record −0.9 %, frames −0.8 to +0.5 %,
+  within the floor. A row that retargets clones the target into the row where it moved it.
+
+- **A paint carries a short effect name** (2026-11-11). A material is half of every `Paint` and
+  its effect's name, inline at 64 B, half of the material: a `Paint` grown by a material's 116 B
+  measured, ABBA, apple record +4.6 %, CPU frames +1.2 to +3.9 %, animation +5 to +16 %; intel
+  (core 2) record +2.8 %, frames +0.5 to +2.1 %, animation +1 to +26 %; encode and cascade,
+  which read the lowered rows, within ±1.4 %. An effect name now sits in 24 B
+  (`InlineEffectName`, 23 bytes and its length), a font family's keeps 63: `Paint` 232 → 192 B,
+  `Chrome` 240 → 200, an animation row of a look 368 → 328. Against `f50bf6154` on the intel:
+  record −1.1 %, frames −0.1 to −0.9 %, and with every animation snapping, as under reduced
+  motion, record −1.2 %, frames +0.2 to −1.1 %. `atomic/animation/cpu/instant` +34 %: it is
+  libc's `memcpy` of a look cloned, moved into a request and returned by value, whose
+  store-forward blocks and split loads rise with the new size (53.8 → 68.3 and 53.8 → 67.4 per
+  1k instructions), a path the frames do not show. Refused: the material behind an `Arc`,
+  which allocates where an app builds a material in its frame; a table of materials a paint
+  names by handle, which takes a theme file's materials out of plain data.
 
 - **Normals in the instance, refused** (run 12): each edge's outward normal worked out on the
   CPU and read by the template from 32 B more a quad, in place of a `length` and a division per

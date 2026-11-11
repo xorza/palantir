@@ -13,10 +13,9 @@ use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
 use crate::effect::stock;
 use crate::primitives::effect::effect_kind::{EffectKind, EffectTypes};
-use crate::primitives::effect::effect_name::{EffectName, TypedName};
+use crate::primitives::effect::effect_name::{EffectName, InlineEffectName, TypedName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::effect_id::EffectId;
-use crate::primitives::identity::inline_name::InlineName;
 use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::reduction::Reductions;
 
@@ -40,7 +39,7 @@ pub(crate) struct EffectRegistry {
 /// The loaded effects, each at its [`EffectId`], and the id each name holds.
 #[derive(Debug, Default)]
 struct Effects {
-    ids: FxHashMap<InlineName, EffectId>,
+    ids: FxHashMap<InlineEffectName, EffectId>,
     loaded: Vec<LoadedEffect>,
 }
 
@@ -94,7 +93,7 @@ pub(crate) struct ResolvedEffect {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ReducedName {
     Same,
-    Effect(InlineName),
+    Effect(InlineEffectName),
     Nothing,
 }
 
@@ -232,7 +231,7 @@ impl EffectRegistry {
 
     /// The types the effect under `name` loaded with; `None` when nothing is loaded under it. A
     /// check of a name that untrusted data holds, as a theme file's, which may name anything.
-    pub(crate) fn types_of(&self, name: InlineName) -> Option<EffectTypes> {
+    pub(crate) fn types_of(&self, name: InlineEffectName) -> Option<EffectTypes> {
         self.effects.borrow().get(name).map(|loaded| loaded.types)
     }
 
@@ -349,12 +348,12 @@ impl EffectRegistry {
 }
 
 impl Effects {
-    fn get(&self, name: InlineName) -> Option<&LoadedEffect> {
+    fn get(&self, name: InlineEffectName) -> Option<&LoadedEffect> {
         self.ids.get(&name).map(|id| &self.loaded[id.idx()])
     }
 
     /// Hold `effect` under `name`, at the id the name holds, or at a new one for a new name.
-    fn insert(&mut self, name: InlineName, effect: LoadedEffect) -> EffectId {
+    fn insert(&mut self, name: InlineEffectName, effect: LoadedEffect) -> EffectId {
         let next = EffectId(u32::try_from(self.loaded.len()).expect("fewer than 2³² effects"));
         let id = *self.ids.entry(name).or_insert(next);
         if id == next {

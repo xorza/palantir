@@ -15,7 +15,6 @@ pub(crate) mod motion_role;
 pub(crate) mod phase;
 mod spring;
 
-use crate::animation::animated::Animated;
 use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped};
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
@@ -30,9 +29,9 @@ pub(crate) struct AnimationMap {
 }
 
 impl AnimationMap {
-    /// Resolve one call site's animated value for this frame: an instant spec
-    /// ([`AnimationSpec::is_instant`]) is the target, with no probe, and leaves a stale row
-    /// unticked for the end-of-frame sweep to drop; otherwise tick.
+    /// Resolve one call site's animated value for this frame into `request.target`, and whether
+    /// it is settled: an instant spec ([`AnimationSpec::is_instant`]) is the target, with no
+    /// probe, and leaves a stale row unticked for the end-of-frame sweep to drop; otherwise tick.
     ///
     /// The caller owes the repaint when the result is unsettled.
     ///
@@ -42,15 +41,12 @@ impl AnimationMap {
     #[track_caller]
     pub(crate) fn animate<T: Animatable>(
         &mut self,
-        request: AnimationRequest<T>,
+        request: &mut AnimationRequest<T>,
         spec: AnimationSpec,
         clock: AnimationClock,
-    ) -> Animated<T> {
+    ) -> bool {
         if spec.is_instant() {
-            return Animated {
-                value: request.target,
-                settled: true,
-            };
+            return true;
         }
         self.typed_mut::<T>().tick(request, spec, clock)
     }

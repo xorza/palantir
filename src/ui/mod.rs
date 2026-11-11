@@ -1292,6 +1292,22 @@ impl Ui {
         request: AnimationRequest<V>,
         spec: AnimationSpec,
     ) -> Animated<V> {
+        let mut request = request;
+        let settled = self.animate_in_place(&mut request, spec);
+        Animated {
+            value: request.target,
+            settled,
+        }
+    }
+
+    /// [`Self::animate`] into `request.target`, returning whether the motion is at rest: a look
+    /// worn each frame moves through no copies (`.notes/PERF.md`, "A look animates in place").
+    #[track_caller]
+    pub(crate) fn animate_in_place<V: Animatable>(
+        &mut self,
+        request: &mut AnimationRequest<V>,
+        spec: AnimationSpec,
+    ) -> bool {
         let spec = if self.motion_snaps(request.motion) {
             AnimationSpec::SNAP
         } else {
@@ -1301,11 +1317,11 @@ impl Ui {
             dt: self.frame_runtime.dt,
             render_frame_id: self.frame_runtime.render_frame_id,
         };
-        let animated = self.memory.animation.animate(request, spec, clock);
-        if !animated.settled {
+        let settled = self.memory.animation.animate(request, spec, clock);
+        if !settled {
             self.frame_runtime.request_repaint();
         }
-        animated
+        settled
     }
 
     /// Currently focused widget id, or `None`.

@@ -75,7 +75,11 @@ fn bench_motion(group: &mut CaseGroup<'_>, motion: Motion) {
             render_frame_id: 1,
         };
         for &id in &ids {
-            map.tick(AnimationRequest::new(id, SLOT, first.clone()), spec, clock);
+            let _ = map.tick(
+                &mut AnimationRequest::new(id, SLOT, first.clone()),
+                spec,
+                clock,
+            );
         }
         let mut use_second = true;
         b.iter(|| {
@@ -83,7 +87,9 @@ fn bench_motion(group: &mut CaseGroup<'_>, motion: Motion) {
             let target = if use_second { &second } else { &first };
             use_second = !use_second;
             for &id in &ids {
-                black_box(map.tick(AnimationRequest::new(id, SLOT, target.clone()), spec, clock));
+                let mut request = AnimationRequest::new(id, SLOT, target.clone());
+                black_box(map.tick(&mut request, spec, clock));
+                black_box(request.target);
             }
         });
     });
@@ -101,12 +107,18 @@ fn bench_steady(group: &mut CaseGroup<'_>) {
             render_frame_id: 1,
         };
         for &id in &ids {
-            map.tick(AnimationRequest::new(id, SLOT, target.clone()), spec, clock);
+            let _ = map.tick(
+                &mut AnimationRequest::new(id, SLOT, target.clone()),
+                spec,
+                clock,
+            );
         }
         b.iter(|| {
             clock.render_frame_id += 1;
             for &id in &ids {
-                black_box(map.tick(AnimationRequest::new(id, SLOT, target.clone()), spec, clock));
+                let mut request = AnimationRequest::new(id, SLOT, target.clone());
+                black_box(map.tick(&mut request, spec, clock));
+                black_box(request.target);
             }
         });
     });
@@ -125,11 +137,9 @@ fn bench_instant(group: &mut CaseGroup<'_>) {
         b.iter(|| {
             clock.render_frame_id += 1;
             for &id in &ids {
-                black_box(map.animate(
-                    AnimationRequest::new(id, SLOT, target.clone()),
-                    AnimationSpec::SNAP,
-                    clock,
-                ));
+                let mut request = AnimationRequest::new(id, SLOT, target.clone());
+                black_box(map.animate(&mut request, AnimationSpec::SNAP, clock));
+                black_box(request.target);
             }
         });
     });

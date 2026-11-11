@@ -238,7 +238,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     let id = support::widget_id("a");
     let frame = 42;
 
-    let _ = map.tick(
+    let _ = map.ticked(
         AnimationRequest::new(id, SLOT, 0.0),
         AnimationSpec::FAST,
         AnimationClock {
@@ -247,7 +247,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         },
     );
 
-    let from_rest_a = map.tick(
+    let from_rest_a = map.ticked(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
         AnimationClock {
@@ -255,7 +255,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
             render_frame_id: frame - 1,
         },
     );
-    let from_rest_b = map.tick(
+    let from_rest_b = map.ticked(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
         AnimationClock {
@@ -265,7 +265,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     );
     assert_eq!((from_rest_a.value, from_rest_b.value), (0.0, 0.0));
 
-    let pass_a = map.tick(
+    let pass_a = map.ticked(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
         AnimationClock {
@@ -278,7 +278,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     let pass_a_cur = pass_a.value;
     let pass_a_elapsed = support::duration_motion(&map.rows[&(id, SLOT)]).elapsed;
 
-    let pass_b = map.tick(
+    let pass_b = map.ticked(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
         AnimationClock {
@@ -296,7 +296,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         "pass B with same render_frame_id must not advance elapsed",
     );
 
-    let pass_b_retarget = map.tick(
+    let pass_b_retarget = map.ticked(
         AnimationRequest::new(id, SLOT, 5.0),
         AnimationSpec::FAST,
         AnimationClock {
@@ -314,7 +314,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         pass_a_cur - 5.0
     );
 
-    let next = map.tick(
+    let next = map.ticked(
         AnimationRequest::new(id, SLOT, 5.0),
         AnimationSpec::FAST,
         AnimationClock {

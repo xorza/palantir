@@ -25,12 +25,11 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::paint_capture::PaintCall;
 use crate::internals::panic_probe::assert_panics_with;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
-use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_name::{EffectName, InlineEffectName};
 use crate::primitives::effect::effect_params::{EffectParam, EffectParams, ParamType};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::effect_id::EffectId;
-use crate::primitives::identity::inline_name::InlineName;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
@@ -443,7 +442,9 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
         .unwrap();
     assert_eq!(
         registry.power_saver_of(RING),
-        Some(ReducedName::Effect(InlineName::new("thin ring").unwrap()))
+        Some(ReducedName::Effect(
+            InlineEffectName::new("thin ring").unwrap()
+        ))
     );
 
     let refused = registry.load(RING, ring("fn effect(").power_saver(ReducedPaint::Nothing));
@@ -451,7 +452,9 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     assert!(registry.contains(RING));
     assert_eq!(
         registry.power_saver_of(RING),
-        Some(ReducedName::Effect(InlineName::new("thin ring").unwrap())),
+        Some(ReducedName::Effect(
+            InlineEffectName::new("thin ring").unwrap()
+        )),
         "the effect before the refused reload"
     );
 }

@@ -18,12 +18,14 @@ fn tick<T: Animatable>(
     slot: &'static str,
     target: T,
 ) -> T {
-    let request = AnimationRequest::new(support::widget_id(id), AnimationSlot::new(slot), target);
+    let mut request =
+        AnimationRequest::new(support::widget_id(id), AnimationSlot::new(slot), target);
     let clock = AnimationClock {
         dt: 0.016,
         render_frame_id: frame,
     };
-    map.animate(request, AnimationSpec::FAST, clock).value
+    let _ = map.animate(&mut request, AnimationSpec::FAST, clock);
+    request.target
 }
 
 /// A sweep keeps exactly the rows its frame ticked, in every typed map: a slot its caller stops
