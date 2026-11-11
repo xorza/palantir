@@ -5,7 +5,7 @@
 use crate::primitives::paint::brush::gradient::Spread;
 use bytemuck::{Pod, Zeroable};
 
-/// Packed fill-brush metadata for `Quad.fill_kind` and the matching paint-payload
+/// Packed fill-brush metadata for `QuadInstance.fill_kind` and the matching paint-payload
 /// fields: **bits 0..8** the family tag (one of the `TAG_*`, via
 /// [`Self::tag`]), **bits 8..16** the `Spread` discriminant (gradient tags only).
 /// A brush alone: the shape's form and a shadow are the quad row's key (`QuadKey`). Refused: a
@@ -37,11 +37,11 @@ impl FillKind {
         self.0 & Self::TAG_MASK
     }
 
-    /// Solid-fill marker; `Quad.fill` carries the color.
+    /// Solid-fill marker; `QuadInstance.fill` carries the color.
     pub(crate) const SOLID: Self = Self(Self::TAG_SOLID);
 
     /// Linear-gradient marker with the spread in bits 8..16; the atlas row and axis
-    /// ride in `Quad.fill_lut_row` / `fill_axis`.
+    /// ride in `QuadInstance.fill_lut_row` / `fill_axis`.
     pub(crate) const fn linear(spread: Spread) -> Self {
         Self::gradient(Self::TAG_LINEAR, spread)
     }

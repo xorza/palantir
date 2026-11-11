@@ -77,7 +77,7 @@ impl RasterQuad {
 
 /// Bits of `uv_and_kind` that hold `u`, and the shift the flags sit at. An atlas side grows no
 /// wider than `1 << U_BITS`; everything else, including the shader's copy
-/// (`RasterProgram::SHADER`), derives from this.
+/// (`RasterPipeline::SHADER`), derives from this.
 pub(crate) const U_BITS: u32 = 14;
 
 const U_MAX: u32 = (1 << U_BITS) - 1;

@@ -14,18 +14,18 @@ use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
+use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair, RasterVariants};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::resource::frame_group::FrameGroup;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -189,7 +189,7 @@ impl Fixture {
         let mut store = RecordStore::default();
         let runs = make_runs(&mut store, &shaper);
         let textures = TextureBinding::new(&g.gpu);
-        let program = RasterProgram::new(&g.gpu, &textures);
+        let program = RasterPipeline::new(&g.gpu, &textures);
         // The frame group the raster pipelines take first, which their glyphs read no clip of.
         let frame = FrameGroup::new(&g.gpu, textures, &GpuGradientAtlas::new(&g.gpu, 1));
         let mut pipelines = RasterVariants::NONE;
@@ -272,7 +272,7 @@ impl Fixture {
                 },
             );
             rec.group(FRAME_GROUP, self.frame.group());
-            let pipelines = RasterPipelines {
+            let pipelines = RasterPipelinePair {
                 flat: self.pipelines.flat.get(Clipping::Off),
                 spun: self.pipelines.spun.get(Clipping::Off),
             };

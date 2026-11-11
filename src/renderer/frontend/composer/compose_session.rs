@@ -37,7 +37,6 @@ use crate::renderer::frontend::payload::draw_stroke_payload::{
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, BackdropSource, MaterialLook};
 use crate::renderer::render_buffer::clip_chain::ClipChain;
@@ -48,14 +47,14 @@ use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance, QuadKey};
 use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
+use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
-use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::curve_basis::CurveBasis;
@@ -243,7 +242,7 @@ impl PaintSink for ComposeSession<'_> {
         let form = FillForm::new(ShapeForm::of(&p.geometry), FillBrush::of(p.paint.fill.kind));
         self.push_quad(
             QuadKey::Fill(form),
-            Quad {
+            QuadInstance {
                 header: shape.header(clip),
                 fill: p.paint.fill.color,
                 border_color: p.paint.border.color,
@@ -271,7 +270,7 @@ impl PaintSink for ComposeSession<'_> {
             return;
         };
         let clip = self.clip_chain(visible);
-        let shadow = ShadowQuad {
+        let shadow = ShadowInstance {
             header: shape.header(clip),
             color: p.shadow.color,
             kind: if p.shadow.inset() {
@@ -282,7 +281,7 @@ impl PaintSink for ComposeSession<'_> {
             geometry,
             unused: [0; 4],
         };
-        self.push_quad(QuadKey::Shadow, Quad::from(shadow));
+        self.push_quad(QuadKey::Shadow, QuadInstance::from(shadow));
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -701,7 +700,7 @@ impl ComposeSession<'_> {
     }
 
     /// Push `instance`, a quad of the stream that draws through `key`.
-    fn push_quad(&mut self, key: QuadKey, instance: Quad) {
+    fn push_quad(&mut self, key: QuadKey, instance: QuadInstance) {
         self.out.quads.push(QuadDrawRow { key, instance });
     }
 

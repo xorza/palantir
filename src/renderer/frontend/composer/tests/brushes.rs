@@ -40,7 +40,7 @@ use crate::shape::geometry::closed_geometry::PlacedClosed;
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
 
-/// A solid `Brush::Solid` panel emits a Quad with `fill_kind = FillKind::SOLID`, `fill_lut_row = 0` (no gradient) and the fill color passed through.
+/// A solid `Brush::Solid` panel emits a QuadInstance with `fill_kind = FillKind::SOLID`, `fill_lut_row = 0` (no gradient) and the fill color passed through.
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     let mut buffer = PaintCapture::default();
@@ -67,13 +67,13 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 }
 
 /// A resolved linear gradient packs row, axis and kind into the paint payload,
-/// which the composer pipes to the Quad.
+/// which the composer pipes to the QuadInstance.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::Spread;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::renderer::gradient_atlas::CpuGradientAtlas;
+    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
     let g =
         LinearGradient::horizontal([RgbaF32::WHITE, RgbaF32::BLACK]).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
@@ -106,7 +106,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-    use crate::renderer::gradient_atlas::CpuGradientAtlas;
+    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
     let g = LinearGradient::new(0.5, [RgbaF32::hex(0x336699), RgbaF32::hex(0xddaa44)]);
     let mut atlas = CpuGradientAtlas::default();
     let lowered = ResolvedGradient {

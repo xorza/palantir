@@ -1,4 +1,4 @@
-//! GPU side of quads: wgpu pipeline and instance buffer over `&[Quad]`; its shader is `quad.wgsl`
+//! GPU side of quads: wgpu pipeline and instance buffer over `&[QuadInstance]`; its shader is `quad.wgsl`
 //! and the files `QuadPipeline::SHADER` lists, one a concern.
 
 pub(crate) mod cutout_placements;
@@ -28,12 +28,11 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_draw_row::QuadDrawRow;
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance};
+use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 use crate::renderer::render_buffer::template_cover::TemplateCover;
-use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
 use soa_rs::Soa;
@@ -95,11 +94,11 @@ pub(crate) struct QuadRun {
 pub(crate) struct QuadExtras<'a> {
     /// The partial repaint's pre-clear, drawn first inside each damage scissor so `LoadOp::Load`
     /// leaks no last-frame AA fringe.
-    pub(crate) clear: Option<Quad>,
+    pub(crate) clear: Option<QuadInstance>,
     /// The debug overlay's dim over what the frame keeps.
-    pub(crate) dim: Option<Quad>,
+    pub(crate) dim: Option<QuadInstance>,
     /// The debug overlay's damage outlines.
-    pub(crate) outlines: &'a [Quad],
+    pub(crate) outlines: &'a [QuadInstance],
 }
 
 /// Where the last upload put each of its [`QuadExtras`] in the instance stream.
@@ -113,14 +112,14 @@ struct ExtraSpans {
 impl ExtraSpans {
     /// Lay `extras` into `tail`, which follows `base` quads in the stream, in a fixed order:
     /// clear, dim, outlines. An absent extra takes no instance and reads `None`.
-    fn lay(base: u32, extras: QuadExtras<'_>, tail: &mut Vec<Quad>) -> Self {
+    fn lay(base: u32, extras: QuadExtras<'_>, tail: &mut Vec<QuadInstance>) -> Self {
         let QuadExtras {
             clear,
             dim,
             outlines,
         } = extras;
         tail.clear();
-        let mut push = |items: &[Quad]| {
+        let mut push = |items: &[QuadInstance]| {
             let span = Span::new(base + tail.len() as u32, items.len() as u32);
             tail.extend_from_slice(items);
             span
@@ -135,27 +134,27 @@ impl ExtraSpans {
 
 /// The partial repaint's pre-clear: full-viewport, opaque `color`, no border or rounding, so AA
 /// fringes blend over the clear color.
-pub(crate) fn pre_clear(viewport: Vec2, color: RgbaF16) -> Quad {
+pub(crate) fn pre_clear(viewport: Vec2, color: RgbaF16) -> QuadInstance {
     debug_assert!(
         color.is_opaque(),
         "a translucent pre-clear blends over last frame"
     );
-    Quad {
+    QuadInstance {
         fill: color,
-        ..Quad::of_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y))
+        ..QuadInstance::of_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y))
     }
 }
 
 /// Format-independent quad resources; per-format pipelines are [`QuadVariants`].
 #[derive(Debug)]
 pub(crate) struct QuadPipeline {
-    instance_buffer: DynamicBuffer<Quad>,
+    instance_buffer: DynamicBuffer<QuadInstance>,
     /// Each uploaded quad's draw, parallel to the instance buffer.
     draws: Vec<QuadDraw>,
     /// The draws in [`Self::draws`].
     taken: QuadDraws,
     /// The frame's [`QuadExtras`], laid out after its quads in the instance buffer.
-    tail: Vec<Quad>,
+    tail: Vec<QuadInstance>,
     /// Where the last upload put each extra.
     extras: ExtraSpans,
     shader: wgpu::ShaderModule,
@@ -263,7 +262,8 @@ impl QuadPipeline {
         let shader = Self::SHADER.module(gpu);
         let cutouts = CutoutTables::new(gpu, &shader);
 
-        let instance_buffer = DynamicBuffer::<Quad>::vertex(gpu, "palantir.quad.instances", 256);
+        let instance_buffer =
+            DynamicBuffer::<QuadInstance>::vertex(gpu, "palantir.quad.instances", 256);
 
         Self {
             instance_buffer,
@@ -376,11 +376,11 @@ impl QuadPipeline {
                 .iter()
                 .zip(quads.instance())
                 .all(|(key, quad)| key.holds_shape(&quad.header)),
-            "a box quad left its points or its depth at their default (`Quad::of_rect`)"
+            "a box quad left its points or its depth at their default (`QuadInstance::of_rect`)"
         );
         debug_assert!(
             self.tail.iter().all(|quad| quad.header.is_box()),
-            "an extra is a box (`Quad::of_rect`)"
+            "an extra is a box (`QuadInstance::of_rect`)"
         );
         self.instance_buffer
             .upload_parts(ctx, &[quads.instance(), &self.tail]);
@@ -458,39 +458,43 @@ const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = {
         h[3],
         h[4],
         h[5],
-        vertex_attr(at, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, fill)),
+        vertex_attr(
+            at,
+            wgpu::VertexFormat::Uint32x2,
+            offset_of!(QuadInstance, fill),
+        ),
         vertex_attr(
             at + 1,
             wgpu::VertexFormat::Uint32x2,
-            offset_of!(Quad, border_color),
+            offset_of!(QuadInstance, border_color),
         ),
         vertex_attr(
             at + 2,
             wgpu::VertexFormat::Float32,
-            offset_of!(Quad, border_width),
+            offset_of!(QuadInstance, border_width),
         ),
         vertex_attr(
             at + 3,
             wgpu::VertexFormat::Uint32,
-            offset_of!(Quad, fill_kind),
+            offset_of!(QuadInstance, fill_kind),
         ),
         vertex_attr(
             at + 4,
             wgpu::VertexFormat::Uint32,
-            offset_of!(Quad, fill_lut_row),
+            offset_of!(QuadInstance, fill_lut_row),
         ),
         vertex_attr(
             at + 5,
             wgpu::VertexFormat::Uint32x2,
-            offset_of!(Quad, fill_axis),
+            offset_of!(QuadInstance, fill_axis),
         ),
     ]
 };
 
-const _: () = assert!(offset_of!(Quad, header) == 0);
+const _: () = assert!(offset_of!(QuadInstance, header) == 0);
 
 const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
-    size_of::<Quad>(),
+    size_of::<QuadInstance>(),
     wgpu::VertexStepMode::Instance,
     &QUAD_INSTANCE_ATTRS,
 );
@@ -510,23 +514,23 @@ const SHADOW_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = {
         vertex_attr(
             at,
             wgpu::VertexFormat::Uint32x2,
-            offset_of!(ShadowQuad, color),
+            offset_of!(ShadowInstance, color),
         ),
         vertex_attr(
             at + 1,
             wgpu::VertexFormat::Uint32,
-            offset_of!(ShadowQuad, kind),
+            offset_of!(ShadowInstance, kind),
         ),
         vertex_attr(
             at + 2,
             wgpu::VertexFormat::Uint32x2,
-            offset_of!(ShadowQuad, geometry),
+            offset_of!(ShadowInstance, geometry),
         ),
     ]
 };
 
 const SHADOW_INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
-    size_of::<ShadowQuad>(),
+    size_of::<ShadowInstance>(),
     wgpu::VertexStepMode::Instance,
     &SHADOW_INSTANCE_ATTRS,
 );
@@ -603,14 +607,14 @@ mod tests {
     use crate::gpu::pipeline::quad_pipeline::{ExtraSpans, QuadExtras, QuadPipeline};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::renderer::quad::Quad;
+    use crate::renderer::render_buffer::quad_draw_row::QuadInstance;
 
     /// The extras follow the frame's 3 quads in order: the clear at 3, the outline at 4; no dim
     /// takes no instance. A frame with none lays nothing and its clear reads
     /// `None`, so a pre-clear it forgot cannot draw the last frame's.
     #[test]
     fn extras_follow_the_quads_in_order() {
-        let quad = |x: f32| Quad::of_rect(Rect::new(x, 0.0, 1.0, 1.0));
+        let quad = |x: f32| QuadInstance::of_rect(Rect::new(x, 0.0, 1.0, 1.0));
         let mut tail = Vec::new();
         let spans = ExtraSpans::lay(
             3,

@@ -6,8 +6,10 @@ use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad, fill_rows};
-use crate::renderer::gradient_atlas::*;
+use crate::renderer::cpu_gradient_atlas::tests::support::{
+    assert_real_row, distinct_grad, fill_rows,
+};
+use crate::renderer::cpu_gradient_atlas::*;
 use std::collections::HashSet;
 
 /// Row 0 is reserved magenta, created at construction and flagged dirty so the first frame's GPU

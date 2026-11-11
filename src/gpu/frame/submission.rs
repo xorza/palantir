@@ -5,7 +5,7 @@ use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::gradient_atlas::FlushedRows;
+use crate::renderer::cpu_gradient_atlas::FlushedRows;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::shape::record_store::RecordStore;

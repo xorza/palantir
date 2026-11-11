@@ -56,7 +56,6 @@ use crate::effect::effect_store::EffectModule;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::frame::debug_overlay::{self, DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep, TargetKind};
 use crate::gpu::frame::gpu_ctx::GpuCtx;
@@ -77,7 +76,7 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
-use crate::gpu::pipeline::raster_pipeline::RasterProgram;
+use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -86,6 +85,7 @@ use crate::gpu::resource::frame_group::FrameGroup;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::resource::wgpu_effect_store::WgpuEffectStore;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
@@ -376,7 +376,7 @@ impl WgpuBackend {
         let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
         let curve = CurvePipeline::new(&gpu, &texture_binding);
-        let raster = RasterProgram::new(&gpu, &texture_binding);
+        let raster = RasterPipeline::new(&gpu, &texture_binding);
         let effect = EffectPipeline::new(&gpu);
         let blit = BlitPipeline::new(&gpu, &texture_binding);
         let text = TextBackend::new(&gpu, &raster, resources.text.clone());
@@ -1300,8 +1300,6 @@ fn begin_load_pass<'e>(
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     #[cfg(test)]
-    use crate::gpu::device::backbuffer_out::BackbufferOut;
-    #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
@@ -1309,6 +1307,8 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
+    #[cfg(test)]
+    use crate::gpu::surface::backbuffer_out::BackbufferOut;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
 

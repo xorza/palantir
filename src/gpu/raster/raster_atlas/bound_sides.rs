@@ -1,12 +1,12 @@
 //! [`BoundSides`]: the group-0 binding over a [`RasterAtlas`](crate::gpu::raster::raster_atlas::RasterAtlas)'s two sides.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::pipeline::raster_pipeline::RasterProgram;
+use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
 use crate::gpu::raster::raster_atlas::side::Side;
 use crate::primitives::paint::content_type::ContentType;
 
 /// The group-0 binding over an atlas's `[mask, color]` sides. The layout outlives any pair of
-/// textures and any atlas, so it is a clone of the shared [`RasterProgram`]'s; the bind group
+/// textures and any atlas, so it is a clone of the shared [`RasterPipeline`]'s; the bind group
 /// describes the current textures, and a grow replaces it through [`Self::rebind`].
 #[derive(Debug)]
 pub(super) struct BoundSides {
@@ -18,7 +18,7 @@ pub(super) struct BoundSides {
 
 impl BoundSides {
     /// Bind `sides` against `program`'s layout, labeled after `stem`.
-    pub(super) fn new(gpu: &Gpu, program: &RasterProgram, stem: &str, sides: &[Side; 2]) -> Self {
+    pub(super) fn new(gpu: &Gpu, program: &RasterPipeline, stem: &str, sides: &[Side; 2]) -> Self {
         let layout = program.layout().clone();
         let label = format!("{stem} atlas bg");
         let bind_group = bind(gpu, &layout, &label, sides);

@@ -8,14 +8,13 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance, QuadKey};
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
@@ -117,8 +116,8 @@ pub(super) fn scissor_count(steps: &[RenderStep]) -> usize {
         .count()
 }
 
-fn dummy_quad() -> Quad {
-    Quad {
+fn dummy_quad() -> QuadInstance {
+    QuadInstance {
         header: ShapeHeader::of_box(Rect::new(0.0, 0.0, 10.0, 10.0)),
         fill: RgbaF32::WHITE.to_f16(),
         border_color: RgbaF16::TRANSPARENT,

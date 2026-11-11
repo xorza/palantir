@@ -17,11 +17,11 @@ use std::sync::Mutex;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::requested_gpu::GpuRequest;
-#[cfg(test)]
-use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::error::GpuRequestError;
 #[cfg(test)]
 use crate::gpu::frame::gpu_ctx::GpuCtx;
+#[cfg(test)]
+use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::surface::texel_readback::TexelReadback;

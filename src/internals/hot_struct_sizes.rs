@@ -44,7 +44,6 @@ use crate::renderer::frontend::payload::draw_stroke_payload::DrawStrokePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::effect_draw_row::EffectInstance;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
@@ -52,6 +51,7 @@ use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
 use crate::renderer::render_buffer::image_draw_row::ImageInstance;
 use crate::renderer::render_buffer::mesh_draw_row::MeshDrawRow;
 use crate::renderer::render_buffer::mesh_draw_row::MeshInstance;
+use crate::renderer::render_buffer::quad_draw_row::QuadInstance;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::scene::node::Node;
 use crate::scene::node::bounds_extras::BoundsExtras;
@@ -194,7 +194,7 @@ const PINS: &[Pin] = &[
     pin::<FontFamily>("text::FontFamily", 64, 1),
     // Every `show` returns one.
     pin::<Response>("input::Response", 160, 8),
-    // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
+    // Align 2, so embedding either in `QuadInstance` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
     pin::<Corners>("primitives::Corners", 8, 2),
@@ -257,7 +257,7 @@ const PINS: &[Pin] = &[
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 80, 4),
     pin::<DrawClosedPayload<ClosedImage>>("payload::DrawClosedPayload<ClosedImage>", 120, 8),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
-    pin::<Quad>("renderer::Quad", 104, 4),
+    pin::<QuadInstance>("renderer::QuadInstance", 104, 4),
     pin::<CurveInstance>("renderer::CurveInstance", 80, 4),
     pin::<MeshInstance>("renderer::MeshInstance", 36, 4),
     // 4 of them a halo's reach.

@@ -3,7 +3,7 @@
 //! ([`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey)).
 //!
 //! The two instances share the policies (shelf packing, clock-sweep eviction,
-//! grow-with-blit, batched staging uploads) and the layout from [`RasterProgram`].
+//! grow-with-blit, batched staging uploads) and the layout from [`RasterPipeline`].
 //! Each keeps its own textures, bind group and eviction budget, so a color-icon-heavy
 //! frame cannot take rectangles from adjacent glyphs. Packing lives on [`ShelfPacker`],
 //! victim selection on [`ClockSweep`].
@@ -24,7 +24,7 @@ use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{ATLAS_GROUP, RasterProgram};
+use crate::gpu::pipeline::raster_pipeline::{ATLAS_GROUP, RasterPipeline};
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
 use crate::gpu::raster::raster_atlas::bound_sides::BoundSides;
 use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
@@ -147,7 +147,7 @@ impl PendingCopy {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
-    pub(super) fn new(gpu: &Gpu, program: &RasterProgram, config: RasterAtlasConfig) -> Self {
+    pub(super) fn new(gpu: &Gpu, program: &RasterPipeline, config: RasterAtlasConfig) -> Self {
         let sides = [
             Side::new(gpu, ContentType::Mask, config),
             Side::new(gpu, ContentType::Color, config),

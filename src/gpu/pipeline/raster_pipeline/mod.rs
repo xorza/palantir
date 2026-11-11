@@ -36,7 +36,7 @@ impl RasterVariants {
 
 /// The pipelines one raster draw binds.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RasterPipelines<'a> {
+pub(crate) struct RasterPipelinePair<'a> {
     pub(crate) flat: &'a Pipeline,
     pub(crate) spun: &'a Pipeline,
 }
@@ -44,13 +44,13 @@ pub(crate) struct RasterPipelines<'a> {
 /// Shader and group-0 layout, built once and lent to every raster tenant. Atlases keep clones of the layout
 /// (a refcount bump), so one pipeline binds against either atlas without relying on structural compatibility.
 #[derive(Debug)]
-pub(crate) struct RasterProgram {
+pub(crate) struct RasterPipeline {
     shader: wgpu::ShaderModule,
     layout: wgpu::BindGroupLayout,
     pipeline_layout: wgpu::PipelineLayout,
 }
 
-impl RasterProgram {
+impl RasterPipeline {
     /// This family's shader body.
     pub(crate) const SHADER: ShaderBody = ShaderBody {
         label: "palantir.raster.shader",
@@ -131,7 +131,7 @@ impl RasterProgram {
 /// The group an atlas binds at, past the frame group.
 pub(crate) const ATLAS_GROUP: u32 = 1;
 
-/// The numbers [`RasterProgram::SHADER`] takes from the Rust types that own them.
+/// The numbers [`RasterPipeline::SHADER`] takes from the Rust types that own them.
 const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("ATLAS_GROUP", ATLAS_GROUP),
     ShaderConstant::uint("U_BITS", U_BITS),

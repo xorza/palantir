@@ -15,8 +15,8 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
+use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::repaint_scissors::RepaintScissors;
-use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};
@@ -524,7 +524,7 @@ impl CutoutPlan {
         });
     }
 
-    fn census_shadow(shadow: &ShadowQuad, viewport: Rect) -> Option<CensusShadow> {
+    fn census_shadow(shadow: &ShadowInstance, viewport: Rect) -> Option<CensusShadow> {
         let corners = Self::cutout_corners(shadow)?;
         let sigma = shadow.sigma();
         let shaded = shadow.header.shaded_rect();
@@ -538,7 +538,7 @@ impl CutoutPlan {
     }
 
     /// A shadow's corners `(tl, tr, br, bl)` as the shader cuts them, or `None` if blurred below [`Self::MIN_SIGMA`].
-    fn cutout_corners(quad: &ShadowQuad) -> Option<[CutoutCorner; 4]> {
+    fn cutout_corners(quad: &ShadowInstance) -> Option<[CutoutCorner; 4]> {
         let sigma = quad.sigma();
         if sigma.is_nan() || sigma < Self::MIN_SIGMA {
             return None;
@@ -575,12 +575,12 @@ impl CutoutPlan {
 }
 
 /// Each quad of `quads` as the shadow it holds, in stream order; `None` for a fill.
-fn shadows(quads: &Soa<QuadDrawRow>) -> impl Iterator<Item = Option<ShadowQuad>> + '_ {
+fn shadows(quads: &Soa<QuadDrawRow>) -> impl Iterator<Item = Option<ShadowInstance>> + '_ {
     quads
         .key()
         .iter()
         .zip(quads.instance())
-        .map(|(&key, &quad)| (key == QuadKey::Shadow).then(|| ShadowQuad::from(quad)))
+        .map(|(&key, &quad)| (key == QuadKey::Shadow).then(|| ShadowInstance::from(quad)))
 }
 
 /// The box whose blur a shadow paints, relative to its quad's center, with the radii fitted to
@@ -595,7 +595,7 @@ struct ShadowBox {
 impl ShadowBox {
     /// A drop shadow's box is its source grown by the spread, centered on the quad; an inset
     /// shadow's is the hole, its source shrunk by the spread and moved by `offset`.
-    fn of(quad: &ShadowQuad) -> Self {
+    fn of(quad: &ShadowInstance) -> Self {
         let [x, y, sigma, spread] = quad.geometry.lanes();
         let half = Vec2::new(quad.header.rect.size.w, quad.header.rect.size.h) * 0.5;
         let (center, half, spread) = if quad.kind == ShadowKind::DROP {

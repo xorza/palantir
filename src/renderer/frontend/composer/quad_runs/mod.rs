@@ -1,7 +1,6 @@
 //! [`QuadRuns`]: a closing group's quads reordered so each draw's quads lie together.
 
-use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::quad_draw_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::{QuadInstance, QuadKey};
 
 /// Reorders a group's quads so each joins the last run of its key that lies within
 /// [`Self::LOOKBACK`] of the end, where no quad after that run overlaps it: a quad keeps its paint
@@ -15,7 +14,7 @@ pub(super) struct QuadRuns {
     /// Each placed quad's key, in `order`'s order: a fill's form, or a shadow, whose entry the
     /// cutout plan picks later.
     keys: Vec<QuadKey>,
-    moved: Vec<Quad>,
+    moved: Vec<QuadInstance>,
 }
 
 impl QuadRuns {
@@ -26,7 +25,7 @@ impl QuadRuns {
     /// Reorder `quads` and their `keys`, one group's, by [`Self`]'s rule. A group of one key, the
     /// common one, is left as it is after one read of each key; a quad of its predecessor's key
     /// appends without a look back, so only a change of key scans.
-    pub(super) fn join(&mut self, keys: &mut [QuadKey], quads: &mut [Quad]) {
+    pub(super) fn join(&mut self, keys: &mut [QuadKey], quads: &mut [QuadInstance]) {
         assert_eq!(keys.len(), quads.len(), "a key for each quad");
         let Some(&first_key) = keys.first() else {
             return;

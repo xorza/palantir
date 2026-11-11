@@ -3,7 +3,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::surface::staging::Staging;
+use crate::gpu::resource::readback_staging::ReadbackStaging;
 use crate::gpu::texel;
 use std::iter;
 
@@ -11,7 +11,7 @@ use std::iter;
 /// every frame back makes one buffer, not one a frame.
 #[derive(Debug)]
 pub(crate) struct TexelReadback {
-    staging: Staging,
+    staging: ReadbackStaging,
 }
 
 impl TexelReadback {
@@ -36,7 +36,12 @@ impl TexelReadback {
             .block_copy_size(None)
             .expect("a color format has one aspect");
         Self {
-            staging: Staging::new(gpu, "palantir.texel_readback", texel::size(texture), texel),
+            staging: ReadbackStaging::new(
+                gpu,
+                "palantir.texel_readback",
+                texel::size(texture),
+                texel,
+            ),
         }
     }
 

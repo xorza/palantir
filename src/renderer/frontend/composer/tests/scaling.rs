@@ -35,8 +35,8 @@ use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::quad_draw_row::QuadKey;
+use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
-use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use crate::shape::geometry::box_geometry::PlacedBox;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::geometry::triangle_geometry::PlacedTriangle;
@@ -704,7 +704,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         &params(1.5, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.key(), [QuadKey::Shadow]);
-    let q = ShadowQuad::from(buf.quads.instance()[0]);
+    let q = ShadowInstance::from(buf.quads.instance()[0]);
     assert_eq!(q.header.rect, Rect::new(4.5, 1.0, 58.0, 35.0));
     assert_eq!(q.header.corners, Corners::all(4.0));
     assert_eq!(q.kind, ShadowKind::DROP);
@@ -730,7 +730,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         &params(1.5, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.key(), [QuadKey::Shadow]);
-    let q = ShadowQuad::from(buf.quads.instance()[0]);
+    let q = ShadowInstance::from(buf.quads.instance()[0]);
     assert_eq!(
         q.header.rect,
         Rect::new(15.0, 16.0, 31.0, 8.0),
@@ -768,7 +768,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         &params(2.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 1, "the widest shadow still paints");
-    let q = ShadowQuad::from(buf.quads.instance()[0]);
+    let q = ShadowInstance::from(buf.quads.instance()[0]);
     assert_eq!(q.geometry.lanes(), [0.0, 0.0, 65504.0, 0.0]);
     assert_eq!(
         q.header.rect,

@@ -9,12 +9,12 @@ mod plane_ctx;
 use crate::damage::Damage;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::geometry::rect::Rect;
+use crate::renderer::cpu_gradient_atlas::{CpuGradientAtlas, FlushedRows};
 use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::plane_ctx::PlaneCtx;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::{BuildPlan, FrameScene};
-use crate::renderer::gradient_atlas::{CpuGradientAtlas, FlushedRows};
 use crate::renderer::repaint_scissors;
 
 /// The encode pass's retained state: the gradient atlas every window's frames register their

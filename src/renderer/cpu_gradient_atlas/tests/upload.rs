@@ -6,8 +6,8 @@
 )]
 
 use crate::common::counters::CounterSet;
-use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_grad};
-use crate::renderer::gradient_atlas::*;
+use crate::renderer::cpu_gradient_atlas::tests::support::{assert_real_row, distinct_grad};
+use crate::renderer::cpu_gradient_atlas::*;
 use std::collections::HashSet;
 
 /// An idle atlas flushes once for the magenta init (one 2048-byte row), then stays clean.

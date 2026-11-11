@@ -5,11 +5,11 @@ use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::Timing;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::resource::gpu_gradient_atlas;
+use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
+use crate::renderer::cpu_gradient_atlas::bake::LUT_ROW_TEXELS;
 use criterion::{Criterion, Throughput};
 use std::ops::Range;
 

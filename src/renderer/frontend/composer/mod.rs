@@ -12,9 +12,9 @@
 use crate::display::frame_stamp::FrameStamp;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
+use crate::renderer::frontend::composer::compose_session::ComposeSession;
 use crate::renderer::frontend::composer::paint_order::PaintOrder;
 use crate::renderer::frontend::composer::polyline_scratch::PolylineScratch;
-use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::shape::record_store::RecordStore;
@@ -23,6 +23,7 @@ mod backdrop_break;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod clip_stack;
+pub(crate) mod compose_session;
 mod curve_run;
 mod geometry;
 mod higher_kind_rects;
@@ -33,7 +34,6 @@ mod physical_map;
 mod polyline_scratch;
 mod quad_runs;
 mod rect_grid;
-pub(crate) mod session;
 mod stroke_bbox;
 mod template_shape;
 mod tile_index;
@@ -97,7 +97,7 @@ pub(crate) mod internals {
     use crate::internals::paint_capture::PaintCapture;
     #[cfg(test)]
     use crate::renderer::frontend::composer::Composer;
-    use crate::renderer::frontend::composer::session::ComposeSession;
+    use crate::renderer::frontend::composer::compose_session::ComposeSession;
 
     impl ComposeSession<'_> {
         /// Replay a recorded paint stream into this session and finish it, so

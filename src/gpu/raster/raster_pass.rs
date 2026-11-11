@@ -10,7 +10,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
-use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
+use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair};
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas, RasterAtlasConfig};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -25,7 +25,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 /// Everything one tenant's pass settles at construction; the pipeline and shader
-/// belong to the [`RasterProgram`].
+/// belong to the [`RasterPipeline`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RasterPassConfig {
     pub(super) vbuf: &'static str,
@@ -112,7 +112,7 @@ pub(super) struct RasterPass<K> {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
-    pub(super) fn new(gpu: &Gpu, program: &RasterProgram, config: RasterPassConfig) -> Self {
+    pub(super) fn new(gpu: &Gpu, program: &RasterPipeline, config: RasterPassConfig) -> Self {
         Self {
             atlas: RasterAtlas::new(gpu, program, config.atlas),
             instances: Vec::new(),
@@ -299,7 +299,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         &'a self,
         rec: &mut PassRecorder<'a>,
         batch_idx: usize,
-        pipelines: RasterPipelines<'a>,
+        pipelines: RasterPipelinePair<'a>,
     ) {
         self.for_each_draw(batch_idx, |draw| {
             let (pipeline, vbuf, span) = match draw {

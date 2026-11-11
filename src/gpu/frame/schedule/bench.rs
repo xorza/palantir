@@ -28,13 +28,12 @@ use crate::display::Display;
 use crate::gpu::frame::schedule::GroupSpan;
 use crate::gpu::frame::schedule::internals::WalkCounts;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::fill_form::FillForm;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance, QuadKey};
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
@@ -98,7 +97,7 @@ impl Workload {
         for _ in 0..groups {
             buffer.quads.push(QuadDrawRow {
                 key: QuadKey::Fill(FillForm::BOX_SOLID),
-                instance: Quad::default(),
+                instance: QuadInstance::default(),
             });
         }
         for group in 0..groups {

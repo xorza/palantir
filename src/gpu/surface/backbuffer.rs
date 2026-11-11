@@ -1,9 +1,9 @@
 //! The off-screen color target the backbuffer-copy path renders into.
 
-use crate::gpu::device::backbuffer_out::BackbufferOut;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::surface::backbuffer_out::BackbufferOut;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::texel;

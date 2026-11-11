@@ -1,7 +1,8 @@
-//! Where a frame lands: render targets, window swapchains and their
-//! manager, the retained backbuffer, and scissors.
+//! Where a frame lands: render targets, window swapchains and their manager, the retained
+//! backbuffer and how a frame leaves it, readbacks, and scissors.
 
 pub(crate) mod backbuffer;
+pub(crate) mod backbuffer_out;
 pub(crate) mod capture;
 pub(crate) mod damage_canvas;
 pub(crate) mod map_state;
@@ -14,7 +15,6 @@ pub(crate) mod map_state;
 )]
 pub(crate) mod owned_target;
 pub(crate) mod render_target;
-pub(crate) mod staging;
 #[cfg(feature = "winit")]
 pub(crate) mod surface_manager;
 pub(crate) mod texel_readback;

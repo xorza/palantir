@@ -34,7 +34,7 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::image_pipeline::ImagePipeline;
     use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
-    use crate::gpu::pipeline::raster_pipeline::RasterProgram;
+    use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
     use crate::gpu::pipeline::shader_body::ShaderBody;
 
     /// Every shader body the backend compiles, which the shader tests walk.
@@ -43,7 +43,7 @@ pub(crate) mod internals {
         MeshPipeline::SHADER,
         CurvePipeline::SHADER,
         ImagePipeline::SHADER,
-        RasterProgram::SHADER,
+        RasterPipeline::SHADER,
         BlitPipeline::SHADER,
         BackdropBlur::SHADER,
     ];

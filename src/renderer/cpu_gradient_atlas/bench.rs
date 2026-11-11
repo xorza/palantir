@@ -24,7 +24,7 @@ use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::gradient_atlas::CpuGradientAtlas;
+use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 

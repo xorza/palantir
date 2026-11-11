@@ -103,7 +103,7 @@ impl UploadStaging {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::device::upload_staging::UploadStaging;
+    use crate::gpu::resource::upload_staging::UploadStaging;
     use crate::gpu::test_gpu::headless_test_gpu;
 
     /// An allocation a chunk holds stages in the belt; one past it in a buffer of its own, of its

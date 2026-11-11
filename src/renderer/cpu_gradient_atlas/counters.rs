@@ -6,7 +6,7 @@
 //!
 //! [`BenchOnly`]: crate::common::counters::BenchOnly
 //! [`CpuGradientAtlas::register`]:
-//!     crate::renderer::gradient_atlas::CpuGradientAtlas::register
+//!     crate::renderer::cpu_gradient_atlas::CpuGradientAtlas::register
 
 use crate::common::counters::counter_snapshot;
 

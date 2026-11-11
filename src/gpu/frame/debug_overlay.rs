@@ -13,8 +13,8 @@ use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::wgsl::FRAME_GROUP;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::quad_draw_row::QuadInstance;
 use glam::Vec2;
 use std::ops::Range;
 use tinyvec::ArrayVec;
@@ -57,10 +57,10 @@ impl<'a> OverlayDraw<'a> {
 /// The translucent-black full-viewport quad ([`DIM_ALPHA`]), drawn with `LoadOp::Load`
 /// before partial passes so undamaged regions fade across frames while repainted damage
 /// stays bright.
-pub(crate) fn dim_quad(viewport: Vec2) -> Quad {
-    Quad {
+pub(crate) fn dim_quad(viewport: Vec2) -> QuadInstance {
+    QuadInstance {
         fill: RgbaF32::new(0.0, 0.0, 0.0, DIM_ALPHA).to_f16(),
-        ..Quad::of_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y))
+        ..QuadInstance::of_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y))
     }
 }
 
@@ -71,7 +71,7 @@ pub(crate) struct DebugOverlay {
     /// Damage-rect outline quads (transparent fill, red border), drawn on the
     /// swapchain texture after the backbuffer-to-surface copy, so no ghosts.
     /// Bounded by [`DAMAGE_RECT_CAP`], so steady-state frames are alloc-free.
-    outlines: ArrayVec<[Quad; DAMAGE_RECT_CAP]>,
+    outlines: ArrayVec<[QuadInstance; DAMAGE_RECT_CAP]>,
 }
 
 impl DebugOverlay {
@@ -82,11 +82,11 @@ impl DebugOverlay {
         let gap_px = (DAMAGE_OVERLAY_GAP * scale).max(1.0);
         let border_color = DAMAGE_OVERLAY_COLOR.to_f16();
         let border_width = DAMAGE_OVERLAY_BORDER_WIDTH * scale;
-        let outline = |rect: Rect| Quad {
+        let outline = |rect: Rect| QuadInstance {
             fill: RgbaF16::TRANSPARENT,
             border_color,
             border_width,
-            ..Quad::of_rect(rect)
+            ..QuadInstance::of_rect(rect)
         };
         self.outlines.clear();
         match damage {
@@ -117,7 +117,7 @@ impl DebugOverlay {
     }
 
     /// This frame's damage-rect outlines.
-    pub(crate) fn outlines(&self) -> &[Quad] {
+    pub(crate) fn outlines(&self) -> &[QuadInstance] {
         &self.outlines
     }
 }

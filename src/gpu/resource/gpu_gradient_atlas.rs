@@ -7,8 +7,8 @@ use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::gradient_atlas::FlushedRows;
-use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
+use crate::renderer::cpu_gradient_atlas::FlushedRows;
+use crate::renderer::cpu_gradient_atlas::bake::LUT_ROW_TEXELS;
 use glam::UVec2;
 use std::ops::Range;
 
@@ -119,9 +119,9 @@ mod tests {
     use crate::gpu::resource::gpu_gradient_atlas::{GpuGradientAtlas, ROW_PITCH};
     use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::renderer::gradient_atlas::bake::{self, LUT_ROW_TEXELS};
-    use crate::renderer::gradient_atlas::tests::support::distinct_grad;
-    use crate::renderer::gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
+    use crate::renderer::cpu_gradient_atlas::bake::{self, LUT_ROW_TEXELS};
+    use crate::renderer::cpu_gradient_atlas::tests::support::distinct_grad;
+    use crate::renderer::cpu_gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 
     /// Upload what `cpu` baked since its last flush into `atlas` on a frame's encoder of its own,
     /// and wait for it.

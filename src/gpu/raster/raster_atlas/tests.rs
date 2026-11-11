@@ -252,7 +252,7 @@ mod gpu {
     fn small_atlas(gpu: &Gpu) -> RasterAtlas<TestKey> {
         RasterAtlas::new(
             gpu,
-            &RasterProgram::new(gpu, &TextureBinding::new(gpu)),
+            &RasterPipeline::new(gpu, &TextureBinding::new(gpu)),
             RasterAtlasConfig {
                 label: "palantir.test",
                 initial_mask_px: 128,

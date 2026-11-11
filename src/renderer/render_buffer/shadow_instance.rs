@@ -1,20 +1,20 @@
-//! [`ShadowQuad`]: a shadow's instance in the quad stream.
+//! [`ShadowInstance`]: a shadow's instance in the quad stream.
 
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::quad_draw_row::QuadInstance;
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use bytemuck::{Pod, Zeroable};
 
-/// A shadow's instance, a [`Quad`]'s size, so it lies in the quad stream among the fills it
+/// A shadow's instance, a [`QuadInstance`]'s size, so it lies in the quad stream among the fills it
 /// paints under or over, in record order. The shadow pipelines read it through their own
 /// attributes (`SHADOW_INSTANCE_ATTRS`), its lanes named as a shadow's. Refused: a shadow's lanes
 /// under a fill's names, its offset, blur and spread in a gradient's axis; a stream of its own,
 /// which would move shadows to a tier and close a group at each shadowed box; a Rust union with a
-/// `Quad`, whose reads are `unsafe`.
+/// `QuadInstance`, whose reads are `unsafe`.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Pod, Zeroable)]
-pub(crate) struct ShadowQuad {
+pub(crate) struct ShadowInstance {
     /// The quad the shadow paints over and its source's radii: a drop shadow's source moved by
     /// its offset and grown by its halo, an inset shadow's source itself. The shader recovers
     /// the source from the quad's center.
@@ -28,7 +28,7 @@ pub(crate) struct ShadowQuad {
     pub(crate) unused: [u32; 4],
 }
 
-impl ShadowQuad {
+impl ShadowInstance {
     /// The blur's standard deviation, physical px.
     pub(crate) fn sigma(&self) -> f32 {
         self.geometry.lanes()[2]
@@ -52,22 +52,24 @@ impl ShadowKind {
     }
 }
 
-impl From<ShadowQuad> for Quad {
+impl From<ShadowInstance> for QuadInstance {
     /// The shadow in a quad's bytes, as the stream holds it; its row's key says shadow.
-    fn from(shadow: ShadowQuad) -> Self {
+    fn from(shadow: ShadowInstance) -> Self {
         bytemuck::cast(shadow)
     }
 }
 
-impl From<Quad> for ShadowQuad {
+impl From<QuadInstance> for ShadowInstance {
     /// A shadow row's instance read back as the shadow it holds.
-    fn from(quad: Quad) -> Self {
+    fn from(quad: QuadInstance) -> Self {
         bytemuck::cast(quad)
     }
 }
 
 // One stride, and the header where every quad pipeline reads it.
 const _: () = {
-    assert!(size_of::<ShadowQuad>() == size_of::<Quad>());
-    assert!(std::mem::offset_of!(ShadowQuad, header) == std::mem::offset_of!(Quad, header));
+    assert!(size_of::<ShadowInstance>() == size_of::<QuadInstance>());
+    assert!(
+        std::mem::offset_of!(ShadowInstance, header) == std::mem::offset_of!(QuadInstance, header)
+    );
 };

@@ -1,9 +1,9 @@
 //! The per-frame memo from a recorded gradient to its atlas row.
 
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::renderer::gradient_atlas::CpuGradientAtlas;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::GradientId;

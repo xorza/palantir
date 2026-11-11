@@ -18,7 +18,7 @@ mod encoded_counters;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
+use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair};
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
@@ -48,7 +48,7 @@ pub(crate) struct TextBackend {
 impl TextBackend {
     /// Build the format-independent text resources; per-format pipelines come from
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
-    pub(crate) fn new(gpu: &Gpu, program: &RasterProgram, shaper: TextShaper) -> Self {
+    pub(crate) fn new(gpu: &Gpu, program: &RasterPipeline, shaper: TextShaper) -> Self {
         Self {
             shaper,
             encoder: TextEncoder::default(),
@@ -151,7 +151,7 @@ impl TextBackend {
         &'a self,
         rec: &mut PassRecorder<'a>,
         batch_idx: usize,
-        pipelines: RasterPipelines<'a>,
+        pipelines: RasterPipelinePair<'a>,
     ) {
         self.pass.render_batch(rec, batch_idx, pipelines);
     }

@@ -10,7 +10,7 @@ use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
 use crate::gpu::pipeline::pipeline_recipe::Pipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::{QuadDraw, QuadDraws};
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
-use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
+use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair, RasterVariants};
 use crate::renderer::render_buffer::effect_draw_row::EffectKey;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
@@ -31,7 +31,7 @@ pub(crate) struct FormatPipelines {
     pub(crate) image: [ClipVariant; ShapeForm::ALL.len()],
     pub(crate) curve: ClipVariant,
     /// The pipelines of **both** raster tenants: glyph and icon quads share one shader and layout,
-    /// binding whichever atlas the step names. See [`RasterProgram`].
+    /// binding whichever atlas the step names. See [`RasterPipeline`].
     pub(crate) raster: RasterVariants,
 }
 
@@ -43,8 +43,8 @@ pub(crate) struct Programs {
     pub(crate) mesh: MeshPipeline,
     pub(crate) image: ImagePipeline,
     pub(crate) curve: CurvePipeline,
-    /// The one shader and layout both raster tenants draw through; see [`RasterProgram`].
-    pub(crate) raster: RasterProgram,
+    /// The one shader and layout both raster tenants draw through; see [`RasterPipeline`].
+    pub(crate) raster: RasterPipeline,
     /// The frame's effect instances and words; each effect's pipelines are the store's.
     pub(crate) effect: EffectPipeline,
 }
@@ -175,8 +175,8 @@ impl<'a> PassPipelines<'a> {
     }
 
     /// Both raster tenants' pipelines.
-    pub(crate) const fn raster(self) -> RasterPipelines<'a> {
-        RasterPipelines {
+    pub(crate) const fn raster(self) -> RasterPipelinePair<'a> {
+        RasterPipelinePair {
             flat: self.fmt.raster.flat.get(self.clipping),
             spun: self.fmt.raster.spun.get(self.clipping),
         }

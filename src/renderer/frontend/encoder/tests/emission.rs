@@ -16,6 +16,8 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
+use crate::renderer::cpu_gradient_atlas::tests::support::{distinct_grad, fill_rows};
+use crate::renderer::cpu_gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
@@ -23,8 +25,6 @@ use crate::renderer::frontend::encoder::tests::support::{
 };
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_stroke_payload::StrokePath;
-use crate::renderer::gradient_atlas::tests::support::{distinct_grad, fill_rows};
-use crate::renderer::gradient_atlas::{CpuGradientAtlas, INITIAL_ATLAS_ROWS};
 use crate::scene::layer::Layer;
 use crate::shape::geometry::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_brush::LoweredBrush;

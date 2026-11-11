@@ -2,9 +2,9 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
+use crate::gpu::resource::readback_staging::ReadbackStaging;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::owned_target::TargetSpec;
-use crate::gpu::surface::staging::Staging;
 use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::image::Image;
@@ -17,7 +17,7 @@ const BYTES_PER_PIXEL: u32 = 4;
 /// backbuffer, a test reads back a target.
 #[derive(Debug)]
 pub(crate) struct Capture {
-    staging: Staging,
+    staging: ReadbackStaging,
     /// What [`Self::take`] does to the staged bytes to read them in [`Self::FORMAT`]'s order.
     order: TexelOrder,
 }
@@ -110,7 +110,7 @@ impl Capture {
             "a capture region {region:?} inside the {full} texture"
         );
         let extent = texel::extent(region.size);
-        let staging = Staging::new(
+        let staging = ReadbackStaging::new(
             gpu,
             "palantir.capture.staging",
             region.size,
@@ -205,14 +205,14 @@ impl Capture {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::resource::readback_staging::ReadbackStaging;
     use crate::gpu::surface::capture::{Capture, TexelOrder};
-    use crate::gpu::surface::staging::Staging;
 
     impl Capture {
         /// A capture whose copy never finishes, as one the device is still running.
         pub(crate) fn never_landing(gpu: &Gpu) -> Self {
             Self {
-                staging: Staging::never_landing(gpu),
+                staging: ReadbackStaging::never_landing(gpu),
                 order: TexelOrder::Rgba,
             }
         }

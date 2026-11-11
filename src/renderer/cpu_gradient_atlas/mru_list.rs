@@ -12,7 +12,7 @@
 //! grow rather than repaint a row this frame's draws reference.
 //!
 //! [`CpuGradientAtlas::register`]:
-//!     crate::renderer::gradient_atlas::CpuGradientAtlas::register
+//!     crate::renderer::cpu_gradient_atlas::CpuGradientAtlas::register
 
 use crate::common::non_max::NonMaxU32;
 
@@ -95,7 +95,7 @@ impl MruList {
     /// corruption doesn't surface as a far-off wrong eviction.
     ///
     /// [`CpuGradientAtlas::grow`]:
-    ///     crate::renderer::gradient_atlas::CpuGradientAtlas::grow
+    ///     crate::renderer::cpu_gradient_atlas::CpuGradientAtlas::grow
     pub(super) fn is_well_formed(&self) -> bool {
         let members = self.next.len().saturating_sub(1);
         let mut seen = 0usize;

@@ -1,6 +1,6 @@
 //! A text backend on the shared test device, and the frames driving it.
 
-use crate::gpu::pipeline::raster_pipeline::RasterProgram;
+use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
@@ -39,7 +39,7 @@ impl TextRig {
         let shaper = TextShaper::new();
         let backend = TextBackend::new(
             &test_gpu,
-            &RasterProgram::new(&test_gpu, &TextureBinding::new(&test_gpu)),
+            &RasterPipeline::new(&test_gpu, &TextureBinding::new(&test_gpu)),
             shaper.clone(),
         );
         Self {

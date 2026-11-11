@@ -2,7 +2,7 @@
 //! encoder; dropping it releases the borrows.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::upload_staging::{StagedBytes, UploadStaging};
+use crate::gpu::resource::upload_staging::{StagedBytes, UploadStaging};
 use crate::gpu::texel;
 use glam::UVec2;
 

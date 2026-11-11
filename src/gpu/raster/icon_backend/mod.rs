@@ -13,7 +13,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
-use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
+use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair};
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig, Rasterized};
 use crate::icons::icon_raster_key::IconRasterKey;
@@ -31,7 +31,7 @@ pub(crate) struct IconBackend {
 }
 
 impl IconBackend {
-    pub(crate) fn new(gpu: &Gpu, program: &RasterProgram, icons: IconRegistry) -> Self {
+    pub(crate) fn new(gpu: &Gpu, program: &RasterPipeline, icons: IconRegistry) -> Self {
         Self {
             pass: RasterPass::new(
                 gpu,
@@ -138,7 +138,7 @@ impl IconBackend {
         &'a self,
         rec: &mut PassRecorder<'a>,
         batch_idx: usize,
-        pipelines: RasterPipelines<'a>,
+        pipelines: RasterPipelinePair<'a>,
     ) {
         self.pass.render_batch(rec, batch_idx, pipelines);
     }

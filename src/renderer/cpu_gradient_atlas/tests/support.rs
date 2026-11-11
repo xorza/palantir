@@ -3,7 +3,7 @@
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
-use crate::renderer::gradient_atlas::*;
+use crate::renderer::cpu_gradient_atlas::*;
 
 /// Fresh f16 LUT row, all texels transparent before bake.
 pub(super) fn fresh_row() -> LutRowTexels {

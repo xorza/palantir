@@ -2,7 +2,7 @@
 
 mod gpu {
     use crate::gpu::device::gpu::Gpu;
-    use crate::gpu::pipeline::raster_pipeline::RasterProgram;
+    use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
     use crate::gpu::raster::icon_backend::IconBackend;
     use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -19,7 +19,7 @@ mod gpu {
     fn icon_backend(gpu: &Gpu, icons: &IconRegistry) -> IconBackend {
         IconBackend::new(
             gpu,
-            &RasterProgram::new(gpu, &TextureBinding::new(gpu)),
+            &RasterPipeline::new(gpu, &TextureBinding::new(gpu)),
             icons.clone(),
         )
     }

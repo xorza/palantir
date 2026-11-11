@@ -11,7 +11,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::shape::geometry::closed_geometry::PlacedClosed;
 use crate::shape::paint::lowered_border::LoweredBorder;
 
-/// A fill and a border over a closed shape, all lowered to a single `Quad` instance.
+/// A fill and a border over a closed shape, all lowered to a single `QuadInstance`.
 ///
 /// `fill.kind` names the brush; the side a box covers and a triangle are the shape's, which the
 /// composer writes into the instance. `fill_axis` is the gradient geometry in the shape's 0..1

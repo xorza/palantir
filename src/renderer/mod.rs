@@ -1,11 +1,9 @@
 //! The CPU half of rendering: encode and compose, orchestrated by `Frontend`.
 //!
-//! [`frontend`] owns the buffers every frame reuses and turns a `FrameScene` into `&RenderBuffer`. [`RenderBuffer`](render_buffer::RenderBuffer) and [`Quad`](quad::Quad) are the contract with [`crate::gpu`].
+//! [`frontend`] owns the buffers every frame reuses and turns a `FrameScene` into `&RenderBuffer`. [`RenderBuffer`](render_buffer::RenderBuffer) and its draw rows are the contract with [`crate::gpu`].
 pub(crate) mod backdrop_captures;
+pub(crate) mod cpu_gradient_atlas;
 pub(crate) mod frontend;
-pub(crate) mod gradient_atlas;
-pub(crate) mod quad;
 pub(crate) mod render_buffer;
 pub(crate) mod render_plan;
 pub(crate) mod repaint_scissors;
-pub(crate) mod shadow_quad;

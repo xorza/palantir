@@ -1,4 +1,4 @@
-//! [`Staging`]: a buffer a texture region is copied into and read back from.
+//! [`ReadbackStaging`]: a buffer a texture region is copied into and read back from.
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::map_state::MapState;
@@ -9,7 +9,7 @@ use glam::UVec2;
 /// read map. [`Capture`](crate::gpu::surface::capture::Capture) and
 /// [`TexelReadback`](crate::gpu::surface::texel_readback::TexelReadback) read back through it.
 #[derive(Debug)]
-pub(crate) struct Staging {
+pub(crate) struct ReadbackStaging {
     buffer: wgpu::Buffer,
     size: UVec2,
     /// One row's bytes.
@@ -19,7 +19,7 @@ pub(crate) struct Staging {
     map: MapState,
 }
 
-impl Staging {
+impl ReadbackStaging {
     pub(crate) fn new(gpu: &Gpu, label: &'static str, size: UVec2, texel: u32) -> Self {
         let row = size.x * texel;
         let padded_row = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
@@ -99,11 +99,11 @@ impl Staging {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::resource::readback_staging::ReadbackStaging;
     use crate::gpu::surface::map_state::MapState;
-    use crate::gpu::surface::staging::Staging;
     use glam::UVec2;
 
-    impl Staging {
+    impl ReadbackStaging {
         /// A one-texel staging whose map never lands, as one the device is still running.
         pub(crate) fn never_landing(gpu: &Gpu) -> Self {
             Self {

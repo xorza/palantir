@@ -9,44 +9,43 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::half_simd::F16x4;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::FillForm;
-use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadKey};
+use crate::renderer::render_buffer::quad_draw_row::{QuadDrawRow, QuadInstance, QuadKey};
+use crate::renderer::render_buffer::shadow_instance::{ShadowInstance, ShadowKind};
 use crate::renderer::render_buffer::shape_header::ShapeHeader;
 use crate::renderer::repaint_scissors::RepaintScissors;
-use crate::renderer::shadow_quad::{ShadowKind, ShadowQuad};
 use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};
 use soa_rs::Soa;
 
 /// A drop shadow over a `size` quad, every corner `radius`, blurred by `sigma`, no spread.
-fn drop_shadow(size: Size, radius: f32, sigma: f32) -> ShadowQuad {
-    ShadowQuad {
+fn drop_shadow(size: Size, radius: f32, sigma: f32) -> ShadowInstance {
+    ShadowInstance {
         header: ShapeHeader {
             corners: Corners::all(radius),
             ..ShapeHeader::of_box(Rect::new(0.0, 0.0, size.w, size.h))
         },
         kind: ShadowKind::DROP,
         geometry: F16x4::from_lanes([0.0, 0.0, sigma, 0.0]),
-        ..ShadowQuad::default()
+        ..ShadowInstance::default()
     }
 }
 
 /// [`drop_shadow`], cast inward.
-fn inset_shadow(size: Size, radius: f32, sigma: f32) -> ShadowQuad {
-    ShadowQuad {
+fn inset_shadow(size: Size, radius: f32, sigma: f32) -> ShadowInstance {
+    ShadowInstance {
         kind: ShadowKind::INSET,
         ..drop_shadow(size, radius, sigma)
     }
 }
 
 /// The quad stream of `shadows`, in order.
-fn stream(shadows: &[ShadowQuad]) -> Soa<QuadDrawRow> {
+fn stream(shadows: &[ShadowInstance]) -> Soa<QuadDrawRow> {
     shadows
         .iter()
         .map(|&shadow| QuadDrawRow {
             key: QuadKey::Shadow,
-            instance: Quad::from(shadow),
+            instance: QuadInstance::from(shadow),
         })
         .collect()
 }
@@ -55,7 +54,7 @@ fn stream(shadows: &[ShadowQuad]) -> Soa<QuadDrawRow> {
 fn fill() -> QuadDrawRow {
     QuadDrawRow {
         key: QuadKey::Fill(FillForm::BOX_SOLID),
-        instance: Quad::default(),
+        instance: QuadInstance::default(),
     }
 }
 
@@ -72,7 +71,7 @@ struct Planner {
 impl Planner {
     fn build(
         &mut self,
-        quads: &[ShadowQuad],
+        quads: &[ShadowInstance],
         repaint: &RepaintScissors,
         viewport: UVec2,
     ) -> Census {
@@ -107,7 +106,7 @@ impl Planner {
 }
 
 /// `quads` planned as a full repaint of a `viewport`, with baking on.
-fn plan_in(quads: &[ShadowQuad], viewport: UVec2) -> Planner {
+fn plan_in(quads: &[ShadowInstance], viewport: UVec2) -> Planner {
     plan_rows(&stream(quads), viewport)
 }
 
@@ -122,19 +121,19 @@ fn plan_rows(quads: &Soa<QuadDrawRow>, viewport: UVec2) -> Planner {
     plan
 }
 
-fn plan(quads: &[ShadowQuad]) -> Planner {
+fn plan(quads: &[ShadowInstance]) -> Planner {
     plan_in(quads, WIDE)
 }
 
 /// `plan` rebuilt as a full repaint, which is never stale.
-fn full(plan: &mut Planner, quads: &[ShadowQuad], viewport: UVec2) {
+fn full(plan: &mut Planner, quads: &[ShadowInstance], viewport: UVec2) {
     let census = plan.build(quads, &RepaintScissors::Full, viewport);
     assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
 }
 
 /// `plan` rebuilt over the shared `placements` as a full repaint of [`WIDE`], as one of several
 /// windows on one backend.
-fn full_over(plan: &mut CutoutPlan, placements: &mut CutoutPlacements, quads: &[ShadowQuad]) {
+fn full_over(plan: &mut CutoutPlan, placements: &mut CutoutPlacements, quads: &[ShadowInstance]) {
     let frame = CutoutFrame {
         quads: &stream(quads),
         repaint: &RepaintScissors::Full,
@@ -144,7 +143,7 @@ fn full_over(plan: &mut CutoutPlan, placements: &mut CutoutPlacements, quads: &[
 }
 
 /// `n` drop shadows 100 px square, radius 8, σ = 2, 120 px apart from `x`.
-fn row(n: usize, x: f32) -> Vec<ShadowQuad> {
+fn row(n: usize, x: f32) -> Vec<ShadowInstance> {
     (0..n)
         .map(|k| {
             let mut quad = drop_shadow(Size::new(100.0, 100.0), 8.0, 2.0);
@@ -221,14 +220,14 @@ fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
 /// a fused multiply-add.
 #[test]
 fn shadow_box_follows_the_shader() {
-    let shadow = |kind: ShadowKind, size: Size, radii: [f32; 4], axis: [f32; 4]| ShadowQuad {
+    let shadow = |kind: ShadowKind, size: Size, radii: [f32; 4], axis: [f32; 4]| ShadowInstance {
         header: ShapeHeader {
             corners: Corners::new(radii[0], radii[1], radii[2], radii[3]),
             ..ShapeHeader::of_box(Rect::new(0.0, 0.0, size.w, size.h))
         },
         kind,
         geometry: F16x4::from_lanes(axis),
-        ..ShadowQuad::default()
+        ..ShadowInstance::default()
     };
     let (drop, inset) = (ShadowKind::DROP, ShadowKind::INSET);
     let quads = [
@@ -444,7 +443,7 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
 #[test]
 fn tables_pack_into_shelves_until_the_atlas_is_full() {
     // Radii 1/16 apart, which `f16` holds exactly between 8 and 16.
-    let quads: Vec<ShadowQuad> = (0..101)
+    let quads: Vec<ShadowInstance> = (0..101)
         .map(|k| drop_shadow(Size::new(400.0, 300.0), 8.0 + k as f32 / 16.0, 16.0))
         .collect();
     let plan = plan(&quads);
@@ -531,7 +530,7 @@ fn a_table_keeps_its_cells_across_frames_and_windows() {
 /// The quads are 1000 px square, so no radius is fitted down to the box `4σ` inside them.
 #[test]
 fn a_shorter_table_fills_the_shelf_a_taller_one_missed() {
-    let mut quads: Vec<ShadowQuad> = (0..26)
+    let mut quads: Vec<ShadowInstance> = (0..26)
         .map(|k| drop_shadow(Size::new(1000.0, 1000.0), 130.0 + k as f32 / 4.0, 16.0))
         .collect();
     quads.push(drop_shadow(Size::new(1000.0, 1000.0), 8.0, 16.0));
@@ -596,9 +595,9 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
     // 14 shadows at x = −80, each showing its last 20 px: left corners'
     // regions end at `−80 + 24.5`, off screen, and two shown corners each do
     // not pay for a table.
-    let quads: Vec<ShadowQuad> = row(14, 0.0)
+    let quads: Vec<ShadowInstance> = row(14, 0.0)
         .into_iter()
-        .map(|quad| ShadowQuad {
+        .map(|quad| ShadowInstance {
             header: ShapeHeader {
                 rect: Rect::new(-80.0, 0.0, 100.0, 100.0),
                 ..quad.header
@@ -612,9 +611,9 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
     // A 50 px viewport over 28 shadows rounded 8 on top, 4 below: 56 shown top
     // corners pay for the `(8, 2)` table; the bottom regions start at
     // `92 − 4 − 8.5 = 79.5`, so `(4, 2)` gets none and every shadow still reads tables.
-    let quads: Vec<ShadowQuad> = row(28, 0.0)
+    let quads: Vec<ShadowInstance> = row(28, 0.0)
         .into_iter()
-        .map(|quad| ShadowQuad {
+        .map(|quad| ShadowInstance {
             header: ShapeHeader {
                 corners: Corners::new(8.0, 8.0, 4.0, 4.0),
                 ..quad.header
@@ -727,7 +726,7 @@ fn a_partial_repaint_that_moves_a_kept_table_is_stale() {
     assert_eq!(plan.build(&[], &around, viewport), Census::Stale, "removed");
     full(&mut plan, &row(13, 0.0), viewport);
     assert!(plan.tables().is_empty());
-    let others: Vec<ShadowQuad> = (0..14)
+    let others: Vec<ShadowInstance> = (0..14)
         .map(|k| {
             let mut quad = drop_shadow(Size::new(100.0, 100.0), 12.0, 2.0);
             quad.header.rect.min = Vec2::new(120.0 * k as f32, 200.0);
@@ -771,12 +770,12 @@ fn a_partial_repaint_that_moves_a_kept_table_is_stale() {
 /// 8.125 all make 87-texel tables, a tie the packer breaks by key, not arrival.
 #[test]
 fn the_plan_does_not_hang_on_quad_order() {
-    let quads: Vec<ShadowQuad> = [8.0, 8.0625, 8.125]
+    let quads: Vec<ShadowInstance> = [8.0, 8.0625, 8.125]
         .into_iter()
         .map(|r| drop_shadow(Size::new(400.0, 300.0), r, 16.0))
         .collect();
     let forward = plan(&quads);
-    let mut reversed: Vec<ShadowQuad> = quads;
+    let mut reversed: Vec<ShadowInstance> = quads;
     reversed.reverse();
     let backward = plan(&reversed);
     assert_eq!(forward.tables().len(), 3);

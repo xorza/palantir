@@ -7,10 +7,10 @@
 
 use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-use crate::renderer::gradient_atlas::tests::support::{
+use crate::renderer::cpu_gradient_atlas::tests::support::{
     assert_real_row, distinct_grad, fill_rows, fresh_row,
 };
-use crate::renderer::gradient_atlas::*;
+use crate::renderer::cpu_gradient_atlas::*;
 use std::collections::HashSet;
 
 /// Filling all 255 real slots then registering one more in the next epoch evicts

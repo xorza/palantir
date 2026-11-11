@@ -1,8 +1,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::frontend::composer::quad_runs::QuadRuns;
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::fill_form::{FillBrush, FillForm};
-use crate::renderer::render_buffer::quad_draw_row::QuadKey;
+use crate::renderer::render_buffer::quad_draw_row::{QuadInstance, QuadKey};
 use crate::renderer::render_buffer::shape_form::ShapeForm;
 
 const SOLID: QuadKey = QuadKey::Fill(FillForm::BOX_SOLID);
@@ -13,9 +12,9 @@ const TRIANGLE: QuadKey = QuadKey::Fill(FillForm::new(ShapeForm::Triangle, FillB
 /// `x`, as the x of each quad; each key moves with its quad.
 fn joined(rows: &[(f32, QuadKey)]) -> Vec<f32> {
     let mut keys: Vec<QuadKey> = rows.iter().map(|&(_, key)| key).collect();
-    let mut quads: Vec<Quad> = rows
+    let mut quads: Vec<QuadInstance> = rows
         .iter()
-        .map(|&(x, _)| Quad::of_rect(Rect::new(x, 0.0, 10.0, 10.0)))
+        .map(|&(x, _)| QuadInstance::of_rect(Rect::new(x, 0.0, 10.0, 10.0)))
         .collect();
     QuadRuns::default().join(&mut keys, &mut quads);
     let order: Vec<f32> = quads.iter().map(|q| q.header.rect.min.x).collect();
