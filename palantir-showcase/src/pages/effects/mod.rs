@@ -6,7 +6,6 @@ use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Kit, Section};
 use palantir::glam::Vec2;
 use palantir::widget::EffectPaint;
-use palantir::widget::RectShape;
 use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     BackdropEffect, Button, ButtonTheme, Configure, Corners, EffectError, EffectName, EffectParams,
@@ -28,19 +27,18 @@ struct Sky {
     high: RgbaF32,
 }
 
-/// A ring's colors, the card it rings and how far its glow runs.
+/// A ring's colors and how far its glow runs.
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, EffectParams)]
 #[repr(C)]
 struct Ring {
     color_a: RgbaF32,
     color_b: RgbaF32,
-    /// How far the card sits inside the effect's rect, logical px.
-    inset: f32,
-    /// The card's corner radius.
-    radius: f32,
+    /// The halo's reach, logical px, where the glow has faded to nothing.
+    reach: f32,
     /// The distance over which the glow falls to 1/e.
     glow: f32,
     pad0: f32,
+    pad1: f32,
 }
 
 /// Water's tint and its rings.
@@ -152,12 +150,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Ring")
-        .apis(&[api!(RectShape::at)])
+        .apis(&[api!(
+            EffectPaint::outside as fn(EffectPaint<Ring>, f32) -> EffectPaint<Ring>
+        )])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "An effect's rect may run past its node: the glow paints 28 px around the card, \
+                "A halo paints outside its shape alone: the glow runs 28 px out from the card, \
                  and its color turns once every 6 s.",
             );
             DemoCell::new("ring").size(CELL, CELL).show(ui, k, |ui| {
@@ -247,37 +247,30 @@ fn pressing(ui: &Ui, press: PressEffect) -> ButtonTheme {
     theme
 }
 
-/// A card in the cell's middle, ringed by a glow that runs past it.
+/// A card in the cell's middle, ringed by a halo that glows around it.
 fn ring(ui: &mut Ui, k: Kit) {
     let inner = CELL - 2.0 * CELL_PADDING;
     let side = inner - 2.0 * (RING_REACH + 16.0);
     let card = Rect::new((inner - side) / 2.0, (inner - side) / 2.0, side, side);
-    let radius = 16.0;
+    let corners = Corners::all(16.0);
     if let Some(shape) = ui.add_shape(
-        Shape::rect().at(Rect::new(
-            card.min.x - RING_REACH,
-            card.min.y - RING_REACH,
-            card.size.w + 2.0 * RING_REACH,
-            card.size.h + 2.0 * RING_REACH,
-        )),
+        Shape::rect().at(card).corners(corners),
         EffectPaint::new(
             RING,
             Ring {
                 color_a: k.t.accent,
                 color_b: RgbaF32::new(0.95, 0.35, 0.55, 1.0),
-                inset: RING_REACH,
-                radius,
+                reach: RING_REACH,
                 glow: 8.0,
                 pad0: 0.0,
+                pad1: 0.0,
             },
-        ),
+        )
+        .outside(RING_REACH),
     ) {
         shape.animate(looping(RING_LOOP_S));
     }
-    ui.add_shape(
-        Shape::rect().at(card).corners(Corners::all(radius)),
-        k.t.raised,
-    );
+    ui.add_shape(Shape::rect().at(card).corners(corners), k.t.raised);
     let label = ui.intern("ring");
     ui.add_shape(
         Shape::text(label, GlyphFont::new(18.0))

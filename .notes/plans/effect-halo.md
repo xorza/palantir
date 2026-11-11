@@ -168,12 +168,16 @@ Each step lands on its own, with the gate green, and its own commit.
   | `effect_pass/gpu/rect` against step 2 | −0.1 to +1.7 % | −0.01 % |
   | guard: main pass, frame | within the floor | −0.05 %, −0.29 % |
 
-### 4. The ring
+### 4. The ring — done
 
 - The showcase ring draws `Shape::rect().at(card).corners(16.0)` with
   `EffectPaint::new(RING, …).outside(RING_REACH)`; `ring.wgsl` measures from `input.pos`,
-  `input.size` and `input.corners`, its params the colors and the glow.
-- `cargo shot` of the Effects page before and after.
+  `input.size` and `input.corners`, its params the colors, the glow and the reach it fades to
+  nothing by. The section names `EffectPaint::outside`.
+- `cargo shot` of the Effects page before and after: the same ring, but along the card's corner
+  arcs, where the card's antialiased edge now lies over the glow instead of over a dark fringe —
+  the old effect zeroed every pixel whose center sat inside the card, the halo leaves that cut to
+  palantir's edge coverage.
 
 ### 5. Shadows on the template, measured
 
