@@ -21,6 +21,7 @@
 //!   stops converted to Oklab once; the texel loop lerps and runs only
 //!   `Oklab::to_color`. Perceptually uniform; the CSS Color 4 default.
 
+use crate::common::expiry_window::{EXPIRY_FRAMES, ExpiryWindow};
 use crate::common::hash::Hasher;
 use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
@@ -42,18 +43,17 @@ mod counters;
 mod dirty_rows;
 mod mru_list;
 
-/// Rows the LUT atlas texture starts with. Row 0 is a debug-magenta fallback, so a
-/// `fill_lut_row = 0` from a bug paints obviously wrong. The atlas doubles
-/// ([`CpuGradientAtlas::grow`]) when a frame registers more gradients than fit.
+/// Rows the LUT atlas texture starts with, and the fewest a halving leaves. Row 0 is a
+/// debug-magenta fallback, so a `fill_lut_row = 0` from a bug paints obviously wrong. The atlas
+/// doubles ([`CpuGradientAtlas::grow`]) when a frame registers more gradients than fit.
 pub(crate) const INITIAL_ATLAS_ROWS: u32 = 256;
 
 /// Growth ceiling when no device limit is known: wgpu's downlevel
 /// `max_texture_dimension_2d` floor.
 pub(crate) const DEFAULT_MAX_ATLAS_ROWS: u32 = 2048;
 
-/// Policy ceiling on rows, below the device's `max_texture_dimension_2d`. Growth
-/// is a one-way ratchet, so a 16384-row bound would let one pathological frame
-/// pin 32 MiB of rows plus a 32 MiB texture for the process (16384 rows × 2 KiB). Past it
+/// Policy ceiling on rows, below the device's `max_texture_dimension_2d`: one pathological frame
+/// takes the texture to 8 MiB (4096 rows × 2 KiB) until the halvings bring it back. Past it
 /// [`LutRow::FALLBACK`] paints magenta, without repainting what other draws captured.
 pub(crate) const MAX_ATLAS_ROWS: u32 = 4096;
 
@@ -62,8 +62,7 @@ pub(crate) const MAX_ATLAS_ROWS: u32 = 4096;
 /// "A copy against a staged gradient row"), so a gap up to 48 is cheaper to upload than to skip.
 pub(crate) const MERGE_GAP_ROWS: u32 = 48;
 
-/// One row's bookkeeping. `baked` stays a separate `Vec<LutRowTexels>` so the
-/// upload is a single reinterpret to `&[u8]`.
+/// One row's bookkeeping: the ramp a flush bakes it from, and when a frame last registered it.
 #[derive(Clone, Debug, Default)]
 struct RowSlot {
     /// The ramp this row holds, which the index hashes and compares through. `None` for a
@@ -75,12 +74,16 @@ struct RowSlot {
     epoch: u64,
 }
 
-/// CPU side of the gradient LUT atlas: baked row bytes plus a bake-key to row-id
-/// map; the backend mirrors it into a wgpu texture via [`Self::flush`].
+/// CPU side of the gradient LUT atlas, the pool's row table (`.notes/proposals/atlas-pool.md`,
+/// The row table): a ramp to row-id map, whose rows [`Self::flush`] bakes for the backend's
+/// texture. No CPU mirror of the texture: a flush bakes each row of its runs again from its ramp,
+/// the clean rows a run folds in among them, which the bake's determinism makes the same bytes.
 ///
 /// Row 0 is the magenta fallback and never evicted. With no free row, the
-/// least-recently-used one is evicted and re-baked in place, excluding rows
-/// registered since the last flush; if all are exempt the atlas [grows](Self::grow).
+/// least-recently-used one is evicted and claimed in place, excluding rows
+/// registered since the last flush; if all are exempt the atlas [grows](Self::grow). At the
+/// start of a frame that ends an expiry window with fewer than a quarter of the rows registered
+/// in it, the atlas [halves](Self::halve): those rows renumbered low, the rest dropped.
 ///
 /// ## Why the index is separate from the rows
 ///
@@ -96,8 +99,6 @@ pub(crate) struct CpuGradientAtlas {
     /// beside the slots, which held each resident ramp twice, about 42 B each.
     index: HashTable<u32>,
     slots: Vec<RowSlot>,
-    /// Baked LUT row bytes by row id; one contiguous allocation.
-    baked: Vec<LutRowTexels>,
     /// Recency order over rows `1..capacity`; see [`mru_list`] for why its tail alone
     /// answers "what may be evicted".
     mru: MruList,
@@ -112,23 +113,37 @@ pub(crate) struct CpuGradientAtlas {
     /// Rows changed since the last `flush`, uploaded as runs that fold in a gap up to
     /// [`MERGE_GAP_ROWS`]: two bakes far apart upload two rows, not the span between them.
     dirty: DirtyRows,
+    /// The rows a flush bakes, its runs one after another; retained, so a flush allocates
+    /// nothing past the largest it has staged.
+    staging: Vec<LutRowTexels>,
+    /// The expiry window over [`Self::epoch`] whose end may halve the atlas.
+    window: ExpiryWindow,
+    /// The rows a halving keeps, retained.
+    kept: Vec<RowSlot>,
 }
 
 /// Freshly baked rows for GPU upload, as sorted runs: one copy each.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FlushedRows<'a> {
-    pub(crate) runs: &'a [Range<u32>],
+    runs: &'a [Range<u32>],
+    /// Each run's rows, baked, the runs one after another.
     rows: &'a [LutRowTexels],
-    /// The atlas's current row count. The backend makes its texture again when it
-    /// differs, and copies the old texture's rows into it on the GPU, as resident
-    /// rows keep their ids.
+    /// The atlas's current row count. The backend makes its texture again when it differs: a
+    /// grown atlas's takes the old texture's rows by a copy on the GPU, as resident rows keep
+    /// their ids; a halved atlas's takes none, as its flush holds every row it kept.
     pub(crate) total_rows: u32,
 }
 
 impl<'a> FlushedRows<'a> {
-    /// The texels of `run`, one of [`Self::runs`], as bytes.
-    pub(crate) fn bytes(&self, run: Range<u32>) -> &'a [u8] {
-        bytemuck::cast_slice(&self.rows[run.start as usize..run.end as usize])
+    /// Each run and its rows' texels as bytes, in row order.
+    pub(crate) fn copies(&self) -> impl Iterator<Item = (Range<u32>, &'a [u8])> + Clone + 'a {
+        let rows = self.rows;
+        self.runs.iter().scan(0, move |at: &mut usize, run| {
+            let len = (run.end - run.start) as usize;
+            let bytes = bytemuck::cast_slice(&rows[*at..*at + len]);
+            *at += len;
+            Some((run.clone(), bytes))
+        })
     }
 }
 
@@ -146,15 +161,18 @@ impl CpuGradientAtlas {
         let mut atlas = Self {
             index: HashTable::new(),
             slots: vec![RowSlot::default()],
-            baked: vec![[RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]],
             mru: MruList::seeded(1),
             max_rows: max_rows.max(INITIAL_ATLAS_ROWS),
             epoch: 1,
             dirty: DirtyRows::default(),
             counters: GradientAtlasCounters::default(),
+            staging: Vec::new(),
+            window: ExpiryWindow::NEW,
+            kept: Vec::new(),
         };
         atlas.resize_rows(INITIAL_ATLAS_ROWS);
-        atlas.init_row_zero_magenta();
+        // Other rows start zero on the GPU, so uploading only row 0 is exact.
+        atlas.mark_row_dirty(0);
         atlas
     }
 
@@ -170,21 +188,13 @@ impl CpuGradientAtlas {
     }
 
     /// Rows the atlas holds, the height the backend's LUT texture must match. Starts at
-    /// [`INITIAL_ATLAS_ROWS`] and only grows.
+    /// [`INITIAL_ATLAS_ROWS`], doubles and halves.
     pub(crate) const fn capacity(&self) -> u32 {
-        self.baked.len() as u32
+        self.slots.len() as u32
     }
 
-    /// Fill row 0 with bright magenta (sRGB `#ff00ff`).
-    fn init_row_zero_magenta(&mut self) {
-        // Linear (1, 0, 1, 1); the sRGB framebuffer encodes it to `#ff00ff`.
-        let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
-        self.baked[0].fill(magenta);
-        // Other rows start zero on the GPU, so uploading only row 0 is exact.
-        self.mark_row_dirty(0);
-    }
-
-    /// Find-or-bake the row for `ramp`; gradients with the same ramp share a row.
+    /// Find-or-claim the row for `ramp`, which the next flush bakes; gradients with the same ramp
+    /// share a row.
     /// Returns a row id in `1..capacity`, moved to the MRU head on every call.
     ///
     /// Once every row is occupied: claim the tail if not referenced this epoch, else
@@ -239,30 +249,81 @@ impl CpuGradientAtlas {
         true
     }
 
-    /// Move every per-row column to `to` rows, together: the one resize site, since
-    /// `slots`, `baked` and the MRU list can't share a length invariant in the types.
+    /// Move every per-row column to `to` rows, together: the one resize site, since `slots`, the
+    /// index's room, the MRU list and the dirty rows can't share a length invariant in the types.
     fn resize_rows(&mut self, to: u32) {
         // Read before anything moves: the MRU list extends from the old row count.
         let from = self.capacity();
+        debug_assert!(
+            from <= to,
+            "rows resize up; a halving starts over from row 1"
+        );
         self.slots.resize(to as usize, RowSlot::default());
         // Room for an entry a row, so a registration never grows the table: growth, a cold
         // frame, is where it grows. An eviction's tombstone can still make an insert rehash the
         // table in place, as in any open-addressed table, hashbrown's included.
         self.index
             .reserve(to as usize - self.index.len(), row_hash(&self.slots));
-        self.baked
-            .resize(to as usize, [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]);
         self.mru.extend_to(from, to);
         self.dirty.resize(to);
-        debug_assert_eq!(
-            self.slots.len(),
-            self.baked.len(),
-            "per-row columns must resize together",
-        );
     }
 
-    /// Bake `key` into `row` and take over the slot: index entry, recency, epoch,
-    /// dirty range. Shared by the free-row and evict arms.
+    /// Start a frame: at the end of an expiry window over the flushes, halve the atlas where fewer
+    /// than a quarter of its rows were registered in the window. Before the frame registers
+    /// anything, so every row id the frame hands out is the halved atlas's. The window counts
+    /// flushes, each a window's submit, so two windows end it twice as fast, which only shortens
+    /// the idle wait.
+    pub(crate) fn begin_frame(&mut self) {
+        if !self.window.ends(self.epoch) {
+            return;
+        }
+        let capacity = self.capacity();
+        let live = self
+            .slots
+            .iter()
+            .filter(|slot| is_live(slot, self.epoch))
+            .count();
+        if capacity > INITIAL_ATLAS_ROWS && (live as u32) < capacity / 4 {
+            self.halve();
+        }
+    }
+
+    /// Halve the rows, keeping the live ones renumbered from row 1 in their recency order and
+    /// dropping the rest; every kept row and row 0 dirty, as the backend's halved texture starts
+    /// empty. Renumbers every kept ramp's row, so it runs only before a frame registers.
+    fn halve(&mut self) {
+        let to = self.capacity() / 2;
+        let epoch = self.epoch;
+        self.kept.clear();
+        self.kept.extend(
+            self.slots
+                .iter()
+                .filter(|slot| is_live(slot, epoch))
+                .cloned(),
+        );
+        debug_assert!(self.kept.len() < to as usize, "a halving keeps what fits");
+        // Least recent first, so the most recent lands at the MRU head.
+        self.kept.sort_by_key(|slot| slot.epoch);
+        self.index.clear();
+        self.slots.truncate(1);
+        self.mru = MruList::seeded(1);
+        self.dirty = DirtyRows::default();
+        self.resize_rows(to);
+        self.mark_row_dirty(0);
+        for (row, slot) in (1..).zip(self.kept.drain(..)) {
+            let key = slot.key.as_ref().expect("a kept row holds a ramp");
+            self.index
+                .insert_unique(ramp_hash(key), row, row_hash(&self.slots));
+            self.slots[row as usize] = slot;
+            self.mru.touch(row);
+            self.dirty.mark(row);
+        }
+        self.counters.halvings.bump();
+        debug_assert!(self.mru.is_well_formed(), "halving corrupted the MRU list");
+    }
+
+    /// Take over `row` for `key`: index entry, recency, epoch, dirty range, so the next flush
+    /// bakes it. Shared by the free-row and evict arms.
     fn claim_row(&mut self, row: u32, key: ColorRamp) -> LutRow {
         debug_assert_ne!(row, 0, "row 0 is the permanent magenta fallback");
         // Evicting: drop the outgoing index entry, or a lookup would resolve to another bake.
@@ -274,7 +335,6 @@ impl CpuGradientAtlas {
             self.counters.evictions.bump();
         }
         self.counters.bakes.bump();
-        bake::row(&key, &mut self.baked[row as usize]);
         self.index
             .insert_unique(ramp_hash(&key), row, row_hash(&self.slots));
         self.touch(row);
@@ -295,25 +355,52 @@ impl CpuGradientAtlas {
         self.dirty.mark(row);
     }
 
-    /// Return the dirty rows as runs for upload and clear them. Also bumps the
-    /// registration epoch: rows registered since the last flush are eviction-exempt
-    /// until after this one.
+    /// Bake the dirty rows as runs for upload and clear them. Also bumps the registration
+    /// epoch: rows registered since the last flush are eviction-exempt until after this one.
     pub(crate) fn flush(&mut self) -> Option<FlushedRows<'_>> {
-        self.epoch = self.epoch.wrapping_add(1);
+        self.epoch += 1;
         let total_rows = self.capacity();
-        let runs = self.dirty.take_runs(MERGE_GAP_ROWS);
+        let Self {
+            dirty,
+            staging,
+            counters,
+            ..
+        } = self;
+        let runs = dirty.take_runs(MERGE_GAP_ROWS);
         if runs.is_empty() {
             return None;
         }
         let uploaded: u32 = runs.iter().map(|run| run.end - run.start).sum();
-        self.counters
+        counters
             .rows_uploaded
             .edit(|n| *n = n.saturating_add(uploaded));
+        staging.clear();
+        staging.resize(uploaded as usize, [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]);
+        let rows = runs.iter().flat_map(Clone::clone);
+        for (row, out) in rows.zip(staging.iter_mut()) {
+            bake_row(&self.slots, row, out);
+        }
         Some(FlushedRows {
             runs,
-            rows: &self.baked,
+            rows: staging,
             total_rows,
         })
+    }
+}
+
+/// Whether `slot` holds a ramp a frame registered in the expiry window ending at `epoch`.
+const fn is_live(slot: &RowSlot, epoch: u64) -> bool {
+    slot.key.is_some() && slot.epoch + EXPIRY_FRAMES > epoch
+}
+
+/// Bake row `row` of `slots` into `out`: row 0 bright magenta (sRGB `#ff00ff`), a row that holds a
+/// ramp the ramp, any other zero, as the GPU texture starts.
+fn bake_row(slots: &[RowSlot], row: u32, out: &mut LutRowTexels) {
+    match &slots[row as usize].key {
+        // Linear (1, 0, 1, 1); the sRGB framebuffer encodes it to `#ff00ff`.
+        _ if row == 0 => out.fill(RgbaF16::new(1.0, 0.0, 1.0, 1.0)),
+        Some(ramp) => bake::row(ramp, out),
+        None => out.fill(RgbaF16::TRANSPARENT),
     }
 }
 
@@ -339,6 +426,22 @@ fn row_hash(slots: &[RowSlot]) -> impl Fn(&u32) -> u64 {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
+
+    #[cfg(test)]
+    impl<'a> FlushedRows<'a> {
+        /// The runs, sorted.
+        pub(crate) const fn runs(&self) -> &'a [Range<u32>] {
+            self.runs
+        }
+
+        /// The texels of `run`, one of [`Self::runs`], as bytes.
+        pub(crate) fn bytes(&self, run: Range<u32>) -> &'a [u8] {
+            self.copies()
+                .find(|(copied, _)| *copied == run)
+                .expect("a run of the flush")
+                .1
+        }
+    }
     #[cfg(test)]
     use crate::common::counters::CounterSet;
 
@@ -348,9 +451,17 @@ pub(crate) mod internals {
             u32::try_from(self.index.len()).expect("the rows are counted in u32") + 1
         }
 
-        /// The bytes of the CPU mirror of the rows, every row baked or not.
-        pub(crate) const fn mirror_bytes(&self) -> u64 {
-            (self.baked.len() * size_of::<LutRowTexels>()) as u64
+        /// Row `row`'s texels as a flush bakes them.
+        #[cfg(test)]
+        pub(crate) fn row_texels(&self, row: u32) -> LutRowTexels {
+            let mut out = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
+            bake_row(&self.slots, row, &mut out);
+            out
+        }
+
+        /// The bytes of the rows a flush stages, as large as the largest flush.
+        pub(crate) const fn staging_bytes(&self) -> u64 {
+            (self.staging.capacity() * size_of::<LutRowTexels>()) as u64
         }
 
         /// Whether this epoch's registered rows form a head prefix of the MRU list, which

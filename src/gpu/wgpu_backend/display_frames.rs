@@ -4,7 +4,7 @@ use crate::gpu::render_owner_id::RenderOwnerId;
 
 /// The backend's display frame: it moves on when an owner submits a second time since it last
 /// moved, so a round in which each live window submits once is one frame, whatever the number of
-/// windows. What decays by frames ([`ExpiryWindow`](crate::gpu::resource::expiry_window::ExpiryWindow))
+/// windows. What decays by frames ([`ExpiryWindow`](crate::common::expiry_window::ExpiryWindow))
 /// keeps its two seconds with two windows open. Refused: a count of submits, which N windows
 /// at one rate run N times as fast; a clock of time, which a test cannot step; one clock with the
 /// shaper's (`FrameRuntime::tick_text_clock`), as two hosts may share a shaper and not a backend.

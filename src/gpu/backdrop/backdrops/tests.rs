@@ -1,3 +1,4 @@
+use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::display::Display;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
@@ -11,7 +12,6 @@ use crate::gpu::backdrop::backdrops::{
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
-use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};

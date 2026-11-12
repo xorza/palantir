@@ -19,7 +19,7 @@ fn row_zero_reserved_as_magenta_fallback() {
     let atlas = CpuGradientAtlas::default();
     // Row 0 is linear (1, 0, 1, 1) across all texels, encoding to #ff00ff on the sRGB framebuffer.
     let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
-    assert!(atlas.baked[0].iter().all(|&t| t == magenta));
+    assert!(atlas.row_texels(0).iter().all(|&t| t == magenta));
 }
 
 /// Same gradient registered twice returns the same row and does
@@ -41,7 +41,6 @@ fn register_same_gradient_twice_reuses_row() {
         "re-registering existing content must not dirty",
     );
     assert_eq!(atlas.live_rows(), 2, "the fallback and the one ramp");
-    assert_eq!(atlas.mirror_bytes(), 524_288);
 }
 
 /// Keys differing in the smallest possible way (one stop byte, or only the interpolation space) must

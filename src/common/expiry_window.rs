@@ -1,12 +1,12 @@
-//! [`ExpiryWindow`]: the span over which a piece of per-frame GPU scratch keeps its peak.
+//! [`ExpiryWindow`]: the span over which a piece of per-frame scratch keeps its peak.
 
-/// The display frames an expiry window spans: at its end per-frame scratch steps down to the most
-/// a frame of the window needed, and what no frame needed goes. Two seconds of a 60 Hz animation,
-/// so a backdrop that closes and opens again within one gesture keeps its textures; a window that
+/// The frames an expiry window spans: at its end per-frame scratch steps down to the most a frame
+/// of the window needed, and what no frame needed goes. Two seconds of a 60 Hz animation, so a
+/// backdrop that closes and opens again within one gesture keeps its textures; a window that
 /// paints no frame keeps them until it paints again, as no frame runs to shrink them. Expire after
 /// idle, as Chromium's `cc::ResourcePool` and Flutter's `RasterCache` drop what recent frames did
-/// not use. Counted in display frames ([`GpuCtx::frame`](crate::gpu::frame::gpu_ctx::GpuCtx)),
-/// so a second window does not halve it.
+/// not use. The GPU side counts display frames
+/// ([`GpuCtx::frame`](crate::gpu::frame::gpu_ctx::GpuCtx)), so a second window does not halve it.
 pub(crate) const EXPIRY_FRAMES: u64 = 120;
 
 /// One resource's current expiry window over the backend's display frames.
@@ -40,7 +40,7 @@ impl Default for ExpiryWindow {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::resource::expiry_window::{EXPIRY_FRAMES, ExpiryWindow};
+    use crate::common::expiry_window::{EXPIRY_FRAMES, ExpiryWindow};
 
     /// A window of 120 frames from the first it saw, 10, ends at frame 129, and the next ends 120
     /// frames later, at 249; frames it skips count, as a window that paints none keeps aging.

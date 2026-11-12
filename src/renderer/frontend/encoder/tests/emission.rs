@@ -89,7 +89,7 @@ fn a_device_attach_starts_a_grown_atlas_over() {
     let runs: Vec<(u32, u32)> = encoder
         .flush_gradients()
         .expect("the fallback row is dirty")
-        .runs
+        .runs()
         .iter()
         .map(|run| (run.start, run.end))
         .collect();

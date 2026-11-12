@@ -19,6 +19,7 @@ pub(crate) mod error;
 mod eviction_clock;
 pub(crate) mod page_group;
 pub(crate) mod page_list;
+pub(crate) mod row_table;
 pub(crate) mod scratch_cache;
 pub(crate) mod tenant;
 

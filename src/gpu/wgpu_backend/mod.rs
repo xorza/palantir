@@ -56,6 +56,7 @@ use crate::effect::effect_store::EffectModule;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
+use crate::gpu::atlas::row_table::RowTable;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -85,7 +86,6 @@ use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::frame_group::FrameGroup;
-use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
@@ -130,7 +130,7 @@ pub(crate) struct WgpuBackend {
     /// The display frame every submit's per-frame scratch ages against.
     frames: DisplayFrames,
     /// Shared gradient LUT atlas, whose group is the frame group every color pipeline reads.
-    gradient: GpuGradientAtlas,
+    gradient: RowTable,
     /// The atlas pool's page lists, which glyphs and icons allocate from, and the textures behind
     /// them (`.notes/proposals/atlas-pool.md`).
     atlas: AtlasPool,
@@ -377,7 +377,7 @@ impl WgpuBackend {
         let image_store = Rc::clone(resources.image_store);
         let effect_store = Rc::clone(resources.effect_store);
         let texture_binding = resources.texture_binding;
-        let gradient = GpuGradientAtlas::new(&gpu, resources.gradient_rows);
+        let gradient = RowTable::new(&gpu, resources.gradient_rows);
         let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), &gradient);
         let backdrops = Backdrops::new(&texture_binding);
         let atlas_textures = AtlasTextures::new(&gpu);
@@ -1353,11 +1353,10 @@ pub(crate) mod internals {
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
     use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
-    use crate::renderer::cpu_gradient_atlas::bake::LutRowTexels;
 
     impl WgpuBackend {
         /// Every atlas's memory, its gradient rows read against `gradient`, the frontend's atlas
-        /// they mirror.
+        /// that bakes them.
         pub(crate) fn atlas_memory(&self, gradient: &CpuGradientAtlas) -> AtlasMemory {
             let masks = self
                 .atlas_textures
@@ -1372,11 +1371,11 @@ pub(crate) mod internals {
             );
             let blur = self.backdrops.blur_memory();
             let live_rows = gradient.live_rows();
-            let mirror = AtlasUse {
-                name: "gradient mirror (CPU)",
+            let staging = AtlasUse {
+                name: "gradient staging (CPU)",
                 textures: 0,
-                bytes: gradient.mirror_bytes(),
-                live_bytes: Some(u64::from(live_rows) * size_of::<LutRowTexels>() as u64),
+                bytes: gradient.staging_bytes(),
+                live_bytes: None,
             };
             AtlasMemory {
                 uses: [
@@ -1385,7 +1384,7 @@ pub(crate) mod internals {
                     results,
                     blur,
                     self.gradient.memory(live_rows),
-                    mirror,
+                    staging,
                 ],
             }
         }

@@ -6,7 +6,9 @@
 )]
 
 use crate::common::counters::CounterSet;
-use crate::renderer::cpu_gradient_atlas::tests::support::{assert_real_row, distinct_grad};
+use crate::renderer::cpu_gradient_atlas::tests::support::{
+    assert_real_row, distinct_grad, fresh_row,
+};
 use crate::renderer::cpu_gradient_atlas::*;
 use std::collections::HashSet;
 
@@ -53,7 +55,9 @@ fn flush_runs_cover_exactly_the_dirty_rows() {
 }
 
 /// Rows re-dirtied around clean ones: a gap up to `MERGE_GAP_ROWS` rides along in one run, a
-/// wider one splits it. `rows_uploaded` counts what went up, gaps included.
+/// wider one splits it. `rows_uploaded` counts what went up, gaps included. With no CPU mirror,
+/// the flush bakes every row of a run from its ramp, the clean one between included: the run's
+/// bytes are the three ramps' bakes, as a mirror held them.
 #[test]
 #[expect(
     clippy::single_range_in_vec_init,
@@ -75,10 +79,16 @@ fn a_small_gap_rides_in_the_run_and_a_wide_one_splits_it() {
     atlas.mark_row_dirty(3);
     let f = atlas.flush().expect("two dirtied rows must flush");
     assert_eq!(f.runs, [1..4], "the one clean row between rides along");
-    assert_eq!(f.bytes(1..4).len(), 3 * size_of::<LutRowTexels>());
+    let mut baked = Vec::new();
+    for i in [10, 20, 30] {
+        let mut row = fresh_row();
+        bake::row(&distinct_grad(i).ramp, &mut row);
+        baked.push(row);
+    }
+    assert_eq!(f.bytes(1..4), bytemuck::cast_slice::<_, u8>(&baked));
 
     let delta = atlas.counters.counts() - before;
-    assert_eq!(delta.bakes, 0, "nothing was re-baked, only re-uploaded");
+    assert_eq!(delta.bakes, 0, "no row was claimed again, only uploaded");
     assert_eq!(delta.rows_uploaded, 3);
 
     // 1, then 1 + MERGE_GAP_ROWS + 1 is a gap of exactly MERGE_GAP_ROWS; one row further is not.

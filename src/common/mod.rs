@@ -8,6 +8,7 @@ pub(crate) mod block_arena;
 pub(crate) mod content_hash;
 pub(crate) mod counters;
 pub(crate) mod expiry_wheel;
+pub(crate) mod expiry_window;
 #[macro_use]
 pub(crate) mod flag_set;
 pub(crate) mod hash;

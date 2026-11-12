@@ -1,9 +1,9 @@
 //! The frame group: what every color pipeline of the main pass reads at one slot.
 
+use crate::gpu::atlas::row_table::RowTable;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
-use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 
@@ -31,7 +31,7 @@ struct Bound {
 
 impl FrameGroup {
     /// The group over `atlas` and an empty pool.
-    pub(crate) fn new(gpu: &Gpu, binding: TextureBinding, atlas: &GpuGradientAtlas) -> Self {
+    pub(crate) fn new(gpu: &Gpu, binding: TextureBinding, atlas: &RowTable) -> Self {
         let clips = DynamicBuffer::storage(gpu, "palantir.frame.clips", 16);
         let group = binding.frame_group(gpu, atlas.view(), &clips.buffer);
         let bound = Bound {
@@ -48,12 +48,7 @@ impl FrameGroup {
 
     /// Upload the frame's `clips` and bind `atlas`, making the group again where the atlas grew or
     /// the pool moved to another buffer.
-    pub(crate) fn upload(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        atlas: &GpuGradientAtlas,
-        clips: &[RoundedClip],
-    ) {
+    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, atlas: &RowTable, clips: &[RoundedClip]) {
         self.clips.upload_instances(ctx, clips);
         let bound = Bound {
             atlas: atlas.generation(),

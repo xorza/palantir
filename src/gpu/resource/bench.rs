@@ -8,13 +8,13 @@
 
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::kind::{Kind, Scale};
+use crate::gpu::atlas::row_table;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::resource::gpu_gradient_atlas;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::gpu::surface::owned_target::TargetSpec;
@@ -127,9 +127,12 @@ fn gradient_upload(c: &mut Criterion, backends: &Backends, backend: Backend) {
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                     // Frame 0 throughout: a staging case ends no expiry window.
                     let mut ctx = GpuCtx::new(&gpu, belt, &mut encoder, 0);
-                    ctx.copy_rows(gpu_gradient_atlas::row_copies(texture, &runs, |run| {
-                        &source[(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize]
-                    }));
+                    let copies = runs.iter().map(|run| {
+                        let bytes = &source
+                            [(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize];
+                        (run.clone(), bytes)
+                    });
+                    ctx.copy_rows(row_table::row_copies(texture, copies));
                     belt.finish();
                     gpu.queue.submit([encoder.finish()]);
                     belt.recall();

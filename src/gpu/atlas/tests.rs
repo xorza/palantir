@@ -1,12 +1,12 @@
 //! The pool against a reference model over a long seeded run of inserts, releases, draws, pins and
 //! frames.
 
+use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, error::AtlasError};
-use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use glam::{U16Vec2, UVec2};
 use std::collections::BTreeMap;
 

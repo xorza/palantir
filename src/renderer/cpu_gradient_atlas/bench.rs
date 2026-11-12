@@ -18,9 +18,8 @@
 //! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) first, so
 //! a fixture that stops doing what its name says fails loudly.
 //!
-//! - `gap_row/*`: one clean row a flush folds into a run, copied from the CPU mirror or baked
-//!   again from its ramp, which tells whether `.notes/proposals/atlas-pool.md` can drop the
-//!   mirror. Per row.
+//! - `gap_row/*`: one clean row a flush folds into a run, baked again from its ramp as the flush
+//!   does with no CPU mirror, against the copy a mirror made. Per row.
 
 use crate::bench::backends::Backend;
 use crate::bench::case_group::CaseGroup;

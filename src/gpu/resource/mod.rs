@@ -6,9 +6,7 @@
 pub(crate) mod bench;
 pub(crate) mod dynamic_buffer;
 pub(crate) mod effect_image_groups;
-pub(crate) mod expiry_window;
 pub(crate) mod frame_group;
-pub(crate) mod gpu_gradient_atlas;
 pub(crate) mod gpu_view_targets;
 pub(crate) mod readback_staging;
 pub(crate) mod shelf_packer;

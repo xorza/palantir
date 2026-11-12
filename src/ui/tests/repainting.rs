@@ -1,5 +1,6 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
+use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
@@ -403,6 +404,72 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",
+    );
+}
+
+/// The encode starts each frame of the shared gradient atlas, so a window's frames halve it once
+/// the other window's ramps go idle: window b's 300 gradients take the atlas to 512 rows; window a
+/// then paints its one gradient frame after frame, each encode and flush a frame, and by the end of
+/// the second expiry window the atlas holds 256 rows, a's ramp renumbered to row 1.
+#[test]
+fn an_idle_gradient_atlas_halves_through_the_encode() {
+    fn row(frames: &WindowFrames, encoder: &mut Encoder) -> LutRow {
+        let plan = RenderPlan {
+            clear: frames.ui().theme().window_bg,
+            damage: Damage::Full,
+        };
+        let rows: Vec<LutRow> =
+            encoder::internals::encode(frames.ui().frame_scene(), encoder, plan)
+                .calls
+                .iter()
+                .filter_map(|command| match command {
+                    PaintCall::Fill(payload) if payload.paint.fill.lut_row != LutRow::FALLBACK => {
+                        Some(payload.paint.fill.lut_row)
+                    }
+                    _ => None,
+                })
+                .collect();
+        rows[0]
+    }
+
+    let shared = UiResources::isolated_mono();
+    let mut encoder = Encoder::default();
+    let mut a = support::ui_with_shared(&shared);
+    let mut b = support::ui_with_shared(&shared);
+    b.frame(|ui| {
+        Panel::hstack().size(20.0).show(ui, |ui| {
+            for idx in 0..300u32 {
+                ui.add_shape(
+                    Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+                    LinearGradient::horizontal([
+                        RgbaF32::from_srgba8(SrgbaU8::rgb(idx as u8, (idx >> 8) as u8, 7)),
+                        RgbaF32::WHITE,
+                    ]),
+                );
+            }
+        });
+    });
+    a.frame(|ui| {
+        ui.add_shape(
+            Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)),
+            LinearGradient::horizontal([RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)]),
+        );
+    });
+    let _ = row(b.frames(), &mut encoder);
+    assert_eq!(encoder.gradient_rows(), 2 * INITIAL_ATLAS_ROWS);
+    let _ = encoder.flush_gradients();
+    let first = row(a.frames(), &mut encoder);
+    assert_eq!(first, LutRow(301), "after b's 300");
+    let _ = encoder.flush_gradients();
+    for _ in 0..2 * EXPIRY_FRAMES {
+        let _ = row(a.frames(), &mut encoder);
+        let _ = encoder.flush_gradients();
+    }
+    assert_eq!(encoder.gradient_rows(), INITIAL_ATLAS_ROWS);
+    assert_eq!(
+        row(a.frames(), &mut encoder),
+        LutRow(1),
+        "a's ramp renumbered"
     );
 }
 

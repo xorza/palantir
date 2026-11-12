@@ -1,6 +1,7 @@
 //! The backdrop blur's passes on the device: each job's capture through its tents to the last
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
+use crate::common::expiry_window::ExpiryWindow;
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::tiler_family::TilerFamily;
@@ -8,7 +9,6 @@ use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
-use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::resource::texture_binding::{self, Filtering};
 use crate::gpu::surface::owned_target::TargetSpec;
@@ -238,7 +238,7 @@ struct Levels {
 /// The device side of the backdrop blur: its pipelines, the capture, the levels and the scratch
 /// the passes write, all grown to the largest batch seen, with slack, so a steady frame allocates
 /// nothing and a resize drag makes them again only now and then. Each texture steps down to what
-/// the last [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames read, and goes where none read it, so one full-screen backdrop
+/// the last [`EXPIRY_FRAMES`](crate::common::expiry_window::EXPIRY_FRAMES) display frames read, and goes where none read it, so one full-screen backdrop
 /// does not hold its textures for the session.
 ///
 /// None of them passes the device's edge. The capture and the levels hold what lies on one
@@ -566,7 +566,7 @@ impl BackdropBlur {
 
     /// Lay out `jobs` in `batches`, each the jobs [`Self::encode`] records together, make room for
     /// them once, at the most a batch reads, and write their parameters, ahead of the copies that
-    /// fill their captures and the passes. Ends an expiry window every [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display
+    /// fill their captures and the passes. Ends an expiry window every [`EXPIRY_FRAMES`](crate::common::expiry_window::EXPIRY_FRAMES) display
     /// frames.
     pub(crate) fn prepare(
         &mut self,

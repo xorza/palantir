@@ -84,6 +84,7 @@ impl Encoder {
             }
             Damage::Full => None,
         };
+        self.gradient_atlas.begin_frame();
         let mut gradients = self.gradients.begin(
             scene.forest.record_store.gradients.records.as_slice(),
             &mut self.gradient_atlas,

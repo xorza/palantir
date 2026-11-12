@@ -9,9 +9,9 @@
 //! Used by every pipeline (`quad`, `mesh`, `image`, `curve`), the `text` backend's vbuf, the blur's
 //! params and the backdrop slot table.
 
+use crate::common::expiry_window::ExpiryWindow;
 use crate::gpu::device::gpu::{FilledBuffer, Gpu};
 use crate::gpu::frame::gpu_ctx::GpuCtx;
-use crate::gpu::resource::expiry_window::ExpiryWindow;
 use std::marker::PhantomData;
 use tinyvec::ArrayVec;
 
@@ -215,9 +215,9 @@ const fn grown_capacity(needed_len: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::expiry_window::EXPIRY_FRAMES;
     use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::resource::dynamic_buffer::{BufferSpec, DynamicBuffer, grown_capacity};
-    use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
     use crate::gpu::surface::map_state::MapState;
     use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 

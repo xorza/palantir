@@ -1,7 +1,7 @@
+use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, ResultTexture, grown,
 };
-use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::gpu::texel;

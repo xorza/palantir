@@ -1,7 +1,7 @@
 //! [`ScratchCache`]: the textures of their own a list hands an item too large for a page.
 
+use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::error::AtlasError;
-use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use glam::UVec2;
 
 /// The least side [`approx_side`] gives, Skia's `kMinApproxSize`.
@@ -196,9 +196,9 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::expiry_window::EXPIRY_FRAMES;
     use crate::gpu::atlas::error::AtlasError;
     use crate::gpu::atlas::scratch_cache::{ScratchCache, approx_side};
-    use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
     use glam::UVec2;
 
     /// The ladder: at least 16, powers of two through 1024, then the midpoint where it holds the

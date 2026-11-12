@@ -47,7 +47,7 @@ pub(crate) struct AtlasMemory {
 impl AtlasMemory {
     /// The rows a report holds: the pool's mask pages, which glyphs, icons and shadow cutouts
     /// share, its color pages, which glyphs and icons share, its half-float pages and scratch,
-    /// which backdrop results take, the blur's textures, gradient rows and their CPU mirror.
+    /// which backdrop results take, the blur's textures, gradient rows and their CPU staging.
     pub(crate) const LEN: usize = 6;
 }
 

@@ -368,16 +368,22 @@ until step 3, so its root expects `dead_code` outside tests, with that reason.
 - **5.5 Verify.** The gate and `cargo visual` pass, no golden moved. To run: `backdrop_frame/*` A/B
   on the board, the handheld and the mac.
 
-### 6. Gradient rows
+### 6. Gradient rows — done but M5's flush cost on the bench hosts
 
-- **6.1** `GpuGradientAtlas` becomes the pool's row table: the texture and its copies through the
-  commit. The frame group follows its generation as today.
-- **6.2** `CpuGradientAtlas` halves below a quarter for an expiry window: live rows renumbered
-  low, baked again from their ramps, at the start of the frontend's next frame. Ids stay while no
-  halving runs. `EXPIRY_FRAMES` moves where `renderer` reaches it.
-- **6.3** The CPU mirror goes; a flush bakes each run's rows, gaps included, into the staging.
-  Tests: a halving keeps every live ramp's texels exact at its new row; a flushed run with a gap
-  uploads the same bytes as the mirror did.
+- **6.1 — done.** `GpuGradientAtlas` is `gpu::atlas::row_table::RowTable`: a grown table takes the
+  old texture's rows by a copy, a halved one none, as its flush holds every row it kept. It stays
+  out of the pool's commit, as the frame group binds it at the top of the upload. The frame group
+  follows its generation as before.
+- **6.2 — done.** `CpuGradientAtlas::begin_frame`, at the top of each encode, halves at the end of
+  an expiry window with fewer than a quarter of the rows registered in it: those renumbered from
+  row 1 in their recency order, the rest dropped, no lower than 256. The window counts flushes,
+  each a window's submit, so two windows end it twice as fast. `EXPIRY_FRAMES` and `ExpiryWindow`
+  moved to `common`.
+- **6.3 — done.** The CPU mirror is gone; a flush bakes each run's rows, gaps included, into a
+  retained staging buffer as large as the largest flush. Tests: a halving keeps every live ramp
+  exact at its new row, on the CPU and read back from the GPU; a quarter keeps the size and one
+  under it halves; a run with a gap uploads the three ramps' bakes. The memory study's mirror row is
+  now the staging's.
 
 ### 7. Decay
 

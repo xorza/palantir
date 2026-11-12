@@ -13,7 +13,7 @@ pub(crate) struct GpuCtx<'a> {
     pub(crate) encoder: &'a mut wgpu::CommandEncoder,
     /// The backend's display frame, one round in which each live render owner submits once:
     /// the clock every piece of per-frame scratch ages against
-    /// ([`ExpiryWindow`](crate::gpu::resource::expiry_window::ExpiryWindow)).
+    /// ([`ExpiryWindow`](crate::common::expiry_window::ExpiryWindow)).
     pub(crate) frame: u64,
 }
 

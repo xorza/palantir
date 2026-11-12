@@ -22,12 +22,15 @@ counter_snapshot! {
     registrations: u32,
     /// Calls answered from the index without a bake.
     hits: u32,
-    /// Rows baked (free-row claims and evictions): one per miss.
+    /// Rows claimed for a ramp (free rows and evictions), each baked at the next flush: one per
+    /// miss.
     bakes: u32,
     /// Bakes that displaced a resident gradient, which re-bakes if it returns.
     evictions: u32,
-    /// Capacity doublings, a one-way ratchet.
+    /// Capacity doublings.
     growths: u32,
+    /// Capacity halvings, each at the end of an idle expiry window.
+    halvings: u32,
     /// LUT rows handed to the GPU, summed over flushes: each flush's dirty runs, with clean gaps
     /// of up to `MERGE_GAP_ROWS` folded in, so compare with [`Self::bakes`].
     rows_uploaded: u32,

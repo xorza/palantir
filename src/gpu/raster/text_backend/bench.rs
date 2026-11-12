@@ -16,6 +16,7 @@ use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::row_table::RowTable;
 use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
@@ -30,7 +31,6 @@ use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::resource::frame_group::FrameGroup;
-use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
@@ -212,7 +212,7 @@ impl Fixture {
         let textures = TextureBinding::new(&g.gpu);
         let program = RasterPipeline::new(&g.gpu, &textures);
         // The frame group the raster pipelines take first, which their glyphs read no clip of.
-        let frame = FrameGroup::new(&g.gpu, textures, &GpuGradientAtlas::new(&g.gpu, 1));
+        let frame = FrameGroup::new(&g.gpu, textures, &RowTable::new(&g.gpu, 1));
         let mut pipelines = RasterVariants::NONE;
         program.ensure(
             &mut pipelines,

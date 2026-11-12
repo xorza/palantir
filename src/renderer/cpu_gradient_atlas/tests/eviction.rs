@@ -44,7 +44,7 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
         "surviving content must reuse its original row exactly",
     );
     let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
-    assert!(atlas.baked[0].iter().all(|&t| t == magenta));
+    assert!(atlas.row_texels(0).iter().all(|&t| t == magenta));
 }
 
 /// A 256th distinct registration in the SAME epoch grows the atlas: every resident
@@ -132,7 +132,7 @@ fn growth_stops_at_max_rows_and_falls_back() {
     );
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2, "cap must hold");
     let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
-    assert!(atlas.baked[0].iter().all(|&t| t == magenta));
+    assert!(atlas.row_texels(0).iter().all(|&t| t == magenta));
 
     let _ = atlas.flush();
     let recovered = atlas.register(&distinct_grad(999900).ramp);
@@ -148,20 +148,22 @@ fn growth_preserves_resident_row_content() {
     let mut atlas = CpuGradientAtlas::default();
     let pinned = distinct_grad(0);
     let pinned_row = atlas.register(&pinned.clone().ramp);
-    let pinned_texels = atlas.baked[pinned_row.0 as usize];
+    let pinned_texels = atlas.row_texels(pinned_row.0);
     for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         atlas.register(&distinct_grad(i).ramp);
     }
     atlas.register(&distinct_grad(999900).ramp);
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
     assert_eq!(
-        atlas.baked[pinned_row.0 as usize], pinned_texels,
+        atlas.row_texels(pinned_row.0),
+        pinned_texels,
         "growth must not disturb a row this frame's draws reference",
     );
     let after = atlas.register(&pinned.ramp);
     assert_eq!(after, pinned_row, "growth baked a duplicate row");
     assert_eq!(
-        atlas.baked[after.0 as usize], pinned_texels,
+        atlas.row_texels(after.0),
+        pinned_texels,
         "the resident row's texels must survive growth intact",
     );
 }
@@ -307,5 +309,5 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
     assert_ne!(reborn, first_row);
     let mut expected = fresh_row();
     bake::row(&first.ramp, &mut expected);
-    assert_eq!(atlas.baked[reborn as usize], expected);
+    assert_eq!(atlas.row_texels(reborn), expected);
 }

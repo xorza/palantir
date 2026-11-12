@@ -2,9 +2,9 @@
 //! again empty; scratch made and dropped; the bytes on both halves alike.
 
 use super::*;
+use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::atlas::tenant::Tenant;
-use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use glam::U16Vec2;
 use std::ptr;
