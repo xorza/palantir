@@ -184,3 +184,37 @@ glass 190.3 → 68.8 MiB, its results 128 MiB → 13.0 MiB, all of it live; blur
 backdrop scene: 55 MiB of glass's 68.8, 28.2 of the modal's 31.0. No scene reaches a list's soft
 budget: the mask list peaks at 1 MiB (`theming`) of 8, the half-float list at 13 MiB (glass) of
 32.
+
+## Where the regressions come from (2026-11-13)
+
+Bisected on the board over the pool's steps, and spiked with switches read at run time in one
+build, so each comparison runs one binary. The spikes are measurement code, not committed.
+
+- **Every GPU regression on the board is the page switch.** A shader that reads a list's pages
+  picks one through a `switch` over four bindings: the raster quads (`mask_load`, `color_load`),
+  the shadow cutouts (`cutout_texels`) and the backdrop composite (`palantir_result`, five
+  textures, each arm the whole B-spline). V3D compiles every arm. Its `V3D_DEBUG=shaderdb`, base
+  against the pool: the raster fragment 196 → 943 instructions and 4 → 2 threads, the turned
+  raster 135 → 689, the backdrop composite 619 → 1340. The bisect puts `frame/gpu/scrolling`'s
+  +2.7 to +3.1 % at step 3, the raster's pages, and `modal/scrolling`'s +6.9 %, `frosted/sliding`'s
+  +5.0 % and glass's −32 % at step 5, the results' pages. With every switch replaced by a read of
+  page 0, which every bench scene fills alone: `frame/gpu/scrolling` −2.7 %, `theming` −2.4 %,
+  `main_pass/scrolling` −3.0 %, `modal/scrolling` −7.2 %, `blur/sliding` −5.7 %,
+  `frosted/sliding` −5.8 %, `glass/hover` −2.9 %; each takes back the regression. On the apple
+  the same spike takes `modal/scrolling` −3.6 %, its other cases within a noisy run. The sRGB
+  decode the color pages added moves nothing on the board.
+- **The text churn regression is the age-out.** `PageList::age_out` runs under the soft budget
+  once a list's one page has grown past its first edge, and evicts what idled 400 frames; the
+  churn walks 512 scales, so each glyph goes just before its scale comes back. Every eviction of
+  `cache_churn/frame` is an age-out (26 a frame); with the age-out off none is, the whole set
+  fitting the 4 MiB budget. Apple, bench profile: `cache_churn/frame` 328 → 281 µs (the base's
+  283), `mixed_stable_churn/frame` 329 → 281 µs, `cache_churn/prepare` 47.6 → 7.1 µs (the base's
+  34.6). WebRender evicts under its threshold only with several textures in a list
+  (`TextureCache::should_continue_evicting`: `bytes_allocated < threshold &&
+  !uses_multiple_atlases` returns `None`); a page grown in place is one texture.
+- **The one-frame grace changes nothing here**: exempting only what this frame drew moves no
+  case's evictions.
+- **The glyph lookups' +8 to +15 % (`steady_warm/prepare`, `stable_keys/prepare`) is not the
+  placement's rewrite**: the replay with the cached instance in place of `placed_at` moves them
+  within ±1 %. About 0.7 ns a glyph, in `AtlasPool::stamp` and the replay loop; not profiled
+  further.
