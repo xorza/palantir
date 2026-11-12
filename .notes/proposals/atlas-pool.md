@@ -196,7 +196,7 @@ Soft budgets are the sum of today's tenants'; a hard cap is four pages, one tena
 
 Steps that each end green: the palantir gate, `cargo visual` where pixels can move, and the
 benches a step names, A/B in ABBA order (`palantir-showcase/benches/AGENTS.md`). No public item
-changes; a step that finds it must stops and asks.
+changes; a step that finds it must stops and asks. A step's heading says what of it is **done**.
 
 ### Exit criteria
 
@@ -208,50 +208,54 @@ changes; a step that finds it must stops and asks.
 - The two atlas entries of `.notes/ISSUES.md` and the `TODO.md` line "consolidate gpu atlas" are
   gone, and this file is deleted, its decisions in `src/gpu/AGENTS.md`.
 
-### 0. Measure first
+### 0. Measure first — built; the memory measured, the timings to run
 
 Nothing past step 0 builds on a number it has not measured.
 
-- **0.1 Memory report.** `AtlasMemory`: per atlas its textures, their bytes and the bytes its live
-  items fill, read from the textures and the slots when asked rather than counted, so a shipping
-  build holds none of it. `cargo atlas-memory` prints it over each arm of `integration/frame` on
-  the showcase's first page and every backdrop look and scene. The pool reports the same in
-  step 1.
-- **0.2 M2, moving rectangles.** `atomic/atlas_move/gpu/<copy|draw>/<r8|rgba8|rgba16f>/<side>/<n>`
-  moves `n` ∈ {16, 64, 256} rectangles of 24² or 128² between two 2048² pages, submitted and
-  waited for, as `atomic/gradient_upload` measures; each case first checks every texel lands.
-  Settles the move mechanism per device and the budget's command count.
-- **0.3 M3, the page branch.** `atomic/atlas_pages/gpu/<one|four>`: the device time of one pass
-  drawing the steady text scene eight times over, the atlas bound as today or through the raster
-  shader rewritten to four pages of each kind and a branch on the page, every quad on page 0. On
-  V3D and Apple first. The scene draws masks alone, so the color branch goes unmeasured. Settles
+- **0.1 Memory report — done.** `AtlasMemory`: per atlas its textures, their bytes and the bytes its
+  live items fill, read from the textures and the slots when asked rather than counted, so a
+  shipping build holds none of it. `cargo atlas-memory` prints it over each arm of
+  `integration/frame` on the showcase's first page and every backdrop look and scene; measured on an
+  Apple laptop. The pool reports the same once it holds textures, in step 2.
+- **0.2 M2, moving rectangles — built.**
+  `atomic/atlas_move/gpu/<copy|draw>/<r8|rgba8|rgba16f>/<side>/<n>` moves `n` ∈ {16, 64, 256}
+  rectangles of 24² or 128² between two 2048² pages, submitted and waited for, as
+  `atomic/gradient_upload` measures; each case first checks every texel lands. Settles the move
+  mechanism per device and the budget's command count.
+- **0.3 M3, the page branch — built.** `atomic/atlas_pages/gpu/<one|four>`: the device time of one
+  pass drawing the steady text scene eight times over, the atlas bound as today or through the
+  raster shader rewritten to four pages of each kind and a branch on the page, every quad on page 0.
+  On V3D and Apple first. The scene draws masks alone, so the color branch goes unmeasured. Settles
   one page per draw or four.
-- **0.4 M4, making a page.** `atomic/atlas_page/gpu/<r8|rgba8|rgba16f>/<edge>`: create, the first
-  write of a 64² raster and the clear wgpu runs before it, at 256, 1024 and 2048.
-- **0.5 M5, the mirrorless flush.** `atomic/gradient_atlas/cpu/gap_row/<mirror|bake>/<oklab|linear>`:
-  one clean row staged from the mirror against baked again from its ramp; each case first checks
-  that both give the same bytes.
-- **Status.** Built: 0.1 to 0.5. Run: the memory study on an Apple laptop. To run: the timing cases on each bench host.
-- **0.6 Record.** `.notes/research/<date>-atlas-pool-measurements.md`: the numbers, the hosts, and
-  what each settles; then this file's constants and move rule.
+- **0.4 M4, making a page — built.** `atomic/atlas_page/gpu/<r8|rgba8|rgba16f>/<edge>`: create, the
+  first write of a 64² raster and the clear wgpu runs before it, at 256, 1024 and 2048.
+- **0.5 M5, the mirrorless flush — built.**
+  `atomic/gradient_atlas/cpu/gap_row/<mirror|bake>/<oklab|linear>`: one clean row staged from the
+  mirror against baked again from its ramp; each case first checks that both give the same bytes.
+- **0.6 Record — the memory done.** `.notes/research/2026-11-12-atlas-pool-measurements.md`: the
+  numbers, the hosts, and what each settles; the timings of 0.2 to 0.5 on each bench host to add,
+  then this file's constants and move rule.
 
-### 1. The pool's CPU half (`src/gpu/atlas/`)
+### 1. The pool's CPU half (`src/gpu/atlas/`) — done
 
-Pure bookkeeping, no wgpu type, so every rule is testable without a device.
+Pure bookkeeping, no wgpu type, so every rule is testable without a device. No tenant reaches it
+until step 3, so its root expects `dead_code` outside tests, with that reason.
 
-- **1.1 Layout.** `atlas/mod.rs` (`AtlasPool`, the owner), `atlas_format.rs` (`AtlasFormat`:
-  `R8`, `Rgba8`, `Rgba16F`, with bytes per texel), `atlas_handle.rs` (slab index and generation),
-  `page_list.rs`, `scratch_cache.rs`, `eviction_clock.rs` (today's `ClockSweep`, moved),
-  `decay.rs`, `counters.rs`.
+- **1.1 Layout.** `atlas/mod.rs` (`AtlasPool`, the owner, and the eviction queues),
+  `atlas_format.rs` (`AtlasFormat`: `R8`, `Rgba8`, `Rgba16F`, with bytes per texel),
+  `atlas_handle.rs` (handle and placement), `tenant.rs`, `error.rs`, `page_list/` (the list, its
+  pages and slab), `scratch_cache.rs`, `eviction_clock.rs` (a clock its caller judges, which the
+  raster atlas's `ClockSweep` folds into in step 3). `decay.rs` waits for step 7; the 0.1 report
+  waits for step 2's textures.
 - **1.2 Handles and the slab.** An entry holds its placement (page, origin, size), last use in
   display frames, a pin count and a tenant tag. `allocate`, `release`, `pin`, `unpin`, `stamp`.
   Generations move on release alone. Asserts: no release of a free handle, no unpin below zero, no
   stamp of a stale generation.
 - **1.3 Page lists.** A list's pages, each a `ShelfPacker` and an edge; the first page doubles from
   256 to the page edge as `PackedAtlas` grows today (one texture at the final edge per frame); past
-  it the list adds pages up to four. A page is `Open`, `Draining` or `Filling`; only `Open` and
-  `Filling` take allocations. Items wider or taller than half a page are refused here and go to
-  scratch.
+  it the list adds pages up to four, the hard cap. A page is `Open`, `Draining` or `Filling`;
+  only `Open` and `Filling` take allocations. An item past the page edge is refused; one past half
+  a page the list says `prefers_scratch`, which a per-draw tenant routes to scratch.
 - **1.4 Eviction.** One clock per list over its tenants, skipping stamped-this-frame,
   stamped-last-frame and pinned entries. The insert path: allocate; under the soft budget grow;
   over it evict; nothing evictable, grow to the hard cap; at it refuse. Evicted handles queue per
@@ -260,16 +264,16 @@ Pure bookkeeping, no wgpu type, so every rule is testable without a device.
   least 16); `acquire` then reuses a free texture that covers the rounded size within twice its
   area, most recently freed first; `release` files it free with its frame; textures free past an
   expiry window.
-- **1.6 Accounting.** Bytes per format across pages and scratch, live area per page, the counters
-  of 0.1.
-- **1.7 Tests.** Exact placements for a hand-worked sequence on a 256 page: grow to 512 keeps
-  every origin, a second page opens only at the page edge, a half-page item is refused to scratch.
-  The insert path at each budget edge. The clock never takes stamped, last-frame or pinned
-  entries. The scratch ladder on 1, 16, 17, 1024, 1025, 1536, 1537 and 1936 × 1088. A request
-  rounds, then reuses: 1300 × 900 rounds to 1536 × 1024 and takes a free 2048 × 1536, twice its
-  area, but not a free 2048², past twice. A seeded sweep of a few thousand random allocate,
-  release, pin and stamp steps against a reference model, checking after each step that no two
-  live rectangles overlap and that the accounting matches the model.
+- **1.6 Accounting.** Bytes per list across pages and scratch, live texels per page.
+- **1.7 Tests.** Exact placements for a hand-worked sequence: a 64 first page doubles to the 128
+  page edge keeping every origin, and a second page opens only at the edge. The insert path at
+  each budget edge: evict over the soft budget, grow past it when nothing is evictable, refuse at
+  four full pages. The clock never takes stamped, last-frame or pinned items, and queues each for
+  its own tenant; a tall item empties bottom shelves until rows hold it. The scratch ladder on 1,
+  16, 17, 1024, 1025, 1536, 1537 and 1936 × 1088; reuse within twice the area; expiry with the
+  pool's frames. A seeded run of 4000 random inserts, releases, draws, pins and frames against a
+  model, checking after each step that no two live rectangles overlap and that the accounting
+  matches it.
 
 ### 2. The pool's GPU half
 
@@ -293,7 +297,8 @@ Pure bookkeeping, no wgpu type, so every rule is testable without a device.
 
 - **3.1** `RasterAtlas` becomes a tenant: its key map, bearing and content in a side table by
   handle; allocation, eviction and growth through the R8 and RGBA8 lists. Delete `Side`,
-  `BoundSides`, the per-tenant `RasterAtlasConfig` budgets and its `PackedAtlas` use.
+  `BoundSides`, `ClockSweep`, `FreeSlots`, the per-tenant `RasterAtlasConfig` budgets and its
+  `PackedAtlas` use.
 - **3.2** `RasterQuad::uv_and_kind`: `u` in 12 bits, then 2 bits of page, the desaturate and kind
   flags, `v` from bit 16; `U_BITS` and the shader constants follow. Test: `pack_uv` and `clipped`
   round-trip the page and never carry into it.

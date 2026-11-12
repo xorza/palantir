@@ -68,6 +68,11 @@ impl ShelfPacker {
         })
     }
 
+    /// The side's edge in texels.
+    pub(crate) const fn edge(&self) -> u16 {
+        self.size
+    }
+
     /// Whether a rectangle of height `h` belongs on a shelf of `height`: no lower, and within a
     /// quarter of its own height above it (four texels at least), so short rectangles do not
     /// strand the room of a tall shelf.

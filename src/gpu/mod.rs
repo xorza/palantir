@@ -6,6 +6,7 @@
     clippy::disallowed_types,
     reason = "the one module that names wgpu; `clippy.toml` stops every other module doing the same"
 )]
+pub(crate) mod atlas;
 #[cfg(feature = "internals")]
 pub(crate) mod atlas_memory;
 pub(crate) mod backdrop;
