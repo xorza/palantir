@@ -2177,7 +2177,6 @@ version = "0.8.3"
 dependencies = [
  "backtrace",
  "bytemuck",
- "criterion",
  "half",
  "image",
  "palantir",

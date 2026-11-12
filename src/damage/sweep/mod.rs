@@ -51,7 +51,6 @@ use crate::damage::sweep::score::{ScenarioCosts, StageResults, score};
 use crate::damage::sweep::stage::Stage;
 use crate::gpu::bench_gpu::BenchGpu;
 use crate::ui::bench::TIMING;
-use std::env;
 use std::error::Error;
 use std::io::{self, Write};
 use std::process::ExitCode;
@@ -211,13 +210,13 @@ fn report_error(error: &dyn Error) {
     }
 }
 
-/// A sweep over `S` as its command line says: `cargo damage-sweep`.
+/// A sweep over `S` as `args`, its command line past the study's name, says: `cargo damage-sweep`.
 #[expect(
     clippy::print_stderr,
     reason = "a command line that does not parse answers with its usage"
 )]
-pub(crate) fn run<S: Scene>() -> ExitCode {
-    let args = match SweepArgs::parse(env::args().skip(1)) {
+pub(crate) fn run<S: Scene>(args: Vec<String>) -> ExitCode {
+    let args = match SweepArgs::parse(args) {
         Ok(args) => args,
         Err(error) => {
             report_error(&error);

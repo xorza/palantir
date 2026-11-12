@@ -8,7 +8,7 @@ use std::env;
 /// The backends a case may run on: the CPU always, the GPU when the host has an adapter, and the
 /// devices the GPU cases run on.
 ///
-/// The run owns the devices ([`crate::bench::run`]), so they drop when it ends, before the process
+/// The run owns the devices (`bench::run`), so they drop when it ends, before the process
 /// exits: a device a `static` held was never dropped (RFC 1440) and met `exit()` alive, where the
 /// driver's teardown raced its own shader-compiler thread.
 #[derive(Debug)]
@@ -81,7 +81,7 @@ impl Backends {
     ///
     /// # Panics
     ///
-    /// Panics when called between the cases of [`crate::bench::run`]: a group's body runs in
+    /// Panics when called between the cases of `bench::run`: a group's body runs in
     /// every run, so a device it opens opens in a filtered run too, against the rule that a case
     /// builds its inputs in its own closure.
     #[track_caller]

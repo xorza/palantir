@@ -1,4 +1,6 @@
-//! The criterion benches, which `palantir-showcase/benches/palantir.rs` runs: `cargo bench-all`.
+//! The benches, which `palantir-showcase/benches/palantir.rs` runs through [`main`]: the criterion
+//! cases (`cargo bench-all`), or a study its first argument names (`cargo damage-sweep`,
+//! `cargo atlas-memory`). One target, so one release link serves them all.
 //!
 //! Two kinds, and every case is one. An `atomic` case times one stage, one widget or one
 //! operation on a made input. An `integration` case times palantir's frame, or a chain of its
@@ -19,10 +21,12 @@ pub mod case_group;
 pub(crate) mod fixture;
 pub mod kind;
 pub mod scene;
+mod study;
 
 use crate::bench::backends::Backends;
 use crate::bench::case_group::BetweenCases;
 use crate::bench::scene::Scene;
+use crate::bench::study::{Invocation, Study};
 use crate::cascade;
 use crate::gpu::backdrop;
 use crate::gpu::backdrop::backdrop_blur;
@@ -39,12 +43,40 @@ use crate::scene::tree::paint_animations;
 use crate::widgets::{color_field, text_edit};
 use crate::{animation, damage, gpu, input, layout, text, ui};
 use criterion::Criterion;
+use std::env;
 use std::process::ExitCode;
+
+/// The bench target over `S`, as its command line says (`Invocation::of`): a study, every
+/// criterion case, or with no argument at all, as `cargo bench-once` runs it, every case and then
+/// every study once, so that run reaches all of them. Criterion reads its own arguments, as
+/// `criterion_main!` lets it.
+pub fn main<S: Scene>() -> ExitCode {
+    let cases = || {
+        let mut c = Criterion::default().configure_from_args();
+        run::<S>(&mut c);
+        c.final_summary();
+    };
+    match Invocation::of(env::args().skip(1)) {
+        Invocation::Study(study, args) => study.run::<S>(args),
+        Invocation::Cases => {
+            cases();
+            ExitCode::SUCCESS
+        }
+        Invocation::Everything => {
+            cases();
+            let failed = Study::ALL
+                .into_iter()
+                .map(|study| study.run::<S>(Vec::new()))
+                .find(|&code| code != ExitCode::SUCCESS);
+            failed.unwrap_or(ExitCode::SUCCESS)
+        }
+    }
+}
 
 /// Every case, atomic first, those that run a whole screen over `S`. The host's adapters are listed
 /// once here; no device opens, as [`Backends::device`] refuses to open one between cases. The
 /// devices drop with `backends`, when the run ends.
-pub fn run<S: Scene>(c: &mut Criterion) {
+fn run<S: Scene>(c: &mut Criterion) {
     let _between = BetweenCases::set(true);
     let backends = Backends::probe();
 
@@ -82,15 +114,4 @@ pub fn run<S: Scene>(c: &mut Criterion) {
     rounded_clip::bench::integration(c, &backends);
     frontend::bench::integration(c);
     measure_cache::bench::integration(c);
-}
-
-/// What each GPU atlas holds over the bench scenes of `S`, a target of its own:
-/// `cargo atlas-memory`.
-pub fn atlas_memory<S: Scene>() -> ExitCode {
-    gpu::atlas_memory::bench::study::<S>()
-}
-
-/// The damage sweep over `S`, a target of its own: `cargo damage-sweep`.
-pub fn damage_sweep<S: Scene>() -> ExitCode {
-    damage::sweep::run::<S>()
 }

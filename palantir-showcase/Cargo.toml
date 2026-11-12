@@ -30,7 +30,6 @@ tracing-subscriber = { workspace = true }
 palantir = { workspace = true, features = ["internals"] }
 palantir-showcase = { workspace = true, features = ["internals"] }
 backtrace = { workspace = true }
-criterion = { workspace = true }
 half = { workspace = true }
 
 [features]
@@ -49,15 +48,5 @@ path = "tests/alloc/main.rs"
 
 [[bench]]
 name = "palantir"
-harness = false
-required-features = ["internals"]
-
-[[bench]]
-name = "damage_sweep"
-harness = false
-required-features = ["internals"]
-
-[[bench]]
-name = "atlas_memory"
 harness = false
 required-features = ["internals"]

@@ -23,9 +23,10 @@ gate-doctest = "test --workspace --doc --no-fail-fast --features golden,gpu-debu
 visual = "test --workspace --features golden,gpu-debug-markers --test visual"
 shot = "run -p palantir-showcase --features golden -- --shot"
 reel = "run -p palantir-showcase --example reel --profile release-dev --"
-# `--bench palantir` alone: `damage_sweep` times hundreds of arms and `atlas_memory` reads memory,
-# studies rather than regression checks. `--bench *`, not `--benches`, which also selects the library.
+# One bench target: the criterion cases, or the study its first argument names, as
+# `damage-sweep` and `atlas-memory` pass theirs. `--bench *`, not `--benches`, which also selects
+# the library.
 bench-all = "bench --workspace --bench palantir"
 bench-once = "test --workspace --bench *"
-damage-sweep = "bench -p palantir-showcase --bench damage_sweep"
-atlas-memory = "bench -p palantir-showcase --bench atlas_memory"
+damage-sweep = "bench -p palantir-showcase --bench palantir -- damage-sweep"
+atlas-memory = "bench -p palantir-showcase --bench palantir -- atlas-memory"

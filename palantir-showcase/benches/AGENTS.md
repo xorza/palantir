@@ -1,9 +1,10 @@
 # Benches
 
-The target `palantir` runs every case through `bench::run`; `damage_sweep` and `atlas_memory` are
-studies of their own, which `cargo bench-all` leaves out. Each driver sits in a `bench.rs` beside the code it measures,
-and `src/bench/mod.rs` states the rules: the kinds, the ids, one number a case, and the sampling
-policy.
+The one target `palantir` runs `bench::main`: every criterion case, or the study its first argument
+names, `damage-sweep` or `atlas-memory`, which `cargo bench-all` leaves out. Refused: a target per
+study, a release link each, which cargo runs in parallel. Each driver sits in a `bench.rs` beside
+the code it measures, and `src/bench/mod.rs` states the rules: the kinds, the ids, one number a
+case, and the sampling policy.
 
 ## Which cases
 
@@ -20,7 +21,7 @@ cargo bench-all -- '^atomic/hit_test/'
 cargo bench-all -- '/cpu/'                 # every case that opens no device
 cargo bench-all -- --exact integration/frame/gpu/cached
 cargo bench-all -- '^integration/frame/' --quick
-cargo bench-once                           # each case once, under the test profile
+cargo bench-once                           # each case once, then each study, under the test profile
 ```
 
 - An id is `<kind>/<group>/<backend>/<rest…>`, and criterion's filter is a regex over it. A case
@@ -87,9 +88,9 @@ PALANTIR_BENCH_NO_GPU=1 cargo damage-sweep    # each decision, no timing
 
 `cargo atlas-memory` runs each arm of `integration/frame` and every backdrop look and scene, a
 host of its own each, and prints per run what each GPU atlas holds: its peak bytes, its bytes at
-the last frame, the bytes its live items fill and their share. It reads memory, not time, which no build profile moves, so
-`cargo test -p palantir-showcase --bench atlas_memory -- --bench` runs it without a fat link; its
-reasons are in `src/gpu/atlas_memory/bench.rs`.
+the last frame, the bytes its live items fill and their share. It reads memory, not time, which no
+build profile moves, so `cargo test -p palantir-showcase --bench palantir -- atlas-memory --bench`
+runs it without a fat link; its reasons are in `src/gpu/atlas_memory/bench.rs`.
 
 ## Profiling
 

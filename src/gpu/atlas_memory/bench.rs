@@ -12,7 +12,6 @@ use crate::gpu::backdrop;
 use crate::gpu::bench_gpu::Timing;
 use crate::host::offscreen::OffscreenHost;
 use crate::ui;
-use std::env;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
@@ -22,10 +21,10 @@ const FRAMES: u32 = 240;
 /// Frames of a run under `cargo test`.
 const TEST_FRAMES: u32 = 2;
 
-/// Every run over `S`, as the command line asks: `--bench`, which `cargo bench` passes, runs
-/// [`FRAMES`] a run, else [`TEST_FRAMES`].
-pub(crate) fn study<S: Scene>() -> ExitCode {
-    let timed = env::args().skip(1).any(|arg| arg == "--bench");
+/// Every run over `S`, as `args`, the command line past the study's name, asks: `--bench`, which
+/// `cargo bench` passes, runs [`FRAMES`] a run, else [`TEST_FRAMES`].
+pub(crate) fn study<S: Scene>(args: &[String]) -> ExitCode {
+    let timed = args.iter().any(|arg| arg == "--bench");
     let frames = if timed { FRAMES } else { TEST_FRAMES };
     let backends = Backends::probe();
     if backends.gpu().is_none() {
