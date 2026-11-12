@@ -16,6 +16,7 @@ use palantir_derive::{Animatable, Lerp};
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable,
 )]
+#[serde(deny_unknown_fields)]
 #[animate(coerce = Self::coerce)]
 #[must_use]
 pub struct Shadow {

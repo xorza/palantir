@@ -27,10 +27,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct MenuItemTheme {
-    /// The four per-state looks of a row that is not the pick; `flatten` keeps theme files flat
-    /// (`[menu.item.normal]`).
-    #[serde(flatten)]
+    /// The four per-state looks of a row that is not the pick (`[menu.item.unselected.normal]`).
     pub unselected: StatefulLook,
     /// The four per-state looks of the row that is the pick (`[menu.item.selected.normal]`).
     pub selected: StatefulLook,
@@ -41,7 +40,6 @@ pub struct MenuItemTheme {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
     /// Spacing and transition spec; `margin` is `ZERO` since [`MenuTheme::gap`](crate::MenuTheme::gap) spaces rows.
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 

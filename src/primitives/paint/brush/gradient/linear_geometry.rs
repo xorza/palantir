@@ -10,6 +10,7 @@ use std::hash;
 
 /// Geometry of a linear gradient: color runs along `angle` radians (0 = →, π/2 = ↓), spanning the brush owner's bounding rect end to end.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LinearGeometry {
     /// Axis direction in radians.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::angle")]

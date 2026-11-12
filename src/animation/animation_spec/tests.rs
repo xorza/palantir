@@ -55,6 +55,7 @@ fn anim_spec_construction_validates_and_canonicalizes() {
 #[test]
 fn animation_spec_serde_validates_and_roundtrips() {
     #[derive(::serde::Serialize, ::serde::Deserialize, PartialEq, Debug)]
+    #[serde(deny_unknown_fields)]
     struct Holder {
         spec: AnimationSpec,
     }
@@ -112,6 +113,16 @@ fn animation_spec_serde_validates_and_roundtrips() {
             "swing past 30 Hz",
             r#"(spec: (kind: "spring", stiffness: 1000000.0, damping: 100.0))"#,
             SPRING_ERROR,
+        ),
+        (
+            "a duration's unknown field",
+            r#"(spec: (kind: "duration", secs: 0.2, ease: "linear", blur: 1.0))"#,
+            "blur",
+        ),
+        (
+            "a spring's unknown field",
+            r#"(spec: (kind: "spring", stiffness: 170.0, damping: 26.0, blur: 1.0))"#,
+            "blur",
         ),
     ];
     for (label, input, expected) in invalid {

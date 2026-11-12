@@ -235,6 +235,7 @@ fn switch_axis<T>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
 /// [`TextStyleOverrides`] as it arrives off the wire, read straight into a `TextStyleOverrides`
 /// by serde's remote derive before the metrics check, as [`TextStyle`] reads its own.
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(remote = "TextStyleOverrides")]
 struct UncheckedTextStyleOverrides {
     color: Option<RgbaF32>,

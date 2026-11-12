@@ -14,6 +14,7 @@ use crate::theme::palette::Palette;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness in logical px; pill radius is `thickness / 2`.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]

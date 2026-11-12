@@ -12,6 +12,7 @@ use crate::primitives::paint::color::RgbaF32;
 // `repr(C)` keeps `interpolation` last; see the note on `Gradient`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[must_use]
 pub struct ColorRamp {
     /// Two through eight stops, in ascending offset order.

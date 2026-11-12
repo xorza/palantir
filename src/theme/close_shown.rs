@@ -4,6 +4,7 @@
 /// [`TabsTheme::close_shown`](crate::TabsTheme::close_shown) picks. Every closable chip keeps the
 /// button's space either way, so a chip never changes width as its button comes and goes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum CloseShown {
     /// On every closable chip.
     Always,

@@ -16,6 +16,7 @@ use std::time::Duration;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct SpinnerTheme {
     /// Arc color at the comet's head; the tail fades to transparent.
     pub color: RgbaF32,

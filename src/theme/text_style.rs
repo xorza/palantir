@@ -182,6 +182,7 @@ impl TextStyle {
 /// untrusted: a non-finite or non-positive size would reach the shaper as a face it cannot
 /// resolve.
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(remote = "TextStyle")]
 struct UncheckedTextStyle {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]

@@ -35,10 +35,9 @@ use glam::Vec2;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct TextEditTheme {
-    /// The four per-state looks (`active` = focused). `flatten` keeps theme files
-    /// flat (`[text_edit.active]`).
-    #[serde(flatten)]
+    /// The four per-state looks (`active` = focused; `[text_edit.looks.active]`).
     pub looks: StatefulLook,
     /// Ink for the placeholder text an empty field shows.
     pub placeholder: RgbaF32,
@@ -51,7 +50,6 @@ pub struct TextEditTheme {
     /// Selection highlight fill, a wash behind the selected glyphs.
     pub selection: RgbaF32,
     /// Spacing and transition spec — see [`SlotDefaults`].
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 

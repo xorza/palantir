@@ -200,6 +200,7 @@ impl serde::Serialize for MaterialEffect {
 impl<'de> serde::Deserialize<'de> for MaterialEffect {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct File {
             name: EffectName<(), BackdropEffect>,
             #[serde(default)]

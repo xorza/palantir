@@ -57,6 +57,7 @@ impl ImageFit {
 /// separately for minification and magnification. Implemented as a UV
 /// texel-center snap, so every combination shares one sampler and bind group.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageFilter {
     /// Bilinear smoothing. The default.

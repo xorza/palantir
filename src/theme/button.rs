@@ -34,15 +34,13 @@ pub(crate) const ACCENT_PRESS: f32 = 0.24;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ButtonTheme {
-    /// The four per-state looks of a button that is not selected; `flatten` keeps theme files
-    /// flat (`[button.normal]`).
-    #[serde(flatten)]
+    /// The four per-state looks of a button that is not selected (`[button.unselected.normal]`).
     pub unselected: StatefulLook,
     /// The four per-state looks of a button that shows its on state (`[button.selected.normal]`).
     pub selected: StatefulLook,
     /// Spacing and transition spec — see [`SlotDefaults`].
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 

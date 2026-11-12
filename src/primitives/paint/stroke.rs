@@ -16,6 +16,7 @@ use crate::primitives::paint::line_style::{LineCap, LineJoin};
 /// A polyline's colors per point or per segment are its vertices', set on the geometry, and it
 /// draws no ramp.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[must_use]
 pub struct Stroke {
     /// The color.

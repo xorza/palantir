@@ -25,6 +25,7 @@ impl NodeIdx {
 
 /// One node of the flat tree: a division, or a pane.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) enum DockNode<T> {
     /// A division of this node's rect.
     Split(DockSplit),
@@ -35,6 +36,7 @@ pub(crate) enum DockNode<T> {
 /// A division of one rect between two child nodes: `first` leads, left in a `Row` and top in a
 /// `Col`.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DockSplit {
     pub(super) direction: SplitDirection,
     pub(super) ratio: f32,

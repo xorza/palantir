@@ -30,6 +30,7 @@ use glam::Vec2;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ToggleTheme {
     /// Look when unchecked.
     pub unchecked: StatefulLook,
@@ -59,7 +60,6 @@ pub struct ToggleTheme {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub track_aspect: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 

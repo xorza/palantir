@@ -68,6 +68,7 @@ impl Serialize for Stop {
 impl<'de> Deserialize<'de> for Stop {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct RawStop {
             offset: f32,
             color: RgbaF32,

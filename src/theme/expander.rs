@@ -27,9 +27,9 @@ use std::f32::consts::FRAC_PI_2;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ExpanderTheme {
-    /// The header's four per-state looks; `flatten` keeps theme files flat (`[expander.normal]`).
-    #[serde(flatten)]
+    /// The header's four per-state looks (`[expander.looks.normal]`).
     pub looks: StatefulLook,
     /// Triangle bounding box, corners included; keep it square unless the angles leave it unturned.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::size")]
@@ -54,7 +54,6 @@ pub struct ExpanderTheme {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub body_padding: Spacing,
     /// `animation` is `None` by default, so a reveal snaps.
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 

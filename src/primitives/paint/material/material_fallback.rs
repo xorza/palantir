@@ -11,6 +11,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// a plain one, this its fill, its border and shadow as they are, with no capture, blur or effect.
 /// A backdrop [`EffectPaint`](crate::widget::EffectPaint) paints it over its shape alike.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum MaterialFallback {
     /// The theme's surface, [`Theme::material_fallback`](crate::Theme::material_fallback): its
     /// float surface, translucent at the least alpha that keeps its text readable over any page.

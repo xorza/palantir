@@ -35,6 +35,7 @@ impl TabGroupId {
 /// One pane's tab strip: the open tabs plus which one is visible. Read-only outside the crate:
 /// [`DockState`](crate::DockState) keeps the strip non-empty and the visible index in range.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TabGroup<T> {
     pub(super) id: TabGroupId,
     pub(super) tabs: Vec<T>,

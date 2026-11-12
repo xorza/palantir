@@ -108,6 +108,7 @@ fn offset_and_color_stay_independent() {
 fn written_order_does_not_reach_identity() {
     // The deserializer is the other door onto the same invariant.
     #[derive(Debug, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Document {
         stops: GradientStops,
     }

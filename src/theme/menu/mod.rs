@@ -31,6 +31,7 @@ const MIN_WIDTH: f32 = 208.0;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 #[must_use]
 pub struct MenuTheme {
     /// Panel chrome behind the items; its `padding` carves the gutter to the rows.

@@ -11,6 +11,7 @@ use std::hash;
 
 /// Geometry of a conic (sweep) gradient: the 0..1 axis sweeps around `center` from `start_angle` radians, clockwise on screen (angles grow from +x toward +y, which points down). `center` is in 0..1 object space. The shader projects each fragment to `t = fract((atan2(dy, dx) - start_angle) / TAU + 1.0)`, applies `Spread`, samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConicGeometry {
     /// Sweep center, in object-space `0..1` coordinates.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]

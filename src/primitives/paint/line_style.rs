@@ -5,6 +5,7 @@
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 pub enum LineCap {
     /// Ends exactly at the endpoint. The default.
     #[default]
@@ -20,6 +21,7 @@ pub enum LineCap {
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 pub enum LineJoin {
     /// Extends both edges to their crossing point. The default; becomes [`Self::Bevel`] past the miter limit.
     #[default]

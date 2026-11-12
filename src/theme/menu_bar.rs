@@ -26,6 +26,7 @@ use crate::theme::palette::Palette;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct MenuBarTheme {
     /// A title whose menu is closed, in each state.
     pub title: StatefulLook,
@@ -41,7 +42,6 @@ pub struct MenuBarTheme {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
     /// A title's padding and transition spec — see [`SlotDefaults`].
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 

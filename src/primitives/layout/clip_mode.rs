@@ -17,6 +17,7 @@
     serde::Serialize,
     serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 #[repr(u8)]
 pub enum ClipMode {
     /// No clip. The default.

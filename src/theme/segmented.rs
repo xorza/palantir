@@ -27,6 +27,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct SegmentedTheme {
     /// The track the segments sit on.
     pub track: Chrome,

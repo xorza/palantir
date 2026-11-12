@@ -10,6 +10,7 @@
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 pub enum Preference<T> {
     /// What the system reports.
     #[default]

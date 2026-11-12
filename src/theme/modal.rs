@@ -17,6 +17,7 @@ use crate::theme::palette::Palette;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ModalTheme {
     /// Dialog panel chrome.
     pub panel: Chrome,

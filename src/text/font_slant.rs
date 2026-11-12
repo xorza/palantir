@@ -7,6 +7,7 @@
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 pub enum FontSlant {
     /// Upright. The default.
     #[default]

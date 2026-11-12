@@ -11,6 +11,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "lowercase")]
 pub enum ColorModel {
     /// Björn Ottosson's Okhsv (<https://bottosson.github.io/posts/colorpicker/>), in linear light;

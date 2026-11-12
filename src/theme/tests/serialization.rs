@@ -55,6 +55,64 @@ fn default_theme_roundtrips_through_ron() {
     }
 }
 
+/// A theme file's field no theme type names fails the load and names itself, in every struct a
+/// theme file reaches, as each derives `#[serde(deny_unknown_fields)]`: the stock dark theme with
+/// one unknown field put into one struct body at a time, each body a line that opens a struct
+/// whose next line names a field. A renamed field, `blur` for a material's `backdrop_blur`, fails
+/// the same way. Every widget theme's body is among the ones swept.
+#[test]
+fn an_unknown_field_fails_the_load_in_every_struct() {
+    let file = pretty(&Theme::stock(ColorScheme::Dark));
+    let lines: Vec<&str> = file.lines().collect();
+    let names_field = |line: &str| {
+        let line = line.trim_start();
+        line.split_once(':').is_some_and(|(name, _)| {
+            !name.is_empty()
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        })
+    };
+    let mut swept = Vec::new();
+    for (at, pair) in lines.windows(2).enumerate() {
+        if !(pair[0].trim_end().ends_with('(') && names_field(pair[1])) {
+            continue;
+        }
+        let indent = &pair[1][..pair[1].len() - pair[1].trim_start().len()];
+        let mut edited = lines.clone();
+        let unknown = format!("{indent}unknown_field_xyz: 0,");
+        edited.insert(at + 1, &unknown);
+        let error = ron::from_str::<Theme>(&edited.join("\n"))
+            .err()
+            .unwrap_or_else(|| panic!("an unknown field below line {} loaded", at + 1))
+            .to_string();
+        assert!(
+            error.contains("unknown_field_xyz"),
+            "line {}: {error}",
+            at + 1
+        );
+        swept.push(pair[0].trim());
+    }
+    for widget in [
+        "button: (",
+        "checkbox: (",
+        "tabs: (",
+        "text_edit: (",
+        "menu_bar: (",
+        "drag_value: (",
+        "expander: (",
+        "item: (",
+        "defaults: (",
+    ] {
+        assert!(swept.contains(&widget), "{widget} swept");
+    }
+
+    let renamed = file.replacen("backdrop_blur:", "blur:", 1);
+    assert_ne!(renamed, file, "the stock theme holds a material");
+    let error = ron::from_str::<Theme>(&renamed).expect_err("a renamed field loaded");
+    assert!(error.to_string().contains("`blur`"), "{error}");
+}
+
 #[test]
 fn widget_look_serde_roundtrip() {
     let cases = [

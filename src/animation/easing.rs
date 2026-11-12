@@ -3,6 +3,7 @@
 use crate::primitives::math::domain;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "snake_case")]
 /// The easing curve a duration-based tween follows.
 pub enum Easing {

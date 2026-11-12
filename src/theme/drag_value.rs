@@ -27,13 +27,11 @@ use crate::theme::text_edit::TextEditTheme;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct DragValueTheme {
-    /// The four per-state looks (`active` = pressed on the chip). `flatten` keeps theme files
-    /// flat (`[drag_value.hovered]`).
-    #[serde(flatten)]
+    /// The four per-state looks (`active` = pressed on the chip; `[drag_value.looks.hovered]`).
     pub looks: StatefulLook,
     /// Spacing and transition spec — see [`SlotDefaults`].
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
     /// Ink for the editor's caret.
     pub caret: RgbaF32,

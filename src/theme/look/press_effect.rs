@@ -20,6 +20,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// holds `None` ([`SlotDefaults::press`](crate::SlotDefaults::press)), so no press effect lacks
 /// its effect.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PressEffect {
     /// The color effect each press draws.
     pub effect: EffectName<PressInput>,

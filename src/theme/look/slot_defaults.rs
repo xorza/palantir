@@ -5,7 +5,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::theme::look::press_effect::PressEffect;
 
 /// What a themed widget contributes to the node rather than its look: default spacing, the
-/// transition spec and the press effect. Themed bundles `#[serde(flatten)]` it.
+/// transition spec and the press effect, a theme file's `defaults` of each themed widget.
 /// Named fields because `padding` and `margin` share a type.
 #[derive(
     Clone,
@@ -17,6 +17,7 @@ use crate::theme::look::press_effect::PressEffect;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none; explicit zero overrides it.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]

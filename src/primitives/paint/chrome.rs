@@ -30,6 +30,7 @@ use palantir_derive::{Animatable, Lerp};
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable)]
+#[serde(deny_unknown_fields)]
 #[must_use]
 pub struct Chrome {
     /// Zero (or sub-`EPS`) radii, the `Default`, are omitted from serialized output.

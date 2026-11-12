@@ -37,6 +37,7 @@ use ron::ser;
 use std::mem;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 enum Tab {
     Main,
     Prefs,

@@ -14,6 +14,7 @@ use crate::theme::palette::Palette;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ProgressBarTheme {
     /// Track color behind the fill.
     pub track: RgbaF32,

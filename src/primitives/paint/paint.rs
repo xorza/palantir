@@ -28,6 +28,7 @@ use palantir_derive::{Animatable, Lerp};
 /// [offsets](crate::widget::domain::offset), the border width, radial radii and the shadow's blur
 /// [lengths](crate::widget::domain::length). Every value but the border width packs into an f16 lane, so it is a [lane](crate::widget::domain::lane) too.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable)]
+#[serde(deny_unknown_fields)]
 #[must_use]
 pub struct Paint {
     /// The interior's brush. [`Brush::TRANSPARENT`] fills nothing.

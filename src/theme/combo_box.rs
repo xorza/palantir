@@ -16,6 +16,7 @@ use glam::Vec2;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ComboBoxTheme {
     /// Gutter between label and chevron; the trigger justifies its children apart, so this is the minimum gap.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]

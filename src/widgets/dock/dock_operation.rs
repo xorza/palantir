@@ -8,6 +8,7 @@ use crate::widgets::dock::tab_group::TabGroupId;
 
 /// Where a moved tab lands — the payload of [`DockOperation::MoveTab`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum DockDrop {
     /// Join `group`'s strip at `idx` (clamped to its length).
     Into {
@@ -28,6 +29,7 @@ pub enum DockDrop {
 
 /// One dock mutation, run by [`DockState::apply`](crate::DockState::apply) and transported by the application's queue or [`DockView::run`](crate::DockView::run). **Every operation tolerates a stale address**: it is built from the previous frame's response, so a vanished tab, group or split leaves the tree untouched. Tabs are named by identity, never strip position.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum DockOperation<T> {
     /// Make `tab` visible in its group and focus that group.
     ActivateTab {

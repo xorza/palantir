@@ -16,6 +16,7 @@ pub(crate) mod stops;
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 /// How a gradient fills past its ends.
 pub enum Spread {
     /// Clamp to nearest edge stop. CSS default.
@@ -32,6 +33,7 @@ pub enum Spread {
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 pub enum Interpolation {
     /// Perceptually uniform; the CSS Color 4 default. Avoids the muddy midpoint
     /// of complementary pairs.

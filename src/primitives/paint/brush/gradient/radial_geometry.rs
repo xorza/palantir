@@ -10,6 +10,7 @@ use std::hash;
 
 /// Geometry of a radial gradient: color runs outward from `center` along the elliptical `radius`, both in object-space 0..1 (origin top-left). The shader projects to `t = length((local01 - center) / radius)`, applies `Spread`, samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RadialGeometry {
     /// Ramp origin, in object-space `0..1` coordinates.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]

@@ -32,6 +32,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px; also the bars' and rows' width.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]

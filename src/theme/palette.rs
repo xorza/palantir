@@ -10,6 +10,7 @@ use crate::theme::metrics::Metrics;
 
 /// Semantic color roster for theme assembly. The three `element` rungs name a tier, never a widget state: a button rests on `element_mid` and hovers to `element_strong`, a menu row rests transparent and hovers to `element_mid`. Each rung sits further from `window_bg` than the one before it: brighter in a dark palette, darker in a light one.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Palette {
     /// Primary foreground / label ink.
     pub text: RgbaF32,

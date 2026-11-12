@@ -1,5 +1,15 @@
 # Themes
 
+- **A theme file names only fields palantir knows**: every type a file reaches derives
+  `#[serde(deny_unknown_fields)]`, so a misspelt or renamed field fails the load naming itself and
+  its place, as serde documents for a format whose fields are fixed
+  ([container attributes](https://serde.rs/container-attrs.html#deny_unknown_fields)), and
+  Darkroom's palette does. A theme bundle is a named field, never `#[serde(flatten)]`, which serde
+  documents does not work with it ([flatten](https://serde.rs/attr-flatten.html)); a test sweeps an
+  unknown field through every struct of the stock theme. Refused: a catch-all flattened map
+  checked after the load, a second route beside the attribute; warnings through `serde_ignored`,
+  a dependency for a typo that still loads as a default.
+
 - **`Metrics` carries the type ramp**, Fluent 2 by default. Refused: a size a recipe sets by hand,
   which an app's ramp cannot reach
   ([Fluent 2 typography](https://fluent2.microsoft.design/typography)).

@@ -39,6 +39,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct WidgetLook {
     /// Fill, stroke, corners and shadow.
     pub chrome: Chrome,

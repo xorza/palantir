@@ -583,6 +583,7 @@ fn material_fallback(p: &Palette, m: &Metrics) -> RgbaF32 {
 /// a public inherent `Theme::deserialize` that skips the check, and that the call
 /// `Theme::deserialize(d)` picks over the trait's.
 #[derive(Debug, ::serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(remote = "Theme")]
 struct UncheckedTheme {
     button: ButtonTheme,

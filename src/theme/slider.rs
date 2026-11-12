@@ -15,6 +15,7 @@ use crate::theme::palette::Palette;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct SliderTheme {
     /// The colors of a slider that takes input.
     pub enabled: SliderColors,
@@ -38,6 +39,7 @@ pub struct SliderTheme {
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct SliderColors {
     /// Unfilled track color (right of the knob).
     pub track: RgbaF32,

@@ -21,6 +21,7 @@ const MAX_SWING_RATE: f64 = PI * MIN_DISPLAY_HZ;
 
 /// A damped spring's stiffness `k` and damping `c`, as an [`AnimationSpec`](crate::AnimationSpec) authors them and every step reads them.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct Spring {
     pub(super) stiffness: f32,
     pub(super) damping: f32,

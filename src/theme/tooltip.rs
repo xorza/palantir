@@ -21,6 +21,7 @@ use std::time::Duration;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).
     pub panel: Chrome,

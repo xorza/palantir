@@ -4,7 +4,7 @@ use crate::primitives::input::interaction::response_state::ResponseState;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 
-/// The four-state look pack of state-styled widget themes. `active` is the widget's *engaged* state (pressed for Button / Toggle / MenuItem, focused for TextEdit), named to [`Self::pick`] as an [`Engagement`] so precedence is uniform. Embedded (serde-flattened) by [`crate::ButtonTheme`], [`crate::TextEditTheme`], [`crate::MenuItemTheme`]; [`crate::ToggleTheme`] keeps one per checked state.
+/// The four-state look pack of state-styled widget themes. `active` is the widget's *engaged* state (pressed for Button / Toggle / MenuItem, focused for TextEdit), named to [`Self::pick`] as an [`Engagement`] so precedence is uniform. A field of [`crate::ButtonTheme`], [`crate::TextEditTheme`], [`crate::MenuItemTheme`]; [`crate::ToggleTheme`] keeps one per checked state.
 // Not `Copy` because `WidgetLook` isn't.
 #[derive(
     Clone,
@@ -16,6 +16,7 @@ use crate::theme::look::engagement::Engagement;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct StatefulLook {
     /// At rest.
     pub normal: WidgetLook,

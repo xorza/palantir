@@ -20,6 +20,7 @@ use glam::Vec2;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct DockTheme {
     /// The region a drop would occupy: its wash, outline and corners.
     pub preview: Chrome,

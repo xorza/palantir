@@ -14,6 +14,7 @@ use crate::theme::color_scheme::ColorScheme;
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
+#[serde(deny_unknown_fields)]
 pub struct UiPreferences {
     /// The scheme every window shows, from its next frame: the frame that sets it keeps its
     /// scheme, so no frame mixes two. The system's is [`ColorScheme::FALLBACK`] where nothing

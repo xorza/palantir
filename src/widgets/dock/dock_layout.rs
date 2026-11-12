@@ -11,6 +11,7 @@ use crate::widgets::dock::tab_group::TabGroupId;
 /// pinned tab and the view's policy are the application's, given again at each load, so a file
 /// cannot carry a different one.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DockLayout<T> {
     pub(super) nodes: Vec<DockNode<T>>,
     pub(super) focused: TabGroupId,

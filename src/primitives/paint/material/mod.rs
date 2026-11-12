@@ -126,6 +126,7 @@ use crate::primitives::paint::material::material_fallback::MaterialFallback;
 /// as the material holds, as an [`EffectPaint`](crate::widget::EffectPaint)'s effect must be
 /// loaded.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 #[must_use]
 pub struct Material {
     /// The backdrop effect that shows what the material reads, with its parameters.

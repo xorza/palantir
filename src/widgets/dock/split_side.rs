@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// How a split arranges its children.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum SplitDirection {
     /// Side by side, divided by a vertical rule.
     Row,
@@ -13,6 +14,7 @@ pub enum SplitDirection {
 
 /// Which edge of a pane a split lands on; `Left`/`Right` make a [`SplitDirection::Row`], `Top`/`Bottom` a [`SplitDirection::Col`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum SplitSide {
     /// Left half.
     Left,

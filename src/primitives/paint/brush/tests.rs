@@ -27,6 +27,7 @@ fn h(g: &LinearGradient) -> u64 {
 }
 
 #[derive(Debug, ::serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StopsDocument {
     stops: GradientStops,
 }
@@ -303,6 +304,7 @@ fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
 #[test]
 fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
     #[derive(Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct BrushDocument {
         brush: Brush,
     }

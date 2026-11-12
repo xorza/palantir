@@ -16,6 +16,7 @@ use crate::theme::palette::Palette;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct FocusRingTheme {
     /// Ring color.
     pub color: RgbaF32,

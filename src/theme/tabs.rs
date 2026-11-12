@@ -31,6 +31,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     palantir_derive::Lerp,
     palantir_derive::ThemeWalk,
 )]
+#[serde(deny_unknown_fields)]
 pub struct TabsTheme {
     /// Look pack for every other chip; a ghost by default, filled only under the pointer.
     pub unselected: StatefulLook,
@@ -98,7 +99,6 @@ pub struct TabsTheme {
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub label_gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
-    #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 

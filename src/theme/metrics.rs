@@ -15,6 +15,7 @@ use glam::Vec2;
 ///
 /// Kept beside the palette rather than in it, as egui keeps `Style::spacing` beside `Style::visuals`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Metrics {
     /// Font sizes, by how loud the text is.
     pub text: TextSteps,
@@ -44,6 +45,7 @@ pub struct Metrics {
 /// The font sizes, by prominence rather than by the surface that uses one, so a new surface picks
 /// a tier by how loud its text is.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TextSteps {
     /// Secondary text and dense surfaces: a tooltip, a caption over a group, a field's help.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
@@ -58,6 +60,7 @@ pub struct TextSteps {
 
 /// The spacing steps, smallest first.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SpaceSteps {
     /// The densest rows: a subtitle under its title, a chip's vertical inset.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
@@ -81,6 +84,7 @@ pub struct SpaceSteps {
 
 /// The corner radii, by the kind of surface.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RadiusSteps {
     /// A glyph-sized shape: a dock's drop preview.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
@@ -98,6 +102,7 @@ pub struct RadiusSteps {
 
 /// The line widths, by the kind of line.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StrokeSteps {
     /// A rule or a border, a field's included.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
@@ -113,6 +118,7 @@ pub struct StrokeSteps {
 /// A shadow's shape without its color: [`Palette::float_shadow`](crate::Palette::float_shadow)
 /// casts it in the palette's shadow color.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ShadowGeometry {
     /// Shift in logical pixels.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
@@ -128,6 +134,7 @@ pub struct ShadowGeometry {
 /// over any page, so a float draws as its plain panel, translucent and readable, while
 /// transparency is reduced.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FloatMaterial {
     /// The material, a stock one as [`Material::frosted`], or one over an app's effect; its
     /// luminance bounds and its fallback give way to each float's.

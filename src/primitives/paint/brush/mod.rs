@@ -20,6 +20,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 // Not `Copy`: the gradient variants carry inline stops and the recording chain threads a brush
 // through several functions per widget; see `Animatable`.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum Brush {
     /// One color.
     Solid(RgbaF32),

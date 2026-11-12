@@ -35,6 +35,7 @@ pub struct AnimationSpec {
 /// also the wire shape, so [`AnimationSpec`]'s hand-written impls only add
 /// validation.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum AnimationMotion {
     Duration { secs: f32, ease: Easing },
