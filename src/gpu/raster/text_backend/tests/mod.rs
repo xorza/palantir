@@ -3,9 +3,14 @@
 //! in `raster_atlas::raster_quad`.
 
 use crate::common::span::Span;
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::page_list::PageListConfig;
+use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::raster::raster_atlas::internals::unallocated_dies_at;
 use crate::gpu::raster::raster_pass::RasterDraw;
 use crate::gpu::raster::text_backend::TextBackend;
+use crate::gpu::raster::text_backend::encode::cache::EncodedGlyph;
 use crate::gpu::raster::text_backend::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::LibmVec2;
@@ -14,7 +19,7 @@ use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use glam::{IVec2, Vec2};
+use glam::{IVec2, U16Vec2, Vec2};
 use std::slice;
 
 mod text_rig;
@@ -153,6 +158,68 @@ fn an_evicted_raster_invalidates_only_its_runs() {
         rig.pool.placement(rebuilt).is_some(),
         "and that raster is live"
     );
+}
+
+/// A cached run whose glyphs a drain moved replays at their new places, with no re-encode: on
+/// pages of 64², the run's glyphs sit on the first page; 32² icons fill the rest of it and open a
+/// second, and those on the first go, which leaves it the emptiest, its glyphs fitting the
+/// second's free texels twice. The decay drains them there and closes the first page, and the
+/// next frame's replay packs each glyph's `uv` from its moved placement, on page 1.
+#[test]
+fn a_cached_run_replays_its_moved_glyphs_where_they_moved() {
+    let mut rig = TextRig::new();
+    let config = PageListConfig {
+        first_edge: 64,
+        page_edge: 64,
+        soft_bytes: 1 << 20,
+    };
+    rig.pool = AtlasPool::with_configs([config; 3], 16384);
+    let runs = [rig.row("File", 14.0 * 1.2, Vec2::new(20.0, 20.0))];
+    rig.frame(1.0, &[&runs]);
+    let templates: Vec<EncodedGlyph> = rig
+        .backend
+        .encoder
+        .cache()
+        .resident_rows()
+        .flat_map(|(_, span)| rig.backend.encoder.cache().templates(span).to_vec())
+        .collect();
+    assert!(
+        templates
+            .iter()
+            .all(|g| rig.pool.placement(g.handle).unwrap().page == 0)
+    );
+    let mut icons = Vec::new();
+    for _ in 0..16 {
+        let icon = rig
+            .pool
+            .allocate(AtlasFormat::R8, Tenant::Icons, U16Vec2::splat(32))
+            .unwrap();
+        icons.push(icon);
+        if rig.pool.placement(icon).unwrap().page == 1 {
+            break;
+        }
+    }
+    for &icon in &icons {
+        if rig.pool.placement(icon).unwrap().page == 0 {
+            rig.pool.release(icon);
+        }
+    }
+    rig.tick();
+    rig.tick();
+    assert!(rig.pool.list(AtlasFormat::R8).page(0).is_none(), "drained");
+    let arena = rig.backend.encoder.cache().arena_len();
+    rig.frame(1.0, &[&runs]);
+    assert_eq!(rig.backend.encoder.cache().arena_len(), arena, "replayed");
+    let quads = rig.backend.pass.instances();
+    assert_eq!(quads.len(), templates.len());
+    for (quad, glyph) in quads.iter().zip(&templates) {
+        let placement = rig.pool.placement(glyph.handle).unwrap();
+        assert_eq!(placement.page, 1);
+        assert_eq!(
+            quad.uv_and_kind,
+            glyph.instance.placed_at(placement).uv_and_kind
+        );
+    }
 }
 
 /// Two batches prepared in one frame ride a single deferred vbuf write

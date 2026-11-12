@@ -385,23 +385,38 @@ until step 3, so its root expects `dead_code` outside tests, with that reason.
   under it halves; a run with a gap uploads the three ramps' bakes. The memory study's mirror row is
   now the staging's.
 
-### 7. Decay
+### 7. Decay — done but 7.7's A/B, and moves by draw where M2 asks for them
 
-- **7.1 Age-out.** WebRender's age table over a list's pressure, at most 32 evictions a frame below
-  four times the threshold; stamped, last-frame and pinned entries never.
-- **7.2 Drain.** The emptiest page whose live items fit the others drains into the fullest pages
-  first, within the move budget; a grow cancels it.
-- **7.3 Shrink.** One page below a quarter for an expiry window opens a page at the smallest
-  power-of-two edge holding twice its live area and drains into it.
-- **7.4 Free.** An emptied page and an expired scratch texture go in the next commit.
-- **7.5 When.** The plan runs at the end of the first submit of each display frame; its GPU half
-  records first in the next submit.
-- **7.6 Tests.** Exact plans: which page drains, which entries move and where, how many texels a
-  frame. No page is source and destination in one frame. A pinned entry moves. A shrink lands at
-  half. A list above a quarter never shrinks. Scripted on the offscreen host: a text burst then 300
-  small frames ends at the first page's edge; a glass opened and closed frees its scratch an
-  expiry window later; each frame in between within the bounds.
-- **7.7 Verify:** the full A/B set of the exit criteria, worst frame included.
+- **7.1 — done.** WebRender's age table over a list's bytes in multiples of its soft budget, 400
+  frames at none to 1 past six, at most 32 evictions a frame below four times the budget, never a
+  pinned item or one drawn this frame or the last; only past the budget or past the first page, as
+  WebRender ages its cache past its threshold or across several textures. The age-out walks at most
+  1024 slab slots a frame from where it stopped.
+- **7.2 — done.** With no drain under way, the emptiest page whose items fit half the others' free
+  texels drains into them, within a frame's `MoveBudget` of 512² texels and 64 copies; an insert
+  that finds no room cancels the drain rather than grow. `PageState::Filling` went: one source at a
+  time makes every other page a destination alone.
+- **7.3 — done.** One page past the first edge under a quarter full for an expiry window opens a
+  page at the smallest power-of-two edge from the first that holds twice its items' texels, and
+  drains into it.
+- **7.4 — done.** A drain closes its page once empty; the next commit records the moves from the
+  old texture, then drops it. Expired scratch goes at `advance_to`, as before.
+- **7.5 — done.** `AtlasPool::end_submit` decays once a display frame, at the end of its first
+  submit, before the tenants drain their evictions; the moves wait in the pool for the next
+  commit, ahead of every upload, bake and draw.
+- **7.6 — done.** Tests: the age-out at two pressures, frame by frame; a drain's one move and its
+  closed page; a drain within a budget across frames; a shrink landing at half, and a quarter that
+  never shrinks; a move's texels copied byte for byte from a page closed in the same decay; a cached
+  run replaying moved glyphs; the seeded model run with decay, no page a source and a destination
+  in one frame; a burst of 2000 glyphs back at the first edge, every frame within the bounds; a
+  closed glass's scratch freed an expiry window later, on the GPU host. The burst takes over 500
+  frames, as WebRender's 400-frame age at no pressure comes first, so the offscreen script of 300
+  runs at the pool, which takes milliseconds.
+- **7.7 Verify.** The gate and `cargo visual` pass. To run: the full A/B set of the exit criteria,
+  worst frame included.
+- **To do: moves by draw.** Moves go by copy commands on every device for now; once M2 runs on V3D,
+  the AMD iGPU and the handheld, a device where copies cost past an instanced draw a destination
+  page takes the draw, as `Packed pages` decides.
 
 ### 8. Memory pressure
 

@@ -133,13 +133,6 @@ impl ScratchCache {
         texture.state = ScratchState::Idle { since: frame };
     }
 
-    /// The size of the texture `id` holds, `None` once released.
-    pub(crate) fn size(&self, id: ScratchId) -> Option<UVec2> {
-        let texture = self.textures.get(id.idx as usize)?;
-        (texture.generation == id.generation && texture.state == ScratchState::Held)
-            .then_some(texture.size)
-    }
-
     /// Drop the textures idle for an expiry window at display frame `frame`
     /// ([`EXPIRY_FRAMES`]).
     pub(crate) fn expire(&mut self, frame: u64) {
@@ -153,6 +146,13 @@ impl ScratchCache {
     }
 
     /// Drop every idle texture now, whatever its age.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the memory-pressure purge, step 8 of `.notes/proposals/atlas-pool.md`, calls it"
+        )
+    )]
     pub(crate) fn purge(&mut self) {
         for texture in &mut self.textures {
             if matches!(texture.state, ScratchState::Idle { .. }) {
@@ -180,9 +180,21 @@ impl ScratchCache {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::gpu::atlas::scratch_cache::ScratchId;
     use crate::gpu::atlas::scratch_cache::{ScratchCache, ScratchState};
+    #[cfg(test)]
+    use glam::UVec2;
 
     impl ScratchCache {
+        /// The size of the texture `id` holds, `None` once released.
+        #[cfg(test)]
+        pub(crate) fn size(&self, id: ScratchId) -> Option<UVec2> {
+            let texture = self.textures.get(id.idx as usize)?;
+            (texture.generation == id.generation && texture.state == ScratchState::Held)
+                .then_some(texture.size)
+        }
+
         /// The texels of the textures an item holds, the live part of [`Self::texels`].
         pub(crate) fn held_texels(&self) -> u64 {
             self.textures

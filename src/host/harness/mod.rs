@@ -1139,14 +1139,24 @@ pub(crate) mod internals {
             }
         }
 
-        /// The texels of the backdrop results' scratch textures a result holds.
+        /// The texels of the backdrop results' scratch textures, held or idle.
         pub(crate) fn backdrop_scratch_texels(&self) -> u64 {
             match &self.paint {
-                HarnessPaint::Gpu { device, .. } => device
-                    .backend()
-                    .atlas_held_scratch_texels(AtlasFormat::Rgba16F),
+                HarnessPaint::Gpu { device, .. } => {
+                    device.backend().atlas_scratch_texels(AtlasFormat::Rgba16F)
+                }
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
                     panic!("a harness below Depth::Gpu keeps no result")
+                }
+            }
+        }
+
+        /// Whether the atlas pool decayed in the last frame's display frame.
+        pub(crate) const fn atlas_decayed(&self) -> bool {
+            match &self.paint {
+                HarnessPaint::Gpu { device, .. } => device.backend().atlas_decayed(),
+                HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
+                    panic!("a harness below Depth::Gpu holds no pool")
                 }
             }
         }

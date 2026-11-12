@@ -20,7 +20,7 @@ fn pool() -> AtlasPool {
 }
 
 /// Commit `pool` into `textures` on an encoder of its own, submitted and waited for.
-fn commit(gpu: &TestGpu, textures: &mut AtlasTextures, pool: &AtlasPool) {
+fn commit(gpu: &TestGpu, textures: &mut AtlasTextures, pool: &mut AtlasPool) {
     let mut encoder = gpu
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -54,7 +54,7 @@ fn a_grown_page_keeps_its_texels() {
     let mut textures = AtlasTextures::new(&gpu);
     pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
         .unwrap();
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     assert_eq!(textures.generation(AtlasFormat::R8), 1);
     assert_eq!(textures.bytes(AtlasFormat::R8), 32 * 32);
     let pattern: Vec<u8> = (0..32 * 32u32).map(|i| (i % 251) as u8).collect();
@@ -68,7 +68,7 @@ fn a_grown_page_keeps_its_texels() {
     pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(32))
         .unwrap();
     assert_eq!(pool.list(AtlasFormat::R8).page(0).unwrap().edge(), 64);
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     assert_eq!(textures.generation(AtlasFormat::R8), 2);
     assert_eq!(
         textures.bytes(AtlasFormat::R8),
@@ -85,8 +85,66 @@ fn a_grown_page_keeps_its_texels() {
             assert_eq!(read[y * 64 + x], want, "texel ({x}, {y})");
         }
     }
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     assert_eq!(textures.generation(AtlasFormat::R8), 2, "nothing changed");
+}
+
+/// A drain's move copies its item's texels to its new place byte for byte at the next commit,
+/// though the page it left closed in the same decay: four 16² items fill a 32² page and a fifth
+/// opens a second; with two of the first page's gone, the decay drains the second into the first's
+/// free (16, 0) and closes it. The commit copies the second page's top-left 16² there, keeps every
+/// other texel of the first page, and drops the second page's texture, one change of view.
+#[test]
+fn a_move_copies_its_texels_from_the_page_it_left() {
+    let gpu = headless_test_gpu();
+    let config = PageListConfig {
+        first_edge: 32,
+        page_edge: 32,
+        soft_bytes: 1 << 20,
+    };
+    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let mut textures = AtlasTextures::new(&gpu);
+    let insert = |pool: &mut AtlasPool| {
+        pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+            .unwrap()
+    };
+    let first: Vec<_> = (0..4).map(|_| insert(&mut pool)).collect();
+    let fifth = insert(&mut pool);
+    commit(&gpu, &mut textures, &mut pool);
+    let patterns: [Vec<u8>; 2] = [0, 1].map(|page| {
+        (0..32 * 32u32)
+            .map(|i| (i % 251) as u8 ^ (page * 0x80))
+            .collect()
+    });
+    for (page, pattern) in patterns.iter().enumerate() {
+        fill(
+            &gpu,
+            textures.page_texture(AtlasFormat::R8, page).unwrap(),
+            32,
+            pattern,
+        );
+    }
+    pool.release(first[1]);
+    pool.release(first[2]);
+    pool.advance_to(1);
+    pool.end_submit();
+    assert_eq!(pool.placement(fifth).unwrap().page, 0);
+    assert!(pool.list(AtlasFormat::R8).page(1).is_none());
+    let generation = textures.generation(AtlasFormat::R8);
+    commit(&gpu, &mut textures, &mut pool);
+    assert_eq!(textures.generation(AtlasFormat::R8), generation + 1);
+    assert!(textures.page_texture(AtlasFormat::R8, 1).is_none());
+    let read = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 0).unwrap());
+    for y in 0..32usize {
+        for x in 0..32usize {
+            let want = if (16..32).contains(&x) && y < 16 {
+                patterns[1][y * 32 + x - 16]
+            } else {
+                patterns[0][y * 32 + x]
+            };
+            assert_eq!(read[y * 32 + x], want, "texel ({x}, {y})");
+        }
+    }
 }
 
 /// A closed page drops its texture and its view slot binds the stand-in, where an open page binds
@@ -105,7 +163,7 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
         .allocate(AtlasFormat::R8, Tenant::Glyphs, side)
         .unwrap();
     assert_eq!(pool.placement(wide).unwrap().page, 1);
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     fill(
         &gpu,
         textures.page_texture(AtlasFormat::R8, 1).unwrap(),
@@ -116,7 +174,7 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
     pool.release(wide);
     pool.close_page(AtlasFormat::R8, 1);
     let generation = textures.generation(AtlasFormat::R8);
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     assert!(textures.page_texture(AtlasFormat::R8, 1).is_none());
     assert_eq!(textures.generation(AtlasFormat::R8), generation + 1);
     let list = &textures.lists[AtlasFormat::R8 as usize];
@@ -130,7 +188,7 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
         .allocate(AtlasFormat::R8, Tenant::Glyphs, side)
         .unwrap();
     assert_eq!(pool.placement(again).unwrap().page, 1);
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     let read = gpu.read_texture(textures.page_texture(AtlasFormat::R8, 1).unwrap());
     assert!(
         read.iter().all(|&texel| texel == 0),
@@ -149,19 +207,19 @@ fn a_scratch_texture_follows_its_slot() {
     let id = pool
         .acquire_scratch(AtlasFormat::R8, UVec2::splat(100))
         .unwrap();
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     assert!(textures.scratch_view(AtlasFormat::R8, id.idx).is_some());
     assert_eq!(textures.bytes(AtlasFormat::R8), 128 * 128);
     assert_eq!(textures.generation(AtlasFormat::R8), 1);
     pool.release_scratch(AtlasFormat::R8, id);
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     assert_eq!(
         textures.generation(AtlasFormat::R8),
         1,
         "an idle texture stays"
     );
     pool.advance_to(EXPIRY_FRAMES);
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     assert!(textures.scratch_view(AtlasFormat::R8, id.idx).is_none());
     assert_eq!(textures.bytes(AtlasFormat::R8), 0);
     assert_eq!(textures.generation(AtlasFormat::R8), 2);
@@ -180,7 +238,7 @@ fn new_textures_take_every_open_page_at_the_first_commit() {
             .unwrap();
     }
     let mut textures = AtlasTextures::new(&gpu);
-    commit(&gpu, &mut textures, &pool);
+    commit(&gpu, &mut textures, &mut pool);
     for format in AtlasFormat::ALL {
         assert_eq!(
             textures.bytes(format),

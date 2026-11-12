@@ -111,7 +111,7 @@ fn a_baked_table_holds_the_cutout_it_tabulates() {
         .collect();
     tables.bakes.clone_from(&bakes);
     gpu.frame(|ctx| {
-        textures.commit(ctx.gpu, ctx.encoder, &pool);
+        textures.commit(ctx.gpu, ctx.encoder, &mut pool);
         tables.pages.follow(ctx.gpu, &textures);
         tables.bake(ctx, &textures);
     });

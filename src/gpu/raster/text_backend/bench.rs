@@ -280,7 +280,7 @@ impl Fixture {
                     },
                 );
             }
-            self.atlas.commit(ctx.gpu, ctx.encoder, &self.pool);
+            self.atlas.commit(ctx.gpu, ctx.encoder, &mut self.pool);
             self.group.follow(ctx.gpu, &self.atlas);
             self.backend.flush(&mut ctx, &self.atlas);
         }
@@ -289,6 +289,7 @@ impl Fixture {
         self.gpu.queue.submit([encoder.finish()]);
         self.belt.recall();
         self.gpu.wait();
+        self.pool.end_submit();
         self.backend.tick_frame(&mut self.pool);
     }
 

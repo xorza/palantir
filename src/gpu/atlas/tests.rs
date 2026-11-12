@@ -4,7 +4,7 @@
 use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
-use crate::gpu::atlas::page_list::{MAX_PAGES, PageListConfig};
+use crate::gpu::atlas::page_list::{MAX_PAGES, Page, PageListConfig};
 use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::atlas::{AtlasPool, error::AtlasError};
 use glam::{U16Vec2, UVec2};
@@ -37,11 +37,11 @@ struct Held {
     last_use: u64,
 }
 
-/// Over four thousand random steps on `R8` lists small enough to grow, evict and fill, the pool
-/// agrees with a model after each: every live item sits where it was put, inside its page, apart
-/// from every other on that page; each page's live texels are its items'; the bytes are the open
-/// pages'; and every evicted item was neither pinned nor drawn this frame or the last, and reads
-/// as stale.
+/// Over four thousand random steps on `R8` lists small enough to grow, evict, fill and decay, the
+/// pool agrees with a model after each: every live item sits where it was put or its last move
+/// took it, inside its page, apart from every other on that page; each page's live texels are its
+/// items'; the bytes are the open pages'; every evicted item was neither pinned nor drawn this
+/// frame or the last, and reads as stale; and no frame's moves land on a page they leave.
 #[test]
 fn the_pool_agrees_with_a_model_over_a_seeded_run() {
     let config = PageListConfig {
@@ -62,6 +62,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
     ];
     let mut refused = 0;
     let mut evicted = 0;
+    let mut moved = 0;
     for step in 0..4000 {
         let live: Vec<AtlasHandle> = model.values().map(|held| held.handle).collect();
         let pick = |rng: &mut Rng| live[rng.below(live.len() as u64) as usize];
@@ -111,7 +112,24 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
                     held.pins += 1;
                 }
             }
-            8 | 9 => pool.advance_to(pool.frame() + 1),
+            8 | 9 => {
+                pool.advance_to(pool.frame() + 1);
+                pool.end_submit();
+                let moves: Vec<_> = pool.commit_list(AtlasFormat::R8).moves.collect();
+                for m in &moves {
+                    assert!(
+                        moves.iter().all(|other| other.to.page != m.from.page),
+                        "step {step}: page {} a source and a destination",
+                        m.from.page
+                    );
+                    let held = model
+                        .values_mut()
+                        .find(|held| held.placement == m.from)
+                        .expect("a moved item was live");
+                    held.placement = m.to;
+                    moved += 1;
+                }
+            }
             _ => {}
         }
         for tenant in tenants {
@@ -135,6 +153,7 @@ fn the_pool_agrees_with_a_model_over_a_seeded_run() {
         check(&pool, &model, step);
     }
     assert!(evicted > 100, "the run evicts, {evicted} items");
+    assert!(moved > 0, "the run drains");
     assert!(refused > 0, "the run reaches the hard cap");
 }
 
@@ -247,4 +266,52 @@ fn a_scratch_texture_idles_then_expires_with_the_frames() {
     );
     pool.advance_to(3 + EXPIRY_FRAMES);
     assert_eq!(pool.list(AtlasFormat::Rgba16F).bytes(), 0);
+}
+
+/// A burst of glyphs grows the mask list past its first page; frames that draw ten of them after
+/// it age the rest out and shrink the list back to its first edge, every frame within the bounds.
+/// Under the starting constants, 2000 items of 16² at frame 1 take the first page to 1024, a
+/// mebibyte under the 8 MiB budget: pressure 0, so an item goes once idle past 400 frames, the
+/// first at frame 402, at most 32 a frame. Once its items fill under a quarter of it for an expiry
+/// window, the page drains into a page at the first edge, 256, which holds the ten twice over. No
+/// frame moves past its budget, and the ten stay throughout.
+#[test]
+fn a_burst_decays_back_to_the_first_page_within_the_bounds() {
+    let mut pool = AtlasPool::new(16384);
+    pool.advance_to(1);
+    let burst: Vec<AtlasHandle> = (0..2000)
+        .map(|_| {
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(pool.list(AtlasFormat::R8).page(0).unwrap().edge(), 1024);
+    let kept = &burst[..10];
+    let mut first_eviction = None;
+    for frame in 2..=700 {
+        pool.advance_to(frame);
+        for &handle in kept {
+            assert!(
+                pool.stamp(handle).is_some(),
+                "frame {frame}: a drawn item went"
+            );
+        }
+        pool.end_submit();
+        let evicted = pool.drain_evicted(Tenant::Glyphs).count();
+        assert!(evicted <= 32, "frame {frame}: {evicted} evictions");
+        if evicted > 0 {
+            first_eviction.get_or_insert(frame);
+        }
+        let moves: Vec<_> = pool.commit_list(AtlasFormat::R8).moves.collect();
+        let texels: u64 = moves.iter().map(|m| m.from.texels()).sum();
+        assert!(moves.len() <= 64, "frame {frame}: {} copies", moves.len());
+        assert!(texels <= 512 * 512, "frame {frame}: {texels} texels moved");
+    }
+    assert_eq!(first_eviction, Some(402));
+    let list = pool.list(AtlasFormat::R8);
+    let pages: Vec<u32> = (0..MAX_PAGES)
+        .filter_map(|idx| list.page(idx).map(Page::edge))
+        .collect();
+    assert_eq!(pages, [256], "back at the first edge");
+    assert_eq!(list.bytes(), 256 * 256);
 }

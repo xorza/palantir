@@ -1,9 +1,9 @@
 //! [`AtlasTextures`]: the pool's GPU half, the textures behind its pages and scratch slots, made
 //! to follow the CPU half at each commit.
 
-use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::page_list::{MAX_PAGES, PageList};
+use crate::gpu::atlas::page_list::{MAX_PAGES, Move, PageList};
+use crate::gpu::atlas::{AtlasPool, ListCommit};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
@@ -92,42 +92,81 @@ impl ListTextures {
         }
     }
 
-    /// Make the textures follow `list`: a page opened makes its texture, a page grown in its slot
-    /// makes a larger one and copies the old texels into its top-left on `encoder`, a page closed
-    /// drops its texture; a scratch slot makes or drops its texture as its size comes and goes.
-    fn commit(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, list: &PageList) {
-        for (idx, texture) in self.pages.iter_mut().enumerate() {
-            let page = list.page(idx);
-            let made = match (page, texture.as_ref()) {
-                (None, None) => continue,
-                (None, Some(_)) => None,
-                (Some(page), Some(held))
-                    if held.epoch == page.epoch() && held.bound.size().x == page.edge() =>
-                {
-                    continue;
+    /// Make the textures follow `list`, recording on `encoder`: a page opened makes its texture, a
+    /// page grown in its slot makes a larger one and copies the old texels into its top-left; then
+    /// each of `moves` copies its item from the page it left to its new one; then a page closed
+    /// drops its texture, and a scratch slot makes or drops its texture as its size comes and
+    /// goes. A move's source is the texture of the page opening it left, whether its slot still
+    /// holds that opening or closed it, or took another, this commit.
+    fn commit(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        list: &PageList,
+        moves: impl Iterator<Item = Move>,
+    ) {
+        let mut previous = std::mem::replace(&mut self.pages, [const { None }; MAX_PAGES]);
+        for (idx, held) in previous.iter_mut().enumerate() {
+            let Some(page) = list.page(idx) else {
+                if held.is_some() {
+                    self.generation += 1;
                 }
-                (Some(page), held) => {
-                    let edge = page.edge();
-                    let bound =
-                        Bound::new(gpu, "palantir.atlas.page", self.format, UVec2::splat(edge));
-                    if let Some(held) = held.filter(|held| held.epoch == page.epoch()) {
-                        let old = held.bound.size();
-                        debug_assert!(old.x < edge, "a page grows in its slot, never shrinks");
-                        encoder.copy_texture_to_texture(
-                            held.bound.texture.as_image_copy(),
-                            bound.texture.as_image_copy(),
-                            texel::extent(old),
-                        );
-                    }
-                    Some(PageTexture {
-                        bound,
-                        epoch: page.epoch(),
-                    })
-                }
+                continue;
             };
-            *texture = made;
+            let edge = page.edge();
+            let same = |held: &PageTexture| held.epoch == page.epoch();
+            if held
+                .as_ref()
+                .is_some_and(|held| same(held) && held.bound.size().x == edge)
+            {
+                self.pages[idx] = held.take();
+                continue;
+            }
+            let bound = Bound::new(gpu, "palantir.atlas.page", self.format, UVec2::splat(edge));
+            if let Some(held) = held.as_ref().filter(|held| same(held)) {
+                let old = held.bound.size();
+                debug_assert!(old.x < edge, "a page grows in its slot, never shrinks");
+                encoder.copy_texture_to_texture(
+                    held.bound.texture.as_image_copy(),
+                    bound.texture.as_image_copy(),
+                    texel::extent(old),
+                );
+            }
+            self.pages[idx] = Some(PageTexture {
+                bound,
+                epoch: page.epoch(),
+            });
             self.generation += 1;
         }
+        for Move {
+            from,
+            from_epoch,
+            to,
+        } in moves
+        {
+            let at = usize::from(from.page);
+            let source = [&self.pages[at], &previous[at]]
+                .into_iter()
+                .flatten()
+                .find(|texture| texture.epoch == from_epoch)
+                .expect("a move's source page was committed");
+            let dest = self.pages[usize::from(to.page)]
+                .as_ref()
+                .expect("a move lands on an open page");
+            debug_assert_eq!(from.size, to.size, "a move keeps its item's size");
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    origin: texel::origin(from.origin.as_uvec2()),
+                    ..source.bound.texture.as_image_copy()
+                },
+                wgpu::TexelCopyTextureInfo {
+                    origin: texel::origin(to.origin.as_uvec2()),
+                    ..dest.bound.texture.as_image_copy()
+                },
+                texel::extent(from.size.as_uvec2()),
+            );
+        }
+        drop(previous);
         let slots = list.scratch().slots();
         self.scratch.resize_with(slots.len(), || None);
         for (texture, size) in self.scratch.iter_mut().zip(slots) {
@@ -141,19 +180,6 @@ impl ListTextures {
             }
             self.generation += 1;
         }
-    }
-
-    fn bytes(&self) -> u64 {
-        let pages = self.pages.iter().flatten().map(|page| &page.bound.texture);
-        let scratch = self.scratch.iter().flatten().map(|bound| &bound.texture);
-        pages
-            .chain(scratch)
-            .map(|texture| {
-                let size = texel::size(texture);
-                u64::from(size.x) * u64::from(size.y)
-            })
-            .sum::<u64>()
-            * u64::from(self.format.texel_bytes())
     }
 }
 
@@ -172,16 +198,17 @@ impl AtlasTextures {
         }
     }
 
-    /// Make every texture follow `pool`, a grow's copy recorded on `encoder`: at the top of a
-    /// submit's upload phase, ahead of every upload, bake and draw that writes or reads them.
+    /// Make every texture follow `pool`, a grow's and the drains' copies recorded on `encoder`,
+    /// the moves taken from `pool`: ahead of every upload, bake and draw that writes or reads them.
     pub(crate) fn commit(
         &mut self,
         gpu: &Gpu,
         encoder: &mut wgpu::CommandEncoder,
-        pool: &AtlasPool,
+        pool: &mut AtlasPool,
     ) {
         for (textures, format) in self.lists.iter_mut().zip(AtlasFormat::ALL) {
-            textures.commit(gpu, encoder, pool.list(format));
+            let ListCommit { list, moves } = pool.commit_list(format);
+            textures.commit(gpu, encoder, list, moves);
         }
     }
 
@@ -221,23 +248,39 @@ impl AtlasTextures {
             .as_ref()
             .map(|bound| &bound.view)
     }
-
-    /// The bytes of `format`'s page and scratch textures, which the CPU half counts as
-    /// [`PageList::bytes`] once committed.
-    pub(crate) fn bytes(&self, format: AtlasFormat) -> u64 {
-        self.lists[format as usize].bytes()
-    }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::atlas::AtlasPool;
     use crate::gpu::atlas::atlas_format::AtlasFormat;
-    use crate::gpu::atlas::atlas_textures::AtlasTextures;
+    use crate::gpu::atlas::atlas_textures::{AtlasTextures, ListTextures};
     use crate::gpu::atlas::page_list::Page;
     use crate::gpu::atlas_memory::AtlasUse;
+    use crate::gpu::texel;
+
+    impl ListTextures {
+        fn bytes(&self) -> u64 {
+            let pages = self.pages.iter().flatten().map(|page| &page.bound.texture);
+            let scratch = self.scratch.iter().flatten().map(|bound| &bound.texture);
+            pages
+                .chain(scratch)
+                .map(|texture| {
+                    let size = texel::size(texture);
+                    u64::from(size.x) * u64::from(size.y)
+                })
+                .sum::<u64>()
+                * u64::from(self.format.texel_bytes())
+        }
+    }
 
     impl AtlasTextures {
+        /// The bytes of `format`'s page and scratch textures, which the CPU half counts as
+        /// [`PageList::bytes`](crate::gpu::atlas::page_list::PageList::bytes) once committed.
+        pub(crate) fn bytes(&self, format: AtlasFormat) -> u64 {
+            self.lists[format as usize].bytes()
+        }
+
         /// `format`'s textures, named `name`, against the texels its pages' items and its held
         /// scratch textures fill in `pool`.
         pub(crate) fn memory(

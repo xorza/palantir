@@ -1,5 +1,7 @@
 //! The list's inserts: placements, growth within each budget, the clock's victims and exemptions,
-//! the shelf it empties, page states and the device's edge.
+//! the shelf it empties, page states and the device's edge; and its decay ([`decay`]).
+
+mod decay;
 
 use super::*;
 
@@ -185,27 +187,44 @@ fn a_tall_item_frees_bottom_shelves_until_rows_hold_it() {
     assert_eq!(list.bytes(), 64 * 64, "no grow");
 }
 
-/// A draining page takes no allocation, so an insert passes it for the next page; a filling one
-/// takes them, as an open one does; its items stay where they are throughout.
+/// A draining page takes no allocation while another page has room, and an insert that finds none
+/// cancels the drain rather than grow beside it. Four 16² items fill the first 32² page, a fifth
+/// opens the second at (0, 0); three of the first page's go. Draining the first, three inserts
+/// pass it for the second page's rest; a fourth finds no room there, so the first page takes
+/// allocations again and the insert lands at (16, 0), where the second item was.
 #[test]
-fn a_draining_page_takes_no_allocation() {
+fn a_draining_page_takes_no_allocation_until_an_insert_needs_it() {
     let mut list = list(32, 32, 1 << 20);
     let mut evictions = Evictions::default();
-    let first = list
-        .allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
-        .unwrap();
+    let mut insert = |list: &mut PageList| {
+        list.allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
+            .unwrap()
+    };
+    let first: Vec<AtlasHandle> = (0..4).map(|_| insert(&mut list)).collect();
+    let fifth = insert(&mut list);
+    assert_eq!(at(&list, fifth), (1, U16Vec2::ZERO));
+    for &handle in &first[1..] {
+        list.release(handle);
+    }
     list.set_state(0, PageState::Draining);
-    assert_eq!(list.page(0).unwrap().state(), PageState::Draining);
-    let second = list
-        .allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
-        .unwrap();
-    assert_eq!(at(&list, second), (1, U16Vec2::ZERO));
-    list.set_state(0, PageState::Filling);
-    let third = list
-        .allocate(Tenant::Glyphs, square(16), 0, &mut evictions)
-        .unwrap();
-    assert_eq!(at(&list, third), (0, U16Vec2::new(16, 0)));
-    assert_eq!(at(&list, first), (0, U16Vec2::ZERO));
+    let passed: Vec<(u8, U16Vec2)> = (0..3)
+        .map(|_| {
+            let handle = insert(&mut list);
+            at(&list, handle)
+        })
+        .collect();
+    assert_eq!(
+        passed,
+        [
+            (1, U16Vec2::new(16, 0)),
+            (1, U16Vec2::new(0, 16)),
+            (1, U16Vec2::new(16, 16))
+        ]
+    );
+    let cancelled = insert(&mut list);
+    assert_eq!(at(&list, cancelled), (0, U16Vec2::new(16, 0)));
+    assert_eq!(list.page(0).unwrap().state(), PageState::Open);
+    assert_eq!(at(&list, first[0]), (0, U16Vec2::ZERO));
 }
 
 /// A released item's handle reads as stale and its slot takes the next insert at a new

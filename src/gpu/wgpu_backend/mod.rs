@@ -644,6 +644,9 @@ impl WgpuBackend {
             t.after_submit(&self.gpu, stats);
         }
 
+        // After the frame's draws, before the tenants drain, so they learn of the decay's
+        // evictions this submit.
+        self.atlas.end_submit();
         let frame = self.text.end_frame(&mut self.atlas);
         self.icon.end_frame(&mut self.atlas, frame);
         self.programs.quad.end_frame(&mut self.atlas);
@@ -944,7 +947,7 @@ impl WgpuBackend {
         // a grow's copy first, then the group over them, then each tenant's quads and the rasters
         // it queued, staged through the belt.
         self.atlas_textures
-            .commit(ctx.gpu, ctx.encoder, &self.atlas);
+            .commit(ctx.gpu, ctx.encoder, &mut self.atlas);
         self.raster_group.follow(ctx.gpu, &self.atlas_textures);
         self.backdrops.follow(ctx.gpu, &self.atlas_textures);
         self.programs
@@ -1440,10 +1443,16 @@ pub(crate) mod internals {
             self.programs.quad.baked_cutout_tables()
         }
 
-        /// The texels of `format`'s scratch textures an item holds.
+        /// The texels of `format`'s scratch textures, held or idle.
         #[cfg(test)]
-        pub(crate) fn atlas_held_scratch_texels(&self, format: AtlasFormat) -> u64 {
-            self.atlas.list(format).scratch().held_texels()
+        pub(crate) fn atlas_scratch_texels(&self, format: AtlasFormat) -> u64 {
+            self.atlas.list(format).scratch().texels()
+        }
+
+        /// Whether the pool decayed in the display frame of the last submit.
+        #[cfg(test)]
+        pub(crate) const fn atlas_decayed(&self) -> bool {
+            self.atlas.has_decayed()
         }
 
         /// Paint as a device whose passes move `traffic` paints, whatever the device is.

@@ -1,16 +1,6 @@
 //! The atlas pool: every page list's bookkeeping, its CPU half, with no device, so each rule is
 //! testable without one, and [`atlas_textures`], its GPU half, the textures that follow it. The
-//! design and the plan are `.notes/proposals/atlas-pool.md`; the tenants move onto it in steps 3
-//! to 6.
-
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the pool's tenants move onto it in steps 3 to 6 of `.notes/proposals/atlas-pool.md`; \
-                  until then its tests alone reach it"
-    )
-)]
+//! design is `.notes/proposals/atlas-pool.md`.
 
 pub(crate) mod atlas_format;
 pub(crate) mod atlas_handle;
@@ -26,7 +16,7 @@ pub(crate) mod tenant;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_handle::{AtlasHandle, Placement};
 use crate::gpu::atlas::error::AtlasError;
-use crate::gpu::atlas::page_list::{PageList, PageListConfig};
+use crate::gpu::atlas::page_list::{DecayCtx, Move, MoveBudget, PageList, PageListConfig};
 use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::atlas::tenant::Tenant;
 use glam::{U16Vec2, UVec2};
@@ -72,7 +62,18 @@ impl Evictions {
 pub(crate) struct AtlasPool {
     lists: [PageList; 3],
     frame: u64,
+    /// The display frame the lists last decayed in.
+    decayed: u64,
     evictions: Evictions,
+    /// Each list's drains' moves since the GPU half last took them, by [`AtlasFormat`].
+    moves: [Vec<Move>; 3],
+}
+
+/// One list and the moves its drains made, as the GPU half's commit takes them.
+#[derive(Debug)]
+pub(crate) struct ListCommit<'a> {
+    pub(crate) list: &'a PageList,
+    pub(crate) moves: Drain<'a, Move>,
 }
 
 impl AtlasPool {
@@ -88,18 +89,15 @@ impl AtlasPool {
             lists: AtlasFormat::ALL
                 .map(|format| PageList::new(format, configs[format as usize], device_edge)),
             frame: 0,
+            decayed: 0,
             evictions: Evictions::default(),
+            moves: Default::default(),
         }
     }
 
     /// The list of `format`.
     pub(crate) const fn list(&self, format: AtlasFormat) -> &PageList {
         &self.lists[format as usize]
-    }
-
-    /// The display frame the pool ages on.
-    pub(crate) const fn frame(&self) -> u64 {
-        self.frame
     }
 
     /// Move to display frame `frame`, and drop the scratch textures idle for an expiry window.
@@ -128,6 +126,42 @@ impl AtlasPool {
         size: U16Vec2,
     ) -> Result<AtlasHandle, AtlasError> {
         self.lists[format as usize].allocate(tenant, size, self.frame, &mut self.evictions)
+    }
+
+    /// Return what the lists hold past their need, at the end of the first submit of each display
+    /// frame, after every draw of it: the evictions wait in their tenants' queues, and the moves
+    /// for the GPU half's next commit, ahead of every upload, bake and draw, so the next build of
+    /// any window reads the new placements (`.notes/proposals/atlas-pool.md`, Decay). As WebRender
+    /// runs its compaction once a frame.
+    pub(crate) fn end_submit(&mut self) {
+        if self.decayed == self.frame {
+            return;
+        }
+        self.decayed = self.frame;
+        let mut budget = MoveBudget::FRAME;
+        for (list, moves) in self.lists.iter_mut().zip(&mut self.moves) {
+            list.decay(
+                self.frame,
+                DecayCtx {
+                    budget: &mut budget,
+                    evictions: &mut self.evictions,
+                    moves,
+                },
+            );
+        }
+    }
+
+    /// `format`'s list and the moves its drains made since the GPU half last took them, which
+    /// it takes now.
+    #[expect(
+        clippy::iter_with_drain,
+        reason = "the pool keeps its buffer for the next moves, which `into_iter` would drop"
+    )]
+    pub(crate) fn commit_list(&mut self, format: AtlasFormat) -> ListCommit<'_> {
+        ListCommit {
+            list: &self.lists[format as usize],
+            moves: self.moves[format as usize].drain(..),
+        }
     }
 
     /// Give `handle`'s item back.
@@ -165,11 +199,6 @@ impl AtlasPool {
         self.evictions.queues[tenant as usize].drain(..)
     }
 
-    /// Close `format`'s page `idx`, which holds no item.
-    pub(crate) fn close_page(&mut self, format: AtlasFormat, idx: usize) {
-        self.lists[format as usize].close_page(idx);
-    }
-
     /// A texture of its own of `format` for an item of `size`.
     pub(crate) fn acquire_scratch(
         &mut self,
@@ -183,10 +212,35 @@ impl AtlasPool {
     pub(crate) fn release_scratch(&mut self, format: AtlasFormat, id: ScratchId) {
         self.lists[format as usize].release_scratch(id, self.frame);
     }
+}
 
-    /// The size of the texture of `format` `id` holds, `None` once released.
-    pub(crate) fn scratch_size(&self, format: AtlasFormat, id: ScratchId) -> Option<UVec2> {
-        self.lists[format as usize].scratch_size(id)
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::atlas::AtlasPool;
+    use crate::gpu::atlas::atlas_format::AtlasFormat;
+    use crate::gpu::atlas::scratch_cache::ScratchId;
+    use glam::UVec2;
+
+    impl AtlasPool {
+        /// The display frame the pool ages on.
+        pub(crate) const fn frame(&self) -> u64 {
+            self.frame
+        }
+
+        /// Close `format`'s page `idx`, which holds no item.
+        pub(crate) fn close_page(&mut self, format: AtlasFormat, idx: usize) {
+            self.lists[format as usize].close_page(idx);
+        }
+
+        /// The size of the texture of `format` `id` holds, `None` once released.
+        pub(crate) fn scratch_size(&self, format: AtlasFormat, id: ScratchId) -> Option<UVec2> {
+            self.lists[format as usize].scratch_size(id)
+        }
+
+        /// Whether the lists decayed in the current display frame.
+        pub(crate) const fn has_decayed(&self) -> bool {
+            self.decayed == self.frame
+        }
     }
 }
 

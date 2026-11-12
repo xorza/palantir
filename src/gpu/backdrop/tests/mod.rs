@@ -1,6 +1,7 @@
 //! Backdrops painted end to end on a headless window, against reference arithmetic and
 //! against whole repaints.
 
+use crate::common::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
@@ -189,7 +190,8 @@ fn a_backdrop_shows_the_pixels_before_it_blurred() {
 /// of its own, beside one on a page in the same draw batch: each as the reference arithmetic
 /// blurs the frame without them, every channel within one 8-bit step, and the frame unchanged
 /// outside them. At σ 3 the wide one's 600 px, grown by its reach and apron, pass the 512 a page of
-/// 1024 takes; the narrow one's 40 do not.
+/// 1024 takes; the narrow one's 40 do not. Each frame's submit decays the pool, and once the
+/// glasses go, their scratch texture idles an expiry window of frames and frees.
 #[test]
 fn a_wide_backdrop_shows_its_pixels_through_a_scratch_texture() {
     const WIDE: UVec2 = UVec2::new(720, 64);
@@ -237,6 +239,20 @@ fn a_wide_backdrop_shows_its_pixels_through_a_scratch_texture() {
         }
     };
     assert_blurred(&got, &under, BlurPlan::new(3.0), inside, "σ 3");
+    assert!(
+        reference.0.atlas_decayed(),
+        "each frame's submit decays the pool"
+    );
+
+    // The glasses gone, the scratch texture idles from the first frame without them, and frees an
+    // expiry window of display frames later.
+    let held = reference.0.backdrop_scratch_texels();
+    for frame in 1..=EXPIRY_FRAMES {
+        reference.paint(|ui| stripes(ui, None));
+        assert_eq!(reference.0.backdrop_scratch_texels(), held, "frame {frame}");
+    }
+    reference.paint(|ui| stripes(ui, None));
+    assert_eq!(reference.0.backdrop_scratch_texels(), 0, "expired");
 }
 
 /// A luminance ceiling scales what a backdrop shows down to it before the fill, and leaves what is
