@@ -261,8 +261,8 @@ impl<'a> Menu<'a> {
 }
 
 impl Menu<'_> {
-    /// Paint `chrome` as the menu panel's chrome; the theme's `panel`
-    /// fills it when unset. [`Chrome::NONE`] suppresses the chrome.
+    /// Paint `chrome` as the menu panel's chrome, which wears no material; the theme's `panel`
+    /// over its `material` fills it when unset. [`Chrome::NONE`] suppresses the chrome.
     ///
     /// # Panics
     ///

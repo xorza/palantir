@@ -18,7 +18,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
-use crate::widget_core::widget::Widget;
+use crate::widget_core::widget::{MaterialBox, Widget};
 use crate::widgets::text::Text;
 use std::rc::Rc;
 use std::time::Duration;
@@ -179,7 +179,8 @@ impl<'a> Tooltip<'a> {
             ui.with_singleton::<TooltipGlobal, _>(|_, global| global.last_visible_at = Some(now));
             let anchor = Anchor::below(trigger_rect).with_gap(gap);
             let label = self.label;
-            let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
+            let panel =
+                MaterialBox::themed(self.chrome.as_ref(), &theme.panel, theme.material.as_ref());
             let text = theme.text.apply(&ui_theme.text);
             let mut bubble = self
                 .widget
@@ -195,7 +196,7 @@ impl<'a> Tooltip<'a> {
             };
             let scope = OverlayScope::claim(ui, spec, &mut bubble);
             let _ = scope.record(ui, |ui| {
-                bubble.record(ui, Some(chrome), |ui| {
+                bubble.record_box(ui, panel, |ui| {
                     Text::new(label)
                         .style(&text)
                         .text_wrap(TextWrap::Wrap)
@@ -223,8 +224,8 @@ fn dismissed(ui: &mut Ui, trigger_id: WidgetId) -> bool {
 }
 
 impl Tooltip<'_> {
-    /// Paint `chrome` behind this widget; unset falls back to the
-    /// theme's. [`Chrome::NONE`] suppresses the chrome.
+    /// Paint `chrome` behind this widget; unset falls back to the theme's panel over its material.
+    /// A chrome set here wears no material. [`Chrome::NONE`] suppresses the chrome.
     ///
     /// # Panics
     ///

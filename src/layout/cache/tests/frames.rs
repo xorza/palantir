@@ -303,7 +303,6 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                             fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
                             border: Border::new(RgbaF32::srgb(0.3, 0.34, 0.42), 1.0),
                             shadow: Shadow::NONE,
-                            material: None,
                         },
                     })
                     .show(ui, |ui| {

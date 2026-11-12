@@ -6,7 +6,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::backdrop_key::BackdropKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::scene::plane::Plane;
@@ -231,45 +230,6 @@ fn a_clipped_blink_before_a_backdrop_leaves_it() {
     assert_eq!(damage, None, "the hidden blink damages nothing");
     assert!(h.frames().damage().raw_rects().is_empty());
     assert!(!h.frames().damage().dirty_backdrops().contains(key(0)));
-}
-
-/// A chrome with a material reads a backdrop too, keyed by its node's first row: a change under it,
-/// inside its footprint, makes it stale, and its rect joins the damage.
-#[test]
-fn a_chrome_backdrop_goes_stale_as_a_shape_backdrop() {
-    let record = |under: RgbaF32| {
-        move |ui: &mut Ui| {
-            Panel::canvas()
-                .id(WidgetId::from_hash("chrome-scene"))
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    ui.add_shape(Shape::rect().at(UNDER), under);
-                    Panel::canvas()
-                        .id(WidgetId::from_hash("chrome-backdrop"))
-                        .at(BACKDROP.min)
-                        .size((
-                            Sizing::fixed(BACKDROP.size.w),
-                            Sizing::fixed(BACKDROP.size.h),
-                        ))
-                        .chrome(Chrome::NONE.with_material(Material::blur(SIGMA)))
-                        .show(ui, |_| {});
-                });
-        }
-    };
-    let key = BackdropKey {
-        owner: WidgetId::from_hash("chrome-backdrop"),
-        shape: 0,
-    };
-    let mut h = Harness::mono(DISPLAY.physical);
-    frame(&mut h, record(BLUE));
-    frame(&mut h, record(BLUE));
-    assert!(
-        !h.frames().damage().dirty_backdrops().contains(key),
-        "still"
-    );
-    frame(&mut h, record(RED));
-    assert!(h.frames().damage().dirty_backdrops().contains(key), "under");
-    assert!(h.frames().damage().raw_rects().contains(&BACKDROP));
 }
 
 /// A row removed before a backdrop on its canvas, outside the backdrop's footprint, gives the

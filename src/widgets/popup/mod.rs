@@ -10,6 +10,7 @@ use crate::primitives::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::material::Material;
 use crate::scene::layer::Layer;
 use crate::theme::menu::MenuTheme;
 use crate::theme::popup::PopupTheme;
@@ -19,7 +20,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
-use crate::widget_core::widget::Widget;
+use crate::widget_core::widget::{MaterialBox, Widget};
 use glam::Vec2;
 use std::rc::Rc;
 
@@ -46,8 +47,16 @@ pub struct Popup<'a> {
     click_outside: Option<ClickOutside>,
     layer: Layer,
     widget: Widget,
-    chrome: Option<Chrome>,
+    panel: Option<OwnPanel>,
     style: Option<&'a PopupTheme>,
+}
+
+/// A panel a popup wears in place of its theme's: a caller's chrome, or a menu theme's chrome
+/// over its material.
+#[derive(Debug)]
+struct OwnPanel {
+    chrome: Chrome,
+    material: Option<Material>,
 }
 
 impl<'a> Popup<'a> {
@@ -60,7 +69,7 @@ impl<'a> Popup<'a> {
             click_outside: Some(ClickOutside::Dismiss),
             layer: Layer::Popup,
             widget: Widget::vstack().sense(Sense::CLICK),
-            chrome: None,
+            panel: None,
             style: None,
         }
     }
@@ -107,7 +116,7 @@ impl<'a> Popup<'a> {
             click_outside,
             layer,
             mut widget,
-            chrome,
+            panel,
             style,
         } = self;
         // Resolved before the layer switch so the body and barrier ids are scoped
@@ -132,8 +141,17 @@ impl<'a> Popup<'a> {
         widget.configure().default_clip(theme.panel_clip);
         let slot = style.unwrap_or(&theme.popup);
         widget.configure().default_padding(slot.padding);
-        let chrome = chrome.as_ref().unwrap_or(&slot.panel);
-        let response = scope.record(ui, |ui| widget.record(ui, Some(chrome), body));
+        let panel = match &panel {
+            Some(own) => MaterialBox {
+                chrome: &own.chrome,
+                material: own.material.as_ref(),
+            },
+            None => MaterialBox {
+                chrome: &slot.panel,
+                material: slot.material.as_ref(),
+            },
+        };
+        let response = scope.record(ui, |ui| widget.record_box(ui, panel, body));
         scope.finish(ui, response)
     }
 }
@@ -186,18 +204,24 @@ impl Popup<'_> {
         id.with("barrier")
     }
 
-    /// Dress the popup as a menu panel: the menu theme's chrome, padding, row gap and minimum
-    /// width, each unless the caller set it, and arrow keys walking the rows.
-    pub(crate) fn menu_look(self, menu: &MenuTheme) -> Self {
-        self.default_chrome(menu.panel.clone())
-            .default_padding(menu.padding)
+    /// Dress the popup as a menu panel: the menu theme's chrome over its material, padding, row
+    /// gap and minimum width, each unless the caller set it, and arrow keys walking the rows.
+    pub(crate) fn menu_look(mut self, menu: &MenuTheme) -> Self {
+        if self.panel.is_none() {
+            self.panel = Some(OwnPanel {
+                chrome: menu.panel.clone(),
+                material: menu.material.clone(),
+            });
+        }
+        self.default_padding(menu.padding)
             .default_min_size(Size::new(menu.min_width, 0.0))
             .default_gap(menu.gap)
             .arrow_focus(Axis::Y)
     }
 
-    /// Paint `chrome` behind this widget; unset falls back to [`Theme::popup`]'s panel, as the
-    /// padding does. [`Chrome::NONE`] suppresses the fallback.
+    /// Paint `chrome` behind this widget; unset falls back to [`Theme::popup`]'s panel over its
+    /// material, as the padding does. A chrome set here wears no material: a body that wants one
+    /// draws it as a shape. [`Chrome::NONE`] suppresses the fallback.
     ///
     /// [`Theme::popup`]: crate::Theme::popup
     ///
@@ -207,7 +231,10 @@ impl Popup<'_> {
     #[track_caller]
     pub const fn chrome(mut self, chrome: Chrome) -> Self {
         chrome.validate();
-        self.chrome = Some(chrome);
+        self.panel = Some(OwnPanel {
+            chrome,
+            material: None,
+        });
         self
     }
 
@@ -221,8 +248,11 @@ impl Popup<'_> {
     #[track_caller]
     pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
         chrome.validate();
-        if self.chrome.is_none() {
-            self.chrome = Some(chrome);
+        if self.panel.is_none() {
+            self.panel = Some(OwnPanel {
+                chrome,
+                material: None,
+            });
         }
         self
     }

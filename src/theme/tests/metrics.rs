@@ -196,14 +196,18 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     // Each float wears the material's blur, and its fill at the material's fill alpha over a
     // fallback of that fill at the alpha that holds its ink, so it shows as its panel while
     // transparency is reduced.
-    for (slot, panel) in [
-        ("menu", &t.menu.panel),
-        ("popup", &t.popup.panel),
-        ("picker popup", &t.color_picker.popup.panel),
-        ("tooltip", &t.tooltip.panel),
-        ("modal", &t.modal.panel),
+    for (slot, panel, material) in [
+        ("menu", &t.menu.panel, &t.menu.material),
+        ("popup", &t.popup.panel, &t.popup.material),
+        (
+            "picker popup",
+            &t.color_picker.popup.panel,
+            &t.color_picker.popup.material,
+        ),
+        ("tooltip", &t.tooltip.panel, &t.tooltip.material),
+        ("modal", &t.modal.panel, &t.modal.panel_material),
     ] {
-        let material = panel.paint.material.as_ref().expect(slot);
+        let material = material.as_ref().expect(slot);
         assert_eq!(material.backdrop_blur, 31.0, "{slot} blur");
         let fill = panel.paint.fill.as_solid().expect(slot);
         assert_eq!(fill.a, 0.5, "{slot} fill");

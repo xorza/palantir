@@ -33,7 +33,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::inherited::Inherited;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
-use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
+use crate::scene::tree::backdrop_entry::BackdropEntry;
 use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
@@ -643,16 +643,9 @@ impl TreeSource<'_> {
                 continue;
             }
             let paint_row = after_children(tree, lc, entry).max(row);
-            let capture = match entry.origin {
-                BackdropOrigin::Chrome => tree
-                    .chrome(entry.node)
-                    .and_then(|row| row.material)
-                    .map(|material| material.capture),
-                BackdropOrigin::Shape => {
-                    tree.shapes.records[entry.shape_idx as usize].backdrop_capture()
-                }
-            }
-            .expect("a listed backdrop reads under it");
+            let capture = tree.shapes.records[entry.shape_idx as usize]
+                .backdrop_capture()
+                .expect("a listed backdrop reads under it");
             let shape_scale = lc.shape_scales[node];
             let scale = shape_scale * display_scale;
             let plan = BlurPlan::new(capture.sigma * scale);
@@ -684,13 +677,13 @@ impl TreeSource<'_> {
     /// reads inside of: a shape's box that no paint animation turns and no clip cuts. `rect` is the
     /// shape's paint rect, its drop shadow's halo in it, which the test of a clip compares with
     /// the same bound lifted; the side is the box's own, as a shadow is no part of the backdrop.
-    /// `None` for a turning or clipped backdrop, whose screen rect is not its own; for chrome,
-    /// whose lift this walk does not keep; and for a triangle, as the lens bounds its reads by a
+    /// `None` for a turning or clipped backdrop, whose screen rect is not its own; and for a
+    /// triangle, as the lens bounds its reads by a
     /// rounded rect's chords, no shorter along an inward normal than its narrowest side
     /// (`LensOptics::margin`), which a triangle's corner breaks.
     fn narrowest_side(self, entry: &BackdropEntry, rect: Rect, shape_scale: f32) -> Option<f32> {
         let Self { tree, layout, .. } = self;
-        if entry.origin != BackdropOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
+        if tree.paint_animations.rotates(entry.shape_idx) {
             return None;
         }
         let ShapeRecord::Closed {
@@ -720,9 +713,6 @@ impl TreeSource<'_> {
 /// for a backdrop no child precedes: a node's rows lie before its children's, each subtree's rows
 /// in one run from its root's span, so the run ends where the next node's span starts.
 fn after_children(tree: &Tree, lc: &PlaneCascade, entry: &BackdropEntry) -> u32 {
-    if entry.origin == BackdropOrigin::Chrome {
-        return 0;
-    }
     let mut child = None;
     for item in TreeItems::new(&tree.records, &tree.shapes.records, entry.node) {
         match item {

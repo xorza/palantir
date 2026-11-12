@@ -434,6 +434,7 @@ pub(super) fn theme() -> Theme {
             placeholder: RgbaF32::hex(0x5f6873),
         },
         menu: MenuTheme {
+            material: None,
             panel: Chrome::rounded(RgbaF32::hex(0xffffff), Corners::all(10.0))
                 .with_border(Border::new(RgbaF32::hexa(0x5f687338), 1.0))
                 .with_shadow(Shadow::drop(
@@ -547,6 +548,8 @@ pub(super) fn theme() -> Theme {
             arrow_width: 1.5,
         },
         modal: ModalTheme {
+            panel_material: None,
+            scrim_material: None,
             panel: Chrome::rounded(RgbaF32::hex(0xe4e6e8), Corners::all(10.0))
                 .with_border(Border::new(RgbaF32::hexa(0x5f687338), 1.0))
                 .with_shadow(Shadow::drop(
@@ -559,6 +562,7 @@ pub(super) fn theme() -> Theme {
             min_width: 280.0,
         },
         popup: PopupTheme {
+            material: None,
             panel: Chrome::rounded(RgbaF32::hex(0xffffff), Corners::all(10.0))
                 .with_border(Border::new(RgbaF32::hexa(0x5f687338), 1.0))
                 .with_shadow(Shadow::drop(
@@ -628,6 +632,7 @@ pub(super) fn theme() -> Theme {
             disabled_veil: RgbaF32::hexa(0xffffff80),
             gap: 6.0,
             popup: PopupTheme {
+                material: None,
                 panel: Chrome::rounded(RgbaF32::hex(0xffffff), Corners::all(10.0))
                     .with_border(Border::new(RgbaF32::hexa(0x5f687338), 1.0))
                     .with_shadow(Shadow::drop(
@@ -747,6 +752,7 @@ pub(super) fn theme() -> Theme {
             },
         },
         tooltip: TooltipTheme {
+            material: None,
             panel: Chrome::rounded(RgbaF32::hex(0xffffff), Corners::all(4.0))
                 .with_border(Border::new(RgbaF32::hexa(0x5f687338), 1.0))
                 .with_shadow(Shadow::drop(

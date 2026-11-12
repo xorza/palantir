@@ -545,17 +545,13 @@ fn a_theme_names_only_loaded_effects() {
         ThemeEffectError::NotPress(blend).to_string(),
         "the theme's press effect `blend` is not a color effect over `PressInput`"
     );
-    // A chrome's material is checked as a press slot is: a name nothing loaded, one loaded as a
-    // color effect, and parameters of another lane count are refused; the stock glass is a
-    // material.
+    // A slot's material is checked as a press slot is: a name nothing loaded, one loaded as a
+    // color effect, and parameters of another lane count are refused, in the tooltip's slot and
+    // in the modal's scrim alike; the stock glass is a material.
     let wearing = |name: &str| {
         let mut theme = Theme::stock(scheme);
         let material = EffectName::<(), BackdropEffect>::named(name).unwrap();
-        theme.tooltip.panel = theme
-            .tooltip
-            .panel
-            .clone()
-            .with_material(Material::new(material, ()));
+        theme.tooltip.material = Some(Material::new(material, ()));
         theme
     };
     let missing_material = MaterialEffect::new(
@@ -569,6 +565,15 @@ fn a_theme_names_only_loaded_effects() {
     assert_eq!(
         ThemeEffectError::UnloadedMaterial(missing_material).to_string(),
         "the theme's material effect `missing` is not loaded"
+    );
+    let mut scrimmed = Theme::stock(scheme);
+    scrimmed.modal.scrim_material = Some(Material::new(
+        EffectName::<(), BackdropEffect>::named("missing").unwrap(),
+        (),
+    ));
+    assert_eq!(
+        h.ui_mut().set_theme(scheme, scrimmed),
+        Err(ThemeEffectError::UnloadedMaterial(missing_material))
     );
     let blend_material = MaterialEffect::new(
         EffectName::<(), BackdropEffect>::named(BLEND.name()).unwrap(),
@@ -610,11 +615,7 @@ fn a_theme_names_only_loaded_effects() {
         "the theme before stays"
     );
     let mut glassy = Theme::stock(scheme);
-    glassy.tooltip.panel = glassy
-        .tooltip
-        .panel
-        .clone()
-        .with_material(Material::glass(Lens::WINDOW_GLASS));
+    glassy.tooltip.material = Some(Material::glass(Lens::WINDOW_GLASS));
     h.ui_mut().set_theme(scheme, glassy).unwrap();
 
     h.ui_mut()

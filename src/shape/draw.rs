@@ -12,6 +12,7 @@
 //!   record type for the store to patch with indexes.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::curve::CurveShape;
@@ -61,8 +62,11 @@ pub(crate) enum Draw<'a> {
 /// The paint of a [`Draw::Closed`], borrowed from its caller.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ClosedPaintRef<'a> {
-    /// A box's or a triangle's fill, border, shadow and material.
-    Fill(&'a Paint),
+    /// A box's or a triangle's fill, border and shadow, over the material it wears, if any.
+    Fill {
+        paint: &'a Paint,
+        material: Option<&'a Material>,
+    },
     Image(&'a ImagePaint),
     /// An icon, of a square-cornered rect alone.
     Icon(&'a IconPaint),

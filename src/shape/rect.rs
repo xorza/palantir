@@ -2,6 +2,8 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::PaintedBy;
 use crate::shape::draw::ClosedPaintRef;
@@ -11,7 +13,7 @@ use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::sealed;
 
 /// A rounded rect: the owner's arranged rect or [`Self::at`] a rect of its own, and its corner
-/// radii. A [`Paint`], an effect, an image or an icon covers it
+/// radii. A [`Paint`], a [`MaterialPaint`], an effect, an image or an icon covers it
 /// ([`Ui::add_shape`](crate::Ui::add_shape)).
 #[derive(Clone, Copy, Debug)]
 #[must_use]
@@ -75,7 +77,7 @@ impl RectShape {
 
 impl<P: Into<Paint>> PaintedBy<P> for RectShape {}
 
-/// A box of `P`: its fill, border, shadow and material over the rect.
+/// A box of `P`: its fill, border and shadow over the rect.
 impl<P: Into<Paint>> sealed::DrawWith<P> for RectShape {
     type Prepared = Paint;
 
@@ -91,7 +93,56 @@ impl<P: Into<Paint>> sealed::DrawWith<P> for RectShape {
     fn draw<'a>(&'a self, paint: &'a Paint) -> Draw<'a> {
         Draw::Closed {
             geometry: ClosedGeometry::Box(self.geometry()),
-            paint: ClosedPaintRef::Fill(paint),
+            paint: ClosedPaintRef::Fill {
+                paint,
+                material: None,
+            },
         }
+    }
+}
+
+impl PaintedBy<MaterialPaint> for RectShape {}
+
+/// A box of `MaterialPaint`: its fill, border and shadow over its material, over the rect.
+impl sealed::DrawWith<MaterialPaint> for RectShape {
+    type Prepared = MaterialPaint;
+
+    fn prepare(paint: MaterialPaint) -> MaterialPaint {
+        paint
+    }
+
+    #[track_caller]
+    fn check(&self, paint: &MaterialPaint) {
+        paint.validate();
+    }
+
+    fn draw<'a>(&'a self, paint: &'a MaterialPaint) -> Draw<'a> {
+        Draw::Closed {
+            geometry: ClosedGeometry::Box(self.geometry()),
+            paint: ClosedPaintRef::Fill {
+                paint: &paint.paint,
+                material: Some(&paint.material),
+            },
+        }
+    }
+}
+
+impl PaintedBy<Material> for RectShape {}
+
+/// A box of a material alone, as [`MaterialPaint`] draws it.
+impl sealed::DrawWith<Material> for RectShape {
+    type Prepared = MaterialPaint;
+
+    fn prepare(material: Material) -> MaterialPaint {
+        MaterialPaint::from(material)
+    }
+
+    #[track_caller]
+    fn check(&self, paint: &MaterialPaint) {
+        <Self as sealed::DrawWith<MaterialPaint>>::check(self, paint);
+    }
+
+    fn draw<'a>(&'a self, paint: &'a MaterialPaint) -> Draw<'a> {
+        <Self as sealed::DrawWith<MaterialPaint>>::draw(self, paint)
     }
 }

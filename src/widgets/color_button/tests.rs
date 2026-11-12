@@ -11,6 +11,9 @@ use crate::primitives::input::pointer::PointerButton;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::shape::geometry::box_geometry::{BoxGeometry, BoxOutline};
+use crate::shape::geometry::closed_geometry::ClosedGeometry;
+use crate::shape::record::ShapeRecord;
 use crate::theme::Theme;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
@@ -180,7 +183,7 @@ fn opening_the_panel_is_not_an_edit() {
     assert_eq!(color, before);
 }
 
-/// One open popup's chrome corners, body height and preview chip side.
+/// One open popup's panel corners, body height and preview chip side.
 #[derive(Debug)]
 struct Opened {
     corners: Corners,
@@ -207,14 +210,33 @@ fn open_with(button: Option<&ColorPickerTheme>, picker: Option<&ColorPickerTheme
     let body_id = PopupTrigger::popup_id(id);
     let body = h.node_of(body_id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
-    let chrome = h
-        .ui()
-        .tree(body.plane.layer)
-        .chrome(body.node)
-        .expect("the popup body paints chrome");
+    // The panel paints as the body's chrome, or over its material as its frame's first shape.
+    let tree = h.ui().tree(body.plane.layer);
+    let corners = match h.node_of(body_id.with("frame")) {
+        Some(frame) => {
+            let first = tree.records.shape_span()[frame.node.idx()].start;
+            let ShapeRecord::Closed {
+                geometry:
+                    ClosedGeometry::Box(BoxGeometry {
+                        outline: BoxOutline::Rect(corners),
+                        ..
+                    }),
+                ..
+            } = tree.shapes.records[first as usize]
+            else {
+                panic!("the frame's first shape is the panel");
+            };
+            corners
+        }
+        None => {
+            tree.chrome(body.node)
+                .expect("the popup body paints chrome")
+                .corners
+        }
+    };
     let rect = |id: WidgetId| h.rect(id).expect("arranged");
     Opened {
-        corners: chrome.corners,
+        corners,
         height: rect(body_id).size.h,
         preview: rect(id.with("picker").with("preview")).size.h,
     }
@@ -233,6 +255,7 @@ fn the_button_styles_the_popup_and_the_picker_keeps_its_own() {
                 corners: Corners::all(9.0),
                 ..stock.popup.panel.clone()
             },
+            material: stock.popup.material.clone(),
             padding: Spacing::all(19.0),
         },
         chip_size: stock.chip_size + 30.0,

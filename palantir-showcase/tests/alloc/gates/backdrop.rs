@@ -3,7 +3,9 @@
 use palantir::bench::scene::{BENCH_DPR, BENCH_SURFACE};
 use palantir::widget::Shape;
 use palantir::{App, Depth, Harness};
-use palantir::{Configure, FramePaint, Lens, Material, Panel, Rect, RgbaF32, Sizing, Ui};
+use palantir::{
+    Configure, FramePaint, Lens, Material, MaterialPaint, Panel, Rect, RgbaF32, Sizing, Ui,
+};
 use palantir_showcase::{MAIN_WINDOW, Shell};
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
@@ -37,10 +39,10 @@ fn backdrops(ui: &mut Ui, shell: &mut Shell, look: Look, under: RgbaF32) {
                         Rect::new(500.0, 200.0, 320.0, 220.0),
                     ] {
                         let paint = match look {
-                            Look::Plain => Paint::from(Material::blur(12.0)),
+                            Look::Plain => MaterialPaint::from(Material::blur(12.0)),
                             Look::Frosted => Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
                                 .with_material(Material::frosted(16.0)),
-                            Look::Glass => Paint::from(
+                            Look::Glass => MaterialPaint::from(
                                 Material::glass(Lens::WINDOW_GLASS).with_backdrop_blur(2.0),
                             ),
                         };

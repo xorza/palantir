@@ -424,20 +424,14 @@ impl Deck {
                         } else {
                             Material::frosted(18.0)
                         };
-                        Block::new()
-                            .id(id(5, "box"))
-                            .at((x, 70.0))
-                            .size((Sizing::fixed(360.0), Sizing::fixed(220.0)))
-                            .chrome(Chrome {
-                                corners: Corners::all(32.0),
-                                paint: Paint {
-                                    fill: RgbaF32::WHITE.with_alpha(0.12).into(),
-                                    border: Border::new(RgbaF32::WHITE.with_alpha(0.35), 1.0),
-                                    shadow: Shadow::NONE,
-                                    material: Some(material),
-                                },
-                            })
-                            .show(ui);
+                        ui.add_shape(
+                            Shape::rect()
+                                .at(Rect::new(x, 70.0, 360.0, 220.0))
+                                .corners(Corners::all(32.0)),
+                            Paint::from(RgbaF32::WHITE.with_alpha(0.12))
+                                .with_border(Border::new(RgbaF32::WHITE.with_alpha(0.35), 1.0))
+                                .with_material(material),
+                        );
                     });
             },
         );
@@ -477,7 +471,6 @@ impl Deck {
                                         Vec2::new(0.0, 12.0),
                                         18.0,
                                     ),
-                                    material: None,
                                 },
                             })
                             .show(ui);
@@ -691,7 +684,6 @@ fn window_chrome(ui: &Ui) -> Chrome {
             fill: theme.button.unselected.normal.chrome.paint.fill.clone(),
             border: Border::new(theme.text.color.with_alpha(0.12), 1.0),
             shadow: Shadow::drop(RgbaF32::BLACK.with_alpha(0.35), Vec2::new(0.0, 10.0), 16.0),
-            material: None,
         },
     }
 }

@@ -303,6 +303,30 @@ impl Node {
         }
     }
 
+    /// Split off a frame around this node that places and sizes it: its size bounds, margin,
+    /// alignment, position, grid cell and visibility, as a z-stack this node fills. This node keeps
+    /// what lays out and senses its children: its mode, padding, clip, gaps, justification, child
+    /// alignment, transform, flags and tab index. A node's shapes paint inside its padding's clip,
+    /// so a box whose shape covers it whole draws in the frame and pads and clips here.
+    pub(crate) fn split_frame(&mut self) -> Self {
+        let frame = Self {
+            size: self.size.replace(SizeSpec::from(Sizing::FILL)),
+            min_size: self.min_size.take(),
+            max_size: self.max_size.take(),
+            margin: self.margin.take(),
+            align: self.align,
+            pos: self.pos,
+            grid: self.grid,
+            visibility: self.visibility,
+            ..Self::new(NodeMode::Resolved(LayoutMode::ZStack))
+        };
+        self.align = Align::new(HAlign::Auto, VAlign::Auto);
+        self.pos = Vec2::ZERO;
+        self.grid = GridCell::default();
+        self.visibility = Visibility::Visible;
+        frame
+    }
+
     /// Fans this `Node` out into the per-`NodeId` columns `Tree` stores, resolving `None` themable fields to layout defaults. Takes `&self` so the opener chain moves no 100-byte `Node` per hop; named without `to_`/`into_`, which would read as by-value.
     #[inline(always)]
     pub(super) fn cols(&self, widget_id: WidgetId) -> NodeCols {

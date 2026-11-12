@@ -224,8 +224,8 @@ pub(crate) trait ThemeWalk {
     {
     }
 
-    /// Each material a chrome wears, in field order, to read ([`Theme::materials`]); a
-    /// value that holds no chrome visits nothing.
+    /// Each material a slot holds, in field order, to read ([`Theme::materials`]); a value that
+    /// holds none visits nothing.
     #[inline]
     fn each_material<F>(&self, _: &mut F)
     where
@@ -266,6 +266,8 @@ no_theme_walk!(
     AnimationSpec,
     ClipMode,
     CloseShown,
+    Chrome,
+    Option<Chrome>,
 );
 
 /// A whole style.
@@ -285,8 +287,8 @@ impl ThemeWalk for TextStyle {
     }
 }
 
-/// A box, which holds no text and wears its material.
-impl ThemeWalk for Chrome {
+/// A material a slot may leave out, which holds no text.
+impl ThemeWalk for Option<Material> {
     #[inline]
     fn each_text<F>(&self, _: &mut F)
     where
@@ -306,35 +308,8 @@ impl ThemeWalk for Chrome {
     where
         F: FnMut(&Material),
     {
-        if let Some(material) = &self.paint.material {
+        if let Some(material) = self {
             f(material);
-        }
-    }
-}
-
-/// A box a slot may leave out.
-impl ThemeWalk for Option<Chrome> {
-    #[inline]
-    fn each_text<F>(&self, _: &mut F)
-    where
-        F: FnMut(ThemeTextRef<'_>),
-    {
-    }
-
-    #[inline]
-    fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
-    where
-        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
-    {
-    }
-
-    #[inline]
-    fn each_material<F>(&self, f: &mut F)
-    where
-        F: FnMut(&Material),
-    {
-        if let Some(chrome) = self {
-            chrome.each_material(f);
         }
     }
 }
@@ -474,14 +449,18 @@ impl Theme {
             panel_chrome: _,
             panel_clip: _,
         } = self;
-        for (panel, ink) in [
-            (&mut menu.panel, shortcut),
-            (&mut color_picker.popup.panel, channel),
-            (&mut popup.panel, shortcut),
-            (&mut tooltip.panel, tooltip_ink),
-            (&mut modal.panel, ambient),
+        for (panel, worn, ink) in [
+            (&mut menu.panel, &mut menu.material, shortcut),
+            (
+                &mut color_picker.popup.panel,
+                &mut color_picker.popup.material,
+                channel,
+            ),
+            (&mut popup.panel, &mut popup.material, shortcut),
+            (&mut tooltip.panel, &mut tooltip.material, tooltip_ink),
+            (&mut modal.panel, &mut modal.panel_material, ambient),
         ] {
-            *panel = material.dress(panel, ink);
+            material.dress(panel, worn, ink);
         }
     }
 
@@ -490,7 +469,7 @@ impl Theme {
         self.each_press(&mut |press: &PressEffect| f(press.effect));
     }
 
-    /// Each chrome's material, in field order.
+    /// Each slot's material, in field order.
     pub(crate) fn materials(&self, mut f: impl FnMut(&Material)) {
         self.each_material(&mut f);
     }

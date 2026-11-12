@@ -7,8 +7,8 @@ use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::libm_ext::Libm;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::material::frosted_input::FrostedInput;
@@ -16,6 +16,7 @@ use crate::primitives::paint::material::glass_input::GlassInput;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_effect::MaterialEffect;
 use crate::primitives::paint::material::material_fallback::MaterialFallback;
+use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
 use crate::primitives::paint::paint::Paint;
@@ -25,6 +26,7 @@ use crate::shape::Shape;
 use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::record_store::{RecordStore, Resolve};
+use glam::Vec2;
 
 /// `material` lowered through effect 0 under the box alone, with its parameters staged in `store`.
 fn captured_in(store: &mut RecordStore, material: &Material) -> LoweredMaterial {
@@ -100,7 +102,7 @@ fn the_constructors_and_setters_set_their_own_fields() {
     );
 }
 
-/// A rect and a chrome take the same checks: each case panics with its kind's rule.
+/// A rect, a circle and a triangle take the same checks: each case panics with its kind's rule.
 #[test]
 fn a_material_out_of_its_kinds_panics_where_it_enters() {
     let base = Material::blur(1.0);
@@ -124,10 +126,14 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
         ),
         (nan, "a material's parameters must be finite"),
     ] {
-        for entry in ["rect", "chrome"] {
+        for entry in ["rect", "circle", "triangle"] {
             let panic = std::panic::catch_unwind(|| match entry {
                 "rect" => _ = shape::internals::check(&Shape::rect(), material.clone()),
-                _ => Chrome::NONE.with_material(material.clone()).validate(),
+                "circle" => _ = shape::internals::check(&Shape::circle(), material.clone()),
+                _ => {
+                    let triangle = Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y);
+                    _ = shape::internals::check(&triangle, material.clone());
+                }
             })
             .expect_err(entry);
             let message = panic
@@ -518,24 +524,26 @@ fn a_material_springs_its_blur_and_lanes() {
     assert_eq!(to.add(&step), from);
 }
 
-/// `with_material` sets the material alone, and a chrome whose only paint is a material is not a
-/// no-op: it makes a backdrop.
+/// `Paint::with_material` keeps the paint whole over the material, and a material alone paints
+/// as one over [`Paint::NONE`].
 #[test]
-fn a_chrome_with_only_a_material_paints() {
-    let base = Chrome::new(RgbaF32::WHITE);
+fn a_paint_with_a_material_keeps_both() {
+    let base = Paint::from(RgbaF32::WHITE).with_border(Border::new(RgbaF32::BLACK, 2.0));
     let material = Material::frosted(8.0);
-    let with = base.clone().with_material(material.clone());
     assert_eq!(
-        with,
-        Chrome {
-            paint: Paint {
-                material: Some(material.clone()),
-                ..base.paint
-            },
-            ..base
+        base.clone().with_material(material.clone()),
+        MaterialPaint {
+            paint: base,
+            material: material.clone(),
         }
     );
-    assert!(!Chrome::NONE.with_material(material).is_noop());
+    assert_eq!(
+        MaterialPaint::from(material.clone()),
+        MaterialPaint {
+            paint: Paint::NONE,
+            material,
+        }
+    );
 }
 
 /// The ceiling holds the muted ink at WCAG's 4.5:1 over the brightest backdrop as an 8-bit target

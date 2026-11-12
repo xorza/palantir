@@ -27,6 +27,7 @@ use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::line_style::LineCap;
+use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduction::Reductions;
@@ -47,7 +48,7 @@ use crate::shape::mesh::MeshShape;
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
-use crate::shape::paint::lowered_material::MaterialRead;
+use crate::shape::paint::lowered_material::{MaterialRead, WornMaterial};
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::polyline::{PolylineColors, PolylineShape};
 use crate::shape::record::ShapeRecord;
@@ -156,7 +157,9 @@ impl RecordStore {
         resolve: Resolve<'_>,
     ) -> Option<ShapeRecord> {
         let paint = match paint {
-            ClosedPaintRef::Fill(paint) => self.record_fill(geometry, paint, resolve),
+            ClosedPaintRef::Fill { paint, material } => {
+                self.record_fill(geometry, paint, material, resolve)
+            }
             ClosedPaintRef::Image(paint) => self.record_image(geometry, paint),
             ClosedPaintRef::Icon(paint) => self.record_icon(geometry, paint),
             ClosedPaintRef::Effect(paint) => self.record_effect(geometry, paint, resolve),
@@ -164,8 +167,8 @@ impl RecordStore {
         Some(ShapeRecord::Closed { geometry, paint })
     }
 
-    /// The fill of a box or a triangle at `geometry` in `paint`, its material resolved in
-    /// `resolve`; `None` where it paints nothing.
+    /// The fill of a box or a triangle at `geometry` in `paint` over `material`, which `resolve`
+    /// resolves; `None` where it paints nothing.
     ///
     /// A triangle's corners keep their placement, which resolves where the triangle is drawn
     /// ([`TriangleGeometry::place`](crate::shape::geometry::triangle_geometry::TriangleGeometry::place)); a triangle of no
@@ -176,26 +179,33 @@ impl RecordStore {
         &mut self,
         geometry: ClosedGeometry,
         paint: &Paint,
+        material: Option<&Material>,
         resolve: Resolve<'_>,
     ) -> Option<ClosedPaint> {
-        let read = paint
-            .material
-            .as_ref()
-            .and_then(|material| MaterialRead::resolve(material, resolve));
+        let worn = material.and_then(|material| {
+            MaterialRead::resolve(material, resolve).map(|read| WornMaterial { material, read })
+        });
         // A material reading its fallback paints it in place of the fill, as a plain box.
-        let fill_noop = match (&paint.material, read) {
-            (Some(material), Some(MaterialRead::Fallback { theme })) => {
-                material.fallback.is_noop(theme)
-            }
+        let fill_noop = match worn {
+            Some(WornMaterial {
+                material,
+                read: MaterialRead::Fallback { theme },
+            }) => material.fallback.is_noop(theme),
             _ => paint.fill.is_noop(),
         };
-        let captures = matches!(read, Some(MaterialRead::Capture(_)));
+        let captures = matches!(
+            worn,
+            Some(WornMaterial {
+                read: MaterialRead::Capture(_),
+                ..
+            })
+        );
         if geometry.is_paint_empty()
             || (fill_noop && !captures && paint.border.is_noop() && paint.shadow.is_noop())
         {
             return None;
         }
-        Some(ClosedPaint::Fill(lower::lower_paint(self, paint, read)))
+        Some(ClosedPaint::Fill(lower::lower_paint(self, paint, worn)))
     }
 
     /// The record of `shape` drawn with `stroke`, its ramp interned here; `None` where it paints

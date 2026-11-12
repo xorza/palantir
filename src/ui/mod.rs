@@ -86,7 +86,6 @@ use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
 use crate::scene::tree::NodeChrome;
 use crate::shape::PaintedBy;
-use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::record_store::Resolve;
 use crate::text::error::FontLoadError;
 use crate::text::font_family::FontFamily;
@@ -264,7 +263,7 @@ impl Ui {
     /// # Errors
     ///
     /// A [`ThemeEffectError`] when a press slot names an effect not loaded, or not one over
-    /// [`PressInput`], or a chrome's material one not loaded, or no material's, or one that takes
+    /// [`PressInput`], or a slot's material one not loaded, or no material's, or one that takes
     /// another count of parameter lanes than the material holds; the theme held before stays.
     pub fn set_theme(
         &mut self,
@@ -1108,23 +1107,8 @@ impl Ui {
         } else {
             Border::NONE
         };
-        let resolve = Resolve {
-            effects: self.resources.effects(),
-            reductions: self.frame_runtime.reductions,
-            material_fallback: self.theme().material_fallback,
-        };
-        let material = chrome
-            .and_then(|chrome| chrome.paint.material.as_ref())
-            .and_then(|material| MaterialRead::resolve(material, resolve));
-        self.forest.open_node(
-            resolved,
-            node,
-            NodeChrome {
-                chrome,
-                ring,
-                material,
-            },
-        );
+        self.forest
+            .open_node(resolved, node, NodeChrome { chrome, ring });
     }
 
     #[inline]

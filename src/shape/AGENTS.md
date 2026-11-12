@@ -34,6 +34,13 @@ the top `AGENTS.md`, "A shape is geometry, a paint what covers it"; how the GPU 
 - **A gradient spans its shape's bounds**, turned with the shape, as SVG's `objectBoundingBox`.
   Refused: the owner's rect, which a triangle inside it does not fill; the screen's frame, which a
   turn leaves behind.
+- **A material is a shape's paint**: `MaterialPaint` is a box's `Paint` over a `Material`, which
+  a rect, a circle and a triangle take; a node wears one as a shape in a frame around it, as a
+  node's shapes paint inside its padding's clip. As SwiftUI's `.background(_:in:)` paints a
+  material in a shape and Flutter's `BackdropFilter` is a widget beside `BoxDecoration`. Refused:
+  a material in every `Paint`, which every look, chrome and builder carried and copied for the few
+  boxes that wear one; a material on a node's `Chrome`, a second route to the one draw a shape
+  makes; a pair type of a chrome and a material at each node, which doubled every chrome setter.
 - **A box's fill reaches under its border, a material under both, in one draw**, as CSS's
   `background-clip: border-box` and `backdrop-filter` cover the border box; an edge pixel weighs
   the border over the fill by area. Refused: the fill inside the border, one `Paint` two ways; a

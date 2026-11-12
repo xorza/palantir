@@ -240,7 +240,6 @@ impl NodeRecorder<'_> {
             NodeChrome {
                 chrome: None,
                 ring: Border::NONE,
-                material: None,
             },
         );
     }

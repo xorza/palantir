@@ -9,7 +9,6 @@ use crate::primitives::paint::border::Border;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use palantir_derive::{Animatable, Lerp};
@@ -133,12 +132,6 @@ impl Chrome {
     /// Sugar for [`Paint::with_shadow`] on this box's paint.
     pub const fn with_shadow(mut self, shadow: Shadow) -> Self {
         self.paint.shadow = shadow;
-        self
-    }
-
-    /// Sugar for [`Paint::with_material`] on this box's paint.
-    pub const fn with_material(mut self, material: Material) -> Self {
-        self.paint.material = Some(material);
         self
     }
 }
@@ -270,13 +263,9 @@ impl Animatable for Option<Chrome> {
 #[cfg(test)]
 mod tests {
     use crate::internals::panic_probe;
-    use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
-    use crate::primitives::paint::material::glass_input::GlassInput;
-    use crate::primitives::paint::material::lens::Lens;
-    use crate::primitives::paint::material::material_effect::MaterialEffect;
     use glam::Vec2;
 
     use super::*;
@@ -325,32 +314,14 @@ mod tests {
                 (Brush::Conic(g), _) => &mut g.geometry.start_angle,
             }
         }
-        fn material(chrome: &mut Chrome) -> &mut Material {
-            chrome.paint.material.as_mut().unwrap()
-        }
-        /// The glass with `saturation` and a bezel of `bezel`.
-        fn glass(saturation: f32, bezel: f32) -> MaterialEffect {
-            MaterialEffect::new(
-                EffectName::GLASS,
-                GlassInput {
-                    saturation,
-                    ..GlassInput::new(Lens {
-                        bezel,
-                        ..Lens::WINDOW_GLASS
-                    })
-                },
-            )
-        }
         // How many of `values` each kind refuses. A lane (a color channel, an offset): ±65520,
-        // f32::MAX, NaN, ±inf. A length that is a lane, or a factor: those and -1. An angle, and a
-        // material's parameter, which its effect reads as it comes: NaN and ±inf. A length that is
-        // no lane (a border's width): -1, -65520, NaN and ±inf.
+        // f32::MAX, NaN, ±inf. A length that is a lane: those and -1. An angle: NaN and ±inf. A
+        // length that is no lane (a border's width): -1, -65520, NaN and ±inf.
         const LANE: usize = 6;
         const LENGTH_LANE: usize = 7;
         const ANGLE: usize = 3;
-        const FINITE: usize = 3;
         const LENGTH: usize = 5;
-        let sets: [(Set, usize); 12] = [
+        let sets: [(Set, usize); 7] = [
             (|c, v| c.paint.border.width = v, LENGTH),
             (|c, v| c.paint.border.color.g = v, LANE),
             (|c, v| c.paint.shadow.color.b = v, LANE),
@@ -358,11 +329,6 @@ mod tests {
             (|c, v| c.paint.shadow.offset.y = v, LANE),
             (|c, v| c.paint.shadow.blur = v, LENGTH_LANE),
             (|c, v| c.paint.shadow.spread = v, LANE),
-            (|c, v| material(c).backdrop_blur = v, LENGTH_LANE),
-            (|c, v| material(c).max_luminance = Some(v), LENGTH_LANE),
-            (|c, v| material(c).min_luminance = Some(v), LENGTH_LANE),
-            (|c, v| material(c).effect = glass(v, 24.0), FINITE),
-            (|c, v| material(c).effect = glass(1.0, v), FINITE),
         ];
         let ink = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
         // Each kind of fill, with what its two scalars refuse.
@@ -381,15 +347,14 @@ mod tests {
                 [LANE, ANGLE],
             ),
         ];
-        // Each kind's edges: a sign, zero, the lane's last value and the first past it, the
-        // refractive index's floor, and the non-finite values.
+        // Each kind's edges: a sign, zero, the lane's last value and the first past it, and the
+        // non-finite values.
         let values = [
             0.5,
             0.0,
             -0.0,
             -1.0,
             1.0,
-            0.999,
             65504.0,
             65520.0,
             -65520.0,
@@ -402,8 +367,7 @@ mod tests {
             let held = Chrome::rounded(ink, Corners::all(4.0))
                 .with_fill(brush)
                 .with_border(Border::new(RgbaF32::BLACK, 2.0))
-                .with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 4.0), 6.0))
-                .with_material(Material::glass(Lens::WINDOW_GLASS));
+                .with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::new(0.0, 4.0), 6.0));
             assert_eq!(panic_probe::caught(|| held.validate()), Ok(()));
             let fill_sets: [(Set, usize); 2] = [
                 (|c, v| *fill(c, 0) = v, fill_refusals[0]),
@@ -419,9 +383,6 @@ mod tests {
                         chrome.paint.border.validate();
                         chrome.corners.validate();
                         chrome.paint.shadow.validate();
-                        if let Some(material) = &chrome.paint.material {
-                            material.validate();
-                        }
                     });
                     let whole = panic_probe::caught(|| chrome.validate());
                     assert_eq!(whole, parts, "{chrome:?}");
@@ -485,7 +446,6 @@ mod tests {
                 fill: half(&ink).into(),
                 border: Border::new(half(&RgbaF32::BLACK), 1.0),
                 shadow: Shadow::drop(half(&RgbaF32::BLACK), Vec2::new(0.0, 2.0), 3.0),
-                material: None,
             },
         };
         assert_eq!(half(&ink).a, 0.5);

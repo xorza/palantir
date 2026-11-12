@@ -15,11 +15,11 @@
 //! - **It is named `Material`**, the platform term: Apple's materials, Fluent's Acrylic and Mica
 //!   materials. Refused: `BackdropFilter`, as it names an effect and no filter; `Pane`, a dock's
 //!   region; `Backdrop`, the pixels under a shape.
-//! - **A material is a property of a box.** [`Paint::material`](crate::Paint::material) makes
-//!   the box show the pixels painted before it in paint order, through the effect, under its own
-//!   fill, its border over both, as CSS pairs `backdrop-filter` with `background-color` over the
-//!   border box. Every earlier layer and material is behind it, so glass over glass is
-//!   exact. Refused: a material as a `Brush` (WinUI's `AcrylicBrush`, SwiftUI's `Material`),
+//! - **A material is a shape's.** A [`MaterialPaint`](crate::MaterialPaint) makes a rect, a
+//!   circle or a triangle show the pixels painted before it in paint order, through the effect,
+//!   under its own fill, its border over both, as CSS pairs `backdrop-filter` with
+//!   `background-color` over the border box; a node wears one as a shape of its own. Every
+//!   earlier layer and material is behind it, so glass over glass is exact. Refused: a material as a `Brush` (WinUI's `AcrylicBrush`, SwiftUI's `Material`),
 //!   which every text and stroke taking a brush would have to refuse; "glass cannot sample
 //!   glass", as SwiftUI rules.
 //! - **The capture blurs, the effect looks.** `backdrop_blur` is the σ of the capture's one
@@ -54,7 +54,8 @@
 //!   of the pipeline blends, so a blur keeps the energy of bright detail. Refused: blurring
 //!   sRGB-encoded values to imitate a browser's look.
 //! - **The default themes frost their floats.** The stock menus, popups, tooltips and modal wear
-//!   `Metrics::float_material`, as WinUI's flyouts wear acrylic.
+//!   `Metrics::float_material`, each its theme slot's `material` under its panel, as WinUI's
+//!   flyouts wear acrylic.
 //! - **Reduced transparency draws a material's box as a plain box.** While transparency is
 //!   reduced, by the system's setting or `UiPreferences::transparency`, no capture, blur or effect
 //!   runs: the box's fill and material give way to [`Material::fallback`], its border and shadow
@@ -84,6 +85,7 @@ pub(crate) mod lens;
 pub(crate) mod lens_optics;
 pub(crate) mod material_effect;
 pub(crate) mod material_fallback;
+pub(crate) mod material_paint;
 pub(crate) mod material_reach;
 
 use crate::primitives::effect::effect_kind::BackdropEffect;
@@ -116,7 +118,7 @@ use crate::primitives::paint::material::material_fallback::MaterialFallback;
 /// and a blur on each frame where something painted before it changes under it, and nothing on a
 /// frame where nothing does.
 ///
-/// Plain data, checked where it enters a shape or a [`Chrome`](crate::Chrome): `backdrop_blur` is a
+/// Plain data, checked where it enters a shape or a theme: `backdrop_blur` is a
 /// [length](crate::widget::domain::length), each luminance bound a
 /// [factor](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
 /// packs into one, each parameter finite, and the fallback holds its own checks. The effect must

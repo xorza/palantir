@@ -32,7 +32,6 @@ fn spring_snap_fields_carry_target_immediately() {
             fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
             border: Border::NONE,
             shadow: Shadow::NONE,
-            material: None,
         },
     };
     let _ = map.step(
@@ -48,7 +47,6 @@ fn spring_snap_fields_carry_target_immediately() {
             fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
             border: Border::NONE,
             shadow: Shadow::NONE,
-            material: None,
         },
     };
     let r = map.step(
@@ -94,7 +92,6 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
             fill: Brush::Solid(RgbaF32::BLACK),
             border: Border::new(RgbaF32::BLACK, 0.0),
             shadow: Shadow::NONE,
-            material: None,
         },
     };
     let moving = Chrome {
@@ -103,7 +100,6 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
             fill: Brush::Solid(RgbaF32::WHITE),
             border: Border::new(RgbaF32::BLACK, 10.0),
             shadow: Shadow::NONE,
-            material: None,
         },
     };
     let _ = map.step(
@@ -134,7 +130,6 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
             fill: gradient.clone(),
             border: Border::new(RgbaF32::BLACK, 20.0),
             shadow: Shadow::NONE,
-            material: None,
         },
     };
     let result = map.step(

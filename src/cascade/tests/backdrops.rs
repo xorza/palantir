@@ -189,7 +189,7 @@ fn a_backdrops_lens_margin_is_its_own_shapes() {
     let shadowed = listed_drawn(1.0, None, |ui| {
         ui.add_shape(
             Shape::rect().at(Rect::new(40.0, 40.0, 100.0, 10.0)),
-            Paint::from(glass.clone()).with_shadow(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 1.0)),
+            Paint::from(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, 1.0)).with_material(glass.clone()),
         );
     });
     assert_eq!(shadowed.backdrop.rect, Rect::new(36.0, 36.0, 108.0, 18.0));

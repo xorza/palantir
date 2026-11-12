@@ -3,6 +3,8 @@
 use crate::primitives::geometry::fit::Fit;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::PaintedBy;
 use crate::shape::draw::ClosedPaintRef;
@@ -15,7 +17,7 @@ use glam::Vec2;
 
 /// A triangle, its corners logical px from its rect's top-left, with optional uniform corner
 /// rounding: the owner's arranged rect or [`Self::at`] a rect of its own, its corners fit into it
-/// by [`Self::fit`]. A [`Paint`] of a fill, a border and a material covers it
+/// by [`Self::fit`]. A [`Paint`] of a fill and a border covers it, or a [`MaterialPaint`]
 /// ([`Ui::add_shape`](crate::Ui::add_shape)), or an [`ImagePaint`](crate::widget::ImagePaint); a
 /// gradient fill spans the bounding box of the rounded triangle, as SVG's `objectBoundingBox`
 /// spans a shape's, and an image fits it.
@@ -79,7 +81,7 @@ impl TriangleShape {
 
 impl<P: Into<Paint>> PaintedBy<P> for TriangleShape {}
 
-/// A triangle of `P`: its fill, its border and its material.
+/// A triangle of `P`: its fill and its border.
 impl<P: Into<Paint>> sealed::DrawWith<P> for TriangleShape {
     type Prepared = Paint;
 
@@ -99,7 +101,61 @@ impl<P: Into<Paint>> sealed::DrawWith<P> for TriangleShape {
     fn draw<'a>(&'a self, paint: &'a Paint) -> Draw<'a> {
         Draw::Closed {
             geometry: ClosedGeometry::Triangle(self.geometry()),
-            paint: ClosedPaintRef::Fill(paint),
+            paint: ClosedPaintRef::Fill {
+                paint,
+                material: None,
+            },
         }
+    }
+}
+
+impl PaintedBy<MaterialPaint> for TriangleShape {}
+
+/// A triangle of `MaterialPaint`: its fill and its border over its material.
+impl sealed::DrawWith<MaterialPaint> for TriangleShape {
+    type Prepared = MaterialPaint;
+
+    fn prepare(paint: MaterialPaint) -> MaterialPaint {
+        paint
+    }
+
+    /// # Panics
+    ///
+    /// Unless the paint and its material hold their kinds and the paint has no shadow, which a
+    /// triangle casts none of.
+    #[track_caller]
+    fn check(&self, paint: &MaterialPaint) {
+        paint.validate();
+        assert!(paint.paint.shadow.is_noop(), "a triangle casts no shadow");
+    }
+
+    fn draw<'a>(&'a self, paint: &'a MaterialPaint) -> Draw<'a> {
+        Draw::Closed {
+            geometry: ClosedGeometry::Triangle(self.geometry()),
+            paint: ClosedPaintRef::Fill {
+                paint: &paint.paint,
+                material: Some(&paint.material),
+            },
+        }
+    }
+}
+
+impl PaintedBy<Material> for TriangleShape {}
+
+/// A box of a material alone, as [`MaterialPaint`] draws it.
+impl sealed::DrawWith<Material> for TriangleShape {
+    type Prepared = MaterialPaint;
+
+    fn prepare(material: Material) -> MaterialPaint {
+        MaterialPaint::from(material)
+    }
+
+    #[track_caller]
+    fn check(&self, paint: &MaterialPaint) {
+        <Self as sealed::DrawWith<MaterialPaint>>::check(self, paint);
+    }
+
+    fn draw<'a>(&'a self, paint: &'a MaterialPaint) -> Draw<'a> {
+        <Self as sealed::DrawWith<MaterialPaint>>::draw(self, paint)
     }
 }

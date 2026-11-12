@@ -29,6 +29,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -190,7 +191,7 @@ impl Look {
     }
 
     /// The look's paint: its fill over its material, blurred by `sigma` logical px.
-    fn paint(self, sigma: f32) -> Paint {
+    fn paint(self, sigma: f32) -> MaterialPaint {
         let fill = match self {
             Self::Frosted => RgbaF32::new(1.0, 1.0, 1.0, 0.2),
             Self::Blur | Self::Glass | Self::GlassPlain => RgbaF32::TRANSPARENT,

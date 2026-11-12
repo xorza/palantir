@@ -11,9 +11,9 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::paint::Paint;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::scene::layer::Layer;
@@ -33,19 +33,23 @@ const SURFACE: UVec2 = UVec2::new(200, 100);
 fn reduced_transparency_records_every_material_by_its_fallback() {
     let id = WidgetId::from_hash("backdrop");
     let panel = RgbaF32::hex(0x204060);
-    let backdrop = Chrome::new(panel.with_alpha8(184))
+    let backdrop = Paint::from(panel.with_alpha8(184))
         .with_material(Material::frosted(20.0).with_fallback(panel));
     let record = |ui: &mut Ui| {
         Panel::vstack()
             .id(id)
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-            .chrome(backdrop.clone())
-            .show(ui, |_| {});
+            .show(ui, |ui| {
+                ui.add_shape(Shape::rect(), backdrop.clone());
+            });
     };
     let filtered = |h: &Harness| {
-        let node = h.node_of(id).expect("the backdrop recorded").node;
-        let row = h.ui().tree(Layer::Main).chrome(node).expect("a chrome row");
-        row.material.is_some()
+        h.node_of(id).expect("the backdrop recorded");
+        match h.ui().tree(Layer::Main).backdrops.as_slice() {
+            [] => false,
+            [_] => true,
+            listed => panic!("one material, listed {} times", listed.len()),
+        }
     };
     let mut h = Harness::mono(SURFACE);
     h.prime(2, record);
@@ -89,7 +93,7 @@ fn reduced_transparency_records_every_material_by_its_fallback() {
 fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced() {
     let gpu = headless_test_gpu();
     let fill = RgbaF32::WHITE.with_alpha(0.25);
-    let paint = |reduced: bool, under: bool, chrome: Chrome| {
+    let paint = |reduced: bool, under: bool, draw: &dyn Fn(&mut Ui)| {
         let mut h = Harness::builder(UVec2::new(32, 16))
             .mono()
             .depth(Depth::gpu(gpu.handles()))
@@ -102,23 +106,23 @@ fn a_material_draws_as_a_plain_box_of_its_fallback_while_transparency_is_reduced
                     RgbaF32::hex(0xff0000),
                 );
             }
-            ui.add_shape(
-                Shape::rect()
-                    .at(Rect::new(4.0, 4.0, 16.0, 8.0))
-                    .corners(chrome.corners),
-                chrome.paint.clone(),
-            );
+            draw(ui);
         });
         (h.read_back().get_pixel(12, 8).0, h.backdrop_blurs())
     };
+    let at = || Shape::rect().at(Rect::new(4.0, 4.0, 16.0, 8.0));
     let reduced = |fallback: Brush| {
-        paint(
-            true,
-            true,
-            Chrome::new(fill).with_material(Material::blur(4.0).with_fallback(fallback)),
-        )
+        let worn = Paint::from(fill).with_material(Material::blur(4.0).with_fallback(fallback));
+        paint(true, true, &|ui| {
+            ui.add_shape(at(), worn.clone());
+        })
     };
-    let plain = |brush: Brush| paint(false, true, Chrome::new(brush)).0;
+    let plain = |brush: Brush| {
+        paint(false, true, &|ui| {
+            ui.add_shape(at(), brush.clone());
+        })
+        .0
+    };
     let blue: Brush = RgbaF32::new(0.0, 0.0, 1.0, 1.0).into();
     let (opaque, blurs) = reduced(blue.clone());
     assert_eq!(blurs, 0, "a fallback needs no blur");

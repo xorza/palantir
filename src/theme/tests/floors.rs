@@ -189,14 +189,18 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
         assert_eq!(dressed, t, "{scheme:?}");
         // The stock floats wear the frost, none left opaque by an ink it cannot hold, over a
         // fallback of their own panel at the alpha that holds the ink they paint.
-        for (float, panel) in [
-            ("menu", &t.menu.panel),
-            ("popup", &t.popup.panel),
-            ("picker popup", &t.color_picker.popup.panel),
-            ("tooltip", &t.tooltip.panel),
-            ("modal", &t.modal.panel),
+        for (float, panel, material) in [
+            ("menu", &t.menu.panel, &t.menu.material),
+            ("popup", &t.popup.panel, &t.popup.material),
+            (
+                "picker popup",
+                &t.color_picker.popup.panel,
+                &t.color_picker.popup.material,
+            ),
+            ("tooltip", &t.tooltip.panel, &t.tooltip.material),
+            ("modal", &t.modal.panel, &t.modal.panel_material),
         ] {
-            let material = panel.paint.material.as_ref().expect(float);
+            let material = material.as_ref().expect(float);
             assert_eq!(material.backdrop_blur, 20.0, "{float} {scheme:?}");
             let fill = panel.paint.fill.as_solid().expect(float);
             assert_eq!(fill.a, 184.0 / 255.0, "{float} {scheme:?}");
@@ -239,8 +243,22 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
                 theme.modal.panel.clone(),
             ]
         };
+        let materials = |theme: &Theme| {
+            [
+                theme.menu.material.clone(),
+                theme.color_picker.popup.material.clone(),
+                theme.popup.material.clone(),
+                theme.tooltip.material.clone(),
+                theme.modal.panel_material.clone(),
+            ]
+        };
         let inks = [p.text_muted, p.text_muted, p.text_muted, p.text, p.text];
-        for ((before, after), ink) in panels(&stock).into_iter().zip(panels(&frosted)).zip(inks) {
+        for (((before, after), worn), ink) in panels(&stock)
+            .into_iter()
+            .zip(panels(&frosted))
+            .zip(materials(&frosted))
+            .zip(inks)
+        {
             let fill = before
                 .paint
                 .fill
@@ -255,15 +273,19 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
                 ColorScheme::Dark => material.with_max_luminance_for(ink, fill),
                 ColorScheme::Light => material.with_min_luminance_for(ink, fill),
             };
-            assert_eq!(after.paint.material, Some(want), "{scheme:?}");
+            assert_eq!(worn, Some(want), "{scheme:?}");
             assert_eq!(after.paint.border, before.paint.border);
             assert_eq!(after.paint.shadow, before.paint.shadow);
         }
         frosted.menu.panel = stock.menu.panel.clone();
+        frosted.menu.material = stock.menu.material.clone();
         frosted.color_picker.popup = stock.color_picker.popup.clone();
         frosted.popup.panel = stock.popup.panel.clone();
+        frosted.popup.material = stock.popup.material.clone();
         frosted.tooltip.panel = stock.tooltip.panel.clone();
+        frosted.tooltip.material = stock.tooltip.material.clone();
         frosted.modal.panel = stock.modal.panel.clone();
+        frosted.modal.panel_material = stock.modal.panel_material.clone();
         assert_eq!(frosted, stock, "{scheme:?}: nothing else moved");
     }
 
@@ -278,11 +300,11 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
     let alpha = fallback_alpha(ink, solid);
     let frosted = Material::frosted(20.0).with_fallback(solid.with_alpha(alpha));
     assert_eq!(
-        theme.menu.panel.paint.material,
+        theme.menu.material,
         Some(frosted.clone().with_max_luminance_for(ink, fill))
     );
     assert_ne!(
-        theme.menu.panel.paint.material,
+        theme.menu.material,
         Some(frosted.with_max_luminance_for(Palette::DARK.text_muted, fill))
     );
 
@@ -295,7 +317,7 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
         fill_alpha: 0.6,
     });
     assert_eq!(
-        theme.tooltip.panel.paint.material,
+        theme.tooltip.material,
         Some(
             Material::glass(Lens::WINDOW_GLASS)
                 .with_fallback(solid.with_alpha(fallback_alpha(Palette::DARK.text, solid)))

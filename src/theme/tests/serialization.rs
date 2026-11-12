@@ -66,23 +66,9 @@ fn widget_look_serde_roundtrip() {
                     fill: RgbaF32::hex(0x336699).into(),
                     border: Border::new(RgbaF32::hex(0xffffff), 1.5),
                     shadow: Shadow::NONE,
-                    material: None,
                 },
             },
             text: TextStyleOverrides::NONE.with_font_size(20.0),
-        },
-        WidgetLook {
-            chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
-                .with_material(
-                    Material::glass(Lens {
-                        dispersion: 0.0,
-                        ..Lens::WINDOW_GLASS
-                    })
-                    .with_backdrop_blur(12.0)
-                    .with_fallback(RgbaF32::hex(0x203040))
-                    .with_max_luminance(0.05),
-                ),
-            text: TextStyleOverrides::NONE,
         },
         WidgetLook {
             chrome: Chrome::NONE,

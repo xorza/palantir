@@ -7,34 +7,33 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::shadow::Shadow;
 use palantir_derive::{Animatable, Lerp};
 
-/// What covers a box: its fill, its border, its shadow, and the material under its fill, as CSS
-/// pairs `background-color` with `border`, `box-shadow` and `backdrop-filter`. A rect, a circle
-/// and a triangle take it ([`Ui::add_shape`](crate::Ui::add_shape)), and a node's
-/// [`Chrome`](crate::Chrome) holds one beside its corners. [`Self::NONE`] paints nothing.
+/// What covers a box: its fill, its border and its shadow, as CSS pairs `background-color` with
+/// `border` and `box-shadow`. A rect, a circle and a triangle take it
+/// ([`Ui::add_shape`](crate::Ui::add_shape)), and a node's [`Chrome`](crate::Chrome) holds one
+/// beside its corners. [`Self::NONE`] paints nothing. A shape wears a material under it through
+/// [`Self::with_material`], and nothing else does (`src/shape/AGENTS.md`, "A material is a
+/// shape's paint").
 ///
-/// Bottom to top: a drop shadow; the material over the whole box, the border band included, as
-/// CSS's backdrop filter covers the border box; the fill over the whole box too, as CSS's
-/// background covers the border box, which a material shows through by the fill's alpha; an
-/// inset shadow inside the border; the border inside the edge, over the fill.
+/// Bottom to top: a drop shadow; the fill over the whole box, as CSS's background covers the
+/// border box; an inset shadow inside the border; the border inside the edge, over the fill.
 ///
-/// `Animatable` is derived: the fill, the border and the shadow interpolate componentwise, the
-/// material as [`Material`] blends. "No border" is `Border::NONE`, not an `Option`.
+/// `Animatable` is derived: the fill, the border and the shadow interpolate componentwise. "No
+/// border" is `Border::NONE`, not an `Option`.
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's `chrome` and a
 /// shape check it where it enters and panic unless every color is a
 /// [color](crate::widget::domain::color), gradient angles are
 /// [angles](crate::widget::domain::angle), centers and the shadow's offset and spread
 /// [offsets](crate::widget::domain::offset), the border width, radial radii and the shadow's blur
-/// [lengths](crate::widget::domain::length), and the material as [`Material`] lists. Every value
-/// but the border width packs into an f16 lane, so it is a [lane](crate::widget::domain::lane) too.
+/// [lengths](crate::widget::domain::length). Every value but the border width packs into an f16 lane, so it is a [lane](crate::widget::domain::lane) too.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable)]
 #[must_use]
 pub struct Paint {
-    /// The interior's brush, over the material where there is one. [`Brush::TRANSPARENT`] fills
-    /// nothing.
+    /// The interior's brush. [`Brush::TRANSPARENT`] fills nothing.
     pub fill: Brush,
     /// The edge band, painted inside the box. Layout adds a node's border width to its padding,
     /// so children sit inside the border. `Border::NONE` (the `Default`) is omitted from
@@ -47,10 +46,6 @@ pub struct Paint {
     /// paint of a shadow alone.
     #[serde(default, skip_serializing_if = "Shadow::is_noop")]
     pub shadow: Shadow,
-    /// The backdrop effect the box wears under its fill; `None` (the `Default`) wears none and is
-    /// omitted from serialized output.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub material: Option<Material>,
 }
 
 impl Paint {
@@ -59,7 +54,6 @@ impl Paint {
         fill: Brush::TRANSPARENT,
         border: Border::NONE,
         shadow: Shadow::NONE,
-        material: None,
     };
 
     /// This paint with its fill `brush`.
@@ -80,19 +74,18 @@ impl Paint {
         self
     }
 
-    /// This paint over `material`, which its fill covers.
-    pub const fn with_material(mut self, material: Material) -> Self {
-        self.material = Some(material);
-        self
+    /// This paint over `material`, which its fill covers: a shape's paint that wears a material.
+    pub const fn with_material(self, material: Material) -> MaterialPaint {
+        MaterialPaint {
+            paint: self,
+            material,
+        }
     }
 
     /// True when this paints nothing visible.
     #[inline]
     pub const fn is_noop(&self) -> bool {
-        self.fill.is_noop()
-            && self.border.is_noop()
-            && self.shadow.is_noop()
-            && self.material.is_none()
+        self.fill.is_noop() && self.border.is_noop() && self.shadow.is_noop()
     }
 
     /// How far the border reaches in from the edge: its width, or zero when the width paints
@@ -110,16 +103,10 @@ impl Paint {
     /// Whether every part holds its kinds: the test [`Self::validate`] makes, without naming the
     /// rule a part breaks.
     pub(crate) const fn is_valid(&self) -> bool {
-        self.fill.is_valid()
-            & self.border.is_valid()
-            & self.shadow.is_valid()
-            & match &self.material {
-                Some(material) => material.is_valid(),
-                None => true,
-            }
+        self.fill.is_valid() & self.border.is_valid() & self.shadow.is_valid()
     }
 
-    /// Panics unless its fill, border, shadow and material each pass their own check: one
+    /// Panics unless its fill, border and shadow each pass their own check: one
     /// branch-free test, the checks that name the broken rule only on the cold path.
     #[inline]
     #[track_caller]
@@ -137,9 +124,6 @@ impl Paint {
         self.fill.validate();
         self.border.validate();
         self.shadow.validate();
-        if let Some(material) = &self.material {
-            material.validate();
-        }
         panic!("`Paint::is_valid` refused a paint whose parts each pass their check");
     }
 }
@@ -147,10 +131,7 @@ impl Paint {
 /// Every field can carry a NaN, the fill through a gradient's geometry, the rest through scalars.
 impl NanCheck for Paint {
     fn has_nan(&self) -> bool {
-        self.fill.has_nan()
-            || self.border.has_nan()
-            || self.shadow.has_nan()
-            || self.material.as_ref().is_some_and(Material::has_nan)
+        self.fill.has_nan() || self.border.has_nan() || self.shadow.has_nan()
     }
 }
 
@@ -160,7 +141,7 @@ impl Default for Paint {
     }
 }
 
-/// A plain fill of `brush`: no border, shadow or material.
+/// A plain fill of `brush`: no border or shadow.
 impl From<Brush> for Paint {
     fn from(brush: Brush) -> Self {
         Self {
@@ -187,23 +168,16 @@ where
     }
 }
 
-/// A box of `border` alone: no fill, shadow or material.
+/// A box of `border` alone: no fill or shadow.
 impl From<Border> for Paint {
     fn from(border: Border) -> Self {
         Self::NONE.with_border(border)
     }
 }
 
-/// A box of `shadow` alone: no fill, border or material.
+/// A box of `shadow` alone: no fill or border.
 impl From<Shadow> for Paint {
     fn from(shadow: Shadow) -> Self {
         Self::NONE.with_shadow(shadow)
-    }
-}
-
-/// A box of `material` alone: no fill, border or shadow.
-impl From<Material> for Paint {
-    fn from(material: Material) -> Self {
-        Self::NONE.with_material(material)
     }
 }

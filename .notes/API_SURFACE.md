@@ -247,7 +247,6 @@ Chrome
         pub fn with_fill(self, brush: impl Into<Brush>) -> Self
         pub const fn with_border(self, border: Border) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
-        pub const fn with_material(self, material: Material) -> Self
         impl<G: GradientGeometry> From<Gradient<G>> for Chrome where Brush: From<Gradient<G>>, Paint: From<Gradient<G>>
 
 ClickOutside
@@ -848,7 +847,7 @@ FloatMaterial
     struct FloatMaterial: Clone, Debug, Deserialize<'de>, PartialEq, Serialize
         pub material: Material
         pub fill_alpha: f32
-        pub fn dress(&self, panel: &Chrome, ink: RgbaF32) -> Chrome
+        pub fn dress(&self, panel: &mut Chrome, material: &mut Option<Material>, ink: RgbaF32)
 
 FocusPolicy
     enum FocusPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1499,7 +1498,10 @@ Material
         pub const fn with_min_luminance(self, luminance: f32) -> Self
         pub fn with_min_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Self
         pub const fn at_rest(self) -> Self
-        impl From<Material> for Paint
+        impl From<Material> for MaterialPaint
+        impl PaintedBy<Material> for CircleShape
+        impl PaintedBy<Material> for RectShape
+        impl PaintedBy<Material> for TriangleShape
 
 MaterialEffect
     struct MaterialEffect: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -1512,6 +1514,14 @@ MaterialFallback
     enum MaterialFallback: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         ThemeSurface
         Brush(Brush)
+
+MaterialPaint
+    struct MaterialPaint: Clone, Debug, From<Material>, PartialEq
+        pub paint: Paint
+        pub material: Material
+        impl PaintedBy<MaterialPaint> for CircleShape
+        impl PaintedBy<MaterialPaint> for RectShape
+        impl PaintedBy<MaterialPaint> for TriangleShape
 
 MaterialReach
     enum MaterialReach: Clone, Copy, Debug, PartialEq
@@ -1598,6 +1608,7 @@ MenuState
 MenuTheme
     struct MenuTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
+        pub material: Option<Material>
         pub padding: Spacing
         pub min_width: f32
         pub gap: f32
@@ -1630,7 +1641,9 @@ Modal
 ModalTheme
     struct ModalTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
+        pub panel_material: Option<Material>
         pub scrim: Chrome
+        pub scrim_material: Option<Material>
         pub padding: Spacing
         pub min_width: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
@@ -1721,16 +1734,15 @@ PLATFORM
     const PLATFORM: Platform
 
 Paint
-    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<Material>, From<RgbaF32>, From<Shadow>, Lerp, PartialEq, Serialize
+    struct Paint: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Border>, From<Brush>, From<RgbaF32>, From<Shadow>, Lerp, PartialEq, Serialize
         pub fill: Brush
         pub border: Border
         pub shadow: Shadow
-        pub material: Option<Material>
         pub const NONE: Self
         pub fn with_fill(self, brush: impl Into<Brush>) -> Self
         pub const fn with_border(self, border: Border) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
-        pub const fn with_material(self, material: Material) -> Self
+        pub const fn with_material(self, material: Material) -> MaterialPaint
         pub const fn is_noop(&self) -> bool
         impl From<Paint> for Chrome
         impl<G: GradientGeometry> From<Gradient<G>> for Paint where Brush: From<Gradient<G>>
@@ -1902,6 +1914,7 @@ Popup
 PopupTheme
     struct PopupTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
+        pub material: Option<Material>
         pub padding: Spacing
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
@@ -2890,6 +2903,7 @@ TooltipResponse
 TooltipTheme
     struct TooltipTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
+        pub material: Option<Material>
         pub text: TextStyleOverrides
         pub padding: Spacing
         pub max_size: Size
@@ -3328,7 +3342,7 @@ widget::Caret
         pub line_height: f32
 
 widget::CircleShape
-    struct CircleShape: Clone, Copy, Debug, PaintedBy<ImagePaint>, PaintedBy<Stroke>
+    struct CircleShape: Clone, Copy, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>, PaintedBy<Stroke>
         pub const fn at(self, rect: Rect) -> Self
         impl<P: Into<Paint>> PaintedBy<P> for CircleShape
         impl<U: EffectParams, K: EffectKind> PaintedBy<EffectPaint<U, K>> for CircleShape
@@ -3576,7 +3590,7 @@ widget::RasterImage
         pub data: &'a [u8]
 
 widget::RectShape
-    struct RectShape: Clone, Copy, Debug, PaintedBy<IconPaint>, PaintedBy<ImagePaint>
+    struct RectShape: Clone, Copy, Debug, PaintedBy<IconPaint>, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>
         pub const fn at(self, rect: Rect) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
         impl<P: Into<Paint>> PaintedBy<P> for RectShape
@@ -3649,7 +3663,7 @@ widget::ThemeSlot
         fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }
 
 widget::TriangleShape
-    struct TriangleShape: Clone, Debug, PaintedBy<ImagePaint>
+    struct TriangleShape: Clone, Debug, PaintedBy<ImagePaint>, PaintedBy<Material>, PaintedBy<MaterialPaint>
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: Fit) -> Self
         pub const fn radius(self, radius: f32) -> Self

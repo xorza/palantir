@@ -39,7 +39,6 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::tree::Tree;
-use crate::scene::tree::backdrop_entry::BackdropOrigin;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationCursor;
@@ -54,6 +53,7 @@ use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::paint::lowered_material::LoweredMaterial;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::lowered_stroke::LoweredStroke;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
@@ -108,21 +108,23 @@ struct StrokeItem {
     animation: DrawAnimation,
 }
 
-/// A closed shape's fill as one paint call draws it: the shape in the logical frame, its lowered
-/// paint, where its backdrop is recorded, and what its paint animation does to it this frame.
+/// A closed fill as one paint call draws it: the shape in the logical frame, its fill, border and
+/// shadow, the material it shows through where it wears one, and what its paint animation does to
+/// it this frame.
 #[derive(Clone, Copy, Debug)]
 struct FillItem {
     geometry: PlacedClosed,
-    paint: LoweredPaint,
-    site: BackdropSite,
+    fill: LoweredBrush,
+    border: LoweredBorder,
+    shadow: LoweredShadow,
+    backdrop: Option<BackdropLook>,
     animation: DrawAnimation,
 }
 
-/// Where a backdrop is recorded: by its owner, as its chrome or its shape at `shape_idx`.
+/// Where a backdrop is recorded: by its owner, as its shape at `shape_idx`.
 #[derive(Clone, Copy, Debug)]
 struct BackdropSite {
     owner: NodeId,
-    origin: BackdropOrigin,
     shape_idx: u32,
 }
 
@@ -142,25 +144,20 @@ impl PlaneCtx<'_, '_> {
         Some(BackdropLook { material, read })
     }
 
-    /// Paint a closed shape's fill, a node's chrome or a shape's: a box's drop shadow under its
-    /// fill, its fill or its material, and its inset shadow over the fill inside its border, as
-    /// CSS Backgrounds 3 §7.1 orders them. A material draws its fill and its border over the
-    /// whole shape, in one draw.
+    /// Paint a closed fill, a node's chrome or a shape's: a box's drop shadow under its fill, its
+    /// fill or its material, and its inset shadow over the fill inside its border, as CSS
+    /// Backgrounds 3 §7.1 orders them. A material draws its fill and its border over the whole
+    /// shape, in one draw.
     fn paint_fill(&mut self, item: FillItem, out: &mut impl PaintSink) {
         let FillItem {
             geometry,
-            paint:
-                LoweredPaint {
-                    fill,
-                    border,
-                    shadow,
-                    material,
-                },
-            site,
+            fill,
+            border,
+            shadow,
+            backdrop,
             animation,
         } = item;
         let fill = self.brush_source(fill);
-        let backdrop = self.backdrop_look(site, material);
         // A drop shadow is cast by the box, under its fill; an inset one by its padding box, over
         // it.
         let inset = shadow.inset();
@@ -288,16 +285,10 @@ impl PlaneCtx<'_, '_> {
     /// The ticket of the backdrop recorded at `site`, as the tree lists it; `None` for a backdrop
     /// the cascade lists not, whose rect lies outside every clip.
     fn backdrop_ticket(&mut self, site: BackdropSite) -> Option<BackdropTicket> {
-        let BackdropSite {
-            owner,
-            origin,
-            shape_idx,
-        } = site;
+        let BackdropSite { owner, shape_idx } = site;
         let entries = &self.tree.backdrops;
         let at = entries
-            .binary_search_by_key(&(shape_idx, origin), |entry| {
-                (entry.shape_idx, entry.origin)
-            })
+            .binary_search_by_key(&shape_idx, |entry| entry.shape_idx)
             .expect("a painted backdrop is listed");
         let key = BackdropKey {
             owner: self.tree.records.widget_id()[owner.idx()],
@@ -370,19 +361,29 @@ impl PlaneCtx<'_, '_> {
                 };
                 let site = BackdropSite {
                     owner: id,
-                    origin: BackdropOrigin::Shape,
                     shape_idx,
                 };
                 match paint {
-                    ClosedPaint::Fill(paint) => self.paint_fill(
-                        FillItem {
-                            geometry: placed,
-                            paint: *paint,
-                            site,
-                            animation,
-                        },
-                        out,
-                    ),
+                    ClosedPaint::Fill(paint) => {
+                        let LoweredPaint {
+                            fill,
+                            border,
+                            shadow,
+                            material,
+                        } = *paint;
+                        let backdrop = self.backdrop_look(site, material);
+                        self.paint_fill(
+                            FillItem {
+                                geometry: placed,
+                                fill,
+                                border,
+                                shadow,
+                                backdrop,
+                                animation,
+                            },
+                            out,
+                        );
+                    }
                     ClosedPaint::Image {
                         tint,
                         source,
@@ -602,17 +603,10 @@ impl PlaneCtx<'_, '_> {
             self.paint_fill(
                 FillItem {
                     geometry,
-                    paint: LoweredPaint {
-                        fill: chrome.fill,
-                        border: chrome.border,
-                        shadow: chrome.shadow,
-                        material: chrome.material,
-                    },
-                    site: BackdropSite {
-                        owner: id,
-                        origin: BackdropOrigin::Chrome,
-                        shape_idx: self.tree.records.shape_span()[id.idx()].start,
-                    },
+                    fill: chrome.fill,
+                    border: chrome.border,
+                    shadow: chrome.shadow,
+                    backdrop: None,
                     animation: DrawAnimation::STILL,
                 },
                 out,

@@ -408,35 +408,33 @@ fn an_easing_curve_is_its_tween() {
 
 /// An overshooting curve toward smaller lengths paints none below zero: each length a chrome
 /// holds is coerced at its floor, so the value a widget validates holds. `OutBack` from a chrome
-/// of radius 8, border 4, shadow blur 6 and frost 10 to one of all zeros peaks at frame 7, at
-/// `1 − OutBack(7/12) ≈ −0.09999` of the way back: −0.8, −0.4, −0.6 and −1.0 uncoerced, each 0.
+/// of radius 8, border 4 and shadow blur 6 to one of all zeros peaks at frame 7, at
+/// `1 − OutBack(7/12) ≈ −0.09999` of the way back: −0.8, −0.4 and −0.6 uncoerced, each 0.
 #[test]
 fn an_overshoot_below_a_floor_paints_the_floor() {
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::paint::border::Border;
     use crate::primitives::paint::chrome::Chrome;
-    use crate::primitives::paint::material::Material;
     use crate::primitives::paint::shadow::Shadow;
 
     let ink = RgbaF32::srgb(0.2, 0.4, 0.8);
-    let chrome = |radius: f32, width: f32, blur: f32, frost: f32| {
+    let chrome = |radius: f32, width: f32, blur: f32| {
         Chrome::rounded(ink, radius)
             .with_border(Border::new(ink, width))
             .with_shadow(Shadow::drop(ink, Vec2::new(0.0, 2.0), blur))
-            .with_material(Material::frosted(frost))
     };
     let mut map = AnimationMapTyped::<Chrome>::default();
     let id = support::widget_id("overshoot");
     let spec = AnimationSpec::duration(Duration::from_millis(200), Easing::OutBack);
     let _ = map.step(
-        AnimationRequest::new(id, SLOT, chrome(8.0, 4.0, 6.0, 10.0)),
+        AnimationRequest::new(id, SLOT, chrome(8.0, 4.0, 6.0)),
         spec,
         0.016,
     );
-    let target = chrome(0.0, 0.0, 0.0, 0.0);
+    let target = chrome(0.0, 0.0, 0.0);
     // A blend past its end coerces alike, returned and in place: at 1.1, each length lands a
     // tenth past zero, and is zero.
-    let from = chrome(8.0, 4.0, 6.0, 10.0);
+    let from = chrome(8.0, 4.0, 6.0);
     let past = Chrome::lerp(&from, &target, 1.1);
     let mut in_place = Chrome::NONE;
     Chrome::lerp_into(&from, &target, 1.1, &mut in_place);
@@ -454,7 +452,6 @@ fn an_overshoot_below_a_floor_paints_the_floor() {
             assert_eq!(r.value.corners, Corners::ZERO);
             assert_eq!(r.value.paint.border.width, 0.0);
             assert_eq!(r.value.paint.shadow.blur, 0.0);
-            assert_eq!(r.value.paint.material.map(|m| m.backdrop_blur), Some(0.0));
         }
     }
 }

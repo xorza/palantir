@@ -65,7 +65,6 @@ fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
                         fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                         border: Border::new(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
                         shadow: Shadow::NONE,
-                        material: None,
                     },
                 })
                 .clip_rounded()

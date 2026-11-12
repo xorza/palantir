@@ -56,8 +56,15 @@ impl MaterialRead {
     }
 }
 
-/// A capturing [`Material`] as a record keeps it, packed for the shape record and the chrome row
-/// that hold it: its effect, a capture whose reach its effect declared, as a backdrop
+/// A material a box wears and what it reads this record: the one a paint lowers with.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WornMaterial<'a> {
+    pub(crate) material: &'a Material,
+    pub(crate) read: MaterialRead,
+}
+
+/// A capturing [`Material`] as a record keeps it, packed for the shape record that holds it: its
+/// effect, a capture whose reach its effect declared, as a backdrop
 /// `EffectPaint`'s reach is its own, the first of its parameters' words in the record store and
 /// their hash, and the
 /// luminance bounds. `max_luminance` is the ceiling's f16 bits, rounded down so the material never
@@ -78,7 +85,7 @@ pub(crate) struct LoweredMaterial {
 impl LoweredMaterial {
     /// `material` through the effect `resolved` names, reading its reach past the box, its
     /// parameters staged in `store`. [`Material::validate`] holds an authored material within its
-    /// kinds, and an animated chrome's tween may carry it past them, as
+    /// kinds, and a theme transition's blend may carry it past them, as
     /// [`Easing::OutBack`](crate::Easing::OutBack) does past an end: here, where it starts to
     /// paint, its blur and floor coerce into their kinds and saturate at the lanes, as the lens of
     /// a reach does.

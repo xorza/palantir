@@ -163,7 +163,6 @@ fn widget_look_animate_resolves_components_and_falls_back() {
             fill: RgbaF32::hex(0x336699).into(),
             border: Border::new(RgbaF32::hex(0xffffff), 2.0),
             shadow: Shadow::NONE,
-            material: None,
         },
     };
     let look = WidgetLook {

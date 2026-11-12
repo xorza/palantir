@@ -38,7 +38,7 @@ use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::scrollbars_def::ResolvedScrollbarsDef;
-use crate::scene::tree::backdrop_entry::{BackdropEntry, BackdropOrigin};
+use crate::scene::tree::backdrop_entry::BackdropEntry;
 use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
@@ -55,7 +55,6 @@ use crate::scene::tree::tree_fingerprint::TreeFingerprint;
 use crate::shape::lower;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::lowered_border::LoweredBorder;
-use crate::shape::paint::lowered_material::MaterialRead;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::shapes::Shapes;
@@ -113,8 +112,6 @@ pub(crate) struct NodeChrome<'a> {
     pub(crate) chrome: Option<&'a Chrome>,
     /// `Border::NONE` unless the node shows keyboard focus.
     pub(crate) ring: Border,
-    /// What the chrome's material reads this record; `None` where it paints none.
-    pub(crate) material: Option<MaterialRead>,
 }
 
 impl Tree {
@@ -127,7 +124,6 @@ impl Tree {
             self.backdrops.push(BackdropEntry {
                 node: frame.node,
                 shape_idx,
-                origin: BackdropOrigin::Shape,
                 row: frame.paint_rows,
             });
         }
@@ -461,11 +457,7 @@ impl Tree {
         node_chrome: NodeChrome<'_>,
         store: &mut RecordStore,
     ) -> NodeId {
-        let NodeChrome {
-            chrome,
-            ring,
-            material,
-        } = node_chrome;
+        let NodeChrome { chrome, ring } = node_chrome;
         // A ring with no chrome rides an empty one.
         let chrome = chrome.or_else(|| (!ring.is_noop()).then_some(&Chrome::NONE));
         // Overflow is guarded in `SubtreeEnd::new_open` (31-bit arena ceiling).
@@ -526,7 +518,7 @@ impl Tree {
                 || !ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::chrome(store, chrome, ring, material);
+                let row = lower::chrome(store, chrome, ring);
                 if row.ring {
                     self.focus_ring = LoweredBorder::lower(ring);
                 }
@@ -548,19 +540,6 @@ impl Tree {
         let inherited = parent_frame
             .map_or(Inherited::ROOT, |f| f.inherited)
             .child(cols.attrs, cols.layout.meta.visibility());
-        // A chrome whose material captures reads a backdrop at the node's first row.
-        if !inherited.invisible
-            && ex
-                .chrome
-                .is_some_and(|row| self.chrome_table[row.idx()].material.is_some())
-        {
-            self.backdrops.push(BackdropEntry {
-                node: new_id,
-                shape_idx: self.shapes.records.len() as u32,
-                origin: BackdropOrigin::Chrome,
-                row: 0,
-            });
-        }
         // The child adds one marker row to the parent's paint span; its own counter
         // starts past its chrome row.
         if let Some(parent) = scratch.open_frames.last_mut() {

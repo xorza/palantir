@@ -355,6 +355,7 @@ pub use primitives::paint::material::glass_input::GlassInput;
 pub use primitives::paint::material::lens::Lens;
 pub use primitives::paint::material::material_effect::MaterialEffect;
 pub use primitives::paint::material::material_fallback::MaterialFallback;
+pub use primitives::paint::material::material_paint::MaterialPaint;
 pub use primitives::paint::material::material_reach::MaterialReach;
 pub use primitives::paint::paint::Paint;
 pub use primitives::paint::shadow::Shadow;

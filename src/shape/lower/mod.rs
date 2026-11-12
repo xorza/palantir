@@ -22,7 +22,7 @@ use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_border::LoweredBorder;
 use crate::shape::paint::lowered_brush::LoweredBrush;
-use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead, WornMaterial};
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
@@ -82,7 +82,7 @@ pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
 }
 
 /// A [`Paint`] lowered for a box, a node's, a rect's or a circle's: its fill interned, its border
-/// at its inset, its shadow and its material.
+/// at its inset, its shadow, and a shape's material.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LoweredPaint {
     pub(crate) fill: LoweredBrush,
@@ -104,28 +104,31 @@ impl LoweredPaint {
     }
 }
 
-/// Lower `paint`, whose material reads `material` this record (`None` where it paints none): the
-/// one lowering every box shares, sharing gradient lowering with every shape, so all share one
-/// pool. A material reading its fallback leaves a plain box: the fallback in place of the fill,
-/// and no material.
+/// Lower `paint` over `worn`, the material a shape wears and what it reads this record (`None`
+/// where it wears none or its alternative paints none): the one lowering every box shares,
+/// sharing gradient lowering with every shape, so all share one pool. A material reading its
+/// fallback leaves a plain box: the fallback in place of the fill, and no material.
 pub(crate) fn lower_paint(
     store: &mut RecordStore,
     paint: &Paint,
-    material: Option<MaterialRead>,
+    worn: Option<WornMaterial<'_>>,
 ) -> LoweredPaint {
     debug_assert!(
         !paint.has_nan(),
         "a Paint reaches lowering validated, by `Widget::record` or `Ui::add_shape`: {paint:?}",
     );
-    let authored = paint.material.as_ref().zip(material);
-    let (fill, material) = match authored {
-        Some((authored, MaterialRead::Capture(resolved))) => (
+    let (fill, material) = match worn {
+        Some(WornMaterial {
+            material,
+            read: MaterialRead::Capture(resolved),
+        }) => (
             brush(store, &paint.fill),
-            Some(LoweredMaterial::lower(store, authored, resolved)),
+            Some(LoweredMaterial::lower(store, material, resolved)),
         ),
-        Some((authored, MaterialRead::Fallback { theme })) => {
-            (brush(store, &authored.fallback.brush(theme)), None)
-        }
+        Some(WornMaterial {
+            material,
+            read: MaterialRead::Fallback { theme },
+        }) => (brush(store, &material.fallback.brush(theme)), None),
         None if paint.is_noop() => (brush(store, &Brush::TRANSPARENT), None),
         None => (brush(store, &paint.fill), None),
     };
@@ -141,18 +144,14 @@ pub(crate) fn lower_paint(
 }
 
 /// Lower a node's `Chrome` to its `ChromeRow`, with the focus `ring` over it.
-pub(crate) fn chrome(
-    store: &mut RecordStore,
-    chrome: &Chrome,
-    ring: Border,
-    material: Option<MaterialRead>,
-) -> ChromeRow {
+pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Border) -> ChromeRow {
     let LoweredPaint {
         fill,
         border,
         shadow,
         material,
-    } = lower_paint(store, &chrome.paint, material);
+    } = lower_paint(store, &chrome.paint, None);
+    debug_assert!(material.is_none(), "a chrome wears no material");
     let corners = chrome.corners;
     let ring = LoweredBorder::lower(ring);
     let has_ring = !ring.is_noop();
@@ -164,7 +163,6 @@ pub(crate) fn chrome(
     border.hash_into(&mut h);
     ring.hash_into(&mut h);
     shadow.hash(&mut h);
-    material.hash(&mut h);
     h.write_u8(brush.tag);
     let hash = ContentHash::finish(&h);
     ChromeRow {
@@ -172,7 +170,6 @@ pub(crate) fn chrome(
         border,
         corners,
         shadow,
-        material,
         hash,
         ring: has_ring,
     }

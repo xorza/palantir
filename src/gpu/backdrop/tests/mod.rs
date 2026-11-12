@@ -6,6 +6,7 @@ use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -19,6 +20,7 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
+use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
@@ -454,57 +456,6 @@ fn a_backdrop_over_a_backdrop_repaints_as_a_whole_frame() {
     }
 }
 
-/// A chrome with a material paints the backdrop a rect shape of the same chrome paints, bit for
-/// bit: both lower to one material draw, keyed by the owner's first row.
-#[test]
-fn a_chrome_backdrop_paints_as_a_rect_backdrop() {
-    let fill = RgbaF32::new(1.0, 1.0, 1.0, 0.25);
-    let filter = Material::frosted(4.0);
-    let stripes = |ui: &mut Ui| {
-        Panel::canvas()
-            .id_salt("backdrop-chrome-stripes")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| scene(ui, None));
-    };
-    let gpu = headless_test_gpu();
-    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
-    let chrome = reference.paint(|ui: &mut Ui| {
-        Panel::zstack()
-            .id_salt("backdrop-chrome")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                stripes(ui);
-                Panel::canvas()
-                    .id_salt("backdrop-chrome-backdrop")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .chrome(Chrome::rounded(fill, Corners::all(8.0)).with_material(filter.clone()))
-                    .show(ui, |_| {});
-            });
-    });
-    let shape = reference.paint(|ui: &mut Ui| {
-        Panel::zstack()
-            .id_salt("backdrop-chrome")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                stripes(ui);
-                Panel::canvas()
-                    .id_salt("backdrop-chrome-backdrop")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        ui.add_shape(
-                            Shape::rect().corners(8.0),
-                            Paint::from(fill).with_material(filter.clone()),
-                        );
-                    });
-            });
-    });
-    assert!(
-        chrome == shape,
-        "a chrome backdrop differs from a rect backdrop"
-    );
-    assert!(chrome != reference.paint(stripes), "the backdrop paints");
-}
-
 /// A frosted popup with a translucent border and a shadow that shrinks, then grows back, as a
 /// palette does while a search narrows and clears, on a kept window: each frame matches a whole
 /// repaint within one 8-bit step. Growing back captures the backdrop again, and its footprint holds
@@ -523,20 +474,25 @@ fn a_backdrop_growing_back_paints_once_under_overlapping_repaints() {
                         .id_salt("backdrop-grow-stripes")
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| scene(ui, None));
-                    let chrome =
-                        Chrome::rounded(RgbaF32::new(0.04, 0.04, 0.04, 0.72), Corners::all(8.0))
-                            .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
-                            .with_shadow(Shadow::drop(
-                                RgbaF32::new(0.0, 0.0, 0.0, 0.5),
-                                Vec2::new(0.0, 8.0),
-                                16.0,
-                            ))
-                            .with_material(Material::frosted(8.0));
+                    let style = PopupTheme {
+                        panel: Chrome::rounded(
+                            RgbaF32::new(0.04, 0.04, 0.04, 0.72),
+                            Corners::all(8.0),
+                        )
+                        .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
+                        .with_shadow(Shadow::drop(
+                            RgbaF32::new(0.0, 0.0, 0.0, 0.5),
+                            Vec2::new(0.0, 8.0),
+                            16.0,
+                        )),
+                        material: Some(Material::frosted(8.0)),
+                        padding: Spacing::ZERO,
+                    };
                     Popup::new()
                         .anchor(Anchor::at_point(Vec2::new(30.0, 20.0)))
                         .id_salt("backdrop-grow-backdrop")
                         .layer(Layer::Menu)
-                        .chrome(chrome)
+                        .style(&style)
                         .size((Sizing::fixed(260.0), Sizing::fixed(h)))
                         .show(ui, |ui| {
                             Panel::canvas()

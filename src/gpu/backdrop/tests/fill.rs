@@ -10,7 +10,8 @@ use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::paint::Paint;
-use crate::shape::Shape;
+use crate::shape::rect::RectShape;
+use crate::shape::{PaintedBy, Shape};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -18,7 +19,10 @@ use crate::widgets::panel::Panel;
 const BOX: Rect = Rect::new(8.0, 8.0, 48.0, 32.0);
 
 /// A canvas over the window that paints `paint` over [`BOX`].
-fn boxed(paint: Paint) -> impl FnMut(&mut Ui) {
+fn boxed<P: Clone>(paint: P) -> impl FnMut(&mut Ui)
+where
+    RectShape: PaintedBy<P>,
+{
     move |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("backdrop-fill")

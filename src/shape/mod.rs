@@ -48,15 +48,18 @@ use glam::Vec2;
 /// shape's pipeline draws, listed as this trait's implementors. Sealed.
 ///
 /// - A rect takes anything `Into<`[`Paint`](crate::Paint)`>`: the paint, or a color, a brush, a
-///   gradient, a border, a shadow or a material as that part alone; an
+///   gradient, a border or a shadow as that part alone; a
+///   [`MaterialPaint`](crate::MaterialPaint), or a [`Material`](crate::Material) alone; an
 ///   [`EffectPaint`](crate::widget::EffectPaint); an [`ImagePaint`](crate::widget::ImagePaint);
 ///   an [`IconPaint`](crate::widget::IconPaint). An image's rect clips it by its corners; an icon
 ///   takes a square-cornered rect, as its pipeline clips to no corners.
-/// - A circle takes anything `Into<Paint>` as a round box, a [`Stroke`](crate::Stroke) as a
+/// - A circle takes anything `Into<Paint>`, a `MaterialPaint` or a `Material` as a round box, a
+///   [`Stroke`](crate::Stroke) as a
 ///   closed arc, an `ImagePaint` fit to its square, and an `EffectPaint`, which reads its square
 ///   and its corners.
-/// - A triangle takes anything `Into<Paint>` of a fill, a border and a material, an
-///   `ImagePaint`, and an `EffectPaint`, which reads the triangle's covering rect and no corners.
+/// - A triangle takes anything `Into<Paint>` of a fill and a border, a `MaterialPaint` or a
+///   `Material` of those, an `ImagePaint`, and an `EffectPaint`, which reads the triangle's
+///   covering rect and no corners.
 /// - A line, a Bézier, an arc and a polyline take a `Stroke`.
 /// - Text takes its color, a mesh its tint, each an [`RgbaF32`](crate::RgbaF32).
 pub trait PaintedBy<P>: sealed::DrawWith<P> {}

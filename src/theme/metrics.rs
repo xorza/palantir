@@ -138,11 +138,13 @@ pub struct FloatMaterial {
 }
 
 impl FloatMaterial {
-    /// `panel` in this material: its solid fill at [`Self::fill_alpha`] over the effect, bound so
-    /// `ink`, the dimmest ink the surface paints, reads at 4.5:1 over any backdrop: a ceiling for
-    /// ink lighter than the fill, a floor for ink darker; and for the material's fallback the
-    /// solid fill at the least alpha that holds `ink` over any page, which the panel draws as its
-    /// plain fill while transparency is reduced, translucent and readable.
+    /// Dress `panel` and its theme slot's `material` in this material: the panel's solid fill at
+    /// [`Self::fill_alpha`] over the effect, bound so `ink`, the dimmest ink the surface paints,
+    /// reads at 4.5:1 over any backdrop: a ceiling for ink lighter than the fill, a floor for ink
+    /// darker; and for the material's fallback the solid fill at the least alpha that holds `ink`
+    /// over any page, which the panel draws as its plain fill while transparency is reduced,
+    /// translucent and readable. The float draws the material under its panel as a shape
+    /// ([`MaterialPaint`](crate::MaterialPaint)).
     ///
     /// # Panics
     ///
@@ -150,17 +152,18 @@ impl FloatMaterial {
     /// on the fill made opaque, and an ink lighter than the fill is light enough for a ceiling,
     /// as [`Material::with_max_luminance_for`] and its floor twin require.
     #[track_caller]
-    pub fn dress(&self, panel: &Chrome, ink: RgbaF32) -> Chrome {
-        self.try_dress(panel, ink)
-            .unwrap_or_else(|refusal| refusal.refuse())
+    pub fn dress(&self, panel: &mut Chrome, material: &mut Option<Material>, ink: RgbaF32) {
+        self.try_dress(panel, material, ink)
+            .unwrap_or_else(|refusal| refusal.refuse());
     }
 
-    /// [`Self::dress`], or why it cannot.
+    /// [`Self::dress`], or why it cannot, leaving `panel` and `material` as they were.
     pub(crate) fn try_dress(
         &self,
-        panel: &Chrome,
+        panel: &mut Chrome,
+        material: &mut Option<Material>,
         ink: RgbaF32,
-    ) -> Result<Chrome, MaterialRefusal> {
+    ) -> Result<(), MaterialRefusal> {
         let solid = panel
             .paint
             .fill
@@ -168,7 +171,7 @@ impl FloatMaterial {
             .ok_or(MaterialRefusal::FillNotSolid)?;
         let fill = solid.with_alpha(self.fill_alpha);
         let fallback = solid.with_alpha(fallback_alpha(ink, solid));
-        let material = Material {
+        let dressed = Material {
             max_luminance: None,
             min_luminance: None,
             ..self.material.clone()
@@ -176,7 +179,9 @@ impl FloatMaterial {
         .with_fallback(fallback)
         .holding(ink, fill)
         .map_err(MaterialRefusal::Ink)?;
-        Ok(panel.clone().with_fill(fill).with_material(material))
+        panel.paint.fill = fill.into();
+        *material = Some(dressed);
+        Ok(())
     }
 
     /// Panics unless the material holds its kinds, as a [`Material`] checks them where it
@@ -208,12 +213,17 @@ impl MaterialRefusal {
 }
 
 impl Metrics {
-    /// `panel`, a surface over the others whose dimmest ink is `ink`, in
-    /// [`Self::float_material`]; as it is without one, or where the material cannot hold `ink`.
-    pub(crate) fn dress_float(&self, panel: Chrome, ink: RgbaF32) -> Chrome {
-        match &self.float_material {
-            Some(material) => material.try_dress(&panel, ink).unwrap_or(panel),
-            None => panel,
+    /// Dress `panel` and its slot's `material`, a surface over the others whose dimmest ink is
+    /// `ink`, in [`Self::float_material`]; left as they are without one, or where the material
+    /// cannot hold `ink`.
+    pub(crate) fn dress_float(
+        &self,
+        panel: &mut Chrome,
+        material: &mut Option<Material>,
+        ink: RgbaF32,
+    ) {
+        if let Some(float) = &self.float_material {
+            float.try_dress(panel, material, ink).ok();
         }
     }
 

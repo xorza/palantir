@@ -17,7 +17,7 @@ use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
@@ -25,11 +25,11 @@ use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape::Shape;
 use crate::shape::geometry::closed_geometry::ClosedGeometry;
 use crate::shape::lower::LoweredPaint;
-use crate::shape::lower::{brush, chrome, ramp};
+use crate::shape::lower::{brush, chrome, lower_paint, ramp};
 use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_brush::LoweredBrush;
-use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
+use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead, WornMaterial};
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::Resolve;
@@ -56,7 +56,7 @@ fn with_corners(corners: Corners) -> Chrome {
 
 /// The ways a `Chrome` can carry a NaN, one per field, each with the rule its check refuses it by;
 /// no no-op predicate owns the question.
-fn nan_chromes() -> [(&'static str, Chrome, &'static str); 6] {
+fn nan_chromes() -> [(&'static str, Chrome, &'static str); 4] {
     [
         (
             "corners",
@@ -83,17 +83,6 @@ fn nan_chromes() -> [(&'static str, Chrome, &'static str); 6] {
                 ..Shadow::default()
             }),
             domain::LENGTH_RULE,
-        ),
-        (
-            "material",
-            Chrome::new(RgbaF32::WHITE).with_material(Material::blur(f32::NAN)),
-            domain::LENGTH_RULE,
-        ),
-        (
-            "luminance ceiling",
-            Chrome::new(RgbaF32::WHITE)
-                .with_material(Material::blur(1.0).with_max_luminance(f32::NAN)),
-            domain::FACTOR_RULE,
         ),
     ]
 }
@@ -129,19 +118,20 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
     assert_eq!(distinct.len(), 4, "{hashes:?}");
 }
 
-/// A chrome's material lowers as it reads this record: through its effect over what is under it,
+/// A shape's material lowers as it reads this record: through its effect over what is under it,
 /// a backdrop, its fill as authored; as a plain box, its fallback in place of its fill and no
 /// material, while transparency is reduced, the theme's surface for one that names none; or not
 /// at all, where its effect's alternative paints nothing, its fill as authored. A rect shape
 /// lowers the same way, its read resolved in the registry, where the stock frost is effect 2. A
-/// fallback reaches the row's hash as its fill, and a capture's row hashes by none of it.
+/// fallback of nothing leaves a box nothing to paint but its border.
 #[test]
 fn a_material_lowers_as_it_reads() {
     let panel = RgbaF32::hex(0x204060);
     let color = panel.with_alpha8(184);
     let theme = RgbaF32::hex(0x101820).with_alpha8(200);
-    let own = Chrome::new(color).with_material(Material::frosted(20.0).with_fallback(panel));
-    let themed = Chrome::new(color).with_material(Material::frosted(20.0));
+    let paint = Paint::from(color);
+    let own = Material::frosted(20.0).with_fallback(panel);
+    let themed = Material::frosted(20.0);
     let solid = |brush: LoweredBrush| match brush {
         LoweredBrush::Solid(color) => color,
         LoweredBrush::Gradient { .. } => panic!("a solid fill lowers to a solid brush"),
@@ -149,27 +139,24 @@ fn a_material_lowers_as_it_reads() {
     let id = EffectId(2);
     let mut store = RecordStore::default();
     let fallback = MaterialRead::Fallback { theme };
-    for (chrome_, read, material, fill) in [
-        (
-            &own,
-            Some(MaterialRead::Capture(ResolvedMaterial {
-                id,
-                reach: MaterialReach::NONE,
-            })),
-            Some(id),
-            color,
-        ),
-        (&own, Some(fallback), None, panel),
-        (&themed, Some(fallback), None, theme),
-        (&own, None, None, color),
+    let capture = MaterialRead::Capture(ResolvedMaterial {
+        id,
+        reach: MaterialReach::NONE,
+    });
+    for (worn, material, fill) in [
+        (Some((&own, capture)), Some(id), color),
+        (Some((&own, fallback)), None, panel),
+        (Some((&themed, fallback)), None, theme),
+        (None, None, color),
     ] {
-        let row = chrome(&mut store, chrome_, Border::NONE, read);
+        let worn = worn.map(|(material, read)| WornMaterial { material, read });
+        let lowered = lower_paint(&mut store, &paint, worn);
         assert_eq!(
-            row.material.map(LoweredMaterial::effect),
+            lowered.material.map(LoweredMaterial::effect),
             material,
-            "{read:?}"
+            "{worn:?}"
         );
-        assert_eq!(solid(row.fill), fill.to_f16(), "{read:?}");
+        assert_eq!(solid(lowered.fill), fill.to_f16(), "{worn:?}");
     }
 
     let effects = EffectRegistry::default();
@@ -177,13 +164,17 @@ fn a_material_lowers_as_it_reads() {
         transparency: Reduction::Reduced,
         ..Reductions::FULL
     };
+    let worn = paint.clone().with_material(own);
     let rect = |store: &mut RecordStore, reductions| {
         let resolve = Resolve {
             effects: &effects,
             reductions,
             material_fallback: theme,
         };
-        store.record(DrawWith::<Paint>::draw(&Shape::rect(), &own.paint), resolve)
+        store.record(
+            DrawWith::<MaterialPaint>::draw(&Shape::rect(), &worn),
+            resolve,
+        )
     };
     for (reductions, material, fill) in
         [(Reductions::FULL, Some(id), color), (reduced, None, panel)]
@@ -205,52 +196,35 @@ fn a_material_lowers_as_it_reads() {
     }
 
     // A fallback of nothing leaves nothing to paint but a border: no record without one.
-    let bare =
-        Paint::from(color).with_material(Material::frosted(20.0).with_fallback(Brush::TRANSPARENT));
+    let clear = Material::frosted(20.0).with_fallback(Brush::TRANSPARENT);
+    let bare = paint.clone().with_material(clear.clone());
     let resolve = Resolve {
         effects: &effects,
         reductions: reduced,
         material_fallback: theme,
     };
-    let bordered = bare.clone().with_border(Border::new(RgbaF32::WHITE, 1.0));
+    let bordered = paint
+        .with_border(Border::new(RgbaF32::WHITE, 1.0))
+        .with_material(clear);
     let rect_shape = Shape::rect();
-    let draw = |paint| DrawWith::<Paint>::draw(&rect_shape, paint);
+    let draw = |paint| DrawWith::<MaterialPaint>::draw(&rect_shape, paint);
     assert!(store.record(draw(&bare), resolve).is_none());
     assert!(store.record(draw(&bordered), resolve).is_some());
-
-    let recolored =
-        Chrome::new(color).with_material(Material::frosted(20.0).with_fallback(RgbaF32::BLACK));
-    let mut hash =
-        |authored: &Chrome, read| chrome(&mut store, authored, Border::NONE, Some(read)).hash;
-    assert_ne!(
-        hash(&own, fallback),
-        hash(&recolored, fallback),
-        "the fallback it paints"
-    );
-    let capture = MaterialRead::Capture(ResolvedMaterial {
-        id,
-        reach: MaterialReach::NONE,
-    });
-    assert_eq!(
-        hash(&own, capture),
-        hash(&recolored, capture),
-        "a fallback it does not paint"
-    );
 }
 
 #[test]
 fn chrome_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();
     let sane = Corners::all(6.0);
-    let kept = chrome(&mut store, &with_corners(sane), Border::NONE, None);
+    let kept = chrome(&mut store, &with_corners(sane), Border::NONE);
     assert_eq!(kept.corners, sane);
     assert_ne!(
         kept.hash,
-        chrome(&mut store, &with_corners(Corners::ZERO), Border::NONE, None).hash,
+        chrome(&mut store, &with_corners(Corners::ZERO), Border::NONE).hash,
         "corners must still reach the chrome hash",
     );
     let ring = Border::new(RgbaF32::WHITE, 2.0);
-    let ringed = chrome(&mut store, &with_corners(sane), ring, None);
+    let ringed = chrome(&mut store, &with_corners(sane), ring);
     assert!(ringed.ring, "a ring is flagged on the row");
     assert!(!kept.ring, "no ring unless one is passed");
     assert_ne!(
@@ -259,7 +233,7 @@ fn chrome_lowering_keeps_an_authored_field() {
     );
     // A transparent border paints nothing, but its width is the inset shadow's padding edge, so it is kept.
     let clear_border = with_corners(sane).with_border(Border::new(RgbaF32::TRANSPARENT, 4.0));
-    let clear = chrome(&mut store, &clear_border, Border::NONE, None);
+    let clear = chrome(&mut store, &clear_border, Border::NONE);
     assert_eq!(clear.border.width, 4.0);
     assert!(clear.border.is_noop(), "it still paints no stroke");
     assert_ne!(
@@ -322,39 +296,10 @@ fn chrome_lowering_keeps_an_authored_field() {
                 ..shadow
             }),
         ),
-        (
-            "backdrop blur",
-            base.clone().with_material(Material::blur(4.0)),
-        ),
-        (
-            "backdrop frosted",
-            base.clone().with_material(Material::frosted(4.0)),
-        ),
-        (
-            "backdrop ceiling",
-            base.clone()
-                .with_material(Material::blur(4.0).with_max_luminance(0.1)),
-        ),
-        (
-            "backdrop lens",
-            base.clone()
-                .with_material(Material::glass(Lens::WINDOW_GLASS)),
-        ),
     ];
     let hashes: Vec<_> = variants
         .iter()
-        .map(|(label, authored)| {
-            let read = authored.paint.material.as_ref().map(|_| {
-                MaterialRead::Capture(ResolvedMaterial {
-                    id: EffectId(2),
-                    reach: MaterialReach::NONE,
-                })
-            });
-            (
-                *label,
-                chrome(&mut store, authored, Border::NONE, read).hash,
-            )
-        })
+        .map(|(label, authored)| (*label, chrome(&mut store, authored, Border::NONE).hash))
         .collect();
     for (i, (a, ha)) in hashes.iter().enumerate() {
         for (b, hb) in &hashes[i + 1..] {

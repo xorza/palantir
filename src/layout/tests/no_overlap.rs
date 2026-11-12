@@ -52,7 +52,6 @@ fn chrome_section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) 
                 fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
                 border: Border::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
                 shadow: Shadow::NONE,
-                material: None,
             },
         })
         .show(ui, |ui| {

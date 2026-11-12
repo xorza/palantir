@@ -7,7 +7,9 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::input::shortcut::Shortcut;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::scene::layer::Layer;
+use crate::shape::paint::closed_paint::ClosedPaint;
 use crate::shape::paint::lowered_brush::LoweredBrush;
 use crate::shape::record::ShapeRecord;
 use crate::theme::Theme;
@@ -263,6 +265,7 @@ fn per_instance_style_overrides_global_menu_theme() {
             thickness: 5.0,
             ..Theme::stock(ColorScheme::Dark).separator
         },
+        material: Some(Material::frosted(7.0)),
         ..Theme::stock(ColorScheme::Dark).menu
     };
 
@@ -291,8 +294,8 @@ fn per_instance_style_overrides_global_menu_theme() {
         "panel padding"
     );
     assert_eq!(
-        tree.bounds(body).min_size,
-        Size::new(220.0, 0.0),
+        h.ui().plane_layout(Layer::Menu).rect[body.idx()].size.w,
+        220.0,
         "width floor"
     );
     assert_eq!(
@@ -306,6 +309,26 @@ fn per_instance_style_overrides_global_menu_theme() {
         "row margin"
     );
     assert_eq!(rows[1].rect.size.h, 5.0, "rule thickness");
+    // The style's material draws under its panel, as the first shape of the menu's frame.
+    let frame = h
+        .node_of(Menu::menu_id(trigger_id()).with("frame"))
+        .expect("the menu wears its style's material in a frame")
+        .node;
+    let first = tree.records.shape_span()[frame.idx()].start;
+    let ShapeRecord::Closed {
+        paint: ClosedPaint::Fill(paint),
+        ..
+    } = &tree.shapes.records[first as usize]
+    else {
+        panic!("the frame's first shape is the panel");
+    };
+    let worn = paint
+        .material
+        .expect("the panel's shape wears the material");
+    assert_eq!(
+        worn.capture.sigma, 7.0,
+        "the style's material, not the global one"
+    );
     assert_eq!(
         layout[rows[2].node.idx()].padding,
         Spacing::ZERO,

@@ -15,7 +15,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Barrier, OverlayScope, OverlaySpec};
-use crate::widget_core::widget::Widget;
+use crate::widget_core::widget::{MaterialBox, Widget};
 use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking barrier in [`Layer::Modal`].
@@ -67,7 +67,8 @@ impl<'a> Modal<'a> {
     }
 
     /// The box the modal lays over the window behind its panel, defaulting to
-    /// [`crate::Theme::modal`]'s ([`ModalTheme::scrim`]); a color makes a scrim that only dims.
+    /// [`crate::Theme::modal`]'s ([`ModalTheme::scrim`]) over its material; a scrim set here wears
+    /// no material, and a color makes one that only dims.
     ///
     /// # Panics
     ///
@@ -97,8 +98,9 @@ impl<'a> Modal<'a> {
         // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let mt = self.style.unwrap_or(&ui_theme.modal);
-        let dim = self.scrim.as_ref().unwrap_or(&mt.scrim);
-        let panel_chrome = self.chrome.as_ref().unwrap_or(&mt.panel);
+        let dim = MaterialBox::themed(self.scrim.as_ref(), &mt.scrim, mt.scrim_material.as_ref());
+        let panel_box =
+            MaterialBox::themed(self.chrome.as_ref(), &mt.panel, mt.panel_material.as_ref());
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
@@ -124,9 +126,7 @@ impl<'a> Modal<'a> {
             ui.overlays().arm_cancel(root_id);
         }
         let response = scope.record(ui, |ui| {
-            root.record(ui, Some(dim), |ui| {
-                panel.record(ui, Some(panel_chrome), body)
-            })
+            root.record_box(ui, dim, |ui| panel.record_box(ui, panel_box, body))
         });
         scope.finish(ui, response)
     }
@@ -140,7 +140,8 @@ impl Modal<'_> {
         ui.withdraw_input_scope(id);
     }
 
-    /// Paints `chrome` as the panel chrome; [`Chrome::NONE`] suppresses the themed chrome.
+    /// Paints `chrome` as the panel chrome, which wears no material, in place of the theme's panel
+    /// over its material; [`Chrome::NONE`] suppresses the themed chrome.
     ///
     /// # Panics
     ///

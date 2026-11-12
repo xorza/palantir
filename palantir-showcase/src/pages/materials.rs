@@ -1,5 +1,5 @@
-//! Materials: palantir's three stock materials over a page that keeps moving under them, and the
-//! same material on a popup's and a context menu's chrome.
+//! Materials: palantir's stock materials over a page that keeps moving under them, and the same
+//! material under a popup's and a context menu's panel.
 
 use crate::scaffold::api;
 use crate::support;
@@ -9,8 +9,8 @@ use palantir::glam::Vec2;
 use palantir::widget::{EffectPaint, GlyphFont, MotionRole, PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     Align, BackdropEffect, Border, Button, Chrome, Configure, Corners, EffectName, Lens,
-    LinearGradient, Material, MaterialFallback, Menu, MenuItem, MenuTheme, Panel, PopupTrigger,
-    Rect, RgbaF32, Sizing, Switch, Text, Ui, WidgetId, fmt,
+    LinearGradient, Material, MaterialFallback, Menu, MenuItem, MenuTheme, Panel, PopupTheme,
+    PopupTrigger, Rect, RgbaF32, Sizing, Switch, Text, Theme, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -123,15 +123,15 @@ pub fn build(ui: &mut Ui, k: Kit) {
             });
         });
 
-    Section::new("On chrome")
-        .apis(&[api!(Chrome::with_material), api!(PopupTrigger::on)])
+    Section::new("On floats")
+        .apis(&[api!(Theme::dress_floats), api!(PopupTrigger::on)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "A popup and a context menu whose chrome wears a frosted material, over the \
-                 turning page. Click the button for the popup; right-click the page for the \
-                 menu.",
+                "A popup and a context menu whose theme slot wears a frosted material under its \
+                 panel, over the turning page. Click the button for the popup; right-click the \
+                 page for the menu.",
             );
             chrome_demo(ui, k);
         });
@@ -277,12 +277,14 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     }
 }
 
-/// The frosted chrome the popup and the menu share: a dark fill, rounded, with a hairline.
-fn frosted_chrome() -> Chrome {
+/// The panel the popup and the menu share, over [`FROST`]: a dark fill, rounded, with a hairline.
+fn frosted_panel() -> Chrome {
     Chrome::rounded(RgbaF32::new(0.08, 0.09, 0.11, 0.45), Corners::all(10.0))
         .with_border(Border::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
-        .with_material(Material::frosted(18.0))
 }
+
+/// The material the popup and the menu wear under [`frosted_panel`].
+const FROST: Material = Material::frosted(18.0);
 
 /// A wide turning page with a button that opens a frosted popup, and a frosted context menu on
 /// the page.
@@ -300,16 +302,22 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
                 .id(popup_button())
                 .label("open popup")
                 .show(ui);
+            let popup = PopupTheme {
+                panel: frosted_panel(),
+                material: Some(FROST),
+                ..ui.theme().popup.clone()
+            };
             PopupTrigger::on(&trigger)
                 .padding((14.0, 10.0))
-                .chrome(frosted_chrome())
+                .style(&popup)
                 .show(ui, |ui| {
                     Text::new("a frosted popup").style(&k.t.body()).show(ui);
                 });
         })
         .response;
     let mut menu: MenuTheme = ui.theme().menu.clone();
-    menu.panel = frosted_chrome();
+    menu.panel = frosted_panel();
+    menu.material = Some(FROST);
     Menu::context(&page).style(&menu).show(ui, |ui| {
         for label in ["Copy", "Paste", "Delete"] {
             MenuItem::new(label).id_salt(label).show(ui);

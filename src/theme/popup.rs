@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::material::Material;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -23,6 +24,11 @@ use crate::theme::palette::Palette;
 pub struct PopupTheme {
     /// Panel chrome behind the body.
     pub panel: Chrome,
+    /// The material the panel wears under its fill, drawn as a shape under it
+    /// ([`MaterialPaint`](crate::MaterialPaint)); `None` keeps the panel opaque, which a file that
+    /// leaves it out reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<Material>,
     /// Padding inside the panel, applied when the caller leaves it unset.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub padding: Spacing,
@@ -33,9 +39,12 @@ impl PopupTheme {
     /// [`Metrics::float_material`] held for the muted ink, which a menu row's shortcut and the
     /// picker's channel names read in, as an app fills a bare popup with rows like a menu's.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        Self {
-            panel: m.dress_float(p.popup_panel(m), p.text_muted),
+        let mut theme = Self {
+            panel: p.popup_panel(m),
+            material: None,
             padding: Spacing::all(m.space.sm),
-        }
+        };
+        m.dress_float(&mut theme.panel, &mut theme.material, p.text_muted);
+        theme
     }
 }

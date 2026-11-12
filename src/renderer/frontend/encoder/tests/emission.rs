@@ -394,7 +394,6 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
                 fill: RgbaF32::WHITE.into(),
                 border: case.border,
                 shadow,
-                material: None,
             },
         };
         for entry in ["chrome", "rect shape"] {

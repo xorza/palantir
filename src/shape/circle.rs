@@ -3,6 +3,8 @@
 use std::f32::consts::TAU;
 
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_paint::MaterialPaint;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::PaintedBy;
@@ -68,8 +70,57 @@ impl<P: Into<Paint>> sealed::DrawWith<P> for CircleShape {
     fn draw<'a>(&'a self, paint: &'a Paint) -> Draw<'a> {
         Draw::Closed {
             geometry: ClosedGeometry::Box(self.geometry()),
-            paint: ClosedPaintRef::Fill(paint),
+            paint: ClosedPaintRef::Fill {
+                paint,
+                material: None,
+            },
         }
+    }
+}
+
+impl PaintedBy<MaterialPaint> for CircleShape {}
+
+/// A round box of `MaterialPaint`.
+impl sealed::DrawWith<MaterialPaint> for CircleShape {
+    type Prepared = MaterialPaint;
+
+    fn prepare(paint: MaterialPaint) -> MaterialPaint {
+        paint
+    }
+
+    #[track_caller]
+    fn check(&self, paint: &MaterialPaint) {
+        paint.validate();
+    }
+
+    fn draw<'a>(&'a self, paint: &'a MaterialPaint) -> Draw<'a> {
+        Draw::Closed {
+            geometry: ClosedGeometry::Box(self.geometry()),
+            paint: ClosedPaintRef::Fill {
+                paint: &paint.paint,
+                material: Some(&paint.material),
+            },
+        }
+    }
+}
+
+impl PaintedBy<Material> for CircleShape {}
+
+/// A box of a material alone, as [`MaterialPaint`] draws it.
+impl sealed::DrawWith<Material> for CircleShape {
+    type Prepared = MaterialPaint;
+
+    fn prepare(material: Material) -> MaterialPaint {
+        MaterialPaint::from(material)
+    }
+
+    #[track_caller]
+    fn check(&self, paint: &MaterialPaint) {
+        <Self as sealed::DrawWith<MaterialPaint>>::check(self, paint);
+    }
+
+    fn draw<'a>(&'a self, paint: &'a MaterialPaint) -> Draw<'a> {
+        <Self as sealed::DrawWith<MaterialPaint>>::draw(self, paint)
     }
 }
 

@@ -228,8 +228,9 @@ fn a_triangle_records_its_gradient_as_a_rect_does() {
 #[test]
 fn a_triangle_wears_a_material_as_a_rect_does() {
     use crate::primitives::paint::material::Material;
+    use crate::primitives::paint::material::material_paint::MaterialPaint;
 
-    let paint = Paint::from(Material::blur(4.0));
+    let paint = MaterialPaint::from(Material::blur(4.0));
     let triangle = Shape::triangle(Vec2::ZERO, Vec2::X * 4.0, Vec2::Y * 4.0);
     let _ = internals::check(&triangle, paint.clone());
     let Some(record) = lower((triangle, paint.clone())) else {
@@ -753,10 +754,6 @@ fn a_box_takes_each_paint_part_alone() {
     let material = Material::blur(4.0);
     assert_eq!(Paint::from(border), Paint::NONE.with_border(border));
     assert_eq!(Paint::from(shadow), Paint::NONE.with_shadow(shadow));
-    assert_eq!(
-        Paint::from(material.clone()),
-        Paint::NONE.with_material(material.clone())
-    );
     assert_eq!(
         internals::check(&Shape::rect(), border),
         Paint::NONE.with_border(border)

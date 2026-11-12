@@ -25,7 +25,10 @@ use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::scene::node::Node;
 use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
@@ -57,6 +60,31 @@ pub(crate) enum Ident {
     /// [`Widget::record`] draws from the widget's [`PressList`]: a wear resolves the id first, so
     /// only a resolved widget wears one, and the flag costs the builder no byte.
     Pressed(ResolvedId),
+}
+
+/// The box [`Widget::record_box`] opens a node in: its chrome, over the material it wears, if any.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MaterialBox<'a> {
+    pub(crate) chrome: &'a Chrome,
+    pub(crate) material: Option<&'a Material>,
+}
+
+impl<'a> MaterialBox<'a> {
+    /// The box a themed float opens in: `own`, a chrome its caller set, which wears no material,
+    /// or else its theme slot's `chrome` over the slot's `material`.
+    pub(crate) const fn themed(
+        own: Option<&'a Chrome>,
+        chrome: &'a Chrome,
+        material: Option<&'a Material>,
+    ) -> Self {
+        match own {
+            Some(chrome) => Self {
+                chrome,
+                material: None,
+            },
+            None => Self { chrome, material },
+        }
+    }
 }
 
 /// What a widget records: its identity, and the node the tree reads. Every widget
@@ -328,6 +356,47 @@ impl Widget {
         let r = body(ui);
         ui.close_node();
         r
+    }
+
+    /// [`Self::record`] in `panel`'s chrome, over its material where it wears one: a frame around
+    /// the node ([`Node::split_frame`]) places it and draws its chrome's paint over the material as
+    /// one shape, and the node, under its own id, fills the frame, padded by the chrome's border as
+    /// a chrome pads its node, and holds the body, as a node's shapes paint inside its padding's
+    /// clip. The body's ids scope to the node as they do without a material.
+    ///
+    /// # Panics
+    ///
+    /// Unless the chrome and the material hold their kinds.
+    #[track_caller]
+    pub(crate) fn record_box<R>(
+        mut self,
+        ui: &mut Ui,
+        panel: MaterialBox<'_>,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        let MaterialBox { chrome, material } = panel;
+        let Some(material) = material else {
+            return self.record(ui, Some(chrome), body);
+        };
+        debug_assert!(
+            !matches!(self.ident, Ident::Pressed(_)),
+            "a box over a material wears no press"
+        );
+        let id = self.resolve(ui);
+        let frame = Self {
+            ident: Ident::Recipe(IdRecipe::Verbatim(id.with("frame"))),
+            node: self.node.split_frame(),
+        };
+        let paint = chrome.paint.clone().with_material(material.clone());
+        // The border's room and the corners the content clips to, painting nothing.
+        let inset = Chrome::rounded(
+            Border::new(RgbaF32::TRANSPARENT, chrome.paint.border.width),
+            chrome.corners,
+        );
+        frame.record(ui, None, |ui| {
+            ui.add_shape(Shape::rect().corners(chrome.corners), paint);
+            self.record(ui, Some(&inset), body)
+        })
     }
 
     /// [`Self::record`] plus the [`Response`] of the node just recorded, for decorative

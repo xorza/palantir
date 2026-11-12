@@ -307,7 +307,6 @@ fn widget_setters_check_their_kinds() {
     use crate::primitives::layout::anchor::Anchor;
     use crate::primitives::math::domain;
     use crate::primitives::paint::color::color_coords::ColorCoords;
-    use crate::primitives::paint::material::Material;
     use crate::scene::layer::Layer;
     use crate::widgets::color_field::ColorField;
     use crate::widgets::color_strip::ColorStrip;
@@ -363,14 +362,6 @@ fn widget_setters_check_their_kinds() {
         set(RgbaF32::new(2.0, 0.0, 0.0, 1.0));
         panic_probe::assert_panics_with(domain::COLOR_RULE, || set(NAN_RED));
     }
-    // A scrim's material is checked as a chrome's is: a blur of 0 is the boundary, −1 no length.
-    let blurred = |sigma| {
-        let scrim = Chrome::new(RgbaF32::BLACK).with_material(Material::blur(sigma));
-        drop(Modal::new().scrim(scrim));
-    };
-    blurred(0.0);
-    panic_probe::assert_panics_with(domain::LENGTH_RULE, || blurred(-1.0));
-
     let texel_cases: [fn(u32); 2] = [
         |n| {
             let mut coords = ColorCoords::default();

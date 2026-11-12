@@ -256,9 +256,9 @@ fn empty_label_records_no_bubble() {
     );
     assert_eq!(
         shown.ui().tree(Layer::Tooltip).records.len(),
-        baseline + 2,
-        "the same fixture with text records the bubble and its label beyond the empty one \
-         ({baseline} records)",
+        baseline + 3,
+        "the same fixture with text records the bubble, the frame its material draws in, and its \
+         label beyond the empty one ({baseline} records)",
     );
 }
 
@@ -424,8 +424,8 @@ fn delay_gates_visibility() {
     assert!(h.state::<TooltipState>(trigger_id).unwrap().is_visible());
     assert_eq!(
         h.ui().tree(Layer::Tooltip).records.len(),
-        2,
-        "the Tooltip layer holds the bubble and its label",
+        3,
+        "the Tooltip layer holds the bubble, the frame its material draws in, and its label",
     );
 
     h.ui_mut().theme_mut().tooltip.warmup = Duration::ZERO;
@@ -562,8 +562,9 @@ fn tooltip_inside_popup_records_without_panic() {
     // The bubble records into the Tooltip layer, a root distinct from the Popup.
     assert_eq!(
         h.ui().tree(Layer::Tooltip).records.len(),
-        2,
-        "the Tooltip layer holds the bubble raised inside the popup, and its label",
+        3,
+        "the Tooltip layer holds the bubble raised inside the popup, the frame its material draws \
+         in, and its label",
     );
 }
 

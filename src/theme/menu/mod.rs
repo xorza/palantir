@@ -4,6 +4,7 @@ pub(crate) mod menu_item;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::material::Material;
 use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -34,6 +35,11 @@ const MIN_WIDTH: f32 = 208.0;
 pub struct MenuTheme {
     /// Panel chrome behind the items; its `padding` carves the gutter to the rows.
     pub panel: Chrome,
+    /// The material the panel wears under its fill, drawn as a shape under it
+    /// ([`MaterialPaint`](crate::MaterialPaint)); `None` keeps the panel opaque, which a file that
+    /// leaves it out reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<Material>,
     /// Padding inside the container, around the items.
     #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub padding: Spacing,
@@ -54,13 +60,17 @@ impl MenuTheme {
     /// [`MenuItemTheme`] and the menu [`SeparatorTheme`].
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let item = MenuItemTheme::from_parts(p, m);
-        Self {
-            panel: m.dress_float(p.popup_panel(m), item.shortcut),
+        let ink = item.shortcut;
+        let mut theme = Self {
+            panel: p.popup_panel(m),
+            material: None,
             padding: Spacing::all(m.space.xs),
             min_width: MIN_WIDTH,
             gap: 0.0,
             item,
             separator: SeparatorTheme::menu(p, m),
-        }
+        };
+        m.dress_float(&mut theme.panel, &mut theme.material, ink);
+        theme
     }
 }
