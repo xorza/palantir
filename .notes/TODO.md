@@ -5,6 +5,7 @@
 - build-in colors
 - optimal resolve strategies
 - material for texts and strokes?
+- some benches as tests where we dont need performance to save build time?
 
 - atlas pool: A/B `integration/frame/gpu/*`, `text_atlas/*` and `backdrop_frame/*` against the
   pool's base on every bench host, worst frame included; the move bench (`atomic/atlas_move`) on
