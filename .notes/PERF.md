@@ -30,7 +30,7 @@ an older number here reads as a share, not a time.
     read off `MemAvailable`, as `rustc` runs under the `sccache` daemon outside cargo's process
     tree.
   - board: a VideoCore single-board computer; core 3, governor `performance` from the kernel
-    command line (`cpufreq.default_governor`). It builds nothing, as a fat-LTO link there takes
+    command line (`cpufreq.default_governor`). It builds nothing, as an LTO link there takes
     too long: its binaries are cross-built on a Mac with `zig cc -target aarch64-linux-gnu.2.41`
     behind a wrapper that drops `--fix-cortex-a53-843419`, `-Wl,-O1` and cc-rs's
     `--target=<triple>`, 4 minutes and 4.5 GB a build; `cargo zigbuild --profile bench

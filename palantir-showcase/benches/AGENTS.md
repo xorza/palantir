@@ -90,7 +90,7 @@ PALANTIR_BENCH_NO_GPU=1 cargo damage-sweep    # each decision, no timing
 host of its own each, and prints per run what each GPU atlas holds: its peak bytes, its bytes at
 the last frame, the bytes its live items fill and their share. It reads memory, not time, which no
 build profile moves, so `cargo test -p palantir-showcase --bench palantir -- atlas-memory --bench`
-runs it without a fat link; its reasons are in `src/gpu/atlas_memory/bench.rs`.
+runs it without an LTO link; its reasons are in `src/gpu/atlas_memory/bench.rs`.
 
 ## Profiling
 
