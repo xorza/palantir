@@ -96,7 +96,7 @@ proc-macro2 = { version = "1.0", default-features = false, features = [
     "proc-macro",
 ] }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
-resvg = { version = "0.49", default-features = false }
+resvg = { version = "0.50", default-features = false }
 ron = { version = "0.12", default-features = false }
 rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 serde = { version = "1.0", default-features = false, features = [
