@@ -2,7 +2,7 @@
 //! `CacheKey`) or icons ([`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey)).
 //!
 //! The pool places, grows and evicts across both tenants (`gpu::atlas`,
-//! `.notes/proposals/atlas-pool.md`); a tenant keeps the keys it rasterized, a slab of the rasters
+//! `src/gpu/AGENTS.md`, Atlases); a tenant keeps the keys it rasterized, a slab of the rasters
 //! each names with their bearings, the entries that draw nothing, and the uploads it owes. An
 //! eviction of either tenant's raster reaches its owner through the pool's queue, drained at the
 //! end of each submit; a lookup that finds its raster gone before then drops the key itself.

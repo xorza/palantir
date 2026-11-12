@@ -466,8 +466,8 @@ an older number here reads as a share, not a time.
 - **The blur residual's loop follows the device**: `ResidualLoop::One` on Broadcom's VideoCore,
   `Windowed` elsewhere, by an `override` constant, both bit for bit (a test). Refused: one form
   for all (Rejected); a vendor list nobody measured. board σ 4 −34 %, fanless −20 %.
-- **The cutout atlas keeps what it baked**: `CutoutTables` holds earlier frames' tables and bakes
-  only what a frame lacks. Refused: a cache per window's plan, which another window's bake would
+- **The cutout tables keep what they baked**: each table's placement holds the span of it baked in
+  earlier frames, so a frame bakes only what it lacks. Refused: a cache per window's plan, which another window's bake would
   void unseen; baking more tables, which changes which shadows read one. Pi frames −13 to −21 %,
   fanless −9 to −12 %.
 - **A partial frame paints a damage canvas where a pass moves its whole target**: on Arm,

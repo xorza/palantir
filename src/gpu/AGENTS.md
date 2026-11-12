@@ -58,6 +58,78 @@ How palantir draws, from the renderer's instance streams through wgpu: the decis
   `downlevel_defaults`'s four.
 - **An effect takes the clip outside the app's code.**
 
+## Atlases
+
+Facts and sources: `.notes/research/2026-11-12-atlas-pools.md` and
+`.notes/research/2026-11-12-atlas-pool-measurements.md`.
+
+- **One pool a device owns every atlas byte, through three allocators by item shape** (`gpu::atlas`):
+  packed pages for small 2D items, scratch textures for large ones, a row table for gradient rows;
+  one budget a format, one decay, one commit, as WebRender's `ResourceCache` owns its texture
+  cache, GPU cache and render-target pool. Refused: one allocator for every shape, which packs
+  window-sized results into pages or splits gradient reads across them; an allocator a tenant,
+  which doubled the headroom and the code.
+- **A list a texel format, shared by every tenant of it**: R8 holds glyph and icon masks and the
+  shadow cutout tables, RGBA8 color glyphs and icons, RGBA16F small backdrop results, as
+  WebRender's `SharedTextures` and Zed's atlas keep a list a format. Glyphs and icons share their
+  lists and one bind group, as Zed keeps glyphs and SVG icons in one `Monochrome` list; nothing a
+  frame drew this frame or the last is evicted, so they compete for idle items alone. Refused: a
+  budget a tenant, which kept a color-icon-heavy frame from evicting glyphs at the cost of each
+  tenant's own headroom.
+- **An allocation is a handle; a move rewrites its placement and nothing else.** Every tenant
+  reads its placement at the lookup that draws it, so a drain needs no tenant's help; only an
+  eviction moves a handle's generation.
+- **A list binds up to four pages together, the page in the instance**, as Skia's
+  `kMaxMultitexturePages`, so a draw never splits by page; a closed page binds a 1 × 1 stand-in.
+  The first page doubles from its first edge to the page edge; past it the list adds pages.
+  Refused: a texture array, which gains no layer without copying every layer; binding arrays,
+  native only; fixed pages from the start, which charge a light app a whole page.
+- **Color pages store `Rgba8Unorm` and the raster shader decodes sRGB**, so a move copies their
+  bytes exactly on every backend, as WebRender keeps color as plain RGBA. Refused: sRGB pages,
+  which GL and WebGL give no linear view of. Cost: a color pixel may move by one step.
+- **Shadow cutout tables are R8 in the mask pages**, as Skia keeps its blur profiles `kAlpha_8`: a
+  quarter of `R32Float`'s memory, and a format every backend renders, so no device falls back to
+  shading. Cost: a table texel errs half an 8-bit step more, which the bake's test bounds.
+- **An item past half a page takes a scratch texture of its own, on Skia's `GetApproxSize`
+  ladder, reused within twice its area as Chromium's `ResourcePool`, expired after an expiry
+  window.** Only per-draw tenants take one: a large backdrop's composite binds it in a group of its
+  own, so its draw splits from its neighbors'. Refused: exact sizes, which make a texture each
+  frame of a growing animation.
+- **Gradient rows are a row table, not atlas items**, per-paint data every color pipeline reads
+  branch-free through the frame group, as WebRender keeps gradient stops in its GPU cache. A row
+  keeps its id while it lives; the table doubles when full and halves at the start of a frame that
+  ends an idle expiry window under a quarter used, its live rows renumbered and baked again from
+  their ramps. Refused: a CPU mirror of the texture, 2 KiB a row, kept only to fill a run's gaps,
+  which a bake from the ramp fills with the same bytes.
+- **Eviction is a clock with a one-frame grace and pins.** Nothing drawn this display frame or the
+  last goes, which keeps a working set a little past budget from evicting what the next frame
+  draws again, WebRender's least age at full pressure; a pin, a cutout table a plan holds, keeps
+  an item from every eviction. Under the soft budget a list grows; over it, it evicts; with nothing
+  evictable it grows to four pages; past them it refuses.
+- **Decay is WebRender's: age out, then drain, then free, once a display frame** at the end of its
+  first submit, the GPU's copies first in the next commit, ahead of every upload, bake and draw.
+  The age shortens with the list's pressure as WebRender's `should_continue_evicting` table, at
+  most 32 evictions a frame below four times the budget; the emptiest page whose items fit the
+  others drains into them, at most 512² texels a frame as WebRender's compaction; one page under a
+  quarter full for an expiry window drains into a page that holds twice its items, landing at
+  half as a `Vec` halves. A page is a source or a destination in one frame, never both, and no
+  drain starts while moves wait for the commit, so no page closes under a move. Refused: Skia's
+  compaction by eviction, which rasterizes a page's visible items again in one frame; a repack in
+  one frame, which moves the whole live set at once.
+- **Moves go by copy commands, a frame's few within a budget of copies.** An instanced draw a
+  destination page is the other route WebRender keeps; a device whose copies cost past a draw
+  takes it once the move bench measures it (`.notes/TODO.md`).
+- **The system's memory warnings purge the pool on every platform**, between frames: everything no
+  one pins and the last frame did not draw goes, idle scratch goes, and the pages drain with no
+  budget, committed at once so the memory returns with no frame to wait for; a stutter traded for
+  the process not being killed, as Chromium's memory-pressure listeners and GLib's
+  `GMemoryMonitor` advice to free caches. A watch a platform, no crate past the platform's: macOS's
+  libdispatch memory-pressure source, Linux's portal `MemoryMonitor`, Windows's
+  `CreateMemoryResourceNotification`.
+- **Reclaim otherwise runs on painted frames only**, as WebRender and Flutter's raster cache
+  reclaim; an idle app never wakes for housekeeping. Refused: a maintenance wake, a new wake kind
+  in every host. Cost: an app idle after a glass closes keeps its pages until its next frame.
+
 ## GPU memory
 
 - **Scratch decays.** Per-frame GPU scratch grows to a frame's need and steps down to the peak of

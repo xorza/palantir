@@ -15,7 +15,7 @@ use glam::{U16Vec2, UVec2};
 /// The pages a list binds together, Skia's `kMaxMultitexturePages`: its hard cap.
 pub(crate) const MAX_PAGES: usize = 4;
 
-/// What a caller sets of a list (`.notes/proposals/atlas-pool.md`, Starting constants).
+/// What a caller sets of a list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PageListConfig {
     /// The edge a list's first page opens at, a power of two.
@@ -199,7 +199,7 @@ enum Budget {
 /// below the page edge or opening a page; over it, it evicts, by a clock over the items no
 /// frame drew this frame or the last and no one pins; with nothing evictable it grows to its hard
 /// cap; at the cap it refuses. As the raster atlas inserts today, across pages
-/// (`.notes/proposals/atlas-pool.md`, Packed pages).
+/// (`src/gpu/AGENTS.md`, Atlases).
 #[derive(Debug)]
 pub(crate) struct PageList {
     format: AtlasFormat,
@@ -679,7 +679,7 @@ impl PageList {
     }
 
     /// Return what the list holds past its need, once a display frame, at display frame `frame`
-    /// (`.notes/proposals/atlas-pool.md`, Decay): age out what idled past the age the list's
+    /// (`src/gpu/AGENTS.md`, Atlases): age out what idled past the age the list's
     /// pressure sets into `evictions`; with one page under a quarter full for an expiry window,
     /// open a smaller one to drain into; with several, drain the emptiest whose items fit the
     /// others'; move a drain's items within `budget` into `moves`; and close the page it emptied.
@@ -708,7 +708,7 @@ impl PageList {
     /// `frame`: evict every item no one pins and this frame did not draw into `evictions`, drop the
     /// idle scratch, and drain with no budget, a sparse page shrinking at once, into `moves`, until
     /// no drain is left to start. A stutter traded for the process not being killed
-    /// (`.notes/proposals/atlas-pool.md`, Decay).
+    /// (`src/gpu/AGENTS.md`, Atlases).
     pub(crate) fn purge(&mut self, frame: u64, evictions: &mut Evictions, moves: &mut Vec<Move>) {
         for idx in 0..self.entries.len() {
             let entry = &self.entries[idx];

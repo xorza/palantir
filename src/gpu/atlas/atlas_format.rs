@@ -2,7 +2,7 @@
 
 /// The texel format a page list holds, one list each: glyph and icon masks and the shadow cutout
 /// tables in `R8`, color glyphs and icons in `Rgba8`, backdrop results in `Rgba16F`
-/// (`.notes/proposals/atlas-pool.md`, Packed pages). The discriminants index the pool's lists.
+/// (`src/gpu/AGENTS.md`, Atlases). The discriminants index the pool's lists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub(crate) enum AtlasFormat {

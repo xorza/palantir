@@ -5,7 +5,7 @@
 //!
 //! - **Results live in the pool's half-float list.** A result within half a page shares the pages,
 //!   one larger takes a scratch texture of its own, rounded on the scratch ladder, reused and
-//!   expired as the pool's scratch is (`.notes/proposals/atlas-pool.md`, Scratch textures); a
+//!   expired as the pool's scratch is (`src/gpu/AGENTS.md`, Atlases); a
 //!   composite reads either through its group, the four pages and one scratch texture, so a draw
 //!   splits at each large backdrop. The pool evicts the results no frame read this display frame or
 //!   the last, past its soft budget. Refused: the results atlas of its own, which doubled to the

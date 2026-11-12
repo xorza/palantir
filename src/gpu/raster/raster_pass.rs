@@ -2,7 +2,7 @@
 //! are the same at the GPU level (a tinted, atlas-sourced rectangle at the raster's
 //! pixel size), differing only in what fills the instance buffer. Each tenant gets
 //! its own instance and its own keys, over the one atlas pool both share, and both
-//! draw through the one atlas group (`.notes/proposals/atlas-pool.md`, D1): an
+//! draw through the one atlas group (`src/gpu/AGENTS.md`, Atlases): an
 //! eviction takes only what no frame drew this frame or the last, of either.
 
 use crate::common::span::Span;

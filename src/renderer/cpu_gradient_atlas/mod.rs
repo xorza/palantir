@@ -74,8 +74,7 @@ struct RowSlot {
     epoch: u64,
 }
 
-/// CPU side of the gradient LUT atlas, the pool's row table (`.notes/proposals/atlas-pool.md`,
-/// The row table): a ramp to row-id map, whose rows [`Self::flush`] bakes for the backend's
+/// CPU side of the gradient LUT atlas, the pool's row table (`src/gpu/AGENTS.md`, Atlases): a ramp to row-id map, whose rows [`Self::flush`] bakes for the backend's
 /// texture. No CPU mirror of the texture: a flush bakes each row of its runs again from its ramp,
 /// the clean rows a run folds in among them, which the bake's determinism makes the same bytes.
 ///

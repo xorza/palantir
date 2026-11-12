@@ -1,6 +1,6 @@
 //! The atlas pool: every page list's bookkeeping, its CPU half, with no device, so each rule is
 //! testable without one, and [`atlas_textures`], its GPU half, the textures that follow it. The
-//! design is `.notes/proposals/atlas-pool.md`.
+//! decisions are `src/gpu/AGENTS.md`, Atlases.
 
 pub(crate) mod atlas_format;
 pub(crate) mod atlas_handle;
@@ -22,9 +22,9 @@ use crate::gpu::atlas::tenant::Tenant;
 use glam::{U16Vec2, UVec2};
 use std::vec::Drain;
 
-/// Each list's starting constants, by [`AtlasFormat`] (`.notes/proposals/atlas-pool.md`, Starting
-/// constants): soft budgets the sum of today's tenants', page edges whose four pages are one
-/// tenant's cap today.
+/// Each list's constants, by [`AtlasFormat`]: soft budgets the sum of the budgets the tenants held
+/// before the pool, page edges whose four pages are the cap one tenant held, until the bench hosts'
+/// memory study tunes them (`.notes/research/2026-11-12-atlas-pool-measurements.md`).
 pub(crate) const LIST_CONFIGS: [PageListConfig; 3] = [
     PageListConfig {
         first_edge: 256,
@@ -131,7 +131,7 @@ impl AtlasPool {
     /// Return what the lists hold past their need, at the end of the first submit of each display
     /// frame, after every draw of it: the evictions wait in their tenants' queues, and the moves
     /// for the GPU half's next commit, ahead of every upload, bake and draw, so the next build of
-    /// any window reads the new placements (`.notes/proposals/atlas-pool.md`, Decay). As WebRender
+    /// any window reads the new placements (`src/gpu/AGENTS.md`, Atlases). As WebRender
     /// runs its compaction once a frame.
     pub(crate) fn end_submit(&mut self) {
         if self.decayed == self.frame {

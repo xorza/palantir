@@ -1,8 +1,8 @@
 //! [`RowTable`]: the pool's row table, the texture of the gradient LUT rows, owned by
 //! [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend), whose group is the frame group every
 //! color pipeline reads at [`FRAME_GROUP`](crate::primitives::wgsl::FRAME_GROUP): rows, not atlas
-//! items, as every color pipeline reads them branch-free (`.notes/proposals/atlas-pool.md`, The
-//! row table). Its CPU half is the frontend's
+//! items, as every color pipeline reads them branch-free (`src/gpu/AGENTS.md`,
+//! Atlases). Its CPU half is the frontend's
 //! [`CpuGradientAtlas`](crate::renderer::cpu_gradient_atlas::CpuGradientAtlas).
 
 use crate::gpu::device::gpu::Gpu;

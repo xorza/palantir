@@ -132,7 +132,7 @@ pub(crate) struct WgpuBackend {
     /// Shared gradient LUT atlas, whose group is the frame group every color pipeline reads.
     gradient: RowTable,
     /// The atlas pool's page lists, which glyphs and icons allocate from, and the textures behind
-    /// them (`.notes/proposals/atlas-pool.md`).
+    /// them (`src/gpu/AGENTS.md`, Atlases).
     atlas: AtlasPool,
     atlas_textures: AtlasTextures,
     /// The group both raster tenants draw the pool's mask and color pages through.

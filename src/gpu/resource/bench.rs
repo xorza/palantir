@@ -3,7 +3,7 @@
 //! - `atomic/gradient_upload`: one more copy against one more staged row, which sets
 //!   `MERGE_GAP_ROWS`.
 //! - `atomic/atlas_move`: rectangles moved from one atlas page to another, a copy command each
-//!   against one instanced draw, which picks how `.notes/proposals/atlas-pool.md` moves items.
+//!   against one instanced draw, which picks how the atlas pool moves items (`src/gpu/AGENTS.md`, Atlases).
 //! - `atomic/atlas_page`: a page made and first written, what a pool pays to open one.
 
 use crate::bench::backends::{Backend, Backends};
@@ -144,7 +144,7 @@ fn gradient_upload(c: &mut Criterion, backends: &Backends, backend: Backend) {
     group.finish();
 }
 
-/// The page formats of `.notes/proposals/atlas-pool.md`, each with its part of a case's id: the
+/// The atlas pool's page formats, each with its part of a case's id: the
 /// masks, the color pages as `Rgba8Unorm`, and the backdrop results.
 const PAGE_FORMATS: [(wgpu::TextureFormat, &str); 3] = [
     (wgpu::TextureFormat::R8Unorm, "r8"),

@@ -1,5 +1,5 @@
 //! What each GPU atlas holds: the bytes of its textures against the bytes its live items fill,
-//! which step 0.1 of `.notes/proposals/atlas-pool.md` reads over the bench scenes
+//! which the pool's budgets read over the bench scenes
 //! (`cargo atlas-memory`).
 
 pub(crate) mod bench;
