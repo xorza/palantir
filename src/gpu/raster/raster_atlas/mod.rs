@@ -410,22 +410,19 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     ///
     /// # Why a clock, not exact LRU
     ///
-    /// True LRU iterates the whole `cache` map per eviction, and [`Self::allocate`]
-    /// calls this in a loop; during a sustained zoom that victim selection dominated the
-    /// frame. In the thrash steady state nearly every slot is eligible, so the clock hand
-    /// stops within a step or two. The trade is an approximately-oldest victim, fine
-    /// since entries are regenerable. See [`ClockSweep`].
+    /// True LRU iterates the whole `cache` map per eviction, and [`Self::allocate`] calls this in a
+    /// loop; during a sustained zoom that selection dominated the frame. In the thrash steady state
+    /// nearly every slot is eligible, so the hand stops within a step or two. The trade is an
+    /// approximately-oldest victim, fine since entries are regenerable. See [`ClockSweep`]. An
+    /// intrusive MRU list is the wrong tool: a stamp refresh here is one indexed store on the
+    /// hottest text path (`TextEncoder::try_emit_cached`).
     ///
     /// # What the clock protects
     ///
-    /// What has been drawn so far this frame, not what it will draw
-    /// ([`Self::cur_frame`] moves in [`Self::advance_to`] at the end of a submit). An
-    /// early batch's misses can therefore take rectangles a later batch was about to hit;
-    /// that batch's `TextEncoder::try_emit_cached` sees the generation move and
-    /// re-rasterizes. It costs work, never a wrong pixel.
-    ///
-    /// An intrusive MRU list is the wrong tool: this atlas refreshes a stamp with a
-    /// single indexed store on the hottest text path (`TextEncoder::try_emit_cached`).
+    /// What has been drawn so far this frame, not what it will draw ([`Self::cur_frame`] moves in
+    /// [`Self::advance_to`] at the end of a submit). An early batch's misses can take rectangles a
+    /// later batch was about to hit; that batch sees the generation move and re-rasterizes: work,
+    /// never a wrong pixel.
     fn evict_for(&mut self, target: ContentType, size: U16Vec2) -> u32 {
         if self.sides[target as usize].dry_frame == Some(self.cur_frame) {
             // A fourth write of `last_use` would break the invariant that doc rests on, silently

@@ -40,7 +40,7 @@ use std::rc::Rc;
 /// **The body does not record while closed**, so cross-frame rows inside it (a
 /// [`TextEdit`](crate::TextEdit)'s unsent edit, a [`Scroll`](crate::Scroll)'s
 /// offset) are swept; a section holding any wants [`Self::keep_body`], at the price
-/// of a full record every frame. The open flag lives in the state map on the widget's id and
+/// of a full record every frame. The open flag lives in the state map on [`Self::header_id`] and
 /// is `false` until [`Self::start_open`] says otherwise, so an untouched closed section keeps no
 /// state row; [`Self::open`], [`Self::close`] and [`Self::is_open`] drive it from outside.
 ///

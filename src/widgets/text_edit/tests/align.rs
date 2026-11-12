@@ -120,7 +120,8 @@ fn shape_origins(ui: &Ui, node: NodeId) -> Origins {
 
 /// **The first frame an editor exists on aligns like the ones after it.**
 ///
-/// Alignment needs the arranged rect, which record lacks; resolved there, a new field painted hard left for one frame. The block is now a child placed against the fresh rect. Compared against the settled answer, not restated numbers.
+/// Alignment needs the arranged rect, which record lacks, so the block is a child placed against
+/// the fresh rect. Compared against the settled answer, not restated numbers.
 #[test]
 fn the_first_frame_aligns_like_the_ones_after_it() {
     let settled = {
@@ -343,7 +344,7 @@ fn align_overflow_clamps_to_zero() {
 
 #[test]
 fn selection_rects_offset_matches_text() {
-    // The wash uses the text's `align_offset`: under Right, x = PAD_L + (ALIGN_W − TEXT_W_4CH).
+    // The wash uses the text's block offset: under Right, x = PAD_L + (ALIGN_W − TEXT_W_4CH).
     let mut h = Harness::mono(NARROW);
     let mut buf = String::from("abcd");
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
@@ -405,7 +406,8 @@ fn multiline_default_is_top_left() {
     assert_eq!(o.y, PAD_T, "y = {}", o.y);
 }
 
-/// Regression: an ancestor `Panel::transform` zoom must not drift the text origin; `inner_h` must come from `response.layout_rect` (pre-transform), not `response.rect`.
+/// Regression: an ancestor `Panel::transform` zoom must not drift the text origin; the text box
+/// must come from `response.layout_rect` (pre-transform), not `response.rect`.
 #[test]
 fn text_origin_invariant_under_ancestor_transform_zoom() {
     fn run(scale: f32) -> Vec2 {
@@ -459,7 +461,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 #[test]
 fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
     let mut h = Harness::mono(WIDE);
-    // The line box height, floored at the leading by `resolve_geometry`.
+    // The line box height.
     let text = Size::new(TEXT_W_4CH, BLOCK_H);
     let at = Vec2::new(200.0, 40.0);
     let corner = h.ui().theme().text_edit.corner_centering(text, at);

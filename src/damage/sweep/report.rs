@@ -371,7 +371,7 @@ pub(super) fn policies_table(
     })
 }
 
-/// One stage's CSV rows: an arm per frame position, and a policy per line.
+/// The CSV rows of every stage so far: an arm per frame position, and a policy per line.
 #[derive(Debug, Default)]
 pub(super) struct Csv {
     arms: String,

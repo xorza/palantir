@@ -140,10 +140,10 @@ impl Animatable for RgbaF32 {
 
     /// Divided by alpha, or by the largest cone root when that is larger, so no recovered cone
     /// root passes white's 1, the hue kept. Oklab's inverse cubes, so a division by an alpha near 0
-    /// would paint as `1/α²`: a tween that overshoots toward a nearly transparent color would
-    /// flash far past white. A tween within its ends between colors in gamut stays under the cap
-    /// but for rounding, as its roots are a weighted mean of theirs; an HDR color is capped at
-    /// white while it moves. With no alpha there is no color to recover, so the channels are zero.
+    /// would paint as `1/α²` and flash far past white on an overshoot toward a nearly transparent
+    /// color. A tween within its in-gamut ends stays under the cap but for rounding, as its roots
+    /// are a weighted mean of theirs; an HDR color is capped at white while it moves. With no
+    /// alpha there is no color to recover, so the channels are zero.
     #[inline]
     fn from_motion(motion: Self) -> Self {
         let Self { r, g, b, a } = motion;

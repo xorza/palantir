@@ -51,7 +51,8 @@ pub(super) fn spring_velocity<T: Animatable>(row: &AnimationRow<T>) -> &T {
     velocity
 }
 
-/// Prelude: pre-records the widget so its state row exists; per-frame bodies re-record it so state survives sweeps.
+/// Pre-records the widget so its state row exists; per-frame bodies re-record it so the state
+/// survives sweeps.
 #[derive(Debug)]
 pub(super) struct AnimationUi {
     pub(super) h: Harness,
@@ -79,7 +80,9 @@ pub(super) struct Release {
 }
 
 impl Release {
-    /// The first step inside the settle bound, from the `f64` closed form `x(t) = e^(-h·t)(C + h·S)`, `v(t) = -k·e^(-h·t)·S` (`h = c/2`, `(C, S)` per `SpringTransition`); the bound is `x² + v²/k < eps²`. Step `n` lasts `dt_of(n)`.
+    /// The first step inside the settle bound `x² + v²/k < eps²`, from the `f64` closed form
+    /// `x(t) = e^(-h·t)(C + h·S)`, `v(t) = -k·e^(-h·t)·S` (`h = c/2`, `(C, S)` per
+    /// `SpringTransition`). Step `n` lasts `dt_of(n)`.
     pub(super) fn settle_step(self, dt_of: impl Fn(u32) -> f32) -> u32 {
         let Self {
             spring,

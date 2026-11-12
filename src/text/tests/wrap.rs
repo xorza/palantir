@@ -386,7 +386,7 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     assert_eq!(TextWrap::Wrap.target_width(1.0, &overflow), 1.0);
 }
 
-/// A probe and the paint must shape under the same key for every policy whose committed width isn't the width offered. `TextShaper::layout` resolves those beside the shaping call; before, a probe got a different buffer than paint and the caret sat in the wrong place.
+/// A probe and the paint must shape under the same key for every policy whose committed width isn't the width offered. `TextShaper::layout` resolves those beside the shaping call; otherwise a probe gets a different buffer than paint and the caret sits in the wrong place.
 #[test]
 fn a_probe_shapes_under_the_key_the_paint_committed() {
     let content = "a extraordinarily b";
@@ -457,7 +457,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
     }
 }
 
-/// A probe answers in the alignment the run asked for, not the one its cache key carries: an unbounded key stores `LineAlign::Auto` whatever the run said, which once put a right-aligned run's caret at the block's left edge.
+/// A probe answers in the alignment the run asked for, not the one its cache key carries: an unbounded key stores `LineAlign::Auto` whatever the run said, which would put a right-aligned run's caret at the block's left edge.
 #[test]
 fn a_glyphless_line_takes_its_caret_from_the_run_not_the_key() {
     let text = "wide enough\n\ntail";

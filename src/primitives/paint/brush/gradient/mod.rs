@@ -105,7 +105,7 @@ pub struct Gradient<G> {
 }
 
 impl<G> Gradient<G> {
-    /// Override how the gradient repeats outside 0..1.
+    /// Override how the gradient fills outside 0..1.
     pub const fn with_spread(mut self, spread: Spread) -> Self {
         self.spread = spread;
         self

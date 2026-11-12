@@ -272,7 +272,7 @@ fn a_backdrop_whose_row_moves_is_stale() {
     );
 }
 
-/// The outer backdrop of that scene captures what the child canvas paints under it: a recolor of
+/// The outer backdrop captures what the child canvas paints under it: a recolor of
 /// the child's square, under the outer backdrop's footprint, stales the outer backdrop, which
 /// paints after the square though its row comes first. The inner backdrop, painted before the
 /// square, stays.

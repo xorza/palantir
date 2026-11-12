@@ -25,7 +25,9 @@ pub struct TextShape {
     /// The face and metrics to shape in, one named type mirrored by [`ShapeRecord::Text`](crate::shape::record::ShapeRecord::Text).
     pub(crate) font: GlyphFont,
     pub(crate) wrap: TextWrap,
-    /// Visual placement and cache-key discriminator: the encoder places the bbox by both axes (only when `local_origin = None`), and layout threads `align.halign()` into cosmic's `set_align` and the text cache key.
+    /// Visual placement and cache-key discriminator: the encoder places the bbox by both axes
+    /// (only when `local_origin = None`), and the shaper threads `align.halign()` into cosmic's
+    /// alignment and the text cache key.
     pub(crate) align: Align,
 }
 

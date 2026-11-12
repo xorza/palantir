@@ -185,7 +185,7 @@ fn both_axes_overflow_emits_two_thumbs() {
     );
 }
 
-/// `ScrollXY` with both axes overflowing must not overlap its bars at the bottom-right corner.
+/// `Scroll::both` with both axes overflowing must not overlap its bars at the bottom-right corner.
 #[test]
 fn both_axes_bars_dont_overlap_at_corner() {
     let ui = record_two_frames(UVec2::new(400, 400), |ui| {

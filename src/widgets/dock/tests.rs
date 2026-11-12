@@ -47,12 +47,12 @@ fn viewer(n: u32) -> Tab {
     Tab::Viewer(n)
 }
 
-/// One pane holding `Main`, plus `Prefs` and one viewer.
 /// The id every dock view in this suite records under.
 fn dock() -> WidgetId {
     WidgetId::from_hash("test.dock")
 }
 
+/// One pane holding `Main`, plus `Prefs` and one viewer.
 fn seeded() -> DockState<Tab> {
     let mut d = DockState::new(Tab::Main);
     let primary = d.primary().id;

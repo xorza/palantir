@@ -358,7 +358,7 @@ fn dress_floats_refuses_a_bad_blur_or_fill_alpha() {
 
 /// The selection wash takes the most of the accent that keeps the text at 4.5:1 over a field, up
 /// to 61/255: the dark palette's lime takes 27 (the wash at 27 holds 4.557:1, at 28 4.485:1), the
-/// old blue `#44b5ff` all 61 (4.527:1; 62 would read 4.495:1).
+/// blue `#44b5ff` all 61 (4.527:1; 62 would read 4.495:1).
 #[test]
 fn the_selection_wash_takes_what_the_text_allows() {
     let alpha = |accent: RgbaF32| {

@@ -28,7 +28,7 @@ pub(crate) struct NodeRecord {
     /// Immediate parent, or [`NodeId::NONE`] for a root; with `subtree_end` it answers both tree directions in one
     /// load. Recorded because `open_node` has it in hand, where later passes would rebuild an ancestor stack.
     pub parent: NodeId,
-    /// Layout-pass column (geometry + visibility), bundled as the hot measure/arrange path reads all six fields.
+    /// Layout-pass column (geometry + visibility), bundled as the hot measure/arrange path reads it whole.
     pub layout: LayoutCore,
     /// Packed paint/input flags (4 B), read by cascade, encoder, hit-test and input routing.
     pub attrs: NodeFlags,

@@ -247,7 +247,9 @@ fn a_disabled_rows_hint_dims_with_its_label() {
     );
 }
 
-/// `.style(...)` beats the global slot on every menu widget and writes nothing back; rows resolve through `WidgetTheme::plan`, so theme `padding`/`margin` fill where the builder was silent and an explicit value wins.
+/// `.style(...)` beats the global slot on every menu widget and writes nothing back; rows resolve
+/// through `ThemeSlot::plan`, so theme `padding`/`margin` fill where the builder was silent and an
+/// explicit value wins.
 #[test]
 fn per_instance_style_overrides_global_menu_theme() {
     let custom = MenuTheme {

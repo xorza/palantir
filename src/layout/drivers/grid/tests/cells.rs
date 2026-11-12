@@ -1,4 +1,4 @@
-//! Placing a child in its resolved cell, and the depth stack bracketing the walk.
+//! Placing a child in its resolved cell.
 
 use crate::internals::layout_rig::{GridTracks, LayoutRig};
 use crate::primitives::geometry::rect::Rect;
@@ -34,8 +34,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
 }
 
 /// A cell past the tracks is coerced, not refused: on a 2 × 2 grid of 50 px tracks, `(5, 7)` lands
-/// in the last cell, and a span of 3 from row 0 covers the 2 rows there are. Before, a debug build
-/// panicked at record time and a release build in layout.
+/// in the last cell, and a span of 3 from row 0 covers the 2 rows there are.
 #[test]
 fn a_cell_past_the_tracks_is_held_inside_them() {
     let mut rig = LayoutRig::new();

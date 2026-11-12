@@ -520,8 +520,6 @@ fn a_draw_under_an_earlier_tier_starts_a_group() {
     }
 }
 
-// Pruning drops a quad iff a later quad in its group fully covers its painted extent (`q.rect`) under `Rect::contains_rect`.
-
 /// A quad overlapping text in an already-closed batch of the same group must still flush.
 #[test]
 fn quad_flushes_text_in_already_closed_batch_same_group() {

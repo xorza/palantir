@@ -160,7 +160,7 @@ impl CpuGradientAtlas {
 
     /// An empty atlas whose growth ceiling is a device's `max_texture_dimension_2d` (one LUT row
     /// per texture row), clamped by the [`MAX_ATLAS_ROWS`] policy ceiling since growth never
-    /// reverses; `None` (deviceless) uses [`DEFAULT_MAX_ATLAS_ROWS`], as `Default` does.
+    /// reverses; a limit with no device uses [`DEFAULT_MAX_ATLAS_ROWS`], as `Default` does.
     pub(crate) fn for_device(texture_limit: TextureLimit) -> Self {
         let max_rows = texture_limit
             .max_dimension()

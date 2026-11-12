@@ -252,8 +252,7 @@ fn screenshot_cluster_budget_sweep() {
     }
 }
 
-/// `total_area` sums per-rect areas without subtracting overlap; this disjoint
-/// case is the full-repaint heuristic's contract.
+/// Disjoint rects take `total_area`'s no-overlap path: the sum of their areas.
 #[test]
 fn total_area_sums_disjoint_rects() {
     let mut region = Fold::new(0.0);

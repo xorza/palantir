@@ -86,16 +86,14 @@ impl Chain {
 /// deadline the owner can hand out ([`Self::with_keep`]).
 ///
 /// Every bucket draws fixed chunks from one pool the whole ring shares, so the memory it touches
-/// follows the most tickets outstanding at once, and a burst in one bucket costs what it holds: 4000
-/// tickets take 250 chunks, 128 KiB, where a bucket of its own per frame held 256 times that
-/// for the session. A drain gives its chunks back to the pool, so once the pool reaches its
-/// peak no bucket allocates, whichever bucket a later burst lands in. The pool starts with room
-/// for a chunk per bucket, so tickets spread over the ring never allocate, and only a burst past
-/// that room grows it in a frame. Started empty, it grew on the frame a first expiry filed its
-/// tickets, which the process's hash seed picks: 5 to 12 of 100 processes allocated that way after
-/// their warmup. The room is capacity alone, so a page no ticket reached stays untouched. Refused:
-/// a `Vec` per bucket grown together, which kept every bucket at the busiest bucket's load; one
-/// grown alone, which allocates in whichever later frame a bucket first meets that load.
+/// follows the most tickets outstanding at once: 4000 tickets take 250 chunks, 128 KiB, where a
+/// bucket of its own per frame held 256 times that for the session. A drain gives its chunks back,
+/// so once the pool reaches its peak no bucket allocates. The pool starts with capacity for a chunk
+/// per bucket: growing on the frame a first expiry filed, which the process's hash seed picks,
+/// allocated after warmup in 5 to 12 of 100 processes. Capacity alone, so a page no ticket reached
+/// stays untouched. Refused: a `Vec` per bucket grown together, which kept every bucket at the
+/// busiest bucket's load; one grown alone, which allocates in whichever later frame a bucket first
+/// meets that load.
 #[derive(Debug)]
 pub(crate) struct ExpiryWheel<K> {
     /// Ring indexed by `due & mask`: each bucket's chain of chunks.

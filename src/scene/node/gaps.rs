@@ -3,7 +3,11 @@
 use half::f16;
 use std::fmt;
 
-/// The within-line and between-line spacing of one panel, packed as two f16 lanes, each finite and non-negative (an unset gap is folded to `0.0` by [`AuthoredGaps::resolve`](crate::scene::node::authored_gaps::AuthoredGaps::resolve)), so the bit pattern is the identity for `Eq`/`Hash` in cascade keys and [`PanelExtras`](crate::scene::node::panel_extras::PanelExtras) rows.
+/// The within-line and between-line spacing of one panel, as two f16 lanes, each finite and
+/// non-negative (an unset gap is folded to `0.0` by
+/// [`AuthoredGaps::resolve`](crate::scene::node::authored_gaps::AuthoredGaps::resolve)), so the
+/// bit pattern is the identity for `Eq`/`Hash` in cascade keys and
+/// [`PanelExtras`](crate::scene::node::panel_extras::PanelExtras) rows.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Gaps([u16; 2]);

@@ -44,7 +44,7 @@ use std::rc::Rc;
 /// # }
 /// ```
 ///
-/// Their open state lives in the state map keyed off the trigger's id, so a gesture raises it
+/// The open state lives in the state map keyed off the trigger's id, so a gesture raises it
 /// rather than application state; [`Self::open`], [`Self::close`] and [`Self::is_open`] drive it
 /// from outside, and [`Self::for_id`] shows a menu only they open. [`Self::at`] is a menu whose
 /// open state the caller keeps, as a [`Popup`]'s is, for a menu no one widget raises.

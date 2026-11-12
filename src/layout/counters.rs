@@ -111,8 +111,7 @@ pub(crate) mod internals {
 mod tests {
     use crate::layout::counters::LayoutCounters;
 
-    /// Same premise for the probe; under `cfg(test)` only the populated direction
-    /// is observable.
+    /// Under `cfg(test)` only the populated direction is observable.
     #[test]
     fn counters_are_carried_only_in_a_test_build() {
         assert!(

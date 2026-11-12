@@ -37,7 +37,8 @@ impl CircularArc {
 
     /// Tight bbox of the centerline (no stroke inflation); sweep order doesn't matter.
     ///
-    /// Extremes are the endpoints plus an exact `center ± radius` per quarter-axis crossed. Not `const`: `sin_cos` isn't const-stable.
+    /// Extremes are the endpoints plus an exact `center ± radius` per quarter-axis crossed. Not
+    /// `const`: `libm_sin_cos` isn't a `const fn`.
     pub(crate) fn bbox(self) -> Rect {
         let a1 = self.end_angle();
         let Self {

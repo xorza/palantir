@@ -217,7 +217,7 @@ fn desaturate_grays_a_color_icon_by_its_luminance() {
 /// Paint order across the raster tiers: a label, an icon recorded *over* it, and a
 /// second label in a clipped panel. The icon closes the first label's batch, so the
 /// pass runs text, icon, text; text and icons share one pipeline, so neither
-/// transition rebinds anything (see `Bound::Raster`).
+/// transition rebinds anything (see `PassRecorder`).
 ///
 /// **The icon box:** a solid 8x8 viewBox filled to its cell is the tint on every
 /// pixel, and the first label's glyphs run through it, so any non-tint pixel is a

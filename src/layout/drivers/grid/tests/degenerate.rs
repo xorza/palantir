@@ -1,4 +1,4 @@
-//! Zero extents, empty dimensions, and a track list long enough to test the inline cap.
+//! Zero extents, empty dimensions, and a long track list.
 
 use crate::internals::layout_rig::{GridTracks, LayoutRig};
 use crate::primitives::geometry::rect::Rect;

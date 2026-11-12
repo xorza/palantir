@@ -58,7 +58,10 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     );
 }
 
-/// Key completeness for authoring inputs: the key trusts tree hashes to capture everything the cascade reads. One arm per attribute class toggles one attribute and asserts the skip is busted. Scroll offset and zoom are pinned by `widgets::scroll::tests::cascade_skip_busts_on_scroll_offset_change`.
+/// Key completeness for authoring inputs: the key trusts tree hashes to capture everything the
+/// cascade reads. One arm per attribute class toggles one attribute and asserts the skip is busted.
+/// Scroll offset and zoom are pinned by
+/// `widgets::scroll::tests::lifecycle::cascade_skip_busts_on_scroll_offset_change`.
 #[test]
 fn the_key_covers_authoring_input_classes() {
     use crate::primitives::layout::clip_mode::ClipMode;

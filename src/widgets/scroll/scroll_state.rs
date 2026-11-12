@@ -164,9 +164,9 @@ impl ScrollState {
     /// floored at zero first, then widened by `content_margin` each side.
     ///
     /// Flooring first keeps `lo <= 0 <= hi`, so the margin only widens the
-    /// range. Taking `trailing.max(leading)` off the raw endpoints let the
-    /// band collapse to `-left * zoom` once content fit, shoving it sideways
-    /// by the margin.
+    /// range. Taking `trailing.max(leading)` off the raw endpoints would
+    /// collapse the band to `-left * zoom` once content fit, shoving it
+    /// sideways by the margin.
     fn natural_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
         let [cml, cmt, cmr, cmb] = bounds.content_margin.to_array();
         let overflow = self.raw_overflow(bounds).max(Vec2::ZERO);
@@ -278,10 +278,9 @@ impl ScrollState {
     }
 
     /// The transform a viewport applies to its content: the offset negated, at
-    /// the current zoom, scaled about `content_origin`. Cascade anchors scale
-    /// at the node's `layout_rect.min`, but content starts inside the padding;
-    /// scaling about the node's corner would grow that padding with zoom.
-    /// Scaling about the content origin keeps offset 0 at the content's start.
+    /// the current zoom, scaled about `content_origin`, not the node's
+    /// `layout_rect.min` where cascade anchors scale, which would grow the
+    /// padding with zoom and move offset 0 off the content's start.
     ///
     /// The translation lands as `display` lands one ([`Display::land_translation`]), so unzoomed
     /// content stays on its pixels at any offset.

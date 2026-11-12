@@ -383,8 +383,7 @@ fn delay_gates_visibility() {
         });
     };
 
-    // First frame: pointer not yet over the button; the state row exists with
-    // `elapsed == 0` and `visible == false`.
+    // First frame: pointer not yet over the button; no state row is written.
     record_at_secs(&mut h, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
 
@@ -505,8 +504,8 @@ fn hover_clears_after_tooltip_visible() {
 }
 
 /// A tooltip on a trigger *inside* a popup body must record into the `Tooltip`
-/// layer without tripping the layer-nesting assert (`Tooltip::show` raises
-/// `Ui::layer(Tooltip)` while the scope is `Popup`).
+/// layer without tripping the layer-nesting assert (the bubble's overlay scope is claimed
+/// while the scope is `Popup`).
 #[test]
 fn tooltip_inside_popup_records_without_panic() {
     use crate::widget_core::click_outside::ClickOutside;

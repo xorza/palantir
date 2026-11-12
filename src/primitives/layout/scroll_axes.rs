@@ -35,8 +35,7 @@ impl ScrollAxes {
 
     /// Sizes to content on each panned axis `size` hugs, as a `Hug`
     /// [`Scroll`](crate::Scroll) does, bounded by `max_size` and the parent's
-    /// space; min size stays zero. Replaces earlier flags; a hug on a
-    /// non-panning axis is dropped.
+    /// space; min size stays zero. A hug on a non-panning axis is dropped.
     pub(crate) const fn fit_content(self, size: SizeSpec) -> Self {
         let fit_x = if size.w().is_hug() && self.0 & Self::PAN_X != 0 {
             Self::FIT_X

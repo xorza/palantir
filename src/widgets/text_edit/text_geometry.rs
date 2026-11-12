@@ -26,8 +26,9 @@ pub(super) struct GeometryInput<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextGeometry {
     pub(super) layout: TextLayout,
-    /// Block position inside the inner rect, from last pass's rect (arrange has not run). Only the
-    /// hit-test reads it; stored back into `ViewState` as next frame's [`TextLayout::prev_block_offset`].
+    /// Block position inside the inner rect, from last pass's rect (arrange has not run). Read by
+    /// the hit-test and the IME area; stored back into `ViewState` as next frame's
+    /// [`TextLayout::prev_block_offset`].
     pub(super) block_offset: Vec2,
     /// What the run measured, placeholder or not.
     pub(super) content_size: Size,

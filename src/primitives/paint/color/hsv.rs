@@ -11,7 +11,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 /// Channel spread below which a color has no hue of its own.
 const GRAY_SPREAD: f32 = 1e-6;
 
-/// The opaque color at `h`, `s` and `v` in linear RGB; the hue wraps and the others clamp.
+/// The opaque color at `h`, `s` and `v`, axes read sRGB-encoded; the hue wraps and the others clamp.
 pub(crate) fn color(h: f32, s: f32, v: f32) -> RgbaF32 {
     let [r, g, b] = HsvColumn::new(h, s).encoded(v);
     RgbaF32::srgb(r, g, b)

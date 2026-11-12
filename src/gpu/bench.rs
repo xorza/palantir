@@ -9,7 +9,9 @@
 //! - `images/distinct` vs `images/shared`: N textures against one. `distinct` is the control that must not regress.
 //! - `text/per_group` vs `text/single`: N clipped text cells, each run cut by its cell's clip on the CPU so all join one batch, against N unclipped runs in one batch: what the cut costs the pass, its group per cell besides.
 //!
-//! Method: GPU instrumentation stays off so no timestamp writes land in the measured pass. Each arm renders `WARMUP_FRAMES`, samples `last_main_pass_cpu` over `EVIDENCE_FRAMES` and reports min and median; min is the keep-or-revert signal. Criterion measures the same window via `iter_custom` but its interval stays wide: use it for ordering and large regressions.
+//! Method: GPU instrumentation stays off so no timestamp writes land in the measured pass. Each arm
+//! renders `WARMUP_FRAMES`, then criterion times `last_main_pass_cpu` per frame through
+//! `iter_custom`.
 //!
 //! Whole-frame wall time is never reported: it moves the opposite way across the `groups` pair.
 

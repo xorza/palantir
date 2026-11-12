@@ -164,17 +164,15 @@ struct Landing {
 }
 
 impl Popup<'_> {
-    /// The anchor the popup `id` records at. A popup asked to sit at a point, as a context menu
-    /// raised at the pointer is, sits at `asked` on its first frame there, then at the point that
-    /// frame landed it. The window shifts an anchored body to fit each frame it is placed, so one
-    /// whose body grows or shrinks would move under the pointer, as a list a query filters does;
-    /// held where it landed, it moves again only when it stops fitting there, or when it is asked
-    /// to sit somewhere else. Win32's `TrackPopupMenu` places a menu at a point once
+    /// The anchor the popup `id` records at. A point anchor (a context menu at the pointer) sits
+    /// at `asked` on its first frame, then at the point that frame landed it: the window shifts
+    /// an anchored body to fit each frame, so a body that grows or shrinks (a list a query
+    /// filters) would move under the pointer. Held there, it moves only when it stops fitting or
+    /// is asked elsewhere. Win32's `TrackPopupMenu` places a menu at a point once
     /// (<https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-trackpopupmenu>). A
-    /// popup asked to sit beside a rect, a list under its button, is placed each frame, as it
-    /// keeps the rect clear: a body that grows past the space on one side flips to the other.
-    /// The anchor places the body's `margin` box, so the landed point is the body's rect grown
-    /// by it.
+    /// rect anchor (a list under its button) is placed each frame, so a body that outgrows one
+    /// side flips to the other, keeping the rect clear. The anchor places the body's `margin`
+    /// box, so the landed point is the body's rect grown by it.
     fn landed(ui: &mut Ui, id: WidgetId, asked: Anchor, margin: Spacing) -> Anchor {
         if !asked.is_point() {
             return asked;

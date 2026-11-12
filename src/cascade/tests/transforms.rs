@@ -23,7 +23,7 @@ use glam::UVec2;
 use glam::Vec2;
 
 /// A direct shape on a panel with `.transform(...)` lands in
-/// `Cascade::paint_arenas` at the composed transform (parent ∘ self).
+/// `PlaneCascade::paint_arena` at the composed transform (parent ∘ self).
 #[test]
 fn shape_rect_composes_self_transform() {
     let scale = 3.0;

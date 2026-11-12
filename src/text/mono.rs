@@ -192,11 +192,8 @@ mod tests {
         }
     }
 
-    /// Unbounded, a line per hard break, trailing spaces counted. At five glyphs a line:
-    /// `"hello "` fits and its space hangs, so `"world"` opens line two; `"aa "` and `"bb"` fill
-    /// five, `"cc"` opens the next; twelve unbroken glyphs fill two lines and leave two; ten
-    /// fill exactly two. At four, `"ab cd"` breaks after `"ab"`, and the hard break's
-    /// `"efghij"` fills one line and leaves two.
+    /// Unbounded, a line per hard break, trailing spaces counted; wrapped, trailing whitespace
+    /// hangs and an over-wide segment splits by glyphs.
     #[test]
     fn lines_break_hard_then_wrap_at_break_offsets() {
         let lines = |count, widest| Lines { count, widest };

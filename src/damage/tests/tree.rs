@@ -415,7 +415,7 @@ fn rekeying_a_child_damages_only_the_child() {
     );
 }
 
-/// Removing a middle shape shifts trailing ordinals; damage covers the removed pixels plus shifted shapes' old and new positions, and the snapshot tail is trimmed via `drain(ord..)`.
+/// Removing a middle shape shifts trailing ordinals; damage covers the removed pixels plus shifted shapes' old and new positions.
 #[test]
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
     use crate::widget::Shape;

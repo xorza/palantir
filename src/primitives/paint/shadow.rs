@@ -100,7 +100,7 @@ impl Shadow {
         self
     }
 
-    /// True when this shadow paints nothing: its color paints nothing or a scalar is NaN. Takes `&self` because `Chrome` names it in a `skip_serializing_if`.
+    /// True when this shadow paints nothing: its color paints nothing or a scalar is NaN. Takes `&self` because `Paint` names it in a `skip_serializing_if`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         self.color.is_noop() || self.has_nan()

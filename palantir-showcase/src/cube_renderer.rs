@@ -68,7 +68,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-/// GPU resources, built lazily in [`CubeRenderer::init`] (no device before first paint).
+/// GPU resources, built in [`CubeRenderer::init`].
 #[derive(Debug)]
 struct CubeGpu {
     pipeline: wgpu::RenderPipeline,

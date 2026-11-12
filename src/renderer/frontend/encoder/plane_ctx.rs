@@ -513,7 +513,9 @@ impl PlaneCtx<'_, '_> {
                     tracing::trace!(?shape, "encoder: dropping text that shaped no buffer");
                     return;
                 };
-                // `local_rect: None`: the encoder places the bbox in the owner's padded inner rect via `Align::place_in`; `Some(origin)`: the widget places it at `owner.min + origin`. Shared placement, so the cascade's paint rect and damage agree with paint.
+                // `local_origin: None`: the bbox is placed in the owner's padded inner rect via
+                // `Align::place_in`; `Some(origin)`: at `owner.min + origin`. One placement
+                // (`TextAnchor::bbox_local`) shared with the cascade, so damage agrees with paint.
                 let anchor = TextAnchor {
                     local_origin: *local_origin,
                     align: *align,
@@ -580,7 +582,8 @@ impl PlaneCtx<'_, '_> {
             return;
         }
 
-        // Damage cull, inflated by `damage_cull_margin` to cover the AA pad the backend PreClears, else a node in the pad ring is cleared but skipped.
+        // Inflated by `damage_cull_margin` to cover the AA pad the backend PreClears, else a node
+        // in the pad ring is cleared but skipped.
         if let Some(region) = self.damage_filter
             && !region.any_intersects(subtree_paint_rect.inflated(self.damage_cull_margin))
         {
@@ -599,7 +602,7 @@ impl PlaneCtx<'_, '_> {
                 rect,
                 corners: chrome.corners,
             });
-            // Alpha `1.0`: chrome isn't a shape, so no paint animation.
+            // Chrome isn't a shape, so no paint animation.
             self.paint_fill(
                 FillItem {
                     geometry,

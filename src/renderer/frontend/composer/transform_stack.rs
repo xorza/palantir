@@ -54,7 +54,6 @@ impl TransformStack {
         PhysicalMap::new(self.cur, origin, self.display_scale)
     }
 
-    /// The live product.
     pub(super) const fn cur(&self) -> TranslateScale {
         self.cur
     }

@@ -31,11 +31,11 @@ use crate::primitives::geometry::rect::Rect;
 ///   fast path avoids.
 /// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with the
 ///   rollup they were built from.
-/// - [`Self::hit_rows`] is read only by the incremental walk, to refresh a
+/// - [`Self::hit_rows`] is read only by the refresh walks, to rewrite a
 ///   node's hit row in place.
 #[derive(Debug, Default)]
 pub(crate) struct PlaneCascade {
-    /// Per-node `cascade_input` fingerprint, indexed like `Tree::records`:
+    /// Per-node cascade input fingerprint, indexed like `Tree::records`:
     /// ancestor state plus own arranged rect hash, with the cascade-resolved
     /// `invisible` bit high (see [`CascadeInputHash`]). Damage pairs the full
     /// u64 with `Tree.rollups.subtree[i]` for its subtree-skip fast path.
@@ -64,7 +64,7 @@ pub(crate) struct PlaneCascade {
     /// were built from: the per-node half of the validity gate whose
     /// whole-forest half is [`Cascade::key`](crate::cascade::Cascade::key). An
     /// incremental repair recomputes a node where this disagrees with the live
-    /// rollup or its `cascade_input` moved, and re-stamps it.
+    /// rollup or its cascade input moved, and re-stamps it.
     ///
     /// Not mergeable with the damage engine's snapshot of the same rollup
     /// ([`NodeSnapshot::subtree_hash`](crate::damage::node_snapshot::NodeSnapshot)):

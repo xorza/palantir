@@ -21,7 +21,7 @@ pub(super) mod wheel_steps;
 /// only variant names.
 ///
 /// The sides must agree: `Shortcut::matches`'s non-Latin fallback
-/// (`src/input/shortcut/mod.rs`) consults `physical` alone.
+/// (`src/primitives/input/shortcut/mod.rs`) consults `physical` alone.
 macro_rules! shared_key {
     ($winit:ident, $value:expr) => {
         match $value {

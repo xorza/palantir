@@ -2,11 +2,11 @@
 //!
 //! A press and its release never share a frame (see `InputQueue`), so a case that clicks closes the input frame between them, as a frame's end does; otherwise every later event would queue behind the release.
 //!
-//! Cases:
-//! - `input/pointer_move_stream`: oscillating cursor, the per-frame burst of coalesced `CursorMoved`.
-//! - `input/click_stream`: press, input frame, release, input frame.
-//! - `input/scroll_stream`: `ScrollPixels` against a scroll target.
-//! - `input/mixed_stream` — interleaved moves / clicks / scrolls, one input frame per burst.
+//! Cases, each under `atomic/input/cpu/`:
+//! - `pointer_move_stream`: one `PointerMoved` along the cursor path.
+//! - `click_stream`: press, input frame, release, input frame.
+//! - `scroll_stream`: `ScrollPixels` against a scroll target.
+//! - `mixed_stream`: interleaved moves, scroll and an occasional click, one input frame per burst.
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};

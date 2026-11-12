@@ -233,11 +233,11 @@ impl Ui {
     /// ([`Self::is_motion_reduced`]) or under reduced power ([`Self::is_power_reduced`]). A theme that differs in its transition alone counts as a
     /// change.
     ///
-    /// A live edit, one theme a frame, blends too: under [`AnimationSpec::THEME`] at 60 Hz it trails
-    /// by 89 ms and adds 5 µs a frame over a snap on an Apple laptop. Refused: a second method that
-    /// snaps one change, which every caller must choose between, and a window-wide spec, a mode that
-    /// each caller must restore. Set it on a change: a call each frame with an equal theme starts nothing, but builds and compares a whole
-    /// theme.
+    /// A live edit, one theme a frame, blends too: under [`AnimationSpec::THEME`] at 60 Hz it
+    /// trails by 89 ms and adds 5 µs a frame over a snap on a laptop. Refused: a second method that snaps
+    /// one change, which every caller must choose between, and a window-wide spec, a mode that each
+    /// caller must restore. Set it on a change: a call each frame with an equal theme starts
+    /// nothing, but builds and compares a whole theme.
     ///
     /// ```
     /// # use palantir::{ColorScheme, Preference, Theme, Ui, UiPreferences};
@@ -597,7 +597,7 @@ impl Ui {
     /// Panics outside a record pass.
     #[track_caller]
     pub fn request_relayout(&mut self) {
-        // `WindowFrames::frame` clears the flag before the app runs, so a call outside a
+        // `FrameRuntime::begin_pass` clears the flag before the app runs, so a call outside a
         // record would be dropped silently.
         assert!(
             self.forest.is_recording(),

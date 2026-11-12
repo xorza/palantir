@@ -98,8 +98,8 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
 }
 
 /// A hugging grid's Fill column takes its cells' max-content width, as a Stack's Fill child does:
-/// the wrapping label keeps one line, and the row that measured it at one line holds it. Before,
-/// the column shrank to the longest word, and the label wrapped out of its row.
+/// the wrapping label keeps one line, and the row that measured it at one line holds it. A column
+/// at the longest word would wrap the label out of its row.
 #[test]
 fn hug_grid_fill_column_holds_its_wrapping_text() {
     let mut rig = LayoutRig::new();
@@ -143,8 +143,7 @@ fn hug_grid_fill_column_holds_its_wrapping_text() {
 /// columns, 400 in all; weights 1 and 3 with cells 200 and 300 make `fr = max(200, 100) = 200`,
 /// 200 and 600. A cell spanning both columns of weights 1 and 1, 300 wide, makes `fr = 150`. A
 /// column's `min` counts as its extent: a 250 floor beside a 20-wide cell makes `fr = 250`.
-/// The grid's max-content width is the same. Before, the columns split the cells' summed width by
-/// weight, so a wide cell covered its neighbor.
+/// The grid's max-content width is the same.
 #[test]
 fn hug_grid_fill_columns_each_hold_their_cells() {
     /// A cell at column `col`, `span` columns wide, `w` wide itself.

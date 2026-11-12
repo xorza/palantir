@@ -18,7 +18,6 @@ pub(super) struct PolylineScratch {
     points: Vec<Vec2>,
     kept: Vec<u32>,
     directions: Vec<Vec2>,
-    /// Each kept segment's colors.
     colors: Vec<SegmentColors>,
 }
 
@@ -158,7 +157,7 @@ impl PolylineScratch {
                 ..bytemuck::Zeroable::zeroed()
             });
         }
-        // One chrome instance per interior joint fills the wedge between segment end
+        // One join instance per interior joint fills the wedge between segment end
         // faces, in the premultiplied linear average of the adjacent colors.
         for k in 1..segment_count {
             let d_a = directions[k - 1];

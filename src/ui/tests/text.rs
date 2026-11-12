@@ -132,7 +132,7 @@ fn text_reshape_runs_when_content_changes() {
     );
 }
 
-/// A Text that leaves the tree has its `text_reuse` entry evicted that frame.
+/// A Text that leaves the tree has its text reuse rows evicted that frame.
 #[test]
 fn text_reuse_evicts_disappeared_widgets() {
     let mut h = Harness::mono(UVec2::new(400, 200));
@@ -299,8 +299,8 @@ fn blinking_text(ui: &mut Ui, text: &str) {
 ///
 /// A stalled clock makes nothing atlas-evictable (`last_use < cur_frame`),
 /// so a full atlas starves inserts and can't recover. The clock normally
-/// ticks in `TextSystem::end_frame` (`FullRecord` only); this pins the
-/// separate `PaintOnly` tick.
+/// ticks in `FrameRuntime::tick_text_clock` at each frame's start, whatever its plan; this pins
+/// that `PaintOnly` ones tick too.
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
     let shared = UiResources::isolated_text();

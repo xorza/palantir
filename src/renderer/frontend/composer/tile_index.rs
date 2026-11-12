@@ -20,7 +20,6 @@ pub(super) const TILE_CAP: usize = 8;
 /// query walks, so a viewport-wide entry costs one push, not a push per tile (2040 at 4K).
 const LARGE_TILES: u32 = 256;
 
-/// An empty overflow chain.
 const NO_OVERFLOW: u32 = u32::MAX;
 
 /// One link of a tile's overflow chain.

@@ -233,7 +233,7 @@ fn toggling_scroll_sizing_busts_measure_cache() {
 /// Pin: a `Hug` scroll reports its content extent as its **intrinsic**, not just its measured
 /// size. If the intrinsic query ignored the `fit` bit and answered zero, nothing downstream of
 /// `measure` would notice (`AxisSlot::resolve` takes `max(content, intrinsic_min)`), but a Hug
-/// grid column, resolved from the Phase-1 intrinsic walk, would resolve to zero and its cell
+/// grid column, resolved from the intrinsic walk, would resolve to zero and its cell
 /// would overflow.
 #[test]
 fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
@@ -264,8 +264,8 @@ fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
 /// `desired` follows the content, so a bounded parent can hand it a smaller slot; the viewport
 /// clips, so it must not overflow that slot as an ordinary node does.
 ///
-/// One case per placing driver: a bare scroll node in a Grid or a stack's cross axis once got
-/// no clamp, and `TextEdit` is such a node. A stack's *main* axis is the one placement
+/// One case per placing driver: a bare scroll node in a Grid or a stack's cross axis needs the
+/// clamp too, and `TextEdit` is such a node. A stack's *main* axis is the one placement
 /// `AxisPlacement` does not own (its flex solver shrinks against the zero min-content a panned
 /// scroll reports). Canvas is absent: its slot is the child's desired on a `Hug` axis and
 /// `inner` on a sized one, so the clamp is the identity.

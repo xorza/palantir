@@ -436,7 +436,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     }
 }
 
-/// Adjacent draws sharing a texture collapse into one instanced draw (`image_runs`), byte-identical to one draw per image:
+/// Adjacent draws sharing a texture collapse into one instanced draw (`Runs`), byte-identical to one draw per image:
 ///
 /// - `A A`: a leading run, the case that coalesces.
 /// - `B` then `A`: singletons; `A`'s second appearance is non-adjacent and must stay its own run, else it paints before `B`.

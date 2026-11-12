@@ -4,7 +4,10 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 
-/// Linear-RGB color packed as four f16 lanes in 8 B (align 2), half of `RgbaF32` at display precision (f16 carries ~3 decimal digits and magnitudes up to 65504, the bound [`domain::color`](crate::primitives::math::domain::color) holds a color to). Packs through `F16x4::from_lanes` / `lanes`; Pod-compatible; Hash delegates to [`F16x4`].
+/// Linear-RGB color packed as four f16 lanes in 8 B (align 2), half of `RgbaF32` at display
+/// precision (f16 carries ~3 decimal digits and magnitudes up to 65504, the bound
+/// [`domain::color`](crate::primitives::math::domain::color) holds a color to). Hash delegates to
+/// [`F16x4`].
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct RgbaF16(F16x4);

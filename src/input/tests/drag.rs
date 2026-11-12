@@ -243,9 +243,9 @@ fn drag_delta_none_when_press_missed_all_widgets() {
 }
 
 // Drag-on-canvas composition through the widget-facing `Response` API: callers
-// snapshot an `anchor` on `r.drag_started()` and compose `pos = anchor +
-// r.drag_delta()`. The `Card` fixture drives threshold latch, position tracking,
-// click-suppression-after-drag and multi-widget isolation.
+// snapshot an `anchor` on `r.left.drag.started()` and compose `pos = anchor +
+// delta` from `r.left.drag.delta()`. The `Card` fixture drives threshold latch, position
+// tracking, click-suppression-after-drag and multi-widget isolation.
 const CARD_SIZE: f32 = 60.0;
 const SURFACE: UVec2 = UVec2::new(400, 400);
 

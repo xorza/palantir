@@ -94,7 +94,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     build(50.0, &mut h, &mut child_node);
 
     // Layout unchanged; the transform shifted by (50, 0). Prev (0,0,40,40),
-    // curr (50,0,40,40), gap 10 px: bbox 90×40 = 3600, sum = 3200, SAH cost
+    // curr (50,0,40,40), gap 10 px: bbox 90×40 = 3600, sum = 3200, waste
     // 400 is under the budget, so the merge collapses to one bbox (a far larger
     // distance stays split; see `transform_animation_keeps_far_positions_split`).
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
@@ -152,7 +152,7 @@ fn transform_animation_keeps_far_positions_split() {
     build(200.0, &mut h, &mut child_node);
 
     // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600. bbox 240×40 =
-    // 9600, SAH cost 6400; a budget of 0 keeps them apart whatever the default.
+    // 9600, waste 6400; a budget of 0 keeps them apart whatever the default.
     let rects: Vec<Rect> = DamageRegion::collapse_from(
         &h.frames().damage().raw_rects,
         MergePolicy::with_budget(0.0),

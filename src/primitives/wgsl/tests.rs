@@ -21,12 +21,11 @@ fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
 /// the border `B = (1, 0, 0) · 0.5`, the band shows `B + F · (1 − 0.5) = (0.55, 0.1, 0.15, 0.75)`:
 /// `0.5 · band` at `d = 0`, `0.5 · band + 0.25 · F` at `d = −0.25`.
 ///
-/// An opaque blue fill under an opaque white border reads its coverage: 0.5 at `d = 0`, where a
-/// material's fill at `o` under the border read 0.75, and 0.75 at `d = −0.25`, `0.5` of border and
-/// `0.25` of fill. A translucent border shows the fill in its band: the first case, where a quad's
-/// fill inside the border read the border alone, `0.5 · B = (0.25, 0, 0, 0.25)`, and showed what
-/// is behind. With no border the fill takes `o`; 2 px inside the box shows its fill, and 2 px out
-/// nothing. Within 1e-6, the rounding of the f32 products.
+/// An opaque blue fill under an opaque white border reads its coverage: 0.5 at `d = 0`, and 0.75
+/// at `d = −0.25`, `0.5` of border and `0.25` of fill. A translucent border shows the fill in its
+/// band: the first case, not the border alone, `0.5 · B = (0.25, 0, 0, 0.25)`, with what is behind
+/// showing through. With no border the fill takes `o`; 2 px inside the box shows its fill, and
+/// 2 px out nothing. Within 1e-6, the rounding of the f32 products.
 #[test]
 fn a_boxs_fill_and_border_weigh_by_area() {
     let fill = [0.2, 0.4, 0.6, 0.5];

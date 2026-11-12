@@ -74,9 +74,8 @@ fn disabled_reflects_cascaded_ancestor_flag() {
     );
 }
 
-/// Every disabled fold drops the interaction half, not only the last: a reset
-/// between earlier folds once left a disabled widget reporting `hovered` and
-/// `clicked`, which the hit index cannot produce. Geometry stays.
+/// Every disabled fold drops the interaction half, not only the last: a disabled widget must
+/// not report `hovered` or `clicked`, which the hit index cannot produce. Geometry stays.
 #[test]
 fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     let busy = ResponseState {
@@ -385,7 +384,6 @@ fn pointer_local_uses_unclipped_widget_origin() {
     );
 }
 
-/// The quiescent and non-quiescent paths must agree on every field they both own; toggles only `frame_quiescent`.
 /// A warmup's scratch holds the window's one arranged frame while the pass fills it, and the
 /// window's input takes it back: one left behind would hit-test the first frame against nothing.
 #[test]
@@ -404,6 +402,7 @@ fn a_warmup_takes_the_arranged_frame_and_gives_it_back() {
     assert_eq!(input.arranged.cascade.endpoint(focusable_id()), placed);
 }
 
+/// The quiescent and non-quiescent paths must agree on every field they both own; toggles only `frame_quiescent`.
 #[test]
 fn quiescent_and_full_paths_agree_on_geometry() {
     let mut h = Harness::mono(UVec2::new(200, 200));

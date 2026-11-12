@@ -23,7 +23,7 @@ use crate::widgets::text::Text;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// Per-trigger state; times are Ui-time, immune to the `MAX_DT` clamp on idle wakes.
+/// Per-trigger state; times are Ui-time, immune to the `MAX_ANIMATION_DT` clamp on idle wakes.
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
 enum TooltipState {
     /// The pointer is off the trigger.

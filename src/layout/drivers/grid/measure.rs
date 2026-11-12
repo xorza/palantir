@@ -34,15 +34,10 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
         return ContentMeasure::ZERO;
     }
 
-    // Phase 1: query column intrinsics for Hug-column span-1 cells. This is the
-    // second walk over `active_children` (`Grid::intrinsic` made the first);
-    // intrinsics are memoized per (node, axis, req), so the min half is a scratch
-    // read. This fold seeds the durable per-track store the resolver then clamps.
-
-    // Resolve the col axis without measuring children, so cells get a committed
-    // width before they shape (else wrap text in Hug cols shapes at INF and never
-    // wraps). Skip when no column is content-floor-sensitive: Hug cols need `min`
-    // and `max`, Fill cols only `min`, Fixed neither.
+    // Seed the per-track store from column intrinsics, without measuring children, so cells get a
+    // committed width before they shape (else wrap text in Hug cols shapes at INF and never
+    // wraps). Skip when no column is content-floor-sensitive: Hug cols need `min` and `max`, Fill
+    // cols only `min`, Fixed neither. Intrinsics are memoized per (node, axis, req).
     let any_content_floor_col = cols
         .tracks
         .iter()
@@ -195,7 +190,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> C
     }
 
     // Returned content size: non-Fill track sizes, what the Fill tracks hold
-    // ([`fill_contribution`]), and gaps. On every path: a Fill grid offered a finite width
+    // ([`grid::fill_extent`]), and gaps. On every path: a Fill grid offered a finite width
     // shapes its cells at the Fill widths it commits, and a parent that hugs it must hold them,
     // as a stack reports what its Fill children measured to. Fill still claims the leftover at
     // arrange. `AxisSlot::resolve` floors this at the Grid intrinsic. The floor sums each track

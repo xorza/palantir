@@ -188,7 +188,7 @@ fn horizon_rounds_up_and_indexes_in_range() {
             "horizon {horizon} must fit the schedule assert",
         );
     }
-    // The shaped-buffer cache's keep: 135 + 2 = 137, one spare → 138, rounded up → 256.
+    // The shaped-buffer cache's keep: 120 + 15 spread = 135, + 2 = 137, one spare → 138, rounded up → 256.
     assert_eq!(ExpiryWheel::<u32>::with_keep(135).buckets.len(), 256);
     assert_eq!(ExpiryWheel::<u32>::slots_for_keep(135), 256);
 }

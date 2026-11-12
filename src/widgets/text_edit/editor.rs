@@ -83,8 +83,8 @@ impl<'a> Editor<'a> {
     }
 
     /// Run the default context menu against this session, returning whether it
-    /// edited the buffer. Caret motion is not reported: `TextEdit::pass` brackets
-    /// this and the keyboard pass in one comparison. One session serves the whole
+    /// edited the buffer. Caret motion is not reported: `TextEdit::pass` compares the caret and
+    /// selection around the input pass and this. One session serves the whole
     /// menu so undo history is reconciled once; `filter` is the field's own, as the
     /// menu drains the same layer-wide stream and owes the same
     /// gate, [`KeyFilter::takes`] of each press's [`class`](crate::KeyPress::class).
@@ -179,11 +179,10 @@ impl<'a> Editor<'a> {
         self.state.normalize(self.text);
     }
 
-    /// Place the caret for a pointer press: one click places it and arms the drag,
-    /// two take the word, three or more the hard line in a multi-line field and everything in
-    /// a single-line one. A multi-click leaves the drag
-    /// disarmed. An extending (Shift) single press keeps the anchor, so the drag
-    /// grows the selection from where it began.
+    /// Place the caret for a pointer press: one click places it and arms the drag, two take the
+    /// word (an empty one arms the drag instead), three or more the hard line in a multi-line
+    /// field and everything in a single-line one, leaving the drag disarmed. An extending (Shift)
+    /// single press keeps the anchor, so the drag grows the selection from where it began.
     pub(super) fn press(&mut self, at: usize, clicks: u8, motion: CaretMove) {
         self.state.drag_anchor = None;
         if motion == CaretMove::Extend && clicks <= 1 {

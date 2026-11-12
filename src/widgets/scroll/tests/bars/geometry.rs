@@ -98,7 +98,7 @@ fn thumb_size_and_offset_cases() {
             }),
         ),
         (
-            // A track under one logical pixel draws a 1 px thumb with no travel (once placed at -1).
+            // A track under one logical pixel draws a 1 px thumb with no travel.
             "sub_pixel_track_pins_the_thumb_at_zero",
             0.5,
             800.0,

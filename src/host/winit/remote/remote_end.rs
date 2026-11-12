@@ -19,7 +19,7 @@ use std::sync::mpsc::SyncSender;
 #[derive(Debug, Default)]
 pub(crate) struct RemoteEnd {
     pending: Vec<PendingShot>,
-    /// How many events a remote sent through the handle delivered, inputs and queries.
+    /// How many events a remote sent through the handle delivered: inputs, queries, device losses.
     sent_events: u64,
 }
 

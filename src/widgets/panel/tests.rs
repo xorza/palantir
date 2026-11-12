@@ -13,7 +13,9 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// `Surface::apply_to` (from `Panel::show`) writes the clip bit and records chrome in `Tree::chrome_table`. One fixture sweeps: no surface, paint-only `From<Chrome>`, `scissor`, `clipped`, `rounded` with radius, `rounded` with zero-radius downgrade.
+/// `Panel::show` writes the clip bit and records chrome in `Tree::chrome_table`. One fixture
+/// sweeps: no surface, paint-only `From<Chrome>`, `scissor`, `clipped`, `rounded` with radius,
+/// `rounded` with zero-radius downgrade.
 #[test]
 fn surface_apply_to_sets_clip_bit_and_chrome() {
     let mut h = Harness::mono(UVec2::new(200, 200));

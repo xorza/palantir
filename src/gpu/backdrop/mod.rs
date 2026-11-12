@@ -54,15 +54,16 @@
 //!   quad of the box would, so the corners, border, AA, turn, window, rounded clips and scissors
 //!   hold as for any quad. A per-frame slot table carries each backdrop's atlas origin, lattice,
 //!   the bounds, the fill and the border (`MaterialLook`). Refused: a stage of palantir's own per
-//!   look, a second form of one thing; and, as `src/shape/AGENTS.md` ("A box's fill reaches under its border,
-//!   a material under both, in one draw") holds, the gradient as a quad above and a material stage compiled apart. Cost: an opaque quad over a material no longer prunes it, as the occlusion pruner reads quads,
-//!   so a covered material captures and blurs.
+//!   look, a second form of one thing; and, as `src/shape/AGENTS.md` ("A box's fill reaches under
+//!   its border, a material under both, in one draw") holds, the gradient as a quad above and a
+//!   material stage compiled apart. Cost: an opaque quad over a material does not prune it, as the
+//!   occlusion pruner reads quads, so a covered material captures and blurs.
 //! - **One glass, with its spectrum behind a branch.** The stock glass reads the spectrum only
-//!   where its lens disperses. Cost, not yet measured: before, glass of one index and glass that
-//!   spreads the spectrum drew through pipelines of their own, as one shader for every look held
-//!   the lens's registers for every backdrop and V3D spilled it, a blurred backdrop's composite 2.2
-//!   times as long on the Pi; the frost is its own effect now, and glass of one index may still
-//!   spill there. If it does, the spectrum becomes a stock effect of its own.
+//!   where its lens disperses. Cost, not yet measured: one shader for every look held the lens's
+//!   registers for every backdrop and V3D spilled it, a blurred backdrop's composite 2.2 times as
+//!   long on the Pi, so glass of one index and glass that spreads the spectrum drew through
+//!   pipelines of their own; the frost is its own effect, and glass of one index may still spill
+//!   there. If it does, the spectrum becomes a stock effect of its own.
 //! - **Glass refracts by a closed form.** The bezel's height is a squircle `(1 − (1 − x)⁴)^¼` of
 //!   the inward distance; its slope along the SDF gradient is the normal, Snell's law gives the
 //!   bent ray, and thickness times its tangent the displacement (kube.io bakes the same into a

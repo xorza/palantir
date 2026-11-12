@@ -174,7 +174,7 @@ impl<'a> IntrinsicPass<'a> {
             return IntrinsicWalk::one_axis(IntrinsicRange::ZERO);
         }
 
-        // Hug and Fill both report content-driven intrinsic (`AxisSlot::resolve` with `available = INFINITY` makes Fill fall back to `content_plus_padding`); Fixed short-circuits and never reads it, so skip the query.
+        // Hug and Fill both report content-driven intrinsic (`AxisSlot::unbounded` offers `INFINITY`, so Fill falls back to content); Fixed short-circuits and never reads it, so skip the query.
         let content = if query
             .axis()
             .main_sizing(layout.size)

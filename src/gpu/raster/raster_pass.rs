@@ -55,7 +55,7 @@ enum Starvation {
     #[default]
     Clear,
     Open,
-    /// Reported, and this frame fit everything; one more such frame closes the
+    /// Reported, and the last starved frame has ended; one frame without starvation closes the
     /// episode so a recurrence is reported again.
     Settling,
 }
@@ -347,10 +347,10 @@ pub(crate) mod internals {
 mod tests {
     use crate::gpu::raster::raster_pass::Starvation;
 
-    /// The episode's life: reported once on the first starved raster, held open
-    /// while starvation continues, closed by the second clean frame. Closing on the
-    /// first would re-report a raster that starved again next frame, the per-frame
-    /// noise the edge trigger avoids.
+    /// The episode's life: reported once on the first starved raster, held open while starvation
+    /// continues, closed by the first frame after the last starved one that starves nothing.
+    /// Closing as the starved frame ends would re-report a raster that starved again next frame,
+    /// the per-frame noise the edge trigger avoids.
     #[test]
     fn a_starvation_episode_reports_once_and_closes_one_clean_frame_later() {
         let mut s = Starvation::default();

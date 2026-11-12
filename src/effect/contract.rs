@@ -38,7 +38,7 @@ const BACKDROP_BINDINGS: [&str; 4] = [
 ];
 
 /// What palantir's fragment stage sets before it calls a backdrop effect: the backdrop it draws,
-/// its rect's top-left and the scale `effect_backdrop` maps a logical position by.
+/// its rect's top-left, its turn and the scale `effect_backdrop` maps a logical position by.
 const BACKDROP_SET: &str = "palantir_backdrop_idx = v.backdrop_idx;\n    palantir_rect = v.rect;\n    \
      palantir_rotation = v.clock.w;\n    palantir_scale = scale;\n    ";
 /// Palantir's own stages around `effect`, with markers for the words' group, the material flag,

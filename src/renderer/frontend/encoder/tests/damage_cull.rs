@@ -54,7 +54,8 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
     }
 }
 
-/// Cull a subtree when the filter misses it: a clipped or transformed parent's Push/Pop and descendant draws are all suppressed, trusting children stay inside the parent's screen_rect.
+/// Cull a subtree when the filter misses it: a clipped or transformed parent's Push/Pop and
+/// descendant draws are all suppressed, trusting children stay inside the parent's screen rect.
 #[test]
 fn damage_filter_culls_subtree_outside_damage() {
     #[derive(Debug)]
@@ -241,7 +242,10 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     }
 }
 
-/// Soundness repro: the damage cull must test `PlaneCascade::subtree_paint_rects` (own extent rolled up with descendants'), or a descendant overflowing its parent is skipped though its pixels lie in damage (panning a node graph left stale trails). Parent Canvas Fixed 50×50, child Fixed 40×40 `.at(60, 0)`, damage = the child's rect: the child must emit a rect quad.
+/// The damage cull must test `PlaneCascade::subtree_paint_rects` (own extent rolled up with
+/// descendants'), or a descendant overflowing its parent is skipped though its pixels lie in
+/// damage (panning a node graph left stale trails). Parent Canvas Fixed 50×50, child Fixed 40×40
+/// `.at(60, 0)`, damage = the child's rect: the child must emit a rect quad.
 #[test]
 fn damage_filter_includes_descendant_overflowing_parent_rect() {
     let mut h = Harness::mono(UVec2::new(400, 400));
@@ -269,7 +273,10 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
     );
 }
 
-/// Regression: a static node in the backend's AA-padding ring (outside the raw damage rect, inside `repaint_scissors::AA_PADDING_PX`, 2 physical px) must still draw, since the backend clears the padded region every partial frame; testing only the raw rect left a hard cut along the damage boundary. A node beyond the ring must still be culled.
+/// A static node in the backend's AA-padding ring (outside the raw damage rect, inside
+/// `repaint_scissors::AA_PADDING_PX`, 2 physical px) must still draw, since the backend clears the
+/// padded region every partial frame; testing only the raw rect left a hard cut along the damage
+/// boundary. A node beyond the ring must still be culled.
 #[test]
 fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
     // At `scale_factor() == 1` the cull margin is `AA_PADDING_PX + ROUNDING_SLACK_PX = 2 + 1 = 3` logical px: a neighbor 2 px away repaints, one 10 px away stays culled.

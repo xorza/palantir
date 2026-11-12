@@ -7,7 +7,7 @@
 ///
 /// Replaces `bitflags`, whose public `from_bits_retain`, `iter` and `Flags` impl leaked its types into palantir's surface. Every value is a union of declared bits by construction.
 ///
-/// The one crate-wide macro: `#[macro_use]` in `lib.rs` carries it, so its declaration must precede the modules that use it.
+/// The one crate-wide macro: `#[macro_use]` on `common` and on this module carries it, so it is declared before the modules that use it.
 macro_rules! flag_set {
     (@packed $name:ident, $repr:ty, packed) => {
         impl $name {

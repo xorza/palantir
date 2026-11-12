@@ -201,7 +201,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
         });
     });
 
-    // Partial multi-rect: two distant cells flip; the LVGL merge rule rejects (huge bbox waste), driving the multi-pass path.
+    // Partial multi-rect: two distant cells flip; the merge budget rejects (huge bbox waste), driving the multi-pass path.
     group.bench_function(Backend::Cpu.case("two_corner_change"), |b| {
         let mut h = Harness::builder(SURFACE)
             .mono()
@@ -446,7 +446,7 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
 
 /// Raises one child to the front, as clicking a node on a graph canvas does.
 ///
-/// `emit_inverted_overlaps` enumerates every `(j1, j2)` pair once `has_order_inversion` fires, while raising one child inverts only `n`; these arms show whether that is visible, and from what fanout. Each iteration alternates orders so every frame trips the inversion.
+/// Once `has_order_inversion` fires, `emit_inverted_overlaps` damages through `InvertedOverlaps` in `O(n log n)`; these arms catch a return to enumerating every `(j1, j2)` pair, which reads ~16x from one fanout to the other. Each iteration alternates orders so every frame trips the inversion.
 fn bench_paint_order_inversion(group: &mut CaseGroup<'_>) {
     for count in ORDER_FANOUT {
         group.bench_function(Backend::Cpu.case(&format!("paint_order_{count}")), |b| {

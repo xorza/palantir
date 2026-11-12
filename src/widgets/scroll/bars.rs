@@ -30,10 +30,9 @@ struct BarAxis {
 }
 
 impl BarAxis {
-    /// Emit this axis's track leaf (`Sense::CLICK`, one page per click on release)
-    /// and thumb leaf (`Sense::DRAG`, painted on top). Neither carries size or
-    /// position: the [`Widget::scrollbars`] container's layout assigns both once
-    /// measure has the content extent.
+    /// Emit this axis's track leaf (`Sense::CLICK`) and thumb leaf (`Sense::DRAG`, on top).
+    /// Neither carries size or position: the [`Widget::scrollbars`] container's layout
+    /// assigns both once measure has the content extent.
     ///
     /// Both are recorded unconditionally (arrange collapses an unused axis to zero),
     /// keeping the child list's shape stable across overflow toggles so the driver

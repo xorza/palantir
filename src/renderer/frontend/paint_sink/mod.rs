@@ -45,7 +45,7 @@
 //! because its input already passed.
 //!
 //! Exception: a polyline asserts its geometry before gating
-//! ([`PaintPayload::check`]). `Shape::Polyline::is_noop` catches those conditions at tier 2 and
+//! ([`PaintPayload::check`]). `RecordStore::record` drops those conditions at tier 2 and
 //! nothing between the tiers can invalidate them, so a degenerate polyline
 //! here is a broken contract. The gate still drops the payload's own no-ops.
 //!

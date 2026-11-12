@@ -52,8 +52,12 @@ impl ScrollbarsDef {
         if track <= 0.0 || content <= track {
             return None;
         }
-        // Quantized here, not at paint: the widget reads these back to map a drag or track click, so the grabbed bar must be the drawn bar. Whole logical pixels because physical snapping rounds a rect's min and max independently (`Rect::scaled_by`), so a thumb on fractional coordinates would change length as it travels; integer edges pin the length at integer DPR.
-        // **One length, not two**: `travel` comes off the same floored length the thumb clamped into; flooring separately let a sub-pixel track take the 1 px minimum thumb and place it at -1.
+        // Quantized here, not at paint: the widget reads these back to map a drag or track click,
+        // so the grabbed bar must be the drawn bar. Whole logical pixels because physical snapping
+        // rounds a rect's min and max independently (`Rect::scaled_by`), so a thumb on fractional
+        // coordinates would change length as it travels; integer edges pin the length at integer
+        // DPR. `travel` comes off the same floored length the thumb clamps into: flooring them
+        // separately lets a sub-pixel track take the 1 px minimum thumb and place it at -1.
         let floored = track.floor().max(1.0);
         let thumb_size = (track / content * track)
             .max(self.min_thumb)

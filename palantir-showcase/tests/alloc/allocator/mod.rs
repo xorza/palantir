@@ -1,6 +1,6 @@
 //! Per-thread counting allocator wrapping `System`. While a thread is in audit
-//! ([`with_audit`]) every `alloc` / `realloc` bumps thread-local counters and
-//! captures an unresolved backtrace; `dealloc` is delegated unchanged (heap
+//! ([`with_audit`]) every `alloc` / `alloc_zeroed` / `realloc` bumps thread-local counters
+//! and captures an unresolved backtrace; `dealloc` is delegated unchanged (heap
 //! *operations*, not residency).
 //!
 //! Counters are per-thread because cargo runs tests in parallel; the blind spot is

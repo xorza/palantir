@@ -1,5 +1,5 @@
-//! Polylines, arcs and cubics: the instances they emit and the chrome at their
-//! joins.
+//! Polylines, arcs and cubics: the instances they emit and the join instances at their
+//! joints.
 
 use crate::common::span::Span;
 use crate::internals::compose_rig::ComposeRig;
@@ -78,7 +78,7 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
 }
 
 /// Polyline lowering: N points emit N−1 segment instances (user caps only on the
-/// true ends, neighbor points on the joint lanes) plus N−2 join-chrome instances,
+/// true ends, neighbor points on the joint lanes) plus N−2 join instances,
 /// all in the curve stream.
 #[test]
 fn compose_polyline_emits_segments_and_join_chrome() {
@@ -193,7 +193,7 @@ fn a_join_between_colors_averages_them_premultiplied() {
     assert_eq!(joins, [half_red, half_red]);
 }
 
-/// Miter joins downgrade to bevel chrome past MITER_LIMIT and keep miter chrome on
+/// Miter joins downgrade to bevel past MITER_LIMIT and keep miter on
 /// gentle bends (the SVG convention).
 #[test]
 fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
@@ -236,7 +236,7 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
 }
 
 /// PerPoint colors land on the segment's color/color1 lanes (the GPU lerps along
-/// t); PerSegment paints each segment solid with the chrome at its neighbors'
+/// t); PerSegment paints each segment solid with the join at its neighbors'
 /// midpoint. Coincident points are skipped and their colors dropped, as in the CPU
 /// walker.
 #[test]
@@ -738,12 +738,9 @@ fn compose_spins_polyline_about_bbox_center() {
     assert_eq!(aabb(Some(turned), &held, origin), upright);
 }
 
-/// The gate *asserts* a polyline's geometry (`PaintPayload::check`) rather than gating on
-/// it, which is only safe if a degenerate polyline slipping through in release
-/// degrades quietly. This test makes that true; fix it before restoring the gate.
-///
-/// Calls the **required** half directly, the path below the assert (and the one
-/// `PaintCapture::replay` takes).
+/// `PaintPayload::check` only debug-asserts a polyline's geometry, which is safe because a
+/// degenerate polyline slipping through in release emits nothing. This test holds that. It calls
+/// the sink directly, below the assert, as `PaintCapture::replay` does.
 #[test]
 fn degenerate_polyline_emits_nothing_rather_than_panicking() {
     for points_len in [0u32, 1] {

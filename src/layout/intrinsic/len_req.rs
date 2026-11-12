@@ -11,7 +11,7 @@ pub(crate) enum LenReq {
     MaxContent,
 }
 
-/// Width of `LayoutScratch.intrinsics`' `[f32; SLOT_COUNT]`: `LenReq` × `Axis` variants; the `const _:` below catches overflow.
+/// Width of `MeasureColumns::intrinsics`' `[f32; SLOT_COUNT]`: `LenReq` × `Axis` variants; the `const _:` below catches overflow.
 pub(crate) const SLOT_COUNT: usize = 4;
 
 impl LenReq {

@@ -69,10 +69,8 @@ pub(crate) struct Cascade {
     pub(crate) key: Option<CascadeKey>,
 }
 
-/// Where one widget's per-frame rows live: the flat
-/// [`Cascade::entries`] index plus the `(layer, node)`
-/// [`Endpoint`] the layout columns are keyed by. From
-/// [`Cascade::locate`].
+/// Where one widget's per-frame rows live: the flat [`Cascade::entries`] index plus the
+/// `(plane, node)` [`Endpoint`] the layout columns are keyed by. From [`Cascade::locate`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct WidgetLocation {
     pub(crate) entry_idx: u32,

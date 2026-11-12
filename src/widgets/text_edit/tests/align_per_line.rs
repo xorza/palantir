@@ -1,4 +1,4 @@
-//! Per-line halign tests with real cosmic shaping (`ui_with_text`). They assert the
+//! Per-line halign tests with real cosmic shaping (`cosmic_ui`). They assert the
 //! *block-local* half of alignment: a shaped run is a block with its left edge at x
 //! = 0, and the owner places it with the same halign, so halign appears here only
 //! as the offset of a *narrow* line relative to the widest, never of the block
@@ -266,7 +266,7 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     );
 }
 
-/// Regression: `LayoutEngine::shape_text` re-shapes through the bounded path for
+/// Regression: `LayoutPass::shape_text` re-shapes through the bounded path for
 /// `TextWrap::Wrap`. With the slot cache keyed on width and halign, layout must hit
 /// it on every steady-state frame, or per-frame text cost grows with glyph count.
 /// `measure_calls` bumps even on a cosmic-cache hit, so compare the delta across

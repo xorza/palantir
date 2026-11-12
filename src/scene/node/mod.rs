@@ -223,7 +223,11 @@ impl Node {
         self.child_align = filled(self.child_align, value);
     }
 
-    /// Takes over `from`'s placement (position in the parent and Tab order) and whether the slot is disabled, nothing about contents or other behavior ([`NodeFlags::adopt`]); for a widget handing its slot to a second node ([`crate::DragValue`]'s chip to [`crate::TextEdit`]) or recording as two nodes ([`crate::Scroll`]). Margin is the one `Option`: `None` keeps the adopting node's themed default.
+    /// Takes over `from`'s placement (position in the parent and Tab order) and whether the slot
+    /// is disabled, nothing else ([`NodeFlags::adopt`]); for a widget handing its slot to a second
+    /// node ([`crate::DragValue`]'s chip to [`crate::TextEdit`]) or recording as two nodes
+    /// ([`crate::Scroll`]). Margin is the one `Option`: `None` keeps the adopting node's themed
+    /// default.
     ///
     /// The destructure is exhaustive so a new field must be given a side.
     pub(crate) fn adopt_placement(&mut self, from: Self) {

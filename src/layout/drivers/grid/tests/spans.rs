@@ -240,7 +240,7 @@ fn block(rec: &mut NodeRecorder<'_>, id: &str, cell: impl Into<GridCell>, size: 
 /// A spanning cell grows the Hug tracks it crosses by what their span-1 cells leave short,
 /// split evenly (CSS Grid §12.5.1). Columns: 30 and 50 hold `30 + 10 + 50 = 90` of a 200 header,
 /// so each takes `110 / 2 = 55`, to 85 and 105. Rows: 20 and 30 hold 50 of a 100 side, to 45 and
-/// 55. The grid then holds the spanning cell, where it hugged to 90 and 50 before.
+/// 55. The grid then holds the spanning cell.
 #[test]
 fn a_spanning_cell_grows_the_hug_tracks_it_crosses() {
     let mut rig = LayoutRig::new();

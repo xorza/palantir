@@ -1,4 +1,7 @@
-//! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, and a progress bar beside spinners.
+//! Form controls in one composition. The left column is a settings form (switches, checkboxes,
+//! radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the
+//! network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The
+//! right column demos ButtonTheme styling and a progress bar; below, `Expander` disclosure.
 
 use crate::appearance::Appearance;
 use crate::scaffold::api;
@@ -113,7 +116,9 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
     });
 }
 
-/// The three things an [`Expander`] decides: whether it starts open, whether its reveal animates, and whether its body keeps recording while closed. In the second column, type into both fields, collapse and reopen: the upper resets because Palantir sweeps the state of unrecorded widgets, the lower doesn't because `keep_body` records it collapsed.
+/// The three things an [`Expander`] decides: whether it starts open, whether its reveal animates,
+/// and whether its body keeps recording while closed. A closed body that is not recorded loses
+/// its widgets' state, as palantir sweeps the state of unrecorded widgets; `keep_body` keeps it.
 fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
     let animated = animated_expander(&ui.theme().expander);
     support::cols(ui, |ui, col| match col {

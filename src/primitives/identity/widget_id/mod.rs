@@ -48,7 +48,8 @@ pub(crate) type WidgetIdSet = HashSet<WidgetId, BuildHasherDefault<IdHasher>>;
 pub struct WidgetId(NonZeroU64);
 
 impl WidgetId {
-    /// Id of the `Layer::Main` synthetic viewport root. Hard-coded so refactors of `ui/mod.rs` don't shift it; a top-level `id_salt("k")` resolves to `VIEWPORT.with(from_hash("k"))`.
+    /// Id of the `Layer::Main` synthetic viewport root. Hard-coded so refactors don't shift it;
+    /// a top-level `id_salt("k")` resolves to `VIEWPORT.with(from_hash("k"))`.
     pub(crate) const VIEWPORT: Self = Self(NonZeroU64::MAX);
 
     /// The id's bits as a hash, for a row, a key or an order that mixes them in. Crate-private and

@@ -281,7 +281,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
 
 /// A float the material cannot hold its ink in keeps its opaque panel, as `dress_float` falls
 /// back: a mid-grey muted ink on the light popup needs a floor past white, which the bound
-/// refuses as a case where it once panicked.
+/// refuses as a case, not a panic.
 #[test]
 fn a_float_whose_ink_no_floor_holds_keeps_its_panel() {
     use crate::theme::popup::PopupTheme;

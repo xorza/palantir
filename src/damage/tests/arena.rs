@@ -103,8 +103,6 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
 /// Blocks are exactly their span's length: the arena holds the live row count
 /// and no slack. The granule of one is measured: coarser slack costs cache
 /// density in the diff's per-frame span reads.
-///
-/// [`Paint`]: crate::cascade::paint::Paint
 #[test]
 fn a_span_occupies_exactly_its_row_count() {
     let mut h = Harness::mono(DISPLAY.physical);

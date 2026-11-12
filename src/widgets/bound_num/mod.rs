@@ -287,8 +287,8 @@ const I32_RANGE: RangeInclusive<i64> = i32::MIN as i64..=i32::MAX as i64;
 /// The values an `i64` slot holds.
 const I64_RANGE: RangeInclusive<i64> = i64::MIN..=i64::MAX;
 
-/// The float half of that write. `+ 0.0` turns `-0.0` into `+0.0`, which the clamp's `<`
-/// would leak as "-0.00"; the comparison is bit-exact.
+/// The float half of [`store_int`]. `+ 0.0` turns `-0.0` into `+0.0`, which the clamp may
+/// pass through and print as "-0.00"; the comparison is bit-exact.
 fn store_f64(slot: &mut f64, next: f64, rule: StoreRule) -> bool {
     let next = rule.clamp(next) + 0.0;
     let changed = slot.to_bits() != next.to_bits();

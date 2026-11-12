@@ -2,7 +2,8 @@
 //!
 //! - Linear premultiplied end to end: the shader writes `vec4(rgb*a, a)`
 //!   with `PREMULTIPLIED_ALPHA_BLENDING`; no sRGB round-trip.
-//! - Scissor clips; no per-glyph CPU clip, only a y-range pre-cull.
+//! - An unturned run's quads clip to its bounds on the CPU ([`RasterPass::clip_since`]) after a
+//!   y-range pre-cull; a turned run takes its batch's scissor.
 //! - One bind group: a color texture and a mask texture side by side.
 //! - Atlas grow blits GPU-side; rects are preserved, so no re-rasterization.
 //! - Glyph uploads are staged and flushed after any grow blit, because

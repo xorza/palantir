@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 
-/// Half-width, in physical pixels, of the box filter every edge is antialiased with; the shaders take it through the shared prelude.
+/// Half-width, in physical pixels, of the box filter every edge is antialiased with.
 pub(crate) const AA_HALF_WIDTH: f32 = 0.5;
 
 // The quad shader and composer culling assume the ramp reaches no further than half a pixel.

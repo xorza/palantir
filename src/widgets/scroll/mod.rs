@@ -330,7 +330,7 @@ impl<'a> Scroll<'a> {
     ///
     /// Read as presses no scope on the focus path claims, so a focused field or arrow group keeps
     /// its arrows. Refused: a scope of the scroll's own, which takes a key class whole and so
-    /// swallowed an app's Alt+arrow chords whenever focus sat inside a scroll.
+    /// would swallow an app's Alt+arrow chords whenever focus sat inside a scroll.
     fn key_pan(&mut self, ui: &mut Ui, geometry: ScrollGeometry) -> Vec2 {
         let line_px = ui.theme().text.font().line_height;
         let viewport = geometry.bounds().viewport;

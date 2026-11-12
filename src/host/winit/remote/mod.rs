@@ -67,7 +67,7 @@ pub struct Remote<T: 'static> {
     /// Whether something outside the host holds the window's thread, as a native dialog does.
     /// Boxed, as a type parameter for the caller's probe would reach every signature of a remote.
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
-    /// The events sent, inputs and queries, which a frame that saw them all counts.
+    /// The events sent, inputs, queries and device losses, which a frame that saw them all counts.
     sent: u64,
     /// The last press's real time, which the next press waits out the double-click interval from.
     last_press: Option<Instant>,

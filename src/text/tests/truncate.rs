@@ -416,7 +416,7 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     );
 }
 
-/// A label that already fits its cap is shaped whole, with exactly the natural extent. The halign row is the regression: a `Center` label in a 400 px cap once measured ~half the box, because the buffer baked in the width and the encoder aligned again.
+/// A label that already fits its cap is shaped whole, with exactly the natural extent. The halign row guards that a `Center` label in a 400 px cap does not measure ~half the box, as it would if the buffer baked in the width and the encoder aligned again.
 #[test]
 fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
     let mut c = CosmicMeasure::default();

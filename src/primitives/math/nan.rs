@@ -1,12 +1,16 @@
 //! NaN screen for authoring inputs.
 //!
-//! A NaN reaching paint poisons bboxes, cull and damage, and the frame comes out missing rather than broken. [`NanCheck`] stops it at two gates, each where the inputs are still in hand:
+//! A NaN reaching paint poisons bboxes, cull and damage, and the frame comes out missing rather
+//! than broken. [`NanCheck`] stops it where the inputs are still in hand:
 //!
+//! - **Shapes.** `Ui::add_shape` and the shape setters check their inputs and panic on a NaN;
+//!   `Shapes::push` debug-asserts none got past.
+//! - **Paints.** `lower::lower_paint`, which every box and chrome lowers through, debug-asserts the
+//!   `Paint` it receives holds none.
 //!
-//! - **Shapes.** `Shapes::push` refuses to record an authored shape carrying a NaN.
-//! - **Chrome.** `lower::chrome` sanitizes each `Chrome` field rather than dropping the row, which a rounded clip's coverage needs.
-//!
-//! Impls are `O(1)`, so both gates run in release too. Bulk inputs (polyline points, mesh vertices) are covered by their `bbox` under the AABB NaN contract ([`Aabb`](crate::primitives::geometry::rect::aabb::Aabb)).
+//! Impls are `O(1)`, so the setter checks run in release too. Bulk inputs (polyline points, mesh
+//! vertices) are covered by their `bbox` under the AABB NaN contract
+//! ([`Aabb`](crate::primitives::geometry::rect::aabb::Aabb)).
 
 use glam::Vec2;
 

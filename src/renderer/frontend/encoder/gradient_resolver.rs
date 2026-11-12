@@ -48,7 +48,6 @@ impl GradientPass<'_> {
         }
     }
 
-    /// The ramp recorded under `id`.
     pub(super) const fn ramp(&self, id: GradientId) -> &ColorRamp {
         &self.gradients[id.0 as usize].ramp
     }

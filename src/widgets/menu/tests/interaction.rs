@@ -76,7 +76,6 @@ fn item_click_dismisses_and_reports_clicked() {
     h.frame(|ui| {
         build(ui);
     });
-    // Open the menu at a known anchor.
     Menu::open(h.ui_mut(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
@@ -130,7 +129,6 @@ fn escape_dismisses_menu() {
     });
     assert!(menu_open(h.ui()));
 
-    // Inject an Escape press.
     h.key(Key::Escape);
     h.frame(|ui| {
         build(ui);

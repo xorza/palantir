@@ -37,8 +37,8 @@ fn damage_filter_threshold_cases() {
     fn region(rects: &[Rect]) -> DamageRegion {
         DamageRegion::from_rects(rects)
     }
-    // Adjacent halves: a perfectly adjacent pair has `union_excess = 0`, so each pair collapses into one rect whose
-    // area is the input sum, making the strict `>` the thing under test whatever the SAH budget.
+    // Adjacent halves: a perfectly adjacent pair wastes nothing, so each pair collapses into one rect whose
+    // area is the input sum, making the strict `>` the thing under test whatever the merge budget.
     const PAIR_BELOW: [Rect; 2] = [
         // Merges to Rect(0,0,70,100); total_area = 0.70 → stays Partial.
         Rect::new(0.0, 0.0, 35.0, 100.0),

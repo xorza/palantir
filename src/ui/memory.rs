@@ -11,7 +11,6 @@ use crate::ui::state::StateMap;
 /// retained state.
 #[derive(Debug, Default)]
 pub(super) struct Memory {
-    /// Cross-frame widget state, keyed by `WidgetId`.
     pub(super) state: StateMap,
     pub(super) animation: AnimationMap,
     /// Live `GpuView`s. The shape records only the redraw epoch; the encoder looks the view up by

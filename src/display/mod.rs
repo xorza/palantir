@@ -85,7 +85,8 @@ impl Display {
     }
 
     /// Monitor refresh rate in millihertz, or `None` when unknown (headless, unmapped window,
-    /// VRR). Read only by repaint-wake coalescing; it never forces a relayout.
+    /// VRR). Read only by wake pacing (repaint coalescing, reduced frame rate); it never forces a
+    /// relayout.
     #[inline]
     pub const fn refresh_millihertz(&self) -> Option<u32> {
         self.refresh_millihertz

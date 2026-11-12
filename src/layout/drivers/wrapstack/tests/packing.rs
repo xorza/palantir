@@ -38,7 +38,7 @@ fn wrap_hstack_justify_per_line() {
     }
 }
 
-/// Today's behavior: `Sizing::fill` on a child's main axis acts as `Hug` (measured at INF main, content size, no per-row leftover). Flex-style distribution should update this test, not slip in silently.
+/// `Sizing::fill` on a child's main axis acts as `Hug` (measured at INF main, content size, no per-row leftover). Flex-style distribution should update this test, not slip in silently.
 #[test]
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let mut rig = LayoutRig::new();
@@ -57,7 +57,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             });
         });
     });
-    // The Fill child gets its min_size width (40), not the row leftover (300 - 60 - 10 - 10 = 220); distribution would flip this and make the test the spec.
+    // The Fill child gets its min_size width (40), not the row leftover (300 - 60 - 10 = 230); distribution would flip this and make the test the spec.
     assert_eq!(
         rig.rect("filler").size.w,
         40.0,

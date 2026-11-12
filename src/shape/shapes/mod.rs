@@ -61,7 +61,7 @@ impl Shapes {
     }
 
     /// Append an [`ImageSource::GpuView`]-sourced image [`ShapeRecord::Closed`] directly,
-    /// bypassing the record store's lowering. The view's `paint` lives in `Ui::gpu_views`
+    /// bypassing the record store's lowering. The view's `paint` lives in the `Ui`'s `GpuViews`
     /// by the owner's `WidgetId`; the record carries its target `id` and `epoch`.
     ///
     /// Placement is neutral: no sub-rect, untinted, `Fill` fit, which resolves to

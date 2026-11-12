@@ -393,8 +393,7 @@ fn press_escape(h: &mut Harness) {
     h.key(Key::Escape);
 }
 
-/// A node on the popup layer declaring an all-taking scope; `body` records inside it.
-/// An overlay on `Layer::Popup` claiming its layer, with `body` inside.
+/// An overlay on `Layer::Popup` claiming its layer with an all-taking scope; `body` records inside.
 fn popup_claim(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     ui.layer(Layer::Popup).show(|ui| {
         claiming(

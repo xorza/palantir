@@ -376,7 +376,8 @@ fn frame_value_records_both_relayout_passes_and_returns_the_first() {
     assert_eq!(captured, 1, "capture returns the input-observing pass");
 }
 
-/// `WindowFrames::frame` plumbs `now`, `dt` (clamped to `MAX_ANIMATION_DT`) and the repaint-requested flag (reset every call) end-to-end to `FrameOutput`.
+/// `WindowFrames::frame` plumbs `now`, `dt` (clamped to `MAX_ANIMATION_DT`) and the
+/// repaint-requested flag (reset every call) end-to-end to `FrameReport`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
     let mut h = Harness::mono(UVec2::new(100, 100));
@@ -405,7 +406,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "FrameRuntime::dt should be (now - prev) in seconds",
     );
 
-    // Frame B: an unsettled animation tick during recording must reach `FrameOutput`.
+    // Frame B: an unsettled animation tick during recording must reach `FrameReport`.
     let repaint = h
         .at(Duration::from_millis(32))
         .frame(|ui| {
@@ -746,8 +747,8 @@ fn a_tab_before_the_first_frame_moves_a_set_focus_in_its_first_pass() {
 
 /// A paint-only frame repaints the retained tree, so a move of what that tree was built under
 /// records instead: a theme set between frames (its colors are in the tree), or a font another
-/// window loaded into the shared shaper (its text is). Before, a caret blink repainted the old
-/// colors and text until input arrived.
+/// window loaded into the shared shaper (its text is), so a caret blink never repaints the old
+/// colors and text.
 #[test]
 fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     use crate::text::font_scope::internals::INTER;

@@ -73,11 +73,13 @@ impl LayoutDriver for Grid {
         None
     }
 
-    /// WPF-style grid measure: resolves Fixed tracks, feeds each child the sum of its spanned tracks (`∞` if any
-    /// is unresolved, so the child reports intrinsic), then resolves Hug tracks from span-1 children and the shortfall of spanning ones,
-    /// which a span crossing a Fill track gives to its Fill tracks' floors instead ([`GridAxis::distribute_span`]). Star tracks
-    /// resolve only in arrange. Each grid's tracks live in `grid.track_state` for the whole pass, so a nested
-    /// grid cannot overwrite them between measure and arrange. The solver is documented on
+    /// WPF-style grid measure: resolves Fixed tracks, feeds each child the sum of its spanned tracks
+    /// (`∞` if any is unresolved, so the child reports intrinsic), then resolves Hug tracks from
+    /// span-1 children and the shortfall of spanning ones, which a span crossing a Fill track gives
+    /// to its Fill tracks' floors instead ([`GridAxis::distribute_span`]). Fill tracks resolve at
+    /// arrange, except columns a non-Hug grid commits at measure. Each grid's tracks live in
+    /// `grid.track_state` for the whole pass, so a nested grid cannot overwrite them between measure
+    /// and arrange. The solver is documented on
     /// [`GridTrackStore::resolve_axis`](crate::layout::drivers::grid::grid_track_store::GridTrackStore::resolve_axis).
     fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> ContentMeasure {
         measure::run(self, pass, inner_avail)

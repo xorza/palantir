@@ -2,7 +2,7 @@
 
 /// A loaded effect's identity: its place in the host's [`EffectRegistry`], given at its first load
 /// and kept for the app's life, as an effect never unloads. A shape record carries it in place of
-/// the 63-byte name, and the backend keys its pipelines by it.
+/// the 23-byte name, and the backend keys its pipelines by it.
 ///
 /// [`EffectRegistry`]: crate::effect::effect_registry::EffectRegistry
 #[repr(transparent)]

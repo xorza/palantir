@@ -13,7 +13,7 @@
 //! measured against in
 //! [`TextureLimit`](crate::image_registry::texture_limit::TextureLimit) — so this
 //! module owns only the lifecycle. `UiResources` mints the id and applies
-//! the ceiling before a handle is built, so nothing here can fail.
+//! the ceiling before a handle is built, so building one cannot fail.
 
 pub(crate) mod error;
 pub(crate) mod image_handle;

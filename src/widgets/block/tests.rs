@@ -56,7 +56,6 @@ fn frame_paints_a_single_rounded_rect() {
         "the rounding it was given"
     );
 
-    // Default sense is None — frame is not a hit-test target.
     let r = h.ui().arranged_rect(Layer::Main, frame_node);
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);

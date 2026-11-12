@@ -35,9 +35,9 @@ use std::ops::Range;
 /// The `available` of a node no measure reached this frame; no subtree is captured under it.
 pub(super) const UNMEASURED: Size = Size::new(f32::NAN, f32::NAN);
 
-/// Whether two offers are the same one, bit for bit. The exact offer is the cache's identity: a
-/// grid would serve one offer's measure at another, and a driver that makes a discrete decision
-/// (a wrap width, a line break) decides it on its own grid. `UNMEASURED` matches itself.
+/// Whether two offers are the same one, bit for bit; `UNMEASURED` matches itself. A kept run
+/// needs the exact offer, where [`MeasureCache::try_lookup`] also serves any finite offer past
+/// `stable_from`.
 pub(super) const fn same_offer(a: Size, b: Size) -> bool {
     a.w.to_bits() == b.w.to_bits() && a.h.to_bits() == b.h.to_bits()
 }
@@ -352,8 +352,7 @@ impl MeasureCache {
     }
 }
 
-/// What the measure-cache tests reach, and the tree shapes the bench times:
-/// a deep chain and a balanced broad tree.
+/// What the measure-cache tests reach.
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::layout::cache::MeasureCache;

@@ -91,7 +91,7 @@ mod tests {
     use crate::internals::panic_probe;
 
     /// Both range forms convert exactly up to `u32::MAX`; a backward range or a `usize` end past
-    /// it is refused, where the casts wrapped or truncated.
+    /// it is refused.
     #[test]
     fn range_conversions_fit_or_are_refused() {
         let backward = |start: u32, end: u32| start..end;

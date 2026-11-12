@@ -79,7 +79,7 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
     );
 }
 
-/// A reuse row outlives the frames it is not used in and goes only with its widget. It used to go after one unused frame, losing the wrap slot and the `supersede` that demotes the key; a measure-cache hit never touches a steady run's row, so every drag leaked a buffer onto the long window.
+/// A reuse row outlives the frames it is not used in and goes only with its widget. Dropping it after one unused frame would lose the wrap slot and the `supersede` that demotes the key; a measure-cache hit never touches a steady run's row, so every drag would leak a buffer onto the long window.
 #[test]
 fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     let mut text = TextSystem::mono();
@@ -193,7 +193,7 @@ fn resize_drag_retains_only_the_probation_window() {
     );
 }
 
-/// A run that stops answering through its bounded slot demotes the buffer it named. Three ways to stop: the width moving, a truncating run whose box grows until the text fits (`WrapCommit::Unbounded`), and a policy that stopped binding. The last two once left the buffer on the protected window.
+/// A run that stops answering through its bounded slot demotes the buffer it named. Three ways to stop: the width moving, a truncating run whose box grows until the text fits (`WrapCommit::Unbounded`), and a policy that stopped binding. The last two would otherwise leave the buffer on the protected window.
 #[test]
 fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
     const BODY: &str = "a rather long label that will not fit";

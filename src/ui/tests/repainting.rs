@@ -281,7 +281,9 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(h.ui().record_frame_id(), recorded + 1);
 }
 
-/// Regression: `WindowFrames::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.
+/// A `PaintOnly` frame must not clear the record store: retained `ShapeRecord`s' payload indices
+/// would dangle and panic the encoder. Pinned with a retained gradient, text and an animated shape
+/// forcing PaintOnly on frame 1.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
     fn body(ui: &mut Ui, half: Duration) {
@@ -436,7 +438,8 @@ fn a_new_device_makes_each_window_record_once() {
     assert_eq!(a.ui().max_image_dimension(), Some(limit));
 }
 
-/// `request_repaint` co-firing with an anim wake gives `REAL | ANIMATION`, so the classifier picks Full.
+/// `request_repaint` co-firing with an anim wake gives `REAL | ANIMATION`, so the classifier
+/// records (`SingleLayout`) instead of picking `PaintOnly`.
 #[test]
 fn paint_only_skipped_when_widget_requested_repaint() {
     fn body(ui: &mut Ui, half: Duration) {
@@ -539,7 +542,10 @@ fn input_policy_routes_paint_only_gate() {
     }
 }
 
-/// The fps EMA reads the true frame delta; the MAX_DT clamp is for the animation integrator only. Hand-computed: sample 1 at 1 s → inst 1.0 seeds the EMA; sample 2 after a 2 s stall → inst 0.5, EMA = 1.0·0.9 + 0.5·0.1 = 0.95. The clamp would record both stalls as 10 fps (EMA 10.0).
+/// The fps EMA reads the true frame delta; the `MAX_ANIMATION_DT` clamp is for the animation
+/// integrator only. Hand-computed: sample 1 at 1 s → inst 1.0 seeds the EMA; sample 2 after a 2 s
+/// stall → inst 0.5, EMA = 1.0·0.9 + 0.5·0.1 = 0.95. The clamp would record both stalls as 10 fps
+/// (EMA 10.0).
 #[test]
 fn fps_ema_reads_unclamped_frame_delta() {
     let mut h = Harness::mono(SURFACE);
@@ -577,7 +583,8 @@ fn request_relayout_during_record_is_honored() {
     );
 }
 
-/// The record-pass gate is frame-level, not per-layer: `Ui::layer` pushes a layer without opening a node, which a per-layer gate wrongly rejected.
+/// The record-pass gate is frame-level, not per-layer: `Ui::layer` pushes a layer without opening a
+/// node, which a per-layer gate would reject.
 #[test]
 fn request_relayout_is_legal_from_a_layer_scope_with_nothing_recorded_yet() {
     let mut h = Harness::mono(SURFACE);

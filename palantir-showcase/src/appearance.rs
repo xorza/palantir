@@ -265,8 +265,7 @@ mod tests {
 
     /// A seed or a ring edit moves the generation, so each window builds both themes once from
     /// the solved palettes: the ring follows the accent until a color of its own is set, and a
-    /// reset gives it back. Past the window's second frame an edit blends in. The floats wear the
-    /// stock frost.
+    /// reset gives it back. The floats wear the stock frost.
     #[test]
     fn an_edit_builds_the_themes_once() {
         let mut h = Harness::builder(UVec2::new(64, 64)).mono().build();

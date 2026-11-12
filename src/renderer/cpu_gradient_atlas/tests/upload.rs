@@ -170,7 +170,7 @@ fn cross_epoch_churn_evicts_without_growing() {
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 }
 
-/// A miss bakes exactly one row; a growth once baked a resident gradient twice.
+/// A miss bakes exactly one row, and a hit none.
 #[test]
 fn every_miss_bakes_exactly_one_row() {
     let mut atlas = CpuGradientAtlas::default();

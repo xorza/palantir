@@ -210,7 +210,7 @@ fn negative_left_margin_spills_outside_slot() {
     );
 }
 
-/// Pass 2 must not double-count non-Fill children in `total_main`: the Hug row measures what its
+/// A Fill child's share must not count the non-Fill children twice: the Hug row measures what its
 /// label wants, 2 × 8 = 16, and no more, though a Fill sibling follows it.
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {

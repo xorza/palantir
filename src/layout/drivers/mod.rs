@@ -1,5 +1,5 @@
 //! The layout driver contract, and the one dispatch over [`LayoutMode`] that
-//! reaches it: seven modules answer the same three questions about a subtree,
+//! reaches it: seven modules answer the same questions about a subtree,
 //! [`LayoutDriver`] is that agreement as a type and [`DriverOp::dispatch`] the
 //! single match over it, so a new driver is one arm plus one impl.
 
@@ -54,7 +54,7 @@ pub(super) trait LayoutDriver: Copy {
 
     /// Pure on-demand query on [`IntrinsicQuery::axis`], the one step taking an
     /// [`IntrinsicPass`]: it must not reach the frame's text shapes. Driven by
-    /// `Grid`'s Phase-1 column resolution and `Stack`'s Fill min-content floor. A
+    /// `Grid`'s column seeding and `Stack`'s Fill min-content floor. A
     /// driver whose answer depends on its pack axis compares it with the query's.
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange;
 

@@ -142,8 +142,7 @@ impl LayoutEngine {
                 let mut pass = LayoutPass::new(&mut *self, input, &mut *plane_out);
                 let root = slot.first_node;
                 let available = slot.available(surface);
-                // Two of the five passes that a Tracy capture couldn't tell
-                // apart. Per root, so the zone budget stays flat.
+                // Per root, so the zone budget stays flat.
                 let measured = {
                     tracy::zone!("Layout::measure");
                     pass.measure(root, available)

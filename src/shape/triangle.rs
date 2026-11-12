@@ -142,7 +142,7 @@ impl sealed::DrawWith<MaterialPaint> for TriangleShape {
 
 impl PaintedBy<Material> for TriangleShape {}
 
-/// A box of a material alone, as [`MaterialPaint`] draws it.
+/// A triangle of a material alone, as [`MaterialPaint`] draws it.
 impl sealed::DrawWith<Material> for TriangleShape {
     type Prepared = MaterialPaint;
 

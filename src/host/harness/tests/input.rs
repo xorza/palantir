@@ -86,8 +86,8 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
 
 #[test]
 fn modifiers_are_sticky_until_set_back() {
-    // Rule 13. `ModifiersChanged` carries a snapshot that persists, so
-    // every later key inherits it until something sets it back.
+    // `ModifiersChanged` carries a snapshot that persists, so every later key inherits it until
+    // something sets it back.
     let ctrl = Modifiers::CTRL;
     let mut harness = Harness::mono(SURFACE);
 
@@ -122,11 +122,11 @@ fn modifiers_are_sticky_until_set_back() {
 
 #[test]
 fn typed_text_arrives_as_one_press_per_char() {
-    // Rule 14. `type_text` emits the `KeyDown { Key::Char }` a real
-    // window produces, which is the only path a field inserts from.
+    // `type_text` emits the `KeyDown { Key::Char }` a real window produces, which is the only path
+    // a field inserts from.
     let mut harness = Harness::mono(SURFACE);
-    // Keyboard events are dropped at *ingress* when nothing holds focus and no subscriber matches, so a
-    // keyboard test has to establish focus before it drives anything.
+    // Rule 11: keyboard events are dropped at ingress when nothing holds focus and no subscriber
+    // matches, so focus comes first.
     harness.ui_mut().set_focus(support::target());
 
     harness.type_text("hi");
@@ -144,7 +144,7 @@ fn typed_text_arrives_as_one_press_per_char() {
 
 #[test]
 fn scroll_routes_to_whatever_the_pointer_moved_over() {
-    // Rule 12. Scroll carries no position; the target is the last hover.
+    // Scroll carries no position; the target is the last hover.
     let scroller = WidgetId::from_hash("scroller");
     let build = |ui: &mut Ui| {
         Panel::hstack()
@@ -168,8 +168,7 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
         "a scroll over bare surface reaches nobody",
     );
 
-    // `scroll_lines_at` is `move_to` + `scroll_lines`, so the bare form aims at wherever the pointer was
-    // left, still OUTSIDE; only a separate `move_to` re-aims it.
+    // The raw event aims at wherever the pointer was left, still OUTSIDE; only a hover re-aims it.
     harness.on_input(InputEvent::scroll_lines(Vec2::new(0.0, 3.0)));
     assert_eq!(
         harness.response_in(scroller, build).scroll.lines.y,
@@ -185,8 +184,8 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
         "…and lands once the pointer is moved onto the target",
     );
 
-    // Pinch routes by the same last-position rule; `pinch_at` returns
-    // the zoom's own delta, not the positioning move's.
+    // Pinch routes by the same last-position rule; `pinch` returns the zoom's own delta, not the
+    // positioning move's.
     let zoomer = WidgetId::from_hash("zoomer");
     let zoom_build = |ui: &mut Ui| {
         Panel::hstack()

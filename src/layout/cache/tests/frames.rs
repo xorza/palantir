@@ -176,7 +176,7 @@ fn cache_hit_preserves_grid_cell_rects() {
     }
 }
 
-/// Per-driver cache-hit defense. Only Grid retains measure→arrange state (see the `LayoutScratch` cache-hit contract); a driver adding some without [`LayoutScratch::restore_after_cache_hit`] desyncs warm from cold.
+/// Per-driver cache-hit defense. Only Grid retains measure→arrange state; a driver adding some without [`LayoutScratch::restore_after_cache_hit`] desyncs warm from cold.
 #[test]
 fn cache_hit_preserves_per_driver_rects() {
     type Build = fn(&mut Ui);
@@ -558,7 +558,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
     }
 }
 
-/// Registering a font invalidates the measure-cache snapshot: it moves neither the subtree hash nor the width yet changes every measure, so `LayoutEngine::run` checks an epoch. Pinned on the shaper's dispatch count, which a replayed snapshot leaves flat.
+/// Registering a font invalidates the measure-cache snapshot: it moves neither the subtree hash nor the width yet changes every measure, so `LayoutEngine::run` drops the snapshot when `TextSystem::sync_fonts` reports a change. Pinned on the shaper's dispatch count, which a replayed snapshot leaves flat.
 #[test]
 fn registering_a_font_forces_the_next_frame_to_remeasure() {
     let mut h = Harness::new(UVec2::new(400, 300));
@@ -587,7 +587,7 @@ fn registering_a_font_forces_the_next_frame_to_remeasure() {
     );
 }
 
-/// O1 regression: a hit restores the subtree root's intrinsics, so a re-measuring ancestor reads them instead of re-walking the subtree. Pinned via `intrinsic_computes`.
+/// A hit restores the subtree root's intrinsics, so a re-measuring ancestor reads them instead of re-walking the subtree. Pinned via `intrinsic_computes`.
 #[test]
 fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() {
     const HEAVY: usize = 30;

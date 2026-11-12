@@ -734,7 +734,7 @@ impl StripPass<'_> {
 /// A small glyph button: a chip's close cross and the overflow chevron, both wearing [`TabsTheme::close`].
 ///
 /// Each glyph is drawn shapes in the look's text color, not a font's "×" or "⋯": a font glyph
-/// sits on its baseline at the font's own weight, so it rode below the button's center.
+/// sits on its baseline at the font's own weight, so it would ride below the button's center.
 #[derive(Debug)]
 struct GlyphButton {
     response: Response,

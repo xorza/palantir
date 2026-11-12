@@ -63,13 +63,11 @@ pub(crate) struct WornMaterial<'a> {
     pub(crate) read: MaterialRead,
 }
 
-/// A capturing [`Material`] as a record keeps it, packed for the shape record that holds it: its
-/// effect, a capture whose reach its effect declared, as a backdrop
-/// `EffectPaint`'s reach is its own, the first of its parameters' words in the record store and
-/// their hash, and the
-/// luminance bounds. `max_luminance` is the ceiling's f16 bits, rounded down so the material never
-/// shows brighter than its author allowed, and 65504 for none; `min_luminance` the floor's, rounded
-/// up so it never shows darker, and 0 for none.
+/// A capturing [`Material`] as a record keeps it, packed: its effect, a capture whose reach the
+/// effect declared, the first of its parameters' words in the record store with their hash, and
+/// the luminance bounds. `max_luminance` is the ceiling's f16 bits, rounded down so the material
+/// never shows brighter than its author allowed, and 65504 for none; `min_luminance` the floor's,
+/// rounded up so it never shows darker, and 0 for none.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LoweredMaterial {
     effect: EffectId,

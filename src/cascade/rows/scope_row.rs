@@ -9,9 +9,9 @@ use crate::scene::plane::Plane;
 ///
 /// Not a column on [`EntryRow`](crate::cascade::rows::entry_row::EntryRow): scopes are a handful per frame, and
 /// containment is answered by [`Cascade::is_within`](crate::cascade::Cascade::is_within).
-/// Same lifecycle as [`HitRow`](crate::cascade::rows::hit_row::HitRow): cleared on a full rebuild, repopulated by the
-/// non-incremental walk, retained across incremental runs with matching
-/// subtree hashes.
+/// Cleared on a full rebuild and refilled by that walk; every refresh keeps it as is, as the
+/// cascade key proves it unchanged, where it rewrites the rects of
+/// [`HitRow`](crate::cascade::rows::hit_row::HitRow)s.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScopeRow {
     pub(crate) plane: Plane,

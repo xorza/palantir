@@ -231,8 +231,8 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     }
 }
 
-/// Unsorted stops are sorted at bake time. Authors shouldn't rely on it
-/// (`LinearGradient::new` accepts any order), but output must stay sensible.
+/// `LinearGradient::new` accepts stops in any order and sorts them as it builds the ramp, so the
+/// bake gets them ascending and the output stays sensible.
 #[test]
 fn unsorted_stops_get_sorted_at_bake() {
     let stops = [

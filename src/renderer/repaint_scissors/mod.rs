@@ -116,7 +116,7 @@ impl RepaintScissors {
     }
 }
 
-/// The non-empty, pairwise disjoint scissor list a `Partial` repaint walks. Non-emptiness is [`RepaintScissors::new`]'s `debug_assert!`; splitting off a `first` would cost an O(n) shift to build.
+/// The non-empty, pairwise disjoint scissor list a `Partial` repaint walks. Non-emptiness is `RepaintScissors::partial_of`'s `debug_assert!`; splitting off a `first` would cost an O(n) shift to build.
 #[derive(Debug)]
 pub(crate) struct PartialScissors {
     rects: ArrayVec<[URect; SCISSOR_CAP]>,

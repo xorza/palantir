@@ -40,7 +40,7 @@ const CHURN_BASE: u32 = 1_000_000;
 /// bake key.
 ///
 /// Deliberately structured, not pre-mixed: constant channels across a run are
-/// what a themed palette looks like and what `GradientStops::hash` must
+/// what a themed palette looks like and what `ColorRamp`'s hash must
 /// spread, so this also guards that hash. Built from sRGB bytes, which
 /// round-trip exactly.
 fn gradient_for(seed: u32) -> ColorRamp {

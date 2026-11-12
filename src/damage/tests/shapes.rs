@@ -373,7 +373,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
     }
 }
 
-/// `NodeSnapshot.paint_span` has one entry per Paint row (chrome at row 0, then direct shapes), mirroring `Cascade::paint_arenas`.
+/// `NodeSnapshot.paint_span` covers one entry per Paint row (chrome at row 0, then direct shapes), mirroring the plane's `paint_arena`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
     use crate::widget::Shape;

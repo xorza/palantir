@@ -23,7 +23,8 @@ fn worst_bucket(keys: &[GradientStops], buckets: usize) -> usize {
     counts.into_iter().max().unwrap_or(0)
 }
 
-/// Structured palettes must spread across buckets. A clustering layout returns identical values and fails only as a silent 10-30x slowdown in `CpuGradientAtlas`'s index. The bound is loose: 200 keys in 256 buckets peak around 4-5 for a sound hash, so under 16 means the low bits carry entropy.
+/// Structured palettes must spread across buckets; clustering shows only as a 10-30x slowdown in
+/// `CpuGradientAtlas`'s index. The bound is loose: 200 keys in 256 buckets peak around 4-5.
 #[test]
 fn hash_spreads_across_buckets_for_structured_palettes() {
     const N: u32 = 200;
@@ -101,7 +102,8 @@ fn offset_and_color_stay_independent() {
     assert_eq!(digest(&base), digest(&base.clone()));
 }
 
-/// Written order must not reach cache identity: stops are the gradient's key, so two spellings of one ramp must hash and compare equal or take two atlas rows. Both the constructor and the deserializer establish the order, so both are driven.
+/// Written order must not reach cache identity, or two spellings of one ramp take two atlas rows.
+/// Both the constructor and the deserializer establish the order, so both are driven.
 #[test]
 fn written_order_does_not_reach_identity() {
     // The deserializer is the other door onto the same invariant.

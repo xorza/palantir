@@ -34,9 +34,8 @@ pub(crate) struct AnimationClock {
 }
 
 impl<T: Animatable> AnimationMapTyped<T> {
-    /// Insert-or-advance. First touch snaps `cur = target` and returns settled:
-    /// no animation on appearance. Later calls detect retarget vs steady state and
-    /// advance by `clock.dt` seconds.
+    /// Insert-or-advance. First touch snaps to the target and returns settled: no animation on
+    /// appearance. Later calls advance by `clock.dt` seconds.
     ///
     /// **A new target under the request's key is followed, not animated toward**: the row's
     /// offset from it and the clock running it carry on, so a look rides a theme transition with
@@ -54,15 +53,14 @@ impl<T: Animatable> AnimationMapTyped<T> {
     /// `AnimationMap::animate` filters instant specs (`AnimationSpec::is_instant()`) first;
     /// this assumes a real motion spec.
     ///
+    /// The value to show this frame lands in `request.target`, which a settled row leaves as the
+    /// caller passed it; returns whether the row is settled. In place, so a row at rest copies no
+    /// look (`.notes/PERF.md`, "A look animates in place").
+    ///
     /// # Panics
     ///
     /// For a target that is not finite, checked past the steady path, so a settled row pays
     /// nothing.
-    ///
-    /// The value to show this frame lands in `request.target`, which a settled row leaves as the
-    /// caller passed it; returns whether the row is settled. In place, so a row at rest copies no
-    /// look: each hop of a by-value target was a `memcpy` of the whole look (`.notes/PERF.md`, "A
-    /// look animates in place").
     #[track_caller]
     pub(crate) fn tick(
         &mut self,

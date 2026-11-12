@@ -415,10 +415,9 @@ impl Shell {
     /// How many pages the tour has.
     pub const PAGE_COUNT: usize = PAGES.len();
 
-    /// The picks the tour opens with: full motion, transparency and power use whatever the system
-    /// asks, so each page shows its effects whole until a person picks less on the rail; the
-    /// scheme follows the system, and the frame rate the power. Each entry point sets them on its `Ui`, as an app sets the picks
-    /// it saved.
+    /// The picks the tour opens with: full motion, transparency and power, so each page shows its
+    /// effects whole until a person picks less on the rail; the scheme and frame rate follow the
+    /// system. Each entry point sets them on its `Ui`, as an app sets the picks it saved.
     pub const PREFERENCES: UiPreferences = UiPreferences {
         scheme: Preference::System,
         motion: Preference::Fixed(Reduction::Full),
@@ -796,7 +795,6 @@ fn handle_shortcuts(ui: &mut Ui) {
     if ui.shortcut_pressed(Key::F8) {
         toggle_inspector(ui);
     }
-    // `^= pressed` toggles when the key fired.
     let mut overlay = ui.debug_overlay();
     overlay.damage_rect ^= ui.shortcut_pressed(Key::F12);
     overlay.dim_undamaged ^= ui.shortcut_pressed(Key::F10);
@@ -928,8 +926,6 @@ mod tests {
         assert_eq!(shell.query, "");
     }
 
-    /// A click on an accent swatch asks for the frame that builds the theme, with no other input
-    /// to wake one: the ring the theme draws takes the seed as the shown scheme solves it.
     /// Each preference row sets only its own preference, and the arrows step within one track.
     #[test]
     fn a_pressed_segment_sets_its_rows_preference() {
@@ -980,6 +976,8 @@ mod tests {
         );
     }
 
+    /// A click on an accent swatch asks for the frame that builds the theme, with no other input
+    /// to wake one: the ring the theme draws takes the seed as the shown scheme solves it.
     #[test]
     fn a_picked_accent_reaches_the_theme() {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();

@@ -564,7 +564,7 @@ fn cursor_xy_on_empty_line_respects_right_align() {
 
 /// A width-bounded run measures its glyphs, not the distance from the wrap
 /// target's left edge. Cosmic anchors a line where alignment and direction
-/// put it, so the gap before a non-left-aligned run once counted as width
+/// put it, so the gap before a non-left-aligned run would count as width
 /// (200 px for 43 px of glyphs), inflating a hugging container to the whole
 /// offer. The RTL row is reachable without `text_align`: cosmic lays RTL runs
 /// out leftward from `line_width` (`shape.rs`'s `start_x`), so `HAlign::Auto`

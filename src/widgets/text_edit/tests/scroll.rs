@@ -299,7 +299,7 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
         });
     };
     let mut h = Harness::mono(NARROW);
-    // 100 glyphs at 8 px overflow the 267 px inner width.
+    // 100 glyphs at 8 px overflow the 262 px inner width.
     let mut long = "a".repeat(100);
     h.prime(2, |ui| body(ui, &mut long));
     h.hover(Vec2::new(50.0, 20.0));

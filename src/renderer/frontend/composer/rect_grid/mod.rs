@@ -13,7 +13,7 @@ use crate::renderer::frontend::composer::tile_index::TileIndex;
 use glam::UVec2;
 use std::cell::Cell;
 
-/// The most rects a set scans without its index: past it a query lists the rects not yet indexed
+/// The most rects a set scans without its index: past it a query indexes the rects not yet indexed
 /// in the [`TileIndex`] and tests only the tiles it touches.
 const LINEAR_RECTS: usize = 32;
 

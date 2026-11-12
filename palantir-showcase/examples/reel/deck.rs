@@ -94,7 +94,7 @@ pub(crate) fn id_at(k: usize, name: &str, i: usize) -> WidgetId {
 }
 
 /// The roomy light theme slide 4 morphs to: the light palette, text 4 px larger, a third more
-/// space, as a density preset moves both.
+/// space and doubled radii, as a density preset moves them.
 pub(crate) fn roomy_theme() -> Theme {
     let d = Metrics::DEFAULT;
     let scale = 4.0 / 3.0;

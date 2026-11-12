@@ -36,13 +36,19 @@ impl LayoutCore {
 
     /// The box this node's content lives in: `rect` less padding, in `rect`'s space.
     ///
-    /// **Four passes must agree**: arrange places children in it, container-text wraps to its width, cascade clips shapes and descendant damage to it, and the encoder pushes it as the clip mask. `Tree::open_node` already folds a chrome stroke's ring into `padding`.
+    /// **Four passes must agree**: arrange places children in it, container-text wraps to its
+    /// width, cascade clips shapes and descendant damage to it, and the encoder pushes it as the
+    /// clip mask. `Tree::open_node` already folds a chrome border into `padding`.
     #[inline]
     pub(crate) fn inner_rect(&self, rect: Rect) -> Rect {
         rect.deflated_by(self.padding)
     }
 
-    /// Fold this column and the node's flags into one hash. A method, not `Hash`, because the flags live in their own column and folding them into this tail word saves a write on a per-node path. Destructured, so a new field fails to compile until it is hashed. The mode's tag is here and its payload is not: [`Tree`](crate::scene::tree::Tree)'s rollup hashes each mode's payload in one exhaustive match, as a grid's and a scrollbar's live in its side tables.
+    /// Fold this column and the node's flags into one hash. A method, not `Hash`: the flags live
+    /// in their own column, and folding them into the tail word saves a write per node.
+    /// Destructured, so a new field fails to compile until it is hashed. The mode's tag is here,
+    /// its payload is not: [`Tree`](crate::scene::tree::Tree)'s rollup hashes each payload in one
+    /// exhaustive match, as a grid's and a scrollbar's live in side tables.
     #[inline]
     pub(crate) fn hash_with_flags<H: hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
         let Self {
@@ -54,7 +60,7 @@ impl LayoutCore {
         h.write_u64(size.as_u64());
         h.write_u64(padding.as_u64());
         h.write_u64(margin.as_u64());
-        // Shifted, not byte-cast, like [`Gaps::as_u32`](crate::scene::node::gaps::Gaps::as_u32): avoids a layout-dependent hash.
+        // Shifted, not byte-cast, like `Gaps::as_u32`: no layout-dependent hash.
         let tail = u64::from(meta.metadata())
             | (u64::from(meta.tag()) << 8)
             | (u64::from(flags.bits()) << 16);

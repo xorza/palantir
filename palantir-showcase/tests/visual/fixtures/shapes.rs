@@ -236,7 +236,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
     );
 }
 
-/// Pin the curve pipeline: `Shape::cubic_bezier` lowers to `ShapeRecord::Curve` and draws per scissor group. Three identical cubics with Butt / Square / Round caps differ only at the endpoints; a fourth quadratic pins quadratic→cubic promotion.
+/// Pin the curve pipeline: `Shape::cubic_bezier` lowers to `ShapeRecord::Stroke` and draws per scissor group. Three identical cubics with Butt / Square / Round caps differ only at the endpoints; a fourth quadratic pins quadratic→cubic promotion.
 #[test]
 fn curve_caps_match_golden() {
     GoldenName::CurveCaps.assert_scene(UVec2::new(220, 240), |ui| {

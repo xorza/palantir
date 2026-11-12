@@ -51,7 +51,9 @@ fn add_shape_returns_none_where_the_pair_paints_nothing() {
     });
 }
 
-/// A fractional alpha survives the whole path (encoder sample, sink gate, payload color lane): opaque red with alpha lerping `0.0` → `1.0` over one second on a linear curve encodes a fill alpha of `0.5` at 500 ms. The crate's other animations answered only `0` or `1`.
+/// A fractional alpha survives the whole path (encoder sample, sink gate, payload color lane):
+/// opaque red with alpha lerping `0.0` → `1.0` over one second on a linear curve encodes a fill
+/// alpha of `0.5` at 500 ms.
 #[test]
 fn a_fractional_alpha_reaches_the_encoded_fill() {
     let record = |ui: &mut Ui| {

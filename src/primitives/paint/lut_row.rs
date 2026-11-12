@@ -8,11 +8,10 @@ use bytemuck::{Pod, Zeroable};
 pub(crate) struct LutRow(pub(crate) u32);
 
 impl LutRow {
-    /// Sentinel for solid quads; the shader samples the LUT only for gradient `fill_kind`, and a stray `FALLBACK` paints magenta.
+    /// Sentinel for solid quads, which never sample the LUT; a stray one paints magenta.
     pub(crate) const FALLBACK: Self = Self(0);
 }
 
-/// Written out so row 0 is spelled once: the default *is* the fallback, so an unset row paints magenta.
 impl Default for LutRow {
     fn default() -> Self {
         Self::FALLBACK

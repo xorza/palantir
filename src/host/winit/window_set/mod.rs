@@ -34,8 +34,8 @@ impl<W> Default for WindowSet<W> {
     }
 }
 
-/// Where a window sits in its [`WindowSet`]; valid only until the set changes, as `close_window` uses
-/// `swap_remove`.
+/// Where a window sits in its [`WindowSet`]; valid only until the set changes, as
+/// [`WindowSet::take`] uses `swap_remove`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct WindowSlot(usize);
 

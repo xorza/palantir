@@ -17,7 +17,9 @@ use crate::widgets::scroll::tests::support::{fixed_block, scroll_content, scroll
 use glam::UVec2;
 use std::time::Duration;
 
-/// Why `layout::drivers::scrollbars` exists: a never-recorded scroll has no arranged viewport or measured content (the thumb ratio's terms) and used to `Ui::request_relayout`, re-recording the frame. The driver now resolves them after measure, so the thumb is placed on the first frame in one pass.
+/// A never-recorded scroll has no arranged viewport or measured content (the thumb ratio's terms);
+/// `layout::drivers::scrollbars` resolves them after measure, so the thumb is placed on the first
+/// frame in one pass, with no `Ui::request_relayout`.
 #[test]
 fn cold_mount_places_the_thumb_in_one_record_pass() {
     let build = |ui: &mut Ui| {

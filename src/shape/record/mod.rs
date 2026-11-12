@@ -53,9 +53,13 @@ pub(crate) enum ShapeRecord {
         geometry: StrokeGeometry,
         stroke: LoweredStroke,
     },
-    /// Shaped text run, *authoring inputs only*: measured size and the shaped-buffer key are layout outputs in `Layout.text_shapes`. `wrap` selects shape-once (`Single`) or reshape under a narrower committed width (`Wrap`); `align` positions the glyph bbox (`Auto`/`Stretch` collapse to top-left).
+    /// Shaped text run, *authoring inputs only*: measured size and the shaped-buffer key are layout
+    /// outputs in `Layout.text_shapes`. `wrap` selects shape-once or reshape under a narrower
+    /// committed width; `align` positions the glyph bbox (`Auto`/`Stretch` collapse to top-left).
     ///
-    /// `None` paints into the owner's rect deflated by `padding`. `Some(origin)` paints at `owner.min + origin` with the shaped measurement as the bbox, so a widget can apply offsets that depend on shaped-buffer state.
+    /// `local_origin` `None` paints into the owner's rect deflated by `padding`; `Some(origin)`
+    /// paints at `owner.min + origin` with the shaped measurement as the bbox, so a widget can
+    /// apply offsets that depend on shaped-buffer state.
     Text {
         local_origin: Option<Vec2>,
         /// Lowered text storage and its content hash; arena-backed input is normalized into the active record store first, so span and hash can't come from different passes.
@@ -68,7 +72,8 @@ pub(crate) enum ShapeRecord {
         wrap: TextWrap,
         align: Align,
     },
-    /// User-supplied colored triangle mesh. Spans index the `RecordStore`'s `meshes` pool; `content_hash` covers vertex+index bytes.
+    /// User-supplied colored triangle mesh. Spans index the `RecordStore`'s `mesh_vertices` and
+    /// `mesh_idxs`; `content_hash` covers vertex+index bytes.
     Mesh {
         placement: PointPlacement,
         tint: RgbaF16,
@@ -129,7 +134,9 @@ impl ShapeRecord {
 
     /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::push`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
     ///
-    /// The schedule is `discriminant → per-variant fields` at every nesting level (`mem::discriminant`, so it cannot drift from the enum). Nothing is persisted, so variants can be added or reordered freely. A polyline's geometry and `Mesh` hand over a `content_hash` their lowering computed, as their payload bytes live in the `RecordStore` this never sees.
+    /// The schedule is `discriminant → per-variant fields` at every nesting level. A polyline's
+    /// geometry and `Mesh` hand over a `content_hash` their lowering computed, as their payload
+    /// bytes live in the `RecordStore` this never sees.
     pub(crate) fn content_hash(&self) -> ContentHash {
         let mut h = Hasher::new();
         mem::discriminant(self).hash(&mut h);

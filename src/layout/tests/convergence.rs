@@ -1,7 +1,7 @@
-//! `LayoutPass::measure`'s second pass must not assume
-//! `final_desired <= new_available`: a non-monotonic descendant (a `wrap_hstack`
-//! beside `Fill` cells that hug padded content) can desire ~10 px more. Sweeps
-//! a width range: no frame panics and every toolbar label stays in its toolbar.
+//! `LayoutPass::measure` must not assume a node desires no more than it was offered: a
+//! non-monotonic descendant (a `wrap_hstack` beside `Fill` cells that hug padded content) can
+//! desire ~10 px more. Sweeps a width range: no frame panics and every toolbar label stays in
+//! its toolbar.
 use crate::internals::layout_rig::{LayoutRig, TextRun};
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;

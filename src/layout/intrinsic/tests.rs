@@ -36,7 +36,7 @@ fn wrapping_row(rig: &mut LayoutRig, text: &str) {
 }
 
 /// Driver-triggered intrinsic queries during `run` populate the per-node cache; HStack with Fill wrap
-/// triggers them (pass 2 of `Stack::measure`).
+/// triggers them (`Stack::share_widths`).
 #[test]
 fn intrinsic_cache_populated_after_run() {
     let mut rig = LayoutRig::new();

@@ -93,7 +93,7 @@ pub(crate) enum PresentStrategy {
     /// One texture that keeps its pixels between frames: a painted frame paints into it, a
     /// partial one loading what it holds, and a still frame presents nothing. A frame that takes
     /// a screenshot, or a partial one that cannot keep the target's pixels as they are
-    /// (`WindowFrames::kept_target_path`), paints through the backbuffer.
+    /// (`WindowFrames::loses_kept_pixels`), paints through the backbuffer.
     Retained,
 }
 

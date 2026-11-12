@@ -51,9 +51,9 @@ use crate::primitives::geometry::size::Size;
 
 /// Additive step on the text-scale ladder. The composer snaps a continuous zoom scale to a rung before it picks a glyph-cache key (`composer::geometry::snap_text_scale`).
 ///
-/// Additive, not proportional: the step shrinks as a percent of size as zoom grows (0.005/4 ≈ 0.125% at 4×, 0.5% at 1×, 1% at 0.5×). Fine rungs where every percent shows, coarse rungs and fewer atlas keys at low zoom.
+/// Additive, not proportional: fine rungs where every percent shows (0.5% at 1×), coarse rungs and fewer atlas keys at low zoom.
 ///
-/// Measurement uses the unscaled `font_size`; only paint snaps. At a non-rung zoom the glyph block is up to `TEXT_SCALE_STEP / 2` off the layout rect per axis. `TextDrawRow.bounds` clips the excess and the cascade (`inflate_text_damage`) inflates damage by the same fraction.
+/// Measurement uses the unscaled `font_size`; only paint snaps, so the glyph block is up to `TEXT_SCALE_STEP / 2` off the layout rect per axis. `TextDrawRow.bounds` clips the excess and `inflate_text_damage` inflates damage by the same fraction.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
 /// How far a run inked over `inked` (local logical px) can paint past it per side, in the logical
@@ -69,42 +69,31 @@ pub(crate) fn snap_slack(inked: Size) -> Size {
 
 /// Frames a *rendered* run's shaped buffer survives untouched: the floor of the cache's protected tier (each entry adds its share of [`RENDERED_RUN_KEEP_SPREAD_MASK`]), and the ceiling the glyph-template window (`gpu::raster::text_backend::encode::cache::ENCODED_CACHE_KEEP_FRAMES`) must stay under.
 ///
-/// The two windows are ordered, not equal: if the buffer's expired first, a miss the encoder counted as cheap would reshape from source. A `const _` assertion beside the encoded constant is the tripwire.
-///
-/// Both count frames off the shaped-buffer cache's one clock; per-cache event counts would desynchronize them. A frame is the host's, not wall time.
-///
-/// Lives here because `renderer` depends on `text`, not the reverse.
+/// Ordered, not equal: if the buffer's expired first, a miss the encoder counted as cheap would reshape from source. Both count the host's frames off the cache's one clock, not wall time. Lives here because `renderer` depends on `text`, not the reverse.
 pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 
 /// Extra frames a shaped buffer keeps past [`RENDERED_RUN_KEEP_FRAMES`], masked out of the run's own key.
 ///
-/// A shared deadline makes reclamation bursty: a page switch promotes hundreds of runs on one frame, and they all fall due together, so one frame frees what a whole navigation created. Sixteen deadlines spread that cost over time.
+/// A shared deadline makes reclamation bursty: a page switch promotes hundreds of runs on one frame, and they all fall due together. Sixteen deadlines spread that cost.
 ///
-/// Masked from the key, not counted, so the offset is stable per entry: a rotating counter could move a deadline inward on re-promotion, which the expiry wheel owes a fresh ticket for. The wheel is sized from the longest deadline, so this costs a larger ring.
+/// Masked from the key, not counted, so the offset is stable per entry: a rotating counter could move a deadline inward on re-promotion. Costs a larger expiry ring.
 pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
 /// Frames a *probationary* entry survives before `ShapedBufferCache::tick_frame` drops it:
 /// inserted and never looked up, or superseded (`ShapedBufferCache::supersede`) after its reuse
 /// slot moved to another key. Short on purpose: a drag mints a never-reused key per run per
-/// frame, and the protected window would hold `runs × RENDERED_RUN_KEEP_FRAMES`
-/// dead buffers.
+/// frame, and the protected window would hold `runs × RENDERED_RUN_KEEP_FRAMES` dead buffers.
 ///
-/// **Supersession is what makes this window reach that population.** Layout shapes
-/// a run and the encoder renders it on the same frame, which is a lookup, so every
-/// buffer would be promoted at creation; the measure and encoded-run caches
-/// short-circuit before here, so nothing repairs that later. `TextSystem` alone
-/// can tell "wants a different shape" (dead) from "left the tree" (may return). It
-/// is a demotion, not an eviction: four frames of grace let an oscillating label or
-/// a reversing drag still hit.
+/// Supersession is what makes this window reach that population: layout shapes a run and the
+/// encoder renders it on the same frame, which is a lookup, so every buffer would be promoted at
+/// creation. `TextSystem` alone can tell "wants a different shape" (dead) from "left the tree"
+/// (may return). It is a demotion, not an eviction: four frames of grace let an oscillating
+/// label or a reversing drag still hit.
 ///
-/// # Why not reference-counted retention
-///
-/// `EncodedKey` embeds [`key::TextShapeKey`], so a width drag mints an encoded entry per
-/// frame living `ENCODED_CACHE_KEEP_FRAMES`. Holding its buffer strongly pins
-/// `runs × (window + 1)` buffers, the growth this scheme stops. Holding it weakly
-/// leaves buffers dying under live entries, so the restore path (`ShapedTextRef`,
-/// `InternedText`, `CosmicMeasure::ensure_buffer`) must stay. The wins exclude each
-/// other.
+/// Refused: reference-counted retention. `EncodedKey` embeds [`key::TextShapeKey`], so a width
+/// drag mints an encoded entry per frame; holding its buffer strongly pins
+/// `runs × (window + 1)` buffers, holding it weakly leaves buffers dying under live entries, so
+/// the restore path (`ShapedTextRef`, `InternedText`, `CosmicMeasure::ensure_buffer`) must stay.
 pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
 
 #[cfg(feature = "internals")]

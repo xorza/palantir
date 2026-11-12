@@ -233,7 +233,8 @@ impl WindowFrames {
         };
         self.ui.frame_runtime.note_processing(processing);
         let report = self.close_frame(plan, processing);
-        // First-frame contract: with no prev snapshot every painting widget is new, so the walk can only be `Full`; and a retained-tree paint cannot be the first frame.
+        // With no prev snapshot every painting widget is new, so the first frame can only be
+        // `Full`, and a retained-tree paint cannot be the first frame.
         debug_assert!(
             !first_frame || report.paint() == FramePaint::Full,
             "first frame must repaint in full; got {:?}",
@@ -380,7 +381,8 @@ impl WindowFrames {
 
         self.ui.frame_runtime.end_frame();
 
-        // The input frame boundary: held events apply against this frame's cascade; anything input owes the frame asks for it here, since no host event will.
+        // Held events apply against this frame's cascade; what input owes the frame asks for it
+        // here, since no host event will.
         let double_click = self.ui.double_click_interval();
         if self.ui.input.next_frame(double_click) {
             self.ui.frame_runtime.request_repaint();
@@ -420,14 +422,16 @@ impl WindowFrames {
         self.ui.frame_runtime.withdraw_requests();
     }
 
-    /// One `pre_record`, user record, drain action flag, `post_record` cycle; returns whether it saw action input (which triggers a second pass).
+    /// One `pre_record`, user record, `post_record` cycle; returns whether it saw action input
+    /// (which triggers a second pass).
     fn record_pass<T: App>(&mut self, app: &mut T, pass: RecordPass) -> bool {
         let action_flag = self.record_user(app, pass);
         self.post_record();
         action_flag
     }
 
-    /// The record half of a pass before `post_record`: `pre_record`, then the user closure under the viewport root; returns whether it saw action input.
+    /// `pre_record`, then the user closure under the viewport root; returns whether it saw action
+    /// input.
     fn record_user<T: App>(&mut self, app: &mut T, pass: RecordPass) -> bool {
         self.pre_record(pass);
         // Synthetic viewport root for Layer::Main; else the first user node becomes the root and layout forces its rect to the surface, overriding its `Sizing` / `Sense`.
@@ -449,7 +453,11 @@ impl WindowFrames {
 
     /// Opens the pass: clears everything the user closure is about to refill.
     ///
-    /// The first four resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. The overlay stack steps a modal's cancel on by one pass, so a `PaintOnly` frame leaves it for the next pass that records. A further per-pass reset goes here.
+    /// Each reset is per *pass* because the closure re-asserts it; a `PaintOnly` frame runs no
+    /// closure and must keep the previous values. State the closure does not re-assert belongs in
+    /// `finalize_frame`'s sweep. The overlay stack steps a modal's cancel on by one pass, so a
+    /// `PaintOnly` frame leaves it for the next pass that records. A further per-pass reset goes
+    /// here.
     fn pre_record(&mut self, pass: RecordPass) {
         tracy::zone!("WindowFrames::pre_record");
         self.ui.frame_runtime.begin_pass(pass);
@@ -485,7 +493,9 @@ impl WindowFrames {
         );
     }
 
-    /// Paint half of the frame: diffs seen ids against the last painted frame, fans `removed` out to per-widget caches, runs input and damage. Once per [`Self::frame`], so a widget vanishing in pass A and returning in pass B keeps its state.
+    /// The frame's sweep: diffs seen ids against the last frame, fans `removed` out to per-widget
+    /// caches and ends the frame for input. Once per [`Self::frame`], so a widget vanishing in
+    /// pass A and returning in pass B keeps its state.
     fn finalize_frame(&mut self) {
         tracy::zone!("WindowFrames::finalize_frame");
         let removed = self.ui.forest.ids.rollover();

@@ -11,7 +11,7 @@
 //! | [`length`] | finite, `>= 0` | panic |
 //! | [`extent`] | `>= 0`, `+inf` allowed | panic |
 //! | [`gap`] | a length that rounds to at most `65504` in f16 (one lane: below `65520`) | panic |
-//! | [`lane`] | rounds to within `±65504` in f16 (below `65520`); on top of the kind of a value that packs into an f16 lane | panic |
+//! | [`lane`] | rounds to within `±65504` in f16 (below `65520`), on top of its own kind | panic |
 //! | [`positive`] | finite, `> 0` | panic |
 //! | [`factor`] | finite, `>= 0` | panic |
 //! | [`refractive_index`] | finite, `>= 1` | panic |
@@ -301,7 +301,7 @@ pub const fn refractive_index(n: f32) -> f32 {
     n
 }
 
-/// True if `v` is an [`angle`]: finite, an [offset](is_offset)'s rule under the name of a turn.
+/// True if `v` is an [`angle`]: finite, an [offset](is_offset)'s rule under the name of an angle.
 #[inline]
 pub const fn is_angle(v: f32) -> bool {
     is_offset(v)

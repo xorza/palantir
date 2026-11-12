@@ -84,7 +84,7 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
 
 #[test]
 fn response_in_sees_the_click_that_a_between_frames_read_misses() {
-    // Rule 3. `frame_quiescent` is snapshotted at record-pass start, so a read between frames reflects the previous frame's input.
+    // Rule 3. A read between frames answers from the last frame, which the click has not reached.
     let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
     harness.click(INSIDE);

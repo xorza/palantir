@@ -75,7 +75,10 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     );
 }
 
-/// The theme accessors' `Rc` sharing: reads hand back a handle (a refcount bump, not a copy) and writes are copy-on-write, so a live handle keeps its values. The `ptr_eq` assertion matters: if `Ui::theme` returned `&Theme`, every `ui.theme().clone()` would still compile and silently deep-copy ~9 KB per widget per frame.
+/// The theme accessors' `Rc` sharing: reads hand back a handle (a refcount bump, not a copy) and
+/// writes are copy-on-write, so a live handle keeps its values. The `ptr_eq` assertion matters: if
+/// `Ui::theme` returned `&Theme`, every `ui.theme().clone()` would still compile and silently
+/// deep-copy the theme per widget per frame.
 #[test]
 fn theme_reads_share_and_writes_copy_on_write() {
     use crate::theme::Theme;

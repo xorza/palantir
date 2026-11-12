@@ -31,10 +31,10 @@ use std::rc::Rc;
 /// A row of menu titles, each opening its [`MenuItem`](crate::MenuItem) rows below it, and one
 /// menu open at a time, as a desktop application's menu bar.
 ///
-/// A click on a title opens its menu and a click on the open title closes it. While a menu is
+/// A click on a title opens its menu, and on the open title closes it. While a menu is
 /// open the bar tracks the pointer over its titles, as Qt's `QMenuBar` maps a move to a title
-/// with `actionAt`: moving onto another title opens that one's menu, and a click on one opens it
-/// or, on the open title, closes it. Left and Right move to the neighboring menu, wrapping, and
+/// with `actionAt`: moving onto another title opens that one's menu. Left and Right move to the
+/// neighboring menu, wrapping, and
 /// walk the titles while one holds focus, as the
 /// [WAI-ARIA menubar](https://www.w3.org/WAI/ARIA/apg/patterns/menubar/) asks. A menu closes
 /// as a [`Menu`] does: on Esc, a click outside, or a picked row.

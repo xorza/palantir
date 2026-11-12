@@ -147,8 +147,8 @@ impl LayoutDriver for WrapStack {
         let cross_avail = axis.cross(inner_avail);
 
         // Each non-collapsed child is measured once, with `INF` on main and
-        // the committed cross (as Stack pass-1), so wrap text shapes against
-        // `cross_avail`.
+        // the committed cross (as Stack's non-Fill children), so wrap text shapes
+        // against `cross_avail`.
         let mut max_line_main = 0.0f32;
         let mut total_cross = 0.0f32;
         let mut packer = LinePacker::new(axis, panel.gaps.gap(), inner_avail);
@@ -300,11 +300,6 @@ impl LayoutDriver for WrapStack {
     /// Intrinsic size on the query's axis. Main-axis answers are exact;
     /// cross-axis answers approximate a single line (the conservative
     /// max-content shape) since the full packing is not run.
-    ///
-    /// - **MinContent** on main: max child intrinsic (the widest child sets
-    ///   the floor).
-    /// - **MaxContent** on main: sum plus within-line gaps.
-    /// - Cross axis: max child intrinsic.
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange {
         if self.axis != query.axis() {
             // Real wrapped cross depends on the resolved main width, which is

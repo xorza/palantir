@@ -51,7 +51,7 @@ const PRESS: Duration = Duration::from_millis(90);
 const AFTER_CLICK: Duration = Duration::from_millis(350);
 
 /// Two presses closer than this in time and space read as a double click: palantir's own
-/// window, 500 ms, and a 4 px slop.
+/// window, 500 ms, and a 4 px slop (palantir's own radius is 5 px).
 const DOUBLE_CLICK: Duration = Duration::from_millis(500);
 const DOUBLE_CLICK_SLOP: f32 = 4.0;
 

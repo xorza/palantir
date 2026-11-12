@@ -310,8 +310,8 @@ impl Ordering<'_> {
         order.batch.pending_batch_cursor = self.out.text_batches.len();
     }
 
-    /// Finalize the open text batch, if any. Called at batch-split events (higher-kind append,
-    /// strict-bounds mismatch, a backdrop's barrier). The grid fill is deferred to
+    /// Finalize the open text batch, if any. Called at batch-split events (quad or higher-kind
+    /// overlap, strict-bounds mismatch, a backdrop's barrier). The grid fill is deferred to
     /// [`Self::closed_hit`].
     pub(super) fn close_batch(&mut self) {
         let Some(ClosedBatch { batch: b, scissor }) = self.order.batch.close() else {

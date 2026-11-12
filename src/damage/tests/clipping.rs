@@ -17,11 +17,9 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// A child whose layout rect overflows a clipped panel (e.g. a scrolled-away row
-/// in a `Scroll`) contributes only its *visible* portion to damage: the damage
-/// rect source is `Cascade.visible_rect` (screen rect clipped by the ancestor
-/// clip), else panning a long list would trip `FULL_REPAINT_THRESHOLD` every
-/// frame.
+/// A child whose layout rect overflows a clipped panel (e.g. a scrolled-away row in a `Scroll`)
+/// contributes only its visible portion to damage, else panning a long list would trip
+/// `FULL_REPAINT_THRESHOLD` every frame.
 #[test]
 fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     let mut h = Harness::mono(UVec2::new(400, 400));
@@ -153,7 +151,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
 
 /// A drop-shadow halo past a clipping ancestor contributes only the **clipped**
 /// halo to damage: the overhang is folded into `paint_rect` in owner-local space
-/// before the ancestor clip, so a `ClipMode::Clip` parent caps it at its bounds.
+/// before the ancestor clip, so a clipping parent caps it at its bounds.
 #[test]
 fn shadow_overhang_inside_clipped_parent_is_clamped() {
     use crate::primitives::paint::shadow::Shadow;
@@ -207,17 +205,15 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
 
 /// A direct shape on a clipped node has its per-shape rect (the column the
 /// damage diff reads) clipped to the node's own clip mask, not just the ancestor
-/// clip. `compute_paint_rect` once clipped to `parent_clip` only, so a
-/// `Shape::Text` with a scroll `local_origin` reported its full shaped extent and
-/// a scrolling multi-line `TextEdit` produced damage spanning the entire text.
+/// clip: a `Shape::Text` with a scroll `local_origin` would otherwise report its full shaped
+/// extent, and a scrolling multi-line `TextEdit` damage the entire text.
 ///
-/// Faked with a rounded-rect shape extending past the host's clip on the right;
-/// the per-shape rect must be the host's deflated mask, not the full 400 px.
+/// Faked with a rect shape extending past the host's clip on the right; the per-shape rect must
+/// be the host's deflated mask, not the full 400 px.
 #[test]
 fn direct_shape_on_clipped_node_clips_to_own_mask() {
-    // WindowFrames panel: 80x40, padding 4 per side via chrome. The direct
-    // shape extends to x=400; after the cascade walk `shape_rects[idx]` must be
-    // clipped to the host's deflated mask.
+    // The host is 80x40 and its direct shape extends to x=400; after the cascade walk the
+    // shape's paint row must be clipped to the host's deflated mask.
     let mut h = Harness::mono(DISPLAY.physical);
     let host_id = WidgetId::from_hash("clip-host");
     let build = |ui: &mut Ui| {

@@ -25,7 +25,7 @@ pub(crate) struct Paint {
 /// larger granule measurably cost cache density on `damage/workload/shape_churn_*`.
 pub(crate) type PaintBlocks = BlockArena<Paint, 1>;
 
-/// Per-layer paint state: the [`Paint`] arena plus a per-node index into it.
+/// Per-plane paint state: the [`Paint`] arena plus a per-node index into it.
 #[derive(Debug, Default)]
 pub(crate) struct PaintArena {
     /// One row per chrome contribution, direct shape, or child marker, in

@@ -104,12 +104,12 @@ fn the_theme_popup_slot_is_the_last_resort() {
     }
 }
 
-/// A panel over its slot's material draws as a shape of the panel's paint over the material in a
-/// frame around the popup's node, which fills it, keeps its id, and holds the body, padded by the
-/// slot's padding and the border, 5 + 2 = 7 on each side, clipped to the panel's corners, and
-/// stacked at the popup's gap of 3: the popup lays out as the panel without a material does, its
-/// rect and its body's the same, while that panel paints as the node's chrome, padded alike, in no
-/// frame; and so does a chrome the caller sets over a slot with a material, which wears none.
+/// A slot with a material draws its panel as a shape (paint over the material) in a frame around
+/// the popup's node: the frame fills the popup's rect, the popup keeps its id and holds the body,
+/// padded by the slot's padding and the border (5 + 2 = 7), clipped to the panel's corners, rows
+/// stacked at the gap of 3. Layout matches a slot without a material, whose panel paints as the
+/// node's chrome in no frame; so does a chrome the caller sets over a slot with a material, which
+/// wears none.
 #[test]
 fn a_material_draws_under_the_panel_in_a_frame_around_the_popup() {
     let id = WidgetId::from_hash("material-popup");

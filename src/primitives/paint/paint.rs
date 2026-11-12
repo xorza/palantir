@@ -21,9 +21,6 @@ use palantir_derive::{Animatable, Lerp};
 /// Bottom to top: a drop shadow; the fill over the whole box, as CSS's background covers the
 /// border box; an inset shadow inside the border; the border inside the edge, over the fill.
 ///
-/// `Animatable` is derived: the fill, the border and the shadow interpolate componentwise. "No
-/// border" is `Border::NONE`, not an `Option`.
-///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's `chrome` and a
 /// shape check it where it enters and panic unless every color is a
 /// [color](crate::widget::domain::color), gradient angles are

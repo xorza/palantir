@@ -302,11 +302,10 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
     }
 }
 
-/// Regression: a non-zoomable scroll must pull its offset back into range when
-/// content *shrinks* with no wheel/drag input, else the viewport is stranded in
-/// the empty tail. The record-time clamp reads the previous frame's arranged
-/// content, so the correction lands a frame after the shrink's arrange; it used
-/// to run only on nonzero pan input.
+/// A non-zoomable scroll pulls its offset back into range when content *shrinks* with no
+/// wheel/drag input, else the viewport is stranded in the empty tail. The record-time clamp
+/// reads the previous frame's arranged content, so the correction lands a frame after the
+/// shrink's arrange.
 #[test]
 fn shrinking_content_unstrands_offset_without_input() {
     let mut h = Harness::mono(SURFACE);

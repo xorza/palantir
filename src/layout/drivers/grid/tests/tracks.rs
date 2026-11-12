@@ -266,8 +266,8 @@ fn grid_fill_col_floors_at_descendant_min_content() {
 
 #[test]
 fn grid_fill_row_floors_at_descendant_min_content() {
-    // Y twin: two Fill rows in 100px, row 0 holding a Fixed 60 frame; its Y min-content (Phase 2, hug_min)
-    // floors row 0 at 60, leaving 40 for row 1, instead of a 50/50 split.
+    // Y twin: two Fill rows in 100px, row 0 holding a Fixed 60 frame; its Y min-content (the row range measure
+    // writes) floors row 0 at 60, leaving 40 for row 1, instead of a 50/50 split.
     let tracks = GridTracks {
         rows: &[Track::FILL, Track::FILL],
         cols: &[Track::FILL],
@@ -294,7 +294,7 @@ fn grid_fill_row_floors_at_descendant_min_content() {
 
 #[test]
 fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
-    // Two Hug rows of Fixed 60 frames in a 100px grid: each range is `[60, 60]`, `hug_min_sum` 120 > 100,
+    // Two Hug rows of Fixed 60 frames in a 100px grid: each range is `[60, 60]`, `sum_hug_min` 120 > 100,
     // so the cramped arm keeps both at 60 and the grid overflows by 20 (an unwritten min gave 50 per row).
     let mut rig = LayoutRig::new();
     rig.run(Size::new(100.0, 100.0), |rec| {

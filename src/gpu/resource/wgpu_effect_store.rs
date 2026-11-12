@@ -19,12 +19,11 @@ use crate::renderer::render_buffer::template_cover::TemplateCover;
 /// GPU phase ([`Self::prepare`]), before any pass: the box form of an effect a load wants built at
 /// once and of each effect a window's themes name, and the form of each draw a frame holds. A
 /// theme's effects so build together before a press can reach them, and nothing builds that no use
-/// wants, as a pipeline-state cache with a warm-up does (Unity's
-/// `ShaderVariantCollection.WarmUp`, Unreal's PSO precaching). Refused: building at the load or the
-/// theme set, which a later one replaces for nothing; building at the first press, which stutters,
-/// the reason Flutter wrote Impeller; building on a worker, which shows an effect late; every form
-/// at a want, two pipelines where a press and a material draw a box. Cost: an effect's first
-/// triangle builds at the frame that draws it.
+/// wants, as a pipeline-state cache with a warm-up does (Unity's `ShaderVariantCollection.WarmUp`,
+/// Unreal's PSO precaching). Refused: building at the load or the theme set, which a later one
+/// replaces for nothing; at the first press, which stutters, the reason Flutter wrote Impeller; on
+/// a worker, which shows an effect late; every form at a want, two pipelines where a press and a
+/// material draw a box. Cost: an effect's first triangle builds at the frame that draws it.
 ///
 /// Each wanted form builds the half of its [`ClipVariant`] a frame with no rounded clip binds, and
 /// the half that takes them from the first frame that draws one, every wanted form at once, as

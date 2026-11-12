@@ -76,7 +76,8 @@ fn record_cross_layer_duplicate_ids(h: &mut Harness) {
     });
 }
 
-/// Two `.id(WidgetId::from_hash("dup"))` calls in one frame: `SeenIds::record` disambiguates the second and `Forest` pairs both nodes via `Forest.collisions` instead of panicking.
+/// Two `.id(WidgetId::from_hash("dup"))` calls in one frame: `SeenIds::resolve` disambiguates the
+/// second and `Forest` pairs both nodes via `Forest.collisions` instead of panicking.
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut h = Harness::mono(UVec2::new(100, 100));

@@ -5,7 +5,7 @@ use crate::primitives::paint::color::RgbaF32;
 /// What a presented frame was painted under besides its widgets: the clear
 /// color, the font database and the loaded effects.
 ///
-/// Neither belongs to a node, so no
+/// None of these belongs to a node, so no
 /// [`NodeSnapshot`](crate::damage::node_snapshot::NodeSnapshot) diff sees
 /// them move. The display is compared at frame entry in
 /// `FrameRuntime::take_frame_plan`; these can change mid-frame, so they are

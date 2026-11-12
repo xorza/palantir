@@ -28,7 +28,7 @@
 //! - [`WinitHost`] owns the event loop, windows and GPU device; [`OffscreenHost`]
 //!   renders into a `wgpu::Texture` you supply.
 //! - [`Ui`] is the recorder handed to `record`; [`Ui::layer`] switches which
-//!   [`Layer`] arena (main / popup / modal / tooltip / debug) receives records.
+//!   [`Layer`] arena (main / popup / modal / menu / tooltip / debug / pointer) receives records.
 //! - Widgets are builders ended by `show(ui)`: [`Button`], [`Text`], [`TextEdit`],
 //!   [`Slider`], [`Checkbox`], [`ComboBox`], [`Scroll`], [`Popup`], [`Modal`] and
 //!   more. Containers are [`Panel`] (h/v/z-stack and canvas) and [`Grid`].

@@ -141,7 +141,8 @@ fn animate_some_then_none_drops_stale_row() {
     );
 }
 
-/// `WidgetLook::animate` folds text overrides onto the ambient style into an `AnimatedLook`; covers `spec = None` (no rows) and a real spec.
+/// `WidgetLook::to_animated` folds text overrides onto the ambient style into an `AnimatedLook`;
+/// covers `spec = None` (no rows) and a real spec.
 #[test]
 fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::geometry::corners::Corners;
@@ -204,7 +205,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         "None spec: WidgetLook::animate must allocate no AnimatedLook row",
     );
 
-    // Retargeting the fill allocates a `Chrome` row; text is unchanged, so the snap-if-close path leaves no TextStyle row.
+    // Retargeting the fill allocates one `AnimatedLook` row.
     let look2 = WidgetLook {
         chrome: Chrome {
             paint: Paint {
@@ -297,11 +298,11 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
 
 /// With motion reduced, a retarget lands on its target in the frame that asks, with no repaint to
 /// finish it; with full motion, the same retarget is in flight: its frame shows the start, 0, and
-/// asks for the next. The motion preference decides,
-/// the system's ask under `System`, and a pick by hand over it either way. Reduced power snaps it
-/// too under `System`, and a pick of full motion moves it still. An essential request moves under
-/// reduced motion and reduced power alike. A motion in flight when the window hides lands on its
-/// target on the first frame shown again, and stays there, essential or not.
+/// asks for the next. The motion preference decides: the system's ask under `System`, and a pick
+/// by hand over it either way. Reduced power snaps it too under `System`, and a pick of full
+/// motion moves it still. An essential request moves under reduced motion and reduced power
+/// alike. A motion in flight when the window hides lands on its target on the first frame shown
+/// again, and stays there, essential or not.
 #[test]
 fn reduced_motion_and_a_hidden_span_snap_every_transition() {
     let step = |h: &mut Harness, id: WidgetId, target: f32, role: MotionRole| {

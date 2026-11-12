@@ -94,7 +94,7 @@ fn move_during_active_capture_requests_repaint() {
     };
     h.frame(build);
     h.press(Vec2::new(50.0, 50.0), PointerButton::Left);
-    // Tiny move under the drag threshold, but `active.is_some()` so the widget reads drag_delta.
+    // Under the drag threshold, but a press is held, so the widget reads its drag delta.
     let delta = h.hover(Vec2::new(51.0, 51.0));
     assert!(
         delta.repaint_requested,

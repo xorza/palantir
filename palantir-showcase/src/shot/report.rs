@@ -92,7 +92,7 @@ pub(crate) fn probe(out: &mut impl Write, point: Vec2, texel: SrgbaU8) -> io::Re
     )
 }
 
-/// A widget list: each visible widget's text, logical rect and what it senses.
+/// A widget list: each visible widget's text and logical rect, and `disabled` where it is.
 pub(crate) fn widgets(out: &mut impl Write, widgets: &[InspectedWidget]) -> io::Result<()> {
     writeln!(out, "widgets {}", widgets.len())?;
     for widget in widgets {

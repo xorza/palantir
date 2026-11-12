@@ -8,8 +8,8 @@ const SOLID: QuadKey = QuadKey::Fill(FillForm::BOX_SOLID);
 const GRADIENT: QuadKey = QuadKey::Fill(FillForm::new(ShapeForm::Box, FillBrush::Gradient));
 const TRIANGLE: QuadKey = QuadKey::Fill(FillForm::new(ShapeForm::Triangle, FillBrush::Solid));
 
-/// The order `join` leaves quads of `keys`, each 10 × 10 at its `x`, a row apart from every other
-/// `x`, as the x of each quad; each key moves with its quad.
+/// The x of each quad in the order `join` leaves them, each 10 × 10 at its `x`; each key moves
+/// with its quad.
 fn joined(rows: &[(f32, QuadKey)]) -> Vec<f32> {
     let mut keys: Vec<QuadKey> = rows.iter().map(|&(_, key)| key).collect();
     let mut quads: Vec<QuadInstance> = rows
@@ -50,8 +50,8 @@ fn an_overlapping_quad_keeps_its_order() {
     assert_eq!(joined(&rows), [0.0, 20.0, 25.0]);
 }
 
-/// A quad looks back [`QuadRuns::LOOKBACK`] quads and no further: a solid behind 10 apart
-/// gradients joins it, one behind 11 does not.
+/// A quad looks back [`QuadRuns::LOOKBACK`] quads and no further: a solid behind 9 apart
+/// gradients joins it, one behind 10 does not.
 #[test]
 fn a_quad_looks_back_a_bounded_way() {
     for (gradients, joins) in [(QuadRuns::LOOKBACK - 1, true), (QuadRuns::LOOKBACK, false)] {

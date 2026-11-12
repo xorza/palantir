@@ -132,11 +132,12 @@ fn from_mundy(preferences: Preferences, power: Reduction) -> SystemPreferences {
     }
 }
 
-/// The settings from `mundy`'s scheme and double-click answers, no less motion or transparency
-/// asked and no power-saver mode on, which [`from_mundy`] replaces. No preference reports no scheme, so `System` shows the dark
-/// fallback: `mundy` answers it for a failed read too, as for a Linux portal that fails while the
-/// host runs, which must not turn the app light. Cost: GNOME writes it for its own Light setting, so GNOME's light users see
-/// dark until they pick Light. A double-click time of zero, or none, is the platform's fallback.
+/// The settings from `mundy`'s scheme and double-click answers, with no reduction asked, which
+/// [`from_mundy`] replaces. No preference reports no scheme, so `System` shows the dark fallback:
+/// `mundy` answers it for a failed read too, as for a Linux portal that fails while the host runs,
+/// which must not turn the app light. Cost: GNOME writes it for its own Light setting, so GNOME's
+/// light users see dark until they pick Light. A double-click time of zero, or none, is the
+/// platform's fallback.
 fn from_answers(scheme: mundy::ColorScheme, double_click: Option<Duration>) -> SystemPreferences {
     let color_scheme = match scheme {
         mundy::ColorScheme::Light => Some(ColorScheme::Light),

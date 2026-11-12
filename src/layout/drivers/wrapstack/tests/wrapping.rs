@@ -125,7 +125,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     assert_eq!(r.size.h, 48.0);
 }
 
-/// Pin: nested WrapStacks don't trample each other's per-line scratch; `LayoutEngine.wrap` is depth-stacked.
+/// Pin: nested WrapStacks don't trample each other's per-line scratch; `LayoutScratch::wrap` is depth-stacked.
 #[test]
 fn nested_wrap_hstacks_do_not_trample_scratch() {
     let mut rig = LayoutRig::new();

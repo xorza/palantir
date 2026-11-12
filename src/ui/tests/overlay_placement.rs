@@ -71,7 +71,8 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
     }
 }
 
-/// `at` doesn't flip: the near-bottom point that made `anchor` flip leaves a fixed layer hanging off the surface, so the two are distinct answers.
+/// `fixed_at` doesn't flip: the near-bottom point that made `anchor` flip leaves a fixed layer
+/// hanging off the surface, so the two are distinct answers.
 #[test]
 fn a_fixed_layer_stays_where_it_was_put() {
     let rect = placed(|ui| {

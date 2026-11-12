@@ -83,7 +83,7 @@ fn window_requests_reach_the_host_after_the_frame() {
     );
 }
 
-/// The OS-close veto protocol: [`Ui::close_requested`] reflects the host's `wants_close`,
+/// The OS-close veto protocol: [`Ui::close_requested`] reflects the host's `close_requested` fact,
 /// [`Ui::keep_open`] sets the veto, and the host's drain after the frame resolves them: a vetoed
 /// request closes nothing, an ignored one closes the window.
 #[test]

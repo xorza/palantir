@@ -43,8 +43,8 @@ fn magenta_pixels(img: &RgbaImage) -> usize {
     img.pixels().filter(|p| is_magenta(**p)).count()
 }
 
-/// Physical px of the damage overlay's border at scale 1
-/// (`DAMAGE_OVERLAY_STROKE_WIDTH`).
+/// Physical px of the damage overlay's border and gap at scale 1
+/// (`DAMAGE_OVERLAY_BORDER_WIDTH`, `DAMAGE_OVERLAY_GAP`).
 const BORDER: i32 = 2;
 const GAP: i32 = 1;
 

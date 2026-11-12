@@ -164,7 +164,7 @@ impl LayoutDriver for Stack {
         let axis = self.axis;
         let cross_avail = axis.cross(inner_avail);
 
-        // Pass 1: measure non-Fill children at the stack's committed cross and main
+        // Non-Fill children measure at the stack's committed cross and main
         // extent. `main_avail` is `INF` when unbounded (Hug-in-Hug); a bound flows
         // down, so an ancestor's `max_size` constrains descendants (CSS
         // `max-height`).

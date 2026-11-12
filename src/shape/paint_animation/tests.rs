@@ -261,18 +261,9 @@ fn blink_settles_solid_after_stop_and_stops_waking() {
     assert_eq!(b.next_wake(START + ragged), None);
 }
 
-/// A caller's own curve driving both channels off one pass.
-///
-/// Hand-computed with `alpha(0.2, 1.0)`, `turn(0.0, 0.5)`, one-second period,
-/// `curve = |t| t * t`:
-///
-/// - at 0.5 s the curve gives 0.25: alpha `0.2 + 0.8 * 0.25 = 0.4`, turn
-///   `0.5 * 0.25 = 0.125` turns = `TAU / 8` radians.
-/// - at 1.0 s `Once` holds the end: alpha 1.0, turn a half = `TAU / 2`.
-///
-/// Samples are coerced where read: alpha clamps at either end, a NaN alpha end
-/// or curve reads as no opacity, a non-finite turn as no turn. Halfway along a
-/// linear curve `-1 -> 3` is `1` and `0 -> 4` is `2`; past `1` it clamps.
+/// Samples are coerced where read: alpha clamps at either end, a NaN alpha end or curve reads as
+/// no opacity, a non-finite turn as no turn. Halfway along a linear curve `-1 -> 3` is `1` and
+/// `0 -> 4` is `2`; past `1` it clamps.
 #[test]
 fn samples_are_coerced_where_they_are_read() {
     let half = START + Duration::from_millis(500);
@@ -297,8 +288,12 @@ fn samples_are_coerced_where_they_are_read() {
     );
 }
 
-/// A fractional alpha is the point: the two shipped animations only answered 0
-/// or 1.
+/// A caller's own curve driving both channels off one pass, hand-computed with `alpha(0.2, 1.0)`,
+/// `turn(0.0, 0.5)`, one-second period, `curve = |t| t * t`:
+///
+/// - at 0.5 s the curve gives 0.25: alpha `0.2 + 0.8 * 0.25 = 0.4`, turn
+///   `0.5 * 0.25 = 0.125` turns = `TAU / 8` radians.
+/// - at 1.0 s `Once` holds the end: alpha 1.0, turn a half = `TAU / 2`.
 #[test]
 fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
     fn squared(t: f32) -> f32 {

@@ -262,8 +262,7 @@ struct Scene {
 }
 
 /// A frame of [`probe_modal`], then one of [`probe`] with the menu opened before it, under `theme`,
-/// shaped by `shaper`. Real
-/// shaping, so a font size reaches the shaper and the ink it measures.
+/// shaped by `shaper`: real shaping, so a font size reaches the shaper and the ink it measures.
 fn render(theme: Theme, shaper: &TextShaper) -> Harness {
     let mut h = Harness::builder(UVec2::new(640, 480))
         .shaper(shaper.clone())
@@ -287,7 +286,7 @@ fn line_of(ron: &str, at: usize) -> &str {
 
 /// Every `SHARDS`-th number of the default theme, from the `shard`-th, set to each suspect
 /// value, loads and renders, or is refused on load. One shaper serves every render of the shard,
-/// as building one per document took most of the walk's time.
+/// as building one per document would dominate the walk's time.
 fn walk(shard: usize) {
     let base = default_theme_text();
     let shaper = TextShaper::with_fonts(FontScope::Bundled);

@@ -32,7 +32,7 @@ impl SvgFacts {
     }
 }
 
-/// One walk's running state; `only` is scaffolding decided before `view_box` is known.
+/// One walk's running state.
 #[derive(Debug)]
 struct Survey {
     tintable: bool,

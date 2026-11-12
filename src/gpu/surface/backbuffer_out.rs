@@ -7,8 +7,8 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BackbufferOut {
     /// A texture copy: the immediate-mode GPUs, on which the draw costs more. Partial frames
-    /// through the draw against the copy: a mobile AMD iGPU under Windows +8 to +10 %, a high-end NVIDIA GPU +4 to +5 %, the
-    /// a handheld's RADV +0.3 to +2.6 %.
+    /// through the draw against the copy: a mobile AMD iGPU under Windows +8 to +10 %, a high-end
+    /// NVIDIA GPU +4 to +5 %, a handheld's RADV +0.3 to +2.6 %.
     Copy,
     /// A full-screen draw in a pass that clears the target: Apple's GPUs, whose pass writes the
     /// target from its tiles where the copy reads it through another engine. On the Apple laptop

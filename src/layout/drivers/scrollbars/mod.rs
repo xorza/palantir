@@ -86,7 +86,8 @@ impl LayoutDriver for Scrollbars {
         }
     }
 
-    /// Bars are absolutely placed chrome in a reserved gutter and never floor their scroll; the driver contributes nothing to a parent's intrinsic, so every argument goes unread.
+    /// Bars are absolutely placed in a reserved gutter and never floor their scroll, so the driver
+    /// contributes nothing to a parent's intrinsic and every argument goes unread.
     fn intrinsic(self, _pass: &mut IntrinsicPass<'_>, _query: IntrinsicQuery) -> IntrinsicRange {
         IntrinsicRange::ZERO
     }

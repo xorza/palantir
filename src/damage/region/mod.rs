@@ -53,7 +53,7 @@ pub(crate) struct CollapsedDamage {
 }
 
 impl DamageRegion {
-    /// Build a region from `rects`, clipping each to `surface` first: off-surface pixels bias `FULL_REPAINT_THRESHOLD`, the encoder's `any_intersects` and the scissor, and source rects routinely overflow at high zoom.
+    /// Fold `rects` into a region and measure its coverage of `surface`, clipping each to it first: off-surface pixels bias `FULL_REPAINT_THRESHOLD`, the encoder's `any_intersects` and the scissor, and source rects routinely overflow at high zoom.
     pub(crate) fn collapse_from(
         rects: &[Rect],
         policy: MergePolicy,

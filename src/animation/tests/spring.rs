@@ -201,8 +201,8 @@ fn spring_parameters_change_trajectory() {
     assert_ne!(default, custom);
 }
 
-/// `MAX_ANIMATION_DT` must not throw the value past its endpoints: one Euler step at `dt
-/// = 0.1` with `(170, 26)` once overshot negative, tripping `Sizing::fixed`.
+/// `MAX_ANIMATION_DT` must not throw the value past its endpoints: one Euler step at `dt = 0.1`
+/// with `(170, 26)` overshoots negative, which a `Sizing::fixed` refuses.
 #[test]
 fn spring_step_at_max_dt_stays_bounded() {
     let mut map = AnimationMapTyped::<f32>::default();

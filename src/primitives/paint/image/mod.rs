@@ -128,7 +128,7 @@ impl Image {
     ///
     /// # Panics
     ///
-    /// Panics for the size errors [`Self::from_srgba8`] returns.
+    /// Panics on the size errors [`Self::from_srgba8`] returns.
     pub fn blank(size: UVec2) -> Self {
         Self {
             size,
@@ -152,7 +152,7 @@ impl Image {
         &self.pixels
     }
 
-    /// The texels for writing.
+    /// The texels, for writing.
     pub fn texels_mut(&mut self) -> &mut [SrgbaU8] {
         bytemuck::cast_slice_mut(&mut self.pixels)
     }

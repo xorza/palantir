@@ -3,8 +3,9 @@
 use crate::primitives::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
-/// Which pointer button an event came from; the discriminants index the
-/// matching [`ButtonState`](crate::ButtonState) slots on [`ResponseState`](crate::ResponseState).
+/// Which pointer button an event came from; the discriminants are dense indices, for the host's
+/// per-button tables. [`ResponseState::button`](crate::ResponseState::button) maps one to its
+/// [`ButtonState`](crate::ButtonState).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum PointerButton {

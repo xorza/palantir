@@ -332,7 +332,7 @@ impl Window {
 
     /// Run one application/UI frame, acquire the swapchain texture, present it, then
     /// drain window-host output into `commands`. Stores the schedule on [`Self::next`].
-    /// Returns the frame's summary, or `None` when the hidden window skipped it or the
+    /// Returns the frame's [`RanFrame`], or `None` when the hidden window skipped it or the
     /// reduced-power interval held it.
     pub(super) fn frame<T: App>(
         &mut self,
@@ -410,8 +410,8 @@ impl Window {
         };
 
         self.finish(commands);
-        // This window's own frame set; marking the main one (`WinitRuntime::draw` owns it)
-        // made Tracy report slices as whole frames. Marked past every exit so an occluded
+        // This window's own frame set, not the main one (`WinitRuntime::draw` owns it), which
+        // Tracy would report slices of as whole frames. Marked past every exit so an occluded
         // frame closes its own frame.
         self.frame_set.mark();
         ran
@@ -490,8 +490,9 @@ impl Window {
     }
 
     /// Settle what the frame produced: drain the recorder's window commands (an
-    /// un-vetoed close request becomes this window's close command), push the cursor,
-    /// apply a vsync change, and consume the one-shot close request.
+    /// un-vetoed close request becomes this window's close command), push the cursor, the IME
+    /// area and the decorations' scheme, apply a vsync change, and consume the one-shot close
+    /// request.
     fn finish(&mut self, commands: &mut WindowCommands) {
         let output = self.frames.drain_window_output(commands);
         if self.levels.set_cursor(output.cursor) {

@@ -10,3 +10,6 @@
 - The gradient LUT atlas only grows (`CpuGradientAtlas::grow`, "a one-way ratchet", up to 4096
   rows: 8 MiB of texture and 8 MiB of CPU rows), the high-water mark `src/gpu/AGENTS.md` (GPU
   memory) refuses.
+- `palantir-showcase/examples/reel/script.rs`: `DOUBLE_CLICK_SLOP` is 4 px while
+  `DOUBLE_CLICK_RADIUS` (`src/input/capture.rs`) is 5 px, so `Runner::press` lets two presses 4–5 px
+  apart within the double-click window through, and palantir reads them as a double click.

@@ -34,9 +34,9 @@ impl ShadowGeometry {
         }
     }
 
-    /// Standard deviations of blur a shadow is followed: past it the Gaussian weight (`Φ(−4) ≈ 3e-5`) is a tenth of
-    /// an 8-bit step even where sRGB is steepest, whereas `Φ(−3)` would end a glow in a ledge. The quad shader takes
-    /// it as a substituted constant.
+    /// Standard deviations of blur a shadow is followed to: past it the Gaussian weight
+    /// (`Φ(−4) ≈ 3e-5`) is a tenth of an 8-bit step even where sRGB is steepest, whereas `Φ(−3)`
+    /// would end a glow in a ledge. The quad shader takes it as a substituted constant.
     pub(crate) const REACH_SIGMAS: f32 = 4.0;
 
     /// How far a drop shadow reaches past its moved source: [`Self::REACH_SIGMAS`] blur deviations plus a positive

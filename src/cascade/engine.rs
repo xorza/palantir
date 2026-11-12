@@ -212,7 +212,9 @@ impl CascadeCtx {
         inherited: Inherited::ROOT,
     };
 
-    /// Ancestor-derived portion of the `cascade_input` hash, folded once per frame at push and cloned per descendant. Fed as words from registers: hashing a stored struct as bytes reads stores back across seams that can't be forwarded.
+    /// The ancestor-derived part of [`CascadeInputHash`], folded once per frame at push and cloned
+    /// per descendant. Fed as words from registers: hashing a stored struct as bytes reads stores
+    /// back across seams that can't be forwarded.
     #[inline]
     pub(super) fn prefix(self) -> Hasher {
         let (clip, clip_present) = match self.clip {
@@ -264,7 +266,7 @@ struct Frame {
     subtree_end: u32,
     node_idx: usize,
     subtree_paint_rect: Rect,
-    /// FxHasher state seeded with this frame's ancestor-derived inputs, cloned per descendant so the 32 B prefix isn't re-hashed.
+    /// [`CascadeCtx::prefix`] of `cascade`, cloned per descendant so it isn't hashed again.
     cascade_prefix: Hasher,
 }
 
@@ -454,9 +456,15 @@ const fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], p
 }
 
 impl CascadeEngine {
-    /// Walks one tree, writing its cascade columns. Returns whether it *completed*; only the incremental path returns `false`, when a node's repaired paint span changes length and the caller must fully rebuild.
+    /// Walks one tree, writing its cascade columns. Returns whether it *completed*; only the
+    /// incremental path returns `false`, when a node's repaired paint span changes length and the
+    /// caller must repack the plane.
     ///
-    /// **Incremental recompute.** A node whose `cascade_input` (inherited state and own rect) and subtree rollup both held keeps its rows; a moved transform or clip changes every child's prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree (`layout`'s module doc, "A subtree's rects follow from its node"). Movement within `EPS` of zero reads as held.
+    /// **Incremental recompute.** A node whose [`CascadeInputHash`] (inherited state and own rect)
+    /// and subtree rollup both held keeps its rows; a moved transform or clip changes every child's
+    /// prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree
+    /// (`layout`'s module doc, "A subtree's rects follow from its node"). Movement within the zero
+    /// tolerance of [`float_hash::canon_bits`] reads as held.
     fn run_tree<S: RowSink>(
         &mut self,
         source: TreeSource<'_>,

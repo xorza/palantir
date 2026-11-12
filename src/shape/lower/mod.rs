@@ -1,5 +1,5 @@
 //! The lowering every shape and chrome share: a [`Brush`] or curve ramp interned into the window's
-//! [`RecordStore`] gradient pool, a box's paint, an arc, and [`Chrome`] chrome lowered to its
+//! [`RecordStore`] gradient pool, a box's paint, and [`Chrome`] chrome lowered to its
 //! [`ChromeRow`]. Each shape lowers its own kind and calls in here for what it interns.
 //!
 //! Entry points: [`RecordStore::record`] for shapes; `Tree::open_node` calls [`chrome`].

@@ -7,11 +7,13 @@ use std::time::Duration;
 /// How `WindowFrames::frame` resolved this frame: which passes ran. Crate-private, since it names the internal pass structure; consumers read [`FramePaint`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FrameProcessing {
-    /// Paint-anim-only short-circuit: no record, layout or cascade; only damage + encode + paint against the retained tree.
+    /// Paint-animation-only short-circuit: no record, layout or cascade; only damage, encode and
+    /// paint against the retained tree.
     PaintOnly,
-    /// Standard frame: one record pass + layout + cascade + damage + finalize.
+    /// One record pass.
     SingleLayout,
-    /// Pass A set the action flag or requested relayout, so a second `record_pass` ran (one retry per frame).
+    /// A second record pass ran, because the first set the action flag, asked for a relayout or
+    /// left an overlay cancelled; at most one retry per frame.
     DoubleLayout,
 }
 

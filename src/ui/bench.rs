@@ -26,7 +26,8 @@
 //!   costs; [`THEMING`] runs so long that a measured frame never lands.
 //!
 //! The surface is 2560 × 1440 at 2×, a 1280 × 720 window. The scene comes from the caller
-//! ([`Scene`]). Motion and transparency are pinned on, so no default that moves can change a number.
+//! ([`Scene`]). Motion, transparency and power are pinned full, so no default that moves can
+//! change a number.
 //! The bench theme still snaps its state transitions, as [`bench_theme`] says why.
 
 use crate::theme::color_scheme::ColorScheme;
@@ -165,9 +166,9 @@ pub(crate) fn bench_host(g: &BenchGpu, time: OffscreenTime) -> OffscreenHost {
 }
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` plus a standalone `Frontend`,
-/// stopping before any GPU submit. Time comes from a real `Instant` as in
-/// `WindowFrames::record`; a frozen clock could classify frames `PaintOnly` and
-/// skip the record closure.
+/// stopping before any GPU submit. Time comes from [`CpuClock`]: a real `Instant` unless the arm
+/// steps its own, since a frozen clock could classify frames `PaintOnly` and skip the record
+/// closure.
 #[derive(Debug)]
 struct CpuHarness {
     h: Harness,
@@ -541,7 +542,8 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
     group.finish();
 }
 
-/// Two stages of the frame alone over the scene: record, and the main pass.
+/// The frame's stages alone over the scene: record, the main pass, and the main pass by batch
+/// kind.
 pub(crate) fn atomic<S: Scene>(c: &mut Criterion, backends: &Backends) {
     record::<S>(c);
     main_pass::<S>(c, backends);

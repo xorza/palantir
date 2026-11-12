@@ -112,7 +112,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
         });
     });
 
-    // The fused decode-multiply-encode against the two-step form; keeps `F16x4::scaled_saturating`'s quoted ratio honest.
+    // The fused decode-multiply-encode against the two-step form it replaces.
     g.bench_function(Backend::Cpu.case("scaled/fused"), |b| {
         b.iter(|| {
             let mut acc = F16x4::ZERO;

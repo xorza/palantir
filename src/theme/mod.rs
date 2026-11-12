@@ -199,12 +199,13 @@ pub(crate) enum ThemeTextRef<'a> {
     Overrides(&'a TextStyleOverrides),
 }
 
-/// A theme part's text and press slots: [`Self::for_each_text`] visits each text slot, beside the
-/// same slot of `other` when one is given, and [`Self::each_press`] each press slot, in field
-/// order. [`Theme::faces_valid`], [`Theme::scale_text`], [`Theme::share_text_axes`] and
-/// [`Theme::press_effects`] and [`Theme::materials`] drive it. A part derives it and walks every field, so each field's
-/// type implements it, a value that holds neither through `no_theme_walk!`, and a field of a new
-/// type fails to compile until its type says what it holds.
+/// A theme part's text, press and material slots: [`Self::for_each_text`] visits each text slot,
+/// beside the same slot of `other` when one is given, [`Self::each_text`] reads them, and
+/// [`Self::each_press`] and [`Self::each_material`] each press and material slot, in field order.
+/// [`Theme::faces_valid`], [`Theme::scale_text`], [`Theme::share_text_axes`],
+/// [`Theme::press_effects`] and [`Theme::materials`] drive it. A part derives it and walks every
+/// field, so each field's type implements it, a value that holds none of the slots through
+/// `no_theme_walk!`, and a field of a new type fails to compile until its type says what it holds.
 pub(crate) trait ThemeWalk {
     /// Each text slot, in field order, to read.
     fn each_text<F>(&self, f: &mut F)

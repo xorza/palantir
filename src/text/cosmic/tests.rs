@@ -85,9 +85,9 @@ fn render(ctx: &mut ScaleContext, font: &Font, weight: u16) -> Vec<u8> {
         .data
 }
 
-/// An axis with inverted bounds panicked `f32::clamp`; it now takes no coordinate, so every
-/// weight renders the default instance: the valid face at its default `wght` of 400. The valid
-/// face at 800 differs, so the weight reaches the outline at all.
+/// An axis with inverted bounds takes no coordinate (`f32::clamp` would panic), so every weight
+/// renders the default instance: the valid face at its default `wght` of 400. The valid face at
+/// 800 differs, so the weight reaches the outline at all.
 #[test]
 fn an_inverted_weight_axis_renders_the_default_instance() {
     let [mono, inverted] = mono_and_inverted();

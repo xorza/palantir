@@ -45,8 +45,9 @@ impl Encoder {
         self.gradient_atlas.flush()
     }
 
-    /// Walks every tree in paint order, emitting logical-px paint commands into `out`. `Damage::Partial` culls
-    /// subtrees whose `paint_rect` intersects no damage rect; callers skip the call when nothing is damaged.
+    /// Walks every tree in paint order, emitting logical-px paint commands into `out`.
+    /// `Damage::Partial` culls subtrees whose paint rect intersects no damage rect or captured
+    /// backdrop footprint; callers skip the call when nothing is damaged.
     ///
     /// No profiling span: [`Frontend::build`]'s covers it, as the sink composes inline.
     ///

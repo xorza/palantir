@@ -11,7 +11,8 @@ use crate::widgets::text_edit::text_layout::LayoutInput;
 
 /// What the shaper needs to lay out this editor's text, plus the padding turning a shaped position widget-local.
 ///
-/// No block offset: it isn't a shaping input, and one field once meant last frame's offset before the probe and this frame's after. See [`TextLayout::prev_block_offset`](crate::widgets::text_edit::text_layout::TextLayout::prev_block_offset) and [`TextGeometry::block_offset`](crate::widgets::text_edit::text_geometry::TextGeometry::block_offset).
+/// No block offset: it isn't a shaping input, and last frame's differs from this frame's.
+/// See [`TextLayout::prev_block_offset`](crate::widgets::text_edit::text_layout::TextLayout::prev_block_offset) and [`TextGeometry::block_offset`](crate::widgets::text_edit::text_geometry::TextGeometry::block_offset).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShapeCtx {
     pub(super) font: GlyphFont,
