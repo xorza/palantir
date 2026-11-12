@@ -9,7 +9,9 @@
 
 use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
-use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
+use crate::gpu::backdrop::backdrop_blur::{
+    BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, ResultTexture,
+};
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::resource::upload_staging::UploadStaging;
@@ -69,6 +71,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     format: TARGET_FORMAT,
                     footprint: URect::new(0, 0, side, side),
                     region,
+                    dest: ResultTexture::Page(0),
                     dest_origin: UVec2::ZERO,
                     layout: JobLayout::default(),
                 };
@@ -107,6 +110,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     format: TARGET_FORMAT,
                     footprint: URect::new(0, 0, 2048, 2048),
                     region: URect::new(16 * i, 8, 8, 8),
+                    dest: ResultTexture::Page(0),
                     dest_origin: UVec2::new(16 * i, 0),
                     layout: JobLayout::default(),
                 })

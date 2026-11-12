@@ -347,18 +347,26 @@ until step 3, so its root expects `dead_code` outside tests, with that reason.
 - **4.5 Verify.** The gate and `cargo visual` pass; one golden, `modal_dialog`, moved by one step
   in 510 pixels and was rewritten. To run: Pi and fanless shadow frames A/B.
 
-### 5. Backdrop results
+### 5. Backdrop results — done but 5.5's A/B on the bench hosts
 
-- **5.1** A result within half a page takes the RGBA16F list, a larger one scratch.
-  `BackdropSlot::pad` names a page or the draw's scratch texture, which the composite picks.
-- **5.2** A `BlurJob` writes into its item's texture and origin. The composite's group binds the
-  four pages and one scratch texture; a draw splits at each large backdrop.
-- **5.3** Delete the results `PackedAtlas`, `shrink_atlas`, `moving`, `moving_slots`, `past_budget`
-  and `RESULTS_BUDGET`'s own use; the list's soft budget is 32 MiB across pages and scratch.
-- **5.4** Tests: a 1936 × 1088 result takes a 2048 × 1536 scratch texture; one of 1900 × 1000 the
-  frame after reuses it; it frees an expiry window after its backdrop goes; a 400 × 300 result
-  lands on a page.
-- **5.5** Verify: `cargo visual`, `backdrop_frame/*` A/B on the board, the handheld and the mac.
+- **5.1 — done.** A result within half a page takes an item of the RGBA16F list, a larger one a
+  scratch texture; `BackdropSlot::texture` names the page, or the scratch the draw's group binds.
+  Each result read this frame is stamped before any allocation, so making room for one never
+  evicts another; the drain lists the pool's evictions for each window's ledger.
+- **5.2 — done.** A `BlurJob` writes into its `ResultTexture` at its origin, the down pass a pass
+  a destination. The composite's group binds the four pages and one scratch texture, a group a
+  scratch texture, made after the commit and kept while the views and the slot table hold; an
+  effect run splits where a backdrop's scratch changes. The pool's texture generation now moves on
+  a scratch texture's change too.
+- **5.3 — done.** Deleted: the results `PackedAtlas`, `shrink_atlas`, `moving`, `moving_slots`,
+  `past_budget`, `RESULTS_BUDGET`, and with its last user `PackedAtlas` itself (9.1's deletion,
+  early). The memory study's results row is the half-float list, pages and held scratch.
+- **5.4 — done.** Tests: a 400 × 300 result lands on a page; a 1936 × 1088 one takes a 2048 × 1536
+  scratch texture, a 1900 × 1000 one reuses it once the first goes, and it frees an expiry window
+  after; past the soft budget the pool evicts another window's result before it grows; a held
+  result the pool evicted shows the clear; a scratch result reads through a group of its own.
+- **5.5 Verify.** The gate and `cargo visual` pass, no golden moved. To run: `backdrop_frame/*` A/B
+  on the board, the handheld and the mac.
 
 ### 6. Gradient rows
 

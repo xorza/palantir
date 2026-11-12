@@ -1,6 +1,7 @@
 //! The backdrop blur's passes on the device: each job's capture through its tents to the last
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
+use crate::gpu::atlas::scratch_cache::ScratchId;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::tiler_family::TilerFamily;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
@@ -85,11 +86,21 @@ pub(crate) struct BlurJob {
     pub(crate) footprint: URect,
     /// The footprint in texels of the plan's last level ([`BlurPlan::region`]).
     pub(crate) region: URect,
-    /// Where the result's first texel lands in the destination: the region grown by the plan's
+    /// The texture the result lands in.
+    pub(crate) dest: ResultTexture,
+    /// Where the result's first texel lands in [`Self::dest`]: the region grown by the plan's
     /// apron on every side.
     pub(crate) dest_origin: UVec2,
     /// Where the job lies in the textures it shares, which [`BackdropBlur::prepare`] writes.
     pub(crate) layout: JobLayout,
+}
+
+/// The texture of the pool's half-float list a backdrop's result lives in: a page it shares, or a
+/// scratch texture of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum ResultTexture {
+    Page(u8),
+    Scratch(ScratchId),
 }
 
 /// Where [`BackdropBlur::prepare`] lays a job out: its parameters, the origins of the capture
@@ -809,13 +820,13 @@ impl BackdropBlur {
 
     /// Record prepared jobs `jobs`' passes, which read one capture: their tents a level to a pass,
     /// then for each round of the scratch the residual across into it and down into each job's
-    /// slot of `dest`, a pass each. Every pass draws each job under its own scissor, so the jobs
-    /// pay one pass a stage.
-    pub(crate) fn encode(
+    /// texels of its [`BlurJob::dest`], whose view `dests` gives, a pass a destination. Every pass
+    /// draws each job under its own scissor, so the jobs pay one pass a stage and destination.
+    pub(crate) fn encode<'v>(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         jobs: &[BlurJob],
-        dest: &wgpu::TextureView,
+        dests: impl Fn(ResultTexture) -> &'v wgpu::TextureView,
     ) {
         let first = &jobs[0];
         debug_assert!(
@@ -870,13 +881,23 @@ impl BackdropBlur {
                 },
             });
             self.pass(encoder, &scratch.view, across);
-            let down = round.iter().map(|job| Draw {
-                pipeline: &self.vertical,
-                source: &scratch.group,
-                slot: residual(job) + 1,
-                scissor: job.dest_rect(),
-            });
-            self.pass(encoder, dest, down);
+            // A pass for each destination the round writes, at its first job: rounds are few
+            // jobs, so the scan beats a sort that would reorder the slots.
+            for (at, job) in round.iter().enumerate() {
+                if round[..at].iter().any(|before| before.dest == job.dest) {
+                    continue;
+                }
+                let down = round[at..]
+                    .iter()
+                    .filter(|other| other.dest == job.dest)
+                    .map(|other| Draw {
+                        pipeline: &self.vertical,
+                        source: &scratch.group,
+                        slot: residual(other) + 1,
+                        scissor: other.dest_rect(),
+                    });
+                self.pass(encoder, dests(job.dest), down);
+            }
         }
     }
 
@@ -1136,8 +1157,9 @@ pub(crate) mod internals {
             &self.captures[at].target.view
         }
 
-        /// Blur each of `jobs` from its capture into its slot of `dest`, a `LEVEL_FORMAT` target.
-        /// The capture must hold the pixels of each job's region, grown by its plan's reach.
+        /// Blur each of `jobs` from its capture into its slot of `dest`, a `LEVEL_FORMAT` target
+        /// every job's destination names. The capture must hold the pixels of each job's region,
+        /// grown by its plan's reach.
         pub(crate) fn run(
             &mut self,
             ctx: &mut GpuCtx<'_>,
@@ -1146,7 +1168,7 @@ pub(crate) mod internals {
         ) {
             let all = 0..jobs.len();
             self.prepare(ctx, jobs, iter::once(all), None);
-            self.encode(ctx.encoder, jobs, dest);
+            self.encode(ctx.encoder, jobs, |_| dest);
         }
     }
 }

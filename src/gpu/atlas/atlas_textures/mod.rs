@@ -73,9 +73,11 @@ struct ListTextures {
     pages: [Option<PageTexture>; MAX_PAGES],
     /// By scratch slot.
     scratch: Vec<Option<Bound>>,
-    /// A 1 × 1 texture of the format, which a view slot of a closed page binds.
+    /// A 1 × 1 texture of the format, which a view slot of a closed page or an empty scratch
+    /// binding binds.
     absent: Bound,
-    /// Moves whenever a page's view changes, so a consumer makes its group again.
+    /// Moves whenever a page's or a scratch texture's view changes, so a consumer makes its group
+    /// again.
     generation: u64,
 }
 
@@ -130,13 +132,14 @@ impl ListTextures {
         self.scratch.resize_with(slots.len(), || None);
         for (texture, size) in self.scratch.iter_mut().zip(slots) {
             match (size, texture.as_ref()) {
-                (None, None) => {}
-                (Some(size), Some(held)) if held.size() == size => {}
+                (None, None) => continue,
+                (Some(size), Some(held)) if held.size() == size => continue,
                 (None, Some(_)) => *texture = None,
                 (Some(size), _) => {
                     *texture = Some(Bound::new(gpu, "palantir.atlas.scratch", self.format, size));
                 }
             }
+            self.generation += 1;
         }
     }
 
@@ -192,8 +195,8 @@ impl AtlasTextures {
         })
     }
 
-    /// Moves whenever a view of `format`'s pages changes: a consumer that binds them makes its
-    /// group again when it differs from the one it made the group at.
+    /// Moves whenever a view of `format`'s pages or scratch textures changes: a consumer that binds
+    /// them makes its group again when it differs from the one it made the group at.
     pub(crate) const fn generation(&self, format: AtlasFormat) -> u64 {
         self.lists[format as usize].generation
     }
@@ -203,6 +206,11 @@ impl AtlasTextures {
         self.lists[format as usize].pages[idx]
             .as_ref()
             .map(|page| &page.bound.texture)
+    }
+
+    /// The 1 × 1 view of `format` a binding with no texture of its own binds.
+    pub(crate) const fn absent_view(&self, format: AtlasFormat) -> &wgpu::TextureView {
+        &self.lists[format as usize].absent.view
     }
 
     /// The view of `format`'s scratch slot `idx`, `None` where it holds no texture.
@@ -230,7 +238,8 @@ pub(crate) mod internals {
     use crate::gpu::atlas_memory::AtlasUse;
 
     impl AtlasTextures {
-        /// `format`'s textures, named `name`, against the texels its pages' items fill in `pool`.
+        /// `format`'s textures, named `name`, against the texels its pages' items and its held
+        /// scratch textures fill in `pool`.
         pub(crate) fn memory(
             &self,
             pool: &AtlasPool,
@@ -244,7 +253,8 @@ pub(crate) mod internals {
             let live: u64 = (0..textures.pages.len())
                 .filter_map(|idx| list.page(idx))
                 .map(Page::live_texels)
-                .sum();
+                .sum::<u64>()
+                + list.scratch().held_texels();
             AtlasUse {
                 name,
                 textures: u32::try_from(count).expect("a list holds few textures"),

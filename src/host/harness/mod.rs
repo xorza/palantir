@@ -980,6 +980,7 @@ pub(crate) mod internals {
     use crate::ui::window_frames::WindowFrames;
     #[cfg(test)]
     use crate::{
+        gpu::atlas::atlas_format::AtlasFormat,
         internals::paint_capture::PaintCapture,
         primitives::geometry::rect::Rect,
         primitives::geometry::translate_scale::TranslateScale,
@@ -1134,6 +1135,18 @@ pub(crate) mod internals {
                 HarnessPaint::Gpu { device, .. } => device.backend().backdrop_blurs(),
                 HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
                     panic!("a harness below Depth::Gpu runs no blur")
+                }
+            }
+        }
+
+        /// The texels of the backdrop results' scratch textures a result holds.
+        pub(crate) fn backdrop_scratch_texels(&self) -> u64 {
+            match &self.paint {
+                HarnessPaint::Gpu { device, .. } => device
+                    .backend()
+                    .atlas_held_scratch_texels(AtlasFormat::Rgba16F),
+                HarnessPaint::Record { .. } | HarnessPaint::Compose { .. } => {
+                    panic!("a harness below Depth::Gpu keeps no result")
                 }
             }
         }

@@ -11,6 +11,7 @@ use crate::effect::contract::{
     BACKDROPS_GROUP, HALO_OVERRIDE, IMAGES_GROUP, TRIANGLE_OVERRIDE, WORDS_GROUP,
 };
 use crate::effect::effect_store::EffectModule;
+use crate::gpu::backdrop::backdrops::BackdropGroups;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::{ClipVariant, Clipping};
@@ -280,17 +281,18 @@ pub(crate) struct EffectPipeline {
     indices: TemplateIndices,
 }
 
-/// One batch of effect draws: the frame's per-draw key column, this batch's slice of it, each
-/// effect's module at its id, the groups the draws bind their images through, and the group a
-/// backdrop effect reads its backdrop's result through, `None` before the first frame with a
-/// backdrop.
+/// One batch of effect draws: the frame's per-draw key and instance columns, this batch's slice of
+/// them, each effect's module at its id, the groups the draws bind their images through, and the
+/// groups a backdrop effect reads its backdrop's result through, `None` before the first frame
+/// with a backdrop.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EffectBatch<'a> {
     pub(crate) keys: &'a [EffectKey],
+    pub(crate) instances: &'a [EffectInstance],
     pub(crate) modules: &'a [EffectModule],
     pub(crate) items: Span,
     pub(crate) groups: &'a EffectImageGroups,
-    pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
+    pub(crate) backdrops: Option<BackdropGroups<'a>>,
 }
 
 /// What one frame uploads: each draw's instance and the span of its images in `textures`, the
@@ -367,6 +369,7 @@ impl EffectPipeline {
         pipelines: impl Fn(EffectKey) -> &'a Pipeline,
         EffectBatch {
             keys,
+            instances,
             modules,
             items,
             groups,
@@ -378,9 +381,17 @@ impl EffectPipeline {
             .as_ref()
             .expect("a frame uploads before it draws");
         rec.vertex(0, &self.instances.buffer);
-        let key = |i: u32| (keys[i as usize], self.images[i as usize]);
+        // A backdrop whose result has a scratch texture of its own reads it through a group of its
+        // own, so its draw splits from its neighbors'.
+        let key = |i: u32| {
+            let key = keys[i as usize];
+            let scratch = (modules[key.effect.idx()].kind == KindId::Backdrop)
+                .then(|| backdrops?.scratch_of(instances[i as usize].backdrop_idx))
+                .flatten();
+            (key, self.images[i as usize], scratch)
+        };
         for run in Runs::new(items, key) {
-            let (key, images) = run.key;
+            let (key, images, scratch) = run.key;
             let images_group = if images.ids().is_empty() {
                 None
             } else {
@@ -398,7 +409,7 @@ impl EffectPipeline {
             if kind == KindId::Backdrop {
                 let backdrops =
                     backdrops.expect("a frame with a backdrop effect prepares its backdrops");
-                rec.group_once(BACKDROPS_GROUP, backdrops);
+                rec.group_once(BACKDROPS_GROUP, backdrops.group(scratch));
             }
             self.indices
                 .draw(rec, key.form, key.cover, run.instances.u32_range());

@@ -6,7 +6,8 @@
 // shows `clear`, the physical rect the shape reads, `(min, max)`, its rect grown by its reach; and
 // a material's luminance bounds, fill and border, which palantir's material path reads and an app's
 // effect does not. The fill is a straight color, or the multiplier on the gradient at
-// `fill_lut_row`, whose `fill_kind` and `fill_axis` read as a quad's.
+// `fill_lut_row`, whose `fill_kind` and `fill_axis` read as a quad's. `texture` is the result's
+// page, or 4 for the scratch texture of its own the draw's group binds.
 struct PalantirBackdrop {
     offset: vec2<f32>,
     lattice: f32,
@@ -20,10 +21,17 @@ struct PalantirBackdrop {
     border_width: f32,
     fill_kind: u32,
     fill_lut_row: u32,
+    texture: u32,
 }
-@group(2) @binding(0) var palantir_results: texture_2d<f32>;
-@group(2) @binding(1) var palantir_results_sampler: sampler;
-@group(2) @binding(2) var<storage, read> palantir_backdrops: array<PalantirBackdrop>;
+// The results: the pool's half-float pages, a closed one bound as a 1 × 1 stand-in, and the
+// scratch texture of the large backdrop the draw shows, or the stand-in.
+@group(2) @binding(0) var palantir_results_page0: texture_2d<f32>;
+@group(2) @binding(1) var palantir_results_page1: texture_2d<f32>;
+@group(2) @binding(2) var palantir_results_page2: texture_2d<f32>;
+@group(2) @binding(3) var palantir_results_page3: texture_2d<f32>;
+@group(2) @binding(4) var palantir_results_scratch: texture_2d<f32>;
+@group(2) @binding(5) var palantir_results_sampler: sampler;
+@group(2) @binding(6) var<storage, read> palantir_backdrops: array<PalantirBackdrop>;
 
 // The spectrum a dispersive lens spreads, cell by cell (`spectrum_tables::SpectrumTables`), which
 // the stock glass sums back to color.
@@ -32,7 +40,7 @@ struct PalantirSpectrumCell {
     cumulative: vec3<f32>,
     moment: vec3<f32>,
 }
-@group(2) @binding(3) var<storage, read> palantir_spectrum: array<PalantirSpectrumCell>;
+@group(2) @binding(7) var<storage, read> palantir_spectrum: array<PalantirSpectrumCell>;
 
 // The backdrop this fragment draws, its rect `(min, size)` in physical px, its turn about the
 // rect's center and the physical px per logical px, which palantir's fragment stage sets before it
@@ -61,15 +69,26 @@ fn palantir_result(p: vec2<f32>, backdrop: PalantirBackdrop) -> vec3<f32> {
     if (backdrop.lattice == 0.0) {
         return backdrop.clear;
     }
-    let size = vec2<f32>(textureDimensions(palantir_results));
+    switch backdrop.texture {
+        case 0u: { return palantir_result_in(palantir_results_page0, p, backdrop); }
+        case 1u: { return palantir_result_in(palantir_results_page1, p, backdrop); }
+        case 2u: { return palantir_result_in(palantir_results_page2, p, backdrop); }
+        case 3u: { return palantir_result_in(palantir_results_page3, p, backdrop); }
+        default: { return palantir_result_in(palantir_results_scratch, p, backdrop); }
+    }
+}
+
+// `palantir_result` from `results`, the texture the backdrop's result lies in.
+fn palantir_result_in(results: texture_2d<f32>, p: vec2<f32>, backdrop: PalantirBackdrop) -> vec3<f32> {
+    let size = vec2<f32>(textureDimensions(results));
     let x = p / backdrop.lattice - vec2<f32>(0.5) + backdrop.offset;
     if (backdrop.lattice == 1.0) {
         // A read at a pixel center lands on a texel's center, which a load returns whole, with no
         // filter weights to round; a read between pixels, as a lens bends it, filters.
         if (all(fract(x) == vec2<f32>(0.0))) {
-            return textureLoad(palantir_results, vec2<i32>(x), 0).rgb;
+            return textureLoad(results, vec2<i32>(x), 0).rgb;
         }
-        return textureSampleLevel(palantir_results, palantir_results_sampler, (x + vec2<f32>(0.5)) / size, 0.0).rgb;
+        return textureSampleLevel(results, palantir_results_sampler, (x + vec2<f32>(0.5)) / size, 0.0).rgb;
     }
     let base = floor(x);
     let f = x - base;
@@ -82,8 +101,8 @@ fn palantir_result(p: vec2<f32>, backdrop: PalantirBackdrop) -> vec3<f32> {
     let s1 = w2 + w3;
     let lo = (base - vec2<f32>(0.5) + w1 / s0) / size;
     let hi = (base + vec2<f32>(1.5) + w3 / s1) / size;
-    return s0.y * (s0.x * textureSampleLevel(palantir_results, palantir_results_sampler, vec2<f32>(lo.x, lo.y), 0.0).rgb
-                 + s1.x * textureSampleLevel(palantir_results, palantir_results_sampler, vec2<f32>(hi.x, lo.y), 0.0).rgb)
-         + s1.y * (s0.x * textureSampleLevel(palantir_results, palantir_results_sampler, vec2<f32>(lo.x, hi.y), 0.0).rgb
-                 + s1.x * textureSampleLevel(palantir_results, palantir_results_sampler, vec2<f32>(hi.x, hi.y), 0.0).rgb);
+    return s0.y * (s0.x * textureSampleLevel(results, palantir_results_sampler, vec2<f32>(lo.x, lo.y), 0.0).rgb
+                 + s1.x * textureSampleLevel(results, palantir_results_sampler, vec2<f32>(hi.x, lo.y), 0.0).rgb)
+         + s1.y * (s0.x * textureSampleLevel(results, palantir_results_sampler, vec2<f32>(lo.x, hi.y), 0.0).rgb
+                 + s1.x * textureSampleLevel(results, palantir_results_sampler, vec2<f32>(hi.x, hi.y), 0.0).rgb);
 }

@@ -10,7 +10,6 @@ pub(crate) mod expiry_window;
 pub(crate) mod frame_group;
 pub(crate) mod gpu_gradient_atlas;
 pub(crate) mod gpu_view_targets;
-pub(crate) mod packed_atlas;
 pub(crate) mod readback_staging;
 pub(crate) mod shelf_packer;
 pub(crate) mod texture_binding;

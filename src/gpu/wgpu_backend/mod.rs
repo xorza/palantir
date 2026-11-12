@@ -379,7 +379,7 @@ impl WgpuBackend {
         let texture_binding = resources.texture_binding;
         let gradient = GpuGradientAtlas::new(&gpu, resources.gradient_rows);
         let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), &gradient);
-        let backdrops = Backdrops::new(&gpu, &texture_binding);
+        let backdrops = Backdrops::new(&texture_binding);
         let atlas_textures = AtlasTextures::new(&gpu);
         let quad = QuadPipeline::new(&gpu, &texture_binding, &atlas_textures);
         let mesh = MeshPipeline::new(&gpu, &texture_binding);
@@ -761,7 +761,8 @@ impl WgpuBackend {
                         encoder,
                         mark(BackdropPhase::BlurStart),
                     );
-                    self.backdrops.blur_break(encoder, breaks);
+                    self.backdrops
+                        .blur_break(encoder, breaks, &self.atlas_textures);
                     encoder_mark(
                         timings.as_deref_mut(),
                         encoder,
@@ -907,6 +908,7 @@ impl WgpuBackend {
                     None
                 },
             },
+            &mut self.atlas,
         );
 
         {
@@ -944,6 +946,7 @@ impl WgpuBackend {
         self.atlas_textures
             .commit(ctx.gpu, ctx.encoder, &self.atlas);
         self.raster_group.follow(ctx.gpu, &self.atlas_textures);
+        self.backdrops.follow(ctx.gpu, &self.atlas_textures);
         self.programs
             .quad
             .prepare_cutouts(&mut ctx, stream.cutouts(), &self.atlas_textures);
@@ -1153,10 +1156,11 @@ impl WgpuBackend {
                             |key| pipelines.effect(key),
                             EffectBatch {
                                 keys: buffer.effects.key(),
+                                instances: buffer.effects.instance(),
                                 modules: draw.effect_modules,
                                 items: items(),
                                 groups: &effect_groups,
-                                backdrops: self.backdrops.group(),
+                                backdrops: self.backdrops.groups(),
                             },
                         ),
                     }
@@ -1263,7 +1267,7 @@ impl WgpuBackend {
         let owner = stream.owner();
         self.frames.retire(owner);
         self.gpu_view_targets.retire_owner(owner);
-        self.backdrops.retire(owner);
+        self.backdrops.retire(owner, &mut self.atlas);
         stream.release_cutouts(&mut self.cutout_placing());
     }
 
@@ -1361,7 +1365,12 @@ pub(crate) mod internals {
             let colors = self
                 .atlas_textures
                 .memory(&self.atlas, AtlasFormat::Rgba8, "color pages");
-            let [results, blur] = self.backdrops.memory();
+            let results = self.atlas_textures.memory(
+                &self.atlas,
+                AtlasFormat::Rgba16F,
+                "half-float pages and scratch",
+            );
+            let blur = self.backdrops.blur_memory();
             let live_rows = gradient.live_rows();
             let mirror = AtlasUse {
                 name: "gradient mirror (CPU)",
@@ -1430,6 +1439,12 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(crate) fn baked_cutout_tables(&self) -> usize {
             self.programs.quad.baked_cutout_tables()
+        }
+
+        /// The texels of `format`'s scratch textures an item holds.
+        #[cfg(test)]
+        pub(crate) fn atlas_held_scratch_texels(&self, format: AtlasFormat) -> u64 {
+            self.atlas.list(format).scratch().held_texels()
         }
 
         /// Paint as a device whose passes move `traffic` paints, whatever the device is.

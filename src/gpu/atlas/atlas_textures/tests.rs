@@ -138,8 +138,9 @@ fn a_page_opened_again_in_its_slot_starts_empty() {
     );
 }
 
-/// A scratch slot makes its texture at its rung, 100² to 128², and drops it once it expires; the
-/// GPU's bytes follow the CPU half's throughout.
+/// A scratch slot makes its texture at its rung, 100² to 128², and drops it once it expires, each
+/// a change of view that moves the generation once; the GPU's bytes follow the CPU half's
+/// throughout.
 #[test]
 fn a_scratch_texture_follows_its_slot() {
     let gpu = headless_test_gpu();
@@ -151,11 +152,19 @@ fn a_scratch_texture_follows_its_slot() {
     commit(&gpu, &mut textures, &pool);
     assert!(textures.scratch_view(AtlasFormat::R8, id.idx).is_some());
     assert_eq!(textures.bytes(AtlasFormat::R8), 128 * 128);
+    assert_eq!(textures.generation(AtlasFormat::R8), 1);
     pool.release_scratch(AtlasFormat::R8, id);
+    commit(&gpu, &mut textures, &pool);
+    assert_eq!(
+        textures.generation(AtlasFormat::R8),
+        1,
+        "an idle texture stays"
+    );
     pool.advance_to(EXPIRY_FRAMES);
     commit(&gpu, &mut textures, &pool);
     assert!(textures.scratch_view(AtlasFormat::R8, id.idx).is_none());
     assert_eq!(textures.bytes(AtlasFormat::R8), 0);
+    assert_eq!(textures.generation(AtlasFormat::R8), 2);
 }
 
 /// Textures made again by their constructor, as on a new device, take every open page of every

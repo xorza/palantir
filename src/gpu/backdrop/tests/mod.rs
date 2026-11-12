@@ -185,6 +185,60 @@ fn a_backdrop_shows_the_pixels_before_it_blurred() {
     }
 }
 
+/// A backdrop wider than half a page shows the pixels before it blurred through a scratch texture
+/// of its own, beside one on a page in the same draw batch: each as the reference arithmetic
+/// blurs the frame without them, every channel within one 8-bit step, and the frame unchanged
+/// outside them. At σ 3 the wide one's 600 px, grown by its reach and apron, pass the 512 a page of
+/// 1024 takes; the narrow one's 40 do not.
+#[test]
+fn a_wide_backdrop_shows_its_pixels_through_a_scratch_texture() {
+    const WIDE: UVec2 = UVec2::new(720, 64);
+    let (wide, narrow) = (
+        Rect::new(8.0, 16.0, 600.0, 32.0),
+        Rect::new(640.0, 16.0, 40.0, 32.0),
+    );
+    let stripes = |ui: &mut Ui, sigma: Option<f32>| {
+        Panel::canvas()
+            .id_salt("wide-backdrop-scene")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for i in 0..180 {
+                    let color = match i % 3 {
+                        0 => RgbaF32::WHITE,
+                        1 => RgbaF32::srgb(1.0, 0.2, 0.0),
+                        _ => RgbaF32::srgb(0.0, 0.3, 1.0),
+                    };
+                    let x = i as f32 * 4.0;
+                    ui.add_shape(
+                        Shape::rect().at(Rect::new(x, 0.0, 1.0 + (i % 3) as f32, 64.0)),
+                        color,
+                    );
+                }
+                if let Some(sigma) = sigma {
+                    for at in [wide, narrow] {
+                        ui.add_shape(Shape::rect().at(at), Material::blur(sigma));
+                    }
+                }
+            });
+    };
+    let gpu = headless_test_gpu();
+    let mut reference = Reference::new(&gpu, WIDE, RgbaF32::BLACK);
+    let under = reference.paint(|ui| stripes(ui, None));
+    let got = reference.paint(|ui| stripes(ui, Some(3.0)));
+    assert!(
+        reference.0.backdrop_scratch_texels() > 0,
+        "the wide result holds a scratch texture"
+    );
+    let inside = |p: Vec2| {
+        if wide.contains(p) || narrow.contains(p) {
+            Expect::Blurred
+        } else {
+            Expect::Same
+        }
+    };
+    assert_blurred(&got, &under, BlurPlan::new(3.0), inside, "σ 3");
+}
+
 /// A luminance ceiling scales what a backdrop shows down to it before the fill, and leaves what is
 /// darker alone. White on the left, the black clear on the right, under a backdrop of σ 1 filled
 /// gray 0.2 at alpha 0.5 and capped at 0.1, which lowers to the f16 0.0999755859375: away from the

@@ -178,6 +178,22 @@ impl ScratchCache {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::atlas::scratch_cache::{ScratchCache, ScratchState};
+
+    impl ScratchCache {
+        /// The texels of the textures an item holds, the live part of [`Self::texels`].
+        pub(crate) fn held_texels(&self) -> u64 {
+            self.textures
+                .iter()
+                .filter(|texture| texture.state == ScratchState::Held)
+                .map(|texture| u64::from(texture.size.x) * u64::from(texture.size.y))
+                .sum()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::gpu::atlas::error::AtlasError;
