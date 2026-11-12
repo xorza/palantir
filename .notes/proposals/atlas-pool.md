@@ -275,23 +275,28 @@ until step 3, so its root expects `dead_code` outside tests, with that reason.
   model, checking after each step that no two live rectangles overlap and that the accounting
   matches it.
 
-### 2. The pool's GPU half
+### 2. The pool's GPU half (`src/gpu/atlas/atlas_textures/`) — done but 2.4, which waits for M2
 
-- **2.1 Textures.** Each page and scratch texture made through `texel::texture_2d` with the usage
-  its format's tenants need and `COPY_SRC | COPY_DST`; `RENDER_ATTACHMENT` where a tenant renders
-  (R8, RGBA16F) or M2 picked the draw. Color pages are `Rgba8Unorm`.
-- **2.2 Commit.** One `commit(ctx)` at the top of each submit's upload phase: grow the first page
-  (one copy into the new texture), make new pages, then frees. Each list carries a generation that
-  moves when its views change, which its consumers compare, as `FrameGroup` follows the gradient's
-  today.
-- **2.3 Views and frees.** A list hands out four views, an absent page bound as a 1 × 1 texture of
-  its format. A freed texture's views and every bind group naming it drop in the same commit.
-  Test: after a free, no consumer's group names the texture.
-- **2.4 Moves.** Recorded by the mechanism M2 picked for the device, after the commit and before
-  any upload, bake or draw. Test per format and mechanism: every texel of a drained page reads
-  back byte for byte at its new place.
-- **2.5 Device loss.** A test loses the device with a pool holding pages and checks that the next
-  frame fills it again.
+- **2.1 Textures — done.** `AtlasTextures`: each page and scratch texture made through
+  `texel::texture_2d`, every one `TEXTURE_BINDING | RENDER_ATTACHMENT | COPY_SRC | COPY_DST`, as a
+  bake, a blur or a move by draw renders into it; color pages `Rgba8Unorm`.
+- **2.2 Commit — done.** `commit(gpu, encoder, pool)`: a page opened makes its texture, a page
+  grown in its slot makes a larger one and copies the old texels into its top-left, a page closed
+  drops its texture; a scratch slot makes or drops its texture as its size comes and goes. Each
+  page carries the epoch of its slot's opening, so a page opened again in a slot starts empty
+  rather than copying the closed one's. Each list's generation moves when a view changes, which
+  its consumers compare, as `FrameGroup` follows the gradient's. The backend calls it at the top
+  of each submit's upload phase once a tenant moves onto the pool, in step 3.
+- **2.3 Views and frees — done.** A list hands out four views, a closed page's the 1 × 1
+  stand-in; a closed page's texture drops at the commit, and a consumer that binds the views makes
+  its group again as the generation moves, which step 3's raster group is the first to do.
+  `PageList::close_page`, which step 7's drain ends in, closes an empty page.
+- **2.4 Moves — waits for M2.** Recorded by the mechanism M2 picks for the device, after the commit
+  and before any upload, bake or draw. Test per format and mechanism: every texel of a drained page
+  reads back byte for byte at its new place. Nothing moves before step 7.
+- **2.5 Device loss — done.** Textures made again by their constructor take every open page at its
+  edge at the first commit, empty for the tenants to fill again; a test holds it. The loss itself
+  is the backend's, tested once the backend holds the pool in step 3.
 
 ### 3. Glyphs and icons
 

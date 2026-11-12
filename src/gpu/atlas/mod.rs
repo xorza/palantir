@@ -1,6 +1,7 @@
-//! The atlas pool's CPU half: every page list's bookkeeping, with no device, so each rule is
-//! testable without one. The design and the plan are `.notes/proposals/atlas-pool.md`; this is its
-//! step 1, which the tenants move onto in steps 3 to 6.
+//! The atlas pool: every page list's bookkeeping, its CPU half, with no device, so each rule is
+//! testable without one, and [`atlas_textures`], its GPU half, the textures that follow it. The
+//! design and the plan are `.notes/proposals/atlas-pool.md`; the tenants move onto it in steps 3
+//! to 6.
 
 #![cfg_attr(
     not(test),
@@ -13,6 +14,7 @@
 
 pub(crate) mod atlas_format;
 pub(crate) mod atlas_handle;
+pub(crate) mod atlas_textures;
 pub(crate) mod error;
 mod eviction_clock;
 pub(crate) mod page_list;
@@ -159,6 +161,11 @@ impl AtlasPool {
     )]
     pub(crate) fn drain_evicted(&mut self, tenant: Tenant) -> Drain<'_, AtlasHandle> {
         self.evictions.queues[tenant as usize].drain(..)
+    }
+
+    /// Close `format`'s page `idx`, which holds no item.
+    pub(crate) fn close_page(&mut self, format: AtlasFormat, idx: usize) {
+        self.lists[format as usize].close_page(idx);
     }
 
     /// A texture of its own of `format` for an item of `size`.

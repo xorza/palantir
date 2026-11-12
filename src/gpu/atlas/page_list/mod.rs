@@ -36,21 +36,30 @@ pub(crate) enum PageState {
     Draining,
 }
 
-/// One page: its packer, whose edge is the page's, what it takes, and the texels its items fill.
+/// One page: its packer, whose edge is the page's, what it takes, the texels its items fill, and
+/// which opening of its slot it is.
 #[derive(Debug)]
 pub(crate) struct Page {
     packer: ShelfPacker,
     state: PageState,
     live_texels: u64,
+    /// The list's count of pages opened when this one opened, so the GPU half tells a page grown
+    /// in its slot, whose texels it copies, from another opened there since, whose it does not.
+    epoch: u32,
 }
 
 impl Page {
-    fn new(edge: u32, state: PageState) -> Self {
+    fn new(edge: u32, state: PageState, epoch: u32) -> Self {
         Self {
             packer: ShelfPacker::new(edge_u16(edge)),
             state,
             live_texels: 0,
+            epoch,
         }
+    }
+
+    pub(crate) const fn epoch(&self) -> u32 {
+        self.epoch
     }
 
     pub(crate) fn edge(&self) -> u32 {
@@ -128,6 +137,8 @@ pub(crate) struct PageList {
     config: PageListConfig,
     /// By page index, which a placement and a draw name.
     pages: [Option<Page>; MAX_PAGES],
+    /// Pages opened so far, the next one's [`Page::epoch`].
+    opened: u32,
     entries: Vec<Entry>,
     /// Slab slots no item holds, the next insert's.
     free: Vec<u32>,
@@ -183,6 +194,7 @@ impl PageList {
                 ..config
             },
             pages: [const { None }; MAX_PAGES],
+            opened: 0,
             entries: Vec::new(),
             free: Vec::new(),
             hand: 0,
@@ -322,7 +334,8 @@ impl PageList {
         if bytes + u64::from(edge).pow(2) * texel > limit {
             return false;
         }
-        self.pages[slot] = Some(Page::new(edge, PageState::Open));
+        self.pages[slot] = Some(Page::new(edge, PageState::Open, self.opened));
+        self.opened = self.opened.checked_add(1).expect("a list opened 2³² pages");
         true
     }
 
@@ -544,6 +557,20 @@ impl PageList {
     pub(crate) const fn set_state(&mut self, idx: usize, state: PageState) {
         self.pages[idx].as_mut().expect("an open page").state = state;
         self.dry_frame = None;
+    }
+
+    /// Close page `idx`, which holds no item, so its slot takes the next page opened.
+    ///
+    /// # Panics
+    ///
+    /// If no page is open at `idx`, or an item sits on it.
+    pub(crate) fn close_page(&mut self, idx: usize) {
+        let page = self.pages[idx].take().expect("an open page");
+        assert_eq!(page.live_texels, 0, "a page closed under its items");
+    }
+
+    pub(crate) const fn scratch(&self) -> &ScratchCache {
+        &self.scratch
     }
 
     /// A texture of its own for an item of `size`.

@@ -161,6 +161,13 @@ impl ScratchCache {
         }
     }
 
+    /// Each slot's texture size, by slot, `None` where it holds none: what the GPU half makes.
+    pub(crate) fn slots(&self) -> impl ExactSizeIterator<Item = Option<UVec2>> + '_ {
+        self.textures
+            .iter()
+            .map(|texture| (texture.state != ScratchState::Gone).then_some(texture.size))
+    }
+
     /// The texels the cache's textures hold, held and idle.
     pub(crate) fn texels(&self) -> u64 {
         self.textures

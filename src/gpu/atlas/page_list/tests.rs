@@ -278,3 +278,12 @@ fn edges_hold_to_the_device_and_scratch_counts_in_the_bytes() {
     assert_eq!(wide.scratch_size(id), Some(UVec2::splat(128)));
     assert_eq!(wide.bytes(), 128 * 128);
 }
+
+#[test]
+#[should_panic(expected = "a page closed under its items")]
+fn a_page_is_not_closed_under_its_items() {
+    let mut list = list(32, 32, 1 << 20);
+    list.allocate(Tenant::Glyphs, square(8), 0, &mut Evictions::default())
+        .unwrap();
+    list.close_page(0);
+}
