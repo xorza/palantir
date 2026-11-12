@@ -6,6 +6,7 @@
 - optimal resolve strategies
 - material for texts and strokes?
 - consolidate gpu atlas
+- merge showcase benches into one
 
 - widget-authoring surface
 - table widget: sortable header, virtual rows over a fixed row height
