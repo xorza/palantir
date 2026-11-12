@@ -5,7 +5,7 @@
 - build-in colors
 - optimal resolve strategies
 - material for texts and strokes?
--
+
 - atlas pool: A/B `integration/frame/gpu/*`, `text_atlas/*` and `backdrop_frame/*` against the
   pool's base on every bench host, worst frame included; the move bench (`atomic/atlas_move`) on
   V3D, the AMD iGPU and the handheld, a draw a destination page where copies cost more; the
