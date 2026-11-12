@@ -3,7 +3,8 @@
 
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::system_scale::SystemScale;
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::render_owner_id::RenderOwners;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::renderer::frontend::Frontend;
@@ -32,6 +33,9 @@ const fn config(strategy: PresentStrategy, pixel_snap: bool) -> FramesConfig {
     }
 }
 
+/// The largest texture edge of the device a CPU-only frame plans its cutouts for.
+const DEVICE_EDGE: u32 = 8192;
+
 /// The frames of `token` over `shared`, set by `config`, on a stream with no device behind it that
 /// shades every cutout.
 fn new_frames(token: WindowToken, shared: &UiResources, config: FramesConfig) -> WindowFrames {
@@ -41,7 +45,9 @@ fn new_frames(token: WindowToken, shared: &UiResources, config: FramesConfig) ->
         owner: RenderOwners::default().reserve(),
         strategy: config.strategy,
     };
-    WindowFrames::new(spec, shared)
+    let mut frames = WindowFrames::new(spec, shared);
+    frames.disable_cutout_tables();
+    frames
 }
 
 impl WindowFrames {
@@ -49,7 +55,10 @@ impl WindowFrames {
     fn build_alone<'f>(&mut self, frontend: &'f mut Frontend, report: FrameReport) -> CpuFrame<'f> {
         let ctx = BuildCtx {
             frontend,
-            placements: &mut CutoutPlacements::default(),
+            placing: CutoutPlacing {
+                placements: &mut CutoutPlacements::default(),
+                pool: &mut AtlasPool::new(DEVICE_EDGE),
+            },
         };
         self.build_paint(ctx, report)
     }
@@ -955,9 +964,9 @@ mod cutout_census_tests {
     use crate::damage::{Damage, DamageBase};
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
+    use crate::gpu::atlas::AtlasPool;
     use crate::gpu::frame::submission::Route;
-    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
-    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::gpu::render_owner_id::RenderOwners;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
@@ -990,10 +999,7 @@ mod cutout_census_tests {
             strategy: PresentStrategy::BackbufferCopy,
         };
         let mut frames = WindowFrames::new(spec, &shared);
-        frames.attach(RenderStream::detached(
-            frames.render_owner(),
-            CutoutMode::Bake,
-        ));
+        frames.attach(RenderStream::detached(frames.render_owner()));
         let display = FrameStamp::new(
             Display::from_physical(UVec2::new(600, 200), 1.0),
             Duration::ZERO,
@@ -1031,13 +1037,17 @@ mod cutout_census_tests {
                 });
         };
         let mut placements = CutoutPlacements::default();
+        let mut pool = AtlasPool::new(super::DEVICE_EDGE);
         let mut damage = |cards_now: usize, tick_now: bool| {
             cards.set(cards_now);
             tick.set(tick_now);
             let report = frames.frame(display, &mut app);
             let ctx = BuildCtx {
                 frontend: &mut frontend,
-                placements: &mut placements,
+                placing: CutoutPlacing {
+                    placements: &mut placements,
+                    pool: &mut pool,
+                },
             };
             let frame = frames.build_paint(ctx, report);
             frames.damage_base = DamageBase::Prev;
@@ -1337,8 +1347,9 @@ mod screenshot_tests {
 mod escalation_tests {
     use crate::damage::Damage;
     use crate::damage::region::{DamageRegion, MergePolicy};
+    use crate::gpu::atlas::AtlasPool;
     use crate::gpu::frame::submission::Route;
-    use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+    use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::backdrop_key::BackdropKey;
     use crate::primitives::layout::sizing::Sizing;
@@ -1450,7 +1461,10 @@ mod escalation_tests {
         };
         let ctx = BuildCtx {
             frontend: &mut frontend,
-            placements: &mut CutoutPlacements::default(),
+            placing: CutoutPlacing {
+                placements: &mut CutoutPlacements::default(),
+                pool: &mut AtlasPool::new(super::DEVICE_EDGE),
+            },
         };
         let job = frames.build_painted(ctx, facts.path(plan), facts);
         assert_eq!(

@@ -1,13 +1,12 @@
 //! The GPU program every raster quad draws through, whichever tenant rasterized it: one shader
-//! module and one atlas layout, so one pipeline pair per swapchain format, and [`RasterGroup`], the
-//! one group over the pool's mask and color pages both tenants draw through. `gpu::raster`'s
-//! `RasterPass` is the CPU half.
+//! module and one atlas layout, so one pipeline pair per swapchain format, over the pool's mask and
+//! color pages both tenants draw through ([`RASTER_FORMATS`]). `gpu::raster`'s `RasterPass` is the
+//! CPU half.
 
 pub(crate) mod raster_quad;
 
 use crate::gpu::atlas::atlas_format::AtlasFormat;
-use crate::gpu::atlas::atlas_textures::AtlasTextures;
-use crate::gpu::atlas::page_list::MAX_PAGES;
+use crate::gpu::atlas::page_group;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::clip_variant::ClipVariant;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
@@ -17,7 +16,7 @@ use crate::gpu::pipeline::raster_pipeline::raster_quad::{
 };
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
-use crate::gpu::resource::texture_binding::{self, Filtering, TextureBinding};
+use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::wgsl;
 
 /// The two pipeline pairs one swapchain format draws raster quads with.
@@ -42,7 +41,7 @@ impl RasterVariants {
 pub(crate) struct RasterPipelinePair<'a> {
     pub(crate) flat: &'a Pipeline,
     pub(crate) spun: &'a Pipeline,
-    /// [`RasterGroup::group`].
+    /// The [`PageGroup`](crate::gpu::atlas::page_group::PageGroup) over [`RASTER_FORMATS`].
     pub(crate) atlas: &'a wgpu::BindGroup,
 }
 
@@ -76,6 +75,12 @@ impl RasterPipeline {
             layout,
             pipeline_layout,
         }
+    }
+
+    /// The atlas group's layout, which a
+    /// [`PageGroup`](crate::gpu::atlas::page_group::PageGroup) over [`RASTER_FORMATS`] binds through.
+    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
+        &self.layout
     }
 
     /// Build the halves of `variants` `target` binds, where they are not built: the only
@@ -114,70 +119,14 @@ impl RasterPipeline {
         );
     }
 
-    /// The atlas group, [`ATLAS_GROUP`]: the mask pages at `0..MAX_PAGES`, the color pages after,
-    /// no sampler (the shader reads each texel by index).
+    /// The atlas group, [`ATLAS_GROUP`]: the mask pages, then the color pages.
     fn create_layout(gpu: &Gpu) -> wgpu::BindGroupLayout {
-        let entries: [wgpu::BindGroupLayoutEntry; 2 * MAX_PAGES] = std::array::from_fn(|binding| {
-            texture_binding::texture_entry(binding as u32, Filtering::Filtered)
-        });
-        gpu.device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("palantir.raster.atlas layout"),
-                entries: &entries,
-            })
+        page_group::layout(gpu, "palantir.raster.atlas layout", RASTER_FORMATS.len())
     }
 }
 
-/// The atlas group both raster tenants draw through: the pool's mask pages, then its color pages,
-/// made again where a page's view changes.
-#[derive(Debug)]
-pub(crate) struct RasterGroup {
-    group: wgpu::BindGroup,
-    /// The generations of the mask and the color pages `group` binds.
-    bound: [u64; 2],
-}
-
-/// The page lists a [`RasterGroup`] binds, mask then color.
-const RASTER_FORMATS: [AtlasFormat; 2] = [AtlasFormat::R8, AtlasFormat::Rgba8];
-
-impl RasterGroup {
-    pub(crate) fn new(gpu: &Gpu, program: &RasterPipeline, textures: &AtlasTextures) -> Self {
-        Self {
-            group: Self::bind(gpu, program, textures),
-            bound: RASTER_FORMATS.map(|format| textures.generation(format)),
-        }
-    }
-
-    /// Make the group again where `textures` changed a page view since it was made, after the
-    /// pool's commit and before any draw of the frame.
-    pub(crate) fn follow(&mut self, gpu: &Gpu, program: &RasterPipeline, textures: &AtlasTextures) {
-        let bound = RASTER_FORMATS.map(|format| textures.generation(format));
-        if bound != self.bound {
-            self.group = Self::bind(gpu, program, textures);
-            self.bound = bound;
-        }
-    }
-
-    pub(crate) const fn group(&self) -> &wgpu::BindGroup {
-        &self.group
-    }
-
-    fn bind(gpu: &Gpu, program: &RasterPipeline, textures: &AtlasTextures) -> wgpu::BindGroup {
-        let views = RASTER_FORMATS.map(|format| textures.views(format));
-        let entries: [wgpu::BindGroupEntry<'_>; 2 * MAX_PAGES] =
-            std::array::from_fn(|binding| wgpu::BindGroupEntry {
-                binding: binding as u32,
-                resource: wgpu::BindingResource::TextureView(
-                    views[binding / MAX_PAGES][binding % MAX_PAGES],
-                ),
-            });
-        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.raster.atlas"),
-            layout: &program.layout,
-            entries: &entries,
-        })
-    }
-}
+/// The page lists the raster atlas group binds, mask then color.
+pub(crate) const RASTER_FORMATS: [AtlasFormat; 2] = [AtlasFormat::R8, AtlasFormat::Rgba8];
 
 /// The group an atlas binds at, past the frame group.
 pub(crate) const ATLAS_GROUP: u32 = 1;

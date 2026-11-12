@@ -15,7 +15,6 @@ use crate::damage::frame_baseline::FrameBaseline;
 use crate::display;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::layout::engine::LayoutEngine;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -108,7 +107,7 @@ impl WindowFrames {
             cascade: CascadeEngine::default(),
             damage: DamageEngine::default(),
             token,
-            stream: RenderStream::detached(owner, CutoutMode::Shade),
+            stream: RenderStream::detached(owner),
             damage_base: DamageBase::Discarded,
             target_outlined: false,
             strategy,

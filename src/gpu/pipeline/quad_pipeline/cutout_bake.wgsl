@@ -1,15 +1,13 @@
-// The bake of a shadow corner's cutout into a table of the cutout atlas (`fs_cutout_bake`).
-
-// Side of the square cutout atlas in texels, from `CutoutPlan`.
-const CUTOUT_ATLAS_SIZE: f32 = /*{CUTOUT_ATLAS_SIZE}*/;
+// The bake of a shadow corner's cutout into a table on a mask page (`fs_cutout_bake`).
 
 // Midpoint nodes of a corner cutout baked into a table (`fs_cutout_bake`):
 // twice `CUTOUT_NODES`, so the bake errs about a quarter of the shaded
-// form, 3e-4, beside the table's bilinear error of under 6e-4.
+// form, 3e-4, beside the table's bilinear error of under 6e-4 and the
+// mask page's 8-bit store, half a step.
 const CUTOUT_BAKE_NODES: u32 = /*{CUTOUT_BAKE_NODES}*/;
 
 // One cutout table for `fs_cutout_bake` (`CutoutPlan::BakeTable`): where
-// it goes in the atlas (`cutout_lookup`'s packing) and its `(r, σ)`.
+// it goes on its page (`cutout_lookup`'s packing) and its `(r, σ)`.
 struct BakeIn {
     @location(0) table: u32,
     @location(1) r:     f32,
@@ -17,6 +15,8 @@ struct BakeIn {
     // The texels of the table to bake, from `lo` up to `hi`.
     @location(3) lo:    vec2<u32>,
     @location(4) hi:    vec2<u32>,
+    // The edge of the page the pass renders into, in texels.
+    @location(5) page_edge: f32,
 };
 
 struct BakeOut {
@@ -27,12 +27,12 @@ struct BakeOut {
 };
 
 // The texels of the table the frame bakes, from `lo` up to `hi` of its
-// square of the atlas, one fragment per texel.
+// square of its page, one fragment per texel.
 @vertex
 fn vs_cutout_bake(@builtin(vertex_index) vi: u32, bake: BakeIn) -> BakeOut {
     let texel = vec2<f32>(cutout_origin(bake.table) + select(bake.lo, bake.hi, CORNERS[vi] > vec2<f32>(0.5)));
     var out: BakeOut;
-    out.clip = vec4<f32>(texel.x / CUTOUT_ATLAS_SIZE * 2.0 - 1.0, 1.0 - texel.y / CUTOUT_ATLAS_SIZE * 2.0, 0.0, 1.0);
+    out.clip = vec4<f32>(texel.x / bake.page_edge * 2.0 - 1.0, 1.0 - texel.y / bake.page_edge * 2.0, 0.0, 1.0);
     out.table = bake.table;
     out.r = bake.r;
     out.sigma = bake.sigma;

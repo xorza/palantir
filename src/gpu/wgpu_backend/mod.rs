@@ -55,6 +55,7 @@ use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
 use crate::effect::effect_store::EffectModule;
 use crate::gpu::atlas::AtlasPool;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -75,10 +76,10 @@ use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PipelineCensus, Pr
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
-use crate::gpu::pipeline::raster_pipeline::{RasterGroup, RasterPipeline};
+use crate::gpu::pipeline::raster_pipeline::{RASTER_FORMATS, RasterPipeline};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -135,7 +136,7 @@ pub(crate) struct WgpuBackend {
     atlas: AtlasPool,
     atlas_textures: AtlasTextures,
     /// The group both raster tenants draw the pool's mask and color pages through.
-    raster_group: RasterGroup,
+    raster_group: PageGroup<2>,
     programs: Programs,
     /// The frame's backdrops: their captures, blurs and results.
     backdrops: Backdrops,
@@ -379,7 +380,8 @@ impl WgpuBackend {
         let gradient = GpuGradientAtlas::new(&gpu, resources.gradient_rows);
         let frame_group = FrameGroup::new(&gpu, texture_binding.clone(), &gradient);
         let backdrops = Backdrops::new(&gpu, &texture_binding);
-        let quad = QuadPipeline::new(&gpu, &texture_binding);
+        let atlas_textures = AtlasTextures::new(&gpu);
+        let quad = QuadPipeline::new(&gpu, &texture_binding, &atlas_textures);
         let mesh = MeshPipeline::new(&gpu, &texture_binding);
         let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
@@ -390,8 +392,13 @@ impl WgpuBackend {
         let text = TextBackend::new(&gpu, resources.text.clone());
         let icon = IconBackend::new(&gpu, resources.icons.clone());
         let atlas = AtlasPool::new(gpu.max_texture_dim().get());
-        let atlas_textures = AtlasTextures::new(&gpu);
-        let raster_group = RasterGroup::new(&gpu, &raster, &atlas_textures);
+        let raster_group = PageGroup::new(
+            &gpu,
+            raster.layout(),
+            "palantir.raster.atlas",
+            RASTER_FORMATS,
+            &atlas_textures,
+        );
         let debug = DebugOverlay::default();
         // 1 MiB chunks, above the resize-drag upload peak, so steady state uses 1-2 chunks.
         let staging = UploadStaging::new(&gpu.device, 1 << 20);
@@ -456,13 +463,12 @@ impl WgpuBackend {
         }
     }
 
-    /// A stream for `owner`'s frames: its cutouts take the device's mode, and its frames are
-    /// timed where the backend times frames.
+    /// A stream for `owner`'s frames, timed where the backend times frames.
     pub(crate) fn open_stream(&self, owner: RenderOwnerId) -> RenderStream {
         let timings = self
             .timing
             .map(|support| GpuTimings::new(&self.gpu, support.period_ns, support.features));
-        RenderStream::new(owner, self.programs.quad.cutout_mode(), timings)
+        RenderStream::new(owner, timings)
     }
 
     /// Build the pipeline set for `format`, where none is built, as a window notes a target of
@@ -640,6 +646,7 @@ impl WgpuBackend {
 
         let frame = self.text.end_frame(&mut self.atlas);
         self.icon.end_frame(&mut self.atlas, frame);
+        self.programs.quad.end_frame(&mut self.atlas);
     }
 
     /// Where a pass loads and stores its whole target, the canvas a partial frame paints the size
@@ -844,9 +851,6 @@ impl WgpuBackend {
                 outlines: self.debug.outlines(),
             },
         );
-        self.programs
-            .quad
-            .prepare_cutouts(&mut ctx, stream.cutouts());
         self.programs.mesh.upload(
             &mut ctx,
             MeshUpload {
@@ -939,8 +943,10 @@ impl WgpuBackend {
         // it queued, staged through the belt.
         self.atlas_textures
             .commit(ctx.gpu, ctx.encoder, &self.atlas);
-        self.raster_group
-            .follow(ctx.gpu, &self.programs.raster, &self.atlas_textures);
+        self.raster_group.follow(ctx.gpu, &self.atlas_textures);
+        self.programs
+            .quad
+            .prepare_cutouts(&mut ctx, stream.cutouts(), &self.atlas_textures);
         self.text.flush(&mut ctx, &self.atlas_textures);
         self.icon.flush(&mut ctx, &self.atlas_textures);
     }
@@ -1243,9 +1249,9 @@ impl WgpuBackend {
     }
 
     /// Release what the backend keeps for `stream`'s owner, its `GpuView` targets and backdrop
-    /// results, and the cutout cells its plan holds, as its window closes; the stream itself drops
-    /// with the window. Per-submit eviction is owner-scoped, so without this survivors would hold
-    /// its textures until shutdown, and its tables' cells would stay out of the atlas's reach.
+    /// results, and the pins on the cutout tables its plan holds, as its window closes; the stream
+    /// itself drops with the window. Per-submit eviction is owner-scoped, so without this survivors
+    /// would hold its textures until shutdown, and its tables would stay out of the pool's clock.
     #[cfg_attr(
         all(not(feature = "winit"), not(test)),
         expect(
@@ -1258,12 +1264,16 @@ impl WgpuBackend {
         self.frames.retire(owner);
         self.gpu_view_targets.retire_owner(owner);
         self.backdrops.retire(owner);
-        stream.release_cutouts(self.programs.quad.cutout_placements_mut());
+        stream.release_cutouts(&mut self.cutout_placing());
     }
 
-    /// Where the shadow atlas places each key's table, which a frame's plan builds in.
-    pub(crate) const fn cutout_placements_mut(&mut self) -> &mut CutoutPlacements {
-        self.programs.quad.cutout_placements_mut()
+    /// Where the mask pages hold each key's table, with the pool they live in, which a frame's
+    /// plan builds in.
+    pub(crate) const fn cutout_placing(&mut self) -> CutoutPlacing<'_> {
+        CutoutPlacing {
+            placements: self.programs.quad.cutout_placements_mut(),
+            pool: &mut self.atlas,
+        }
     }
 }
 
@@ -1332,7 +1342,6 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::pipeline::format_pipelines::FormatPipelines;
     #[cfg(test)]
-    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     #[cfg(test)]
@@ -1366,7 +1375,6 @@ pub(crate) mod internals {
                     colors,
                     results,
                     blur,
-                    self.programs.quad.cutout_memory(),
                     self.gradient.memory(live_rows),
                     mirror,
                 ],
@@ -1397,12 +1405,6 @@ pub(crate) mod internals {
             }
         }
 
-        /// How this device cuts shadow corners.
-        #[cfg(test)]
-        pub(crate) const fn cutout_mode(&self) -> CutoutMode {
-            self.programs.quad.cutout_mode()
-        }
-
         /// The glyph atlas's eviction and refusal counts so far.
         #[cfg(test)]
         pub(crate) fn text_atlas_counts(&self) -> AtlasCounts {
@@ -1424,10 +1426,10 @@ pub(crate) mod internals {
             &self.pipelines[&format]
         }
 
-        /// The shadow cutout tables the atlas holds from the frames before.
+        /// The shadow cutout tables the mask pages hold baked in part or whole.
         #[cfg(test)]
-        pub(crate) const fn held_cutout_tables(&self) -> usize {
-            self.programs.quad.held_cutout_tables()
+        pub(crate) fn baked_cutout_tables(&self) -> usize {
+            self.programs.quad.baked_cutout_tables()
         }
 
         /// Paint as a device whose passes move `traffic` paints, whatever the device is.

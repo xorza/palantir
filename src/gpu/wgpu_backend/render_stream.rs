@@ -5,10 +5,8 @@ use crate::gpu::backdrop::backdrops::FrameBackbuffer;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::frame::submission::Route;
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    Census, CutoutFrame, CutoutMode, CutoutPlan,
-};
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutFrame, CutoutPlan};
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::backbuffer::Backbuffer;
@@ -55,26 +53,22 @@ pub(super) struct StreamPasses<'a> {
 }
 
 impl RenderStream {
-    pub(super) const fn new(
-        owner: RenderOwnerId,
-        cutout_mode: CutoutMode,
-        timings: Option<GpuTimings>,
-    ) -> Self {
+    pub(super) const fn new(owner: RenderOwnerId, timings: Option<GpuTimings>) -> Self {
         Self {
             owner,
             backbuffer: None,
             blur_source: None,
             backbuffer_fresh: false,
             canvases: [None, None],
-            cutouts: CutoutPlan::new(cutout_mode),
+            cutouts: CutoutPlan::new(),
             timings,
         }
     }
 
-    /// A stream for `owner` with no device behind it, cutting shadow corners by `cutout_mode`,
-    /// untimed: a window's until a device attaches, and a CPU-only test's.
-    pub(crate) const fn detached(owner: RenderOwnerId, cutout_mode: CutoutMode) -> Self {
-        Self::new(owner, cutout_mode, None)
+    /// A stream for `owner` with no device behind it, untimed: a window's until a device
+    /// attaches, and a CPU-only test's.
+    pub(crate) const fn detached(owner: RenderOwnerId) -> Self {
+        Self::new(owner, None)
     }
 
     pub(crate) const fn owner(&self) -> RenderOwnerId {
@@ -124,25 +118,26 @@ impl RenderStream {
         }
     }
 
-    /// Plan the shadow cutouts of the frame `buffer` holds, repainted inside `scissors`, at cells
-    /// of `placements`.
+    /// Plan the shadow cutouts of the frame `buffer` holds, repainted inside `scissors`, placed
+    /// through `placing`.
     pub(crate) fn plan_cutouts(
         &mut self,
         buffer: &RenderBuffer,
         scissors: &RepaintScissors,
-        placements: &mut CutoutPlacements,
+        placing: &mut CutoutPlacing<'_>,
     ) -> Census {
         let frame = CutoutFrame {
             quads: &buffer.quads,
             repaint: scissors,
             viewport: buffer.display.physical,
         };
-        self.cutouts.build(frame, placements)
+        self.cutouts.build(frame, placing)
     }
 
-    /// Give back to `placements` every cutout cell this stream's plan holds, as its window closes.
-    pub(super) fn release_cutouts(&mut self, placements: &mut CutoutPlacements) {
-        self.cutouts.release_all(placements);
+    /// Give back through `placing` every cutout table this stream's plan holds, as its window
+    /// closes.
+    pub(super) fn release_cutouts(&mut self, placing: &mut CutoutPlacing<'_>) {
+        self.cutouts.release_all(placing);
     }
 
     pub(super) const fn cutouts(&self) -> &CutoutPlan {
@@ -193,13 +188,13 @@ impl RenderStream {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan};
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
     use crate::gpu::wgpu_backend::render_stream::RenderStream;
 
     impl RenderStream {
         /// Shade every shadow corner instead of baking tables: the visual suite's reference.
         pub(crate) fn disable_cutout_tables(&mut self) {
-            self.cutouts = CutoutPlan::new(CutoutMode::Shade);
+            self.cutouts = CutoutPlan::shading();
         }
 
         /// Whether a partial frame painted a damage canvas.
@@ -218,7 +213,6 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::render_owner_id::RenderOwners;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::wgpu_backend::render_stream::RenderStream;
@@ -231,8 +225,7 @@ mod tests {
     #[test]
     fn a_stream_keeps_the_canvases_of_its_last_two_classes() {
         let gpu = headless_test_gpu();
-        let mut stream =
-            RenderStream::detached(RenderOwners::default().reserve(), CutoutMode::Shade);
+        let mut stream = RenderStream::detached(RenderOwners::default().reserve());
         let (a, b, c) = (UVec2::new(64, 64), UVec2::new(128, 64), UVec2::new(64, 128));
         let mut ready = |size, format| {
             stream.ensure_canvas(&gpu, format, size);

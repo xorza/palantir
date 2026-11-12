@@ -325,19 +325,27 @@ until step 3, so its root expects `dead_code` outside tests, with that reason.
   12.3 µs, the pool's stamp and the repack a glyph, debug asserts on in that profile;
   `cache_churn/prepare` 61 → 20 µs. To run: the bench profile on every bench host, V3D first.
 
-### 4. Shadow cutout tables
+### 4. Shadow cutout tables — done but 4.5's A/B on the bench hosts
 
-- **4.1** `CutoutPlacements` allocates from the R8 list, a pin per plan that holds a key, released
-  keys unpinned and left to the clock. Delete its packer, the cell grid and the fixed texture.
-- **4.2** The table code is page (2) · x (11) · y (11) · side − 1 (8); `CutoutPlan::code`,
-  `cells` and `shadow.wgsl`'s `cutout_origin` and `cutout_side` follow. Test: the code of the
-  largest table at the farthest origin of a 2048 page is not `NONE`, and every field round-trips.
-- **4.3** The bake renders into each page that holds a table it bakes, `LoadOp::Load`, scissored
-  to its tables.
-- **4.4** Delete `CutoutMode::Shade`, `renders_atlas` and the probe. A test holds the
-  baked table to the exact integral within the stated tolerance, which states its new 1/510 term.
-- **4.5** Verify: `cargo visual` with the goldens rewritten on purpose, Pi and fanless shadow
-  frames A/B.
+- **4.1 — done.** `CutoutPlacements` allocates from the R8 list, a pin per plan that holds a key,
+  a released key unpinned, stamped and left to the clock; an eviction drops its entry through the
+  queue, or at the next acquire that finds its handle stale. Each entry holds the span of its table
+  baked, which replaced `HeldTables`: an evicted table's bake goes with it. Deleted: its packer,
+  the cell grid, the fixed texture.
+- **4.2 — done.** The table code is x (11) · y (11) · side − 1 (8) · page (2), low bits first;
+  `CutoutPlan::code` and `shadow.wgsl`'s `cutout_origin`, `cutout_side` and page follow, their
+  shifts substituted from Rust. A const assert holds that `NONE`, read as a table, runs past every
+  mask page.
+- **4.3 — done.** The bake renders a pass into each page that holds a table it bakes,
+  `LoadOp::Load`, each instance carrying its page's edge. No scissor: wgpu has no render area, so
+  a scissor would not narrow the load, and the draws cover only their spans already.
+- **4.4 — done.** `renders_atlas`, its probe and the device's choice of mode are gone;
+  `CutoutMode::Shade` stays as the plan's reference, which the visual suite holds the tables to
+  (`CutoutPlan::shading`, internals). A test holds two baked tables, the series and the
+  difference forms, to the integral within 3e-4 for the nodes and 0.6/255 for the 8-bit store,
+  D3D's float-to-UNORM rule as Dawn's tests apply it; measured on Apple 2.2e-3 against 2.65e-3.
+- **4.5 Verify.** The gate and `cargo visual` pass; one golden, `modal_dialog`, moved by one step
+  in 510 pixels and was rewritten. To run: Pi and fanless shadow frames A/B.
 
 ### 5. Backdrop results
 

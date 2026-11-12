@@ -50,7 +50,6 @@ disallowed-types = [
     { path = "wgpu::DownlevelFlags", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::DynamicOffset", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Error", reason = "wgpu belongs to crate::gpu" },
-    { path = "wgpu::ErrorFilter", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::ExperimentalFeatures", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Extent3d", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Features", reason = "wgpu belongs to crate::gpu" },

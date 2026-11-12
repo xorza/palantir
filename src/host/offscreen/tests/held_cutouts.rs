@@ -62,7 +62,7 @@ fn a_held_table_paints_what_a_fresh_bake_paints() {
         across.frame(held.as_target(), &mut |ui: &mut Ui| scene(ui, x));
     }
     assert_eq!(
-        across.device.backend().held_cutout_tables(),
+        across.device.backend().baked_cutout_tables(),
         2,
         "a table for each key the blocks' corners share"
     );

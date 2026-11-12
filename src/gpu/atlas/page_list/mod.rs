@@ -609,6 +609,11 @@ pub(crate) mod internals {
         pub(crate) fn last_use(&self, handle: AtlasHandle) -> Option<u64> {
             self.live(handle).map(|idx| self.entries[idx].last_use)
         }
+
+        /// The pins on `handle`'s item, `None` once it went.
+        pub(crate) fn pins(&self, handle: AtlasHandle) -> Option<u32> {
+            self.live(handle).map(|idx| self.entries[idx].pins)
+        }
     }
 }
 

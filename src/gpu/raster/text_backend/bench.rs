@@ -14,6 +14,7 @@ use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::page_group::PageGroup;
 use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
@@ -23,7 +24,7 @@ use crate::gpu::pipeline::clip_variant::Clipping;
 use crate::gpu::pipeline::instanced_pipeline::VariantTarget;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{
-    RasterGroup, RasterPipeline, RasterPipelinePair, RasterVariants,
+    RASTER_FORMATS, RasterPipeline, RasterPipelinePair, RasterVariants,
 };
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
@@ -190,10 +191,9 @@ struct Batch<'a> {
 struct Fixture {
     backend: TextBackend,
     pipelines: RasterVariants,
-    program: RasterPipeline,
     pool: AtlasPool,
     atlas: AtlasTextures,
-    group: RasterGroup,
+    group: PageGroup<2>,
     /// The display frames the pool ages on, one a frame.
     display_frame: u64,
     frame: FrameGroup,
@@ -223,11 +223,16 @@ impl Fixture {
             },
         );
         let atlas = AtlasTextures::new(&g.gpu);
-        let group = RasterGroup::new(&g.gpu, &program, &atlas);
+        let group = PageGroup::new(
+            &g.gpu,
+            program.layout(),
+            "palantir.raster.atlas",
+            RASTER_FORMATS,
+            &atlas,
+        );
         Self {
             backend: TextBackend::new(&g.gpu, shaper),
             pipelines,
-            program,
             pool: AtlasPool::with_configs(bench_configs(), g.gpu.max_texture_dim().get()),
             atlas,
             group,
@@ -276,7 +281,7 @@ impl Fixture {
                 );
             }
             self.atlas.commit(ctx.gpu, ctx.encoder, &self.pool);
-            self.group.follow(ctx.gpu, &self.program, &self.atlas);
+            self.group.follow(ctx.gpu, &self.atlas);
             self.backend.flush(&mut ctx, &self.atlas);
         }
         self.draw(&mut encoder, batches.len());

@@ -37,16 +37,25 @@ const CUTOUT_NODES: u32 = /*{CUTOUT_NODES}*/;
 // σ = 0.25–16 against radii 4–40), under the shaded form's 0.0011.
 const CUTOUT_TEXELS_PER_SIGMA: f32 = /*{CUTOUT_TEXELS_PER_SIGMA}*/;
 
-// Side of the cell a table's origin is a multiple of, from `CutoutPlan`.
-const CUTOUT_CELL: u32 = /*{CUTOUT_CELL}*/;
+// A table code's fields (`CutoutPlan::code`): its origin's `x` and `y` in
+// `CUTOUT_COORD_BITS` each, `side − 1` from `CUTOUT_SIDE_SHIFT`, the page
+// from `CUTOUT_PAGE_SHIFT`.
+const CUTOUT_COORD_BITS: u32 = /*{CUTOUT_COORD_BITS}*/;
+const CUTOUT_SIDE_SHIFT: u32 = /*{CUTOUT_SIDE_SHIFT}*/;
+const CUTOUT_PAGE_SHIFT: u32 = /*{CUTOUT_PAGE_SHIFT}*/;
 
 // A corner with no table: its cutout is shaded (`corner_cutout`).
 const NO_CUTOUT_TABLE: u32 = /*{NO_CUTOUT_TABLE}*/;
 
-// Baked corner cutouts, one square table per `(r, σ)`, read by
-// `textureLoad` and filtered by hand: `R32Float` is not filterable on
-// every backend. Bound to the shadow pipeline only.
-@group(1) @binding(0) var cutout_atlas: texture_2d<f32>;
+// Baked corner cutouts, one square table per `(r, σ)` in the pool's mask
+// pages, a closed page bound as a 1 × 1 stand-in. Read by `textureLoad`
+// and filtered by hand, as the table's texels are its nodes, and a branch
+// on a flat page picks the texture, as the raster shader picks its pages.
+// Bound to the shadow pipeline only.
+@group(1) @binding(0) var cutout_page0: texture_2d<f32>;
+@group(1) @binding(1) var cutout_page1: texture_2d<f32>;
+@group(1) @binding(2) var cutout_page2: texture_2d<f32>;
+@group(1) @binding(3) var cutout_page3: texture_2d<f32>;
 
 // Whether a shadow draws as its template, which leaves out where it paints
 // nothing, and takes the cheaper forms where the cutoff at `reach` makes
@@ -123,7 +132,7 @@ struct ShadowOut {
     @location(7) @interpolate(flat) source_half: vec2<f32>,
     @location(8) @interpolate(flat) source_radius: vec4<f32>,
     // The baked cutout tables, `(tl, tr, br, bl)` like `box_radius`: each
-    // the table's origin cell and side (`cutout_lookup`), or
+    // the table's code (`cutout_lookup`), or
     // `NO_CUTOUT_TABLE`.
     @location(9) @interpolate(flat) cutouts: vec4<u32>,
     // The box less `r + reach` on each side, `(lo.x, lo.y, hi.x, hi.y)`
@@ -458,15 +467,36 @@ fn corner_cutout(q: vec2<f32>, r: f32, sigma: f32, reach: f32, nodes: u32) -> f3
     return sum * step;
 }
 
-// A table code's first texel in the atlas: its origin cell times
-// `CUTOUT_CELL` (`CutoutPlan::code`).
+// A table code's first texel on its page (`CutoutPlan::code`).
 fn cutout_origin(table: u32) -> vec2<u32> {
-    return vec2<u32>(table & 63u, (table >> 6u) & 63u) * CUTOUT_CELL;
+    let mask = (1u << CUTOUT_COORD_BITS) - 1u;
+    return vec2<u32>(table & mask, (table >> CUTOUT_COORD_BITS) & mask);
 }
 
 // A table code's side in texels (`CutoutPlan::code`).
 fn cutout_side(table: u32) -> u32 {
-    return table >> 12u;
+    let mask = (1u << (CUTOUT_PAGE_SHIFT - CUTOUT_SIDE_SHIFT)) - 1u;
+    return ((table >> CUTOUT_SIDE_SHIFT) & mask) + 1u;
+}
+
+// The four texels from `at` to `at + (1, 1)` of mask page `page`, as
+// `(at, +x, +y, +xy)`.
+fn cutout_texels(page: u32, at: vec2<u32>) -> vec4<f32> {
+    switch page {
+        case 1u: { return cutout_quad(cutout_page1, at); }
+        case 2u: { return cutout_quad(cutout_page2, at); }
+        case 3u: { return cutout_quad(cutout_page3, at); }
+        default: { return cutout_quad(cutout_page0, at); }
+    }
+}
+
+fn cutout_quad(page: texture_2d<f32>, at: vec2<u32>) -> vec4<f32> {
+    return vec4<f32>(
+        textureLoad(page, at, 0).x,
+        textureLoad(page, at + vec2<u32>(1u, 0u), 0).x,
+        textureLoad(page, at + vec2<u32>(0u, 1u), 0).x,
+        textureLoad(page, at + vec2<u32>(1u, 1u), 0).x,
+    );
 }
 
 // The cutout at `q` from a baked table, filtered bilinearly: texel `i` of
@@ -480,12 +510,8 @@ fn cutout_lookup(table: u32, q: vec2<f32>, sigma: f32, reach: f32) -> f32 {
     }
     let i = vec2<u32>(t);
     let f = t - vec2<f32>(i);
-    let at = cutout_origin(table) + i;
-    let a = textureLoad(cutout_atlas, at, 0).x;
-    let b = textureLoad(cutout_atlas, at + vec2<u32>(1u, 0u), 0).x;
-    let c = textureLoad(cutout_atlas, at + vec2<u32>(0u, 1u), 0).x;
-    let d = textureLoad(cutout_atlas, at + vec2<u32>(1u, 1u), 0).x;
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    let t4 = cutout_texels(table >> CUTOUT_PAGE_SHIFT, cutout_origin(table) + i);
+    return mix(mix(t4.x, t4.y, f.x), mix(t4.z, t4.w, f.x), f.y);
 }
 
 // One corner's cutout, from its table when it has one.

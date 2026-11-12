@@ -7,7 +7,7 @@ use crate::effect::MAX_IMAGE_SLOTS;
 use crate::gpu::device::gpu::Gpu;
 
 /// How a shader reads a texture: through a filtering sampler, or texel by texel, which a format
-/// that no filter reads, as the cutouts' `R32Float`, needs.
+/// that no filter reads needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Filtering {
     Filtered,

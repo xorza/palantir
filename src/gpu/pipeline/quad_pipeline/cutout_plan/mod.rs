@@ -1,6 +1,6 @@
 //! Which shadow corners get a baked cutout table this frame, and where in the atlas each goes.
 //!
-//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shadow.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`, at the cells [`CutoutPlacements`] keeps for its key across frames and windows, and the atlas keeps what it baked, so a table a frame needs again is not baked again (`CutoutTables`).
+//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shadow.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake` into the pool's mask pages, where [`CutoutPlacements`](crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements) keeps it for its key across frames and windows with the texels baked, so a table a frame needs again is not baked again (`CutoutTables`).
 //!
 //! A key gets a table only when its corners' shown area costs more to shade ([`CutoutPlan::SHADED_NODES`] per pixel) than to bake ([`CutoutPlan::BAKED_NODES`] per texel, `(10 / σ)²` texels per pixel). A frame bakes only the texels its repainted pixels read ([`BakeTable`]).
 //!
@@ -8,7 +8,11 @@
 //!
 //! A shadow whose shown corners all read tables draws through the cheaper `fs_shadow_tables` ([`ShadowEntry`]), else `fs_shadow`.
 
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+use crate::gpu::atlas::LIST_CONFIGS;
+use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_handle::Placement;
+use crate::gpu::atlas::page_list::MAX_PAGES;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -35,6 +39,11 @@ pub(crate) struct BakeTable {
 }
 
 impl BakeTable {
+    /// The key whose table this is.
+    pub(crate) const fn key(self) -> CutoutKey {
+        CutoutKey::new(self.r, self.sigma)
+    }
+
     /// Whether `other` is the same table at the same place: its code, radius and σ alike.
     pub(crate) const fn is_at(self, other: Self) -> bool {
         self.table == other.table
@@ -54,11 +63,6 @@ impl BakeTable {
             hi: self.hi.max(other.hi),
             ..self
         }
-    }
-
-    /// Whether the atlas cells of the two tables meet.
-    pub(crate) fn overlaps(self, other: Self) -> bool {
-        CutoutPlan::cells(self.table).intersects(CutoutPlan::cells(other.table))
     }
 }
 
@@ -178,13 +182,14 @@ struct CensusShadow {
     uses: [KeyUse; 4],
 }
 
-/// How shadow corners get their cutout.
+/// How shadow corners get their cutout: every build bakes; the shaded reference exists only in
+/// the builds that test against it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CutoutMode {
-    /// From tables baked where they pay, at the placements of the backend's atlas; only where the
-    /// backend can render to it.
+    /// From tables baked where they pay, in the pool's mask pages.
     Bake,
-    /// Shaded per pixel, which is right on any device.
+    /// Shaded per pixel: the reference the visual suite holds the tables to.
+    #[cfg(feature = "internals")]
     Shade,
 }
 
@@ -228,17 +233,26 @@ pub(crate) struct CutoutPlan {
 impl CutoutPlan {
     pub(crate) const MIN_SIGMA: f32 = 0.25;
     pub(crate) const TEXELS_PER_SIGMA: f32 = 10.0;
-    pub(crate) const ATLAS_SIZE: u32 = 1024;
-    pub(crate) const CELL: u32 = 16;
+    /// A corner with no table; never a table's [`code`](Self::code).
     pub(crate) const NONE: u32 = u32::MAX;
+    /// Bits of each of a code's origin coordinates, which reach a page edge of `1 << 11`.
+    pub(crate) const COORD_BITS: u32 = 11;
+    /// Where a code's `side − 1` sits.
+    pub(crate) const SIDE_SHIFT: u32 = 2 * Self::COORD_BITS;
+    /// Where a code's page sits, past `side − 1`'s 8 bits.
+    pub(crate) const PAGE_SHIFT: u32 = Self::SIDE_SHIFT + 8;
     /// Midpoint nodes of the shaded cutout (`CUTOUT_NODES`).
     pub(crate) const SHADED_NODES: u32 = 12;
     pub(crate) const BAKED_NODES: u32 = 24;
     pub(crate) const SERIES_MIN_SIGMA: f32 = 4.0;
-    const MAX_SIDE: u32 = 256;
-    const CELLS: u32 = Self::ATLAS_SIZE / Self::CELL;
+    const MAX_SIDE: u32 = 1 << (Self::PAGE_SHIFT - Self::SIDE_SHIFT);
 
-    pub(crate) const fn new(mode: CutoutMode) -> Self {
+    /// A plan that bakes its tables where they pay.
+    pub(crate) const fn new() -> Self {
+        Self::with_mode(CutoutMode::Bake)
+    }
+
+    const fn with_mode(mode: CutoutMode) -> Self {
         Self {
             mode,
             census: Vec::new(),
@@ -257,11 +271,11 @@ impl CutoutPlan {
         }
     }
 
-    /// Plans the tables of `frame`, at cells of `placements`; the census supplies shadows a partial frame doesn't redraw. On [`Census::Stale`] the outputs are void.
+    /// Plans the tables of `frame`, placed through `placing`; the census supplies shadows a partial frame doesn't redraw. On [`Census::Stale`] the outputs are void.
     pub(crate) fn build(
         &mut self,
         frame: CutoutFrame<'_>,
-        placements: &mut CutoutPlacements,
+        placing: &mut CutoutPlacing<'_>,
     ) -> Census {
         let CutoutFrame {
             quads,
@@ -271,6 +285,7 @@ impl CutoutPlan {
         self.tables.clear();
         self.corners.clear();
         self.entries.clear();
+        #[cfg(feature = "internals")]
         if matches!(self.mode, CutoutMode::Shade) {
             if quads.key().contains(&QuadKey::Shadow) {
                 self.corners.resize(quads.len(), CornerTables::NONE);
@@ -310,7 +325,7 @@ impl CutoutPlan {
                 self.next.push(shadow);
             }
         }
-        self.decide(placements);
+        self.decide(placing);
         if partial.is_some() {
             let last = &self.last_tabled;
             let moved = self
@@ -329,7 +344,7 @@ impl CutoutPlan {
         }
         mem::swap(&mut self.census, &mut self.next);
         mem::swap(&mut self.tabled, &mut self.last_tabled);
-        self.release_untabled(placements);
+        self.release_untabled(placing);
         if !quads.key().contains(&QuadKey::Shadow) {
             return Census::Cur;
         }
@@ -396,7 +411,7 @@ impl CutoutPlan {
         Census::Cur
     }
 
-    fn decide(&mut self, placements: &mut CutoutPlacements) {
+    fn decide(&mut self, placing: &mut CutoutPlacing<'_>) {
         self.keys.clear();
         self.keys.extend(
             self.next
@@ -417,7 +432,7 @@ impl CutoutPlan {
             }
         }
         self.keys.truncate(merged);
-        self.place(placements);
+        self.place(placing);
         self.tabled.clear();
         self.tabled.extend(
             self.keys
@@ -440,20 +455,33 @@ impl CutoutPlan {
         &self.entries
     }
 
-    pub(crate) const fn code(cell: UVec2, side: u32) -> u32 {
-        cell.x | (cell.y << 6) | (side << 12)
+    /// The code of a table of `side` texels at `placement` in the mask pages, as `vs_shadow`
+    /// carries it: the origin's `x` and `y` in [`Self::COORD_BITS`] each, then `side − 1`, then
+    /// the page.
+    pub(crate) fn code(placement: Placement, side: u32) -> u32 {
+        let origin = placement.origin.as_uvec2();
+        debug_assert!(
+            origin.max_element() < 1 << Self::COORD_BITS,
+            "a table at {origin} past the code's coordinates"
+        );
+        debug_assert!(
+            (1..=Self::MAX_SIDE).contains(&side),
+            "a table of side {side}"
+        );
+        debug_assert!(
+            usize::from(placement.page) < MAX_PAGES,
+            "a table on page {}",
+            placement.page
+        );
+        origin.x
+            | (origin.y << Self::COORD_BITS)
+            | ((side - 1) << Self::SIDE_SHIFT)
+            | (u32::from(placement.page) << Self::PAGE_SHIFT)
     }
 
-    /// The side in texels of a table [`code`](Self::code).
-    pub(super) const fn table_side(table: u32) -> u32 {
-        table >> 12
-    }
-
-    /// The atlas cells a table [`code`](Self::code) covers.
-    pub(super) fn cells(table: u32) -> URect {
-        let side = Self::table_side(table).div_ceil(Self::CELL);
-        let min = UVec2::new(table & 63, (table >> 6) & 63);
-        URect::from_min_max(min, min + UVec2::splat(side))
+    /// The page a table [`code`](Self::code) sits on.
+    pub(crate) const fn table_page(table: u32) -> usize {
+        (table >> Self::PAGE_SHIFT) as usize
     }
 
     /// A table's side for `(r, σ)`: a texel per `σ / TEXELS_PER_SIGMA` across the cutout square widened by `reach`, plus one for bilinear.
@@ -473,10 +501,10 @@ impl CutoutPlan {
             && used.area * Self::SHADED_NODES as f32 > (side * side * Self::BAKED_NODES) as f32
     }
 
-    /// The paying tables' cells in the shared atlas, tallest first, as a shelf fills best: a key
+    /// The paying tables' places in the mask pages, tallest first, as a shelf fills best: a key
     /// this plan holds keeps its placement, a new one takes a use of its key's. A key that does not
     /// pay or find room keeps [`Self::NONE`].
-    fn place(&mut self, placements: &mut CutoutPlacements) {
+    fn place(&mut self, placing: &mut CutoutPlacing<'_>) {
         debug_assert_eq!(
             self.mode,
             CutoutMode::Bake,
@@ -495,8 +523,8 @@ impl CutoutPlan {
         for &at in &self.order {
             let key = self.keys[at as usize].key;
             let code = match self.held.binary_search(&key) {
-                Ok(_) => placements.code(key),
-                Err(slot) => match placements.acquire(key, Self::side(key)) {
+                Ok(_) => placing.code(key),
+                Err(slot) => match placing.acquire(key, Self::side(key)) {
                     Some(code) => {
                         self.held.insert(slot, key);
                         code
@@ -508,22 +536,22 @@ impl CutoutPlan {
         }
     }
 
-    /// Give back to `placements` every key this plan holds, as the window whose frames it planned
-    /// closes on the device that holds them.
-    pub(crate) fn release_all(&mut self, placements: &mut CutoutPlacements) {
+    /// Give back through `placing` every key this plan holds, as the window whose frames it
+    /// planned closes on the device that holds them.
+    pub(crate) fn release_all(&mut self, placing: &mut CutoutPlacing<'_>) {
         for key in self.held.drain(..) {
-            placements.release(key);
+            placing.release(key);
         }
     }
 
-    /// Give back to `placements` the keys this plan holds and its committed frame no longer
+    /// Give back through `placing` the keys this plan holds and its committed frame no longer
     /// tables.
-    fn release_untabled(&mut self, placements: &mut CutoutPlacements) {
+    fn release_untabled(&mut self, placing: &mut CutoutPlacing<'_>) {
         let tabled = &self.last_tabled;
         self.held.retain(|&key| {
             let keep = tabled.binary_search(&key).is_ok();
             if !keep {
-                placements.release(key);
+                placing.release(key);
             }
             keep
         });
@@ -629,10 +657,22 @@ impl ShadowBox {
 }
 
 const _: () = {
-    assert!(CutoutPlan::CELLS <= 1 << 6);
-    assert!(CutoutPlan::MAX_SIDE < 1 << 20);
-    assert!(CutoutPlan::MAX_SIDE <= u16::MAX as u32);
-    assert!(CutoutPlan::code(UVec2::new(63, 63), CutoutPlan::MAX_SIDE) != CutoutPlan::NONE);
+    let edge = LIST_CONFIGS[AtlasFormat::R8 as usize].page_edge;
+    assert!(
+        edge <= 1 << CutoutPlan::COORD_BITS,
+        "a mask page's origins fit a code"
+    );
+    assert!(
+        CutoutPlan::MAX_SIDE <= edge,
+        "a mask page holds the largest table"
+    );
+    assert!(
+        MAX_PAGES == 1 << (u32::BITS - CutoutPlan::PAGE_SHIFT),
+        "a code's page bits name every page"
+    );
+    // `NONE` reads as a table of the largest side at the last origin a coordinate holds, which
+    // runs past every mask page's edge, so no placed table's code is all ones.
+    assert!((1 << CutoutPlan::COORD_BITS) - 1 + CutoutPlan::MAX_SIDE > edge);
 };
 
 #[expect(
@@ -655,6 +695,34 @@ fn spread_radius(r: [f32; 4], s: f32) -> [f32; 4] {
             r + s * (1.0 + t * t * t)
         }
     })
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan};
+
+    #[cfg(test)]
+    use glam::UVec2;
+
+    impl CutoutPlan {
+        /// A plan that shades every corner: the reference the visual suite holds the tables to.
+        pub(crate) const fn shading() -> Self {
+            Self::with_mode(CutoutMode::Shade)
+        }
+
+        /// The first texel of a table [`code`](Self::code) on its page.
+        #[cfg(test)]
+        pub(crate) const fn table_origin(table: u32) -> UVec2 {
+            let mask = (1 << Self::COORD_BITS) - 1;
+            UVec2::new(table & mask, (table >> Self::COORD_BITS) & mask)
+        }
+
+        /// The side in texels of a table [`code`](Self::code).
+        #[cfg(test)]
+        pub(crate) const fn table_side(table: u32) -> u32 {
+            ((table >> Self::SIDE_SHIFT) & (Self::MAX_SIDE - 1)) + 1
+        }
+    }
 }
 
 #[cfg(test)]

@@ -62,7 +62,6 @@ mod tests {
     use crate::damage::Damage;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::frame::submission::Route;
-    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -166,16 +165,13 @@ mod tests {
         assert!(!core.device.will_submit(&built), "the device is lost");
     }
 
-    /// A closing window gives back to the backend the cutout cells its plan holds, and only its own:
+    /// A closing window gives back to the backend the cutout tables its plan holds, and only its own:
     /// two windows each plan a 400 × 300 shadow, radius 8 and blur 16, which pays for a table, so
     /// each holds a use of the one key; once the first closes, the second's use alone is left.
     #[test]
-    fn a_closing_window_gives_back_its_cutout_cells() {
+    fn a_closing_window_gives_back_its_cutout_tables() {
         let gpu = headless_test_gpu();
         let mut core = HostCore::new(gpu.handles(), &OPTIONS, TextShaper::test_mono());
-        if core.device.backend().cutout_mode() == CutoutMode::Shade {
-            return;
-        }
         let size = UVec2::splat(512);
         let spec = FrameSpec::at_rest(TargetKey {
             physical: size,
@@ -206,7 +202,7 @@ mod tests {
         for window in &mut windows {
             let _ = core.device.frame(&mut core.cpu, window, spec, &mut app);
         }
-        let uses = |core: &mut HostCore| core.device.backend_mut().cutout_placements_mut().uses();
+        let uses = |core: &mut HostCore| core.device.backend_mut().cutout_placing().uses();
         assert_eq!(uses(&mut core), 2, "a use of the one key a window");
         let [first, _second] = windows;
         core.device.close(first);

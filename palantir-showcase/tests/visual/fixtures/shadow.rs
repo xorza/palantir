@@ -615,7 +615,8 @@ fn cutout_grid(ui: &mut Ui) {
 }
 
 /// Baked cutout tables match the shaded cutout to one 8-bit level per
-/// channel (tables err under 6e-4 coverage, the shaded form 0.0011). Some
+/// channel (tables err under 6e-4 coverage between texels and their 8-bit
+/// store half a step at them, the shaded form 0.0011). Some
 /// pixel does round apart, proving the tables are in use. Likewise for the
 /// two shadows past the viewport's edge.
 #[test]

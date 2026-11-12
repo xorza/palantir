@@ -12,7 +12,7 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::system_scale::SystemScale;
 use crate::gpu::frame::submission::{self, FrameOverlay, Route, Submission};
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacing;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::Census;
 use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
@@ -142,11 +142,11 @@ impl Fitted {
 }
 
 /// What a frame that paints builds with, past its record: the frontend every window composes
-/// through, and the backend's placements its shadow cutouts plan at cells of.
+/// through, and the backend's placements its shadow cutouts plan in.
 #[derive(Debug)]
 pub(crate) struct BuildCtx<'f, 'p> {
     pub(crate) frontend: &'f mut Frontend,
-    pub(crate) placements: &'p mut CutoutPlacements,
+    pub(crate) placing: CutoutPlacing<'p>,
 }
 
 /// The CPU half's result: the report, and what the GPU half does.
@@ -408,7 +408,7 @@ impl WindowFrames {
         // one refusal after a build, as the census reads what the frame draws.
         let census = self
             .stream
-            .plan_cutouts(&ctx.frontend.buffer, &scissors, ctx.placements);
+            .plan_cutouts(&ctx.frontend.buffer, &scissors, &mut ctx.placing);
         if census != Census::Cur {
             return Err(Escalation::ByStrategy);
         }
@@ -426,9 +426,11 @@ impl WindowFrames {
             "a whole frame has no scissors to fit"
         );
         self.build(ctx.frontend, plan);
-        let census =
-            self.stream
-                .plan_cutouts(&ctx.frontend.buffer, &RepaintScissors::Full, ctx.placements);
+        let census = self.stream.plan_cutouts(
+            &ctx.frontend.buffer,
+            &RepaintScissors::Full,
+            &mut ctx.placing,
+        );
         debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
     }
 

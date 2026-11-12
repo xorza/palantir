@@ -1,8 +1,11 @@
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_handle::Placement;
+use crate::gpu::atlas::page_list::PageListConfig;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
-use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+use crate::gpu::pipeline::quad_pipeline::cutout_placements::{CutoutPlacements, CutoutPlacing};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, Census, CornerTables, CutoutFrame, CutoutKey, CutoutMode, CutoutPlan, ShadowBox,
-    ShadowEntry, spread_radius,
+    BakeTable, Census, CornerTables, CutoutFrame, CutoutKey, CutoutPlan, ShadowBox, ShadowEntry,
+    spread_radius,
 };
 use crate::primitives::geometry::corners::{self, Corners};
 use crate::primitives::geometry::rect::Rect;
@@ -61,11 +64,38 @@ fn fill() -> QuadDrawRow {
 /// A viewport larger than any fixture here, so it hides nothing.
 const WIDE: UVec2 = UVec2::new(8192, 8192);
 
-/// One window's plan, baking, over a backend's placements of its own.
+/// The largest texture edge of the device a plan here places for.
+const DEVICE_EDGE: u32 = 16384;
+
+/// The code of a table of `side` texels at `(x, y)` of mask page `page`.
+fn code_at(page: u8, x: u16, y: u16, side: u32) -> u32 {
+    CutoutPlan::code(
+        Placement {
+            page,
+            origin: U16Vec2::new(x, y),
+            size: U16Vec2::splat(side as u16),
+        },
+        side,
+    )
+}
+
+/// A pool whose mask list holds four pages of 256², none past its soft budget, so it opens a
+/// page only once nothing on the others is evictable.
+fn small_pool() -> AtlasPool {
+    let config = PageListConfig {
+        first_edge: 256,
+        page_edge: 256,
+        soft_bytes: 0,
+    };
+    AtlasPool::with_configs([config; 3], DEVICE_EDGE)
+}
+
+/// One window's plan, baking, over a backend's placements and pool of its own.
 #[derive(Debug)]
 struct Planner {
     plan: CutoutPlan,
     placements: CutoutPlacements,
+    pool: AtlasPool,
 }
 
 impl Planner {
@@ -89,7 +119,11 @@ impl Planner {
             repaint,
             viewport,
         };
-        self.plan.build(frame, &mut self.placements)
+        let mut placing = CutoutPlacing {
+            placements: &mut self.placements,
+            pool: &mut self.pool,
+        };
+        self.plan.build(frame, &mut placing)
     }
 
     fn tables(&self) -> &[BakeTable] {
@@ -112,9 +146,15 @@ fn plan_in(quads: &[ShadowInstance], viewport: UVec2) -> Planner {
 
 /// The rows `quads` planned as a full repaint of a `viewport`, with baking on.
 fn plan_rows(quads: &Soa<QuadDrawRow>, viewport: UVec2) -> Planner {
+    plan_rows_over(quads, viewport, AtlasPool::new(DEVICE_EDGE))
+}
+
+/// [`plan_rows`] over `pool`.
+fn plan_rows_over(quads: &Soa<QuadDrawRow>, viewport: UVec2, pool: AtlasPool) -> Planner {
     let mut plan = Planner {
-        plan: CutoutPlan::new(CutoutMode::Bake),
+        plan: CutoutPlan::new(),
         placements: CutoutPlacements::default(),
+        pool,
     };
     let census = plan.build_rows(quads, &RepaintScissors::Full, viewport);
     assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
@@ -131,15 +171,15 @@ fn full(plan: &mut Planner, quads: &[ShadowInstance], viewport: UVec2) {
     assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
 }
 
-/// `plan` rebuilt over the shared `placements` as a full repaint of [`WIDE`], as one of several
+/// `plan` rebuilt over the shared `placing` as a full repaint of [`WIDE`], as one of several
 /// windows on one backend.
-fn full_over(plan: &mut CutoutPlan, placements: &mut CutoutPlacements, quads: &[ShadowInstance]) {
+fn full_over(plan: &mut CutoutPlan, placing: &mut CutoutPlacing<'_>, quads: &[ShadowInstance]) {
     let frame = CutoutFrame {
         quads: &stream(quads),
         repaint: &RepaintScissors::Full,
         viewport: WIDE,
     };
-    assert_eq!(plan.build(frame, placements), Census::Cur);
+    assert_eq!(plan.build(frame, placing), Census::Cur);
 }
 
 /// `n` drop shadows 100 px square, radius 8, σ = 2, 120 px apart from `x`.
@@ -333,7 +373,7 @@ fn equal_corners_share_one_table() {
     ]);
     quads.insert(1, fill());
     let plan = plan_rows(&quads, WIDE);
-    let code = CutoutPlan::code(UVec2::ZERO, 87);
+    let code = code_at(0, 0, 0, 87);
     assert_eq!(
         plan.tables(),
         [BakeTable {
@@ -414,14 +454,17 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
         assert_eq!(plan.corners(), [none], "{label}");
         assert_eq!(plan.entries(), [entry], "{label}");
     }
-    let mut off = CutoutPlan::new(CutoutMode::Shade);
+    let mut off = CutoutPlan::shading();
     let census = off.build(
         CutoutFrame {
             quads: &stream(&[drop_shadow(Size::new(400.0, 300.0), 8.0, 16.0)]),
             repaint: &RepaintScissors::Full,
             viewport: WIDE,
         },
-        &mut CutoutPlacements::default(),
+        &mut CutoutPlacing {
+            placements: &mut CutoutPlacements::default(),
+            pool: &mut AtlasPool::new(DEVICE_EDGE),
+        },
     );
     assert_eq!(census, Census::Cur);
     assert!(off.tables().is_empty());
@@ -432,121 +475,123 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
     assert!(no_shadow.entries().is_empty(), "no shadow");
 }
 
-/// Tables pack tallest first along a shelf of cells, start a new shelf when a
-/// row is full, and stop when the atlas is; what is left keeps the shaded
-/// cutout. At σ = 16 a radius from 8 to 14.25 makes 87 to 91 texels, 6 cells
-/// of 16 either way, so a 64-cell row holds 10 tables. 100 keys fill 10
-/// shelves of 10, and the last in packing order is left out: the smallest
-/// side, 87 texels, holds radii below `137.6 − 129 = 8.6`, and among those
-/// ties the packer goes by key, so the largest, 8.5625, is last. Tables list
-/// in key order, so cells are compared as a set.
+/// Tables take the mask pages until the pool holds no more, and what is left keeps the shaded
+/// cutout. At σ = 16 a radius from 7 to 8.5 makes an 87-texel table, `floor((r + 129) · 10 /
+/// 16) + 2`, so 25 keys 1/16 apart share one side and pack by key. A 256² page opens shelves 88
+/// high, rounded to four texels: two shelves, at rows 0 and 88, the third left 80 rows; each
+/// holds two tables, at columns 0 and 87, the third past 256. Four tables a page, four pages
+/// pinned whole, so keys 0 to 15 land in key order, page by page, and the 9 past them, 16 to 24,
+/// keep the shaded cutout. Tables list in key order.
 #[test]
-fn tables_pack_into_shelves_until_the_atlas_is_full() {
-    // Radii 1/16 apart, which `f16` holds exactly between 8 and 16.
-    let quads: Vec<ShadowInstance> = (0..101)
-        .map(|k| drop_shadow(Size::new(400.0, 300.0), 8.0 + k as f32 / 16.0, 16.0))
+fn tables_take_the_pages_until_the_pool_is_full() {
+    // Radii 1/16 apart, which `f16` holds exactly between 4 and 8.
+    let quads: Vec<ShadowInstance> = (0..25)
+        .map(|k| drop_shadow(Size::new(400.0, 300.0), 7.0 + k as f32 / 16.0, 16.0))
         .collect();
-    let plan = plan(&quads);
-    assert_eq!(plan.tables().len(), 100);
-    let mut cells: Vec<[u32; 2]> = plan
-        .tables()
-        .iter()
-        .map(|table| [table.table & 63, (table.table >> 6) & 63])
+    let plan = plan_rows_over(&stream(&quads), WIDE, small_pool());
+    let slots = [(0, 0), (87, 0), (0, 88), (87, 88)];
+    let placed: Vec<u32> = (0..16)
+        .map(|k: usize| {
+            let (x, y) = slots[k % 4];
+            code_at((k / 4) as u8, x, y, 87)
+        })
         .collect();
-    cells.sort_unstable();
-    let mut want: Vec<[u32; 2]> = (0..10)
-        .flat_map(|y| (0..10).map(move |x| [x * 6, y * 6]))
-        .collect();
-    want.sort_unstable();
-    assert_eq!(cells, want);
-    let unplaced = plan
-        .corners()
-        .iter()
-        .filter(|corners| **corners == CornerTables([CutoutPlan::NONE; 4]))
-        .count();
-    assert_eq!(unplaced, 1, "the one key past the atlas");
     assert_eq!(
-        plan.corners()[9],
-        CornerTables([CutoutPlan::NONE; 4]),
-        "radius 8.5625, packed last"
+        plan.tables()
+            .iter()
+            .map(|table| table.table)
+            .collect::<Vec<_>>(),
+        placed
     );
+    for (k, corners) in plan.corners().iter().enumerate() {
+        let want = placed.get(k).copied().unwrap_or(CutoutPlan::NONE);
+        assert_eq!(*corners, CornerTables([want; 4]), "key {k}");
+    }
 }
 
-/// A table keeps its cells while its key is in use, across frames and across windows sharing
-/// the atlas. At σ = 16 radius 8 makes an 87-texel table and radius 14 a 97-texel one, which
-/// sorts first. Planned alone, radius 8 takes the origin; a later frame that adds radius 14 leaves
-/// it there, where a fresh pack would have moved it behind the taller table. A second window with
-/// radius 11 lands beside both, and the first window's next frame finds its tables where they
-/// were. Once the first window closes, it gives back each key it held, and its keys keep their
-/// cells for the next window to use.
+/// A table keeps its place while its key is in use, across frames and across windows sharing
+/// the pool. At σ = 16 a side is `floor((r + 129) · 10 / 16) + 2`: radius 8 makes an 87-texel
+/// table, 14 a 91-texel one and 11 an 89-texel one. Planned alone, radius 8 takes the origin of
+/// the first page; a later frame that adds radius 14 leaves it there, and 14 opens the shelf
+/// below, 92 rows from row 88. A second window
+/// with radius 11 lands beside 14 on that shelf, which takes it within a quarter of its height,
+/// and the first window's next frame finds its tables where they were. Once the first window
+/// closes, it gives back each key it held, and its keys keep their places for the next window to
+/// use.
 #[test]
-fn a_table_keeps_its_cells_across_frames_and_windows() {
+fn a_table_keeps_its_place_across_frames_and_windows() {
     let shadow = |r: f32| drop_shadow(Size::new(400.0, 300.0), r, 16.0);
     let mut placements = CutoutPlacements::default();
-    let mut first = CutoutPlan::new(CutoutMode::Bake);
+    let mut pool = AtlasPool::new(DEVICE_EDGE);
+    let mut placing = CutoutPlacing {
+        placements: &mut placements,
+        pool: &mut pool,
+    };
+    let mut first = CutoutPlan::new();
     let code = |plan: &CutoutPlan, at: usize| plan.corners()[at].0[0];
-    full_over(&mut first, &mut placements, &[shadow(8.0)]);
+    full_over(&mut first, &mut placing, &[shadow(8.0)]);
     let small = code(&first, 0);
-    assert_eq!(small, CutoutPlan::code(UVec2::ZERO, 87));
+    assert_eq!(small, code_at(0, 0, 0, 87));
 
-    full_over(&mut first, &mut placements, &[shadow(8.0), shadow(14.0)]);
+    full_over(&mut first, &mut placing, &[shadow(8.0), shadow(14.0)]);
     assert_eq!(code(&first, 0), small, "the taller key moves no table");
     let tall = code(&first, 1);
-    assert_ne!(tall, CutoutPlan::NONE);
+    assert_eq!(tall, code_at(0, 0, 88, 91));
 
-    let mut second = CutoutPlan::new(CutoutMode::Bake);
-    full_over(&mut second, &mut placements, &[shadow(11.0)]);
+    let mut second = CutoutPlan::new();
+    full_over(&mut second, &mut placing, &[shadow(11.0)]);
     let other = code(&second, 0);
-    assert!(
-        [small, tall]
-            .iter()
-            .all(|&held| !CutoutPlan::cells(held).intersects(CutoutPlan::cells(other))),
-        "the second window's table takes cells of its own"
-    );
-    full_over(&mut first, &mut placements, &[shadow(8.0), shadow(14.0)]);
+    assert_eq!(other, code_at(0, 91, 88, 89), "a place of its own");
+    full_over(&mut first, &mut placing, &[shadow(8.0), shadow(14.0)]);
     assert_eq!([code(&first, 0), code(&first, 1)], [small, tall]);
 
     let [r8, r14] = [8.0, 14.0].map(|r| CutoutKey::new(r, 16.0));
-    assert_eq!([placements.users(r8), placements.users(r14)], [1, 1]);
-    first.release_all(&mut placements);
+    assert_eq!([placing.users(r8), placing.users(r14)], [1, 1]);
+    first.release_all(&mut placing);
     assert_eq!(
-        [placements.users(r8), placements.users(r14)],
+        [placing.users(r8), placing.users(r14)],
         [0, 0],
         "a closing window gives back each key it held"
     );
-    full_over(&mut second, &mut placements, &[shadow(11.0), shadow(8.0)]);
-    assert_eq!(placements.users(r8), 1, "the second window's use alone");
+    full_over(&mut second, &mut placing, &[shadow(11.0), shadow(8.0)]);
+    assert_eq!(placing.users(r8), 1, "the second window's use alone");
     assert_eq!(
         [code(&second, 0), code(&second, 1)],
         [other, small],
-        "a closed window's key keeps its cells"
+        "a closed window's key keeps its place"
     );
 }
 
-/// A table too tall for what the atlas has left does not stop a shorter one after it. At σ = 16
-/// a side is `(r + 2 · (4 · 16 + 0.5)) · 10 / 16 + 2` texels: radii 130 to 136.25 make 163 to
-/// 167, 11 cells each, so a 64-cell row holds 5 and 5 shelves take 25, up to row 55. The 26th
-/// needs rows 55 to 66 and is left out; radius 8 makes 87 texels, 6 cells, and lands on row 55.
-/// The quads are 1000 px square, so no radius is fitted down to the box `4σ` inside them.
+/// A table too tall for what the pool has left does not stop a shorter one after it. At σ = 16 a
+/// side is `floor((r + 129) · 10 / 16) + 2` texels: radius 130 makes 163 and 130.25 to 131 make
+/// 164, all on shelves 164 high, so a 256² page takes one, its shelf too narrow for a second, and
+/// 92 rows left below. The four 164s go first and take the four pages; the 163 finds none and is
+/// left out; radius 8 makes 87 texels, on a shelf 88 high, and lands on the first page's open
+/// rows at 164. The quads are 1000
+/// px square, so no radius is fitted down to the box `4σ` inside them.
 #[test]
-fn a_shorter_table_fills_the_shelf_a_taller_one_missed() {
-    let mut quads: Vec<ShadowInstance> = (0..26)
+fn a_shorter_table_takes_the_room_a_taller_one_missed() {
+    let mut quads: Vec<ShadowInstance> = (0..5)
         .map(|k| drop_shadow(Size::new(1000.0, 1000.0), 130.0 + k as f32 / 4.0, 16.0))
         .collect();
     quads.push(drop_shadow(Size::new(1000.0, 1000.0), 8.0, 16.0));
-    let plan = plan(&quads);
-    let unplaced = plan
-        .corners()
-        .iter()
-        .filter(|corners| **corners == CornerTables([CutoutPlan::NONE; 4]))
-        .count();
-    assert_eq!(unplaced, 1, "one tall table past the atlas");
-    let short = plan.corners()[26].0[0];
-    assert_ne!(short, CutoutPlan::NONE, "the short table is placed");
+    let plan = plan_rows_over(&stream(&quads), WIDE, small_pool());
+    let tall: Vec<u32> = plan.corners()[..5].iter().map(|c| c.0[0]).collect();
     assert_eq!(
-        [short & 63, (short >> 6) & 63],
-        [0, 55],
-        "on the open shelf"
+        tall,
+        [
+            CutoutPlan::NONE,
+            code_at(0, 0, 0, 164),
+            code_at(1, 0, 0, 164),
+            code_at(2, 0, 0, 164),
+            code_at(3, 0, 0, 164),
+        ],
+        "one tall table a page, the last placed past the pool"
+    );
+    assert_eq!(
+        plan.corners()[5].0[0],
+        code_at(0, 0, 164, 87),
+        "the short table on the open rows"
     );
 }
 
@@ -688,7 +733,7 @@ fn a_repaint_past_a_corners_region_bakes_what_it_reads() {
     let mut quad = inset_shadow(Size::new(200.0, 200.0), 7.25, 16.0);
     quad.geometry = F16x4::from_lanes([100.0, 0.0, 16.0, 0.0]);
     let mut plan = plan(&[quad]);
-    let code = CutoutPlan::code(UVec2::ZERO, 87);
+    let code = code_at(0, 0, 0, 87);
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
     let band = RepaintScissors::partial(&[URect::new(0, 0, 35, 72)]);
     assert_eq!(plan.build(&[quad], &band, WIDE), Census::Cur);

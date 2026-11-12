@@ -12,7 +12,7 @@ use glam::UVec2;
 /// The texture format of `format`'s pages: color pages are linear, the raster shader decoding
 /// their sRGB, so a move copies their bytes exactly on every backend
 /// (`.notes/proposals/atlas-pool.md`, D3).
-const fn texture_format(format: AtlasFormat) -> wgpu::TextureFormat {
+pub(crate) const fn texture_format(format: AtlasFormat) -> wgpu::TextureFormat {
     match format {
         AtlasFormat::R8 => wgpu::TextureFormat::R8Unorm,
         AtlasFormat::Rgba8 => wgpu::TextureFormat::Rgba8Unorm,
