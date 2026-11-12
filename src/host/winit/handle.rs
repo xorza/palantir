@@ -45,6 +45,8 @@ pub(crate) enum UserEvent<T> {
     LoseDevice(WindowToken, LoseTask),
     /// The system's settings moved, as one of their sources reports from its thread.
     System(SystemReport),
+    /// The system warns of low memory, as its watch reports from its thread.
+    MemoryPressure,
     /// Asks the event loop to exit.
     Quit,
 }
@@ -66,6 +68,7 @@ impl<T> fmt::Debug for UserEvent<T> {
                 .field(token)
                 .finish_non_exhaustive(),
             Self::System(report) => f.debug_tuple("System").field(report).finish(),
+            Self::MemoryPressure => f.write_str("MemoryPressure"),
             Self::Quit => f.write_str("Quit"),
         }
     }

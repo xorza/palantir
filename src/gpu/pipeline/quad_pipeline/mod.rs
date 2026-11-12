@@ -412,6 +412,11 @@ impl QuadPipeline {
         self.cutouts.prepare(ctx, cutouts, atlas);
     }
 
+    /// Make the cutout tables' group follow `atlas`, outside a frame's upload.
+    pub(crate) fn follow_cutouts(&mut self, gpu: &Gpu, atlas: &AtlasTextures) {
+        self.cutouts.follow(gpu, atlas);
+    }
+
     /// Drop the cutout tables `pool` evicted this submit.
     pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) {
         self.cutouts.end_frame(pool);

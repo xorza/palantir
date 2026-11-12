@@ -6,13 +6,20 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use windows::Win32::Foundation::{
-    ERROR_CLASS_ALREADY_EXISTS, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
+    CloseHandle, ERROR_CLASS_ALREADY_EXISTS, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, WAIT_EVENT,
+    WAIT_OBJECT_0, WAIT_TIMEOUT, WPARAM,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Memory::{
+    CreateMemoryResourceNotification, LowMemoryResourceNotification,
+};
 use windows::Win32::System::Power::{
     POWERBROADCAST_SETTING, RegisterPowerSettingNotification, UnregisterPowerSettingNotification,
 };
 use windows::Win32::System::SystemServices::GUID_POWER_SAVING_STATUS;
+use windows::Win32::System::Threading::{
+    CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects, WaitForSingleObject,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DEVICE_NOTIFY_WINDOW_HANDLE, DefWindowProcW, DestroyWindow, DispatchMessageW,
     GetMessageW, HWND_MESSAGE, MSG, PBT_POWERSETTINGCHANGE, PostMessageW, RegisterClassW,
@@ -362,6 +369,110 @@ unsafe extern "system" fn window_proc(
     }
     // SAFETY: the arguments are the procedure's own.
     unsafe { DefWindowProcW(window, message, wparam, lparam) }
+}
+
+/// How long the memory watch waits after a warning before it waits on the condition again: the
+/// low-memory notification stays signaled while memory stays low, so each wait would return at
+/// once, and a purge a frame would starve the app it means to save. One every ten seconds while
+/// the system stays low.
+const MEMORY_WARNING_COOLDOWN: Duration = Duration::from_secs(10);
+
+/// Follows the system's memory pressure through `CreateMemoryResourceNotification`'s low-memory
+/// notification, which Windows signals while available memory is low
+/// (<https://learn.microsoft.com/windows/win32/api/memoryapi/nf-memoryapi-creatememoryresourcenotification>),
+/// on a thread of its own that waits on it and on a stop event, which the watch's drop sets and
+/// then joins the thread.
+#[derive(Debug)]
+pub(super) struct MemoryPressureWatch {
+    stop: Option<OwnedHandle>,
+    /// The waiting thread; `None` where it did not start, which reports nothing.
+    thread: Option<JoinHandle<()>>,
+}
+
+/// A kernel handle the watch owns and closes on drop.
+#[derive(Debug)]
+struct OwnedHandle(HANDLE);
+
+// SAFETY: a kernel handle names its object to every thread of the process; the waits and the
+// close Windows allows from any thread.
+unsafe impl Send for OwnedHandle {}
+
+impl Drop for OwnedHandle {
+    fn drop(&mut self) {
+        // SAFETY: the handle is open and owned here alone.
+        unsafe { CloseHandle(self.0) }.ok();
+    }
+}
+
+/// The watch's stop event as its thread waits on it, which the watch owns and closes only after
+/// the thread ends.
+#[derive(Clone, Copy, Debug)]
+struct StopEvent(HANDLE);
+
+// SAFETY: as for `OwnedHandle`; the watch joins the thread before it closes the event.
+unsafe impl Send for StopEvent {}
+
+impl MemoryPressureWatch {
+    /// Follow the pressure: `on_warning` runs on the watch's thread each time the notification is
+    /// signaled, at most once a [`MEMORY_WARNING_COOLDOWN`].
+    pub(super) fn follow(on_warning: impl Fn() + Send + Sync + 'static) -> Self {
+        // SAFETY: both calls take no pointer but the null name, and return owned handles.
+        let handles = unsafe {
+            CreateMemoryResourceNotification(LowMemoryResourceNotification).and_then(|low| {
+                let low = OwnedHandle(low);
+                CreateEventW(None, true, false, PCWSTR::null()).map(|stop| (low, OwnedHandle(stop)))
+            })
+        };
+        let (low, stop) = match handles {
+            Ok(handles) => handles,
+            Err(error) => {
+                tracing::debug!(%error, "memory pressure is not followed");
+                return Self {
+                    stop: None,
+                    thread: None,
+                };
+            }
+        };
+        let waits = StopEvent(stop.0);
+        let thread = thread::Builder::new()
+            .name("palantir-memory-pressure".to_owned())
+            .spawn(move || {
+                let stop = waits;
+                let cooldown =
+                    u32::try_from(MEMORY_WARNING_COOLDOWN.as_millis()).expect("ten seconds in ms");
+                loop {
+                    // SAFETY: both handles stay open while the thread runs: the watch's drop joins
+                    // it before it closes the stop event, and the thread owns the notification.
+                    let woke = unsafe { WaitForMultipleObjects(&[stop.0, low.0], false, INFINITE) };
+                    if woke != WAIT_EVENT(WAIT_OBJECT_0.0 + 1) {
+                        break;
+                    }
+                    on_warning();
+                    // SAFETY: as above.
+                    if unsafe { WaitForSingleObject(stop.0, cooldown) } != WAIT_TIMEOUT {
+                        break;
+                    }
+                }
+            })
+            .inspect_err(|error| tracing::warn!(%error, "no thread follows memory pressure"))
+            .ok();
+        Self {
+            stop: Some(stop),
+            thread,
+        }
+    }
+}
+
+impl Drop for MemoryPressureWatch {
+    fn drop(&mut self) {
+        if let Some(stop) = &self.stop {
+            // SAFETY: the event is open until the field drops, after the join.
+            unsafe { SetEvent(stop.0) }.ok();
+        }
+        if let Some(thread) = self.thread.take() {
+            thread.join().ok();
+        }
+    }
 }
 
 #[cfg(test)]

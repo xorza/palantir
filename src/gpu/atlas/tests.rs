@@ -315,3 +315,53 @@ fn a_burst_decays_back_to_the_first_page_within_the_bounds() {
     assert_eq!(pages, [256], "back at the first edge");
     assert_eq!(list.bytes(), 256 * 256);
 }
+
+/// A purge, as the system warns of low memory, leaves exactly the items this frame drew and the
+/// pinned ones, drops the idle scratch, and drains with no budget. On pages of 32², 16² items fill
+/// the first and open a second: at frame 5, one drawn at 5 and one pinned stay of six, one drawn
+/// at 4, in the grace a decay keeps, among the rest that go. The second page, its last item gone,
+/// closes; the first keeps the two. An idle scratch texture goes; a held one stays.
+#[test]
+fn a_purge_keeps_what_this_frame_drew_and_what_is_pinned() {
+    let config = PageListConfig {
+        first_edge: 32,
+        page_edge: 32,
+        soft_bytes: 1 << 20,
+    };
+    let mut pool = AtlasPool::with_configs([config; 3], 16384);
+    let items: Vec<AtlasHandle> = (0..6)
+        .map(|_| {
+            pool.allocate(AtlasFormat::R8, Tenant::Glyphs, U16Vec2::splat(16))
+                .unwrap()
+        })
+        .collect();
+    assert!(pool.list(AtlasFormat::R8).page(1).is_some());
+    let idle = pool
+        .acquire_scratch(AtlasFormat::R8, UVec2::splat(64))
+        .unwrap();
+    let held = pool
+        .acquire_scratch(AtlasFormat::R8, UVec2::splat(64))
+        .unwrap();
+    pool.release_scratch(AtlasFormat::R8, idle);
+    pool.advance_to(4);
+    pool.stamp(items[1]).unwrap();
+    pool.advance_to(5);
+    pool.stamp(items[0]).unwrap();
+    pool.pin(items[2]);
+    pool.purge();
+    let live: Vec<bool> = items
+        .iter()
+        .map(|&handle| pool.placement(handle).is_some())
+        .collect();
+    assert_eq!(live, [true, false, true, false, false, false]);
+    let evicted: Vec<AtlasHandle> = pool.drain_evicted(Tenant::Glyphs).collect();
+    assert_eq!(evicted, [items[1], items[3], items[4], items[5]]);
+    let list = pool.list(AtlasFormat::R8);
+    assert!(list.page(1).is_none(), "the emptied page closed");
+    assert_eq!(list.page(0).unwrap().live_texels(), 2 * 16 * 16);
+    assert_eq!(list.scratch().texels(), 64 * 64, "the held scratch alone");
+    assert_eq!(
+        pool.scratch_size(AtlasFormat::R8, held),
+        Some(UVec2::splat(64))
+    );
+}

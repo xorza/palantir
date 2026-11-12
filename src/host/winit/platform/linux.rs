@@ -50,21 +50,69 @@ const POWER_PROFILE_MONITOR: &str = "org.freedesktop.portal.PowerProfileMonitor"
 const POWER_SAVER_ENABLED: &str = "power-saver-enabled";
 const PROPERTIES: &str = "org.freedesktop.DBus.Properties";
 
-/// Follows the power-saver profile through the portal's `power-saver-enabled`, on a thread of its
-/// own over a session-bus connection the watch closes when it drops, which ends the thread. The
-/// thread reads the first value itself, as GLib's portal monitor once did not and missed a mode
-/// set before the app started (<https://gitlab.gnome.org/GNOME/glib/-/issues/2481>). A desktop
-/// with no session bus or no such portal reports nothing, and power stays full. Refused: `ashpd`,
-/// a package for one boolean; GLib's split, power-profiles-daemon's `ActiveProfile` on the system
-/// bus outside a sandbox and the portal inside one
+/// Follows the power-saver profile through the portal's `power-saver-enabled`, on a
+/// [`PortalThread`]. The thread reads the first value itself, as GLib's portal monitor once did not
+/// and missed a mode set before the app started (<https://gitlab.gnome.org/GNOME/glib/-/issues/2481>).
+/// A desktop with no session bus or no such portal reports nothing, and power stays full. Refused:
+/// `ashpd`, a package for one boolean; GLib's split, power-profiles-daemon's `ActiveProfile` on
+/// the system bus outside a sandbox and the portal inside one
 /// (<https://gitlab.gnome.org/GNOME/glib/-/blob/main/gio/gpowerprofilemonitordbus.c>), two routes
 /// where `mundy` reads every other setting through the portal alone.
 #[derive(Debug)]
 pub(super) struct PowerSaverWatch {
+    _thread: PortalThread,
+}
+
+impl PowerSaverWatch {
+    /// Follow the profile: `on_change` runs on the watch's thread with it once the portal answers,
+    /// then with each change.
+    pub(super) fn follow(on_change: impl Fn(Reduction) + Send + Sync + 'static) -> Self {
+        Self {
+            _thread: PortalThread::spawn("palantir-power-saver", move |connection| {
+                follow_power_profile(connection, &on_change)
+            }),
+        }
+    }
+}
+
+/// The portal that reports low memory, as GLib's `GMemoryMonitor` reads it
+/// (<https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.MemoryMonitor.html>).
+const MEMORY_MONITOR: &str = "org.freedesktop.portal.MemoryMonitor";
+const LOW_MEMORY_WARNING: &str = "LowMemoryWarning";
+
+/// Follows the system's memory pressure through the portal's `LowMemoryWarning`, on a
+/// [`PortalThread`]: each signal, at any of its levels (50 low, 100 medium, 255 critical), reports
+/// a warning, as GLib's `GMemoryMonitor` documents freeing caches at each. A desktop with no
+/// session bus or no such portal reports nothing, which leaves the pool to its own decay.
+#[derive(Debug)]
+pub(super) struct MemoryPressureWatch {
+    _thread: PortalThread,
+}
+
+impl MemoryPressureWatch {
+    /// Follow the pressure: `on_warning` runs on the watch's thread at each warning.
+    pub(super) fn follow(on_warning: impl Fn() + Send + Sync + 'static) -> Self {
+        Self {
+            _thread: PortalThread::spawn("palantir-memory-pressure", move |connection| {
+                for _ in
+                    portal_proxy(connection, MEMORY_MONITOR)?.receive_signal(LOW_MEMORY_WARNING)?
+                {
+                    on_warning();
+                }
+                Ok(())
+            }),
+        }
+    }
+}
+
+/// A thread over a session-bus connection of its own, which the drop closes, ending the thread
+/// as the signals it reads come off that connection.
+#[derive(Debug)]
+struct PortalThread {
     connection: Arc<Mutex<WatchedBus>>,
 }
 
-/// The watch's session-bus connection, as its thread opens it and the watch's drop closes it.
+/// The thread's session-bus connection, as the thread opens it and the drop closes it.
 #[derive(Debug)]
 enum WatchedBus {
     Opening,
@@ -72,27 +120,29 @@ enum WatchedBus {
     Closed,
 }
 
-impl PowerSaverWatch {
-    /// Follow the profile: `on_change` runs on the watch's thread with it once the portal answers,
-    /// then with each change.
-    pub(super) fn follow(on_change: impl Fn(Reduction) + Send + Sync + 'static) -> Self {
+impl PortalThread {
+    /// Run `follow` over a new session-bus connection on a thread named `name`; a failure to open
+    /// the bus or in `follow` ends the thread with a note.
+    fn spawn(
+        name: &str,
+        follow: impl FnOnce(&Connection) -> zbus::Result<()> + Send + 'static,
+    ) -> Self {
         let connection = Arc::new(Mutex::new(WatchedBus::Opening));
         let held = Arc::clone(&connection);
-        let spawned = thread::Builder::new()
-            .name("palantir-power-saver".to_owned())
-            .spawn(move || {
-                if let Err(error) = follow_portal(&held, &on_change) {
-                    tracing::debug!(%error, "the power-saver profile is not followed");
-                }
-            });
+        let spawned = thread::Builder::new().name(name.to_owned()).spawn(move || {
+            let result = open_bus(&held).and_then(|opened| opened.map_or(Ok(()), |c| follow(&c)));
+            if let Err(error) = result {
+                tracing::debug!(%error, "a portal is not followed");
+            }
+        });
         if let Err(error) = spawned {
-            tracing::warn!(%error, "no thread follows the power-saver profile");
+            tracing::warn!(%error, name, "no thread follows a portal");
         }
         Self { connection }
     }
 }
 
-impl Drop for PowerSaverWatch {
+impl Drop for PortalThread {
     fn drop(&mut self) {
         let held = mem::replace(&mut *self.connection.lock_unpoisoned(), WatchedBus::Closed);
         if let WatchedBus::Open(connection) = held {
@@ -101,29 +151,40 @@ impl Drop for PowerSaverWatch {
     }
 }
 
+/// A session-bus connection filed in `held`, `None` where the thread's owner closed it first.
+fn open_bus(held: &Mutex<WatchedBus>) -> zbus::Result<Option<Connection>> {
+    let connection = Connection::session()?;
+    let mut held = held.lock_unpoisoned();
+    if matches!(*held, WatchedBus::Closed) {
+        return Ok(None);
+    }
+    *held = WatchedBus::Open(connection.clone());
+    Ok(Some(connection))
+}
+
+/// A proxy of the portal's `interface` over `connection`, reading no property from a cache.
+fn portal_proxy<'c>(
+    connection: &'c Connection,
+    interface: &'static str,
+) -> zbus::Result<Proxy<'c>> {
+    Builder::<Proxy<'_>>::new(connection)
+        .destination(PORTAL)?
+        .path(PORTAL_PATH)?
+        .interface(interface)?
+        .cache_properties(CacheProperties::No)
+        .build()
+}
+
 /// Report the profile and each change until the connection closes. Subscribed to
 /// `PropertiesChanged` before the first read, so no change falls between the two. The signals come
 /// off the connection itself, which its close ends. Refused: zbus's property stream, which waits
 /// on the proxy's cache and outlives a close.
-fn follow_portal(held: &Mutex<WatchedBus>, on_change: &impl Fn(Reduction)) -> zbus::Result<()> {
-    let connection = Connection::session()?;
-    {
-        let mut held = held.lock_unpoisoned();
-        if matches!(*held, WatchedBus::Closed) {
-            return Ok(());
-        }
-        *held = WatchedBus::Open(connection.clone());
-    }
-    let proxy = |interface| {
-        Builder::<Proxy<'_>>::new(&connection)
-            .destination(PORTAL)?
-            .path(PORTAL_PATH)?
-            .interface(interface)?
-            .cache_properties(CacheProperties::No)
-            .build()
-    };
-    let monitor = proxy(POWER_PROFILE_MONITOR)?;
-    let changes = proxy(PROPERTIES)?.receive_signal("PropertiesChanged")?;
+fn follow_power_profile(
+    connection: &Connection,
+    on_change: &impl Fn(Reduction),
+) -> zbus::Result<()> {
+    let monitor = portal_proxy(connection, POWER_PROFILE_MONITOR)?;
+    let changes = portal_proxy(connection, PROPERTIES)?.receive_signal("PropertiesChanged")?;
     let read = || monitor.get_property(POWER_SAVER_ENABLED).map(Reduction::of);
     on_change(read()?);
     for message in changes {

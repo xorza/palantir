@@ -151,6 +151,16 @@ impl AtlasPool {
         }
     }
 
+    /// Give back all the lists can at once, as the system runs short of memory: every item no
+    /// one pins and this display frame did not draw, idle scratch, and pages a drain empties
+    /// with no budget. Between frames alone, as the moves and the closed pages wait for the GPU
+    /// half's next commit, which the caller records at once.
+    pub(crate) fn purge(&mut self) {
+        for (list, moves) in self.lists.iter_mut().zip(&mut self.moves) {
+            list.purge(self.frame, &mut self.evictions, moves);
+        }
+    }
+
     /// `format`'s list and the moves its drains made since the GPU half last took them, which
     /// it takes now.
     #[expect(

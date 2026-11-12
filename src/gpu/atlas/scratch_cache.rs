@@ -146,13 +146,6 @@ impl ScratchCache {
     }
 
     /// Drop every idle texture now, whatever its age.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the memory-pressure purge, step 8 of `.notes/proposals/atlas-pool.md`, calls it"
-        )
-    )]
     pub(crate) fn purge(&mut self) {
         for texture in &mut self.textures {
             if matches!(texture.state, ScratchState::Idle { .. }) {

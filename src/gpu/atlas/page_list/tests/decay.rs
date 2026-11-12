@@ -253,3 +253,38 @@ fn a_drain_that_finds_no_room_stalls_until_its_count_moves() {
         "the emptied first page drained and closed"
     );
 }
+
+/// No drain starts while moves the GPU half has not copied wait, so no page those moves land on
+/// drains, which would close it under them before the commit made its texture take them. Three
+/// 64² pages hold one, one and four pinned 16² items; a frame's decay drains the first into the
+/// second, which then holds two, the emptiest. A purge before the commit leaves it, every move
+/// landing on an open page; once the moves are taken, a purge drains it into the third.
+#[test]
+fn no_drain_starts_while_moves_wait_for_the_commit() {
+    let mut list = list(64, 64, 1 << 20);
+    let first = insert(&mut list, 16, 16);
+    let second = insert(&mut list, 16, 16);
+    let third = insert(&mut list, 4, 16);
+    for &handle in first[1..].iter().chain(&second[1..]) {
+        list.release(handle);
+    }
+    for &handle in [first[0], second[0]].iter().chain(&third) {
+        list.pin(handle);
+    }
+    let mut moves = decay(&mut list, 1, ROOMY).moves;
+    assert_eq!(moves.len(), 1, "the first page's item");
+    assert_eq!(moves[0].to.page, 1);
+    let mut evictions = Evictions::default();
+    list.purge(1, &mut evictions, &mut moves);
+    assert_eq!(moves.len(), 1, "no drain while the move waits");
+    assert!(
+        moves
+            .iter()
+            .all(|m| list.page(usize::from(m.to.page)).is_some())
+    );
+    moves.clear();
+    list.purge(1, &mut evictions, &mut moves);
+    assert_eq!(moves.len(), 2, "the second page's two items");
+    assert!(list.page(1).is_none());
+    assert!(moves.iter().all(|m| m.to.page == 2));
+}

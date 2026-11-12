@@ -86,6 +86,19 @@ impl HostDevice {
         &mut self.backend
     }
 
+    /// Give back what the backend's atlases can, as the system warns of low memory, between two
+    /// frames.
+    #[cfg_attr(
+        not(feature = "winit"),
+        expect(
+            dead_code,
+            reason = "not `cfg`: the winit host is only the current caller, and an embedding host needs this entry point too"
+        )
+    )]
+    pub(super) fn purge_atlases(&mut self) {
+        self.backend.purge_atlases();
+    }
+
     /// The device and queue every window of the host presents through.
     pub(super) const fn gpu(&self) -> &Gpu {
         self.backend.gpu()

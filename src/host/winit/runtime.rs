@@ -12,6 +12,7 @@ use crate::gpu::surface::surface_manager::{FirstWindow, SurfaceManager, SurfaceS
 use crate::host::host_core::HostCore;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::{HostHandle, UserEvent};
+use crate::host::winit::platform::MemoryPressureWatch;
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::{LoseTask, QueryTask, ReadTask};
 use crate::host::winit::system_preferences::{self, SystemFollow, SystemReport};
@@ -46,6 +47,9 @@ pub(super) struct WinitRuntime<T: 'static> {
     handle: HostHandle<T>,
     /// Follows the system's settings while the host runs; dropping it ends the following.
     system: SystemFollow,
+    /// Follows the system's memory pressure while the host runs, reporting a warning as a
+    /// [`UserEvent::MemoryPressure`]; dropping it ends the following.
+    _memory: MemoryPressureWatch,
 }
 
 impl<T: 'static> fmt::Debug for WinitRuntime<T> {
@@ -114,6 +118,12 @@ impl<T: App + 'static> WinitRuntime<T> {
                 handle.send(UserEvent::System(report)).ok();
             })
         };
+        let memory = {
+            let handle = handle.clone();
+            MemoryPressureWatch::follow(move || {
+                handle.send(UserEvent::MemoryPressure).ok();
+            })
+        };
         let mut app = create_app(frames.ui_mut(), handle);
         for task in pending_tasks {
             task(&mut app);
@@ -136,6 +146,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             recovery: RecoveryBackoff::default(),
             handle: own_handle,
             system,
+            _memory: memory,
         };
         Ok(runtime)
     }
@@ -164,6 +175,12 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// [`Self::repaint_on_shared_change`] then repaints every window if one moved.
     pub(super) fn apply_system_report(&mut self, report: SystemReport) {
         let _ = self.system.fold(report).apply(&self.core.cpu.resources);
+    }
+
+    /// Give back what the device's caches can, as the system warns of low memory: between two
+    /// frames, where the event loop handles events.
+    pub(super) fn purge(&mut self) {
+        self.core.device.purge_atlases();
     }
 
     /// Resolve the window winit reports events for as `id`, once per event.

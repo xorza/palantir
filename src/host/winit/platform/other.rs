@@ -38,6 +38,17 @@ impl PowerSaverWatch {
     }
 }
 
+/// No memory pressure is read here: the watch reports none and holds nothing.
+#[derive(Debug)]
+pub(super) struct MemoryPressureWatch;
+
+impl MemoryPressureWatch {
+    /// Follow nothing: no warning comes.
+    pub(super) fn follow(_on_warning: impl Fn() + Send + Sync + 'static) -> Self {
+        Self
+    }
+}
+
 #[cfg(test)]
 pub(super) mod internals {
     use winit::event_loop::EventLoopBuilder;

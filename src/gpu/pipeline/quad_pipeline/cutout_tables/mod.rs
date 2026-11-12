@@ -115,7 +115,7 @@ impl CutoutTables {
         plan: &CutoutPlan,
         textures: &AtlasTextures,
     ) {
-        self.pages.follow(ctx.gpu, textures);
+        self.follow(ctx.gpu, textures);
         self.corners.upload_instances(ctx, plan.corners());
         self.placements.bakes(plan.tables(), &mut self.bakes);
         self.bake(ctx, textures);
@@ -167,6 +167,11 @@ impl CutoutTables {
             pass.draw(0..4, start..end);
             start = end;
         }
+    }
+
+    /// Make the mask pages' group again where `textures` changed a page view.
+    pub(crate) fn follow(&mut self, gpu: &Gpu, textures: &AtlasTextures) {
+        self.pages.follow(gpu, textures);
     }
 
     /// Drop the tables the pool evicted this submit.

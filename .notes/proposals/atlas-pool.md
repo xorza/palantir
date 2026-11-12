@@ -418,15 +418,26 @@ until step 3, so its root expects `dead_code` outside tests, with that reason.
   the AMD iGPU and the handheld, a device where copies cost past an instanced draw a destination
   page takes the draw, as `Packed pages` decides.
 
-### 8. Memory pressure
+### 8. Memory pressure — done but the Windows watch, which only CI builds
 
-- **8.1** `MemoryPressureWatch` beside `PowerSaverWatch` in `host/winit/platform`: macOS through
-  libdispatch's C API, Linux through the portal's `MemoryMonitor` over `zbus`, Windows through
-  `CreateMemoryResourceNotification`, `other.rs` a watch that reports nothing; each reports a
-  warning to the host.
-- **8.2** The host forwards it to the backend; the pool purges.
-- **8.3** Test: a purge on a pool with stamped, idle and pinned entries leaves exactly the stamped
-  and pinned ones.
+- **8.1 — done.** `MemoryPressureWatch` beside `PowerSaverWatch`: macOS through libdispatch's
+  memory-pressure source by its C API with a function and a context, no block; Linux through the
+  portal's `LowMemoryWarning` over `zbus`, on a `PortalThread` the power-saver watch now shares;
+  Windows through `CreateMemoryResourceNotification` on a thread that waits on it and a stop event,
+  once each ten seconds while memory stays low, as the notification stays signaled (three more
+  `windows` features: `Win32_Security`, `Win32_System_Memory`, `Win32_System_Threading`);
+  `other.rs` a watch that reports nothing.
+- **8.2 — done.** A warning reaches the event loop as `UserEvent::MemoryPressure`, between frames;
+  the backend purges the pool and commits at once on an encoder of its own, the groups following,
+  so the freed textures leave every group and their memory returns with no frame to wait for. The
+  purge evicts what no one pins and this frame did not draw, drops idle scratch, and drains with no
+  budget, a sparse page shrinking at once. No drain starts, in a purge or a decay, while moves wait
+  for the commit, so no page a move lands on closes before its texture takes the move.
+- **8.3 — done.** Tests: a purge leaves exactly the items this frame drew and the pinned ones,
+  closes the page it empties and keeps the held scratch; on the offscreen host, a purge keeps the
+  last frame's glyphs and the next frame paints as before, rasterizing nothing; on macOS, a dropped
+  watch frees its handler. The Linux build lints clean from the macOS host; the Windows build only
+  CI checks.
 
 ### 9. Cleanup and docs
 

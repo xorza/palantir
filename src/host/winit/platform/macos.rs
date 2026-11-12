@@ -1,5 +1,6 @@
 //! The windowed host on macOS.
 
+use std::ffi::c_void;
 use std::fmt;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -137,6 +138,121 @@ impl PowerSaverObserver {
     }
 }
 
+/// Follows the system's memory pressure through libdispatch's memory-pressure source, as
+/// Chromium's macOS memory-pressure monitor does
+/// (<https://developer.apple.com/documentation/dispatch/dispatch_source_type_memorypressure>):
+/// a warning or a critical level reports a warning. The source runs its handler on a global
+/// queue, through libdispatch's C API with a function and a context, no block, so no crate past
+/// the system's; the watch's drop cancels the source, whose cancel handler frees the context once
+/// no handler runs.
+#[derive(Debug)]
+pub(super) struct MemoryPressureWatch {
+    source: DispatchSource,
+}
+
+/// libdispatch's opaque object, a source here.
+#[repr(C)]
+struct DispatchObject {
+    _opaque: [u8; 0],
+}
+
+/// A `dispatch_source_t`.
+#[derive(Debug)]
+struct DispatchSource(*mut DispatchObject);
+
+// SAFETY: libdispatch objects are thread-safe; the watch only cancels and releases it.
+unsafe impl Send for DispatchSource {}
+
+/// The context the source's handlers read: what a warning runs.
+type OnWarning = Box<dyn Fn() + Send + Sync>;
+
+/// `DISPATCH_MEMORYPRESSURE_WARN` and `DISPATCH_MEMORYPRESSURE_CRITICAL`, `<dispatch/source.h>`.
+const MEMORY_PRESSURE_WARN: usize = 0x02;
+const MEMORY_PRESSURE_CRITICAL: usize = 0x04;
+
+/// `QOS_CLASS_UTILITY`, `<sys/qos.h>`: a warning is housekeeping, not what a person waits on.
+const QOS_CLASS_UTILITY: isize = 0x11;
+
+unsafe extern "C" {
+    static _dispatch_source_type_memorypressure: u8;
+    fn dispatch_get_global_queue(identifier: isize, flags: usize) -> *mut DispatchObject;
+    fn dispatch_source_create(
+        kind: *const u8,
+        handle: usize,
+        mask: usize,
+        queue: *mut DispatchObject,
+    ) -> *mut DispatchObject;
+    fn dispatch_set_context(object: *mut DispatchObject, context: *mut c_void);
+    fn dispatch_source_set_event_handler_f(
+        source: *mut DispatchObject,
+        handler: unsafe extern "C" fn(*mut c_void),
+    );
+    fn dispatch_source_set_cancel_handler_f(
+        source: *mut DispatchObject,
+        handler: unsafe extern "C" fn(*mut c_void),
+    );
+    fn dispatch_resume(object: *mut DispatchObject);
+    fn dispatch_source_cancel(source: *mut DispatchObject);
+    fn dispatch_release(object: *mut DispatchObject);
+}
+
+/// The source's event handler: a warning at either level the mask lets through.
+unsafe extern "C" fn on_pressure(context: *mut c_void) {
+    // SAFETY: the context is the watch's `OnWarning`, which the cancel handler frees only after
+    // every event handler has returned.
+    let on_warning = unsafe { &*context.cast::<OnWarning>() };
+    on_warning();
+}
+
+/// The source's cancel handler, which libdispatch runs once, after the last event handler.
+unsafe extern "C" fn on_cancel(context: *mut c_void) {
+    // SAFETY: the context is the `OnWarning` the watch boxed and leaked, freed here alone.
+    drop(unsafe { Box::from_raw(context.cast::<OnWarning>()) });
+}
+
+impl MemoryPressureWatch {
+    /// Follow the pressure: `on_warning` runs on a libdispatch queue at each warning.
+    pub(super) fn follow(on_warning: impl Fn() + Send + Sync + 'static) -> Self {
+        let context: Box<OnWarning> = Box::new(Box::new(on_warning));
+        // SAFETY: each call follows `<dispatch/source.h>`: a global queue, which is never
+        // released; a source of the memory-pressure type over it, its context and both handlers
+        // set before its first resume; the context lives until the cancel handler frees it.
+        let source = unsafe {
+            let queue = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+            let source = dispatch_source_create(
+                &raw const _dispatch_source_type_memorypressure,
+                0,
+                MEMORY_PRESSURE_WARN | MEMORY_PRESSURE_CRITICAL,
+                queue,
+            );
+            assert!(
+                !source.is_null(),
+                "libdispatch made no memory-pressure source"
+            );
+            dispatch_set_context(source, Box::into_raw(context).cast());
+            dispatch_source_set_event_handler_f(source, on_pressure);
+            dispatch_source_set_cancel_handler_f(source, on_cancel);
+            dispatch_resume(source);
+            source
+        };
+        Self {
+            source: DispatchSource(source),
+        }
+    }
+}
+
+impl Drop for MemoryPressureWatch {
+    fn drop(&mut self) {
+        // SAFETY: the source was resumed in `follow`; a cancel lets its handler finish and then
+        // runs the cancel handler, which frees the context, and the release drops the watch's
+        // reference, which libdispatch holds past it while a handler is queued.
+        unsafe {
+            dispatch_source_cancel(self.source.0);
+            dispatch_release(self.source.0);
+        }
+    }
+}
+
 #[cfg(test)]
 pub(super) mod internals {
     use winit::event_loop::EventLoopBuilder;
@@ -144,4 +260,35 @@ pub(super) mod internals {
     /// Nothing to allow: AppKit runs an event loop on the main thread alone, so a test that
     /// builds one panics off it.
     pub(crate) const fn any_thread<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use crate::host::winit::platform::MemoryPressureWatch;
+
+    /// A watch makes its source and, dropped, cancels it: the cancel handler frees the context, so
+    /// the closure's share of what it holds goes back, within a second of libdispatch's queue.
+    #[test]
+    fn a_dropped_watch_frees_its_handler() {
+        let held = Arc::new(());
+        let shared = Arc::clone(&held);
+        let watch = MemoryPressureWatch::follow(move || {
+            let _ = &shared;
+        });
+        assert_eq!(Arc::strong_count(&held), 2);
+        drop(watch);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Arc::strong_count(&held) > 1 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(
+            Arc::strong_count(&held),
+            1,
+            "the cancel handler freed the context"
+        );
+    }
 }

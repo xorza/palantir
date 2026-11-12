@@ -74,6 +74,14 @@ impl MoveBudget {
     }
 }
 
+/// When a drain plans: in a display frame's decay, where a sparse page shrinks only after an
+/// expiry window of frames, or in a purge, where it shrinks at once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pace {
+    Frame(u64),
+    Purge,
+}
+
 /// What a list's decay writes into, beside the list.
 #[derive(Debug)]
 pub(crate) struct DecayCtx<'a> {
@@ -682,15 +690,53 @@ impl PageList {
             moves,
         } = ctx;
         self.age_out(frame, evictions);
-        if !self
-            .pages
+        if !self.is_draining() && moves.is_empty() {
+            self.plan_drain(Pace::Frame(frame));
+        }
+        self.drain(budget, moves);
+    }
+
+    /// Whether a page is draining.
+    fn is_draining(&self) -> bool {
+        self.pages
             .iter()
             .flatten()
             .any(|page| !page.takes_allocations())
-        {
-            self.plan_drain(frame);
+    }
+
+    /// Give back all the list can at once, as the system runs short of memory, at display frame
+    /// `frame`: evict every item no one pins and this frame did not draw into `evictions`, drop the
+    /// idle scratch, and drain with no budget, a sparse page shrinking at once, into `moves`, until
+    /// no drain is left to start. A stutter traded for the process not being killed
+    /// (`.notes/proposals/atlas-pool.md`, Decay).
+    pub(crate) fn purge(&mut self, frame: u64, evictions: &mut Evictions, moves: &mut Vec<Move>) {
+        for idx in 0..self.entries.len() {
+            let entry = &self.entries[idx];
+            if entry.placement.is_some() && entry.pins == 0 && entry.last_use < frame {
+                self.evict(idx, evictions);
+            }
         }
-        self.drain(budget, moves);
+        self.dry_frame = None;
+        self.scratch.purge();
+        let mut budget = MoveBudget {
+            texels: u64::MAX,
+            copies: u32::MAX,
+        };
+        // A drain ends with its page closed or stalled, so each round closes a page or stops: the
+        // rounds are at most the pages, one more for a shrink's new page. A round that moved an
+        // item ends the purge, as the next drain could take the page it landed on.
+        for _ in 0..=MAX_PAGES {
+            if !self.is_draining() {
+                if !moves.is_empty() {
+                    break;
+                }
+                self.plan_drain(Pace::Purge);
+            }
+            if !self.is_draining() {
+                break;
+            }
+            self.drain(&mut budget, moves);
+        }
     }
 
     /// Evict the items no one pins and no frame drew for WebRender's age at the list's pressure,
@@ -741,12 +787,13 @@ impl PageList {
         }
     }
 
-    /// Start a drain at display frame `frame`: with one page under a quarter full for an expiry
-    /// window, past the first edge, a page at the smallest power-of-two edge from the first that
+    /// Start a drain at `pace`, where no move waits for the commit, so no page a move lands on
+    /// drains before its texture takes the move: with one page under a quarter full for an expiry
+    /// window, or at once in a purge, past the first edge, a page at the smallest power-of-two edge from the first that
     /// holds twice its items' texels opens beside it, and it drains into that; with several pages,
     /// the emptiest whose items fit half the others' free texels drains, so packing slack leaves
     /// room. Neither where no page is open, or the list has no free slot.
-    fn plan_drain(&mut self, frame: u64) {
+    fn plan_drain(&mut self, pace: Pace) {
         let open = self.pages.iter().flatten().count();
         if open == 1 {
             let (idx, page) = self
@@ -761,9 +808,11 @@ impl PageList {
                 self.sparse_since = None;
                 return;
             }
-            let since = *self.sparse_since.get_or_insert(frame);
-            if frame - since + 1 < EXPIRY_FRAMES {
-                return;
+            if let Pace::Frame(frame) = pace {
+                let since = *self.sparse_since.get_or_insert(frame);
+                if frame - since + 1 < EXPIRY_FRAMES {
+                    return;
+                }
             }
             self.sparse_since = None;
             let mut edge = self.config.first_edge;

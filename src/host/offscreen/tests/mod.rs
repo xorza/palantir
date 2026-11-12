@@ -423,6 +423,7 @@ mod frame_group;
 mod held_cutouts;
 mod lazy_pipelines;
 mod promote;
+mod purge;
 mod recovery;
 mod theme_transition;
 

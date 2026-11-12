@@ -352,6 +352,11 @@ where
                     runtime.apply_system_report(report);
                 }
             }
+            UserEvent::MemoryPressure => {
+                if let Some(runtime) = self.running() {
+                    runtime.purge();
+                }
+            }
             UserEvent::Quit => match self.running() {
                 Some(runtime) => runtime.close_all_windows(),
                 None => event_loop.exit(),

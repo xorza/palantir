@@ -1274,6 +1274,28 @@ impl WgpuBackend {
         stream.release_cutouts(&mut self.cutout_placing());
     }
 
+    /// Give back all the atlas pool can at once, as the system runs short of memory, between two
+    /// frames: the pool purges, and its textures follow at once on an encoder of their own, the
+    /// purge's moves first, so the textures it freed leave every group that binds them and their
+    /// memory returns at the device's next maintain, with no frame to wait for.
+    pub(crate) fn purge_atlases(&mut self) {
+        self.atlas.purge();
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("palantir.atlas.purge"),
+            });
+        self.atlas_textures
+            .commit(&self.gpu, &mut encoder, &mut self.atlas);
+        self.raster_group.follow(&self.gpu, &self.atlas_textures);
+        self.programs
+            .quad
+            .follow_cutouts(&self.gpu, &self.atlas_textures);
+        self.backdrops.follow(&self.gpu, &self.atlas_textures);
+        self.gpu.queue.submit(iter::once(encoder.finish()));
+    }
+
     /// Where the mask pages hold each key's table, with the pool they live in, which a frame's
     /// plan builds in.
     pub(crate) const fn cutout_placing(&mut self) -> CutoutPlacing<'_> {
