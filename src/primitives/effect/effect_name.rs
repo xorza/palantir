@@ -10,11 +10,11 @@ use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind, EffectType
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::inline_name::InlineName;
 
-/// An effect's name as it sits inline: 23 bytes and its length, 24 in all, as a material holds
-/// one in every paint that wears it and each copy of that paint moves it (`.notes/PERF.md`, "A
-/// paint carries a short effect name"). Refused: the 63 bytes a font family takes, which made a
-/// material half of every paint.
-pub(crate) type InlineEffectName = InlineName<23>;
+/// An effect's name with its parameter type and kind erased, as it sits inline: 23 bytes and its
+/// length, 24 in all, as a material holds one in every paint that wears it and each copy of that
+/// paint moves it (`.notes/PERF.md`, "A paint carries a short effect name"). Refused: the 63
+/// bytes a font family takes, which made a material half of every paint.
+pub(crate) type ErasedEffectName = InlineName<23>;
 
 /// Which effect to paint, by name: the name is the effect's identity, as [`FontFamily`]'s is a
 /// family's. `U` is its parameter struct and `K` its kind, so a shape that names it takes
@@ -24,19 +24,19 @@ pub(crate) type InlineEffectName = InlineName<23>;
 ///
 /// [`FontFamily`]: crate::FontFamily
 pub struct EffectName<U: EffectParams, K: EffectKind = ColorEffect> {
-    name: InlineEffectName,
+    name: ErasedEffectName,
     types: PhantomData<fn() -> (U, K)>,
 }
 
 impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
     /// The longest name an effect holds, in bytes.
-    pub const MAX_NAME_LEN: usize = InlineEffectName::MAX_LEN;
+    pub const MAX_NAME_LEN: usize = ErasedEffectName::MAX_LEN;
 
     /// The effect called `name`. `None` for an empty name or one longer than
     /// [`Self::MAX_NAME_LEN`] bytes.
     pub const fn named(name: &str) -> Option<Self> {
-        match InlineEffectName::new(name) {
-            Some(name) => Some(Self::from_inline(name)),
+        match ErasedEffectName::new(name) {
+            Some(name) => Some(Self::from_erased(name)),
             None => None,
         }
     }
@@ -46,19 +46,20 @@ impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
         self.name.as_str()
     }
 
-    pub(crate) const fn inline(self) -> InlineEffectName {
+    /// This name with its types erased.
+    pub(crate) const fn erased(self) -> ErasedEffectName {
         self.name
     }
 
     /// This name with its types as a run-time value.
-    pub(crate) fn typed(self) -> TypedName {
-        TypedName {
+    pub(crate) fn checked(self) -> CheckedEffectName {
+        CheckedEffectName {
             name: self.name,
             types: EffectTypes::of::<U, K>(),
         }
     }
 
-    const fn from_inline(name: InlineEffectName) -> Self {
+    const fn from_erased(name: ErasedEffectName) -> Self {
         Self {
             name,
             types: PhantomData,
@@ -66,11 +67,12 @@ impl<U: EffectParams, K: EffectKind> EffectName<U, K> {
     }
 }
 
-/// An [`EffectName`] with its parameter type and kind as a run-time value, so code that resolves a
-/// name of any type compiles once.
+/// An [`EffectName`] with its parameter type and kind as a run-time value, which the registry
+/// checks against the types the effect loaded with, so code that resolves a name of any type
+/// compiles once.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct TypedName {
-    pub(crate) name: InlineEffectName,
+pub(crate) struct CheckedEffectName {
+    pub(crate) name: ErasedEffectName,
     pub(crate) types: EffectTypes,
 }
 
@@ -112,7 +114,7 @@ impl<'de, U: EffectParams, K: EffectKind> serde::Deserialize<'de> for EffectName
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer
             .deserialize_str(NameVisitor)
-            .map(Self::from_inline)
+            .map(Self::from_erased)
     }
 }
 
@@ -121,21 +123,21 @@ impl<'de, U: EffectParams, K: EffectKind> serde::Deserialize<'de> for EffectName
 struct NameVisitor;
 
 impl de::Visitor<'_> for NameVisitor {
-    type Value = InlineEffectName;
+    type Value = ErasedEffectName;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "an effect name of 1 to {} bytes",
-            InlineEffectName::MAX_LEN
+            ErasedEffectName::MAX_LEN
         )
     }
 
     fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {
-        InlineEffectName::new(name).ok_or_else(|| {
+        ErasedEffectName::new(name).ok_or_else(|| {
             E::custom(format_args!(
                 "an effect name must be 1 to {} bytes, got {}",
-                InlineEffectName::MAX_LEN,
+                ErasedEffectName::MAX_LEN,
                 name.len()
             ))
         })

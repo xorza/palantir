@@ -1,10 +1,12 @@
 use crate::animation::animation_spec::AnimationSpec;
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::domain;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::frosted_input::FrostedInput;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
@@ -72,13 +74,13 @@ fn widget_look_serde_roundtrip() {
         WidgetLook {
             chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
                 .with_material(
-                    Material::frosted(12.0)
-                        .with_fallback(RgbaF32::hex(0x203040))
-                        .with_max_luminance(0.05)
-                        .with_lens(Lens {
-                            dispersion: 0.0,
-                            ..Lens::WINDOW_GLASS
-                        }),
+                    Material::glass(Lens {
+                        dispersion: 0.0,
+                        ..Lens::WINDOW_GLASS
+                    })
+                    .with_backdrop_blur(12.0)
+                    .with_fallback(RgbaF32::hex(0x203040))
+                    .with_max_luminance(0.05),
                 ),
             text: TextStyleOverrides::NONE,
         },
@@ -112,55 +114,67 @@ fn widget_look_serde_roundtrip() {
     }
 }
 
-/// A material in a file names its effect and its fallback and only what differs from its
-/// defaults, and each field is checked by its kind: a blur a length, saturation, noise and a
-/// luminance ceiling factors, a lens's index at least 1 and its dispersion and highlight
-/// fractions. An effect is a name a file cannot leave out, which the theme's set checks against
-/// the loaded effects; a file that leaves the fallback out reads the theme's.
+/// A material in a file names its effect with its parameters, the lanes its effect declares in
+/// order, and its fallback, and only what differs from its defaults; each field is checked by
+/// its kind: a blur a length, a luminance ceiling a factor, at most 8 finite parameters. An effect
+/// is a name a file cannot leave out, which the theme's set checks against the loaded effects,
+/// with the count of its lanes; a file that leaves the fallback out reads the theme's. What loads
+/// writes back to the same text.
 #[test]
 fn materials_load_by_their_kinds() {
     let blur = |rest: &str| {
-        format!("(effect: \"palantir.blur\", fallback: Brush(Solid(\"#000000\")){rest})")
+        format!("(effect: (name: \"palantir.blur\"), fallback: Brush(Solid(\"#000000\")){rest})")
     };
     for (label, ron, want) in [
         (
             "blur alone",
-            blur(", blur: 8.0"),
+            blur(", backdrop_blur: 8.0"),
             Some(Material::blur(8.0).with_fallback(RgbaF32::BLACK)),
         ),
         (
-            "gray",
-            blur(", input: (saturation: 0.0)"),
+            "frosted, its parameters in order",
+            "(effect: (name: \"palantir.frosted\", params: [0.0, 0.04]), backdrop_blur: 20.0)".to_owned(),
             Some(
-                Material::blur(0.0)
-                    .with_fallback(RgbaF32::BLACK)
-                    .with_saturation(0.0),
+                Material::new(
+                    EffectName::FROSTED,
+                    FrostedInput {
+                        saturation: 0.0,
+                        noise: 0.04,
+                    },
+                )
+                .with_backdrop_blur(20.0),
             ),
         ),
         (
-            "default lens",
-            "(effect: \"palantir.glass\", fallback: Brush(Solid(\"#000000\")), input: (lens: ()))"
+            "window glass",
+            "(effect: (name: \"palantir.glass\", params: [1.0, 0.0, 24.0, 16.0, 1.5, 0.06, 0.6]))"
                 .to_owned(),
-            Some(Material::glass(Lens::WINDOW_GLASS).with_fallback(RgbaF32::BLACK)),
+            Some(Material::glass(Lens::WINDOW_GLASS)),
         ),
         (
             "the theme's fallback",
-            "(effect: \"palantir.blur\", blur: 8.0)".to_owned(),
+            "(effect: (name: \"palantir.blur\"), backdrop_blur: 8.0)".to_owned(),
             Some(Material::blur(8.0)),
         ),
         (
             "named the theme's",
-            "(effect: \"palantir.blur\", fallback: ThemeSurface)".to_owned(),
+            "(effect: (name: \"palantir.blur\"), fallback: ThemeSurface)".to_owned(),
             Some(Material::blur(0.0)),
         ),
         (
             "no effect",
-            "(fallback: Brush(Solid(\"#000000\")), blur: 8.0)".to_owned(),
+            "(fallback: Brush(Solid(\"#000000\")), backdrop_blur: 8.0)".to_owned(),
             None,
         ),
-        ("negative blur", blur(", blur: -1.0"), None),
-        ("NaN saturation", blur(", input: (saturation: NaN)"), None),
-        ("negative noise", blur(", input: (noise: -0.1)"), None),
+        ("negative blur", blur(", backdrop_blur: -1.0"), None),
+        ("a NaN parameter", "(effect: (name: \"palantir.blur\", params: [NaN]))".to_owned(), None),
+        ("an infinite parameter", "(effect: (name: \"palantir.blur\", params: [inf]))".to_owned(), None),
+        (
+            "nine parameters",
+            "(effect: (name: \"palantir.blur\", params: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))"
+                .to_owned(),
+            None,
+        ),
         (
             "ceiling",
             blur(", max_luminance: Some(0.05)"),
@@ -182,20 +196,22 @@ fn materials_load_by_their_kinds() {
         ),
         ("NaN ceiling", blur(", max_luminance: Some(NaN)"), None),
         ("infinite ceiling", blur(", max_luminance: Some(inf)"), None),
-        (
-            "index below 1",
-            blur(", input: (lens: (refractive_index: 0.9))"),
-            None,
-        ),
-        (
-            "dispersion past 1",
-            blur(", input: (lens: (dispersion: 1.5))"),
-            None,
-        ),
     ] {
         let got = ron::from_str::<Material>(&ron).ok();
         assert_eq!(got, want, "{label}");
+        if let Some(want) = want {
+            let written = ron::to_string(&want).expect(label);
+            assert_eq!(
+                ron::from_str::<Material>(&written).ok(),
+                Some(want),
+                "{label}"
+            );
+        }
     }
+    assert_eq!(
+        ron::to_string(&Material::frosted(20.0)).unwrap(),
+        "(effect:(name:\"palantir.frosted\",params:[1.8,0.04]),backdrop_blur:20.0)"
+    );
 }
 
 /// An override is checked as far as the axes it names reach: a size or leading alone, both together as the face they make. `16 × 0.000001 = 0.000016` is under EPS = 0.0001 though each half is valid alone.

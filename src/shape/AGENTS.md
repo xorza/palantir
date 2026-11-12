@@ -48,10 +48,10 @@ the top `AGENTS.md`, "A shape is geometry, a paint what covers it"; how the GPU 
   are loaded and checked as an app's are. `Material` and `PressEffect` name one as plain data a
   theme file saves and a transition blends, and lower to the one effect draw. As Skia's
   `SkRuntimeEffect`, Android's `RuntimeShader` and Flutter's `FragmentShader` are one program
-  whose placement decides its use. Refused: one public backdrop type with any parameters
-  (Flutter's `BackdropFilter`), whose bytes no theme file holds and no tween blends; a closed set
-  of material looks (SwiftUI, WinUI), which drops app materials; a built-in filter type beside app
-  effects.
+  whose placement decides its use. A material holds its effect with the effect's parameters as
+  f32 lanes inline (`MaterialEffect`), which a theme file lists and a tween blends. Refused: parameter bytes of any
+  type, which no theme file holds and no tween blends; a closed set of material looks (SwiftUI,
+  WinUI), which drops app materials; a built-in filter type beside app effects.
 - **A halo is a paint's, of the shape it surrounds**: `EffectPaint::outside(reach)` paints a color
   effect outside its rect or circle alone, as CSS draws an outset `box-shadow` outside the border
   box only. The effect reads the shape's own frame, and palantir cuts the shape's edge whatever

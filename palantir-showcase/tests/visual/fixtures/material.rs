@@ -191,7 +191,7 @@ fn glass_matches_golden() {
                         dispersion: 0.0,
                         highlight: 0.8,
                     })
-                    .with_blur(2.0),
+                    .with_backdrop_blur(2.0),
                 );
             });
     });

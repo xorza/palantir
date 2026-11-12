@@ -7,6 +7,7 @@ use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
+use crate::primitives::paint::material::material_reach::MaterialReach;
 
 /// An effect's WGSL, the image slots its shapes bind, and what paints while motion or power use is
 /// reduced. What a backdrop effect paints while transparency is reduced is each use's
@@ -55,6 +56,7 @@ pub struct EffectSource<U: EffectParams, K: EffectKind = ColorEffect> {
     pub(crate) reduced_motion: ReducedPaint<U, K>,
     pub(crate) power_saver: ReducedPaint<U, K>,
     pub(crate) build: EffectBuild,
+    pub(crate) reach: fn(&U) -> MaterialReach,
 }
 
 /// When a loaded effect builds its pipelines. Every build runs at the start of a frame's GPU phase,
@@ -88,7 +90,18 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
             reduced_motion: ReducedPaint::Same,
             power_saver: ReducedPaint::Same,
             build: EffectBuild::OnUse,
+            reach: |_| MaterialReach::NONE,
         }
+    }
+
+    /// How far past its box a material over the effect reads, from the material's parameters:
+    /// [`MaterialReach::NONE`] by default, its box alone. How far a ray bends is the effect's, so
+    /// each material over it reads as far as its parameters bend, as the stock glass reads as far
+    /// as its lens. An [`EffectPaint`](crate::widget::EffectPaint) names its own
+    /// ([`EffectPaint::max_sample_offset`](crate::widget::EffectPaint::max_sample_offset)).
+    pub const fn reach(mut self, reach: fn(&U) -> MaterialReach) -> Self {
+        self.reach = reach;
+        self
     }
 
     /// When the effect builds its pipelines; [`EffectBuild::OnUse`] by default.
@@ -184,6 +197,6 @@ impl<U: EffectParams, K: EffectKind> fmt::Debug for EffectSource<U, K> {
             .field("reduced_motion", &self.reduced_motion)
             .field("power_saver", &self.power_saver)
             .field("build", &self.build)
-            .finish()
+            .finish_non_exhaustive()
     }
 }

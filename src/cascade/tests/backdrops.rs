@@ -110,11 +110,12 @@ fn a_backdrop_past_every_plan_coerces_to_the_widest() {
     let Listed { backdrop, physical } = listed(
         2.0,
         Rect::new(20.0, 20.0, 40.0, 20.0),
-        &Material::blur(65504.0).with_lens(Lens {
+        &Material::glass(Lens {
             thickness: 65504.0,
             refractive_index: 65504.0,
             ..Lens::WINDOW_GLASS
-        }),
+        })
+        .with_backdrop_blur(65504.0),
     );
     assert_eq!(backdrop.plan, BlurPlan::new(BlurPlan::MAX_SIGMA));
     assert_eq!(
@@ -137,7 +138,7 @@ fn a_glass_backdrops_footprint_holds_what_its_lens_reads() {
         dispersion: 0.0,
         highlight: 0.0,
     };
-    let glass = Material::glass(lens).with_blur(0.0);
+    let glass = Material::glass(lens).with_backdrop_blur(0.0);
     let reach = BlurPlan::new(0.0).reach() + 1;
     let grown = |rect: URect, by: u32| {
         URect::from_min_max(rect.min - UVec2::splat(by), rect.max() + UVec2::splat(by))
@@ -179,7 +180,7 @@ fn a_backdrops_lens_margin_is_its_own_shapes() {
         dispersion: 0.0,
         highlight: 0.0,
     };
-    let glass = Material::glass(lens).with_blur(0.0);
+    let glass = Material::glass(lens).with_backdrop_blur(0.0);
     let reach = BlurPlan::new(0.0).reach() + 1;
     let grown = |rect: URect, by: u32| {
         URect::from_min_max(rect.min - UVec2::splat(by), rect.max() + UVec2::splat(by))

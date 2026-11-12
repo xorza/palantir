@@ -271,7 +271,6 @@ fn builders_refuse_what_they_check() {
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
     use crate::primitives::paint::material::Material;
-    use crate::primitives::paint::material::lens::Lens;
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
     use crate::shape::polyline::COLOR_PRODUCT_RULE;
@@ -332,12 +331,7 @@ fn builders_refuse_what_they_check() {
     ));
     for filter in [
         Material::blur(wide),
-        Material::blur(1.0).with_saturation(wide),
         Material::blur(1.0).with_max_luminance(wide),
-        Material::blur(1.0).with_lens(Lens {
-            thickness: wide,
-            ..Lens::WINDOW_GLASS
-        }),
     ] {
         panic_probe::assert_panics_with(domain::LANE_RULE, || {
             check(&(Shape::rect().at(ok_rect), filter));

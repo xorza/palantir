@@ -42,14 +42,12 @@ pub(crate) mod tooltip;
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::effect::press_input::PressInput;
-use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::material::{Material, fallback_alpha};
 use crate::theme::button::ButtonTheme;
 use crate::theme::close_shown::CloseShown;
@@ -204,7 +202,7 @@ pub(crate) enum ThemeTextRef<'a> {
 /// A theme part's text and press slots: [`Self::for_each_text`] visits each text slot, beside the
 /// same slot of `other` when one is given, and [`Self::each_press`] each press slot, in field
 /// order. [`Theme::faces_valid`], [`Theme::scale_text`], [`Theme::share_text_axes`] and
-/// [`Theme::press_effects`] drive it. A part derives it and walks every field, so each field's
+/// [`Theme::press_effects`] and [`Theme::materials`] drive it. A part derives it and walks every field, so each field's
 /// type implements it, a value that holds neither through `no_theme_walk!`, and a field of a new
 /// type fails to compile until its type says what it holds.
 pub(crate) trait ThemeWalk {
@@ -226,7 +224,7 @@ pub(crate) trait ThemeWalk {
     {
     }
 
-    /// Each material a chrome wears, in field order, to read ([`Theme::material_effects`]); a
+    /// Each material a chrome wears, in field order, to read ([`Theme::materials`]); a
     /// value that holds no chrome visits nothing.
     #[inline]
     fn each_material<F>(&self, _: &mut F)
@@ -437,7 +435,7 @@ impl Theme {
     /// Unless the material holds its kinds, as a [`Material`] checks where it
     /// enters, and each float takes the material, as [`FloatMaterial::dress`] requires.
     #[track_caller]
-    pub fn dress_floats(&mut self, material: FloatMaterial) {
+    pub fn dress_floats(&mut self, material: &FloatMaterial) {
         material.validate();
         let shortcut = self.menu.item.shortcut;
         let channel = self.color_picker.label.apply(&self.text).color;
@@ -492,12 +490,9 @@ impl Theme {
         self.each_press(&mut |press: &PressEffect| f(press.effect));
     }
 
-    /// The effect each chrome's material names, in field order, a name once for each material.
-    pub(crate) fn material_effects(
-        &self,
-        mut f: impl FnMut(EffectName<MaterialInput, BackdropEffect>),
-    ) {
-        self.each_material(&mut |material: &Material| f(material.effect));
+    /// Each chrome's material, in field order.
+    pub(crate) fn materials(&self, mut f: impl FnMut(&Material)) {
+        self.each_material(&mut f);
     }
 
     /// Whether every text slot, its font sizes scaled by `factor`, makes a face the shaper accepts:

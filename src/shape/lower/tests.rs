@@ -1,4 +1,4 @@
-use crate::effect::effect_registry::EffectRegistry;
+use crate::effect::effect_registry::{EffectRegistry, ResolvedMaterial};
 use crate::host::harness::Harness;
 use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
@@ -18,6 +18,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::reduction::{Reduction, Reductions};
@@ -152,7 +153,10 @@ fn a_material_lowers_as_it_reads() {
     for (chrome_, read, material, fill) in [
         (
             &own,
-            Some(MaterialRead::Capture { effect: id }),
+            Some(MaterialRead::Capture(ResolvedMaterial {
+                id,
+                reach: MaterialReach::NONE,
+            })),
             Some(id),
             color,
         ),
@@ -224,7 +228,10 @@ fn a_material_lowers_as_it_reads() {
         hash(&recolored, fallback),
         "the fallback it paints"
     );
-    let capture = MaterialRead::Capture { effect: id };
+    let capture = MaterialRead::Capture(ResolvedMaterial {
+        id,
+        reach: MaterialReach::NONE,
+    });
     assert_eq!(
         hash(&own, capture),
         hash(&recolored, capture),
@@ -338,13 +345,12 @@ fn chrome_lowering_keeps_an_authored_field() {
     let hashes: Vec<_> = variants
         .iter()
         .map(|(label, authored)| {
-            let read = authored
-                .paint
-                .material
-                .as_ref()
-                .map(|_| MaterialRead::Capture {
-                    effect: EffectId(2),
-                });
+            let read = authored.paint.material.as_ref().map(|_| {
+                MaterialRead::Capture(ResolvedMaterial {
+                    id: EffectId(2),
+                    reach: MaterialReach::NONE,
+                })
+            });
             (
                 *label,
                 chrome(&mut store, authored, Border::NONE, read).hash,

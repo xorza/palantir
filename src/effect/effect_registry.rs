@@ -1,22 +1,24 @@
 //! [`EffectRegistry`]: the effects a host loaded, by name, shared by every window.
 
 use std::cell::{Cell, RefCell};
+use std::fmt;
 use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
-
-use std::any::TypeId;
 
 use crate::effect::contract::{self, ContractSpec, ParamsLayout};
 use crate::effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
 use crate::effect::effect_store::EffectStore;
 use crate::effect::error::EffectError;
-use crate::effect::stock;
+use crate::effect::stock::{self, StockSources};
+use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::effect::effect_kind::{EffectKind, EffectTypes};
-use crate::primitives::effect::effect_name::{EffectName, InlineEffectName, TypedName};
+use crate::primitives::effect::effect_name::{CheckedEffectName, EffectName, ErasedEffectName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::identity::effect_id::EffectId;
-use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_effect::MaterialEffect;
+use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::primitives::reduction::Reductions;
 
 /// Every effect loaded under a name, for the app's life, as a font is: loading the same name again
@@ -39,7 +41,7 @@ pub(crate) struct EffectRegistry {
 /// The loaded effects, each at its [`EffectId`], and the id each name holds.
 #[derive(Debug, Default)]
 struct Effects {
-    ids: FxHashMap<InlineEffectName, EffectId>,
+    ids: FxHashMap<ErasedEffectName, EffectId>,
     loaded: Vec<LoadedEffect>,
 }
 
@@ -51,6 +53,60 @@ struct LoadedEffect {
     image_slots: u8,
     /// What paints in its place for each preference, in [`ReducedBy`]'s order.
     alternatives: [ReducedName; ReducedBy::COUNT],
+    /// What a material over it reads of it; `None` for an effect no material wears.
+    material: Option<MaterialFacts>,
+}
+
+/// What a [`Material`] over an effect needs of it, the parameters' type erased: how many lanes
+/// they hold, and how far past its box it reads from them.
+struct MaterialFacts {
+    lanes: u8,
+    reach: Box<dyn Fn(&MaterialEffect) -> MaterialReach>,
+}
+
+impl fmt::Debug for MaterialFacts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MaterialFacts")
+            .field("lanes", &self.lanes)
+            .finish_non_exhaustive()
+    }
+}
+
+impl MaterialFacts {
+    /// What a material over an effect of `source` reads of it; `None` unless it is a backdrop
+    /// effect that binds no image, over parameters a [`MaterialEffect`] holds
+    /// ([`MaterialEffect::lanes_for`]), as a box hands its material no image.
+    fn of<U: EffectParams, K: EffectKind>(source: &EffectSource<U, K>) -> Option<Self> {
+        if K::ID != KindId::Backdrop || source.image_slots > 0 {
+            return None;
+        }
+        let lanes = MaterialEffect::lanes_for::<U>()?;
+        let reach = source.reach;
+        Some(Self {
+            lanes: u8::try_from(lanes).expect("at most 8 lanes"),
+            reach: Box::new(move |effect: &MaterialEffect| reach(&effect.read::<U>())),
+        })
+    }
+}
+
+/// How a [`MaterialEffect`] fits the effect loaded under its name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MaterialFit {
+    /// Nothing is loaded under the name.
+    Unloaded,
+    /// The effect loaded is no material's: a color effect, one that binds images, or one over
+    /// other than f32 lanes that fit.
+    NotMaterial,
+    /// A material's, over this many lanes.
+    Lanes(u8),
+}
+
+/// The effect a material paints, as [`EffectRegistry::resolve_material`] finds it: its id, and
+/// how far past its box it reads.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ResolvedMaterial {
+    pub(crate) id: EffectId,
+    pub(crate) reach: MaterialReach,
 }
 
 /// A preference an effect's source names an alternative for, in the order one wins over the
@@ -93,7 +149,7 @@ pub(crate) struct ResolvedEffect {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ReducedName {
     Same,
-    Effect(InlineEffectName),
+    Effect(ErasedEffectName),
     Nothing,
 }
 
@@ -101,7 +157,7 @@ impl ReducedName {
     const fn of<U: EffectParams, K: EffectKind>(paint: ReducedPaint<U, K>) -> Self {
         match paint {
             ReducedPaint::Same => Self::Same,
-            ReducedPaint::Effect(other) => Self::Effect(other.inline()),
+            ReducedPaint::Effect(other) => Self::Effect(other.erased()),
             ReducedPaint::Nothing => Self::Nothing,
         }
     }
@@ -132,11 +188,21 @@ impl EffectRegistry {
                 .insert(name, source)
                 .expect("a stock effect meets the contract");
         }
-        for (name, source) in stock.materials {
-            registry
-                .insert(name, source)
-                .expect("a stock effect meets the contract");
-        }
+        let StockSources {
+            blur,
+            frosted,
+            glass,
+            ..
+        } = stock;
+        registry
+            .insert(blur.0, blur.1)
+            .expect("a stock effect meets the contract");
+        registry
+            .insert(frosted.0, frosted.1)
+            .expect("a stock effect meets the contract");
+        registry
+            .insert(glass.0, glass.1)
+            .expect("a stock effect meets the contract");
         registry
     }
 
@@ -166,7 +232,7 @@ impl EffectRegistry {
         let types = EffectTypes::of::<U, K>();
         {
             let effects = self.effects.borrow();
-            if let Some(loaded) = effects.get(name.inline()) {
+            if let Some(loaded) = effects.get(name.erased()) {
                 assert_types(name.name(), loaded.types, types);
             }
             // An alternative loaded already is held to the same types and images now, as its
@@ -174,7 +240,7 @@ impl EffectRegistry {
             // one.
             for paint in source.alternatives() {
                 if let ReducedPaint::Effect(other) = paint
-                    && let Some(loaded) = effects.get(other.inline())
+                    && let Some(loaded) = effects.get(other.erased())
                 {
                     assert_types(other.name(), loaded.types, types);
                     assert!(
@@ -193,16 +259,13 @@ impl EffectRegistry {
             size: size_of::<U>(),
         };
         let alternatives = source.alternatives().map(ReducedName::of);
+        let material = MaterialFacts::of(&source);
         let EffectSource {
             wgsl,
             image_slots,
             build,
             ..
         } = source;
-        // A material's box binds no images, as a `Material` names none.
-        if TypeId::of::<U>() == TypeId::of::<MaterialInput>() && image_slots > 0 {
-            return Err(EffectError::MaterialImageSlots { slots: image_slots });
-        }
         let module = contract::check(
             &wgsl,
             ContractSpec {
@@ -212,11 +275,12 @@ impl EffectRegistry {
             },
         )?;
         let id = self.effects.borrow_mut().insert(
-            name.inline(),
+            name.erased(),
             LoadedEffect {
                 types,
                 image_slots,
                 alternatives,
+                material,
             },
         );
         if let Some(store) = &self.store {
@@ -231,7 +295,7 @@ impl EffectRegistry {
 
     /// The types the effect under `name` loaded with; `None` when nothing is loaded under it. A
     /// check of a name that untrusted data holds, as a theme file's, which may name anything.
-    pub(crate) fn types_of(&self, name: InlineEffectName) -> Option<EffectTypes> {
+    pub(crate) fn types_of(&self, name: ErasedEffectName) -> Option<EffectTypes> {
         self.effects.borrow().get(name).map(|loaded| loaded.types)
     }
 
@@ -247,8 +311,13 @@ impl EffectRegistry {
     #[track_caller]
     pub(crate) fn want<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) {
         let id = self
-            .id_of(name.typed())
+            .id_of(name.checked())
             .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name()));
+        self.want_id(id);
+    }
+
+    /// Want `id` built, with each alternative its source names that is loaded now.
+    fn want_id(&self, id: EffectId) {
         let Some(store) = &self.store else {
             return;
         };
@@ -274,7 +343,7 @@ impl EffectRegistry {
     ///
     /// When it was loaded with another parameter type or kind.
     pub(crate) fn contains<U: EffectParams, K: EffectKind>(&self, name: EffectName<U, K>) -> bool {
-        self.id_of(name.typed()).is_some()
+        self.id_of(name.checked()).is_some()
     }
 
     /// The effect a shape that names `name` paints, whose id it records: the effect loaded under
@@ -290,27 +359,135 @@ impl EffectRegistry {
     #[track_caller]
     pub(crate) fn resolve(
         &self,
-        name: TypedName,
+        name: CheckedEffectName,
         reductions: Reductions,
     ) -> Option<ResolvedEffect> {
         let id = self
             .id_of(name)
             .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.name.as_str()));
-        let effects = self.effects.borrow();
-        let resolved = |id: EffectId| ResolvedEffect {
-            id,
-            image_slots: effects.loaded[id.idx()].image_slots,
+        let painted = self.painted(id, name.name, reductions)?;
+        Some(ResolvedEffect {
+            id: painted,
+            image_slots: self.effects.borrow().loaded[painted.idx()].image_slots,
+        })
+    }
+
+    /// How `effect` fits the effect loaded under its name: a check of a name a theme file holds,
+    /// which may name anything.
+    pub(crate) fn material_fit(&self, effect: MaterialEffect) -> MaterialFit {
+        match self.effects.borrow().get(effect.erased_name()) {
+            None => MaterialFit::Unloaded,
+            Some(LoadedEffect { material: None, .. }) => MaterialFit::NotMaterial,
+            Some(LoadedEffect {
+                material: Some(facts),
+                ..
+            }) => MaterialFit::Lanes(facts.lanes),
+        }
+    }
+
+    /// Want the effect `effect` names built before the next frame draws, as [`Self::want`] does
+    /// for a typed name.
+    ///
+    /// # Panics
+    ///
+    /// When nothing is loaded under the name: a theme set checks its materials first
+    /// ([`Self::material_fit`]).
+    #[track_caller]
+    pub(crate) fn want_material(&self, effect: MaterialEffect) {
+        let id = *self
+            .effects
+            .borrow()
+            .ids
+            .get(&effect.erased_name())
+            .unwrap_or_else(|| panic!("no effect is loaded under `{}`", effect.name()));
+        self.want_id(id);
+    }
+
+    /// The effect `material` paints, as [`Self::resolve`] finds a typed name's, and how far past
+    /// its box it reads, from its parameters, as the effect painted declares.
+    ///
+    /// # Panics
+    ///
+    /// When nothing is loaded under the material's effect, or under the alternative it paints in
+    /// place of it, or the effect is no material's, or takes another count of lanes than the
+    /// material holds: a material that cannot paint is a logic error, as painting nothing would
+    /// be quietly wrong.
+    #[track_caller]
+    pub(crate) fn resolve_material(
+        &self,
+        material: &Material,
+        reductions: Reductions,
+    ) -> Option<ResolvedMaterial> {
+        let name = material.effect.erased_name();
+        let id = {
+            let effects = self.effects.borrow();
+            let id = *effects
+                .ids
+                .get(&name)
+                .unwrap_or_else(|| panic!("no effect is loaded under `{}`", name.as_str()));
+            let want = Self::facts(&effects, id, name).lanes;
+            let got = material.effect.count();
+            assert!(
+                want == got,
+                "effect `{}` takes {want} parameter lanes, and its material holds {got}",
+                name.as_str()
+            );
+            id
         };
-        let alternatives = effects.loaded[id.idx()].alternatives;
+        let painted = self.painted(id, name, reductions)?;
+        let effects = self.effects.borrow();
+        let facts = Self::facts(&effects, painted, name);
+        Some(ResolvedMaterial {
+            id: painted,
+            reach: (facts.reach)(&material.effect),
+        })
+    }
+
+    /// What a material over the effect at `id` reads of it, the effect a material over `name`
+    /// paints.
+    ///
+    /// # Panics
+    ///
+    /// When the effect is no material's, as an alternative loaded after the effect that names it
+    /// may be.
+    #[track_caller]
+    fn facts(effects: &Effects, id: EffectId, name: ErasedEffectName) -> &MaterialFacts {
+        effects.loaded[id.idx()].material.as_ref().unwrap_or_else(|| {
+            panic!(
+                "a material over `{}` paints effect {}, which is no material's: a backdrop effect \
+                 over at most {} f32 lanes that binds no image",
+                name.as_str(),
+                id.0,
+                MaterialEffect::MAX_LANES
+            )
+        })
+    }
+
+    /// The effect a shape that names `id`, loaded under `name`, paints: `id`, or the alternative
+    /// its source names for the first preference `reductions` reduces that names one, in
+    /// [`ReducedBy`]'s order; `None` when that is nothing.
+    ///
+    /// # Panics
+    ///
+    /// When no effect is loaded under the alternative, or one with other types.
+    #[track_caller]
+    fn painted(
+        &self,
+        id: EffectId,
+        name: ErasedEffectName,
+        reductions: Reductions,
+    ) -> Option<EffectId> {
+        let effects = self.effects.borrow();
+        let loaded = &effects.loaded[id.idx()];
         let Some((by, alternative)) =
             ReducedBy::ALL
                 .into_iter()
-                .zip(alternatives)
+                .zip(loaded.alternatives)
                 .find(|&(by, alternative)| {
                     alternative != ReducedName::Same && by.is_reduced_in(reductions)
                 })
         else {
-            return Some(resolved(id));
+            return Some(id);
         };
         match alternative {
             ReducedName::Same => unreachable!("only an alternative of its own is found"),
@@ -321,21 +498,21 @@ impl EffectRegistry {
                         "no effect is loaded under `{}`, the {} alternative of `{}`",
                         other.as_str(),
                         by.name(),
-                        name.name.as_str()
+                        name.as_str()
                     )
                 });
                 assert_types(
                     other.as_str(),
                     effects.loaded[other_id.idx()].types,
-                    name.types,
+                    loaded.types,
                 );
-                Some(resolved(other_id))
+                Some(other_id)
             }
         }
     }
 
     #[track_caller]
-    fn id_of(&self, name: TypedName) -> Option<EffectId> {
+    fn id_of(&self, name: CheckedEffectName) -> Option<EffectId> {
         let effects = self.effects.borrow();
         let id = *effects.ids.get(&name.name)?;
         assert_types(
@@ -348,12 +525,12 @@ impl EffectRegistry {
 }
 
 impl Effects {
-    fn get(&self, name: InlineEffectName) -> Option<&LoadedEffect> {
+    fn get(&self, name: ErasedEffectName) -> Option<&LoadedEffect> {
         self.ids.get(&name).map(|id| &self.loaded[id.idx()])
     }
 
     /// Hold `effect` under `name`, at the id the name holds, or at a new one for a new name.
-    fn insert(&mut self, name: InlineEffectName, effect: LoadedEffect) -> EffectId {
+    fn insert(&mut self, name: ErasedEffectName, effect: LoadedEffect) -> EffectId {
         let next = EffectId(u32::try_from(self.loaded.len()).expect("fewer than 2³² effects"));
         let id = *self.ids.entry(name).or_insert(next);
         if id == next {
@@ -388,7 +565,7 @@ pub(crate) mod internals {
         ) -> Option<ReducedName> {
             let effects = self.effects.borrow();
             effects
-                .get(name.inline())
+                .get(name.erased())
                 .map(|loaded| loaded.alternatives[ReducedBy::Power as usize])
         }
     }

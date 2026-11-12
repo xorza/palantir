@@ -1,6 +1,8 @@
-use crate::effect::effect_registry::EffectRegistry;
+use crate::effect::effect_registry::{EffectRegistry, ResolvedMaterial};
+use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::internals::panic_probe::assert_panics_with;
 use crate::internals::srgb_reference;
+use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::identity::effect_id::EffectId;
 use crate::primitives::math::lerp::Lerp;
@@ -9,20 +11,31 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::material::frosted_input::FrostedInput;
+use crate::primitives::paint::material::glass_input::GlassInput;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_effect::MaterialEffect;
 use crate::primitives::paint::material::material_fallback::MaterialFallback;
-use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::primitives::paint::material::{Material, bend_root, ceiling_bend};
 use crate::primitives::paint::paint::Paint;
 use crate::primitives::reduction::{Reduction, Reductions};
 use crate::shape;
 use crate::shape::Shape;
+use crate::shape::paint::capture_params::CaptureReach;
 use crate::shape::paint::lowered_material::{LoweredMaterial, MaterialRead};
 use crate::shape::record_store::{RecordStore, Resolve};
 
-/// `material` lowered through effect 0, with its input staged in `store`.
+/// `material` lowered through effect 0 under the box alone, with its parameters staged in `store`.
 fn captured_in(store: &mut RecordStore, material: &Material) -> LoweredMaterial {
-    LoweredMaterial::lower(store, material, EffectId(0))
+    LoweredMaterial::lower(
+        store,
+        material,
+        ResolvedMaterial {
+            id: EffectId(0),
+            reach: MaterialReach::NONE,
+        },
+    )
 }
 
 /// [`captured_in`] a store of its own.
@@ -30,84 +43,70 @@ fn captured(material: &Material) -> LoweredMaterial {
     captured_in(&mut RecordStore::default(), material)
 }
 
-/// The constructors name their stock effects and set exactly their own fields, the theme's
-/// fallback included, each `with_*` its own, `with_fallback` a brush of the author's in its place.
+/// The constructors name their stock effects, lay out each effect's own parameters in order, and
+/// set exactly their own fields, the theme's fallback included; each `with_*` sets its own,
+/// `with_fallback` a brush of the author's in its place.
 #[test]
 fn the_constructors_and_setters_set_their_own_fields() {
     assert_eq!(
         Material::blur(6.0),
         Material {
-            effect: EffectName::BLUR,
-            blur: 6.0,
-            input: MaterialInput::IDENTITY,
+            effect: MaterialEffect::new(EffectName::BLUR, ()),
+            backdrop_blur: 6.0,
             max_luminance: None,
             min_luminance: None,
             fallback: MaterialFallback::ThemeSurface,
         }
     );
+    let frosted = Material::frosted(12.0);
+    assert_eq!(frosted.effect.name(), "palantir.frosted");
+    assert_eq!(frosted.effect.params(), [1.8, 0.04]);
+    assert_eq!(frosted.backdrop_blur, 12.0);
+    let glass = Material::glass(Lens::WINDOW_GLASS);
+    assert_eq!(glass.effect.name(), "palantir.glass");
     assert_eq!(
-        Material::frosted(12.0),
-        Material {
-            effect: EffectName::FROSTED,
-            blur: 12.0,
-            input: MaterialInput {
-                saturation: 1.8,
-                noise: 0.04,
-                lens: Lens::NONE,
-            },
-            ..Material::blur(0.0)
-        }
+        glass.effect.params(),
+        [1.0, 0.0, 24.0, 16.0, 1.5, 0.06, 0.6],
+        "saturation, grain, then the lens flat"
     );
-    let lens = Lens::WINDOW_GLASS;
     assert_eq!(
-        Material::glass(lens),
-        Material {
-            effect: EffectName::GLASS,
-            input: MaterialInput {
-                lens,
-                ..MaterialInput::IDENTITY
-            },
-            ..Material::blur(0.0)
-        }
+        glass,
+        Material::new(EffectName::GLASS, GlassInput::new(Lens::WINDOW_GLASS))
+    );
+    assert_eq!(
+        glass.effect.read::<GlassInput>(),
+        GlassInput::new(Lens::WINDOW_GLASS)
     );
     let set = Material::blur(0.0)
-        .with_blur(2.0)
-        .with_saturation(0.5)
-        .with_noise(0.1)
+        .with_backdrop_blur(2.0)
         .with_max_luminance(0.2)
         .with_min_luminance(0.1)
-        .with_lens(lens)
         .with_fallback(RgbaF32::WHITE);
     assert_eq!(
         set,
         Material {
-            effect: EffectName::BLUR,
-            blur: 2.0,
-            input: MaterialInput {
-                saturation: 0.5,
-                noise: 0.1,
-                lens,
-            },
+            backdrop_blur: 2.0,
             max_luminance: Some(0.2),
             min_luminance: Some(0.1),
             fallback: MaterialFallback::Brush(Brush::Solid(RgbaF32::WHITE)),
+            ..Material::blur(0.0)
         }
-    );
-    assert_eq!(
-        Material::new(EffectName::GLASS, MaterialInput::IDENTITY),
-        Material::glass(Lens::NONE)
     );
 }
 
 /// A rect and a chrome take the same checks: each case panics with its kind's rule.
 #[test]
 fn a_material_out_of_its_kinds_panics_where_it_enters() {
-    let lens = Lens::WINDOW_GLASS;
     let base = Material::blur(1.0);
+    let nan = Material::new(
+        EffectName::FROSTED,
+        FrostedInput {
+            saturation: f32::NAN,
+            noise: 0.0,
+        },
+    );
     for (material, rule) in [
         (Material::blur(-1.0), "a length must"),
-        (base.clone().with_saturation(f32::NAN), "a factor must"),
-        (base.clone().with_noise(-0.5), "a factor must"),
         (base.clone().with_max_luminance(-0.1), "a factor must"),
         (
             base.clone().with_min_luminance(f32::INFINITY),
@@ -117,20 +116,7 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
             base.with_fallback(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
             "a color must",
         ),
-        (
-            Material::glass(Lens {
-                thickness: f32::INFINITY,
-                ..lens
-            }),
-            "a length must",
-        ),
-        (
-            Material::glass(Lens {
-                refractive_index: 0.9,
-                ..lens
-            }),
-            "a refractive index must",
-        ),
+        (nan, "a material's parameters must be finite"),
     ] {
         for entry in ["rect", "chrome"] {
             let panic = std::panic::catch_unwind(|| match entry {
@@ -150,8 +136,10 @@ fn a_material_out_of_its_kinds_panics_where_it_enters() {
 
 /// What a material reads follows the reductions: its effect over what is under it while
 /// transparency runs whole, its effect resolved through the registry, where the stock blur is
-/// effect 2, past the two ripples; and its fallback while transparency is reduced, with the
-/// theme's surface at hand for one that names none.
+/// effect 2, past the two ripples, and the glass effect 4, reading as far as its lens bends; and
+/// its fallback while transparency is reduced, with the theme's surface at hand for one that names
+/// none. A material that cannot paint panics in every mode: over a name nothing loaded, over a
+/// color effect, and with another count of lanes than its effect takes.
 #[test]
 fn a_material_reads_its_fallback_while_transparency_is_reduced() {
     let effects = EffectRegistry::default();
@@ -164,25 +152,126 @@ fn a_material_reads_its_fallback_while_transparency_is_reduced() {
         },
         material_fallback: theme,
     };
-    let blur_id = effects
-        .resolve(EffectName::BLUR.typed(), Reductions::FULL)
-        .expect("the stock blur paints")
-        .id;
-    assert_eq!(blur_id.0, 2);
     let blur = Material::blur(4.0);
     assert_eq!(
         MaterialRead::resolve(&blur, resolve(Reduction::Full)),
-        Some(MaterialRead::Capture { effect: blur_id })
+        Some(MaterialRead::Capture(ResolvedMaterial {
+            id: EffectId(2),
+            reach: MaterialReach::NONE,
+        }))
     );
     assert_eq!(
         MaterialRead::resolve(&blur, resolve(Reduction::Reduced)),
         Some(MaterialRead::Fallback { theme })
     );
-    // A name nothing loaded panics in every mode.
-    let gone = Material::new(EffectName::named("gone").unwrap(), MaterialInput::IDENTITY);
+    assert_eq!(
+        MaterialRead::resolve(
+            &Material::glass(Lens::WINDOW_GLASS),
+            resolve(Reduction::Full)
+        ),
+        Some(MaterialRead::Capture(ResolvedMaterial {
+            id: EffectId(4),
+            reach: MaterialReach::Lens(Lens::WINDOW_GLASS),
+        }))
+    );
+    let gone = Material::new(EffectName::<(), BackdropEffect>::named("gone").unwrap(), ());
     assert_panics_with("no effect is loaded under `gone`", || {
         MaterialRead::resolve(&gone, resolve(Reduction::Reduced))
     });
+    let ripple = Material::new(
+        EffectName::<(), BackdropEffect>::named("palantir.ripple").unwrap(),
+        (),
+    );
+    assert_panics_with(
+        "a material over `palantir.ripple` paints effect 0, which is no material's",
+        || MaterialRead::resolve(&ripple, resolve(Reduction::Full)),
+    );
+    let short = Material::new(
+        EffectName::<(), BackdropEffect>::named("palantir.frosted").unwrap(),
+        (),
+    );
+    assert_panics_with(
+        "effect `palantir.frosted` takes 2 parameter lanes, and its material holds 0",
+        || MaterialRead::resolve(&short, resolve(Reduction::Full)),
+    );
+}
+
+/// An effect's source declares how far a material over it reads from its parameters: an app's
+/// backdrop effect over one lane reads that lane's px past its box, so a material of 6 reads 6
+/// and one of 2 reads 2; with no declaration a material reads under its box alone. An alternative
+/// paints at its own id and reach.
+#[test]
+fn an_effects_source_declares_its_materials_reach() {
+    #[derive(
+        Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams,
+    )]
+    #[repr(C)]
+    struct Shift {
+        dx: f32,
+    }
+    let wgsl = "struct Params { dx: f32 }
+    fn effect(input: EffectInput, params: Params) -> EffectOutput {
+        return effect_over(effect_backdrop(input.pos + vec2<f32>(params.dx, 0.0)));
+    }";
+    let effects = EffectRegistry::default();
+    let reaching = EffectName::<Shift, BackdropEffect>::named("reaching").unwrap();
+    let plain = EffectName::<Shift, BackdropEffect>::named("plain").unwrap();
+    effects
+        .load(
+            reaching,
+            EffectSource::new(wgsl).reach(|shift| MaterialReach::Px(shift.dx)),
+        )
+        .unwrap();
+    effects.load(plain, EffectSource::new(wgsl)).unwrap();
+    let reach = |effect, dx| {
+        effects
+            .resolve_material(&Material::new(effect, Shift { dx }), Reductions::FULL)
+            .map(|resolved| resolved.reach)
+    };
+    assert_eq!(reach(reaching, 6.0), Some(MaterialReach::Px(6.0)));
+    assert_eq!(reach(reaching, 2.0), Some(MaterialReach::Px(2.0)));
+    assert_eq!(reach(plain, 6.0), Some(MaterialReach::NONE));
+
+    // While power is reduced, a material paints its effect's alternative, at that alternative's
+    // id and reach: ids follow load order past the five stock effects, so `reaching` is 5 and
+    // `saving`, which gives way to it, 7; `vanishing` gives way to nothing.
+    let saving = EffectName::<Shift, BackdropEffect>::named("saving").unwrap();
+    let vanishing = EffectName::<Shift, BackdropEffect>::named("vanishing").unwrap();
+    effects
+        .load(
+            saving,
+            EffectSource::new(wgsl).power_saver(ReducedPaint::Effect(reaching)),
+        )
+        .unwrap();
+    effects
+        .load(
+            vanishing,
+            EffectSource::new(wgsl).power_saver(ReducedPaint::Nothing),
+        )
+        .unwrap();
+    let resolve = |effect, power| {
+        let reductions = Reductions {
+            power,
+            ..Reductions::FULL
+        };
+        effects.resolve_material(&Material::new(effect, Shift { dx: 6.0 }), reductions)
+    };
+    assert_eq!(
+        resolve(saving, Reduction::Full),
+        Some(ResolvedMaterial {
+            id: EffectId(7),
+            reach: MaterialReach::NONE,
+        })
+    );
+    assert_eq!(
+        resolve(saving, Reduction::Reduced),
+        Some(ResolvedMaterial {
+            id: EffectId(5),
+            reach: MaterialReach::Px(6.0),
+        })
+    );
+    assert!(resolve(vanishing, Reduction::Full).is_some());
+    assert_eq!(resolve(vanishing, Reduction::Reduced), None);
 }
 
 /// A luminance floor lowers to the f16 at or above it, so a material never shows darker than its
@@ -229,50 +318,62 @@ fn a_luminance_ceiling_rounds_down_where_it_lowers() {
 }
 
 /// A tween that overshoots a fade to none, as `OutBack` does, carries a material past its kinds,
-/// and it coerces where it paints: a negative blur, floor, saturation, noise, bezel and thickness
-/// paint as 0, an index under 1 as 1, and a dispersion and highlight clamp into `0..=1`, 2 as 1,
-/// −1 as 0. The input staged for the effect holds the coerced values.
+/// and it coerces where it paints: a negative blur and floor paint as 0, and a lens's reach as
+/// its kinds: a negative bezel and thickness as 0, an index under 1 as 1, a dispersion of 2 as 1.
+/// The parameters are staged as they are, its effect's to read: the frost's two lanes, word for
+/// word.
 #[test]
 fn a_material_coerces_into_its_kinds_where_it_paints() {
     let past = Material {
-        effect: EffectName::GLASS,
-        blur: -0.4,
-        input: MaterialInput {
-            saturation: -0.1,
-            noise: -0.01,
-            lens: Lens {
-                bezel: -2.4,
-                thickness: -1.6,
-                refractive_index: 0.95,
-                dispersion: 2.0,
-                highlight: -1.0,
-            },
-        },
-        max_luminance: None,
+        backdrop_blur: -0.4,
         min_luminance: Some(-0.04),
-        fallback: MaterialFallback::ThemeSurface,
+        ..Material::new(
+            EffectName::FROSTED,
+            FrostedInput {
+                saturation: -0.1,
+                noise: 0.02,
+            },
+        )
     };
     let mut store = RecordStore::default();
-    let lowered = captured_in(&mut store, &past);
+    let lens = Lens {
+        bezel: -2.4,
+        thickness: -1.6,
+        refractive_index: 0.95,
+        dispersion: 2.0,
+        highlight: -1.0,
+    };
+    let lowered = LoweredMaterial::lower(
+        &mut store,
+        &past,
+        ResolvedMaterial {
+            id: EffectId(0),
+            reach: MaterialReach::Lens(lens),
+        },
+    );
     assert_eq!(lowered.capture.sigma, 0.0);
     assert_eq!(lowered.min_luminance(), 0.0);
+    let CaptureReach::Lens(lanes) = lowered.capture.reach else {
+        panic!("a lens's reach");
+    };
+    assert_eq!(lanes.lanes(), [0.0, 0.0, 1.0, 1.0]);
     let start = lowered.params.start as usize;
-    assert_eq!(lowered.params.len, 7);
-    let words: Vec<f32> = store.effect_params[start..start + 7]
+    assert_eq!(lowered.params.len, 2);
+    let words: Vec<f32> = store.effect_params[start..start + 2]
         .iter()
         .map(|&w| f32::from_bits(w))
         .collect();
-    assert_eq!(words, [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0]);
+    assert_eq!(words, [-0.1, 0.02]);
 }
 
-/// The blur, the input, the fallback and an absent floor blend, the floor through 0, while the
-/// effect and the ceiling switch at `t = 0.5`. Halfway from a floor of 0.4 to none is
-/// `0.4 · 0.5 = 0.2`; halfway from frosted at σ 4 to blur at σ 2 is σ 3, saturation
-/// `(1.8 + 1) / 2 = 1.4` and grain `0.04 / 2 = 0.02`, and from a black fallback to a white one
-/// the grey two colors blend to, while the theme's fallback and a brush switch at `t = 0.5`. An absent material blends through the other
-/// end at rest: a quarter of the way to the default glass is a bezel of `24 · ¼ = 6`, a thickness
-/// of `16 · ¼ = 4`, an index of `1 + 0.5 · ¼ = 1.125`, a dispersion of `0.06 · ¼ = 0.015` and a
-/// highlight of `0.6 · ¼ = 0.15`. The ends stay exact.
+/// The blur, the fallback, an absent floor and the parameters of one effect blend, the floor
+/// through 0, the parameters lane by lane, while the effect and the ceiling switch at `t = 0.5`,
+/// the parameters with the effect where the ends name two. Halfway from a floor of 0.4 to none is
+/// `0.4 · 0.5 = 0.2`; halfway from the frost at saturation 1.8 and grain 0.04 to one at 1.0 and 0
+/// is `(1.4, 0.02)`; from frosted at σ 4 to blur at σ 2 is σ 3, and from a black fallback to a
+/// white one the grey two colors blend to, while the theme's fallback and a brush switch at
+/// `t = 0.5`. An absent material blends through the other end at rest, its parameters kept: a
+/// quarter of the way to the frost at σ 8 is σ 2, at the frost's own lanes. The ends stay exact.
 #[test]
 fn a_material_blends_its_numbers_and_snaps_its_effect() {
     let plain = Material::blur(4.0);
@@ -283,6 +384,19 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
     );
     assert_eq!(Material::lerp(&floored, &plain, 0.0), floored);
     assert_eq!(Material::lerp(&floored, &plain, 1.0), plain);
+    let flat = Material::new(
+        EffectName::FROSTED,
+        FrostedInput {
+            saturation: 1.0,
+            noise: 0.0,
+        },
+    );
+    assert_eq!(
+        Material::lerp(&Material::frosted(0.0), &flat, 0.5)
+            .effect
+            .params(),
+        [1.4, 0.02]
+    );
     let frosted = Material::frosted(4.0).with_fallback(RgbaF32::BLACK);
     let blur = Material::blur(2.0).with_fallback(RgbaF32::WHITE);
     let half = Material::lerp(&frosted, &blur, 0.5);
@@ -300,28 +414,20 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
         MaterialFallback::ThemeSurface
     );
     assert_eq!(Material::lerp(&themed, &blur, 0.5).fallback, blur.fallback);
-    assert_eq!(half.effect, EffectName::BLUR);
     assert_eq!(
-        Material::lerp(&frosted, &blur, 0.49).effect,
-        EffectName::FROSTED
+        half.effect,
+        MaterialEffect::new(EffectName::BLUR, ()),
+        "the blur, with its parameters"
     );
-    assert_eq!(half.blur, 3.0);
-    assert_eq!(half.input.saturation, 1.4);
-    assert_eq!(half.input.noise, 0.02);
-    let glass = Material::glass(Lens::WINDOW_GLASS);
+    assert_eq!(Material::lerp(&frosted, &blur, 0.49).effect, frosted.effect);
+    assert_eq!(half.backdrop_blur, 3.0);
+    let appearing =
+        Option::<Material>::lerp(&None, &Some(Material::frosted(8.0)), 0.25).expect("a material");
+    assert_eq!(appearing.backdrop_blur, 2.0);
+    assert_eq!(appearing.effect.params(), [1.8, 0.04]);
     assert_eq!(
-        Option::<Material>::lerp(&None, &Some(glass.clone()), 0.25).map(|m| m.input.lens),
-        Some(Lens {
-            bezel: 6.0,
-            thickness: 4.0,
-            refractive_index: 1.125,
-            dispersion: 0.015,
-            highlight: 0.15,
-        })
-    );
-    assert_eq!(
-        Option::<Material>::lerp(&None, &Some(glass.clone()), 1.0),
-        Some(glass)
+        Option::<Material>::lerp(&None, &Some(frosted.clone()), 1.0),
+        Some(frosted)
     );
     assert_eq!(Option::<Material>::lerp(&None, &None, 0.5), None);
     let ceiling = plain.clone().with_max_luminance(0.5);
@@ -330,6 +436,83 @@ fn a_material_blends_its_numbers_and_snaps_its_effect() {
         Some(0.5)
     );
     assert_eq!(Material::lerp(&ceiling, &plain, 0.5).max_luminance, None);
+}
+
+/// A material's parameters are f32 lanes that span their struct: a scalar and a vec3 are 4 lanes,
+/// the glass's 7 and none 0; an integer, a struct past 8 lanes, and one whose bytes its fields
+/// leave unlisted are no material's.
+#[test]
+fn a_materials_parameters_are_listed_f32_lanes() {
+    use crate::primitives::effect::effect_params::{EffectParam, EffectParams};
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
+    #[repr(C)]
+    struct Mixed {
+        a: f32,
+        b: [f32; 3],
+    }
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
+    #[repr(C)]
+    struct Count {
+        n: u32,
+    }
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, palantir_derive::EffectParams)]
+    #[repr(C)]
+    struct Wide {
+        a: [f32; 4],
+        b: [f32; 4],
+        c: f32,
+    }
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    #[repr(C)]
+    struct Unlisted {
+        data: [f32; 2],
+    }
+    impl EffectParams for Unlisted {
+        const FIELDS: &'static [EffectParam] = &[];
+    }
+    assert_eq!(MaterialEffect::lanes_for::<Mixed>(), Some(4));
+    assert_eq!(MaterialEffect::lanes_for::<GlassInput>(), Some(7));
+    assert_eq!(MaterialEffect::lanes_for::<()>(), Some(0));
+    assert_eq!(MaterialEffect::lanes_for::<Count>(), None);
+    assert_eq!(MaterialEffect::lanes_for::<Wide>(), None);
+    assert_eq!(MaterialEffect::lanes_for::<Unlisted>(), None);
+    assert_eq!(
+        MaterialEffect::new(
+            EffectName::<Mixed, BackdropEffect>::named("mixed").unwrap(),
+            Mixed {
+                a: 1.0,
+                b: [2.0, 3.0, 4.0]
+            }
+        )
+        .params(),
+        [1.0, 2.0, 3.0, 4.0]
+    );
+}
+
+/// A material springs its blur and each parameter lane, the rest taken from the target: from a
+/// frost at σ 4 of saturation 1.5 and grain 0.25 to one at σ 2 of 1 and none is a step of σ 2 and
+/// lanes `(0.5, 0.25)`, whose squared magnitude is `4 + 0.25 + 0.0625 = 4.3125`; half of it is σ 1
+/// and `(0.25, 0.125)`, and the target plus the step lands on the first frost again.
+#[test]
+fn a_material_springs_its_blur_and_lanes() {
+    use crate::primitives::math::animatable::Animatable;
+    let frost = |sigma, saturation, noise| {
+        Some(
+            Material::new(EffectName::FROSTED, FrostedInput { saturation, noise })
+                .with_backdrop_blur(sigma),
+        )
+    };
+    let from = frost(4.0, 1.5, 0.25);
+    let to = frost(2.0, 1.0, 0.0);
+    let step = from.sub(&to);
+    let lanes = |m: &Option<Material>| {
+        let m = m.as_ref().expect("a material");
+        (m.backdrop_blur, m.effect.params().to_vec())
+    };
+    assert_eq!(lanes(&step), (2.0, vec![0.5, 0.25]));
+    assert_eq!(step.magnitude_squared(), 4.3125);
+    assert_eq!(lanes(&step.scale(0.5)), (1.0, vec![0.25, 0.125]));
+    assert_eq!(to.add(&step), from);
 }
 
 /// `with_material` sets the material alone, and a chrome whose only paint is a material is not a

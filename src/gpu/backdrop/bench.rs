@@ -184,8 +184,8 @@ impl Look {
         match self {
             Self::Blur => Material::blur(sigma),
             Self::Frosted => Material::frosted(sigma),
-            Self::Glass => Material::glass(lens(0.06)).with_blur(2.0),
-            Self::GlassPlain => Material::glass(lens(0.0)).with_blur(2.0),
+            Self::Glass => Material::glass(lens(0.06)).with_backdrop_blur(2.0),
+            Self::GlassPlain => Material::glass(lens(0.0)).with_backdrop_blur(2.0),
         }
     }
 
@@ -282,7 +282,7 @@ impl Arm {
     /// The paint a settled frame of `look` plans, and on the device the blurs it runs. A slide
     /// keeps its capture only on a lattice coarser than a pixel, which glass's light blur is not.
     fn expected(self, look: Look) -> (FramePaint, usize) {
-        let sigma = look.material(FRAME_SIGMA).blur * FRAME_DPR.get();
+        let sigma = look.material(FRAME_SIGMA).backdrop_blur * FRAME_DPR.get();
         let slides_inside = BlurPlan::new(sigma).lattice() > 1;
         match self {
             Self::Cached => (FramePaint::Skip, 0),

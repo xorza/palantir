@@ -7,10 +7,12 @@ use crate::effect::press_input::PressInput;
 use crate::primitives::effect::effect_kind::{BackdropEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
+use crate::primitives::paint::material::frosted_input::FrostedInput;
+use crate::primitives::paint::material::glass_input::GlassInput;
 use crate::primitives::paint::material::lens_optics::{
     LINE_C, LINE_D, LINE_F, SPECTRUM_RED, SPECTRUM_SAMPLES, SPECTRUM_VIOLET,
 };
-use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::material_reach::MaterialReach;
 
 /// The prefix of every name palantir loads itself, which
 /// [`Ui::load_effect`](crate::Ui::load_effect) refuses, so an app's effect never replaces a stock
@@ -30,19 +32,23 @@ impl EffectName<PressInput> {
     pub const SPARKLE: Self = reserved("palantir.sparkle");
 }
 
-impl EffectName<MaterialInput, BackdropEffect> {
+impl EffectName<(), BackdropEffect> {
     /// What the material reads, blurred by its capture's σ, as it is, as CSS
-    /// `backdrop-filter: blur()` shows it. It reads none of its input.
+    /// `backdrop-filter: blur()` shows it.
     pub const BLUR: Self = reserved("palantir.blur");
+}
 
+impl EffectName<FrostedInput, BackdropEffect> {
     /// Frosted glass: what the material reads, its color saturated as CSS `saturate()` scales it
-    /// and grained, so a fill over it reads as a material, as Apple's materials deepen theirs. It
-    /// reads the input's saturation and grain.
+    /// and grained, so a fill over it reads as a material, as Apple's materials deepen theirs.
     pub const FROSTED: Self = reserved("palantir.frosted");
+}
 
+impl EffectName<GlassInput, BackdropEffect> {
     /// Glass: what the material reads, bent through the input's lens across a rounded bezel at
     /// its edge, every wavelength at its own index where the lens disperses, with the lamp's glint,
-    /// then saturated and grained as [`Self::FROSTED`] is.
+    /// then saturated and grained as [`EffectName::FROSTED`] is. A material over it reads past its
+    /// box as far as the lens bends a ray.
     pub const GLASS: Self = reserved("palantir.glass");
 }
 
@@ -73,23 +79,21 @@ pub(crate) fn sources() -> StockSources {
                 .power_saver(ReducedPaint::Effect(EffectName::RIPPLE)),
             ),
         ],
-        materials: [
-            (
-                EffectName::BLUR,
-                EffectSource::new(concat!(
-                    include_str!("material.wgsl"),
-                    include_str!("blur.wgsl")
-                )),
-            ),
-            (
-                EffectName::FROSTED,
-                EffectSource::new(concat!(
-                    include_str!("material.wgsl"),
-                    include_str!("frosted.wgsl")
-                )),
-            ),
-            (EffectName::GLASS, EffectSource::new(glass_wgsl())),
-        ],
+        blur: (
+            EffectName::BLUR,
+            EffectSource::new(include_str!("blur.wgsl")),
+        ),
+        frosted: (
+            EffectName::FROSTED,
+            EffectSource::new(concat!(
+                include_str!("material.wgsl"),
+                include_str!("frosted.wgsl")
+            )),
+        ),
+        glass: (
+            EffectName::GLASS,
+            EffectSource::new(glass_wgsl()).reach(|input| MaterialReach::Lens(input.lens)),
+        ),
     }
 }
 
@@ -97,11 +101,16 @@ pub(crate) fn sources() -> StockSources {
 #[derive(Debug)]
 pub(crate) struct StockSources {
     pub(crate) press: [(EffectName<PressInput>, EffectSource<PressInput>); 2],
-    pub(crate) materials: [(
-        EffectName<MaterialInput, BackdropEffect>,
-        EffectSource<MaterialInput, BackdropEffect>,
-    ); 3],
+    pub(crate) blur: Stock<()>,
+    pub(crate) frosted: Stock<FrostedInput>,
+    pub(crate) glass: Stock<GlassInput>,
 }
+
+/// A stock material's name and source.
+pub(crate) type Stock<U> = (
+    EffectName<U, BackdropEffect>,
+    EffectSource<U, BackdropEffect>,
+);
 
 /// The glass's WGSL, with the optics' constants the Rust types own.
 pub(crate) fn glass_wgsl() -> String {

@@ -119,9 +119,9 @@ pub(crate) fn lower_paint(
     );
     let authored = paint.material.as_ref().zip(material);
     let (fill, material) = match authored {
-        Some((authored, MaterialRead::Capture { effect })) => (
+        Some((authored, MaterialRead::Capture(resolved))) => (
             brush(store, &paint.fill),
-            Some(LoweredMaterial::lower(store, authored, effect)),
+            Some(LoweredMaterial::lower(store, authored, resolved)),
         ),
         Some((authored, MaterialRead::Fallback { theme })) => {
             (brush(store, &authored.fallback.brush(theme)), None)

@@ -1,24 +1,14 @@
-// What the stock materials read, palantir's `MaterialInput`, and the look they share.
-
-struct Params {
-    saturation: f32,
-    noise: f32,
-    bezel: f32,
-    thickness: f32,
-    refractive_index: f32,
-    dispersion: f32,
-    highlight: f32,
-}
+// The look the stock frosted glass and glass share.
 
 // Rec. 709 luminance weights, over linear light.
 const MATERIAL_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 
 // `c` saturated as CSS `saturate()` scales it, and grained, so frosted glass does not read as a
 // flat color.
-fn material_frost(c: vec3<f32>, input: EffectInput, params: Params) -> vec3<f32> {
-    var out = max(mix(vec3<f32>(dot(c, MATERIAL_LUMA)), c, params.saturation), vec3<f32>(0.0));
-    if (params.noise > 0.0) {
-        out = mix(out, vec3<f32>(material_grain(input.pos * input.scale)), params.noise);
+fn material_frost(c: vec3<f32>, input: EffectInput, saturation: f32, noise: f32) -> vec3<f32> {
+    var out = max(mix(vec3<f32>(dot(c, MATERIAL_LUMA)), c, saturation), vec3<f32>(0.0));
+    if (noise > 0.0) {
+        out = mix(out, vec3<f32>(material_grain(input.pos * input.scale)), noise);
     }
     return out;
 }

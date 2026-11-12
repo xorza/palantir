@@ -2,13 +2,12 @@ use glam::Vec2;
 
 use crate::animation::animation_spec::AnimationSpec;
 
-use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::material::Material;
 use crate::primitives::paint::material::material_fallback::MaterialFallback;
-use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::{
@@ -77,9 +76,7 @@ const DISTINCT: Metrics = Metrics {
         blur: 23.0,
     },
     float_material: Some(FloatMaterial {
-        effect: EffectName::BLUR,
-        blur: 31.0,
-        input: MaterialInput::IDENTITY,
+        material: Material::blur(31.0),
         fill_alpha: 0.5,
     }),
     transition: AnimationSpec::MEDIUM,
@@ -207,7 +204,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("modal", &t.modal.panel),
     ] {
         let material = panel.paint.material.as_ref().expect(slot);
-        assert_eq!(material.blur, 31.0, "{slot} blur");
+        assert_eq!(material.backdrop_blur, 31.0, "{slot} blur");
         let fill = panel.paint.fill.as_solid().expect(slot);
         assert_eq!(fill.a, 0.5, "{slot} fill");
         let MaterialFallback::Brush(Brush::Solid(fallback)) = material.fallback else {

@@ -48,12 +48,6 @@ pub enum EffectError {
         /// The slots asked for.
         slots: u8,
     },
-    /// A backdrop effect over [`MaterialInput`](crate::MaterialInput) asks for image slots, which no
-    /// material binds: a box hands its material none.
-    MaterialImageSlots {
-        /// The slots asked for.
-        slots: u8,
-    },
     /// The WGSL declares a binding of its own: palantir binds every resource an effect reads, an
     /// image through a slot ([`EffectSource::image_slots`](crate::EffectSource::image_slots)).
     Binding {
@@ -145,10 +139,6 @@ impl fmt::Display for EffectError {
             Self::TooManyImageSlots { slots } => write!(
                 f,
                 "the effect asks for {slots} image slots, past the {MAX_IMAGE_SLOTS} an effect binds"
-            ),
-            Self::MaterialImageSlots { slots } => write!(
-                f,
-                "the material effect asks for {slots} image slots, where a material binds none"
             ),
             Self::Binding { name } => write!(
                 f,

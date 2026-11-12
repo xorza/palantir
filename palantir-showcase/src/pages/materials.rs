@@ -66,7 +66,7 @@ pub fn build(ui: &mut Ui, k: Kit) {
                         dispersion: 0.55,
                         ..Lens::WINDOW_GLASS
                     })
-                    .with_blur(1.0),
+                    .with_backdrop_blur(1.0),
                     RgbaF32::new(1.0, 1.0, 1.0, 0.1),
                 );
             });
@@ -236,7 +236,7 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, material: Material, fill: Rgba
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 page(ui, k, Vec2::splat(CELL));
-                let corners = if material.effect == EffectName::GLASS {
+                let corners = if material.effect.name() == EffectName::GLASS.name() {
                     50.0
                 } else {
                     14.0

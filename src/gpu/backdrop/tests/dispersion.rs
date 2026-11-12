@@ -57,7 +57,7 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
                 }
                 ui.add_shape(
                     Shape::rect().at(BACKDROP).corners(Corners::all(16.0)),
-                    Material::glass(lens).with_blur(blur),
+                    Material::glass(lens).with_backdrop_blur(blur),
                 );
             });
     };

@@ -2,16 +2,17 @@
 //!
 //! # Decisions
 //!
-//! - **A material is an effect over [`MaterialInput`].** It names a backdrop effect of fixed
-//!   parameters, which palantir fills from it as it fills [`PressInput`](crate::PressInput) for a
-//!   press. Blur, frosted and glass are palantir's stock effects
-//!   ([`EffectName::BLUR`](crate::EffectName::BLUR), `FROSTED`, `GLASS`), and an app's backdrop
-//!   effect over the same input dresses a chrome as a stock one does, as Flutter's
-//!   `BackdropFilter` takes `ImageFilter.blur` or `ImageFilter.shader`, Android's
+//! - **A material is a backdrop effect with its own parameters.** [`Material::new`] takes any
+//!   backdrop effect's name and a value of its own parameter type, laid out inline as
+//!   [`MaterialEffect`], so an app's backdrop effect dresses a chrome as a stock one does, as
+//!   Flutter's `BackdropFilter` takes `ImageFilter.blur` or `ImageFilter.shader`, Android's
 //!   `RenderEffect` a blur or a runtime shader, and Skia's `SkImageFilters` `Blur` or
-//!   `RuntimeShader`. Refused: a built-in filter type beside app effects, two forms of one
-//!   thing; a type-erased effect and its bytes in a `Chrome`, which no file holds and no tween
-//!   blends; a closed enum of looks, whose looks are no effects.
+//!   `RuntimeShader`. Blur, frosted and glass are palantir's stock effects
+//!   ([`EffectName::BLUR`](crate::EffectName::BLUR), `FROSTED`, `GLASS`), each with its own
+//!   parameter type. Refused: one input type every material effect reads, which fit the stock
+//!   effects alone; a shared allocation of the parameters, which every material built in a frame
+//!   would pay; a built-in filter type beside app effects; a closed enum of looks, whose looks
+//!   are no effects.
 //! - **It is named `Material`**, the platform term: Apple's materials, Fluent's Acrylic and Mica
 //!   materials. Refused: `BackdropFilter`, as it names an effect and no filter; `Pane`, a dock's
 //!   region; `Backdrop`, the pixels under a shape.
@@ -22,12 +23,18 @@
 //!   exact. Refused: a material as a `Brush` (WinUI's `AcrylicBrush`, SwiftUI's `Material`),
 //!   which every text and stroke taking a brush would have to refuse; "glass cannot sample
 //!   glass", as SwiftUI rules.
-//! - **The capture blurs, the effect looks.** `blur` is the σ of the capture's one downsampled
-//!   blur, a Gaussian σ in logical px as [`Shadow::blur`](crate::Shadow) and CSS `blur()` take
-//!   it, whatever the effect; the stock blur is then the effect that shows what it reads. Refused:
-//!   a blur inside each effect, a full-resolution loop per pixel.
+//! - **The capture blurs, the effect looks.** `backdrop_blur` is the σ of the capture's one
+//!   downsampled blur, a Gaussian σ in logical px as [`Shadow::blur`](crate::Shadow) and CSS
+//!   `blur()` take it, of the pixels under the box before the effect reads them, whatever the
+//!   effect; the stock blur is then the effect that shows what it reads. One effect is worn at
+//!   many σ, so σ is the material's, as Android chains a blur `RenderEffect` into a runtime
+//!   shader's and Flutter composes `ImageFilter.blur` inside `ImageFilter.shader`. Refused: a blur
+//!   inside each effect, a full-resolution loop per pixel; σ among the effect's parameters, which
+//!   palantir must read to plan the capture before any effect runs.
 //! - **A material reads past its edge.** The blur is the exact convolution of what is painted
-//!   around the box, so content glows in before it slides under a bar. Refused: CSS's in-bounds
+//!   around the box, so content glows in before it slides under a bar, and the effect reads as
+//!   far past the box as its source declares ([`EffectSource::reach`](crate::EffectSource::reach)),
+//!   the stock glass as far as its lens bends a ray. Refused: CSS's in-bounds
 //!   read with mirrored edges and Android's clamped edges, which paint invented content there.
 //! - **Palantir holds the ink legible, around any effect.** `max_luminance` caps the relative
 //!   luminance of what the effect shows, before the fill, by scaling the color, so its hue and
@@ -66,16 +73,21 @@
 //!   default, which leaves a box's ink unheld; a switch in the theme, as the choice is the
 //!   person's or the system's, as CSS's `prefers-reduced-transparency` is.
 //! - **A tween snaps the effect and blends the rest**, as a theme transition snaps a
-//!   [`PressEffect`](crate::PressEffect). An absent material blends through the target at rest
-//!   ([`Material::at_rest`]).
+//!   [`PressEffect`](crate::PressEffect): two materials over one effect blend their parameters
+//!   lane by lane. An absent material blends through the target at rest ([`Material::at_rest`]),
+//!   its parameters kept, as no effect names a neutral for them.
 
+pub(crate) mod frosted_input;
+pub(crate) mod glass_input;
 pub(crate) mod lens;
 pub(crate) mod lens_optics;
+pub(crate) mod material_effect;
 pub(crate) mod material_fallback;
-pub(crate) mod material_input;
+pub(crate) mod material_reach;
 
 use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
+use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
@@ -84,9 +96,11 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
+use crate::primitives::paint::material::frosted_input::FrostedInput;
+use crate::primitives::paint::material::glass_input::GlassInput;
 use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_effect::MaterialEffect;
 use crate::primitives::paint::material::material_fallback::MaterialFallback;
-use crate::primitives::paint::material::material_input::MaterialInput;
 
 /// A backdrop effect a box wears under its fill: the pixels painted before it in paint order,
 /// blurred by the capture's σ, shown through the effect, held within its luminance bounds, under
@@ -101,26 +115,26 @@ use crate::primitives::paint::material::material_input::MaterialInput;
 /// and a blur on each frame where something painted before it changes under it, and nothing on a
 /// frame where nothing does.
 ///
-/// Plain data, checked where it enters a shape or a [`Chrome`](crate::Chrome): `blur` is a
+/// Plain data, checked where it enters a shape or a [`Chrome`](crate::Chrome): `backdrop_blur` is a
 /// [length](crate::widget::domain::length), each luminance bound a
 /// [factor](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
-/// packs into one, the input and the fallback hold their own checks. The effect must be loaded
-/// where the box records, as an [`EffectPaint`](crate::widget::EffectPaint)'s effect must.
+/// packs into one, each parameter finite, and the fallback holds its own checks. The effect must
+/// be loaded where the box records, a backdrop effect that binds no image and takes as many lanes
+/// as the material holds, as an [`EffectPaint`](crate::widget::EffectPaint)'s effect must be
+/// loaded.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct Material {
-    /// The backdrop effect that shows what the material reads.
-    pub effect: EffectName<MaterialInput, BackdropEffect>,
-    /// The capture's Gaussian σ in logical px, as CSS `blur()` takes it; 0 reads it sharp.
+    /// The backdrop effect that shows what the material reads, with its parameters.
+    pub effect: MaterialEffect,
+    /// The σ in logical px the pixels under the box are blurred by before the effect reads them,
+    /// as CSS `blur()` takes it; 0 reads them sharp.
     #[serde(
         default,
         deserialize_with = "crate::primitives::math::domain::file::lane_length",
         skip_serializing_if = "is_sharp"
     )]
-    pub blur: f32,
-    /// What the effect reads besides, as palantir fills it.
-    #[serde(default, skip_serializing_if = "MaterialInput::is_identity")]
-    pub input: MaterialInput,
+    pub backdrop_blur: f32,
     /// The highest relative luminance the material shows under its fill, if any: a brighter pixel
     /// is scaled down to it, its hue and chroma kept. The lane it packs into rounds it down, never
     /// up; an 8-bit target then stores each channel within one encoded step of the composite,
@@ -148,16 +162,18 @@ pub struct Material {
 }
 
 impl Material {
-    /// The effect `effect` reading `input`, sharp, with no luminance bound, falling back to the
-    /// theme's surface while transparency is reduced.
-    pub const fn new(
-        effect: EffectName<MaterialInput, BackdropEffect>,
-        input: MaterialInput,
-    ) -> Self {
+    /// `effect` reading `params`, of its own parameter type, laid out as [`MaterialEffect`]:
+    /// sharp, with no luminance bound, falling back to the theme's surface while transparency is
+    /// reduced.
+    ///
+    /// # Panics
+    ///
+    /// At compile time, unless every field of `U` is f32 lanes and they fit
+    /// [`MaterialEffect::MAX_LANES`].
+    pub const fn new<U: EffectParams>(effect: EffectName<U, BackdropEffect>, params: U) -> Self {
         Self {
-            effect,
-            blur: 0.0,
-            input,
+            effect: MaterialEffect::new(effect, params),
+            backdrop_blur: 0.0,
             max_luminance: None,
             min_luminance: None,
             fallback: MaterialFallback::ThemeSurface,
@@ -167,49 +183,26 @@ impl Material {
     /// The pixels behind blurred by σ `sigma` logical px, as CSS `backdrop-filter: blur()`:
     /// [`EffectName::BLUR`].
     pub const fn blur(sigma: f32) -> Self {
-        Self::new(EffectName::BLUR, MaterialInput::IDENTITY).with_blur(sigma)
+        Self::new(EffectName::BLUR, ()).with_backdrop_blur(sigma)
     }
 
     /// Frosted glass: the pixels behind blurred by σ `sigma` logical px, read through
-    /// [`MaterialInput::FROSTED`], so a fill over it reads as a material:
+    /// [`FrostedInput::DEFAULT`], so a fill over it reads as a material:
     /// [`EffectName::FROSTED`].
     pub const fn frosted(sigma: f32) -> Self {
-        Self::new(EffectName::FROSTED, MaterialInput::FROSTED).with_blur(sigma)
+        Self::new(EffectName::FROSTED, FrostedInput::DEFAULT).with_backdrop_blur(sigma)
     }
 
-    /// Clear glass: the pixels behind, sharp, seen through `lens`: [`EffectName::GLASS`];
-    /// [`Self::with_blur`] frosts it.
+    /// Clear glass: the pixels behind, sharp, seen through `lens`, with no saturation or grain:
+    /// [`EffectName::GLASS`]; [`Self::with_backdrop_blur`] frosts it.
     pub const fn glass(lens: Lens) -> Self {
-        Self::new(
-            EffectName::GLASS,
-            MaterialInput {
-                lens,
-                ..MaterialInput::IDENTITY
-            },
-        )
+        Self::new(EffectName::GLASS, GlassInput::new(lens))
     }
 
-    /// This material with σ `sigma` logical px of blur.
-    pub const fn with_blur(mut self, sigma: f32) -> Self {
-        self.blur = sigma;
-        self
-    }
-
-    /// This material with `saturation` as CSS `saturate()` takes it.
-    pub const fn with_saturation(mut self, saturation: f32) -> Self {
-        self.input.saturation = saturation;
-        self
-    }
-
-    /// This material with grain of amplitude `noise`.
-    pub const fn with_noise(mut self, noise: f32) -> Self {
-        self.input.noise = noise;
-        self
-    }
-
-    /// This material seen through `lens`.
-    pub const fn with_lens(mut self, lens: Lens) -> Self {
-        self.input.lens = lens;
+    /// This material with the pixels under the box blurred by σ `sigma` logical px before its
+    /// effect reads them.
+    pub const fn with_backdrop_blur(mut self, sigma: f32) -> Self {
+        self.backdrop_blur = sigma;
         self
     }
 
@@ -296,21 +289,20 @@ impl Material {
         }
     }
 
-    /// This material with no blur, its input at [`MaterialInput::IDENTITY`] and no bound: what an
-    /// absent material blends through toward it, as an absent chrome blends through
-    /// `Chrome::NONE`. Its effect and its fallback stay.
+    /// This material with no blur and no bound: what an absent material blends through toward
+    /// it, as an absent chrome blends through `Chrome::NONE`. Its effect, its parameters and its
+    /// fallback stay, as no effect names a neutral for its parameters.
     pub const fn at_rest(self) -> Self {
         Self {
-            blur: 0.0,
-            input: MaterialInput::IDENTITY,
+            backdrop_blur: 0.0,
             max_luminance: None,
             min_luminance: None,
             ..self
         }
     }
 
-    /// Whether `blur` is a length, each luminance bound a factor, each a lane, and the input and
-    /// the fallback valid: [`Self::validate`]'s test.
+    /// Whether `backdrop_blur` is a length, each luminance bound a factor, each a lane, each
+    /// parameter finite and the fallback valid: [`Self::validate`]'s test.
     #[inline]
     pub(crate) const fn is_valid(&self) -> bool {
         // An absent bound checks as 0, a factor; by hand, as `Option::unwrap_or` is not `const`.
@@ -321,38 +313,40 @@ impl Material {
             }
         }
         domain::are_length_lanes([
-            self.blur,
+            self.backdrop_blur,
             bound(self.max_luminance),
             bound(self.min_luminance),
-        ]) & self.input.is_valid()
+        ]) & self.effect.is_valid()
             & self.fallback.is_valid()
     }
 
-    /// Panics unless `blur` is a length, each luminance bound a factor, each a lane, and the
-    /// input and the fallback valid.
+    /// Panics unless `backdrop_blur` is a length, each luminance bound a factor, each a lane, each
+    /// parameter finite and the fallback valid.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
-        domain::lane(domain::length(self.blur));
+        domain::lane(domain::length(self.backdrop_blur));
         if let Some(luminance) = self.max_luminance {
             domain::lane(domain::factor(luminance));
         }
         if let Some(luminance) = self.min_luminance {
             domain::lane(domain::factor(luminance));
         }
-        self.input.validate();
+        assert!(
+            self.effect.is_valid(),
+            "a material's parameters must be finite"
+        );
         self.fallback.validate();
     }
 
     /// Coerce each blended value into its kind, as a curve overshooting below a floor leaves
-    /// it: the blur a length, the floor a factor, the input its own
-    /// ([`MaterialInput::coerce`]).
+    /// it: the blur a length and the floor a factor. The parameters' kinds are their effect's,
+    /// which it reads as it reads any.
     pub(crate) const fn coerce(&mut self) {
-        self.blur = domain::raised_to(self.blur, 0.0);
+        self.backdrop_blur = domain::raised_to(self.backdrop_blur, 0.0);
         if let Some(luminance) = &mut self.min_luminance {
             *luminance = domain::raised_to(*luminance, 0.0);
         }
-        self.input.coerce();
     }
 }
 
@@ -475,10 +469,12 @@ impl InkBound {
     }
 }
 
-/// `blur`, the input and the fallback blend, the fallback as a [`MaterialFallback`] does; the
-/// effect switches at `t = 0.5`, as two effects do not blend. An absent floor blends through 0,
-/// which lifts nothing; the ceiling switches at `t = 0.5`, as its neutral, no bound, is no lane
-/// value. A blend is coerced into the material's domain, as its coercion where it paints.
+/// The blur and the fallback blend, the fallback as a [`MaterialFallback`] does, and the
+/// parameters lane by lane where both ends name one effect; the effect switches at `t = 0.5`, its
+/// parameters with it where the ends name two, as two effects do not blend. An absent floor
+/// blends through 0, which lifts nothing; the ceiling switches at `t = 0.5`, as its neutral, no
+/// bound, is no lane value. A blend is coerced into the material's domain, as its coercion where
+/// it paints.
 impl Lerp for Material {
     #[inline]
     fn lerp(a: &Self, b: &Self, t: f32) -> Self {
@@ -489,10 +485,14 @@ impl Lerp for Material {
             return b.clone();
         }
         let snap = if t < 0.5 { a } else { b };
+        let effect = if a.effect.blends_with(&b.effect) {
+            a.effect.zip(&b.effect, |a, b| f32::lerp(&a, &b, t))
+        } else {
+            snap.effect
+        };
         let mut blend = Self {
-            effect: snap.effect,
-            blur: f32::lerp(&a.blur, &b.blur, t),
-            input: MaterialInput::lerp(&a.input, &b.input, t),
+            effect,
+            backdrop_blur: f32::lerp(&a.backdrop_blur, &b.backdrop_blur, t),
             max_luminance: snap.max_luminance,
             min_luminance: match (a.min_luminance, b.min_luminance) {
                 (None, None) => None,
@@ -525,7 +525,7 @@ impl Lerp for Option<Material> {
     }
 }
 
-/// `blur`, `saturation` and `noise` spring; the rest takes the target at once, as a `lerp_only`
+/// The blur and each parameter lane spring; the rest takes the target at once, as a `lerp_only`
 /// field does. An absent material springs through the other end at rest.
 impl Animatable for Option<Material> {
     #[inline]
@@ -537,12 +537,8 @@ impl Animatable for Option<Material> {
             (None, Some(b)) => (b.clone().at_rest(), b.clone()),
         };
         Some(Material {
-            blur: a.blur - b.blur,
-            input: MaterialInput {
-                saturation: a.input.saturation - b.input.saturation,
-                noise: a.input.noise - b.input.noise,
-                ..a.input
-            },
+            backdrop_blur: a.backdrop_blur - b.backdrop_blur,
+            effect: a.effect.zip(&b.effect, |a, b| a - b),
             ..a
         })
     }
@@ -553,33 +549,28 @@ impl Animatable for Option<Material> {
         };
         let base = self.clone().unwrap_or_else(|| offset.clone().at_rest());
         Some(Material {
-            blur: base.blur + offset.blur,
-            input: MaterialInput {
-                saturation: base.input.saturation + offset.input.saturation,
-                noise: base.input.noise + offset.input.noise,
-                ..base.input
-            },
+            backdrop_blur: base.backdrop_blur + offset.backdrop_blur,
+            effect: base.effect.zip(&offset.effect, |a, b| a + b),
             ..base
         })
     }
     #[inline]
     fn scale(&self, k: f32) -> Self {
         self.clone().map(|m| Material {
-            blur: m.blur * k,
-            input: MaterialInput {
-                saturation: m.input.saturation * k,
-                noise: m.input.noise * k,
-                ..m.input
-            },
+            backdrop_blur: m.backdrop_blur * k,
+            effect: m.effect.map(|lane| lane * k),
             ..m
         })
     }
     #[inline]
     fn magnitude_squared(&self) -> f32 {
         self.as_ref().map_or(0.0, |m| {
-            m.blur * m.blur
-                + m.input.saturation * m.input.saturation
-                + m.input.noise * m.input.noise
+            m.backdrop_blur * m.backdrop_blur
+                + m.effect
+                    .params()
+                    .iter()
+                    .map(|lane| lane * lane)
+                    .sum::<f32>()
         })
     }
     #[inline]
@@ -606,10 +597,10 @@ pub(crate) fn is_sharp(sigma: &f32) -> bool {
 
 impl NanCheck for Material {
     fn has_nan(&self) -> bool {
-        self.blur.is_nan()
+        self.backdrop_blur.is_nan()
             || self.max_luminance.is_some_and(f32::is_nan)
             || self.min_luminance.is_some_and(f32::is_nan)
-            || self.input.has_nan()
+            || self.effect.has_nan()
             || self.fallback.has_nan()
     }
 }

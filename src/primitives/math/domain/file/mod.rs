@@ -116,34 +116,12 @@ pub(crate) fn lane_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<
     read(deserializer, &[FILE_LENGTH, LANE])
 }
 
-/// A [factor](domain::factor) that packs into an f16 [lane](domain::lane), as a backdrop
-/// filter's saturation and grain do.
-pub(crate) fn lane_factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
-    read(deserializer, &[FACTOR, LANE])
-}
-
-/// An optional [`lane_factor`], as a material's luminance bounds.
+/// An optional [factor](domain::factor) that packs into an f16 [lane](domain::lane), as a
+/// material's luminance bounds.
 pub(crate) fn optional_lane_factor<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<f32>, D::Error> {
     read_optional(deserializer, &[FACTOR, LANE])
-}
-
-/// A [refractive index](domain::refractive_index) that packs into an f16 lane: finite, at least 1
-/// and a [lane](domain::lane), as a lens's index.
-pub(crate) fn lane_refractive_index<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<f32, D::Error> {
-    read(
-        deserializer,
-        &[
-            Rule {
-                valid: domain::is_refractive_index,
-                text: domain::REFRACTIVE_INDEX_RULE,
-            },
-            LANE,
-        ],
-    )
 }
 
 /// A [fraction](domain::fraction). A file's value outside `0..=1` is refused, not clamped.

@@ -3,6 +3,17 @@
 // grained as frosted glass is. Lengths are the material's own logical px; a displacement is
 // equivariant in scale, so the bend lands where the physical one would.
 
+// What the glass reads (`GlassInput`): the frost's saturation and grain, then its lens.
+struct Params {
+    saturation: f32,
+    noise: f32,
+    bezel: f32,
+    thickness: f32,
+    refractive_index: f32,
+    dispersion: f32,
+    highlight: f32,
+}
+
 // Fraunhofer's D, F and C lines, µm: a lens's index is its index at D, and its dispersion the
 // step from C to F, `n_F − n_C` (`lens_optics`).
 const GLASS_LINE_D: f32 = /*{LINE_D}*/;
@@ -211,5 +222,5 @@ fn effect(input: EffectInput, params: Params) -> EffectOutput {
     } else {
         c = effect_backdrop(input.pos).rgb;
     }
-    return effect_over(vec4<f32>(material_frost(c, input, params), 1.0));
+    return effect_over(vec4<f32>(material_frost(c, input, params.saturation, params.noise), 1.0));
 }

@@ -61,6 +61,24 @@ pub enum ParamType {
 }
 
 impl ParamType {
+    /// The bytes a Rust field of the type spans: 4 a lane.
+    pub(crate) const fn size(self) -> usize {
+        match self {
+            Self::F32 | Self::I32 | Self::U32 => 4,
+            Self::Vec2F32 | Self::Vec2I32 | Self::Vec2U32 => 8,
+            Self::Vec3F32 | Self::Vec3I32 | Self::Vec3U32 => 12,
+            Self::Vec4F32 | Self::Vec4I32 | Self::Vec4U32 => 16,
+        }
+    }
+
+    /// Whether the type is f32 lanes: a scalar or a vector of them.
+    pub(crate) const fn is_f32(self) -> bool {
+        matches!(
+            self,
+            Self::F32 | Self::Vec2F32 | Self::Vec3F32 | Self::Vec4F32
+        )
+    }
+
     /// The type as WGSL spells it.
     pub const fn wgsl(self) -> &'static str {
         match self {

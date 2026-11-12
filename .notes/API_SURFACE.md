@@ -739,7 +739,6 @@ EffectError
         ParamLayout(ParamMismatch)
         ParamsTooLarge { size: usize }
         TooManyImageSlots { slots: u8 }
-        MaterialImageSlots { slots: u8 }
         Binding { name: String }
         ReservedName
 
@@ -751,9 +750,11 @@ EffectName
         impl EffectName<PressInput>
             pub const RIPPLE: Self
             pub const SPARKLE: Self
-        impl EffectName<MaterialInput, BackdropEffect>
+        impl EffectName<(), BackdropEffect>
             pub const BLUR: Self
+        impl EffectName<FrostedInput, BackdropEffect>
             pub const FROSTED: Self
+        impl EffectName<GlassInput, BackdropEffect>
             pub const GLASS: Self
         impl<U: EffectParams, K: EffectKind> EffectName<U, K>
             pub const MAX_NAME_LEN: usize
@@ -783,6 +784,7 @@ EffectSource
             pub const MAX_IMAGE_SLOTS: u8
             pub const MAX_PARAMS_SIZE: usize
             pub fn new(wgsl: impl Into<Cow<'static, str>>) -> Self
+            pub const fn reach(self, reach: fn(&U) -> MaterialReach) -> Self
             pub const fn build(self, build: EffectBuild) -> Self
             pub const fn image_slots(self, slots: u8) -> Self
             pub const fn reduced_motion(self, paint: ReducedPaint<U, K>) -> Self
@@ -845,12 +847,10 @@ Fit
         Cover = 3
 
 FloatMaterial
-    struct FloatMaterial: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
-        pub effect: EffectName<MaterialInput, BackdropEffect>
-        pub blur: f32
-        pub input: MaterialInput
+    struct FloatMaterial: Clone, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub material: Material
         pub fill_alpha: f32
-        pub fn dress(self, panel: &Chrome, ink: RgbaF32) -> Chrome
+        pub fn dress(&self, panel: &Chrome, ink: RgbaF32) -> Chrome
 
 FocusPolicy
     enum FocusPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -922,6 +922,19 @@ FrameReport
         pub repaint_at: Option<Duration>
         pub earliest_repaint_at: Option<Duration>
         pub const fn paint(&self) -> FramePaint
+
+FrostedInput
+    struct FrostedInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
+        pub saturation: f32
+        pub noise: f32
+        pub const DEFAULT: Self
+
+GlassInput
+    struct GlassInput: Clone, Copy, Debug, EffectParams, PartialEq, Pod, Zeroable
+        pub saturation: f32
+        pub noise: f32
+        pub lens: Lens
+        pub const fn new(lens: Lens) -> Self
 
 Gpu
     struct Gpu: Clone, Debug
@@ -1408,7 +1421,7 @@ LayerScope
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
 
 Lens
-    struct Lens: Clone, Copy, Debug, Deserialize<'de>, Lerp, PartialEq, Pod, Serialize, Zeroable
+    struct Lens: Clone, Copy, Debug, PartialEq, Pod, Zeroable
         pub bezel: f32
         pub thickness: f32
         pub refractive_index: f32
@@ -1472,20 +1485,16 @@ Locator
 
 Material
     struct Material: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
-        pub effect: EffectName<MaterialInput, BackdropEffect>
-        pub blur: f32
-        pub input: MaterialInput
+        pub effect: MaterialEffect
+        pub backdrop_blur: f32
         pub max_luminance: Option<f32>
         pub min_luminance: Option<f32>
         pub fallback: MaterialFallback
-        pub const fn new(effect: EffectName<MaterialInput, BackdropEffect>, input: MaterialInput) -> Self
+        pub const fn new<U: EffectParams>(effect: EffectName<U, BackdropEffect>, params: U) -> Self
         pub const fn blur(sigma: f32) -> Self
         pub const fn frosted(sigma: f32) -> Self
         pub const fn glass(lens: Lens) -> Self
-        pub const fn with_blur(self, sigma: f32) -> Self
-        pub const fn with_saturation(self, saturation: f32) -> Self
-        pub const fn with_noise(self, noise: f32) -> Self
-        pub const fn with_lens(self, lens: Lens) -> Self
+        pub const fn with_backdrop_blur(self, sigma: f32) -> Self
         pub fn with_fallback(self, fallback: impl Into<Brush>) -> Self
         pub const fn with_max_luminance(self, luminance: f32) -> Self
         pub fn with_max_luminance_for(self, ink: RgbaF32, fill: RgbaF32) -> Self
@@ -1494,18 +1503,23 @@ Material
         pub const fn at_rest(self) -> Self
         impl From<Material> for Paint
 
+MaterialEffect
+    struct MaterialEffect: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub const MAX_LANES: usize
+        pub const fn new<U: EffectParams>(effect: EffectName<U, BackdropEffect>, params: U) -> Self
+        pub fn name(&self) -> &str
+        pub fn params(&self) -> &[f32]
+
 MaterialFallback
     enum MaterialFallback: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         ThemeSurface
         Brush(Brush)
 
-MaterialInput
-    struct MaterialInput: Clone, Copy, Debug, Default, Deserialize<'de>, EffectParams, Lerp, PartialEq, Pod, Serialize, Zeroable
-        pub saturation: f32
-        pub noise: f32
-        pub lens: Lens
-        pub const IDENTITY: Self
-        pub const FROSTED: Self
+MaterialReach
+    enum MaterialReach: Clone, Copy, Debug, PartialEq
+        Px(f32)
+        Lens(Lens)
+        pub const NONE: Self
 
 Menu
     struct Menu<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2827,16 +2841,17 @@ Theme
         pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
-        pub fn dress_floats(&mut self, material: FloatMaterial)
+        pub fn dress_floats(&mut self, material: &FloatMaterial)
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 
 ThemeEffectError
-    enum ThemeEffectError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+    enum ThemeEffectError: Clone, Copy, Debug, Display, Error, PartialEq
         UnloadedPress(EffectName<PressInput>)
         NotPress(EffectName<PressInput>)
-        UnloadedMaterial(EffectName<MaterialInput, BackdropEffect>)
-        NotMaterial(EffectName<MaterialInput, BackdropEffect>)
+        UnloadedMaterial(MaterialEffect)
+        NotMaterial(MaterialEffect)
+        MaterialParams { effect: MaterialEffect, want: u8, got: u8 }
 
 ToggleKind
     enum ToggleKind: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq

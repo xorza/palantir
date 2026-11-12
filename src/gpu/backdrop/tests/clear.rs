@@ -2,10 +2,12 @@
 
 use crate::gpu::backdrop::tests::{CLEAR, Reference, SIZE, assert_within_a_step, window};
 use crate::gpu::test_gpu::headless_test_gpu;
+use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::frosted_input::FrostedInput;
 use crate::primitives::paint::paint::Paint;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -60,7 +62,14 @@ fn scene(
                 if let Some(under) = under {
                     ui.add_shape(Shape::rect().at(Rect::new(24.0, 16.0, 8.0, 8.0)), under);
                 }
-                let filter = Material::frosted(2.0).with_saturation(1.6).with_noise(0.0);
+                let filter = Material::new(
+                    EffectName::FROSTED,
+                    FrostedInput {
+                        saturation: 1.6,
+                        noise: 0.0,
+                    },
+                )
+                .with_backdrop_blur(2.0);
                 ui.add_shape(
                     Shape::rect().at(BACKDROP),
                     Paint::from(RgbaF32::new(1.0, 1.0, 1.0, 0.25)).with_material(filter),

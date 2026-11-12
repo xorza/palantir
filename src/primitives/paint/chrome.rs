@@ -270,10 +270,13 @@ impl Animatable for Option<Chrome> {
 #[cfg(test)]
 mod tests {
     use crate::internals::panic_probe;
+    use crate::primitives::effect::effect_name::EffectName;
     use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::primitives::paint::material::glass_input::GlassInput;
     use crate::primitives::paint::material::lens::Lens;
+    use crate::primitives::paint::material::material_effect::MaterialEffect;
     use glam::Vec2;
 
     use super::*;
@@ -325,19 +328,29 @@ mod tests {
         fn material(chrome: &mut Chrome) -> &mut Material {
             chrome.paint.material.as_mut().unwrap()
         }
-        fn lens(chrome: &mut Chrome) -> &mut Lens {
-            &mut material(chrome).input.lens
+        /// The glass with `saturation` and a bezel of `bezel`.
+        fn glass(saturation: f32, bezel: f32) -> MaterialEffect {
+            MaterialEffect::new(
+                EffectName::GLASS,
+                GlassInput {
+                    saturation,
+                    ..GlassInput::new(Lens {
+                        bezel,
+                        ..Lens::WINDOW_GLASS
+                    })
+                },
+            )
         }
         // How many of `values` each kind refuses. A lane (a color channel, an offset): ±65520,
-        // f32::MAX, NaN, ±inf. A length that is a lane, or a factor: those and -1. An angle: NaN
-        // and ±inf. A length that is no lane (a border's width): -1, -65520, NaN and ±inf. A
-        // refractive index that is a lane: a lane's six and the five below 1.
+        // f32::MAX, NaN, ±inf. A length that is a lane, or a factor: those and -1. An angle, and a
+        // material's parameter, which its effect reads as it comes: NaN and ±inf. A length that is
+        // no lane (a border's width): -1, -65520, NaN and ±inf.
         const LANE: usize = 6;
         const LENGTH_LANE: usize = 7;
         const ANGLE: usize = 3;
+        const FINITE: usize = 3;
         const LENGTH: usize = 5;
-        const REFRACTIVE_INDEX: usize = 11;
-        let sets: [(Set, usize); 15] = [
+        let sets: [(Set, usize); 12] = [
             (|c, v| c.paint.border.width = v, LENGTH),
             (|c, v| c.paint.border.color.g = v, LANE),
             (|c, v| c.paint.shadow.color.b = v, LANE),
@@ -345,14 +358,11 @@ mod tests {
             (|c, v| c.paint.shadow.offset.y = v, LANE),
             (|c, v| c.paint.shadow.blur = v, LENGTH_LANE),
             (|c, v| c.paint.shadow.spread = v, LANE),
-            (|c, v| material(c).blur = v, LENGTH_LANE),
-            (|c, v| material(c).input.saturation = v, LENGTH_LANE),
-            (|c, v| material(c).input.noise = v, LENGTH_LANE),
+            (|c, v| material(c).backdrop_blur = v, LENGTH_LANE),
             (|c, v| material(c).max_luminance = Some(v), LENGTH_LANE),
             (|c, v| material(c).min_luminance = Some(v), LENGTH_LANE),
-            (|c, v| lens(c).bezel = v, LENGTH_LANE),
-            (|c, v| lens(c).thickness = v, LENGTH_LANE),
-            (|c, v| lens(c).refractive_index = v, REFRACTIVE_INDEX),
+            (|c, v| material(c).effect = glass(v, 24.0), FINITE),
+            (|c, v| material(c).effect = glass(1.0, v), FINITE),
         ];
         let ink = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
         // Each kind of fill, with what its two scalars refuse.

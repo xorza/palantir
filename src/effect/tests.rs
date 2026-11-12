@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::animation::motion_role::MotionRole;
 use crate::effect::contract::{self, ContractSpec, ParamsLayout};
-use crate::effect::effect_registry::{EffectRegistry, ReducedName};
+use crate::effect::effect_registry::{EffectRegistry, MaterialFit, ReducedName};
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::press_input::PressInput;
@@ -26,7 +26,7 @@ use crate::internals::paint_capture::PaintCall;
 use crate::internals::panic_probe::assert_panics_with;
 use crate::internals::srgb_reference;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, KindId};
-use crate::primitives::effect::effect_name::{EffectName, InlineEffectName};
+use crate::primitives::effect::effect_name::{EffectName, ErasedEffectName};
 use crate::primitives::effect::effect_params::{EffectParam, EffectParams, ParamType};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -38,7 +38,10 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::frosted_input::FrostedInput;
+use crate::primitives::paint::material::glass_input::GlassInput;
+use crate::primitives::paint::material::lens::Lens;
+use crate::primitives::paint::material::material_effect::MaterialEffect;
 use crate::primitives::preference::Preference;
 use crate::primitives::reduction::Reduction;
 use crate::renderer::frontend::payload::draw_closed_payload::closed_effect::EffectCaptureDraw;
@@ -65,8 +68,7 @@ const fn spec(kind: KindId, params: ParamsLayout, image_slots: u8) -> ContractSp
 
 /// The id of the app's load `n`, from 0, past the stock effects every registry holds first.
 fn app(n: u32) -> EffectId {
-    let stock = stock::sources();
-    let count = stock.press.len() + stock.materials.len();
+    let count = stock::sources().press.len() + 3;
     EffectId(u32::try_from(count).unwrap() + n)
 }
 
@@ -444,7 +446,7 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     assert_eq!(
         registry.power_saver_of(RING),
         Some(ReducedName::Effect(
-            InlineEffectName::new("thin ring").unwrap()
+            ErasedEffectName::new("thin ring").unwrap()
         ))
     );
 
@@ -454,7 +456,7 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     assert_eq!(
         registry.power_saver_of(RING),
         Some(ReducedName::Effect(
-            InlineEffectName::new("thin ring").unwrap()
+            ErasedEffectName::new("thin ring").unwrap()
         )),
         "the effect before the refused reload"
     );
@@ -472,7 +474,7 @@ fn the_stock_ripples_hold_their_reserved_names() {
     );
     assert_eq!(
         registry.power_saver_of(EffectName::SPARKLE),
-        Some(ReducedName::Effect(EffectName::RIPPLE.inline()))
+        Some(ReducedName::Effect(EffectName::RIPPLE.erased()))
     );
     let reserved = EffectName::<Ring>::named("palantir.ring").unwrap();
     let refused = registry.load(reserved, ring(ring_wgsl(RING_PARAMS, RING_ENTRY)));
@@ -542,19 +544,23 @@ fn a_theme_names_only_loaded_effects() {
         ThemeEffectError::NotPress(blend).to_string(),
         "the theme's press effect `blend` is not a color effect over `PressInput`"
     );
-    // A chrome's material is checked as a press slot is: a name nothing loaded, and one loaded as
-    // a color effect, are refused; the stock glass is a material.
+    // A chrome's material is checked as a press slot is: a name nothing loaded, one loaded as a
+    // color effect, and parameters of another lane count are refused; the stock glass is a
+    // material.
     let wearing = |name: &str| {
         let mut theme = Theme::stock(scheme);
-        let material = EffectName::named(name).unwrap();
+        let material = EffectName::<(), BackdropEffect>::named(name).unwrap();
         theme.tooltip.panel = theme
             .tooltip
             .panel
             .clone()
-            .with_material(Material::new(material, MaterialInput::IDENTITY));
+            .with_material(Material::new(material, ()));
         theme
     };
-    let missing_material = EffectName::named("missing").unwrap();
+    let missing_material = MaterialEffect::new(
+        EffectName::<(), BackdropEffect>::named("missing").unwrap(),
+        (),
+    );
     assert_eq!(
         h.ui_mut().set_theme(scheme, wearing("missing")),
         Err(ThemeEffectError::UnloadedMaterial(missing_material))
@@ -563,21 +569,47 @@ fn a_theme_names_only_loaded_effects() {
         ThemeEffectError::UnloadedMaterial(missing_material).to_string(),
         "the theme's material effect `missing` is not loaded"
     );
-    let blend_material = EffectName::named(BLEND.name()).unwrap();
+    let blend_material = MaterialEffect::new(
+        EffectName::<(), BackdropEffect>::named(BLEND.name()).unwrap(),
+        (),
+    );
     assert_eq!(
         h.ui_mut().set_theme(scheme, wearing(BLEND.name())),
         Err(ThemeEffectError::NotMaterial(blend_material))
     );
     assert_eq!(
         ThemeEffectError::NotMaterial(blend_material).to_string(),
-        "the theme's material effect `blend` is not a backdrop effect over `MaterialInput`"
+        "the theme's material effect `blend` is not a backdrop effect over at most 8 f32 lanes \
+         that binds no image"
+    );
+    let frosted = MaterialEffect::new(
+        EffectName::<(), BackdropEffect>::named("palantir.frosted").unwrap(),
+        (),
+    );
+    assert_eq!(
+        h.ui_mut().set_theme(scheme, wearing("palantir.frosted")),
+        Err(ThemeEffectError::MaterialParams {
+            effect: frosted,
+            want: 2,
+            got: 0
+        })
+    );
+    assert_eq!(
+        ThemeEffectError::MaterialParams {
+            effect: frosted,
+            want: 2,
+            got: 0
+        }
+        .to_string(),
+        "the theme's material effect `palantir.frosted` takes 2 parameter lanes, and its \
+         material holds 0"
     );
     assert!(
         Rc::ptr_eq(h.ui().scheme_theme(scheme), &held),
         "the theme before stays"
     );
     h.ui_mut()
-        .set_theme(scheme, wearing("palantir.glass"))
+        .set_theme(scheme, wearing("palantir.blur"))
         .unwrap();
 
     h.ui_mut()
@@ -1979,27 +2011,57 @@ fn a_backdrop_effect_paints_its_fallback_while_transparency_is_reduced() {
     });
 }
 
-/// A backdrop effect over `MaterialInput` is a material, which binds no image, so its load
-/// refuses image slots and keeps nothing under the name.
+/// A material's effect is a backdrop effect that binds no image, over f32 lanes that fit a
+/// material: one that binds an image loads, as an `EffectPaint` may paint it, and no material
+/// wears it; the stock ones and an app's over two lanes take materials of their lane counts.
 #[test]
-fn a_material_effect_binds_no_image() {
+fn a_material_effect_is_a_backdrop_effect_over_lanes() {
     let registry = EffectRegistry::default();
-    let name = EffectName::<MaterialInput, BackdropEffect>::named("pictured").unwrap();
-    let source = EffectSource::new(concat!(
-        include_str!("stock/material.wgsl"),
-        include_str!("stock/blur.wgsl")
-    ))
-    .image_slots(1);
-    let refused = registry.load(name, source);
-    assert!(
-        matches!(refused, Err(EffectError::MaterialImageSlots { slots: 1 })),
-        "{refused:?}"
-    );
-    assert_eq!(
-        refused.unwrap_err().to_string(),
-        "the material effect asks for 1 image slots, where a material binds none"
-    );
-    assert!(!registry.contains(name));
+    let pictured = EffectName::<(), BackdropEffect>::named("pictured").unwrap();
+    registry
+        .load(
+            pictured,
+            EffectSource::new(include_str!("stock/blur.wgsl")).image_slots(1),
+        )
+        .unwrap();
+    let ours = EffectName::<FrostedInput, BackdropEffect>::named("ours").unwrap();
+    registry
+        .load(
+            ours,
+            EffectSource::new(concat!(
+                include_str!("stock/material.wgsl"),
+                include_str!("stock/frosted.wgsl")
+            )),
+        )
+        .unwrap();
+    for (effect, want) in [
+        (MaterialEffect::new(pictured, ()), MaterialFit::NotMaterial),
+        (
+            MaterialEffect::new(
+                EffectName::<(), BackdropEffect>::named("unloaded").unwrap(),
+                (),
+            ),
+            MaterialFit::Unloaded,
+        ),
+        (
+            MaterialEffect::new(EffectName::BLUR, ()),
+            MaterialFit::Lanes(0),
+        ),
+        (
+            MaterialEffect::new(EffectName::FROSTED, FrostedInput::DEFAULT),
+            MaterialFit::Lanes(2),
+        ),
+        (
+            MaterialEffect::new(EffectName::GLASS, GlassInput::new(Lens::WINDOW_GLASS)),
+            MaterialFit::Lanes(7),
+        ),
+        (
+            MaterialEffect::new(ours, FrostedInput::DEFAULT),
+            MaterialFit::Lanes(2),
+        ),
+    ] {
+        assert_eq!(registry.material_fit(effect), want, "{effect:?}");
+    }
 }
 
 /// A backdrop effect blurs what it reads by its σ through the capture and blur a material

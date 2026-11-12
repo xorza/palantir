@@ -38,6 +38,7 @@ use crate::diagnostics::frame_stats::FrameStats;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
+use crate::effect::effect_registry::MaterialFit;
 use crate::effect::effect_source::EffectSource;
 use crate::effect::error::EffectError;
 use crate::effect::press_input::PressInput;
@@ -48,9 +49,7 @@ use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::input::Input;
 use crate::input::key_reader::KeyReader;
-use crate::primitives::effect::effect_kind::{
-    BackdropEffect, ColorEffect, EffectKind, EffectTypes,
-};
+use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind, EffectTypes};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::geometry::rect::Rect;
@@ -76,7 +75,6 @@ use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::border::Border;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
-use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::frontend::FrameScene;
@@ -266,8 +264,8 @@ impl Ui {
     /// # Errors
     ///
     /// A [`ThemeEffectError`] when a press slot names an effect not loaded, or not one over
-    /// [`PressInput`], or a chrome's material one not loaded, or not a backdrop effect over
-    /// [`MaterialInput`]; the theme held before stays.
+    /// [`PressInput`], or a chrome's material one not loaded, or no material's, or one that takes
+    /// another count of parameter lanes than the material holds; the theme held before stays.
     pub fn set_theme(
         &mut self,
         scheme: ColorScheme,
@@ -279,20 +277,24 @@ impl Ui {
         let mut checked = Ok(());
         theme.press_effects(|name| {
             if checked.is_ok() {
-                checked = match effects.types_of(name.inline()) {
+                checked = match effects.types_of(name.erased()) {
                     None => Err(ThemeEffectError::UnloadedPress(name)),
                     Some(types) if types != press => Err(ThemeEffectError::NotPress(name)),
                     Some(_) => Ok(()),
                 };
             }
         });
-        let material = EffectTypes::of::<MaterialInput, BackdropEffect>();
-        theme.material_effects(|name| {
+        theme.materials(|material| {
             if checked.is_ok() {
-                checked = match effects.types_of(name.inline()) {
-                    None => Err(ThemeEffectError::UnloadedMaterial(name)),
-                    Some(types) if types != material => Err(ThemeEffectError::NotMaterial(name)),
-                    Some(_) => Ok(()),
+                let effect = material.effect;
+                let got = material.effect.count();
+                checked = match effects.material_fit(effect) {
+                    MaterialFit::Unloaded => Err(ThemeEffectError::UnloadedMaterial(effect)),
+                    MaterialFit::NotMaterial => Err(ThemeEffectError::NotMaterial(effect)),
+                    MaterialFit::Lanes(want) if want != got => {
+                        Err(ThemeEffectError::MaterialParams { effect, want, got })
+                    }
+                    MaterialFit::Lanes(_) => Ok(()),
                 };
             }
         });

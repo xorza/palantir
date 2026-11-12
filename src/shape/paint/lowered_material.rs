@@ -1,15 +1,18 @@
-//! A material lowered: the effect it paints through and what it captures, its input's words in
+//! A material lowered: the effect it paints through and what it captures, its parameters' words in
 //! the record store and its luminance ceiling and floor; and what a material reads each record.
 
 use std::hash::{self, Hasher as _};
 
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
+use crate::effect::effect_registry::ResolvedMaterial;
 use crate::primitives::identity::effect_id::EffectId;
+use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::Material;
+use crate::primitives::paint::material::material_reach::MaterialReach;
 use crate::shape::paint::capture_params::{CaptureParams, CaptureReach};
 use crate::shape::record_store::{RecordStore, Resolve};
 
@@ -17,8 +20,9 @@ use crate::shape::record_store::{RecordStore, Resolve};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum MaterialRead {
     /// Its effect, the one the registry resolved its name to, over what is painted under the box,
-    /// captured and blurred.
-    Capture { effect: EffectId },
+    /// captured and blurred, read as far past the box as the effect declares from the
+    /// material's parameters.
+    Capture(ResolvedMaterial),
     /// Its fallback in place of the box's fill, the box a plain one with no capture, blur or
     /// effect; `theme` where it names the theme's surface.
     Fallback { theme: RgbaF32 },
@@ -32,8 +36,9 @@ impl MaterialRead {
     ///
     /// # Panics
     ///
-    /// When no effect is loaded under the material's name, whatever is reduced: a name nothing
-    /// loaded is a logic error in every mode.
+    /// When no effect is loaded under the material's name, or one no material wears, or one of
+    /// another lane count, whatever is reduced: a material that cannot paint is a logic error in
+    /// every mode.
     #[track_caller]
     pub(crate) fn resolve(material: &Material, resolve: Resolve<'_>) -> Option<Self> {
         let Resolve {
@@ -41,27 +46,20 @@ impl MaterialRead {
             reductions,
             material_fallback,
         } = resolve;
-        let resolved = effects.resolve(material.effect.typed(), reductions);
-        if let Some(resolved) = resolved {
-            debug_assert_eq!(
-                resolved.image_slots, 0,
-                "a material effect's load refuses image slots"
-            );
-        }
+        let resolved = effects.resolve_material(material, reductions);
         if reductions.transparency.is_reduced() {
             return Some(Self::Fallback {
                 theme: material_fallback,
             });
         }
-        Some(Self::Capture {
-            effect: resolved?.id,
-        })
+        resolved.map(Self::Capture)
     }
 }
 
 /// A capturing [`Material`] as a record keeps it, packed for the shape record and the chrome row
-/// that hold it: its effect, a capture whose reach is its lens, as a backdrop `EffectPaint`'s reach
-/// is its own, the first of the input's words in the record store and their hash, and the
+/// that hold it: its effect, a capture whose reach its effect declared, as a backdrop
+/// `EffectPaint`'s reach is its own, the first of its parameters' words in the record store and
+/// their hash, and the
 /// luminance bounds. `max_luminance` is the ceiling's f16 bits, rounded down so the material never
 /// shows brighter than its author allowed, and 65504 for none; `min_luminance` the floor's, rounded
 /// up so it never shows darker, and 0 for none.
@@ -69,43 +67,55 @@ impl MaterialRead {
 pub(crate) struct LoweredMaterial {
     effect: EffectId,
     pub(crate) capture: CaptureParams,
-    /// The hash of the input's bytes, as their words are frame-local.
+    /// The hash of the parameters' bytes, as their words are frame-local.
     input_hash: u64,
-    /// The input's words in the record store, which the record pass that staged them keeps.
+    /// The parameters' words in the record store, which the record pass that staged them keeps.
     pub(crate) params: Span,
     max_luminance: u16,
     min_luminance: u16,
 }
 
 impl LoweredMaterial {
-    /// `material` through `effect`, its input staged in `store`. [`Material::validate`] holds an
-    /// authored material within its kinds, and an animated chrome's tween may carry it past them,
-    /// as [`Easing::OutBack`](crate::Easing::OutBack) does past an end: here, where it starts to
-    /// paint, each value coerces into its kind and saturates at the lanes.
-    pub(crate) fn lower(store: &mut RecordStore, material: &Material, effect: EffectId) -> Self {
-        let mut material = material.clone();
-        material.coerce();
-        let bytes = bytemuck::bytes_of(&material.input);
+    /// `material` through the effect `resolved` names, reading its reach past the box, its
+    /// parameters staged in `store`. [`Material::validate`] holds an authored material within its
+    /// kinds, and an animated chrome's tween may carry it past them, as
+    /// [`Easing::OutBack`](crate::Easing::OutBack) does past an end: here, where it starts to
+    /// paint, its blur and floor coerce into their kinds and saturate at the lanes, as the lens of
+    /// a reach does.
+    pub(crate) fn lower(
+        store: &mut RecordStore,
+        material: &Material,
+        resolved: ResolvedMaterial,
+    ) -> Self {
+        let ResolvedMaterial { id: effect, reach } = resolved;
+        let bytes = material.effect.bytes();
         let mut h = Hasher::new();
         h.pod_slice(bytes);
-        let lens = material.input.lens;
         Self {
             effect,
             capture: CaptureParams {
-                sigma: F16x4::saturate_lane(material.blur),
-                reach: CaptureReach::Lens(F16x4::from_lanes_saturating([
-                    lens.bezel,
-                    lens.thickness,
-                    lens.refractive_index,
-                    lens.dispersion,
-                ])),
+                sigma: F16x4::saturate_lane(domain::raised_to(material.backdrop_blur, 0.0)),
+                reach: match reach {
+                    MaterialReach::Px(px) => CaptureReach::Px(px),
+                    MaterialReach::Lens(mut lens) => {
+                        lens.coerce();
+                        CaptureReach::Lens(F16x4::from_lanes_saturating([
+                            lens.bezel,
+                            lens.thickness,
+                            lens.refractive_index,
+                            lens.dispersion,
+                        ]))
+                    }
+                },
             },
             params: store.stage_effect_params(bytes),
             input_hash: h.finish(),
             max_luminance: material
                 .max_luminance
                 .map_or(half::f16::MAX.to_bits(), f16_at_or_below),
-            min_luminance: material.min_luminance.map_or(0, f16_at_or_above),
+            min_luminance: material
+                .min_luminance
+                .map_or(0, |floor| f16_at_or_above(domain::raised_to(floor, 0.0))),
         }
     }
 

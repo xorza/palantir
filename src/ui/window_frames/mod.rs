@@ -261,7 +261,7 @@ impl WindowFrames {
             let effects = self.ui.resources.effects();
             for theme in themes {
                 theme.press_effects(|name| effects.want(name));
-                theme.material_effects(|name| effects.want(name));
+                theme.materials(|material| effects.want_material(material.effect));
             }
         }
         self.ui.frame_runtime.take_frame_slot();

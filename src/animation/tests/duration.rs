@@ -454,7 +454,7 @@ fn an_overshoot_below_a_floor_paints_the_floor() {
             assert_eq!(r.value.corners, Corners::ZERO);
             assert_eq!(r.value.paint.border.width, 0.0);
             assert_eq!(r.value.paint.shadow.blur, 0.0);
-            assert_eq!(r.value.paint.material.map(|m| m.blur), Some(0.0));
+            assert_eq!(r.value.paint.material.map(|m| m.backdrop_blur), Some(0.0));
         }
     }
 }

@@ -6,7 +6,7 @@ use std::fmt;
 use crate::effect::MAX_IMAGE_SLOTS;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
-use crate::primitives::effect::effect_name::{EffectName, TypedName};
+use crate::primitives::effect::effect_name::{CheckedEffectName, EffectName};
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
@@ -237,7 +237,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
             outside,
         } = self;
         ErasedEffectPaint {
-            name: name.typed(),
+            name: name.checked(),
             params: bytemuck::bytes_of(params),
             capture: *capture,
             fallback: K::fallback(fallback),
@@ -251,7 +251,7 @@ impl<U: EffectParams, K: EffectKind> EffectPaint<U, K> {
 /// lowering compiles once.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ErasedEffectPaint<'a> {
-    pub(crate) name: TypedName,
+    pub(crate) name: CheckedEffectName,
     pub(crate) params: &'a [u8],
     pub(crate) capture: CaptureParams,
     /// A backdrop effect's fallback; `None` for a color effect, which reads nothing under it.

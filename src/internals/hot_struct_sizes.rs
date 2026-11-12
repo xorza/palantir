@@ -29,7 +29,7 @@ use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::material::Material;
-use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::material_effect::MaterialEffect;
 use crate::primitives::paint::paint;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -161,7 +161,8 @@ const PINS: &[Pin] = &[
     // A rect's shadow and material, 18 and 40 of them, set the row's size.
     pin::<ShapeRecord>("shape::ShapeRecord", 144, 8),
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
-    // 40 of them the material: its effect, its input's words and their hash, its σ, lens and bounds.
+    // 40 of them the material: its effect, its parameters' words and their hash, its σ, reach and
+    // bounds.
     pin::<ChromeRow>("scene::ChromeRow", 104, 8),
     pin::<LoweredBorder>("shape::LoweredBorder", 12, 4),
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
@@ -171,15 +172,15 @@ const PINS: &[Pin] = &[
     // so its size is copied through recording and animation: a paint 116 B larger measured
     // record +2.8 to +4.6 % and animation +1 to +26 % (`.notes/PERF.md`, "A paint carries a
     // short effect name").
-    pin::<Chrome>("primitives::Chrome", 256, 4),
-    pin::<paint::Paint>("primitives::Paint", 248, 4),
+    pin::<Chrome>("primitives::Chrome", 264, 4),
+    pin::<paint::Paint>("primitives::Paint", 256, 4),
     pin::<Border>("primitives::Border", 20, 4),
     pin::<Shadow>("primitives::Shadow", 36, 4),
-    // Of which the effect's inline name, `InlineEffectName`, and 56 the fallback, a brush and its
+    // Of which the effect's inline name, `ErasedEffectName`, and 56 the fallback, a brush and its
     // tag.
-    pin::<Option<Material>>("primitives::Option<Material>", 132, 4),
-    pin::<EffectName<MaterialInput, BackdropEffect>>("primitives::EffectName", 24, 1),
-    pin::<MaterialInput>("primitives::MaterialInput", 28, 4),
+    pin::<Option<Material>>("primitives::Option<Material>", 140, 4),
+    pin::<EffectName<(), BackdropEffect>>("primitives::EffectName", 24, 1),
+    pin::<MaterialEffect>("primitives::MaterialEffect", 60, 4),
     pin::<Stroke>("primitives::Stroke", 64, 4),
     pin::<ImagePaint>("shape::ImagePaint", 48, 8),
     pin::<IconPaint>("shape::IconPaint", 36, 4),
@@ -187,9 +188,9 @@ const PINS: &[Pin] = &[
     pin::<Draw<'static>>("shape::Draw", 200, 8),
     pin::<LoweredPaint>("shape::LoweredPaint", 88, 8),
     // A look, its plan and what it wears, each built or copied per themed widget a frame.
-    pin::<WidgetLook>("theme::WidgetLook", 364, 4),
-    pin::<LookPlan>("theme::LookPlan", 488, 8),
-    pin::<AnimatedLook>("theme::AnimatedLook", 348, 4),
+    pin::<WidgetLook>("theme::WidgetLook", 372, 4),
+    pin::<LookPlan>("theme::LookPlan", 496, 8),
+    pin::<AnimatedLook>("theme::AnimatedLook", 356, 4),
     pin::<TextStyle>("theme::TextStyle", 92, 4),
     pin::<FontFamily>("text::FontFamily", 64, 1),
     // Every `show` returns one.
@@ -222,22 +223,22 @@ const PINS: &[Pin] = &[
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 144, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 160, 8),
     // 116 of them the chrome's material.
-    pin::<Panel>("widgets::Panel", 384, 8),
-    pin::<Block>("widgets::Block", 384, 8),
-    pin::<Grid>("widgets::Grid", 384, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 440, 8),
+    pin::<Panel>("widgets::Panel", 392, 8),
+    pin::<Block>("widgets::Block", 392, 8),
+    pin::<Grid>("widgets::Grid", 392, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 448, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
-    pin::<Popup<'static>>("widgets::Popup", 424, 8),
-    pin::<Modal<'static>>("widgets::Modal", 656, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 600, 8),
+    pin::<Popup<'static>>("widgets::Popup", 432, 8),
+    pin::<Modal<'static>>("widgets::Modal", 672, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 608, 8),
     pin::<GpuView>("widgets::GpuView", 152, 8),
-    pin::<Menu<'static>>("widgets::Menu", 504, 8),
+    pin::<Menu<'static>>("widgets::Menu", 512, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 176, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 392, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 384, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 392, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

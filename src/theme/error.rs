@@ -4,25 +4,34 @@ use std::error;
 use std::fmt;
 
 use crate::effect::press_input::PressInput;
-use crate::primitives::effect::effect_kind::BackdropEffect;
 use crate::primitives::effect::effect_name::EffectName;
-use crate::primitives::paint::material::material_input::MaterialInput;
+use crate::primitives::paint::material::material_effect::MaterialEffect;
 
 /// Why a theme was not set: a press slot or a chrome's material names an effect it cannot paint.
 /// A theme file names an effect by its string and deserializes with no `Ui`, so the set checks the
 /// names, as the one door every theme passes. The theme the window held stays.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ThemeEffectError {
     /// Nothing is loaded under a press slot's name.
     UnloadedPress(EffectName<PressInput>),
     /// The effect under a press slot's name takes other parameters than [`PressInput`], or is a
     /// backdrop effect.
     NotPress(EffectName<PressInput>),
-    /// Nothing is loaded under a material's name.
-    UnloadedMaterial(EffectName<MaterialInput, BackdropEffect>),
-    /// The effect under a material's name takes other parameters than [`MaterialInput`], or is a
-    /// color effect.
-    NotMaterial(EffectName<MaterialInput, BackdropEffect>),
+    /// Nothing is loaded under the name of a material's effect.
+    UnloadedMaterial(MaterialEffect),
+    /// The effect under a material's name is no material's: a color effect, one that binds
+    /// images, or one over other than f32 lanes that fit
+    /// [`MaterialEffect::MAX_LANES`](crate::MaterialEffect::MAX_LANES).
+    NotMaterial(MaterialEffect),
+    /// A material holds another count of parameter lanes than its effect takes.
+    MaterialParams {
+        /// The material's effect, with the lanes it holds.
+        effect: MaterialEffect,
+        /// The lanes the effect takes.
+        want: u8,
+        /// The lanes the material holds.
+        got: u8,
+    },
 }
 
 impl fmt::Display for ThemeEffectError {
@@ -38,15 +47,22 @@ impl fmt::Display for ThemeEffectError {
                 "the theme's press effect `{}` is not a color effect over `PressInput`",
                 name.name()
             ),
-            Self::UnloadedMaterial(name) => write!(
+            Self::UnloadedMaterial(effect) => write!(
                 f,
                 "the theme's material effect `{}` is not loaded",
-                name.name()
+                effect.name()
             ),
-            Self::NotMaterial(name) => write!(
+            Self::NotMaterial(effect) => write!(
                 f,
-                "the theme's material effect `{}` is not a backdrop effect over `MaterialInput`",
-                name.name()
+                "the theme's material effect `{}` is not a backdrop effect over at most 8 f32 \
+                 lanes that binds no image",
+                effect.name()
+            ),
+            Self::MaterialParams { effect, want, got } => write!(
+                f,
+                "the theme's material effect `{}` takes {want} parameter lanes, and its material \
+                 holds {got}",
+                effect.name()
             ),
         }
     }

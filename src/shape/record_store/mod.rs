@@ -189,7 +189,7 @@ impl RecordStore {
             }
             _ => paint.fill.is_noop(),
         };
-        let captures = matches!(read, Some(MaterialRead::Capture { .. }));
+        let captures = matches!(read, Some(MaterialRead::Capture(_)));
         if geometry.is_paint_empty()
             || (fill_noop && !captures && paint.border.is_noop() && paint.shadow.is_noop())
         {

@@ -1,11 +1,9 @@
 use std::fmt::Write as _;
 
-use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::material::lens::Lens;
 use crate::primitives::paint::material::material_fallback::MaterialFallback;
-use crate::primitives::paint::material::material_input::MaterialInput;
 use crate::primitives::paint::material::{Material, fallback_alpha};
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
@@ -187,7 +185,7 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
         // theme in its own material, as `dress_floats` reads the inks from it, changes nothing.
         let material = Metrics::DEFAULT.float_material.expect("the stock material");
         let mut dressed = t.clone();
-        dressed.dress_floats(material);
+        dressed.dress_floats(&material);
         assert_eq!(dressed, t, "{scheme:?}");
         // The stock floats wear the frost, none left opaque by an ink it cannot hold, over a
         // fallback of their own panel at the alpha that holds the ink they paint.
@@ -199,7 +197,7 @@ fn the_stock_text_and_floats_are_the_stock_themes() {
             ("modal", &t.modal.panel),
         ] {
             let material = panel.paint.material.as_ref().expect(float);
-            assert_eq!(material.blur, 20.0, "{float} {scheme:?}");
+            assert_eq!(material.backdrop_blur, 20.0, "{float} {scheme:?}");
             let fill = panel.paint.fill.as_solid().expect(float);
             assert_eq!(fill.a, 184.0 / 255.0, "{float} {scheme:?}");
             let MaterialFallback::Brush(Brush::Solid(fallback)) = material.fallback else {
@@ -231,7 +229,7 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
         let p = Palette::for_scheme(scheme);
         let stock = Theme::from_parts(p, &Metrics::DEFAULT);
         let mut frosted = stock.clone();
-        frosted.dress_floats(FROSTED);
+        frosted.dress_floats(&FROSTED);
         let panels = |theme: &Theme| {
             [
                 theme.menu.panel.clone(),
@@ -276,7 +274,7 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
     theme.menu.item.shortcut = ink;
     let solid = theme.menu.panel.paint.fill.as_solid().expect("solid");
     let fill = solid.with_alpha(0.6);
-    theme.dress_floats(FROSTED);
+    theme.dress_floats(&FROSTED);
     let alpha = fallback_alpha(ink, solid);
     let frosted = Material::frosted(20.0).with_fallback(solid.with_alpha(alpha));
     assert_eq!(
@@ -288,16 +286,12 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
         Some(frosted.with_max_luminance_for(Palette::DARK.text_muted, fill))
     );
 
-    // Any effect: glass, its input as the float material names it, over the tooltip's own fill.
+    // Any effect: glass, its parameters as the float material names them, over the tooltip's own
+    // fill.
     let mut theme = Theme::stock(ColorScheme::Dark);
     let solid = theme.tooltip.panel.paint.fill.as_solid().expect("solid");
-    theme.dress_floats(FloatMaterial {
-        effect: EffectName::GLASS,
-        blur: 0.0,
-        input: MaterialInput {
-            lens: Lens::WINDOW_GLASS,
-            ..MaterialInput::IDENTITY
-        },
+    theme.dress_floats(&FloatMaterial {
+        material: Material::glass(Lens::WINDOW_GLASS),
         fill_alpha: 0.6,
     });
     assert_eq!(
@@ -312,9 +306,7 @@ fn dress_floats_dresses_each_floating_surface_and_nothing_else() {
 
 /// The frosted material the tests dress floats in: σ 20 under a 0.6 fill.
 const FROSTED: FloatMaterial = FloatMaterial {
-    effect: EffectName::FROSTED,
-    blur: 20.0,
-    input: MaterialInput::FROSTED,
+    material: Material::frosted(20.0),
     fill_alpha: 0.6,
 };
 
@@ -327,10 +319,9 @@ fn dress_floats_refuses_a_bad_blur_or_fill_alpha() {
         (20.0, 1.0, "a fraction under 1"),
     ] {
         let panic = std::panic::catch_unwind(|| {
-            Theme::from_parts(p, &Metrics::DEFAULT).dress_floats(FloatMaterial {
-                blur: sigma,
+            Theme::from_parts(p, &Metrics::DEFAULT).dress_floats(&FloatMaterial {
+                material: Material::frosted(sigma),
                 fill_alpha: alpha,
-                ..FROSTED
             });
         })
         .expect_err("refused");
