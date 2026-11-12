@@ -5,6 +5,7 @@ use std::time::Duration;
 use glam::UVec2;
 
 use crate::display::system_scale::SystemScale;
+use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::text::shaper::TextShaper;
@@ -27,10 +28,10 @@ fn scene(ui: &mut Ui) {
 }
 
 /// A 300 ms transition from 14 px text to 18 px at scale 2 shows a larger size on each of its
-/// first 18 frames of 16 ms, yet the glyph atlas neither grows nor evicts: a transition's sizes
-/// fit beside the rest, so its font sizes need no quantizing.
+/// first 18 frames of 16 ms, yet the glyph atlas holds them on one mask page and evicts nothing:
+/// a transition's sizes fit beside the rest, so its font sizes need no quantizing.
 #[test]
-fn a_transition_of_font_sizes_neither_grows_nor_evicts_the_glyph_atlas() {
+fn a_transition_of_font_sizes_fits_one_page_and_evicts_nothing() {
     let gpu = headless_test_gpu();
     let mut host = OffscreenHost::builder(gpu.handles())
         .shaper(TextShaper::new())
@@ -66,10 +67,8 @@ fn a_transition_of_font_sizes_neither_grows_nor_evicts_the_glyph_atlas() {
         "{sizes:?}"
     );
     assert_eq!(sizes[23], 18.0);
-    let counts = host.device.backend().text_atlas_counts();
-    assert_eq!(
-        (counts.grows, counts.evictions, counts.oversized),
-        (0, 0, 0),
-        "{counts:?}"
-    );
+    let backend = host.device.backend();
+    let counts = backend.text_atlas_counts();
+    assert_eq!((counts.evictions, counts.oversized), (0, 0), "{counts:?}");
+    assert_eq!(backend.atlas_pages(AtlasFormat::R8), 1, "one mask page");
 }

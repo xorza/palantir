@@ -19,11 +19,4 @@ impl ContentType {
             Self::Color => 4,
         }
     }
-
-    pub(crate) const fn side_name(self) -> &'static str {
-        match self {
-            Self::Mask => "mask",
-            Self::Color => "color",
-        }
-    }
 }

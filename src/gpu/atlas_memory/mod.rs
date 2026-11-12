@@ -45,9 +45,9 @@ pub(crate) struct AtlasMemory {
 }
 
 impl AtlasMemory {
-    /// The rows a report holds: text mask and color, icon mask and color, backdrop results and
-    /// blur scratch, shadow cutouts, gradient rows and their CPU mirror.
-    pub(crate) const LEN: usize = 9;
+    /// The rows a report holds: the pool's mask and color pages, which glyphs and icons share,
+    /// backdrop results and blur scratch, shadow cutouts, gradient rows and their CPU mirror.
+    pub(crate) const LEN: usize = 7;
 }
 
 /// The bytes of `texture`: every mip level of every layer, a block a texel.

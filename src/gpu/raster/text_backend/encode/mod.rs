@@ -2,8 +2,8 @@
 //! origin-relative templates from the [`EncodedCache`](cache::EncodedCache); a
 //! miss extracts through the shaper and fills it. Short runs (y-culled lines,
 //! atlas-starved glyphs) are not cached, as the key records neither bounds nor
-//! occupancy. Each encoded glyph records its slot's generation and re-checks it
-//! on emit, since eviction reuses slot rectangles.
+//! occupancy. Each encoded glyph records its raster's pool handle and re-checks it
+//! on emit, since eviction hands its rectangle to another raster.
 
 use crate::primitives::math::num::F32Px;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;

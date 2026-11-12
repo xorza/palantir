@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::common::counters::CounterSet;
+use crate::gpu::atlas::atlas_format::AtlasFormat;
 use crate::text::key::TextShapeKey;
 use glam::{IVec2, U16Vec2, UVec2};
 
@@ -26,16 +27,17 @@ fn glyph(tag: u32) -> EncodedGlyph {
             color: bytemuck::cast(u64::from(!tag)),
             clip: bytemuck::cast(tag.rotate_left(16)),
         },
-        atlas_slot: tag,
-        generation: tag + 1,
+        handle: AtlasHandle {
+            format: AtlasFormat::R8,
+            idx: tag,
+            generation: tag + 1,
+        },
     }
 }
 
 /// Byte-exact comparison; `RasterQuad` is `Pod`, so any dropped field is caught.
 fn same(a: &EncodedGlyph, b: &EncodedGlyph) -> bool {
-    bytemuck::bytes_of(&a.instance) == bytemuck::bytes_of(&b.instance)
-        && a.atlas_slot == b.atlas_slot
-        && a.generation == b.generation
+    bytemuck::bytes_of(&a.instance) == bytemuck::bytes_of(&b.instance) && a.handle == b.handle
 }
 
 impl EncodedCache {

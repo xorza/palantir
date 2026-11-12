@@ -43,7 +43,7 @@ Seven textures across four systems, one set per device:
 - **An allocation is a handle; a move rewrites its placement and nothing else.** Icons and backdrop
   slots read placements each frame; a cutout plan reads its codes in each build
   (`CutoutPlan::place`); the encoded-run cache repacks each glyph's `uv` from the placement
-  `touch_slot` already returns. Only eviction moves a generation.
+  its handle's stamp returns. Only eviction moves a generation.
 - **The pool ages on display frames**, as the backdrops do; the text clock keeps its runs, which
   find a moved or evicted glyph through the slot either way.
 - **Device loss rebuilds the pool through its constructor**, and each tenant fills it again as at
@@ -226,15 +226,17 @@ Nothing past step 0 builds on a number it has not measured.
   pass drawing the steady text scene eight times over, the atlas bound as today or through the
   raster shader rewritten to four pages of each kind and a branch on the page, every quad on page 0.
   On V3D and Apple first. The scene draws masks alone, so the color branch goes unmeasured. Settles
-  one page per draw or four.
+  one page per draw or four. Removed in step 3, which binds four pages; V3D's verdict comes from
+  step 3.6's A/B against the base instead.
 - **0.4 M4, making a page — built.** `atomic/atlas_page/gpu/<r8|rgba8|rgba16f>/<edge>`: create, the
   first write of a 64² raster and the clear wgpu runs before it, at 256, 1024 and 2048.
 - **0.5 M5, the mirrorless flush — built.**
   `atomic/gradient_atlas/cpu/gap_row/<mirror|bake>/<oklab|linear>`: one clean row staged from the
   mirror against baked again from its ramp; each case first checks that both give the same bytes.
-- **0.6 Record — the memory done.** `.notes/research/2026-11-12-atlas-pool-measurements.md`: the
-  numbers, the hosts, and what each settles; the timings of 0.2 to 0.5 on each bench host to add,
-  then this file's constants and move rule.
+- **0.6 Record — the memory and Apple's timings done.**
+  `.notes/research/2026-11-12-atlas-pool-measurements.md`: on an Apple laptop the draw moves past a
+  few dozen items for the cost of one, and the page branch costs nothing. To add: V3D, the AMD
+  iGPU and `gap_row` in the bench profile, which settle the move rule per device and the branch.
 
 ### 1. The pool's CPU half (`src/gpu/atlas/`) — done
 
@@ -298,23 +300,30 @@ until step 3, so its root expects `dead_code` outside tests, with that reason.
   edge at the first commit, empty for the tenants to fill again; a test holds it. The loss itself
   is the backend's, tested once the backend holds the pool in step 3.
 
-### 3. Glyphs and icons
+### 3. Glyphs and icons — done but 3.6's A/B on the bench hosts
 
-- **3.1** `RasterAtlas` becomes a tenant: its key map, bearing and content in a side table by
-  handle; allocation, eviction and growth through the R8 and RGBA8 lists. Delete `Side`,
-  `BoundSides`, `ClockSweep`, `FreeSlots`, the per-tenant `RasterAtlasConfig` budgets and its
-  `PackedAtlas` use.
-- **3.2** `RasterQuad::uv_and_kind`: `u` in 12 bits, then 2 bits of page, the desaturate and kind
-  flags, `v` from bit 16; `U_BITS` and the shader constants follow. Test: `pack_uv` and `clipped`
-  round-trip the page and never carry into it.
-- **3.3** The raster shader binds four pages per format and picks by the page bits, or one page
-  per draw by M3; the spun path's four taps pick alike; it decodes the color pages' sRGB.
-- **3.4** The encoded-run replay repacks each glyph's `uv` from `touch_slot`'s placement. Test: a
-  glyph moved between two frames replays at its new origin, the exact packed value.
-- **3.5** Text and icons bind one group. The icons-in-the-raster-lane batching stays the separate
-  `PERF.md` item.
-- **3.6** Verify: `cargo gate-test raster`, `cargo visual`, `text_atlas/*` and
-  `integration/frame/gpu/*` A/B.
+- **3.1 — done.** `RasterAtlas` is a tenant: its key map, its slab of rasters by pool handle with
+  their bearings, the entries that draw nothing, and its uploads; the pool places, grows and evicts
+  across both tenants, each draining its queue at the end of the submit, a lookup that finds its
+  raster gone dropping the key first. Deleted: `Side`, `BoundSides`, `ClockSweep`, `FreeSlots`,
+  `RasterAtlasConfig`, the raster atlas's `PackedAtlas` use and its grow bench.
+- **3.2 — done.** `RasterQuad::uv_and_kind`: `u` in 12 bits, then 2 bits of page, the desaturate
+  and kind flags, `v` from bit 16; a const assert holds the raster lists' page edges inside `u`.
+- **3.3 — done.** The raster shader binds four pages of each kind and picks by the page bits, the
+  spun path's four taps alike, and decodes the color pages' sRGB; M3 on Apple found the branch
+  free, and V3D's run decides whether it stays. The page-branch bench went with the one-page
+  binding it compared against. One visual golden, a turned color icon, moved by one step in 11
+  pixels (D3) and was written again.
+- **3.4 — done but its test.** An encoded glyph holds its raster's pool handle, so a replay stamps
+  it in the pool and packs its `uv` from where it sits now, with no tenant slot between; the test
+  of a glyph moved between two frames waits for step 7, as nothing moves before it.
+- **3.5 — done.** Text and icons draw through one `RasterGroup`, which follows the textures'
+  generations. The icons-in-the-raster-lane batching stays the separate `PERF.md` item.
+- **3.6 Verify.** The gate and `cargo visual` pass. An indicative A/B in the test profile on an
+  Apple laptop, ABBA: `integration/frame/gpu/{cached,scrolling,theming,typing}` and
+  `text_atlas/gpu/{steady_warm,zoom_smooth}/frame` within noise; `steady_warm/prepare` 10.1 →
+  12.3 µs, the pool's stamp and the repack a glyph, debug asserts on in that profile;
+  `cache_churn/prepare` 61 → 20 µs. To run: the bench profile on every bench host, V3D first.
 
 ### 4. Shadow cutout tables
 

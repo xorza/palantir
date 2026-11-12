@@ -1,38 +1,31 @@
-//! Rasterized-quad atlas for mask and color content, keyed by whatever its
-//! tenant rasterizes from: glyphs (cosmic `CacheKey`) or icons
-//! ([`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey)).
+//! A raster tenant's side of the atlas pool, keyed by whatever it rasterizes from: glyphs (cosmic
+//! `CacheKey`) or icons ([`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey)).
 //!
-//! The two instances share the policies (shelf packing, clock-sweep eviction,
-//! grow-with-blit, batched staging uploads) and the layout from [`RasterPipeline`].
-//! Each keeps its own textures, bind group and eviction budget, so a color-icon-heavy
-//! frame cannot take rectangles from adjacent glyphs. Packing lives on [`ShelfPacker`],
-//! victim selection on [`ClockSweep`].
+//! The pool places, grows and evicts across both tenants (`gpu::atlas`,
+//! `.notes/proposals/atlas-pool.md`); a tenant keeps the keys it rasterized, a slab of the rasters
+//! each names with their bearings, the entries that draw nothing, and the uploads it owes. An
+//! eviction of either tenant's raster reaches its owner through the pool's queue, drained at the
+//! end of each submit; a lookup that finds its raster gone before then drops the key itself.
 
 pub(crate) mod atlas_slot;
-#[cfg(feature = "internals")]
-pub(crate) mod bench;
-mod bound_sides;
-mod clock_sweep;
 pub(crate) mod counters;
-mod free_slots;
 pub(crate) mod packed_metadata;
-mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
-use crate::common::span::Span;
+use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_handle::AtlasHandle;
+use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::error::AtlasError;
+use crate::gpu::atlas::tenant::Tenant;
+use crate::gpu::atlas::{AtlasPool, LIST_CONFIGS};
 use crate::gpu::debug_marker;
-use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::{GpuCtx, RowCopy};
-use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{ATLAS_GROUP, RasterPipeline};
-use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
-use crate::gpu::raster::raster_atlas::bound_sides::BoundSides;
-use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
+use crate::gpu::pipeline::raster_pipeline::raster_quad::U_BITS;
+use crate::gpu::raster::raster_atlas::atlas_slot::{
+    AtlasSlot, PlacedRaster, SlotPlacement, SlotState,
+};
 use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
-use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
-use crate::gpu::raster::raster_atlas::side::Side;
-use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
@@ -40,23 +33,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Range;
 
-/// How one [`RasterAtlas`] differs from the other: GPU debug label and initial side sizes.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct RasterAtlasConfig {
-    pub(super) label: &'static str,
-    pub(super) initial_mask_px: u32,
-    pub(super) initial_color_px: u32,
-    /// The hard budget of one side's backing texture (`AtlasSpec::max_bytes`). Per instance
-    /// because the budget is in bytes (a mask side gets four times a color side's edge). When it
-    /// binds, `Rasterized::AtlasFull` is returned and the entry re-encodes each frame.
-    pub(super) max_bytes: u64,
-    /// The soft budget (`AtlasSpec::budget_bytes`), below which a side grows rather than
-    /// evicting. Evicting first would pin an atlas at its initial size however badly it fits,
-    /// and victim selection is O(live entries) per call.
-    pub(super) budget_bytes: u64,
-}
-
-/// A raster ready to file: its packed extents and bearing, which side it reads from, and its rows
+/// A raster ready to file: its packed extents and bearing, which list it reads from, and its rows
 /// of pixels with no slack.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PackedRaster<'a> {
@@ -65,15 +42,8 @@ pub(super) struct PackedRaster<'a> {
     pub(super) pixels: &'a [u8],
 }
 
-/// GPU debug labels, built once: a per-frame `format!` would allocate.
-#[derive(Debug)]
-struct AtlasLabels {
-    grow_blit: String,
-    batch_upload: String,
-}
-
-/// Frames a non-drawing entry (`alloc: None`) survives unused. Victim selection
-/// skips them, so whitespace and rejected glyphs would otherwise pile up in the slab.
+/// Frames a non-drawing entry survives unused. No eviction reaches them, as the pool holds none,
+/// so whitespace and rejected glyphs would otherwise pile up in the slab.
 ///
 /// A per-entry deadline on [`RasterAtlas::unallocated_expiry`], not a periodic
 /// `cache.retain`, which would make one frame in N pay for all. In the shared text
@@ -83,143 +53,103 @@ struct AtlasLabels {
 /// atlas.
 const UNALLOCATED_KEEP_FRAMES: u64 = 120;
 
+// A quad packs a raster's origin in `U_BITS` a coordinate, so no page of a raster list passes it.
+const _: () = {
+    let edge = 1 << U_BITS;
+    assert!(LIST_CONFIGS[AtlasFormat::R8 as usize].page_edge <= edge);
+    assert!(LIST_CONFIGS[AtlasFormat::Rgba8 as usize].page_edge <= edge);
+};
+
+/// The pool's list a raster of `content` lives in. Here rather than on [`ContentType`]
+/// (primitives-layer): naming the pool's formats is the graphics layer's job.
+const fn format_of(content: ContentType) -> AtlasFormat {
+    match content {
+        ContentType::Mask => AtlasFormat::R8,
+        ContentType::Color => AtlasFormat::Rgba8,
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct RasterAtlas<K> {
-    sides: [Side; 2],
-    labels: AtlasLabels,
-    /// Dense slot slab; `cache` maps each key to an index. Encoded-run caches record
-    /// indices; safe because every recorded index carries the slot generation eviction
-    /// advances before reuse.
+    tenant: Tenant,
+    /// GPU debug label of the upload, built once: a per-frame `format!` would allocate.
+    upload_label: String,
+    /// Dense slot slab; `cache` maps each key to an index.
     slots: Vec<AtlasSlot>,
-    /// Key held by each slab entry, parallel to [`Self::slots`], so eviction can drop
+    /// Key held by each slab entry, parallel to [`Self::slots`], so an eviction can drop
     /// the victim's map entry by slab position. A separate column because the slot is
     /// hot and the key cold. Only meaningful for an index [`Self::cache`] still maps.
     slot_keys: Vec<K>,
     cache: FxHashMap<K, u32>,
-    free: FreeSlots,
-    /// Rotating eviction cursor over [`Self::slots`]; persists so the victim search resumes instead
-    /// of rescanning.
-    hand: u32,
-    /// Latest reading of the shared text clock, mirrored by [`Self::advance_to`].
+    /// The slab index each pool handle sits at, so an eviction the pool queues finds its key.
+    by_handle: FxHashMap<AtlasHandle, u32>,
+    /// Slab indices no key names, the next insert's.
+    free: Vec<u32>,
+    /// Latest reading of the shared text clock, mirrored by [`Self::end_frame`].
     /// Counting submits here would make `RENDERED_RUN_KEEP_FRAMES`'s two windows drift
     /// (a drawless recorded frame ages buffers only; a `PaintOnly` frame the atlas only).
     cur_frame: u64,
     /// Deadlines for non-drawing entries (see [`ExpiryWheel`]); `touch` files nothing.
     unallocated_expiry: ExpiryWheel<K>,
-    /// Everything group 0 needs to read [`Self::sides`]; see [`BoundSides`]. Rebinding where a grow
-    /// commits, in [`Self::flush_pending_uploads`], leaves no window where binding and textures
-    /// disagree.
-    bound: BoundSides,
     pub(super) counters: AtlasCounters,
-
     /// Raster pixels queued by `insert`, rows as packed: [`GpuCtx::copy_rows`] pads them to the
     /// copy pitch once, in the belt's mapped staging.
     pending_pixels: Vec<u8>,
     pending_copies: Vec<PendingCopy>,
-    /// [`Self::evict_shelf`]'s tally, one per shelf, retained so a starving insert allocates
-    /// nothing.
-    shelf_uses: Vec<ShelfUse>,
 }
 
-/// What a shelf holds of one content type, as [`RasterAtlas::evict_shelf`] tallies it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ShelfUse {
-    Empty,
-    /// Entries, none drawn this frame.
-    Evictable,
-    /// An entry drawn this frame, which the shelf must keep.
-    Drawn,
-}
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct PendingCopy {
-    content: ContentType,
+    format: AtlasFormat,
+    page: u8,
     origin: UVec2,
     size: UVec2,
-    pixels_start: usize,
-}
-
-impl PendingCopy {
-    const fn pixels(self) -> Range<usize> {
-        let len = (self.size.x * self.content.bytes_per_pixel()) as usize * self.size.y as usize;
-        self.pixels_start..self.pixels_start + len
-    }
+    pixels: Range<usize>,
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
-    pub(super) fn new(gpu: &Gpu, program: &RasterPipeline, config: RasterAtlasConfig) -> Self {
-        let sides = [
-            Side::new(gpu, ContentType::Mask, config),
-            Side::new(gpu, ContentType::Color, config),
-        ];
-        let labels = AtlasLabels {
-            grow_blit: format!("{} atlas grow blit", config.label),
-            batch_upload: format!("{} atlas batch upload", config.label),
-        };
-
-        let bound = BoundSides::new(gpu, program, config.label, &sides);
-
+    pub(super) fn new(tenant: Tenant, label: &str) -> Self {
         Self {
-            sides,
-            labels,
+            tenant,
+            upload_label: format!("{label} atlas batch upload"),
             slots: Vec::new(),
             slot_keys: Vec::new(),
             cache: FxHashMap::default(),
-            free: FreeSlots::default(),
-            hand: 0,
+            by_handle: FxHashMap::default(),
+            free: Vec::new(),
             cur_frame: 0,
             unallocated_expiry: ExpiryWheel::with_keep(UNALLOCATED_KEEP_FRAMES),
-            bound,
             counters: AtlasCounters::default(),
             pending_pixels: Vec::new(),
             pending_copies: Vec::new(),
-            shelf_uses: Vec::new(),
         }
     }
 
-    /// Bind this atlas and draw `span` of `vbuf`'s quad instances, unturned or turned; text and
-    /// icon share one bind-group shape (see
-    /// [`RasterQuad`](crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad)).
-    pub(super) fn draw_span<'a>(
-        &'a self,
-        rec: &mut PassRecorder<'a>,
-        vbuf: &'a wgpu::Buffer,
-        span: Span,
-    ) {
-        if span.len == 0 {
-            return;
-        }
-        rec.group(ATLAS_GROUP, self.bound.bind_group());
-        rec.vertex(0, vbuf);
-        rec.draw(0..4, span.start..span.start + span.len);
-    }
-
-    pub(super) const fn side_px(&self, content: ContentType) -> u32 {
-        self.sides[content as usize].atlas.edge()
-    }
-
-    pub(super) fn touch(&mut self, key: &K) -> Option<u32> {
+    /// The slab index of `key`, its raster stamped as drawn, `None` on a miss. A raster another tenant's
+    /// insert evicted this frame, before this tenant drained its queue, is a miss too, its key
+    /// dropped here.
+    pub(super) fn touch(&mut self, pool: &mut AtlasPool, key: &K) -> Option<u32> {
         let &idx = self.cache.get(key)?;
+        if let Some(raster) = self.slots[idx as usize].raster()
+            && pool.stamp(raster.handle).is_none()
+        {
+            self.by_handle.remove(&raster.handle);
+            self.drop_slot(idx);
+            self.counters.evictions.bump();
+            return None;
+        }
         self.slots[idx as usize].last_use = self.cur_frame;
         Some(idx)
     }
 
-    /// Draw slot `idx` this frame, which a cached run took at `generation`: stamped, so no
-    /// eviction this frame reclaims it, and its placement, or `None` when an eviction reused the
-    /// slot since, or it holds no rectangle. The one stamp beside [`Self::touch`]: the clock's
-    /// "drawn this frame is never evicted" holds through these two alone.
-    pub(super) fn touch_slot(&mut self, idx: u32, generation: u32) -> Option<SlotPlacement> {
-        let slot = &mut self.slots[idx as usize];
-        if slot.generation != generation {
-            return None;
-        }
-        slot.last_use = self.cur_frame;
-        slot.placement()
-    }
-
-    /// Slot `idx`, as an insert or a touch named it.
-    pub(super) fn slot(&self, idx: u32) -> AtlasSlot {
-        self.slots[idx as usize]
+    /// Where slot `idx`, touched or filed this frame, draws from now, `None` for one that draws
+    /// nothing.
+    pub(super) fn placement(&self, pool: &AtlasPool, idx: u32) -> Option<SlotPlacement> {
+        let raster = self.slots[idx as usize].raster()?;
+        let placement = pool
+            .placement(raster.handle)
+            .expect("the pool evicts no raster drawn this frame");
+        Some(SlotPlacement::of(placement, raster))
     }
 
     /// The keys the atlas holds a slot for.
@@ -232,39 +162,61 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.cur_frame
     }
 
-    /// Insert a freshly rasterized glyph, queueing its pixels for
-    /// [`Self::flush_pending_uploads`]. Grows if full; `None` only at GPU-max when it
-    /// still doesn't fit.
-    pub(super) fn insert(&mut self, key: K, raster: PackedRaster<'_>) -> Option<u32> {
+    /// File a freshly rasterized raster under `key` in the pool, queueing its pixels for
+    /// [`Self::flush_pending_uploads`]. `None` where the pool refuses it: past a page, which
+    /// [`AtlasCounters::oversized`] counts, or full this frame.
+    pub(super) fn insert(
+        &mut self,
+        pool: &mut AtlasPool,
+        key: K,
+        raster: PackedRaster<'_>,
+    ) -> Option<u32> {
         let PackedRaster {
             metadata, content, ..
         } = raster;
-        let origin = self.allocate(content, metadata.size)?;
-        self.enqueue_upload(origin.as_uvec2(), raster);
-
-        let slot = AtlasSlot {
-            state: SlotState::Placed(SlotPlacement {
-                origin,
-                size: metadata.size,
+        let format = format_of(content);
+        let handle = match pool.allocate(format, self.tenant, metadata.size) {
+            Ok(handle) => handle,
+            Err(AtlasError::Oversized { .. }) => {
+                self.counters.oversized.bump();
+                return None;
+            }
+            Err(AtlasError::Full) => return None,
+        };
+        let placement = pool.placement(handle).expect("a new raster is live");
+        self.enqueue_upload(format, placement.page, placement.origin, raster);
+        let idx = self.store(
+            key,
+            SlotState::Placed(PlacedRaster {
+                handle,
                 bearing: metadata.bearing,
                 content,
             }),
-            generation: 0,
-            last_use: self.cur_frame,
-        };
-        Some(self.store(key, slot))
+        );
+        self.by_handle.insert(handle, idx);
+        Some(idx)
     }
 
-    fn store(&mut self, key: K, mut slot: AtlasSlot) -> u32 {
-        let idx = if let Some(i) = self.free.claim() {
-            slot.generation = self.slots[i as usize].generation;
+    /// Cache a non-drawing glyph: a slab index but no rectangle or upload.
+    pub(super) fn insert_unallocated(&mut self, key: K) -> u32 {
+        self.unallocated_expiry
+            .schedule(key, unallocated_dies_at(self.cur_frame));
+        self.store(key, SlotState::Unplaced)
+    }
+
+    fn store(&mut self, key: K, state: SlotState) -> u32 {
+        let slot = AtlasSlot {
+            state,
+            last_use: self.cur_frame,
+        };
+        let idx = if let Some(i) = self.free.pop() {
             self.slots[i as usize] = slot;
             self.slot_keys[i as usize] = key;
             i
         } else {
             self.slots.push(slot);
             self.slot_keys.push(key);
-            (self.slots.len() - 1) as u32
+            u32::try_from(self.slots.len() - 1).expect("a slab counts its slots in u32")
         };
         let prev = self.cache.insert(key, idx);
         // Callers insert only after a failed `touch`, so the key must be new.
@@ -272,77 +224,77 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         idx
     }
 
-    /// Queue `raster`'s pixels for the rectangle at `origin`.
-    fn enqueue_upload(&mut self, origin: UVec2, raster: PackedRaster<'_>) {
-        let copy = PendingCopy {
-            content: raster.content,
-            origin,
-            size: raster.metadata.size.as_uvec2(),
-            pixels_start: self.pending_pixels.len(),
-        };
+    /// Queue `raster`'s pixels for the rectangle at `origin` of `format`'s page `page`.
+    fn enqueue_upload(
+        &mut self,
+        format: AtlasFormat,
+        page: u8,
+        origin: U16Vec2,
+        raster: PackedRaster<'_>,
+    ) {
+        let size = raster.metadata.size.as_uvec2();
+        let start = self.pending_pixels.len();
+        let len = (size.x * raster.content.bytes_per_pixel()) as usize * size.y as usize;
         debug_assert_eq!(
             raster.pixels.len(),
-            copy.pixels().len(),
+            len,
             "a raster's bytes must be its rows with no slack",
         );
         self.pending_pixels.extend_from_slice(raster.pixels);
-        self.pending_copies.push(copy);
+        self.pending_copies.push(PendingCopy {
+            format,
+            page,
+            origin: origin.as_uvec2(),
+            size,
+            pixels: start..start + len,
+        });
     }
 
-    /// Drain this frame's queued rasters onto the GPU after any pending grow blit, once per frame
-    /// before any pass draws, through [`GpuCtx::copy_rows`]: the bytes stage once, and no buffer
-    /// of this atlas's own holds the peak frame's worth. The encoder orders the copies after the
-    /// grow blit.
-    pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
-        // Grow blits first: the old-to-new copy must complete before new glyph writes. The
-        // binding follows the new textures here, before any pass samples them.
-        if self.sides.iter().any(|side| side.atlas.has_pending_grow()) {
-            debug_marker::push(ctx.encoder, &self.labels.grow_blit);
-            for side in &mut self.sides {
-                side.atlas.commit(ctx.gpu, ctx.encoder);
-            }
-            debug_marker::pop(ctx.encoder);
-            self.bound.rebind(ctx.gpu, &self.sides);
-        }
-
+    /// Drain this frame's queued rasters into `textures`' pages, once per frame after the pool's
+    /// commit and before any pass draws, through [`GpuCtx::copy_rows`]: the bytes stage once, and
+    /// no buffer of this atlas's own holds the peak frame's worth.
+    pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
         if self.pending_copies.is_empty() {
             return;
         }
         let Self {
-            sides,
             pending_pixels,
             pending_copies,
-            labels,
+            upload_label,
             ..
         } = self;
-        let (sides, pixels) = (&*sides, &*pending_pixels);
-        debug_marker::push(ctx.encoder, &labels.batch_upload);
-        ctx.copy_rows(pending_copies.iter().map(|c| RowCopy {
-            texture: sides[c.content as usize].atlas.texture(),
-            origin: c.origin,
-            size: c.size,
-            rows: &pixels[c.pixels()],
+        let pixels = &*pending_pixels;
+        debug_marker::push(ctx.encoder, upload_label);
+        ctx.copy_rows(pending_copies.iter().map(|copy| {
+            RowCopy {
+                texture: textures
+                    .page_texture(copy.format, usize::from(copy.page))
+                    .expect("a raster's page was committed before its upload"),
+                origin: copy.origin,
+                size: copy.size,
+                rows: &pixels[copy.pixels.clone()],
+            }
         }));
         debug_marker::pop(ctx.encoder);
         pending_pixels.clear();
         pending_copies.clear();
     }
 
-    /// Cache a non-drawing glyph: a slab index but no packer rectangle or upload.
-    pub(super) fn insert_unallocated(&mut self, key: K) -> u32 {
-        self.unallocated_expiry
-            .schedule(key, unallocated_dies_at(self.cur_frame));
-        let slot = AtlasSlot {
-            state: SlotState::Unplaced,
-            generation: 0,
-            last_use: self.cur_frame,
-        };
-        self.store(key, slot)
-    }
-
-    /// Advance this atlas's view of the shared clock to `frame` and retire non-drawing entries now
-    /// due. Not `end_frame`: this type owns no frame boundary.
-    pub(super) fn advance_to(&mut self, frame: u64) {
+    /// Drop the keys of the rasters the pool evicted since the last drain, and move this atlas's
+    /// view of the shared clock to `frame`, retiring the non-drawing entries now due. At the end of
+    /// each submit, which owns the frame boundary.
+    pub(super) fn end_frame(&mut self, pool: &mut AtlasPool, frame: u64) {
+        let mut evicted = 0;
+        for handle in pool.drain_evicted(self.tenant) {
+            // A lookup that found the raster gone dropped its slot already.
+            if let Some(idx) = self.by_handle.remove(&handle) {
+                let key = self.slot_keys[idx as usize];
+                self.cache.remove(&key);
+                free_slot(&mut self.slots, &mut self.free, idx);
+                evicted += 1;
+            }
+        }
+        self.counters.evictions.edit(|n| *n += evicted);
         debug_assert!(
             frame >= self.cur_frame,
             "the atlas frame clock ran backwards",
@@ -351,7 +303,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         let mut slab = Slab {
             cache: &mut self.cache,
             slots: &mut self.slots,
-            sides: &mut self.sides,
             free: &mut self.free,
         };
         // No stamp check: deadlines only move out, so every ticket that fires is the live one.
@@ -359,169 +310,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             .retire(frame, |key, _| slab.retire_unallocated(key, frame));
     }
 
-    /// Allocate a rectangle in the right packer, evicting then growing as needed.
-    ///
-    /// Eviction is gated on the entry fitting the side's edge at all: freeing rectangles
-    /// cannot widen a texture, so for a wider or taller entry every victim is wasted and
-    /// the loop would empty the atlas, every frame it stays on screen (the run is refused
-    /// as a template; see `EncodedCache::settle`).
-    fn allocate(&mut self, content: ContentType, size: U16Vec2) -> Option<U16Vec2> {
-        if !self.sides[content as usize].atlas.fits_max(size) {
-            self.counters.oversized.bump();
-            return None;
-        }
-        let mut evictions = 0;
-        let origin = loop {
-            let atlas = &mut self.sides[content as usize].atlas;
-            if let Some(origin) = atlas.allocate(size) {
-                break Some(origin);
-            }
-            // Under the soft budget the side grows on its own. Too wide for the edge, an eviction
-            // frees nothing that holds it, so only a grow past the budget can.
-            if atlas.grow() {
-                self.counters.grows.bump();
-                continue;
-            }
-            let evicted = if atlas.fits_now(size) {
-                self.evict_for(content, size)
-            } else {
-                0
-            };
-            evictions += evicted;
-            if evicted == 0 {
-                if !self.sides[content as usize].atlas.grow_past_budget() {
-                    break None;
-                }
-                self.counters.grows.bump();
-            }
-        };
-        self.counters
-            .worst_insert_evictions
-            .edit(|worst| *worst = (*worst).max(evictions));
-        origin
-    }
-
-    /// Evict toward room for a `size` raster of `target` content, among entries not drawn this
-    /// frame, chosen by a clock; returns how many went, `0` when none could.
-    ///
-    /// The packer reclaims per rectangle, so a victim on a shelf that takes the raster is room
-    /// once enough of its neighbors go: the clock looks there first. With no such victim, every
-    /// evictable entry on the first victim's shelf goes, so its rows can serve another height.
-    ///
-    /// # Why a clock, not exact LRU
-    ///
-    /// True LRU iterates the whole `cache` map per eviction, and [`Self::allocate`] calls this in a
-    /// loop; during a sustained zoom that selection dominated the frame. In the thrash steady state
-    /// nearly every slot is eligible, so the hand stops within a step or two. The trade is an
-    /// approximately-oldest victim, fine since entries are regenerable. See [`ClockSweep`]. An
-    /// intrusive MRU list is the wrong tool: a stamp refresh here is one indexed store on the
-    /// hottest text path (`TextEncoder::try_emit_cached`).
-    ///
-    /// # What the clock protects
-    ///
-    /// What has been drawn so far this frame, not what it will draw ([`Self::cur_frame`] moves in
-    /// [`Self::advance_to`] at the end of a submit). An early batch's misses can take rectangles a
-    /// later batch was about to hit; that batch sees the generation move and re-rasterizes: work,
-    /// never a wrong pixel.
-    fn evict_for(&mut self, target: ContentType, size: U16Vec2) -> u32 {
-        if self.sides[target as usize].dry_frame == Some(self.cur_frame) {
-            // A fourth write of `last_use` would break the invariant that doc rests on, silently
-            // stopping reclaim; debug pays one rotation to check it.
-            debug_assert!(
-                self.sweep(target, |_| true).victim.is_none(),
-                "{target:?} latched dry on frame {} still has an evictable slot",
-                self.cur_frame,
-            );
-            return 0;
-        }
-        let packer = self.sides[target as usize].atlas.packer();
-        let sweep = self.sweep(target, |p| {
-            ShelfPacker::takes(packer.shelf_height(p.origin.y), size.y)
-        });
-        let any = sweep.refused;
-        if let Some(idx) = self.take_sweep(sweep) {
-            self.evict(idx);
-            return 1;
-        }
-        if !any {
-            self.sides[target as usize].dry_frame = Some(self.cur_frame);
-            return 0;
-        }
-        self.evict_shelf(target, size.y)
-    }
-
-    /// With no victim on a shelf that takes a raster of height `h`, a whole shelf of `target`
-    /// entries none drawn this frame, chosen to make room: the shortest tall enough, emptied for
-    /// the raster to reuse, else the bottom one, whose rows go back to the side. `0` when no
-    /// shelf qualifies, as emptying one in the middle that is too short frees nothing usable.
-    fn evict_shelf(&mut self, target: ContentType, h: u16) -> u32 {
-        let packer = self.sides[target as usize].atlas.packer();
-        let shelves = packer.shelves();
-        let uses = &mut self.shelf_uses;
-        uses.clear();
-        uses.resize(shelves.len(), ShelfUse::Empty);
-        for slot in &self.slots {
-            let Some(placement) = slot.placement().filter(|p| p.content == target) else {
-                continue;
-            };
-            let shelf_use = &mut uses[packer.shelf_at(placement.origin.y)];
-            if slot.last_use >= self.cur_frame {
-                *shelf_use = ShelfUse::Drawn;
-            } else if *shelf_use == ShelfUse::Empty {
-                *shelf_use = ShelfUse::Evictable;
-            }
-        }
-        self.counters
-            .evict_scans
-            .edit(|n| *n += self.slots.len() as u64);
-        let evictable = |i: &usize| uses[*i] == ShelfUse::Evictable;
-        let Some(shelf_y) = (0..shelves.len())
-            .filter(evictable)
-            .filter(|&i| shelves[i].height >= h)
-            .min_by_key(|&i| shelves[i].height)
-            .or_else(|| shelves.len().checked_sub(1).filter(evictable))
-            .map(|i| shelves[i].y)
-        else {
-            return 0;
-        };
-        let mut evicted = 0;
-        for idx in 0..self.slots.len() as u32 {
-            let on_shelf = self.slots[idx as usize]
-                .placement()
-                .is_some_and(|p| p.content == target && p.origin.y == shelf_y);
-            if on_shelf {
-                self.evict(idx);
-                evicted += 1;
-            }
-        }
-        evicted
-    }
-
-    /// One clock turn over `target` content's evictable slots that `takes` accepts.
-    fn sweep(&self, target: ContentType, takes: impl Fn(&SlotPlacement) -> bool) -> ClockSweep {
-        ClockSweep::over(
-            &self.slots,
-            self.hand,
-            Evictable {
-                content: target,
-                cur_frame: self.cur_frame,
-                takes,
-            },
-        )
-    }
-
-    /// Move the hand past `sweep` and bill its walk; the victim it found, if any.
-    fn take_sweep(&mut self, sweep: ClockSweep) -> Option<u32> {
-        self.hand = sweep.hand;
-        self.counters
-            .evict_scans
-            .edit(|n| *n += u64::from(sweep.examined));
-        sweep.victim
-    }
-
-    /// Drop the entry at slab index `idx`, returning its rectangle to its packer.
-    fn evict(&mut self, idx: u32) {
-        self.counters.evictions.bump();
+    /// Drop the entry at slab index `idx` and its key, its raster already gone from the pool.
+    fn drop_slot(&mut self, idx: u32) {
         let key = self.slot_keys[idx as usize];
         let removed = self.cache.remove(&key);
         debug_assert_eq!(
@@ -529,29 +319,47 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             Some(idx),
             "slot_keys disagreed with cache about slab index {idx}",
         );
-        self.free.release(&mut self.slots, &mut self.sides, idx);
+        free_slot(&mut self.slots, &mut self.free, idx);
     }
 
-    /// Drop every entry whose key `keep` rejects, for retiring a family of keys at once
-    /// (the icon backend, on unloading sets), which would otherwise hold rectangles
-    /// until pressure swept them. Walks [`Self::cache`], not the slab; `keep` must
-    /// answer for a set of doomed keys in one pass.
-    pub(super) fn forget(&mut self, keep: impl Fn(&K) -> bool) {
+    /// Drop every entry whose key `keep` rejects, giving their rasters back to `pool`, for
+    /// retiring a family of keys at once (the icon backend, on unloading sets), which would
+    /// otherwise hold rectangles until pressure swept them. Walks [`Self::cache`], not the slab;
+    /// `keep` must answer for a set of doomed keys in one pass.
+    pub(super) fn forget(&mut self, pool: &mut AtlasPool, keep: impl Fn(&K) -> bool) {
         let Self {
             cache,
             slots,
-            sides,
             free,
+            by_handle,
             ..
         } = self;
         cache.retain(|key, &mut idx| {
             if keep(key) {
                 return true;
             }
-            free.release(slots, sides, idx);
+            if let Some(raster) = slots[idx as usize].raster() {
+                by_handle.remove(&raster.handle);
+                // Evicted already, its handle waiting in the queue, where the drain passes it.
+                if pool.placement(raster.handle).is_some() {
+                    pool.release(raster.handle);
+                }
+            }
+            free_slot(slots, free, idx);
             false
         });
     }
+}
+
+/// Mark slab index `idx` free and file it for the next insert.
+fn free_slot(slots: &mut [AtlasSlot], free: &mut Vec<u32>, idx: u32) {
+    let slot = &mut slots[idx as usize];
+    debug_assert!(
+        slot.state != SlotState::Free,
+        "slab index {idx} released twice; two keys would share one slot",
+    );
+    slot.state = SlotState::Free;
+    free.push(idx);
 }
 
 /// The slab and what a released slot returns to, borrowed apart from
@@ -560,8 +368,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
 struct Slab<'a, K> {
     cache: &'a mut FxHashMap<K, u32>,
     slots: &'a mut [AtlasSlot],
-    sides: &'a mut [Side],
-    free: &'a mut FreeSlots,
+    free: &'a mut Vec<u32>,
 }
 
 impl<K: Copy + Eq + Hash + Debug> Slab<'_, K> {
@@ -572,9 +379,9 @@ impl<K: Copy + Eq + Hash + Debug> Slab<'_, K> {
         // rasterizes nothing.
         let idx = *self.cache.get(&key)?;
         let slot = &self.slots[idx as usize];
-        // Allocated entries are the clock's to reclaim. Defensive: every path allocating over a slab
-        // index removes the old key first.
-        if slot.placement().is_some() {
+        // Placed entries are the pool's to reclaim. Defensive: every path filing a raster over a
+        // slab index removes the old key first.
+        if slot.state != SlotState::Unplaced {
             return None;
         }
         let dies_at = unallocated_dies_at(slot.last_use);
@@ -582,7 +389,7 @@ impl<K: Copy + Eq + Hash + Debug> Slab<'_, K> {
             return Some(dies_at);
         }
         self.cache.remove(&key);
-        self.free.release(self.slots, self.sides, idx);
+        free_slot(self.slots, self.free, idx);
         None
     }
 }
@@ -593,64 +400,23 @@ const fn unallocated_dies_at(last_use: u64) -> u64 {
     last_use + UNALLOCATED_KEEP_FRAMES + 1
 }
 
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::atlas_memory::{self, AtlasUse};
-    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::raster::raster_atlas::RasterAtlas;
     use crate::gpu::raster::raster_atlas::atlas_slot::AtlasSlot;
-    use crate::primitives::paint::content_type::ContentType;
-    #[cfg(test)]
     use rustc_hash::FxHashMap;
     use std::fmt::Debug;
     use std::hash::Hash;
 
-    #[cfg(test)]
     pub(crate) const fn unallocated_dies_at(last_use: u64) -> u64 {
         super::unallocated_dies_at(last_use)
     }
 
     impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
-        /// Bind the sides against `layout`, which takes `pages` textures of each kind, as
-        /// `BoundSides::bind_pages` does.
-        pub(crate) fn bind_pages(&mut self, gpu: &Gpu, layout: &wgpu::BindGroupLayout, pages: u32) {
-            self.bound.bind_pages(gpu, layout, pages, &self.sides);
-        }
-
-        /// The memory of each side, `[mask, color]`, named by `names`: its texture's bytes
-        /// against the rasters it holds.
-        pub(crate) fn memory(&self, names: [&'static str; 2]) -> [AtlasUse; 2] {
-            [ContentType::Mask, ContentType::Color].map(|content| {
-                let texels: u64 = self
-                    .slots
-                    .iter()
-                    .filter_map(AtlasSlot::placement)
-                    .filter(|placement| placement.content == content)
-                    .map(|placement| u64::from(placement.size.x) * u64::from(placement.size.y))
-                    .sum();
-                AtlasUse {
-                    name: names[content as usize],
-                    textures: 1,
-                    bytes: atlas_memory::texture_bytes(
-                        self.sides[content as usize].atlas.texture(),
-                    ),
-                    live_bytes: Some(texels * u64::from(content.bytes_per_pixel())),
-                }
-            })
-        }
-
-        #[cfg(test)]
         pub(crate) fn slots(&self) -> &[AtlasSlot] {
             &self.slots
         }
 
-        /// The slots, for a test that stales one as an eviction would.
-        #[cfg(test)]
-        pub(crate) fn slots_mut(&mut self) -> &mut [AtlasSlot] {
-            &mut self.slots
-        }
-
-        #[cfg(test)]
         pub(crate) const fn cache(&self) -> &FxHashMap<K, u32> {
             &self.cache
         }

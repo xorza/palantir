@@ -149,12 +149,6 @@ pub(crate) mod internals {
     use wgpu::util::DeviceExt;
 
     impl ShaderBody {
-        /// The complete source a module of this body compiles, for a bench that builds a variant
-        /// of it.
-        pub(crate) fn source(self) -> String {
-            self.specialize()
-        }
-
         /// Run `probe`, WGSL appended to this body, on the test GPU: its compute entry point
         /// `probe` runs once per input, at `global_invocation_id.x`, and reads `array<I>` at
         /// `@group(0) @binding(14)` and writes one `O` per input to `array<O>` at

@@ -600,4 +600,17 @@ fn edge_u16(edge: u32) -> u16 {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::atlas::atlas_handle::AtlasHandle;
+    use crate::gpu::atlas::page_list::PageList;
+
+    impl PageList {
+        /// The display frame `handle`'s item was last drawn in, `None` once it went.
+        pub(crate) fn last_use(&self, handle: AtlasHandle) -> Option<u64> {
+            self.live(handle).map(|idx| self.entries[idx].last_use)
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

@@ -1,22 +1,25 @@
 //! The GPU half both raster tenants own, in one type. An icon quad and a glyph quad
 //! are the same at the GPU level (a tinted, atlas-sourced rectangle at the raster's
 //! pixel size), differing only in what fills the instance buffer. Each tenant gets
-//! its own instance, with its own atlas and eviction budget, so a color-icon-heavy
-//! frame cannot evict the label's glyphs; the cost is one extra draw on a group
-//! mixing icons and text.
+//! its own instance and its own keys, over the one atlas pool both share, and both
+//! draw through the one atlas group (`.notes/proposals/atlas-pool.md`, D1): an
+//! eviction takes only what no frame drew this frame or the last, of either.
 
 use crate::common::span::Span;
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_format::AtlasFormat;
+use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
-use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair};
+use crate::gpu::pipeline::raster_pipeline::{ATLAS_GROUP, RasterPipelinePair};
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
-use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas, RasterAtlasConfig};
+use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::libm_ext::LibmVec2;
-use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::row_spin::RowSpin;
@@ -25,13 +28,15 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 /// Everything one tenant's pass settles at construction; the pipeline and shader
-/// belong to the [`RasterPipeline`].
+/// belong to the [`RasterPipeline`](crate::gpu::pipeline::raster_pipeline::RasterPipeline).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RasterPassConfig {
+    /// Names the tenant in logs and GPU labels.
+    pub(super) label: &'static str,
+    pub(super) tenant: Tenant,
     pub(super) vbuf: &'static str,
     /// The turned quads' buffer label.
     pub(super) spun_vbuf: &'static str,
-    pub(super) atlas: RasterAtlasConfig,
     /// Quads the vertex buffer holds before its first growth.
     pub(super) initial_instances: usize,
 }
@@ -112,9 +117,9 @@ pub(super) struct RasterPass<K> {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
-    pub(super) fn new(gpu: &Gpu, program: &RasterPipeline, config: RasterPassConfig) -> Self {
+    pub(super) fn new(gpu: &Gpu, config: RasterPassConfig) -> Self {
         Self {
-            atlas: RasterAtlas::new(gpu, program, config.atlas),
+            atlas: RasterAtlas::new(config.tenant, config.label),
             instances: Vec::new(),
             starts: Vec::new(),
             vbuf: DynamicBuffer::vertex(gpu, config.vbuf, config.initial_instances),
@@ -123,7 +128,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
             cut_starts: Vec::new(),
             // Turned quads are rare: start the buffer small.
             spun_vbuf: DynamicBuffer::vertex(gpu, config.spun_vbuf, 16),
-            stem: config.atlas.label,
+            stem: config.label,
             starvation: Starvation::default(),
         }
     }
@@ -132,7 +137,12 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     /// whose extents or bearing overflow [`PackedMetadata`], or that covers no
     /// pixels, takes a slot owning no rectangle, so the key is a hit forever and
     /// the rasterizer runs once.
-    pub(super) fn insert_raster(&mut self, key: K, image: RasterImage<'_>) -> Rasterized {
+    pub(super) fn insert_raster(
+        &mut self,
+        pool: &mut AtlasPool,
+        key: K,
+        image: RasterImage<'_>,
+    ) -> Rasterized {
         let Some(metadata) = PackedMetadata::new(image.size, image.bearing) else {
             tracing::warn!(
                 ?key,
@@ -153,10 +163,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
             content: image.content,
             pixels: image.data,
         };
-        if let Some(idx) = self.atlas.insert(key, raster) {
+        if let Some(idx) = self.atlas.insert(pool, key, raster) {
             Rasterized::Slot(idx)
         } else {
-            self.note_atlas_starved();
+            self.note_atlas_starved(pool);
             Rasterized::AtlasFull
         }
     }
@@ -164,14 +174,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     /// Report the first starved raster of an episode, so a full atlas shows in a
     /// log.
     #[cold]
-    fn note_atlas_starved(&mut self) {
+    fn note_atlas_starved(&mut self, pool: &AtlasPool) {
         if !self.starvation.note() {
             return;
         }
         tracing::warn!(
             label = self.stem,
-            mask_px = self.atlas.side_px(ContentType::Mask),
-            color_px = self.atlas.side_px(ContentType::Color),
+            mask_bytes = pool.list(AtlasFormat::R8).bytes(),
+            color_bytes = pool.list(AtlasFormat::Rgba8).bytes(),
             live_rasters = self.atlas.cached_len(),
             "atlas is full and cannot grow further; affected batches drop \
              rasters and re-encode every frame until pressure clears",
@@ -181,6 +191,15 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     /// Add `quad` to the batch open.
     pub(super) fn push(&mut self, quad: RasterQuad) {
         self.instances.push(quad);
+    }
+
+    /// Take back the quads pushed since `start`, an [`Self::instance_count`] of this batch.
+    pub(super) fn truncate(&mut self, start: usize) {
+        debug_assert!(
+            start <= self.instances.len(),
+            "a truncation past the quads pushed"
+        );
+        self.instances.truncate(start);
     }
 
     /// The quads pushed this frame, where the next lands: the start a
@@ -289,12 +308,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     /// uploads onto the renderer's encoder. Called once per frame after every batch
     /// is prepared and before any pass draws, so pixels land in the same submit as
     /// the draws reading them.
-    pub(super) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
+    pub(super) fn flush(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
         self.vbuf.upload_instances(ctx, &self.instances);
         self.spun_vbuf.upload_instances(ctx, &self.spun);
-        self.atlas.flush_pending_uploads(ctx);
+        self.atlas.flush_pending_uploads(ctx, textures);
     }
 
+    /// Draw batch `batch_idx`'s quads through `pipelines`, reading the pool's pages through the
+    /// atlas group in `pipelines`.
     pub(super) fn render_batch<'a>(
         &'a self,
         rec: &mut PassRecorder<'a>,
@@ -307,20 +328,22 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
                 RasterDraw::Spun(span) => (pipelines.spun, &self.spun_vbuf.buffer, span),
             };
             rec.pipeline(pipeline);
-            self.atlas.draw_span(rec, vbuf, span);
+            rec.group(ATLAS_GROUP, pipelines.atlas);
+            rec.vertex(0, vbuf);
+            rec.draw(0..4, span.start..span.start + span.len);
         });
     }
 
     /// Age the atlas against `frame` and drop this frame's quads and batch starts.
     /// Runs for every submit, even one that prepared no batch, or a keep count
     /// would bound only frames that drew something.
-    pub(super) fn end_frame(&mut self, frame: u64) {
+    pub(super) fn end_frame(&mut self, pool: &mut AtlasPool, frame: u64) {
         debug_assert!(
             !self.starts.is_empty() || self.instances.is_empty(),
             "{} quads were emitted with no batch to draw them",
             self.stem,
         );
-        self.atlas.advance_to(frame);
+        self.atlas.end_frame(pool, frame);
         self.instances.clear();
         self.starts.clear();
         self.spun.clear();

@@ -19,12 +19,11 @@ use std::slice;
 
 mod text_rig;
 
-/// A run that hits the encoded cache must still refresh the LRU `last_use` of every
-/// atlas slot it rides; otherwise a steadily-cached run's slots freeze and
-/// `evict_for` (under zoom's atlas pressure) reclaims a live slot and garbles the
-/// text.
+/// A run that hits the encoded cache must still stamp every raster it draws in the pool;
+/// otherwise a steadily-cached run's rasters age out and an eviction under zoom's atlas pressure
+/// takes one it draws.
 #[test]
-fn cached_run_keeps_its_atlas_slots_live() {
+fn cached_run_keeps_its_rasters_live() {
     let mut rig = TextRig::new();
 
     let runs = [rig.row("File", 14.0 * 1.2, Vec2::new(20.0, 20.0))];
@@ -42,41 +41,29 @@ fn cached_run_keeps_its_atlas_slots_live() {
         "an encoded-cache miss must restore its shaped buffer",
     );
     let arena_after_warmup = rig.backend.encoder.cache().arena_len();
-    rig.backend.tick_frame();
+    rig.tick();
     assert!(
         !rig.backend.pass.atlas.cache().is_empty(),
         "warmup should have rasterized at least one glyph",
     );
 
     // Frame 2: same run, encoded-cache hit (no cosmic walk or rasterization) that
-    // must still bump every slot's last_use. A clone shares the shaper's cache, so
+    // must still stamp every glyph in the pool. A clone shares the shaper's cache, so
     // holding a borrow makes any cosmic walk on the hit path panic.
     let shaper = rig.shaper.clone();
     let shaper_borrow = shaper.hold_borrow();
     rig.frame(2.0, &[&runs]);
     drop(shaper_borrow);
 
-    let cf = rig.backend.pass.atlas.frame();
-    let stale: Vec<u64> = rig
-        .backend
-        .pass
-        .atlas
-        .cache()
-        .values()
-        .map(|&i| rig.backend.pass.atlas.slots()[i as usize].last_use)
-        .filter(|&lu| lu != cf)
-        .collect();
-    assert!(
-        stale.is_empty(),
-        "cache-hit frame left slots stale: last_use {stale:?} != cur_frame {cf}",
-    );
+    // The pool ages a raster: its stamp is the display frame of the hit.
+    let cf = rig.pool.frame();
     for (_, span) in rig.backend.encoder.cache().resident_rows() {
         for glyph in rig.backend.encoder.cache().templates(span) {
-            let idx = glyph.atlas_slot;
+            let handle = glyph.handle;
             assert_eq!(
-                rig.backend.pass.atlas.slots()[idx as usize].last_use,
-                cf,
-                "recorded slab index {idx} not refreshed on hit",
+                rig.pool.list(handle.format).last_use(handle),
+                Some(cf),
+                "recorded raster {handle:?} not refreshed on hit",
             );
         }
     }
@@ -87,8 +74,9 @@ fn cached_run_keeps_its_atlas_slots_live() {
     );
 }
 
+/// A raster gone from the pool invalidates the runs that drew it and no other.
 #[test]
-fn slot_generation_invalidates_only_referencing_run() {
+fn an_evicted_raster_invalidates_only_its_runs() {
     let mut rig = TextRig::new();
 
     let runs = [
@@ -98,7 +86,7 @@ fn slot_generation_invalidates_only_referencing_run() {
 
     rig.frame(2.0, &[&runs]);
     assert_eq!(rig.backend.encoder.cache().rows(), 2);
-    rig.backend.tick_frame();
+    rig.tick();
 
     let entries: Vec<_> = rig.backend.encoder.cache().resident_rows().collect();
     // Invalidate the "AB" run through its *second* glyph: the replay emits "A"
@@ -109,7 +97,7 @@ fn slot_generation_invalidates_only_referencing_run() {
         .copied()
         .find(|(_, span)| span.len == 2)
         .expect("the two-glyph run must have a cached span");
-    let invalidated_slot = rig.backend.encoder.cache().templates(invalidated_span)[1].atlas_slot;
+    let invalidated = rig.backend.encoder.cache().templates(invalidated_span)[1].handle;
     let (stable_key, stable_span) = entries
         .iter()
         .copied()
@@ -119,17 +107,13 @@ fn slot_generation_invalidates_only_referencing_run() {
                 .cache()
                 .templates(*span)
                 .iter()
-                .all(|glyph| glyph.atlas_slot != invalidated_slot)
+                .all(|glyph| glyph.handle != invalidated)
         })
-        .expect("test runs must use disjoint atlas slots");
+        .expect("test runs must use disjoint rasters");
     let arena_before = rig.backend.encoder.cache().arena_len();
 
-    let slot = &mut rig.backend.pass.atlas.slots_mut()[invalidated_slot as usize];
-    slot.generation = slot
-        .generation
-        .checked_add(1)
-        .expect("test slot generation overflowed");
-    let expected_generation = slot.generation;
+    // As an eviction would: the pool takes the raster back, so its handle reads as stale.
+    rig.pool.release(invalidated);
     rig.frame(2.0, &[&runs]);
 
     assert_eq!(
@@ -142,7 +126,7 @@ fn slot_generation_invalidates_only_referencing_run() {
         Some(stable_span),
         "a disjoint run must retain its encoded span",
     );
-    // The rebuild is proven by the generation below, not the row's landing: the
+    // The rebuild is proven by the handle below, not the row's landing: the
     // same-length re-encode reclaims the dropped row's block, so invalidation costs
     // no arena growth.
     let replacement = rig
@@ -160,10 +144,14 @@ fn slot_generation_invalidates_only_referencing_run() {
         arena_before,
         "a slot invalidation must not grow the arena",
     );
-    assert_eq!(
-        rig.backend.encoder.cache().templates(replacement)[1].generation,
-        expected_generation,
-        "the replacement must record the slot's new generation",
+    let rebuilt = rig.backend.encoder.cache().templates(replacement)[1].handle;
+    assert_ne!(
+        rebuilt, invalidated,
+        "the replacement must record the raster filed again"
+    );
+    assert!(
+        rig.pool.placement(rebuilt).is_some(),
+        "and that raster is live"
     );
 }
 
@@ -212,7 +200,7 @@ fn deferred_upload_keeps_batches_distinct() {
         assert_eq!(gb.dim, ga.dim);
         assert_eq!(gb.pos, ga.pos + IVec2::new(0, 40));
     }
-    rig.backend.tick_frame();
+    rig.tick();
 }
 
 /// A turned run emits the quads its unturned twin does, from the same encoded template, into the
@@ -242,7 +230,7 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
         "'File' shapes to one glyph per character"
     );
     assert!(rig.backend.pass.spun.is_empty());
-    rig.backend.tick_frame();
+    rig.tick();
 
     rig.frame(1.0, &[slice::from_ref(&turned)]);
     assert!(
@@ -257,7 +245,7 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
         assert_eq!((spun.pivot, spun.rotor), (spin.pivot, rotor));
         assert_eq!(spun.quad.clip, chain);
     }
-    rig.backend.tick_frame();
+    rig.tick();
 
     // A batch draws in emission order, back-to-back turned runs as one draw; a turned run that
     // opens the next batch stays that batch's own.
@@ -287,12 +275,12 @@ fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
         ]
     );
     assert_eq!(draws(1), [RasterDraw::Spun(Span::new(8, 4))]);
-    rig.backend.tick_frame();
+    rig.tick();
 
     rig.frame(1.0, &[slice::from_ref(&flat)]);
     assert_eq!(rig.backend.pass.instances().len(), unturned.len());
     assert!(rig.backend.pass.spun.is_empty());
-    rig.backend.tick_frame();
+    rig.tick();
 }
 
 /// A run whose lines are partially y-culled by its bounds must not populate the
@@ -319,12 +307,12 @@ fn partially_culled_run_is_not_cached() {
         0,
         "a culled encode must not become a cache template",
     );
-    rig.backend.tick_frame();
+    rig.tick();
 
     rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(rig.backend.pass.instances().len(), 3);
     assert_eq!(rig.backend.encoder.cache().rows(), 0);
-    rig.backend.tick_frame();
+    rig.tick();
 
     // Frame 3, unclipped: 9 instances, cached under the same key as the clipped
     // frames (why those must not insert).
@@ -344,7 +332,7 @@ fn partially_culled_run_is_not_cached() {
         "the whole run is cached, not a culled prefix"
     );
     assert_eq!(rig.backend.encoder.cache().arena_len(), 12);
-    rig.backend.tick_frame();
+    rig.tick();
 
     rig.frame(1.0, &[slice::from_ref(&run)]);
     assert_eq!(rig.backend.pass.instances().len(), 9);
@@ -369,14 +357,14 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
     let runs = [rig.row("aged", 14.0 * 1.2, Vec2::new(20.0, 20.0))];
     rig.frame(1.0, &[&runs]);
     assert_eq!(rig.backend.encoder.cache().rows(), 1, "the run is cached");
-    rig.backend.tick_frame();
+    rig.tick();
 
     // Text-free frames never call `prepare_batch`, so `ranges` stays empty (where a
     // counter of this side's own would freeze); both clocks must still move in
     // lockstep.
     for _ in 0..8 {
         let before = rig.shaper.frame();
-        rig.backend.tick_frame();
+        rig.tick();
         assert_eq!(
             rig.shaper.frame(),
             before + 1,
@@ -397,7 +385,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
         "premise: still inside the keep window",
     );
     while rig.shaper.frame() <= RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK {
-        rig.backend.tick_frame();
+        rig.tick();
     }
     assert_eq!(
         rig.backend.encoder.cache().rows(),
@@ -423,7 +411,7 @@ fn swept_empty_glyph_reinserts() {
             .atlas
             .cache()
             .values()
-            .filter(|&&i| b.pass.atlas.slots()[i as usize].placement().is_none())
+            .filter(|&&i| b.pass.atlas.slots()[i as usize].raster().is_none())
             .count()
     };
 
@@ -438,7 +426,7 @@ fn swept_empty_glyph_reinserts() {
         "the space rasterizes to one zero-area entry"
     );
     let first_frame = rig.backend.pass.atlas.frame();
-    rig.backend.tick_frame();
+    rig.tick();
     assert_eq!(
         rig.backend.pass.atlas.frame(),
         first_frame + 1,
@@ -450,7 +438,7 @@ fn swept_empty_glyph_reinserts() {
     // never touch the space.
     while rig.backend.pass.atlas.frame() < unallocated_dies_at(0) + 1 {
         rig.frame(1.0, &[&[]]);
-        rig.backend.tick_frame();
+        rig.tick();
     }
     assert_eq!(
         empties(&rig.backend),
@@ -466,5 +454,5 @@ fn swept_empty_glyph_reinserts() {
         1,
         "swept empty glyph re-inserts on next use"
     );
-    rig.backend.tick_frame();
+    rig.tick();
 }

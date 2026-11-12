@@ -9,12 +9,14 @@
 //! would have to guess that size, and one deferred past it would leave the
 //! frame without the icon.
 
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::raster_pipeline::RasterPipelinePair;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
-use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair};
-use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig, Rasterized};
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
@@ -31,27 +33,15 @@ pub(crate) struct IconBackend {
 }
 
 impl IconBackend {
-    pub(crate) fn new(gpu: &Gpu, program: &RasterPipeline, icons: IconRegistry) -> Self {
+    pub(crate) fn new(gpu: &Gpu, icons: IconRegistry) -> Self {
         Self {
             pass: RasterPass::new(
                 gpu,
-                program,
                 RasterPassConfig {
+                    label: "palantir.icon",
+                    tenant: Tenant::Icons,
                     vbuf: "palantir.icon.vbuf",
                     spun_vbuf: "palantir.icon.spun_vbuf",
-                    atlas: RasterAtlasConfig {
-                        label: "palantir.icon",
-                        // The reverse of text: color icons are the expected content, so the color
-                        // side is sized to avoid an immediate grow chain.
-                        initial_mask_px: 256,
-                        initial_color_px: 512,
-                        // The same 16 MiB as text: it caps the color side at 2048^2, far past a
-                        // plausible icon working set. A separate knob because the match between
-                        // tenants is coincidence, not a property.
-                        max_bytes: 16 << 20,
-                        // 4 MiB reaches 1024^2 on the color side, enough for a few hundred icons.
-                        budget_bytes: 4 << 20,
-                    },
                     initial_instances: 256,
                 },
             ),
@@ -61,17 +51,21 @@ impl IconBackend {
     }
 
     /// Encode one batch of icon rows into instances, rasterizing atlas misses.
-    pub(crate) fn prepare_batch(&mut self, batch_idx: usize, rows: &[IconDrawRow]) {
+    pub(crate) fn prepare_batch(
+        &mut self,
+        pool: &mut AtlasPool,
+        batch_idx: usize,
+        rows: &[IconDrawRow],
+    ) {
         self.pass.open_batch(batch_idx);
         for row in rows {
-            let Some(idx) = self.slot(row.key) else {
+            let Some(idx) = self.slot(pool, row.key) else {
                 continue;
             };
             let slot = self
                 .pass
                 .atlas
-                .slot(idx)
-                .placement()
+                .placement(pool, idx)
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
             let mut quad = RasterQuad {
                 clip: row.clip,
@@ -91,13 +85,13 @@ impl IconBackend {
     /// The atlas slab index holding `key`, rasterizing on a miss. `None` when the
     /// icon could not be rasterized, or the atlas is at its ceiling with nothing
     /// evictable (transient; retried next frame).
-    fn slot(&mut self, key: IconRasterKey) -> Option<u32> {
-        if let Some(idx) = self.pass.atlas.touch(&key) {
+    fn slot(&mut self, pool: &mut AtlasPool, key: IconRasterKey) -> Option<u32> {
+        if let Some(idx) = self.pass.atlas.touch(pool, &key) {
             return Some(idx);
         }
         let table = self.icons.get(key.icon.set);
         let raster = self.rasterizer.rasterize(&table, key)?;
-        match self.pass.insert_raster(key, raster) {
+        match self.pass.insert_raster(pool, key, raster) {
             Rasterized::Slot(idx) => Some(idx),
             Rasterized::AtlasFull => None,
         }
@@ -107,7 +101,7 @@ impl IconBackend {
     /// to the pass; runs for every submit. `frame` is the shared text clock from
     /// [`TextBackend::end_frame`](crate::gpu::raster::text_backend::TextBackend::end_frame),
     /// so both atlas tenants age on one clock.
-    pub(crate) fn end_frame(&mut self, frame: u64) {
+    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool, frame: u64) {
         {
             // Destructured so the drain closure can borrow the two caches mutably while
             // the registry is borrowed.
@@ -122,15 +116,15 @@ impl IconBackend {
             // per store however many sets were released.
             icons.drain_released(|sets| {
                 rasterizer.forget_sets(sets);
-                pass.atlas.forget(|key| !sets.contains(&key.icon.set));
+                pass.atlas.forget(pool, |key| !sets.contains(&key.icon.set));
             });
         }
-        self.pass.end_frame(frame);
+        self.pass.end_frame(pool, frame);
     }
 
-    /// Upload this frame's quads and any rasters queued for the atlas.
-    pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-        self.pass.flush(ctx);
+    /// Upload this frame's quads and any rasters queued for the pool's pages, after its commit.
+    pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
+        self.pass.flush(ctx, textures);
     }
 
     /// Draw the quads `batch_idx` prepared.
@@ -141,19 +135,6 @@ impl IconBackend {
         pipelines: RasterPipelinePair<'a>,
     ) {
         self.pass.render_batch(rec, batch_idx, pipelines);
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::gpu::atlas_memory::AtlasUse;
-    use crate::gpu::raster::icon_backend::IconBackend;
-
-    impl IconBackend {
-        /// The icon atlas's memory, mask then color.
-        pub(crate) fn atlas_memory(&self) -> [AtlasUse; 2] {
-            self.pass.atlas.memory(["icon mask", "icon color"])
-        }
     }
 }
 

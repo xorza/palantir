@@ -174,11 +174,12 @@ impl<'a> PassPipelines<'a> {
         self.effects[key.slot()].get(self.clipping)
     }
 
-    /// Both raster tenants' pipelines.
-    pub(crate) const fn raster(self) -> RasterPipelinePair<'a> {
+    /// Both raster tenants' pipelines, drawing through `atlas`, the pool's atlas group.
+    pub(crate) const fn raster(self, atlas: &'a wgpu::BindGroup) -> RasterPipelinePair<'a> {
         RasterPipelinePair {
             flat: self.fmt.raster.flat.get(self.clipping),
             spun: self.fmt.raster.spun.get(self.clipping),
+            atlas,
         }
     }
 }

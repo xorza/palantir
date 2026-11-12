@@ -1,9 +1,10 @@
 //! Where an encoded run is kept between frames, the arena its glyphs are packed
 //! into, and the hit path that replays one.
 //!
-//! A replay must re-check every glyph's recorded slot generation: eviction hands
-//! a slot rectangle to another glyph, and a template with the old uv would draw
-//! that glyph. Growth needs no check; a side's grow keeps every rectangle.
+//! A replay must re-check every glyph's recorded pool handle: eviction hands its
+//! rectangle to another raster, and a template with the old uv would draw that
+//! raster. A replay packs each `uv` from where the pool holds the raster now, so a
+//! grow or a move needs no re-encode.
 
 use crate::common::block_arena::BlockArena;
 use crate::common::expiry_wheel::ExpiryWheel;
@@ -11,6 +12,8 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 use crate::common::span::Span;
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_handle::AtlasHandle;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::RasterPass;
 use crate::gpu::raster::text_backend::encode::{EncodedKey, EncodedRunKey};
@@ -41,8 +44,9 @@ type TextBlocks = BlockArena<TextChunk, 8>;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedGlyph {
     pub(crate) instance: RasterQuad,
-    pub(crate) atlas_slot: u32,
-    pub(crate) generation: u32,
+    /// The glyph's raster in the pool, whose generation an eviction moves, so a replay finds a
+    /// stale template and where a live one sits now.
+    pub(crate) handle: AtlasHandle,
 }
 
 /// Four slots of slack lets a run whose glyph count shifts by one land in the class its predecessor
@@ -87,10 +91,11 @@ impl EncodedCache {
     /// Replay `run_key`'s template of `text` into `pass`, shifted to its origin. `false`
     /// means no live template of `text` and the caller owes a full
     /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run), whose settle
-    /// replaces a row another text left under the key. Each instance refreshes its atlas
-    /// slot's LRU stamp, so `evict_for` can't reclaim a slot this frame draws.
+    /// replaces a row another text left under the key. Each glyph stamps its raster in the pool,
+    /// whose grace then keeps every raster this frame draws from eviction.
     pub(super) fn emit_cached(
         &mut self,
+        pool: &mut AtlasPool,
         pass: &mut RasterPass<GlyphRasterKey>,
         run_key: &EncodedRunKey,
         text: &str,
@@ -103,24 +108,25 @@ impl EncodedCache {
             return false;
         }
         let glyphs = &self.arena.slots[entry.span.range()];
-        // Every slot is checked and stamped before any quad goes out, so a stale run pushes
-        // nothing; a stamp on a slot of a run that turns out stale only keeps it a frame longer.
-        let stale = !glyphs.iter().all(|glyph| {
-            pass.atlas
-                .touch_slot(glyph.atlas_slot, glyph.generation)
-                .is_some()
-        });
-        if !stale {
-            for glyph in glyphs {
-                let g = glyph.instance;
-                pass.push(RasterQuad {
-                    pos: g.pos + run_key.pixel,
-                    ..g
-                });
-            }
+        // Each quad goes out as its raster is checked and stamped, where the raster sits now, not
+        // where the run was encoded; a stale handle takes back the run's quads, and a stamp on a
+        // raster of a run that turns out stale only keeps it a frame longer.
+        let start = pass.instance_count();
+        let mut stale = false;
+        for glyph in glyphs {
+            let Some(placement) = pool.stamp(glyph.handle) else {
+                pass.truncate(start);
+                stale = true;
+                break;
+            };
+            let g = glyph.instance.placed_at(placement);
+            pass.push(RasterQuad {
+                pos: g.pos + run_key.pixel,
+                ..g
+            });
         }
         if stale {
-            // An eviction reused one of this run's slots, so the template is dead. Drop the
+            // The pool evicted one of this run's rasters, so the template is dead. Drop the
             // row now, or a y-culled run would pay the failed lookup every frame.
             if let Some(dead) = self.map.remove(&run_key.key) {
                 self.arena.release(dead.span);
@@ -306,6 +312,7 @@ pub(crate) mod internals {
     use crate::common::block_arena::BlockArenaCounts;
     #[cfg(test)]
     use crate::common::counters::CounterSet;
+    use crate::gpu::atlas::atlas_format::AtlasFormat;
     #[cfg(test)]
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -374,8 +381,11 @@ pub(crate) mod internals {
                             color: RgbaF16::TRANSPARENT,
                             clip: ClipChain::NONE,
                         },
-                        atlas_slot: glyph,
-                        generation: 1,
+                        handle: AtlasHandle {
+                            format: AtlasFormat::R8,
+                            idx: glyph,
+                            generation: 1,
+                        },
                     });
                 }
                 let key = EncodedKey {
@@ -441,8 +451,11 @@ pub(crate) mod internals {
                             color: RgbaF16::TRANSPARENT,
                             clip: ClipChain::NONE,
                         },
-                        atlas_slot: glyph,
-                        generation: 1,
+                        handle: AtlasHandle {
+                            format: AtlasFormat::R8,
+                            idx: glyph,
+                            generation: 1,
+                        },
                     });
                 }
                 // Through `settle`: it files the ticket and reserves the block.

@@ -1,6 +1,7 @@
 //! The miss half of the hit/miss split in [the module doc](super): turns a
 //! laid-out text row into glyph instances. The hit half is [`EncodedCache::emit_cached`].
 
+use crate::gpu::atlas::AtlasPool;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::{RasterPass, Rasterized};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
@@ -43,11 +44,12 @@ impl TextEncoder {
     /// open the glyph lease a miss needs, which an all-hit frame must not open.
     pub(crate) fn try_emit_cached(
         &mut self,
+        pool: &mut AtlasPool,
         pass: &mut RasterPass<GlyphRasterKey>,
         run_key: &EncodedRunKey,
         text: &str,
     ) -> bool {
-        self.cache.emit_cached(pass, run_key, text)
+        self.cache.emit_cached(pool, pass, run_key, text)
     }
 
     /// Sweeps the encoded-run cache against the shaper's `frame` clock.
@@ -60,6 +62,7 @@ impl TextEncoder {
     /// fills the cache. Callers filter invalid keys and hits first.
     pub(crate) fn encode_run(
         &mut self,
+        pool: &mut AtlasPool,
         pass: &mut RasterPass<GlyphRasterKey>,
         glyphs: &mut TextGlyphs<'_>,
         run: MissedRun<'_>,
@@ -83,15 +86,15 @@ impl TextEncoder {
         // The same for a glyph the atlas had no room for.
         let mut starved = false;
 
-        // Slots used this frame are not eviction candidates, so a mid-walk eviction can't invalidate a template.
+        // Rasters drawn this frame are not eviction candidates, so a mid-walk eviction cannot invalidate a template.
         for g in placed.iter() {
-            let idx = if let Some(i) = pass.atlas.touch(&g.raster_key) {
+            let idx = if let Some(i) = pass.atlas.touch(pool, &g.raster_key) {
                 i
             } else {
                 let Some(image) = glyphs.rasterize(g.raster_key) else {
                     continue;
                 };
-                match pass.insert_raster(g.raster_key, image) {
+                match pass.insert_raster(pool, g.raster_key, image) {
                     Rasterized::Slot(i) => i,
                     Rasterized::AtlasFull => {
                         starved = true;
@@ -99,8 +102,7 @@ impl TextEncoder {
                     }
                 }
             };
-            let slot = pass.atlas.slot(idx);
-            let Some(placement) = slot.placement() else {
+            let Some(placement) = pass.atlas.placement(pool, idx) else {
                 continue;
             };
 
@@ -111,8 +113,7 @@ impl TextEncoder {
                     pos: quad.pos - run_key.pixel,
                     ..quad
                 },
-                atlas_slot: idx,
-                generation: slot.generation,
+                handle: placement.handle,
             });
         }
 

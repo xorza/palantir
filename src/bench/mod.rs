@@ -32,7 +32,7 @@ use crate::gpu::backdrop;
 use crate::gpu::backdrop::backdrop_blur;
 use crate::gpu::frame::schedule;
 use crate::gpu::pipeline::{curve_pipeline, effect_pipeline, image_pipeline};
-use crate::gpu::raster::{raster_atlas, text_backend};
+use crate::gpu::raster::text_backend;
 use crate::layout::cache as measure_cache;
 use crate::primitives::packed::half_simd;
 use crate::renderer::cpu_gradient_atlas;
@@ -99,7 +99,6 @@ fn run<S: Scene>(c: &mut Criterion) {
     gpu::bench::atomic(c, &backends);
     gpu::resource::bench::atomic(c, &backends);
     gpu::resource::shelf_packer::bench::atomic(c);
-    raster_atlas::bench::atomic(c, &backends);
     rounded_clip::bench::atomic(c, &backends);
     schedule::bench::atomic(c);
     text_backend::bench::atomic(c, &backends);

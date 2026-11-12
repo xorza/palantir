@@ -121,11 +121,6 @@ impl PackedAtlas {
         }
     }
 
-    /// The edge rectangles are placed on, in texels.
-    pub(crate) const fn edge(&self) -> u32 {
-        self.edge
-    }
-
     /// Whether a rectangle of `size` fits the edge as it stands.
     pub(crate) const fn fits_now(&self, size: U16Vec2) -> bool {
         fits_edge(size, self.edge)
@@ -134,10 +129,6 @@ impl PackedAtlas {
     /// Whether a rectangle of `size` could ever be placed, the atlas grown to its hard budget.
     pub(crate) const fn fits_max(&self, size: U16Vec2) -> bool {
         fits_edge(size, self.max_edge)
-    }
-
-    pub(crate) const fn packer(&self) -> &ShelfPacker {
-        &self.packer
     }
 
     /// The top-left of a free rectangle of `size`, now taken; `None` when the edge as it stands
@@ -251,10 +242,6 @@ impl PackedAtlas {
         self.texture.width() != self.edge
     }
 
-    pub(crate) const fn texture(&self) -> &wgpu::Texture {
-        &self.texture
-    }
-
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
@@ -268,6 +255,23 @@ fn edge_u16(edge: u32) -> u16 {
 /// Whether a rectangle of `size` fits inside a square of `edge` texels.
 const fn fits_edge(size: U16Vec2, edge: u32) -> bool {
     size.x as u32 <= edge && size.y as u32 <= edge
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::resource::packed_atlas::PackedAtlas;
+
+    impl PackedAtlas {
+        /// The edge rectangles are placed on, in texels.
+        #[cfg(test)]
+        pub(crate) const fn edge(&self) -> u32 {
+            self.edge
+        }
+
+        pub(crate) const fn texture(&self) -> &wgpu::Texture {
+            &self.texture
+        }
+    }
 }
 
 #[cfg(test)]

@@ -4,9 +4,11 @@
 // - output is premultiplied linear: vec4(rgb*a, a).
 // - blend = PREMULTIPLIED_ALPHA_BLENDING; render target is sRGB
 //   (GPU re-encodes on write).
-// - mask atlas = R8Unorm linear; color atlas = Rgba8UnormSrgb
-//   (a load decodes it to linear straight RGBA).
-// - `uv_and_kind` packs u, two flags, and v; Rust owns the field widths and
+// - mask pages = R8Unorm linear; color pages = Rgba8Unorm holding sRGB bytes,
+//   which `color_load` decodes to linear straight RGBA, so a move copies them
+//   exactly on every backend.
+// - each kind binds up to four pages; a quad's page rides in `uv_and_kind`.
+// - `uv_and_kind` packs u, the page, two flags, and v; Rust owns the field widths and
 //   substitutes them below. Both atlases cap well under the room u gets.
 
 struct VertexIn {
@@ -14,7 +16,7 @@ struct VertexIn {
     @location(0) pos: vec2<i32>,
     @location(1) dim: vec2<u32>,     // raster texels
     @location(2) size: vec2<u32>,    // drawn physical px
-    @location(3) uv_and_kind: u32,   // (u | flags<<U_BITS | v<<V_SHIFT)
+    @location(3) uv_and_kind: u32,   // (u | page and flags<<U_BITS | v<<V_SHIFT)
     // Linear straight RGBA — the `Float16x4` fetch widens in hardware,
     // no shader unpack.
     @location(4) color: vec4<f32>,
@@ -36,14 +38,15 @@ struct VertexOut {
     @location(4) @interpolate(flat) chain: u32,
 }
 
-// The `uv_and_kind` layout: `u` in the low `U_BITS`, the carried flags in
-// the `FLAG_MASK` bits above it, `v` from `V_SHIFT` up. Rust owns every
-// number and substitutes it in — see `raster_quad` and `ShaderBody`.
+// The `uv_and_kind` layout: `u` in the low `U_BITS`, the page and the carried
+// flags in the `FLAG_MASK` bits above it, `v` from `V_SHIFT` up. Rust owns
+// every number and substitutes it in — see `raster_quad` and `ShaderBody`.
 const U_BITS: u32 = /*{U_BITS}*/;
 const U_MASK: u32 = (1u << U_BITS) - 1u;
 const V_SHIFT: u32 = /*{V_SHIFT}*/;
-// The carried flags, already shifted down past `u`.
+// The page and the carried flags, already shifted down past `u`.
 const FLAG_MASK: u32 = /*{FLAG_MASK}*/;
+const FLAG_PAGE: u32 = /*{FLAG_PAGE}*/;               // the page of the quad's kind
 const FLAG_DESATURATE: u32 = /*{FLAG_DESATURATE}*/;  // color icons only; see `fs`
 const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample color, not mask
 // Set by `vs`, not carried in: the quad is drawn at a size other than its
@@ -51,11 +54,41 @@ const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample color, not mask
 // just above the carried ones.
 const FLAG_RESAMPLE: u32 = FLAG_MASK + 1u;
 
-// The atlas textures, past the frame group. Every read is a `textureLoad` by texel,
-// so there is no sampler.
+// The atlas pages, past the frame group: four of each kind, a closed page bound
+// as a 1 × 1 stand-in. Every read is a `textureLoad` by texel, so there is no
+// sampler, and a branch on a flat page picks the texture, as Skia picks among
+// its glyph pages (`GrAtlasedShaderHelpers`).
 const ATLAS_GROUP: u32 = /*{ATLAS_GROUP}*/;
-@group(ATLAS_GROUP) @binding(0) var mask_atlas: texture_2d<f32>;
-@group(ATLAS_GROUP) @binding(1) var color_atlas: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(0) var mask_page0: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(1) var mask_page1: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(2) var mask_page2: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(3) var mask_page3: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(4) var color_page0: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(5) var color_page1: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(6) var color_page2: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(7) var color_page3: texture_2d<f32>;
+
+// The coverage at `at` of mask page `page`.
+fn mask_load(page: u32, at: vec2<i32>) -> f32 {
+    switch page {
+        case 1u: { return textureLoad(mask_page1, at, 0).x; }
+        case 2u: { return textureLoad(mask_page2, at, 0).x; }
+        case 3u: { return textureLoad(mask_page3, at, 0).x; }
+        default: { return textureLoad(mask_page0, at, 0).x; }
+    }
+}
+
+// The straight linear RGBA at `at` of color page `page`, its sRGB bytes decoded.
+fn color_load(page: u32, at: vec2<i32>) -> vec4<f32> {
+    var s: vec4<f32>;
+    switch page {
+        case 1u: { s = textureLoad(color_page1, at, 0); }
+        case 2u: { s = textureLoad(color_page2, at, 0); }
+        case 3u: { s = textureLoad(color_page3, at, 0); }
+        default: { s = textureLoad(color_page0, at, 0); }
+    }
+    return vec4<f32>(palantir_srgb_to_linear(s.rgb), s.a);
+}
 
 @vertex
 fn vs(in: VertexIn) -> VertexOut {
@@ -167,14 +200,14 @@ fn texel_color(in: VertexOut) -> vec4<f32> {
     }
     if ((in.flags & FLAG_COLOR) == 0u) {
         // Mask: vertex color modulated by R-channel coverage.
-        let cov = textureLoad(mask_atlas, vec2<i32>(in.texel), 0).x;
+        let cov = mask_load(in.flags & FLAG_PAGE, vec2<i32>(in.texel));
         return premultiply(in.color.rgb, in.color.a * cov);
     }
-    // Color emoji or color icon: the sRGB texture decodes to linear
-    // straight RGBA on load. Premultiply at output; the run alpha modulates
+    // Color emoji or color icon: the load decodes the page's sRGB bytes to
+    // linear straight RGBA. Premultiply at output; the run alpha modulates
     // the whole premultiplied result, so faded text fades its emoji too and a
     // faded icon fades whole.
-    let s = textureLoad(color_atlas, vec2<i32>(in.texel), 0);
+    let s = color_load(in.flags & FLAG_PAGE, vec2<i32>(in.texel));
     // DESATURATE collapses the artwork to its luminance — the disabled look
     // for an icon whose own colors the tint cannot replace. Alpha is
     // untouched, so the shape is unchanged and only the hue goes.
@@ -198,18 +231,19 @@ fn fs_spun(in: SpunOut) -> @location(0) vec4<f32> {
 // premultiplied before they blend, like every color interpolation.
 fn resampled(in: VertexOut) -> vec4<f32> {
     let t = taps(in.texel, in.texel_rect);
+    let page = in.flags & FLAG_PAGE;
     if ((in.flags & FLAG_COLOR) == 0u) {
-        let a = textureLoad(mask_atlas, vec2<i32>(t.lo.x, t.lo.y), 0).x;
-        let b = textureLoad(mask_atlas, vec2<i32>(t.hi.x, t.lo.y), 0).x;
-        let c = textureLoad(mask_atlas, vec2<i32>(t.lo.x, t.hi.y), 0).x;
-        let d = textureLoad(mask_atlas, vec2<i32>(t.hi.x, t.hi.y), 0).x;
+        let a = mask_load(page, vec2<i32>(t.lo.x, t.lo.y));
+        let b = mask_load(page, vec2<i32>(t.hi.x, t.lo.y));
+        let c = mask_load(page, vec2<i32>(t.lo.x, t.hi.y));
+        let d = mask_load(page, vec2<i32>(t.hi.x, t.hi.y));
         let cov = mix(mix(a, b, t.f.x), mix(c, d, t.f.x), t.f.y);
         return premultiply(in.color.rgb, in.color.a * cov);
     }
-    let a = premultiplied_texel(vec2<i32>(t.lo.x, t.lo.y));
-    let b = premultiplied_texel(vec2<i32>(t.hi.x, t.lo.y));
-    let c = premultiplied_texel(vec2<i32>(t.lo.x, t.hi.y));
-    let d = premultiplied_texel(vec2<i32>(t.hi.x, t.hi.y));
+    let a = premultiplied_texel(page, vec2<i32>(t.lo.x, t.lo.y));
+    let b = premultiplied_texel(page, vec2<i32>(t.hi.x, t.lo.y));
+    let c = premultiplied_texel(page, vec2<i32>(t.lo.x, t.hi.y));
+    let d = premultiplied_texel(page, vec2<i32>(t.hi.x, t.hi.y));
     let s = mix(mix(a, b, t.f.x), mix(c, d, t.f.x), t.f.y);
     // Luminance is linear, so the premultiplied gray is the gray of the
     // straight color times its alpha — the same look as `fs`'s.
@@ -218,7 +252,7 @@ fn resampled(in: VertexOut) -> vec4<f32> {
     return vec4<f32>(rgb, s.a) * in.color.a;
 }
 
-fn premultiplied_texel(at: vec2<i32>) -> vec4<f32> {
-    let s = textureLoad(color_atlas, at, 0);
+fn premultiplied_texel(page: u32, at: vec2<i32>) -> vec4<f32> {
+    let s = color_load(page, at);
     return premultiply(s.rgb, s.a);
 }

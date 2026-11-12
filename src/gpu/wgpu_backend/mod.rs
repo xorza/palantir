@@ -53,6 +53,8 @@
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, PassCounts};
 use crate::effect::effect_store::EffectModule;
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::pass_traffic::PassTraffic;
@@ -76,7 +78,7 @@ use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{self, QuadExtras, QuadPipeline, QuadRun};
-use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
+use crate::gpu::pipeline::raster_pipeline::{RasterGroup, RasterPipeline};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
@@ -128,6 +130,12 @@ pub(crate) struct WgpuBackend {
     frames: DisplayFrames,
     /// Shared gradient LUT atlas, whose group is the frame group every color pipeline reads.
     gradient: GpuGradientAtlas,
+    /// The atlas pool's page lists, which glyphs and icons allocate from, and the textures behind
+    /// them (`.notes/proposals/atlas-pool.md`).
+    atlas: AtlasPool,
+    atlas_textures: AtlasTextures,
+    /// The group both raster tenants draw the pool's mask and color pages through.
+    raster_group: RasterGroup,
     programs: Programs,
     /// The frame's backdrops: their captures, blurs and results.
     backdrops: Backdrops,
@@ -379,8 +387,11 @@ impl WgpuBackend {
         let raster = RasterPipeline::new(&gpu, &texture_binding);
         let effect = EffectPipeline::new(&gpu);
         let blit = BlitPipeline::new(&gpu, &texture_binding);
-        let text = TextBackend::new(&gpu, &raster, resources.text.clone());
-        let icon = IconBackend::new(&gpu, &raster, resources.icons.clone());
+        let text = TextBackend::new(&gpu, resources.text.clone());
+        let icon = IconBackend::new(&gpu, resources.icons.clone());
+        let atlas = AtlasPool::new(gpu.max_texture_dim().get());
+        let atlas_textures = AtlasTextures::new(&gpu);
+        let raster_group = RasterGroup::new(&gpu, &raster, &atlas_textures);
         let debug = DebugOverlay::default();
         // 1 MiB chunks, above the resize-drag upload peak, so steady state uses 1-2 chunks.
         let staging = UploadStaging::new(&gpu.device, 1 << 20);
@@ -399,6 +410,9 @@ impl WgpuBackend {
             staging,
             frames: DisplayFrames::default(),
             gradient,
+            atlas,
+            atlas_textures,
+            raster_group,
             programs: Programs {
                 quad,
                 mesh,
@@ -496,6 +510,7 @@ impl WgpuBackend {
         }
         stream.mark_painted(route);
         let frame = self.frames.advance(stream.owner());
+        self.atlas.advance_to(frame);
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
@@ -623,8 +638,8 @@ impl WgpuBackend {
             t.after_submit(&self.gpu, stats);
         }
 
-        let frame = self.text.end_frame();
-        self.icon.end_frame(frame);
+        let frame = self.text.end_frame(&mut self.atlas);
+        self.icon.end_frame(&mut self.atlas, frame);
     }
 
     /// Where a pass loads and stores its whole target, the canvas a partial frame paints the size
@@ -897,29 +912,37 @@ impl WgpuBackend {
             );
             let interned_text = store.text.interned();
             for (idx, b) in buffer.text_batches.iter().enumerate() {
-                self.text.prepare_batch(TextBatchInput {
-                    idx,
-                    runs: &buffer.texts[b.texts.range()],
-                    scale: buffer.display.scale_factor(),
-                    interned_text,
-                });
+                self.text.prepare_batch(
+                    &mut self.atlas,
+                    TextBatchInput {
+                        idx,
+                        runs: &buffer.texts[b.texts.range()],
+                        scale: buffer.display.scale_factor(),
+                        interned_text,
+                    },
+                );
             }
         }
-
-        // One deferred vbuf write for every prepared batch, then queued glyph-atlas uploads staged
-        // through the belt.
-        self.text.flush(&mut ctx);
-
         {
             tracy::zone!(
                 "icon.prepare_batches",
                 value = buffer.batches(PaintTier::Icon).len() as u64
             );
             for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
-                self.icon.prepare_batch(i, &buffer.icons[b.items.range()]);
+                self.icon
+                    .prepare_batch(&mut self.atlas, i, &buffer.icons[b.items.range()]);
             }
         }
-        self.icon.flush(&mut ctx);
+
+        // Both tenants' inserts are in, so the pages take their final size: the textures follow,
+        // a grow's copy first, then the group over them, then each tenant's quads and the rasters
+        // it queued, staged through the belt.
+        self.atlas_textures
+            .commit(ctx.gpu, ctx.encoder, &self.atlas);
+        self.raster_group
+            .follow(ctx.gpu, &self.programs.raster, &self.atlas_textures);
+        self.text.flush(&mut ctx, &self.atlas_textures);
+        self.icon.flush(&mut ctx, &self.atlas_textures);
     }
 
     /// Full-viewport pass drawing a translucent black quad over the backbuffer when `dim_undamaged`
@@ -1056,7 +1079,8 @@ impl WgpuBackend {
         };
         // Read at a raster draw, as a frame that draws none builds no raster pipeline.
         let pipelines = draw.fmt.for_frame(clipping(buffer), draw.effects);
-        let raster = move || pipelines.raster();
+        let raster_group = self.raster_group.group();
+        let raster = move || pipelines.raster(raster_group);
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => ctx.batch(BatchKind::PreClear, |ctx| {
                 // Through the recorder, so the viewport is pushed before the draw; else the clear
@@ -1299,6 +1323,9 @@ fn begin_load_pass<'e>(
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::atlas::atlas_format::AtlasFormat;
+    #[cfg(test)]
+    use crate::gpu::atlas::page_list::MAX_PAGES;
     use crate::gpu::atlas_memory::{AtlasMemory, AtlasUse};
     #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
@@ -1319,8 +1346,12 @@ pub(crate) mod internals {
         /// Every atlas's memory, its gradient rows read against `gradient`, the frontend's atlas
         /// they mirror.
         pub(crate) fn atlas_memory(&self, gradient: &CpuGradientAtlas) -> AtlasMemory {
-            let [text_mask, text_color] = self.text.atlas_memory();
-            let [icon_mask, icon_color] = self.icon.atlas_memory();
+            let masks = self
+                .atlas_textures
+                .memory(&self.atlas, AtlasFormat::R8, "mask pages");
+            let colors = self
+                .atlas_textures
+                .memory(&self.atlas, AtlasFormat::Rgba8, "color pages");
             let [results, blur] = self.backdrops.memory();
             let live_rows = gradient.live_rows();
             let mirror = AtlasUse {
@@ -1331,10 +1362,8 @@ pub(crate) mod internals {
             };
             AtlasMemory {
                 uses: [
-                    text_mask,
-                    text_color,
-                    icon_mask,
-                    icon_color,
+                    masks,
+                    colors,
                     results,
                     blur,
                     self.programs.quad.cutout_memory(),
@@ -1374,10 +1403,19 @@ pub(crate) mod internals {
             self.programs.quad.cutout_mode()
         }
 
-        /// The glyph atlas's eviction and growth counts so far.
+        /// The glyph atlas's eviction and refusal counts so far.
         #[cfg(test)]
         pub(crate) fn text_atlas_counts(&self) -> AtlasCounts {
             self.text.atlas_counts()
+        }
+
+        /// The pages open in the pool's list of `format`.
+        #[cfg(test)]
+        pub(crate) fn atlas_pages(&self, format: AtlasFormat) -> usize {
+            let list = self.atlas.list(format);
+            (0..MAX_PAGES)
+                .filter(|&idx| list.page(idx).is_some())
+                .count()
         }
 
         /// The pipelines built for `format`.

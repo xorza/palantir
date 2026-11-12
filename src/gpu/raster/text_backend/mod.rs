@@ -4,10 +4,10 @@
 //!   with `PREMULTIPLIED_ALPHA_BLENDING`; no sRGB round-trip.
 //! - An unturned run's quads clip to its bounds on the CPU ([`RasterPass::clip_since`]) after a
 //!   y-range pre-cull; a turned run takes its batch's scissor.
-//! - One bind group: a color texture and a mask texture side by side.
-//! - Atlas grow blits GPU-side; rects are preserved, so no re-rasterization.
-//! - Glyph uploads are staged and flushed after any grow blit, because
-//!   `queue.write_texture` runs before encoder commands and the blit could
+//! - Glyphs live in the atlas pool beside the icons (`gpu::atlas`), drawn through the one atlas
+//!   group over its mask and color pages; a grow keeps every rectangle, so no re-rasterization.
+//! - Glyph uploads are staged and flushed after the pool's commit, because
+//!   `queue.write_texture` runs before encoder commands and a grow's copy could
 //!   clobber it.
 //! - The shader reads texels by index, so a grow changes only the bind group.
 
@@ -16,11 +16,13 @@ pub(crate) mod bench;
 mod encode;
 mod encoded_counters;
 
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_textures::AtlasTextures;
+use crate::gpu::atlas::tenant::Tenant;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
-use crate::gpu::pipeline::raster_pipeline::{RasterPipeline, RasterPipelinePair};
-use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
+use crate::gpu::pipeline::raster_pipeline::RasterPipelinePair;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
 use crate::gpu::raster::text_backend::encode::encoder::{MissedRun, TextEncoder};
@@ -49,28 +51,17 @@ pub(crate) struct TextBackend {
 impl TextBackend {
     /// Build the format-independent text resources; per-format pipelines come from
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
-    pub(crate) fn new(gpu: &Gpu, program: &RasterPipeline, shaper: TextShaper) -> Self {
+    pub(crate) fn new(gpu: &Gpu, shaper: TextShaper) -> Self {
         Self {
             shaper,
             encoder: TextEncoder::default(),
             pass: RasterPass::new(
                 gpu,
-                program,
                 RasterPassConfig {
+                    label: "palantir.text",
+                    tenant: Tenant::Glyphs,
                     vbuf: "palantir.text.vbuf",
                     spun_vbuf: "palantir.text.spun_vbuf",
-                    atlas: RasterAtlasConfig {
-                        label: "palantir.text",
-                        // Skips the 256->512->1024 grow chain on the first text-heavy frame.
-                        initial_mask_px: 1024,
-                        // Color glyphs are rare: 256^2 RGBA holds dozens, vs 4 MB at mask size.
-                        initial_color_px: 256,
-                        // 16 MiB lands on an exact power-of-two side: a 4096^2 mask or 2048^2
-                        // color atlas, ~4x the largest `text_atlas/cache_churn` set.
-                        max_bytes: 16 << 20,
-                        // 4 MiB is a 2048^2 mask or 1024^2 color atlas; see `budget_bytes`.
-                        budget_bytes: 4 << 20,
-                    },
                     initial_instances: 4096,
                 },
             ),
@@ -79,7 +70,7 @@ impl TextBackend {
 
     /// Append-mode prepare. Encoded-cache hits bypass shaping; the first miss
     /// opens the exclusive glyph lease.
-    pub(crate) fn prepare_batch(&mut self, batch: TextBatchInput<'_>) {
+    pub(crate) fn prepare_batch(&mut self, pool: &mut AtlasPool, batch: TextBatchInput<'_>) {
         let TextBatchInput {
             idx,
             runs,
@@ -96,9 +87,13 @@ impl TextBackend {
             let run_key = EncodedRunKey::for_row(r, scale);
             let text = interned_text.resolve(r.text.span);
             let start = self.pass.instance_count();
-            if !self.encoder.try_emit_cached(&mut self.pass, &run_key, text) {
+            if !self
+                .encoder
+                .try_emit_cached(pool, &mut self.pass, &run_key, text)
+            {
                 let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
                 self.encoder.encode_run(
+                    pool,
                     &mut self.pass,
                     glyphs,
                     MissedRun {
@@ -135,16 +130,16 @@ impl TextBackend {
     /// Both caches age against the shaper's clock, so a text-free frame still
     /// sweeps ([`RasterPass::end_frame`]). Returns that clock so the icon atlas
     /// ages on the same span.
-    pub(crate) fn end_frame(&mut self) -> u64 {
+    pub(crate) fn end_frame(&mut self, pool: &mut AtlasPool) -> u64 {
         let frame = self.shaper.frame();
-        self.pass.end_frame(frame);
+        self.pass.end_frame(pool, frame);
         self.encoder.end_frame(frame);
         frame
     }
 
-    /// Upload this frame's quads and any rasters queued for the atlas.
-    pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-        self.pass.flush(ctx);
+    /// Upload this frame's quads and any rasters queued for the pool's pages, after its commit.
+    pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>, textures: &AtlasTextures) {
+        self.pass.flush(ctx, textures);
     }
 
     /// Draw the quads `batch_idx` prepared.
@@ -162,17 +157,12 @@ impl TextBackend {
 pub(crate) mod internals {
     #[cfg(test)]
     use crate::common::counters::CounterSet;
-    use crate::gpu::atlas_memory::AtlasUse;
+    use crate::gpu::atlas::AtlasPool;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     use crate::gpu::raster::text_backend::TextBackend;
 
     impl TextBackend {
-        /// The glyph atlas's memory, mask then color.
-        pub(crate) fn atlas_memory(&self) -> [AtlasUse; 2] {
-            self.pass.atlas.memory(["text mask", "text color"])
-        }
-
         /// The glyph atlas's eviction and growth counts so far.
         #[cfg(test)]
         pub(crate) fn atlas_counts(&self) -> AtlasCounts {
@@ -182,9 +172,9 @@ pub(crate) mod internals {
         /// One frame boundary as a window drives it: tick the shared text clock
         /// (owned by the record pass in production), then sweep this side. For
         /// harnesses with no `Ui`, since [`TextBackend::end_frame`] only reads the clock.
-        pub(crate) fn tick_frame(&mut self) {
+        pub(crate) fn tick_frame(&mut self, pool: &mut AtlasPool) {
             self.shaper.tick_frame();
-            self.end_frame();
+            self.end_frame(pool);
         }
     }
 }

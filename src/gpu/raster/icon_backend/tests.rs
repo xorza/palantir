@@ -1,10 +1,10 @@
 //! The unload path: what dropping an [`IconSet`] costs the backend to forget, and when. Needs a device.
 
 mod gpu {
+    use crate::gpu::atlas::AtlasPool;
+    use crate::gpu::atlas::atlas_format::AtlasFormat;
     use crate::gpu::device::gpu::Gpu;
-    use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
     use crate::gpu::raster::icon_backend::IconBackend;
-    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::icons::icon_raster_key::IconRasterKey;
     use crate::icons::icon_registry::IconRegistry;
@@ -15,22 +15,18 @@ mod gpu {
     use glam::Vec2;
     use std::rc::Rc;
 
-    /// A backend over its own program; see the text suite's peer.
+    /// A backend over `icons`; see the text suite's peer.
     fn icon_backend(gpu: &Gpu, icons: &IconRegistry) -> IconBackend {
-        IconBackend::new(
-            gpu,
-            &RasterPipeline::new(gpu, &TextureBinding::new(gpu)),
-            icons.clone(),
-        )
+        IconBackend::new(gpu, icons.clone())
     }
 
     /// One tintable icon, so the raster lands on the mask side.
     const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#000"/></svg>"##;
 
     /// One frame boundary as `WgpuBackend::submit` drives it, on a clock this test owns.
-    fn tick(backend: &mut IconBackend, frame: &mut u64) {
+    fn tick(backend: &mut IconBackend, pool: &mut AtlasPool, frame: &mut u64) {
         *frame += 1;
-        backend.end_frame(*frame);
+        backend.end_frame(pool, *frame);
     }
 
     fn load(icons: &IconRegistry) -> IconSet {
@@ -38,11 +34,11 @@ mod gpu {
     }
 
     /// Draw `set`'s only icon at 16², putting a parse in the rasterizer and a raster in the atlas.
-    fn draw(backend: &mut IconBackend, set: &IconSet) {
+    fn draw(backend: &mut IconBackend, pool: &mut AtlasPool, set: &IconSet) {
         let icon = set.handle(IconId::new(0)).icon;
         let key = IconRasterKey::for_box(icon, Vec2::splat(16.0));
         assert!(
-            backend.slot(key).is_some(),
+            backend.slot(pool, key).is_some(),
             "the fixture icon must rasterize",
         );
     }
@@ -53,16 +49,17 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = icon_backend(&gpu, &icons);
+        let mut pool = AtlasPool::new(16384);
         let mut frame = 0u64;
 
         let set = load(&icons);
-        draw(&mut backend, &set);
+        draw(&mut backend, &mut pool, &set);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(backend.pass.atlas.cached_len(), 1);
 
         // Held: the set stays loaded across submits.
-        tick(&mut backend, &mut frame);
-        tick(&mut backend, &mut frame);
+        tick(&mut backend, &mut pool, &mut frame);
+        tick(&mut backend, &mut pool, &mut frame);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(backend.pass.atlas.cached_len(), 1);
 
@@ -73,13 +70,18 @@ mod gpu {
             1,
             "the drop itself must not reach into the backend",
         );
-        tick(&mut backend, &mut frame);
+        tick(&mut backend, &mut pool, &mut frame);
         assert_eq!(
             backend.rasterizer.parsed_count(),
             0,
             "the parsed SVG went with the set",
         );
         assert_eq!(backend.pass.atlas.cached_len(), 0, "and so did its raster");
+        assert_eq!(
+            pool.list(AtlasFormat::R8).page(0).unwrap().live_texels(),
+            0,
+            "given back to the pool"
+        );
         assert!(
             icons.resident_ids().is_empty(),
             "and the registry freed the slot",
@@ -92,13 +94,14 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = icon_backend(&gpu, &icons);
+        let mut pool = AtlasPool::new(16384);
         let mut frame = 0u64;
 
         let first = load(&icons);
         assert_eq!(first.handle(IconId::new(0)).icon.set, IconSetId::new(0, 0));
-        draw(&mut backend, &first);
+        draw(&mut backend, &mut pool, &first);
         drop(first);
-        tick(&mut backend, &mut frame);
+        tick(&mut backend, &mut pool, &mut frame);
 
         let second = load(&icons);
         assert_eq!(
@@ -108,7 +111,7 @@ mod gpu {
         );
         assert_eq!(backend.pass.atlas.cached_len(), 0, "nothing carried over");
 
-        draw(&mut backend, &second);
+        draw(&mut backend, &mut pool, &second);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(
             backend.pass.atlas.cached_len(),
@@ -123,15 +126,16 @@ mod gpu {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
         let mut backend = icon_backend(&gpu, &icons);
+        let mut pool = AtlasPool::new(16384);
         let mut frame = 0u64;
 
         let mut held: Option<IconSet> = None;
         for _ in 0..32 {
             let next = load(&icons);
-            draw(&mut backend, &next);
+            draw(&mut backend, &mut pool, &next);
             // Assigning drops the previous frame's set.
             held = Some(next);
-            tick(&mut backend, &mut frame);
+            tick(&mut backend, &mut pool, &mut frame);
             // One live set's worth: the previous frame's parse and raster were reclaimed by this submit.
             assert_eq!(
                 (
@@ -148,7 +152,7 @@ mod gpu {
             );
         }
         drop(held);
-        tick(&mut backend, &mut frame);
+        tick(&mut backend, &mut pool, &mut frame);
         assert_eq!(
             (
                 backend.rasterizer.parsed_count(),

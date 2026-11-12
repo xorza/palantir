@@ -221,5 +221,39 @@ impl AtlasTextures {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::atlas::AtlasPool;
+    use crate::gpu::atlas::atlas_format::AtlasFormat;
+    use crate::gpu::atlas::atlas_textures::AtlasTextures;
+    use crate::gpu::atlas::page_list::Page;
+    use crate::gpu::atlas_memory::AtlasUse;
+
+    impl AtlasTextures {
+        /// `format`'s textures, named `name`, against the texels its pages' items fill in `pool`.
+        pub(crate) fn memory(
+            &self,
+            pool: &AtlasPool,
+            format: AtlasFormat,
+            name: &'static str,
+        ) -> AtlasUse {
+            let textures = &self.lists[format as usize];
+            let count =
+                textures.pages.iter().flatten().count() + textures.scratch.iter().flatten().count();
+            let list = pool.list(format);
+            let live: u64 = (0..textures.pages.len())
+                .filter_map(|idx| list.page(idx))
+                .map(Page::live_texels)
+                .sum();
+            AtlasUse {
+                name,
+                textures: u32::try_from(count).expect("a list holds few textures"),
+                bytes: self.bytes(format),
+                live_bytes: Some(live * u64::from(format.texel_bytes())),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

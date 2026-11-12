@@ -1,8 +1,8 @@
 //! A text backend on the shared test device, and the frames driving it.
 
-use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
+use crate::gpu::atlas::AtlasPool;
+use crate::gpu::atlas::atlas_textures::AtlasTextures;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
-use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::test_gpu::{TestGpu, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
@@ -24,29 +24,31 @@ pub(super) const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
 const FONT_PX: f32 = 14.0;
 
-/// One backend over its own program, plus the shaper, record store and device its rows need.
+/// One backend over its own atlas pool, plus the shaper, record store and device its rows need.
 #[derive(Debug)]
 pub(super) struct TextRig {
     test_gpu: TestGpu,
     pub(super) shaper: TextShaper,
     pub(super) store: RecordStore,
     pub(super) backend: TextBackend,
+    pub(super) pool: AtlasPool,
+    atlas: AtlasTextures,
 }
 
 impl TextRig {
     pub(super) fn new() -> Self {
         let test_gpu = headless_test_gpu();
         let shaper = TextShaper::new();
-        let backend = TextBackend::new(
-            &test_gpu,
-            &RasterPipeline::new(&test_gpu, &TextureBinding::new(&test_gpu)),
-            shaper.clone(),
-        );
+        let backend = TextBackend::new(&test_gpu, shaper.clone());
+        let pool = AtlasPool::new(test_gpu.max_texture_dim().get());
+        let atlas = AtlasTextures::new(&test_gpu);
         Self {
             test_gpu,
             shaper,
             store: RecordStore::default(),
             backend,
+            pool,
+            atlas,
         }
     }
 
@@ -85,17 +87,33 @@ impl TextRig {
     /// Prepare `batches` at `scale` in one deferred upload; submit and wait.
     pub(super) fn frame(&mut self, scale: f32, batches: &[&[TextDrawRow]]) {
         let interned_text = self.store.text.interned();
-        let backend = &mut self.backend;
+        let Self {
+            backend,
+            pool,
+            atlas,
+            ..
+        } = self;
         self.test_gpu.frame(|ctx| {
             for (idx, runs) in batches.iter().enumerate() {
-                backend.prepare_batch(TextBatchInput {
-                    idx,
-                    runs,
-                    scale,
-                    interned_text,
-                });
+                backend.prepare_batch(
+                    pool,
+                    TextBatchInput {
+                        idx,
+                        runs,
+                        scale,
+                        interned_text,
+                    },
+                );
             }
-            backend.pass.flush(ctx);
+            atlas.commit(ctx.gpu, ctx.encoder, pool);
+            backend.pass.flush(ctx, atlas);
         });
+    }
+
+    /// One frame boundary as `WgpuBackend::submit` drives it: the pool's display frame and the
+    /// shared text clock both move on.
+    pub(super) fn tick(&mut self) {
+        self.pool.advance_to(self.pool.frame() + 1);
+        self.backend.tick_frame(&mut self.pool);
     }
 }

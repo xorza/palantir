@@ -33,7 +33,7 @@ use std::vec::Drain;
 /// Each list's starting constants, by [`AtlasFormat`] (`.notes/proposals/atlas-pool.md`, Starting
 /// constants): soft budgets the sum of today's tenants', page edges whose four pages are one
 /// tenant's cap today.
-const LIST_CONFIGS: [PageListConfig; 3] = [
+pub(crate) const LIST_CONFIGS: [PageListConfig; 3] = [
     PageListConfig {
         first_edge: 256,
         page_edge: 2048,

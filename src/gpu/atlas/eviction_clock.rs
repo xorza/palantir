@@ -26,9 +26,8 @@ pub(super) struct ClockSweep {
 }
 
 impl ClockSweep {
-    /// Walk `len` slots from `hand`, wrapping once, to the first `judge` takes. As the raster
-    /// atlas's clock walks: an approximately oldest victim without the per-eviction scan of exact
-    /// LRU (`RasterAtlas::evict_for`).
+    /// Walk `len` slots from `hand`, wrapping once, to the first `judge` takes: an approximately
+    /// oldest victim without the per-eviction scan of exact LRU.
     pub(super) fn over(len: usize, hand: u32, judge: impl Fn(usize) -> Verdict) -> Self {
         if len == 0 {
             return Self {

@@ -1,23 +1,40 @@
-//! The raster atlas's wire metadata, expiry of empty entries, and growth under
-//! the byte budget.
+//! The tenant's side of the pool: its wire metadata, its rasters filed and found, an eviction
+//! reaching it, its keys forgotten, and the expiry of its empty entries.
 
 use super::*;
-use glam::{I16Vec2, IVec2, UVec2};
+use crate::gpu::atlas::page_list::PageListConfig;
+use glam::{I16Vec2, IVec2};
 
 /// The atlas is generic over its key, so its tests use the cheapest one that
 /// satisfies the bounds; nothing depends on what a key means.
 type TestKey = u16;
 
-fn evictable(content: ContentType, cur_frame: u64) -> Evictable<impl Fn(&SlotPlacement) -> bool> {
-    Evictable {
-        content,
-        cur_frame,
-        takes: |_: &SlotPlacement| true,
-    }
-}
-
 fn key(id: u16) -> TestKey {
     id
+}
+
+/// A pool whose lists hold four 32² pages each, opened at 32.
+fn pool() -> AtlasPool {
+    let config = PageListConfig {
+        first_edge: 32,
+        page_edge: 32,
+        soft_bytes: 0,
+    };
+    AtlasPool::with_configs([config; 3], 16384)
+}
+
+/// A raster of `content` and `size`, its bearing `(1, 2)`, its bytes zero.
+fn raster(content: ContentType, size: U16Vec2, pixels: &mut Vec<u8>) -> PackedRaster<'_> {
+    pixels.clear();
+    pixels.resize(
+        usize::from(size.x) * usize::from(size.y) * content.bytes_per_pixel() as usize,
+        0,
+    );
+    PackedRaster {
+        metadata: PackedMetadata::new(size.as_uvec2(), IVec2::new(1, 2)).unwrap(),
+        content,
+        pixels,
+    }
 }
 
 #[test]
@@ -45,14 +62,6 @@ fn packed_metadata_checks_every_wire_boundary() {
             bearing: I16Vec2::new(i16::MIN, i16::MAX),
         }
     );
-    assert_eq!(
-        packed(1, 1, i32::from(i16::MAX), i32::from(i16::MIN)).unwrap(),
-        PackedMetadata {
-            size: U16Vec2::new(1, 1),
-            bearing: I16Vec2::new(i16::MAX, i16::MIN),
-        }
-    );
-
     let invalid = [
         (u32::from(u16::MAX) + 1, 1, 0, 0, "width above u16"),
         (1, u32::from(u16::MAX) + 1, 0, 0, "height above u16"),
@@ -66,28 +75,189 @@ fn packed_metadata_checks_every_wire_boundary() {
     }
 }
 
+/// A mask raster files in the pool's mask list and a color one in its color list, each at the
+/// origin of its first page, with its bearing and content; a touch finds each, and each queues its
+/// upload for its own list. A raster past a page is refused and counted.
+#[test]
+fn a_raster_files_in_its_list_and_a_touch_finds_it() {
+    let mut pool = pool();
+    let mut atlas = RasterAtlas::<TestKey>::new(Tenant::Glyphs, "test");
+    let mut pixels = Vec::new();
+    let mask = atlas
+        .insert(
+            &mut pool,
+            key(1),
+            raster(ContentType::Mask, U16Vec2::new(10, 12), &mut pixels),
+        )
+        .unwrap();
+    let color = atlas
+        .insert(
+            &mut pool,
+            key(2),
+            raster(ContentType::Color, U16Vec2::new(4, 4), &mut pixels),
+        )
+        .unwrap();
+    let mask_handle = atlas.placement(&pool, mask).unwrap().handle;
+    assert_eq!(mask_handle.format, AtlasFormat::R8);
+    assert_eq!(
+        atlas.placement(&pool, mask),
+        Some(SlotPlacement {
+            handle: mask_handle,
+            page: 0,
+            origin: U16Vec2::ZERO,
+            size: U16Vec2::new(10, 12),
+            bearing: I16Vec2::new(1, 2),
+            content: ContentType::Mask,
+        })
+    );
+    assert_eq!(
+        atlas
+            .placement(&pool, color)
+            .map(|p| (p.page, p.origin, p.content)),
+        Some((0, U16Vec2::ZERO, ContentType::Color))
+    );
+    assert_eq!(atlas.touch(&mut pool, &key(1)), Some(mask));
+    assert_eq!(atlas.touch(&mut pool, &key(3)), None);
+    assert_eq!(
+        atlas
+            .pending_copies
+            .iter()
+            .map(|copy| (copy.format, copy.size))
+            .collect::<Vec<_>>(),
+        [
+            (AtlasFormat::R8, UVec2::new(10, 12)),
+            (AtlasFormat::Rgba8, UVec2::new(4, 4))
+        ]
+    );
+    assert_eq!(
+        atlas.insert(
+            &mut pool,
+            key(4),
+            raster(ContentType::Mask, U16Vec2::new(33, 1), &mut pixels)
+        ),
+        None
+    );
+    assert_eq!(atlas.counters.oversized.count(), 1);
+}
+
+/// With every mask page full of glyphs no frame drew this frame or the last, two icons evict two
+/// of them. The glyph tenant learns of one at its lookup, which misses and drops the key, and of
+/// the other at its drain; both count, both handles read as stale in the pool, so a run that
+/// named either replays nothing, and the other two glyphs stay.
+#[test]
+fn an_eviction_reaches_its_tenant() {
+    let mut pool = pool();
+    let mut glyphs = RasterAtlas::<TestKey>::new(Tenant::Glyphs, "glyphs");
+    let mut icons = RasterAtlas::<TestKey>::new(Tenant::Icons, "icons");
+    let mut pixels = Vec::new();
+    let full = U16Vec2::splat(32);
+    let held: Vec<(u32, AtlasHandle)> = (0..4)
+        .map(|id| {
+            let idx = glyphs
+                .insert(
+                    &mut pool,
+                    key(id),
+                    raster(ContentType::Mask, full, &mut pixels),
+                )
+                .unwrap();
+            (idx, glyphs.placement(&pool, idx).unwrap().handle)
+        })
+        .collect();
+    pool.advance_to(2);
+    for id in 0..2 {
+        assert!(
+            icons
+                .insert(
+                    &mut pool,
+                    key(id),
+                    raster(ContentType::Mask, full, &mut pixels)
+                )
+                .is_some()
+        );
+    }
+    assert_eq!(
+        glyphs.touch(&mut pool, &key(0)),
+        None,
+        "evicted, found at the lookup"
+    );
+    glyphs.end_frame(&mut pool, 1);
+    assert_eq!(glyphs.cached_len(), 2);
+    assert_eq!(glyphs.counters.evictions.count(), 2);
+    for &(_, handle) in &held[..2] {
+        assert_eq!(pool.stamp(handle), None);
+    }
+    for (id, &(idx, handle)) in (2..4).zip(&held[2..]) {
+        assert_eq!(glyphs.touch(&mut pool, &key(id)), Some(idx));
+        assert!(pool.stamp(handle).is_some());
+    }
+}
+
+/// Forgetting a family of keys gives their rasters back to the pool: the page's live texels drop
+/// by exactly the forgotten raster's, `8 · 8 = 64`, and its handle reads as stale.
+#[test]
+fn forget_gives_its_rasters_back_to_the_pool() {
+    let mut pool = pool();
+    let mut icons = RasterAtlas::<TestKey>::new(Tenant::Icons, "icons");
+    let mut pixels = Vec::new();
+    let kept = icons
+        .insert(
+            &mut pool,
+            key(1),
+            raster(ContentType::Mask, U16Vec2::splat(4), &mut pixels),
+        )
+        .unwrap();
+    let gone = icons
+        .insert(
+            &mut pool,
+            key(2),
+            raster(ContentType::Mask, U16Vec2::splat(8), &mut pixels),
+        )
+        .unwrap();
+    let handle = icons.placement(&pool, gone).unwrap().handle;
+    let live = || pool.list(AtlasFormat::R8).page(0).unwrap().live_texels();
+    assert_eq!(live(), 16 + 64);
+    icons.forget(&mut pool, |&id| id == key(1));
+    assert_eq!(
+        pool.list(AtlasFormat::R8).page(0).unwrap().live_texels(),
+        16
+    );
+    assert_eq!(pool.placement(handle), None);
+    assert_eq!(icons.cached_len(), 1);
+    assert!(icons.placement(&pool, kept).is_some());
+}
+
 /// Each non-drawing entry retires on its own last use, not a shared tick. At
 /// frame 1024 with a 120-frame window an entry dies once
 /// `last_use + 120 + 1 <= 1024`, i.e. `last_use <= 903`.
 #[test]
 fn a_drained_ticket_retires_only_its_own_stale_empty() {
+    let placed = AtlasSlot {
+        state: SlotState::Placed(PlacedRaster {
+            handle: AtlasHandle {
+                format: AtlasFormat::R8,
+                idx: 0,
+                generation: 0,
+            },
+            bearing: I16Vec2::ZERO,
+            content: ContentType::Mask,
+        }),
+        last_use: 1,
+    };
     let mut slots = vec![
-        AtlasSlot::for_test(false, 1),    // 1 + 121 = 122 <= 1024 -> reclaimed
-        AtlasSlot::for_test(false, 903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
-        AtlasSlot::for_test(false, 904),  // 904 + 121 = 1025 > 1024 -> re-filed
-        AtlasSlot::for_test(false, 1024), // freshly touched -> re-filed
-        AtlasSlot::for_test(true, 1),     // allocated -> evict_for's job
+        AtlasSlot::unplaced(1),    // 1 + 121 = 122 <= 1024 -> reclaimed
+        AtlasSlot::unplaced(903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
+        AtlasSlot::unplaced(904),  // 904 + 121 = 1025 > 1024 -> re-filed
+        AtlasSlot::unplaced(1024), // freshly touched -> re-filed
+        placed,                    // placed -> the pool's to reclaim
     ];
     let mut cache = FxHashMap::default();
     for i in 0..slots.len() as u32 {
         cache.insert(key(i as u16 + 1), i);
     }
-    let mut free = FreeSlots::default();
-    // No side: every entry here is non-drawing, so `FreeSlots::release` never needs a packer.
+    let mut free = Vec::new();
     let mut slab = Slab {
         cache: &mut cache,
         slots: &mut slots,
-        sides: &mut [],
         free: &mut free,
     };
 
@@ -102,7 +272,7 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     assert_eq!(
         slab.retire_unallocated(key(5), 1024),
         None,
-        "an allocated entry is not this wheel's business",
+        "a placed entry is not this wheel's business",
     );
 
     assert!(
@@ -112,497 +282,17 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     assert!(!cache.contains_key(&key(2)), "boundary empty too");
     assert!(cache.contains_key(&key(3)), "one frame short of the window");
     assert!(cache.contains_key(&key(4)), "fresh empty survives");
-    assert!(cache.contains_key(&key(5)), "allocated entry is untouched");
+    assert!(cache.contains_key(&key(5)), "placed entry is untouched");
     // Reclaimed slab slots are handed back for reuse, in ticket order.
-    assert_eq!(free.as_slice(), [0, 1]);
+    assert_eq!(free, [0, 1]);
 
     // A second ticket for a reclaimed key is a no-op, making an early or
     // duplicate fire safe.
     let mut slab = Slab {
         cache: &mut cache,
         slots: &mut slots,
-        sides: &mut [],
         free: &mut free,
     };
     assert_eq!(slab.retire_unallocated(key(1), 1024), None);
-    assert_eq!(free.as_slice(), [0, 1]);
-}
-
-/// The clock skips exactly three things (wrong content, no rectangle to
-/// reclaim, drawn on the current frame) and takes the first survivor in hand
-/// order, not the globally oldest.
-///
-/// The hand persists: a second eviction resumes past the first victim, so a
-/// run of evictions costs one rotation between them, not a slab walk each.
-/// Slot 5 is deliberately older than slot 1; an exact-LRU picker would answer
-/// 5 first.
-#[test]
-fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
-    let slots = vec![
-        AtlasSlot::for_test(true, 8),
-        AtlasSlot::for_test(true, 2),
-        AtlasSlot::for_test(false, 1), // never drew — nothing to deallocate
-        AtlasSlot {
-            state: SlotState::Placed(SlotPlacement {
-                content: ContentType::Color,
-                ..SlotPlacement::for_test()
-            }),
-            ..AtlasSlot::for_test(false, 0)
-        },
-        AtlasSlot::for_test(true, 10), // touched this frame
-        AtlasSlot::for_test(true, 1),  // the true LRU
-    ];
-
-    // From rest, the first eligible mask slot is 0, not the older 5. One step
-    // examined; the hand parks past it.
-    let first = ClockSweep::over(&slots, 0, evictable(ContentType::Mask, 10));
-    assert_eq!(
-        first,
-        ClockSweep {
-            victim: Some(0),
-            refused: false,
-            hand: 1,
-            examined: 1,
-        },
-    );
-    // Resuming takes slot 1 in one step: the hand did not restart.
-    let second = ClockSweep::over(&slots, first.hand, evictable(ContentType::Mask, 10));
-    assert_eq!(
-        second,
-        ClockSweep {
-            victim: Some(1),
-            refused: false,
-            hand: 2,
-            examined: 1,
-        },
-    );
-    // Now it walks over unallocated slot 2, color slot 3 and current-frame
-    // slot 4 to reach 5.
-    let third = ClockSweep::over(&slots, second.hand, evictable(ContentType::Mask, 10));
-    assert_eq!(
-        third,
-        ClockSweep {
-            victim: Some(5),
-            refused: false,
-            hand: 0,
-            examined: 4,
-        },
-    );
-    // The color side sees only its own slot, wherever the hand is.
-    assert_eq!(
-        ClockSweep::over(&slots, 5, evictable(ContentType::Color, 10)).victim,
-        Some(3),
-    );
-    // Nothing eligible: one full rotation, no victim, hand left where it
-    // started. Frame 1, not 2: slot 5's `last_use` of 1 still qualifies at
-    // frame 2, and the oldest slot must be at the frame for the side to be dry.
-    let dry = ClockSweep::over(&slots, 2, evictable(ContentType::Mask, 1));
-    assert_eq!(
-        dry,
-        ClockSweep {
-            victim: None,
-            refused: false,
-            hand: 2,
-            examined: slots.len() as u32,
-        },
-    );
-    // A filter that takes nothing still tells, in the same rotation, that it passed an evictable
-    // slot: 5, past 3's color and 4's current stamp.
-    let refused = ClockSweep::over(
-        &slots,
-        2,
-        Evictable {
-            content: ContentType::Mask,
-            cur_frame: 10,
-            takes: |_: &SlotPlacement| false,
-        },
-    );
-    assert_eq!(
-        refused,
-        ClockSweep {
-            victim: None,
-            refused: true,
-            hand: 2,
-            examined: slots.len() as u32,
-        },
-    );
-    // An empty slab is not a rotation over nothing.
-    assert_eq!(
-        ClockSweep::over(&[], 7, evictable(ContentType::Mask, 10)),
-        ClockSweep {
-            victim: None,
-            refused: false,
-            hand: 0,
-            examined: 0,
-        },
-    );
-}
-
-/// The escalation ladder in [`RasterAtlas::allocate`], driven against a real
-/// device because growing a side allocates a texture.
-mod gpu {
-    use super::*;
-    use crate::gpu::resource::texture_binding::TextureBinding;
-    use crate::gpu::test_gpu::headless_test_gpu;
-
-    /// A mask side that starts at 128² and tops out at 256², so one insert can
-    /// walk the whole ladder cheaply. The soft budget is the start, 128² of 1-byte mask, so the
-    /// side evicts before every grow; the grow under the soft budget belongs to
-    /// [`growth_stops_at_the_byte_budget_not_the_device_limit`].
-    fn small_atlas(gpu: &Gpu) -> RasterAtlas<TestKey> {
-        RasterAtlas::new(
-            gpu,
-            &RasterPipeline::new(gpu, &TextureBinding::new(gpu)),
-            RasterAtlasConfig {
-                label: "palantir.test",
-                initial_mask_px: 128,
-                // 16 KiB, the soft budget, is 64² of 4-byte color.
-                initial_color_px: 64,
-                // 64 KiB is 256² of 1-byte mask and 128² of 4-byte color.
-                max_bytes: 256 * 256,
-                budget_bytes: 128 * 128,
-            },
-        )
-    }
-
-    /// Insert `count` 16² mask entries, all stamped with the current frame.
-    fn fill(atlas: &mut RasterAtlas<TestKey>, count: u16) {
-        let pixels = [0u8; 16 * 16];
-        let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
-        for i in 0..count {
-            assert!(
-                atlas
-                    .insert(
-                        key(i),
-                        PackedRaster {
-                            metadata,
-                            content: ContentType::Mask,
-                            pixels: &pixels,
-                        },
-                    )
-                    .is_some(),
-                "16² entry {i} must fit a 128² side",
-            );
-        }
-    }
-
-    /// An entry larger than the side will ever be cannot fit by freeing
-    /// rectangles, so the eviction loop must not run for it; otherwise one
-    /// oversized glyph empties the whole side every frame it is asked for.
-    #[test]
-    fn an_entry_past_the_ceiling_is_refused_without_evicting_anything() {
-        let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu);
-        fill(&mut atlas, 16);
-        // Age every entry out of the current frame so all 16 are eligible
-        // victims; otherwise the clock protects them and the test passes
-        // for the wrong reason.
-        atlas.advance_to(1);
-
-        let metadata = PackedMetadata::new(UVec2::new(300, 300), IVec2::new(0, 0)).unwrap();
-        assert_eq!(
-            atlas.insert(
-                key(999),
-                PackedRaster {
-                    metadata,
-                    content: ContentType::Mask,
-                    pixels: &[],
-                },
-            ),
-            None,
-            "300² cannot fit a side whose ceiling is 256²",
-        );
-        assert_eq!(
-            atlas.cache.len(),
-            16,
-            "a refused entry must leave the resident set alone",
-        );
-    }
-
-    /// A frame asking for more than its atlas holds must not pay a clock
-    /// rotation per starving entry. Once every slot carries the current
-    /// frame's stamp nothing is evictable until the clock advances, so the
-    /// first empty rotation is the last worth walking; unmemoized it is
-    /// quadratic in the slab.
-    #[test]
-    fn a_side_walked_dry_is_not_walked_again_until_the_clock_moves() {
-        let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu);
-        let pixels = [0u8; 16 * 16];
-        let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
-
-        // Saturate the side: uniform 16² tiles shelf-pack a 256² side with no
-        // waste (16 shelves of 16), so capacity is exact.
-        let mut placed = 0u16;
-        while atlas
-            .insert(
-                key(placed),
-                PackedRaster {
-                    metadata,
-                    content: ContentType::Mask,
-                    pixels: &pixels,
-                },
-            )
-            .is_some()
-        {
-            placed += 1;
-        }
-        assert_eq!(placed, 256);
-        assert_eq!(atlas.slots.len(), placed as usize, "no evictions yet");
-
-        // Redraw the whole working set next frame, as a real frame does before
-        // starving: every slot is stamped current, none a victim.
-        atlas.advance_to(1);
-        for i in 0..placed {
-            assert!(atlas.touch(&key(i)).is_some(), "tile {i} is resident");
-        }
-
-        let before = *atlas.counters.evict_scans.get();
-        for extra in 0..8 {
-            assert_eq!(
-                atlas.insert(
-                    key(1000 + extra),
-                    PackedRaster {
-                        metadata,
-                        content: ContentType::Mask,
-                        pixels: &pixels,
-                    },
-                ),
-                None,
-                "the side is full of entries drawn this frame",
-            );
-        }
-        assert_eq!(
-            *atlas.counters.evict_scans.get() - before,
-            u64::from(placed),
-            "one rotation over the slab for the first refusal and none \
-             for the seven after it — not eight rotations",
-        );
-
-        // The clock advancing makes the side worth walking again; now every slot is a victim.
-        atlas.advance_to(2);
-        let evicted_before = atlas.counters.evictions.count();
-        assert!(
-            atlas
-                .insert(
-                    key(2000),
-                    PackedRaster {
-                        metadata,
-                        content: ContentType::Mask,
-                        pixels: &pixels,
-                    },
-                )
-                .is_some(),
-            "an aged-out tile is evictable again",
-        );
-        // The packer reclaims per rectangle and every shelf takes the same tile, so one victim
-        // makes room: the evictions one insert costs stay at one, where a bucketed packer
-        // emptied a whole bucket first.
-        let evicted = atlas.counters.evictions.count() - evicted_before;
-        assert_eq!(evicted, 1, "one victim's rectangle is the tile's room");
-        assert_eq!(*atlas.counters.worst_insert_evictions.get(), 1);
-        assert_eq!(
-            atlas.cache.len(),
-            placed as usize - evicted as usize + 1,
-            "everything not evicted is still resident",
-        );
-    }
-
-    /// A raster taller than every shelf finds no victim whose rectangle it could reuse, so
-    /// shelves go whole from the bottom, whose rows return to the side: a 16 × 32 tile over a
-    /// 256² side of 16-row shelves empties the last two, 32 tiles, and lands where they were.
-    /// A shelf in the middle would free no rows, so none goes.
-    #[test]
-    fn a_raster_taller_than_every_shelf_frees_the_bottom_rows() {
-        let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu);
-        let pixels = [0u8; 16 * 32];
-        let tile = PackedRaster {
-            metadata: PackedMetadata::new(UVec2::new(16, 16), IVec2::ZERO).unwrap(),
-            content: ContentType::Mask,
-            pixels: &pixels[..16 * 16],
-        };
-        let mut placed = 0u16;
-        while atlas.insert(key(placed), tile).is_some() {
-            placed += 1;
-        }
-        assert_eq!(placed, 256, "premise: 16 full shelves");
-        atlas.advance_to(1);
-
-        let tall = PackedRaster {
-            metadata: PackedMetadata::new(UVec2::new(16, 32), IVec2::ZERO).unwrap(),
-            content: ContentType::Mask,
-            pixels: &pixels,
-        };
-        let idx = atlas
-            .insert(key(5000), tall)
-            .expect("the bottom rows make room");
-        let placement = atlas.slots[idx as usize].placement().unwrap();
-        assert_eq!(placement.origin, U16Vec2::new(0, 224));
-        assert_eq!(atlas.counters.evictions.count(), 32);
-        assert_eq!(*atlas.counters.worst_insert_evictions.get(), 32);
-        assert_eq!(atlas.cache.len(), 256 - 32 + 1);
-        assert!(
-            (0..224).all(|i| atlas.touch(&key(i)).is_some()),
-            "every shelf above the bottom two kept its tiles"
-        );
-    }
-
-    /// [`RasterAtlas::forget`] retires a whole family of keys at once, which
-    /// the clock cannot (a dead entry looks cold). Everything the predicate
-    /// keeps comes through untouched, rectangles included.
-    #[test]
-    fn forget_retires_the_keys_it_rejects_and_nothing_else() {
-        let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu);
-        let pixels = [0u8; 16 * 16];
-        let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
-        for i in 0..8 {
-            atlas
-                .insert(
-                    key(i),
-                    PackedRaster {
-                        metadata,
-                        content: ContentType::Mask,
-                        pixels: &pixels,
-                    },
-                )
-                .expect("eight 16² tiles fit a 128² side");
-        }
-        // A non-drawing entry too: only its expiry ticket would retire it.
-        atlas.insert_unallocated(key(100));
-        assert_eq!(atlas.cache.len(), 9);
-
-        // Keep the even keys and the empty; drop the odd ones.
-        atlas.forget(|k| k % 2 == 0);
-        assert_eq!(atlas.cache.len(), 5, "four odd keys retired");
-        for i in 0..8u16 {
-            assert_eq!(
-                atlas.touch(&key(i)).is_some(),
-                i % 2 == 0,
-                "key {i} resident-ness",
-            );
-        }
-        assert!(atlas.touch(&key(100)).is_some(), "the empty was kept");
-
-        // A rejected empty goes too, and its slab index is reusable.
-        atlas.forget(|k| *k != 100);
-        assert!(atlas.touch(&key(100)).is_none());
-        assert_eq!(atlas.cache.len(), 4);
-
-        // A freed slab index still holds its old key in `slot_keys`; a walk
-        // deciding liveness from that column would reclaim it twice and hand
-        // one index to two inserts. This pass must find nothing: the map is
-        // the only authority on which indices live.
-        let free_before = atlas.free.as_slice().len();
-        atlas.forget(|k| k % 2 == 0 && *k != 100);
-        assert_eq!(
-            atlas.free.as_slice().len(),
-            free_before,
-            "keys already retired must not be freed twice",
-        );
-        assert_eq!(atlas.cache.len(), 4, "and the live entries are untouched");
-
-        // The reclaimed rectangles are back: the side had room for eight and
-        // holds four, so four more land without a grow or eviction.
-        let before = atlas.counters.evictions.count();
-        for i in 200..204u16 {
-            assert!(
-                atlas
-                    .insert(
-                        key(i),
-                        PackedRaster {
-                            metadata,
-                            content: ContentType::Mask,
-                            pixels: &pixels,
-                        },
-                    )
-                    .is_some(),
-                "forget must have handed the rectangles back",
-            );
-        }
-        assert_eq!(
-            atlas.counters.evictions.count(),
-            before,
-            "the refills came out of reclaimed space, not out of victims",
-        );
-    }
-
-    /// An entry that fits the ceiling but not the current side must grow
-    /// whatever the byte budget says: eviction frees rectangles but never
-    /// widens the texture. The side extents bracket the insert, pinning that
-    /// only the side that grew moves.
-    /// A side reports its texture's bytes against its rasters': three 16² masks fill
-    /// `3 · 256 = 768` bytes of the 128² mask side's 16384, one 5 × 3 color raster `15 · 4 = 60`
-    /// of the 64² color side's `64² · 4 = 16384`, and an entry that draws nothing fills none.
-    #[test]
-    fn a_side_reports_its_texture_against_its_rasters() {
-        let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu);
-        fill(&mut atlas, 3);
-        let metadata = PackedMetadata::new(UVec2::new(5, 3), IVec2::new(0, 0)).unwrap();
-        let color = PackedRaster {
-            metadata,
-            content: ContentType::Color,
-            pixels: &[0; 5 * 3 * 4],
-        };
-        assert!(atlas.insert(key(100), color).is_some());
-        atlas.insert_unallocated(key(101));
-        let [mask, color] = atlas.memory(["mask", "color"]);
-        assert_eq!(
-            (mask.textures, mask.bytes, mask.live_bytes),
-            (1, 16384, Some(768))
-        );
-        assert_eq!(
-            (color.textures, color.bytes, color.live_bytes),
-            (1, 16384, Some(60))
-        );
-        assert_eq!((mask.name, color.name), ("mask", "color"));
-    }
-
-    #[test]
-    fn an_entry_wider_than_the_side_grows_rather_than_evicting() {
-        let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu);
-        fill(&mut atlas, 16);
-        atlas.advance_to(1);
-
-        assert_eq!(
-            [
-                atlas.side_px(ContentType::Mask),
-                atlas.side_px(ContentType::Color)
-            ],
-            [128, 64],
-            "both sides start at their configured edge",
-        );
-
-        let pixels = vec![0u8; 200 * 200];
-        let metadata = PackedMetadata::new(UVec2::new(200, 200), IVec2::new(0, 0)).unwrap();
-        assert!(
-            atlas
-                .insert(
-                    key(999),
-                    PackedRaster {
-                        metadata,
-                        content: ContentType::Mask,
-                        pixels: &pixels,
-                    },
-                )
-                .is_some(),
-            "200² fits once the 128² side has grown to its 256² ceiling",
-        );
-        assert_eq!(
-            atlas.cache.len(),
-            17,
-            "growing is what made room, so nothing should have been evicted",
-        );
-        assert_eq!(
-            [
-                atlas.side_px(ContentType::Mask),
-                atlas.side_px(ContentType::Color)
-            ],
-            [256, 64],
-            "only the side that had to grow grew",
-        );
-    }
+    assert_eq!(free, [0, 1]);
 }
