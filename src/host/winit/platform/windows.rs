@@ -437,7 +437,10 @@ impl MemoryPressureWatch {
         let thread = thread::Builder::new()
             .name("palantir-memory-pressure".to_owned())
             .spawn(move || {
-                let stop = waits;
+                // Whole, so the closure takes the notification's owner and not its handle alone,
+                // which edition 2021's disjoint capture would copy out and leave the owner to
+                // close the handle under the thread.
+                let (stop, low) = (waits, low);
                 let cooldown =
                     u32::try_from(MEMORY_WARNING_COOLDOWN.as_millis()).expect("ten seconds in ms");
                 loop {
