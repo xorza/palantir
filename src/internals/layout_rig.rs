@@ -37,18 +37,21 @@ use crate::widget_core::widget::Widget;
 use glam::Vec2;
 
 /// A forest, the layout engine and the layout it writes, kept across runs as a window keeps them,
-/// so a second run meets the first's measure cache.
+/// so a second run meets the first's measure cache; and the effect registry a text draw resolves
+/// in, built once, as loading the stock effects parses their WGSL.
 #[derive(Debug)]
 pub(crate) struct LayoutRig {
     forest: Forest,
     engine: LayoutEngine,
     layout: Layout,
+    effects: EffectRegistry,
 }
 
 /// Records nodes into a [`LayoutRig`]'s forest during a run.
 #[derive(Debug)]
 pub(crate) struct NodeRecorder<'a> {
     forest: &'a mut Forest,
+    effects: &'a EffectRegistry,
 }
 
 impl LayoutRig {
@@ -68,6 +71,7 @@ impl LayoutRig {
             forest: Forest::new(shaper.family_keys()),
             engine: LayoutEngine::new(shaper),
             layout: Layout::default(),
+            effects: EffectRegistry::default(),
         }
     }
 
@@ -77,6 +81,7 @@ impl LayoutRig {
         self.forest.pre_record();
         let mut rec = NodeRecorder {
             forest: &mut self.forest,
+            effects: &self.effects,
         };
         rec.open(WidgetId::VIEWPORT, &Node::viewport());
         body(&mut rec);
@@ -223,7 +228,7 @@ impl NodeRecorder<'_> {
             let text = rec.forest.record_store.text.intern(run.text);
             let font = GlyphFont::new(run.px);
             let resolve = Resolve {
-                effects: &EffectRegistry::default(),
+                effects: rec.effects,
                 reductions: Reductions::default(),
                 material_fallback: RgbaF32::TRANSPARENT,
             };

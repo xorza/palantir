@@ -160,11 +160,18 @@ Every numeric parameter's doc names its kind; every setter that can panic says s
 
 ## Verification
 
-The gate, from the root, each an alias in `.cargo/config.toml`:
+The gate, from the root, each an alias in `.cargo/config.toml`, `gate-doc` beside the rest:
 
 ```
-cargo fmt --all && cargo gate-lint && cargo gate-lint-nowinit && cargo gate-ship && cargo gate-ship-nowinit && cargo gate-test && cargo gate-test-nowinit && cargo gate-doc && cargo gate-doctest
+cargo fmt --all && { cargo gate-doc & cargo gate-lint && cargo gate-lint-nowinit && cargo gate-ship && cargo gate-ship-nowinit && cargo gate-test && cargo gate-test-nowinit && cargo gate-doctest && wait $!; }
 ```
+
+`gate-doc` runs rustdoc on one core for most of a minute, so it starts after `fmt` and runs beside
+the other lanes, in a build directory of its own, as cargo locks one for each command; the rest keep
+one, as each already fills the cores. `wait $!` makes the chain's status `gate-doc`'s too; a chain
+that fails before it leaves `gate-doc` to finish and print alone. Refused: a driver that schedules
+the lanes, a program in each repository for one parallel lane; each lane in a directory of its own,
+which competes for the cores it saves and builds the dependencies once more each.
 
 **Run it before a turn that changed code ends, and before each push**: master takes direct
 pushes, and CI runs the same lanes on three OSes. A filtered `cargo gate-test <name>` is the

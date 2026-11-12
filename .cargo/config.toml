@@ -13,8 +13,12 @@ gate-ship-nowinit = "clippy --workspace --exclude palantir-showcase --release --
 gate-test = "test --workspace --lib --test alloc --example reel --no-fail-fast --features golden,gpu-debug-markers"
 gate-test-nowinit = "test --workspace --exclude palantir-showcase --lib --no-default-features --no-fail-fast"
 # `-D warnings` through a `cfg(all())` entry, as an env `RUSTDOCFLAGS` would replace the one Darkroom's
-# config holds for x86-64-v3.
-gate-doc = 'doc --workspace --no-deps --document-private-items --all-features --keep-going --config target."cfg(all())".rustdocflags=["-D","warnings"]'
+# config holds for x86-64-v3. A build directory of its own, as cargo locks one for each command: the
+# lane runs rustdoc on one core for most of a minute, beside the other lanes (AGENTS.md
+# "Verification"), as rust-analyzer's `cargo.targetDir` keeps its check off the build's lock. A
+# `--config` beats an env `CARGO_BUILD_BUILD_DIR`. Cost: its dependencies' metadata built again
+# there.
+gate-doc = 'doc --workspace --no-deps --document-private-items --all-features --keep-going --config target."cfg(all())".rustdocflags=["-D","warnings"] --config build.build-dir="{workspace-root}/target/build-doc"'
 gate-doctest = "test --workspace --doc --no-fail-fast --features golden,gpu-debug-markers"
 visual = "test --workspace --features golden,gpu-debug-markers --test visual"
 shot = "run -p palantir-showcase --features golden -- --shot"
