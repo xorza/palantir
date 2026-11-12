@@ -2,9 +2,12 @@
 //! holds from its start under names in palantir's reserved prefix, so a theme names them as it
 //! names an app's.
 
+use std::sync::LazyLock;
+
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
+use crate::effect::effect_store::EffectModule;
 use crate::effect::press_input::PressInput;
-use crate::primitives::effect::effect_kind::{BackdropEffect, EffectKind};
+use crate::primitives::effect::effect_kind::{BackdropEffect, ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
 use crate::primitives::effect::effect_params::EffectParams;
 use crate::primitives::paint::material::frosted_input::FrostedInput;
@@ -53,53 +56,94 @@ const fn reserved<U: EffectParams, K: EffectKind>(name: &str) -> EffectName<U, K
     }
 }
 
-/// Each stock effect, with its source, in load order: an alternative before what names it.
-pub(crate) fn sources() -> StockSources {
-    StockSources {
-        press: [
-            (
-                EffectName::RIPPLE,
+/// Each stock effect with its source and its module, checked once a process: the first call checks
+/// them through [`EffectSource::check`], as an app's effect is, and every registry takes the
+/// modules that check made, where each host and test rig parsed and validated their WGSL again, as
+/// the `regex` crate's documentation compiles a pattern once into a static. Refused: checking them
+/// at build time, a second load path that skips the check an app's effect takes; a cache of every
+/// checked source, which would need a bound for an app's effects that no host shares.
+pub(crate) fn effects() -> &'static StockEffects {
+    static EFFECTS: LazyLock<StockEffects> = LazyLock::new(StockEffects::check);
+    &EFFECTS
+}
+
+/// The stock effects by their parameter types, each checked, in load order: an alternative before
+/// what names it.
+#[derive(Debug)]
+pub(crate) struct StockEffects {
+    pub(crate) press: [StockEffect<PressInput, ColorEffect>; 2],
+    pub(crate) frosted: StockEffect<FrostedInput, BackdropEffect>,
+    pub(crate) glass: StockEffect<GlassInput, BackdropEffect>,
+}
+
+/// A stock effect's name, its source and the module checking the source made.
+#[derive(Debug)]
+pub(crate) struct StockEffect<U: EffectParams, K: EffectKind> {
+    pub(crate) name: EffectName<U, K>,
+    pub(crate) source: EffectSource<U, K>,
+    pub(crate) module: EffectModule,
+}
+
+impl StockEffects {
+    /// Each stock effect, checked.
+    ///
+    /// # Panics
+    ///
+    /// When a stock effect fails its contract, a logic error of palantir's.
+    fn check() -> Self {
+        Self {
+            press: [
+                StockEffect::check(
+                    EffectName::RIPPLE,
+                    EffectSource::new(concat!(
+                        include_str!("press.wgsl"),
+                        include_str!("ripple.wgsl")
+                    )),
+                ),
+                StockEffect::check(
+                    EffectName::SPARKLE,
+                    EffectSource::new(concat!(
+                        include_str!("press.wgsl"),
+                        include_str!("sparkle.wgsl")
+                    ))
+                    .power_saver(ReducedPaint::Effect(EffectName::RIPPLE)),
+                ),
+            ],
+            frosted: StockEffect::check(
+                EffectName::FROSTED,
                 EffectSource::new(concat!(
-                    include_str!("press.wgsl"),
-                    include_str!("ripple.wgsl")
+                    include_str!("material.wgsl"),
+                    include_str!("frosted.wgsl")
                 )),
             ),
-            (
-                EffectName::SPARKLE,
-                EffectSource::new(concat!(
-                    include_str!("press.wgsl"),
-                    include_str!("sparkle.wgsl")
-                ))
-                .power_saver(ReducedPaint::Effect(EffectName::RIPPLE)),
+            glass: StockEffect::check(
+                EffectName::GLASS,
+                EffectSource::new(glass_wgsl()).reach(|input| MaterialReach::Lens(input.lens)),
             ),
-        ],
-        frosted: (
-            EffectName::FROSTED,
-            EffectSource::new(concat!(
-                include_str!("material.wgsl"),
-                include_str!("frosted.wgsl")
-            )),
-        ),
-        glass: (
-            EffectName::GLASS,
-            EffectSource::new(glass_wgsl()).reach(|input| MaterialReach::Lens(input.lens)),
-        ),
+        }
     }
 }
 
-/// The stock effects by their parameter types, as [`sources`] gives them.
-#[derive(Debug)]
-pub(crate) struct StockSources {
-    pub(crate) press: [(EffectName<PressInput>, EffectSource<PressInput>); 2],
-    pub(crate) frosted: Stock<FrostedInput>,
-    pub(crate) glass: Stock<GlassInput>,
+impl<U: EffectParams, K: EffectKind> StockEffect<U, K> {
+    /// `source` under `name`, with the module checking it makes.
+    ///
+    /// # Panics
+    ///
+    /// When `source` fails its contract.
+    fn check(name: EffectName<U, K>, source: EffectSource<U, K>) -> Self {
+        let module = source.check().unwrap_or_else(|error| {
+            panic!(
+                "stock effect `{}` fails its contract: {error:?}",
+                name.name()
+            )
+        });
+        Self {
+            name,
+            source,
+            module,
+        }
+    }
 }
-
-/// A stock material's name and source.
-pub(crate) type Stock<U> = (
-    EffectName<U, BackdropEffect>,
-    EffectSource<U, BackdropEffect>,
-);
 
 /// The glass's WGSL, with the optics' constants the Rust types own.
 pub(crate) fn glass_wgsl() -> String {

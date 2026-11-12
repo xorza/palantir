@@ -6,11 +6,10 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashMap;
 
-use crate::effect::contract::{self, ContractSpec, ParamsLayout};
 use crate::effect::effect_source::{EffectBuild, EffectSource, ReducedPaint};
-use crate::effect::effect_store::EffectStore;
+use crate::effect::effect_store::{EffectModule, EffectStore};
 use crate::effect::error::EffectError;
-use crate::effect::stock::{self, StockSources};
+use crate::effect::stock::{self, StockEffect};
 use crate::primitives::effect::effect_kind::KindId;
 use crate::primitives::effect::effect_kind::{EffectKind, EffectTypes};
 use crate::primitives::effect::effect_name::{CheckedEffectName, EffectName, ErasedEffectName};
@@ -26,8 +25,8 @@ use crate::primitives::reduction::Reductions;
 /// kind it first loaded with; using it with others is a logic error that panics with both. Each
 /// load goes to the [`EffectStore`] the host built the registry over, which compiles it; a
 /// deviceless recorder's registry has none. It holds palantir's stock effects
-/// (`crate::effect::stock`) from its start, loaded as an app's load, under names no app load
-/// takes.
+/// (`crate::effect::stock`) from its start, checked as an app's load is, once a process, under names
+/// no app load takes.
 #[derive(Debug)]
 pub(crate) struct EffectRegistry {
     /// Fixed at construction: the host builds the store before any recorder exists.
@@ -182,19 +181,12 @@ impl EffectRegistry {
             effects: RefCell::default(),
             epoch: Cell::default(),
         };
-        let stock = stock::sources();
-        for (name, source) in stock.press {
-            registry
-                .insert(name, source)
-                .expect("a stock effect meets the contract");
+        let stock = stock::effects();
+        for effect in &stock.press {
+            registry.insert_stock(effect);
         }
-        let StockSources { frosted, glass, .. } = stock;
-        registry
-            .insert(frosted.0, frosted.1)
-            .expect("a stock effect meets the contract");
-        registry
-            .insert(glass.0, glass.1)
-            .expect("a stock effect meets the contract");
+        registry.insert_stock(&stock.frosted);
+        registry.insert_stock(&stock.glass);
         registry
     }
 
@@ -207,7 +199,7 @@ impl EffectRegistry {
     pub(crate) fn load<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
-        source: EffectSource<U, K>,
+        source: &EffectSource<U, K>,
     ) -> Result<(), EffectError> {
         if name.name().starts_with(stock::RESERVED_PREFIX) {
             return Err(EffectError::ReservedName);
@@ -219,8 +211,33 @@ impl EffectRegistry {
     fn insert<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
-        source: EffectSource<U, K>,
+        source: &EffectSource<U, K>,
     ) -> Result<(), EffectError> {
+        self.hold_types(name, source);
+        let module = source.check()?;
+        self.record(name, source, &module);
+        Ok(())
+    }
+
+    /// Load a stock effect, its module checked once a process ([`stock::effects`]).
+    fn insert_stock<U: EffectParams, K: EffectKind>(&self, effect: &StockEffect<U, K>) {
+        let StockEffect {
+            name,
+            source,
+            module,
+        } = effect;
+        self.hold_types(*name, source);
+        self.record(*name, source, module);
+    }
+
+    /// Panic unless `name`, and each alternative `source` names that is loaded, takes the types
+    /// it was loaded with, the alternative its images too.
+    #[track_caller]
+    fn hold_types<U: EffectParams, K: EffectKind>(
+        &self,
+        name: EffectName<U, K>,
+        source: &EffectSource<U, K>,
+    ) {
         let types = EffectTypes::of::<U, K>();
         {
             let effects = self.effects.borrow();
@@ -246,43 +263,32 @@ impl EffectRegistry {
                 }
             }
         }
-        let params = ParamsLayout {
-            fields: U::FIELDS,
-            size: size_of::<U>(),
-        };
-        let alternatives = source.alternatives().map(ReducedName::of);
-        let material = MaterialFacts::of(&source);
-        let EffectSource {
-            wgsl,
-            image_slots,
-            build,
-            ..
-        } = source;
-        let module = contract::check(
-            &wgsl,
-            ContractSpec {
-                kind: K::ID,
-                params,
-                image_slots,
-            },
-        )?;
+    }
+
+    /// Hold `source`, which `module` checked, under `name`, at the id the name holds, and hand
+    /// the module to the store.
+    fn record<U: EffectParams, K: EffectKind>(
+        &self,
+        name: EffectName<U, K>,
+        source: &EffectSource<U, K>,
+        module: &EffectModule,
+    ) {
         let id = self.effects.borrow_mut().insert(
             name.erased(),
             LoadedEffect {
-                types,
-                image_slots,
-                alternatives,
-                material,
+                types: EffectTypes::of::<U, K>(),
+                image_slots: source.image_slots,
+                alternatives: source.alternatives().map(ReducedName::of),
+                material: MaterialFacts::of(source),
             },
         );
         if let Some(store) = &self.store {
-            store.register(id, &module);
-            if build == EffectBuild::Now {
+            store.register(id, module);
+            if source.build == EffectBuild::Now {
                 store.want(id);
             }
         }
         self.epoch.set(self.epoch.get().wrapping_add(1));
-        Ok(())
     }
 
     /// The types the effect under `name` loaded with; `None` when nothing is loaded under it. A

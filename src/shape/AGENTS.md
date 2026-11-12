@@ -52,7 +52,7 @@ the top `AGENTS.md`, "A shape is geometry, a paint what covers it"; how the GPU 
 
 - **An effect is a program; theme data names one; `EffectPaint` is the one draw.** An effect is a
   WGSL program an `EffectName` names, a color effect or a backdrop effect; palantir's stock ones
-  are loaded and checked as an app's are. `Material` and `PressEffect` name one as plain data a
+  are loaded and checked as an app's are, once a process (`effect::stock::effects`). `Material` and `PressEffect` name one as plain data a
   theme file saves and a transition blends, and lower to the one effect draw. As Skia's
   `SkRuntimeEffect`, Android's `RuntimeShader` and Flutter's `FragmentShader` are one program
   whose placement decides its use. A material holds its effect with the effect's parameters as

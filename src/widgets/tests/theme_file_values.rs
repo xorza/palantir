@@ -367,8 +367,8 @@ fn the_walk_finds_the_theme_numbers() {
     );
 }
 
-/// Fits the per-test budget: the whole walk takes about 0.8 s on one thread in the debug test
-/// profile, so a shard about 0.2 s.
+/// Fits the per-test budget: the whole walk takes about 1.2 s on one thread in the debug test
+/// profile, so a shard about 0.3 s.
 const SHARDS: usize = 4;
 
 #[test]

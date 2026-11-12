@@ -4,7 +4,6 @@
 
 - build-in colors
 - optimal resolve strategies
-- compact material?
 - material for texts and strokes?
 - consolidate gpu atlas
 

@@ -4,6 +4,7 @@
 
 use crate::shape::effect_paint::EffectPaint;
 use std::error;
+use std::ptr;
 use std::rc::Rc;
 
 use glam::{UVec2, Vec2};
@@ -14,6 +15,7 @@ use crate::animation::motion_role::MotionRole;
 use crate::effect::contract::{self, ContractSpec, ParamsLayout};
 use crate::effect::effect_registry::{EffectRegistry, MaterialFit, ReducedName};
 use crate::effect::effect_source::{EffectSource, ReducedPaint};
+use crate::effect::effect_store::EffectModule;
 use crate::effect::error::{EffectError, EntryMismatch, ParamMismatch};
 use crate::effect::press_input::PressInput;
 use crate::effect::stock;
@@ -69,7 +71,7 @@ const fn spec(kind: KindId, params: ParamsLayout, image_slots: u8) -> ContractSp
 
 /// The id of the app's load `n`, from 0, past the stock effects every registry holds first.
 fn app(n: u32) -> EffectId {
-    let count = stock::sources().press.len() + 2;
+    let count = stock::effects().press.len() + 2;
     EffectId(u32::try_from(count).unwrap() + n)
 }
 
@@ -107,7 +109,7 @@ fn ring(wgsl: impl Into<String>) -> EffectSource<Ring> {
 }
 
 fn load(wgsl: &str) -> Result<(), EffectError> {
-    EffectRegistry::default().load(RING, ring(wgsl.to_owned()))
+    EffectRegistry::default().load(RING, &ring(wgsl.to_owned()))
 }
 
 /// The derive lists each field in order with its `offset_of!` and its WGSL type: the vec4 at 0,
@@ -135,7 +137,7 @@ fn a_matching_effect_loads() {
     let registry = EffectRegistry::default();
     assert!(!registry.contains(RING));
     registry
-        .load(RING, ring(ring_wgsl(RING_PARAMS, RING_ENTRY)))
+        .load(RING, &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)))
         .unwrap();
     assert!(registry.contains(RING));
     assert!(!registry.contains(THIN_RING));
@@ -144,9 +146,13 @@ fn a_matching_effect_loads() {
     let plain_wgsl = "fn effect(input: EffectInput) -> EffectOutput {
         return EffectOutput(vec4<f32>(1.0), vec4<f32>(0.0));
     }";
-    registry.load(plain, EffectSource::new(plain_wgsl)).unwrap();
+    registry
+        .load(plain, &EffectSource::new(plain_wgsl))
+        .unwrap();
     let water: EffectName<(), BackdropEffect> = EffectName::named("water").unwrap();
-    registry.load(water, EffectSource::new(plain_wgsl)).unwrap();
+    registry
+        .load(water, &EffectSource::new(plain_wgsl))
+        .unwrap();
     assert!(registry.contains(water));
 
     let h = Harness::new(UVec2::new(8, 8));
@@ -227,7 +233,7 @@ fn each_refusal_is_its_own_case() {
 
     let slots = EffectRegistry::default().load(
         RING,
-        ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).image_slots(5),
+        &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).image_slots(5),
     );
     assert!(matches!(
         slots,
@@ -237,7 +243,7 @@ fn each_refusal_is_its_own_case() {
         EffectRegistry::default()
             .load(
                 RING,
-                ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).image_slots(4)
+                &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).image_slots(4)
             )
             .is_ok()
     );
@@ -396,7 +402,7 @@ fn parameters_past_the_limit_are_refused() {
         const FIELDS: &'static [EffectParam] = &[];
     }
     let huge: EffectName<Huge> = EffectName::named("huge").unwrap();
-    let refused = EffectRegistry::default().load(huge, EffectSource::new("not read"));
+    let refused = EffectRegistry::default().load(huge, &EffectSource::new("not read"));
     assert!(matches!(
         refused,
         Err(EffectError::ParamsTooLarge { size: 260 })
@@ -409,7 +415,7 @@ fn parameters_past_the_limit_are_refused() {
 
     let unlisted: EffectName<Unlisted> = EffectName::named("unlisted").unwrap();
     let one_argument = "fn effect(input: EffectInput) -> EffectOutput { return EffectOutput(); }";
-    let refused = EffectRegistry::default().load(unlisted, EffectSource::new(one_argument));
+    let refused = EffectRegistry::default().load(unlisted, &EffectSource::new(one_argument));
     assert!(
         matches!(
             refused,
@@ -436,12 +442,12 @@ fn parameters_past_the_limit_are_refused() {
 fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
     let registry = EffectRegistry::default();
     let valid = ring_wgsl(RING_PARAMS, RING_ENTRY);
-    registry.load(RING, ring(valid.clone())).unwrap();
+    registry.load(RING, &ring(valid.clone())).unwrap();
     assert_eq!(registry.power_saver_of(RING), Some(ReducedName::Same));
     registry
         .load(
             RING,
-            ring(valid).power_saver(ReducedPaint::Effect(THIN_RING)),
+            &ring(valid).power_saver(ReducedPaint::Effect(THIN_RING)),
         )
         .unwrap();
     assert_eq!(
@@ -451,7 +457,7 @@ fn a_load_replaces_and_a_refused_reload_keeps_the_last() {
         ))
     );
 
-    let refused = registry.load(RING, ring("fn effect(").power_saver(ReducedPaint::Nothing));
+    let refused = registry.load(RING, &ring("fn effect(").power_saver(ReducedPaint::Nothing));
     assert!(matches!(refused, Err(EffectError::Parse { .. })));
     assert!(registry.contains(RING));
     assert_eq!(
@@ -478,7 +484,7 @@ fn the_stock_ripples_hold_their_reserved_names() {
         Some(ReducedName::Effect(EffectName::RIPPLE.erased()))
     );
     let reserved = EffectName::<Ring>::named("palantir.ring").unwrap();
-    let refused = registry.load(reserved, ring(ring_wgsl(RING_PARAMS, RING_ENTRY)));
+    let refused = registry.load(reserved, &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)));
     assert!(
         matches!(refused, Err(EffectError::ReservedName)),
         "{refused:?}"
@@ -490,10 +496,26 @@ fn the_stock_ripples_hold_their_reserved_names() {
     assert!(!registry.contains(reserved));
     let ripple = EffectName::<PressInput>::named("palantir.ripple").unwrap();
     assert!(matches!(
-        registry.load(ripple, EffectSource::new("fn effect(")),
+        registry.load(ripple, &EffectSource::new("fn effect(")),
         Err(EffectError::ReservedName)
     ));
     assert_eq!(registry.epoch(), 4, "the four stock loads alone");
+}
+
+/// The stock effects are checked once a process: every call hands back the same effects, and each
+/// holds the module checking its source makes, which a registry registers as it would an app's.
+#[test]
+fn the_stock_effects_are_checked_once_as_an_apps_are() {
+    let effects = stock::effects();
+    assert!(ptr::eq(effects, stock::effects()), "one check a process");
+    let check = |module: &EffectModule, checked: Result<EffectModule, EffectError>| {
+        assert_eq!(*module, checked.expect("a stock effect meets the contract"));
+    };
+    for press in &effects.press {
+        check(&press.module, press.source.check());
+    }
+    check(&effects.frosted.module, effects.frosted.source.check());
+    check(&effects.glass.module, effects.glass.source.check());
 }
 
 /// An app's press effect: its press color, over.
@@ -645,13 +667,13 @@ fn a_theme_names_only_loaded_effects() {
 fn a_name_used_with_other_types_panics() {
     let registry = EffectRegistry::default();
     registry
-        .load(RING, ring(ring_wgsl(RING_PARAMS, RING_ENTRY)))
+        .load(RING, &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)))
         .unwrap();
     let untyped: EffectName<()> = EffectName::named("ring").unwrap();
     assert_panics_with("effect `ring` was loaded as", || registry.contains(untyped));
     let backdrop: EffectName<Ring, BackdropEffect> = EffectName::named("ring").unwrap();
     assert_panics_with("BackdropEffect", || {
-        registry.load(backdrop, EffectSource::new("not read"))
+        registry.load(backdrop, &EffectSource::new("not read"))
     });
     let same: EffectName<Ring, ColorEffect> = EffectName::named("ring").unwrap();
     assert!(registry.contains(same));
@@ -673,12 +695,12 @@ fn a_name_used_with_other_types_panics() {
     let untyped_thin: EffectName<()> = EffectName::named("thin ring").unwrap();
     let plain = "fn effect(input: EffectInput) -> EffectOutput { return EffectOutput(); }";
     registry
-        .load(untyped_thin, EffectSource::new(plain))
+        .load(untyped_thin, &EffectSource::new(plain))
         .unwrap();
     assert_panics_with("effect `thin ring` was loaded as", || {
         registry.load(
             RING,
-            ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).power_saver(ReducedPaint::Effect(THIN_RING)),
+            &ring(ring_wgsl(RING_PARAMS, RING_ENTRY)).power_saver(ReducedPaint::Effect(THIN_RING)),
         )
     });
 }
@@ -2027,7 +2049,7 @@ fn a_material_effect_is_a_backdrop_effect_over_lanes() {
     registry
         .load(
             pictured,
-            EffectSource::new(
+            &EffectSource::new(
                 "fn effect(input: EffectInput) -> EffectOutput {
                     return effect_over(effect_backdrop(input.pos));
                 }",
@@ -2039,7 +2061,7 @@ fn a_material_effect_is_a_backdrop_effect_over_lanes() {
     registry
         .load(
             ours,
-            EffectSource::new(concat!(
+            &EffectSource::new(concat!(
                 include_str!("stock/material.wgsl"),
                 include_str!("stock/frosted.wgsl")
             )),

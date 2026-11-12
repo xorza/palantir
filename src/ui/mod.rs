@@ -957,12 +957,17 @@ impl Ui {
     /// parameter type or kind, or the alternative with other image slots.
     #[inline]
     #[track_caller]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "a builder chain hands the source by value, and the registry keeps what checking \
+                  it makes, not the source"
+    )]
     pub fn load_effect<U: EffectParams, K: EffectKind>(
         &self,
         name: EffectName<U, K>,
         source: EffectSource<U, K>,
     ) -> Result<(), EffectError> {
-        self.resources.effects().load(name, source)
+        self.resources.effects().load(name, &source)
     }
 
     /// Whether an effect is loaded under `name`. App-global.

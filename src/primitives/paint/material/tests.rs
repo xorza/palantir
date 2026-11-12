@@ -231,10 +231,10 @@ fn an_effects_source_declares_its_materials_reach() {
     effects
         .load(
             reaching,
-            EffectSource::new(wgsl).reach(|shift| MaterialReach::Px(shift.dx)),
+            &EffectSource::new(wgsl).reach(|shift| MaterialReach::Px(shift.dx)),
         )
         .unwrap();
-    effects.load(plain, EffectSource::new(wgsl)).unwrap();
+    effects.load(plain, &EffectSource::new(wgsl)).unwrap();
     let reach = |effect, dx| {
         effects
             .resolve_material(&Material::new(effect, Shift { dx }), Reductions::FULL)
@@ -252,13 +252,13 @@ fn an_effects_source_declares_its_materials_reach() {
     effects
         .load(
             saving,
-            EffectSource::new(wgsl).power_saver(ReducedPaint::Effect(reaching)),
+            &EffectSource::new(wgsl).power_saver(ReducedPaint::Effect(reaching)),
         )
         .unwrap();
     effects
         .load(
             vanishing,
-            EffectSource::new(wgsl).power_saver(ReducedPaint::Nothing),
+            &EffectSource::new(wgsl).power_saver(ReducedPaint::Nothing),
         )
         .unwrap();
     let resolve = |effect, power| {

@@ -3,6 +3,9 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use crate::effect::contract::{self, ContractSpec, ParamsLayout};
+use crate::effect::effect_store::EffectModule;
+use crate::effect::error::EffectError;
 use crate::effect::{MAX_IMAGE_SLOTS, MAX_PARAMS_SIZE};
 use crate::primitives::effect::effect_kind::{ColorEffect, EffectKind};
 use crate::primitives::effect::effect_name::EffectName;
@@ -40,7 +43,7 @@ use crate::primitives::paint::material::material_reach::MaterialReach;
 ///   read it.
 ///
 /// The WGSL declares no binding of its own, as palantir binds every resource an effect reads;
-/// one is [`EffectError::Binding`](crate::EffectError::Binding).
+/// one is [`EffectError::Binding`].
 ///
 /// Palantir builds the real stages around `effect`, as SwiftUI's stitchable functions and Skia's
 /// SkSL `main` are wrapped, so an effect stays correct under partial repaint and clips. Names that
@@ -111,7 +114,7 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     }
 
     /// How many images each paint of the effect binds, at most [`Self::MAX_IMAGE_SLOTS`]; a load
-    /// past it returns [`EffectError::TooManyImageSlots`](crate::EffectError::TooManyImageSlots).
+    /// past it returns [`EffectError::TooManyImageSlots`].
     /// Each paint binds exactly this many, so a draw binds one group of them, which splits a run
     /// of draws only where neighbors bind other images.
     pub const fn image_slots(mut self, slots: u8) -> Self {
@@ -135,6 +138,22 @@ impl<U: EffectParams, K: EffectKind> EffectSource<U, K> {
     pub const fn power_saver(mut self, paint: ReducedPaint<U, K>) -> Self {
         self.power_saver = paint;
         self
+    }
+
+    /// The module palantir compiles for this source, an effect over `U` of kind `K`, once its WGSL
+    /// meets the contract ([`contract::check`]).
+    pub(crate) fn check(&self) -> Result<EffectModule, EffectError> {
+        contract::check(
+            &self.wgsl,
+            ContractSpec {
+                kind: K::ID,
+                params: ParamsLayout {
+                    fields: U::FIELDS,
+                    size: size_of::<U>(),
+                },
+                image_slots: self.image_slots,
+            },
+        )
     }
 
     /// Each alternative, in the order one wins over the next: motion, power.
