@@ -60,5 +60,127 @@ waited submit costs about 250 µs on this machine, the floor of each case.
 - **The page branch costs nothing measurable here**: the steady text scene drawn eight times
   over in one pass, 226 µs with one texture of each kind against 223 µs through four pages and
   the branch.
-- Not measured here: V3D, the AMD iGPU, lavapipe; and `gap_row`, CPU work the test profile does
-  not represent.
+- Not measured here: lavapipe and the Windows AMD iGPU. The bench-profile runs below replace these
+  numbers for the Apple laptop, the board and the handheld.
+
+# The pool against its base, on three hosts (2026-11-12)
+
+`1851f60e2`, the commit before the pool's step 1, against `93ce0dcfe`, its step 9; bench profile.
+Hosts as `.notes/PERF.md` names them: the apple (Metal, unpinned), the board (V3D, core 3,
+cross-built on the Mac with `cargo zigbuild --target aarch64-unknown-linux-gnu.2.41`) and the
+handheld (RADV, core 2). Each case ABBA, a criterion run of its own a leg; the medians of the
+second pair (B2 against A2), and the first pair's in parentheses where the two disagree by more than
+3 points, as a first A leg on the handheld and the apple ran cold. Both builds carried the same
+measurement patch, not committed: each iteration timed alone, `iter_custom` summing them, for the
+tail. The atomic and memory cases ran the pool's build alone.
+
+## Frames and text
+
+| case | apple | board | handheld |
+|---|---|---|---|
+| `text_atlas/cache_churn/frame` | 283.0 → 327.9 µs, +15.9 % | 1.46 → 2.05 ms, +40.7 % | 440.4 → 804.6 µs, +82.7 % |
+| `text_atlas/cache_churn/prepare` | 34.6 → 47.7 µs, +38.0 % | 133.8 → 185.6 µs, +38.7 % | 162.1 → 234.6 µs, +44.7 % |
+| `text_atlas/mixed_stable_churn/frame` | 283.7 → 328.4 µs, +15.8 % | 1.45 → 2.06 ms, +42.3 % | 436.5 → 805.4 µs, +84.5 % |
+| `text_atlas/stable_keys/prepare` | 27.2 → 31.2 µs, +14.8 % | 110.4 → 125.6 µs, +13.7 % | 65.2 → 73.6 µs, +12.9 % |
+| `text_atlas/steady_warm/prepare` | 4.8 → 5.5 µs, +13.7 % | 18.6 → 21.3 µs, +14.2 % | 11.6 → 12.6 µs, +8.3 % |
+| `text_atlas/steady_warm/frame` | +0.1 % | +0.6 % | +2.6 % |
+| `text_atlas/zoom_smooth/frame` | −0.1 % | +0.6 % | +1.1 % |
+| `frame/cached` | +0.4 % | −0.3 % | +1.1 % |
+| `frame/hovering` | +1.4 % | 2.53 → 2.45 ms, −3.1 % | +4.2 % (−0.3 %) |
+| `frame/partial` | +0.2 % | 2.84 → 2.76 ms, −2.7 % | −1.8 % |
+| `frame/typing` | +0.4 % | 2.70 → 2.62 ms, −2.8 % | −1.0 % |
+| `frame/alternating` | +0.8 % | +1.4 % | +2.2 % (−2.6 %) |
+| `frame/resizing` | 306.0 → 310.5 µs, +1.5 % | 4.27 → 4.39 ms, +2.8 % | +2.4 % (−0.3 %) |
+| `frame/scrolling` | +0.6 % | 4.24 → 4.35 ms, +2.6 % | +3.8 % (−0.1 %) |
+| `frame/theming` | 388.4 → 393.8 µs, +1.4 % | 5.10 → 5.26 ms, +3.1 % | 1.53 → 1.55 ms, +1.4 % |
+| `backdrop_frame/glass/moving` | +1.3 % | 53.0 → 36.1 ms, −31.9 % | +1.7 % |
+| `backdrop_frame/glass/sliding` | +1.0 % | 53.1 → 36.2 ms, −31.8 % | +3.2 % |
+| `backdrop_frame/glass/under` | +1.5 % | 125.9 → 95.8 ms, −23.9 % | +2.0 % |
+| `backdrop_frame/glass/scrolling` | 1.51 → 1.56 ms, +3.1 % | 142.1 → 114.6 ms, −19.4 % | 4.37 → 4.56 ms, +4.4 % |
+| `backdrop_frame/glass/hover` | ±15 %, the pairs opposite | 2.49 → 2.59 ms, +4.4 % | +0.2 % (+4.4 %) |
+| `backdrop_frame/many/under` | +0.1 % | 98.2 → 89.4 ms, −8.9 % | +1.3 % |
+| `backdrop_frame/cards/scrolling` | −1.3 % | 77.1 → 72.6 ms, −5.9 % | −0.7 % |
+| `backdrop_frame/pair_near/scrolling` | +0.3 % | 24.8 → 23.3 ms, −6.1 % | +0.9 % |
+| `backdrop_frame/{blur,frosted}/{moving,under,scrolling}` | −0.3 to +2.3 % | −1.3 to −3.6 % | −0.3 to +1.4 % |
+| `backdrop_frame/{blur,frosted}/sliding` | +1.6 to +1.8 % | 5.48 → 5.76 ms, +5.0 % | −0.7 %, +4.4 % |
+| `backdrop_frame/first/scrolling` | +1.2 % | 7.74 → 7.96 ms, +2.9 % | +1.2 % |
+| `backdrop_frame/stacked/scrolling` | +1.7 % | 43.3 → 44.0 ms, +1.7 % | +0.2 % |
+| `backdrop_frame/modal/scrolling` | 1.95 → 2.04 ms, +4.7 % | 100.9 → 107.8 ms, +6.8 % | 7.20 → 7.28 ms, +1.1 % |
+| every `*/cached` and `*/hover` of a backdrop | within ±1 % | within ±2.1 % | within ±3 % |
+
+- **The text churn regresses on every host, on its hit rate.** Counted on the apple under the test
+  profile, `cache_churn/prepare` evicts 9.8 glyphs a frame on the base and 15.6 on the pool, both at
+  a 4 MiB mask budget: the pool rasterizes about 1.5 times the glyphs a frame (macOS `sample` puts 1.47
+  times the base's `TextGlyphs::rasterize` samples in each frame). `AtlasPool::allocate` holds 11 %
+  of the pool's samples, `ShelfPacker::allocate` 4 % of the base's. The churn walks 512 scales,
+  each again 512 frames later, past the 400 frames an idle item lives under no pressure.
+- **`stable_keys/prepare` and `steady_warm/prepare`, +13 to +15 % on the apple and the board,**
+  rasterize nothing; not profiled.
+- **The board's glass frames run 19 to 32 % faster**, the frames whose results passed the old
+  results atlas's 2048 edge; `cards`, `many`, `pair_near` 6 to 9 %. `modal/scrolling` at 4K is
+  +4.7 % on the apple and +6.8 % on the board, the whole repaints of the first page +1.4 to +3.1 %
+  on the board, the partial ones −2.7 to −3.1 % there.
+- **The tail follows the median.** On the board, pinned and quiet, each case's p99.9 and worst frame
+  move with its median: `frame/theming` worst 10.8 → 11.0 ms, `modal/scrolling` 101.2 → 108.1 ms,
+  `glass/moving` 53.2 → 36.3 ms. One case has a worst frame of its own: `cache_churn/prepare`, 3.71
+  → 7.87 ms in every leg (median 84 → 202 µs). The apple's and the handheld's worst frames are
+  scheduler stalls, up to 300 ms on the apple in either build, so only their p99.9 reads: within
+  the median's change but for `glass/scrolling` on the handheld, 5.1 → 5.9 ms.
+
+## Moves and pages
+
+Criterion's median, the pool's build; a case waits for its device.
+
+| case | apple | board | handheld |
+|---|---|---|---|
+| copy, R8 24², 16 / 64 / 256 | 260 / 311 / 879 µs | 0.65 / 2.42 / 10.99 ms | 222 / 684 / 2477 µs |
+| draw, R8 24², 16 / 64 / 256 | 260 / 260 / 260 µs | 2.22 / 2.23 / 2.28 ms | 107 / 112 / 123 µs |
+| copy, RGBA8 128², 16 / 64 / 256 | 258 / 314 / 902 µs | 0.86 / 3.54 / 19.16 ms | 257 / 825 / 3167 µs |
+| draw, RGBA8 128², 16 / 64 / 256 | 260 / 298 / 477 µs | 2.61 / 2.94 / 4.25 ms | 130 / 202 / 500 µs |
+| copy, RGBA16F 128², 16 / 64 / 256 | 260 / 365 / 1060 µs | 1.04 / 4.50 / 36.75 ms | 286 / 960 / 4015 µs |
+| draw, RGBA16F 128², 16 / 64 / 256 | 258 / 255 / 859 µs | 5.24 / 5.75 / 7.79 ms | 153 / 311 / 1054 µs |
+| page R8, 256² / 1024² / 2048² | 260 / 260 / 260 µs | 138 / 380 / 1157 µs | 105 / 109 / 108 µs |
+| page RGBA8, 256² / 1024² / 2048² | 261 / 260 / 575 µs | 148 / 474 / 1435 µs | 125 / 110 / 112 µs |
+| page RGBA16F, 256² / 1024² / 2048² | 260 / 327 / 940 µs | 174 / 795 / 2840 µs | 132 / 114 / 130 µs |
+
+- **A copy command costs 2.6 µs on the apple, 43 µs on the board, 9.4 µs on the handheld**, R8 24²,
+  `(t₂₅₆ − t₁₆) / 240`.
+- **On the handheld a draw wins at every count**: 16 glyphs 107 µs against 222, the 64 copies of a
+  frame's budget 684 µs against 112.
+- **On the board a draw costs a pass over the whole destination page**, 2.2 ms for a 2048² R8 page
+  and 5.1 ms for RGBA16F before its first rectangle, so copies win below about 64 glyphs, and the
+  frame budget's 64 copies cost about 2.4 ms there.
+- **On the apple they tie up to 16 rectangles**; past 64 the draw wins.
+- **Making a page costs the board 1.2 to 2.8 ms at 2048²**, the handheld nothing past its floor.
+
+## The gradient flush
+
+`atomic/gradient_upload` stages 32 dirty rows a gap apart, as 32 copies (`split`) or one copy over
+the gaps (`merged`); `atomic/gradient_atlas/cpu/gap_row` bakes one row again from its ramp, what a
+folded clean row costs now that no CPU mirror holds it.
+
+| | apple | board | handheld |
+|---|---|---|---|
+| split, gap 16 / 32 / 48 / 64 / 128 | 252 / 260 / 258 / 254 / 253 µs | 1.49 / 1.61 / 1.68 / 1.74 / 2.08 ms | 327 / 330 / 330 / 330 / 330 µs |
+| merged, gap 16 / 32 / 48 / 64 / 128 | 219 / 313 / 443 / 543 / 990 µs | 0.51 / 0.93 / 1.58 / 1.75 / 3.54 ms | 230 / 390 / 724 / 943 / 1754 µs |
+| a row baked, linear / Oklab | 0.69 / 1.58 µs | 5.44 / 11.91 µs | 2.58 / 8.75 µs |
+| a row from a mirror | 0.02 µs | 0.07 µs | 0.03 µs |
+
+- **Staging alone, merged and split cross between gaps 16 and 32 on the apple and the handheld**
+  and near 64 on the board, where `MERGE_GAP_ROWS` (48) was set.
+- **A folded row's bake costs more than its staging on every host**, 3 to 27 times. A straight-line
+  fit gives a copy 4.6 µs on the apple, about 8 on the handheld and 45 on the board, and a staged
+  row 0.22, 0.32 and 0.83 µs: a gap pays to fold up to about 5 linear or 2.6 Oklab rows on the
+  apple, 7.2 or 3.5 on the board, 2.9 or 0.9 on the handheld.
+
+## Memory with the pool
+
+`cargo atlas-memory`, 240 frames a run, the same bytes on all three hosts. Against the base
+(above): every arm of the first page 7.3 MiB → 770 KiB, of which the gradient rows hold 512 KiB
+for one live row (2 KiB) and the mask page 256 KiB for 88 KiB; `theming` 1.5 MiB. Backdrops, peak:
+glass 190.3 → 68.8 MiB, its results 128 MiB → 13.0 MiB, all of it live; blur and frosted 42.2 →
+29.6 MiB; the modal at 4K 43.6 → 31.0 MiB; cards 25.7 → 13.1 MiB; a first backdrop over nothing
+15.3 MiB → 770 KiB. The backdrop blur's own textures, outside the pool, are now most of every
+backdrop scene: 55 MiB of glass's 68.8, 28.2 of the modal's 31.0. No scene reaches a list's soft
+budget: the mask list peaks at 1 MiB (`theming`) of 8, the half-float list at 13 MiB (glass) of
+32.

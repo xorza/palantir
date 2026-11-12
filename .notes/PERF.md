@@ -17,8 +17,8 @@ an older number here reads as a share, not a time.
   - fanless: a fanless Apple laptop with little RAM, Metal, no pinning; 2.2 to 2.8 GB a build, so
     one at a time.
   - handheld: a handheld AMD APU, RADV; one pinned core, governor `powersave` without `sudo`; 3.0
-    to 4.2 GB a build. It kills a user's processes when the SSH session that started them ends, so
-    a run holds its session.
+    to 4.2 GB a build, 6.0 GB since the atlas pool (2026-11-12). It kills a user's processes when
+    the SSH session that started them ends, so a run holds its session.
   - windows: a mobile AMD iGPU, Windows, Vulkan; pinned through `ProcessorAffinity` in a PowerShell
     ABBA runner; 4.2 to 4.7 GB a build. The rustup `cargo.exe` and `rustc.exe` are symlink proxies
     that fail over SSH (os error 448), and `sccache` does not start there: a build runs the
@@ -33,8 +33,12 @@ an older number here reads as a share, not a time.
     command line (`cpufreq.default_governor`). It builds nothing, as a fat-LTO link there takes
     too long: its binaries are cross-built on a Mac with `zig cc -target aarch64-linux-gnu.2.41`
     behind a wrapper that drops `--fix-cortex-a53-843419`, `-Wl,-O1` and cc-rs's
-    `--target=<triple>`, 4 minutes and 4.5 GB a build. A bench binary reads no file at run time,
-    so it runs from any path; only tests read `CARGO_MANIFEST_DIR`.
+    `--target=<triple>`, 4 minutes and 4.5 GB a build; `cargo zigbuild --profile bench
+    --target aarch64-unknown-linux-gnu.2.41` builds it with no wrapper, 5 to 7 minutes. Cargo
+    keeps a workspace's build directory under its cache, keyed by the workspace's path, whatever
+    `CARGO_TARGET_DIR` says, so a native and a cross build of one worktree take turns. A bench
+    binary reads no file at run time, so it runs from any path; only tests read
+    `CARGO_MANIFEST_DIR`.
   - apple: a recent Apple laptop, Metal, unpinned; a bench build peaks at 3.9 GB in one process
     and takes 2 minutes warm. Its Xcode runs `xctrace` (Metal System Trace, Time Profiler); a
     board cross-build here and a local build together peak at 8.9 GiB of the process trees,

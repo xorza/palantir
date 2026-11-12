@@ -7,10 +7,9 @@
 - material for texts and strokes?
 - some benches as tests where we dont need performance to save build time?
 
-- atlas pool: A/B `integration/frame/gpu/*`, `text_atlas/*` and `backdrop_frame/*` against the
-  pool's base on every bench host, worst frame included; the move bench (`atomic/atlas_move`) on
-  V3D, the AMD iGPU and the handheld, a draw a destination page where copies cost more; the
-  starting constants and the gradient flush against the measurements
+- atlas pool: the move route per device, `MERGE_GAP_ROWS` and the text churn's hit rate from the
+  three hosts' measurements (`.notes/research/2026-11-12-atlas-pool-measurements.md`); the move
+  bench on the Windows AMD iGPU
 
 - widget-authoring surface
 - table widget: sortable header, virtual rows over a fixed row height
