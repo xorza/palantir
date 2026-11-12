@@ -384,6 +384,7 @@ impl OffscreenHost {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::damage::Damage;
+    use crate::gpu::atlas_memory::AtlasMemory;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
     use crate::primitives::geometry::rect::Rect;
@@ -491,6 +492,13 @@ pub(crate) mod internals {
         /// Whether the shared backend has built a pipeline set for `format`.
         pub fn has_format_pipelines(&self, format: TargetFormat) -> bool {
             self.device.backend().has_format_pipelines(format)
+        }
+
+        /// Every atlas's memory on the host's device.
+        pub(crate) fn atlas_memory(&self) -> AtlasMemory {
+            self.device
+                .backend()
+                .atlas_memory(self.window.cpu.frontend.gradient_atlas())
         }
 
         /// Images resident in the GPU texture cache.

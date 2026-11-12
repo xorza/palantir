@@ -1097,6 +1097,7 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[ShaderConstant::uint(
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::atlas_memory::AtlasUse;
     use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob};
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::frame::gpu_ctx::GpuCtx;
@@ -1107,6 +1108,14 @@ pub(crate) mod internals {
     use std::iter;
 
     impl BackdropBlur {
+        /// The memory of the blur's captures, levels and scratch, named `name`.
+        pub(crate) fn memory(&self, name: &'static str) -> AtlasUse {
+            let captures = self.captures.iter().map(|capture| &capture.target.texture);
+            let levels = self.levels.iter().map(|levels| &levels.texture);
+            let scratch = self.scratch.iter().map(|scratch| &scratch.texture);
+            AtlasUse::scratch(name, captures.chain(levels).chain(scratch))
+        }
+
         /// Hold every texture of the blur to an edge of `ceiling` texels, as a device of that
         /// limit does.
         #[cfg(test)]

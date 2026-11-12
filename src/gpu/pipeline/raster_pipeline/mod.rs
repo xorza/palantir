@@ -140,3 +140,33 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::uint("FLAG_DESATURATE", FLAG_DESATURATE),
     ShaderConstant::uint("FLAG_COLOR", FLAG_COLOR),
 ];
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::pipeline::pipeline_recipe;
+    use crate::gpu::pipeline::raster_pipeline::RasterPipeline;
+    use crate::gpu::resource::texture_binding::TextureBinding;
+
+    impl RasterPipeline {
+        /// The program of `shader` over the frame group and `layout`, its atlas group: a bench's
+        /// variant of [`Self::SHADER`] with an atlas group of its own.
+        pub(crate) fn from_parts(
+            gpu: &Gpu,
+            textures: &TextureBinding,
+            shader: wgpu::ShaderModule,
+            layout: wgpu::BindGroupLayout,
+        ) -> Self {
+            let pipeline_layout = pipeline_recipe::pipeline_layout(
+                gpu,
+                "palantir.raster.pl",
+                &[Some(textures.frame()), Some(&layout)],
+            );
+            Self {
+                shader,
+                layout,
+                pipeline_layout,
+            }
+        }
+    }
+}

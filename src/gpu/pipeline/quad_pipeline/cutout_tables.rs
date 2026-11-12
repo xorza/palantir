@@ -257,13 +257,30 @@ const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = [vertex_attr(
     offset_of!(CornerTables, 0),
 )];
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::atlas_memory::{self, AtlasUse};
     use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 
     impl CutoutTables {
+        /// The atlas's memory against the tables placed in it.
+        pub(crate) fn memory(&self) -> AtlasUse {
+            let texel = u64::from(
+                Self::FORMAT
+                    .block_copy_size(None)
+                    .expect("the atlas holds a color format"),
+            );
+            AtlasUse {
+                name: "shadow cutouts",
+                textures: 1,
+                bytes: atlas_memory::texture_bytes(self.atlas.texture()),
+                live_bytes: Some(self.placements.placed_texels() * texel),
+            }
+        }
+
         /// The tables the atlas holds.
-        pub(crate) fn held_len(&self) -> usize {
+        #[cfg(test)]
+        pub(crate) const fn held_len(&self) -> usize {
             self.held.tables.len()
         }
     }

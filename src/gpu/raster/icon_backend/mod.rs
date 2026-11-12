@@ -144,5 +144,18 @@ impl IconBackend {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::atlas_memory::AtlasUse;
+    use crate::gpu::raster::icon_backend::IconBackend;
+
+    impl IconBackend {
+        /// The icon atlas's memory, mask then color.
+        pub(crate) fn atlas_memory(&self) -> [AtlasUse; 2] {
+            self.pass.atlas.memory(["icon mask", "icon color"])
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

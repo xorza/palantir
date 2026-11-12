@@ -336,14 +336,26 @@ fn row_hash(slots: &[RowSlot]) -> impl Fn(&u32) -> u64 {
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
+    #[cfg(test)]
     use crate::common::counters::CounterSet;
 
     impl CpuGradientAtlas {
+        /// The rows that hold a ramp, row 0's fallback among them.
+        pub(crate) fn live_rows(&self) -> u32 {
+            u32::try_from(self.index.len()).expect("the rows are counted in u32") + 1
+        }
+
+        /// The bytes of the CPU mirror of the rows, every row baked or not.
+        pub(crate) const fn mirror_bytes(&self) -> u64 {
+            (self.baked.len() * size_of::<LutRowTexels>()) as u64
+        }
+
         /// Whether this epoch's registered rows form a head prefix of the MRU list, which
         /// [`Self::register`] relies on to decide eviction from the tail.
+        #[cfg(test)]
         pub(crate) fn epoch_prefix_holds(&self) -> bool {
             let mut seen_stale = false;
             for row in self.mru.to_vec() {
@@ -358,16 +370,19 @@ pub(crate) mod internals {
 
         /// Live index entries, one per occupied row; a mismatch shows a duplicate bake or
         /// leaked eviction entry.
+        #[cfg(test)]
         pub(crate) fn index_len(&self) -> usize {
             self.index.len()
         }
 
-        pub(crate) fn max_rows(&self) -> u32 {
+        #[cfg(test)]
+        pub(crate) const fn max_rows(&self) -> u32 {
             self.max_rows
         }
 
         /// `register` calls so far, letting resolver tests prove their per-pass memo suppresses
         /// repeats. Accumulates for the atlas's life; read a delta.
+        #[cfg(test)]
         pub(crate) fn registrations(&self) -> u32 {
             self.counters.counts().registrations
         }

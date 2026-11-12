@@ -444,9 +444,14 @@ impl CutoutPlan {
         cell.x | (cell.y << 6) | (side << 12)
     }
 
+    /// The side in texels of a table [`code`](Self::code).
+    pub(super) const fn table_side(table: u32) -> u32 {
+        table >> 12
+    }
+
     /// The atlas cells a table [`code`](Self::code) covers.
     pub(super) fn cells(table: u32) -> URect {
-        let side = (table >> 12).div_ceil(Self::CELL);
+        let side = Self::table_side(table).div_ceil(Self::CELL);
         let min = UVec2::new(table & 63, (table >> 6) & 63);
         URect::from_min_max(min, min + UVec2::splat(side))
     }

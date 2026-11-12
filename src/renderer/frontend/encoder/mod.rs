@@ -120,16 +120,28 @@ impl Encoder {
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #[cfg(test)]
     use crate::internals::paint_capture::PaintCapture;
+    #[cfg(test)]
     use crate::internals::scratch_report;
+    #[cfg(test)]
     use crate::renderer::backdrop_captures::{BackdropCaptures, BackdropDamage};
+    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
     use crate::renderer::frontend::encoder::Encoder;
+    #[cfg(test)]
     use crate::renderer::frontend::{BuildPlan, FrameScene};
+    #[cfg(test)]
     use crate::renderer::render_plan::RenderPlan;
 
     impl Encoder {
+        /// The gradient atlas the encoder registers ramps in.
+        pub(crate) const fn gradient_atlas(&self) -> &CpuGradientAtlas {
+            &self.gradient_atlas
+        }
+
+        #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 gradient_atlas: _,
@@ -139,13 +151,15 @@ pub(crate) mod internals {
             gradients.scratch_bytes() + scratch_report::vec_bytes(footprints)
         }
 
-        pub(crate) fn gradient_max_rows(&self) -> u32 {
+        #[cfg(test)]
+        pub(crate) const fn gradient_max_rows(&self) -> u32 {
             self.gradient_atlas.max_rows()
         }
     }
 
     /// Encode `scene` under `plan` through `encoder` into a capture, every backdrop capturing, as a
     /// fresh window's do.
+    #[cfg(test)]
     pub(crate) fn encode(
         scene: FrameScene<'_>,
         encoder: &mut Encoder,

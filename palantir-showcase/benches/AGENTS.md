@@ -1,7 +1,7 @@
 # Benches
 
-The target `palantir` runs every case through `bench::run`; `damage_sweep` is a study of its own,
-which `cargo bench-all` leaves out. Each driver sits in a `bench.rs` beside the code it measures,
+The target `palantir` runs every case through `bench::run`; `damage_sweep` and `atlas_memory` are
+studies of their own, which `cargo bench-all` leaves out. Each driver sits in a `bench.rs` beside the code it measures,
 and `src/bench/mod.rs` states the rules: the kinds, the ids, one number a case, and the sampling
 policy.
 
@@ -82,6 +82,14 @@ PALANTIR_BENCH_NO_GPU=1 cargo damage-sweep    # each decision, no timing
 - **A frame's time is its two halves added**, the host until its submit returns and the wait for
   the device; a policy that wins only one way favors what its host is short of.
 - **Compare scenarios that differ in one thing**: the draws, the pixels, the materials.
+
+## The atlas memory
+
+`cargo atlas-memory` runs each arm of `integration/frame` and every backdrop look and scene, a
+host of its own each, and prints per run what each GPU atlas holds: its peak bytes, its bytes at
+the last frame, the bytes its live items fill and their share. It reads memory, not time, which no build profile moves, so
+`cargo test -p palantir-showcase --bench atlas_memory -- --bench` runs it without a fat link; its
+reasons are in `src/gpu/atlas_memory/bench.rs`.
 
 ## Profiling
 

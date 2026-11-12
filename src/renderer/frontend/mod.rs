@@ -142,8 +142,8 @@ impl Frontend {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::image_registry::texture_limit::TextureLimit;
+    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
     use crate::renderer::frontend::BuildPlan;
-    #[cfg(test)]
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
     use std::num::NonZeroU32;
@@ -160,6 +160,13 @@ pub(crate) mod internals {
                 render,
                 backdrops: &[],
             }
+        }
+    }
+
+    impl Frontend {
+        /// The gradient atlas the frame's ramps register in.
+        pub(crate) const fn gradient_atlas(&self) -> &CpuGradientAtlas {
+            self.encoder.gradient_atlas()
         }
     }
 

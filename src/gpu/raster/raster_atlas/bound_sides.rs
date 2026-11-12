@@ -63,3 +63,43 @@ fn bind(
         ],
     })
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::raster::raster_atlas::bound_sides::BoundSides;
+    use crate::gpu::raster::raster_atlas::side::Side;
+    use crate::primitives::paint::content_type::ContentType;
+
+    impl BoundSides {
+        /// Bind `sides` against `layout`, which takes `pages` mask textures at bindings
+        /// `0..pages` and as many color textures after them: each side's one texture in every
+        /// slot of its kind. For a bench of a shader that picks among pages; a grow afterwards
+        /// binds two textures against `layout` and fails.
+        pub(crate) fn bind_pages(
+            &mut self,
+            gpu: &Gpu,
+            layout: &wgpu::BindGroupLayout,
+            pages: u32,
+            sides: &[Side; 2],
+        ) {
+            let entries: Vec<wgpu::BindGroupEntry<'_>> = [ContentType::Mask, ContentType::Color]
+                .into_iter()
+                .enumerate()
+                .flat_map(|(kind, content)| {
+                    let view = sides[content as usize].atlas.view();
+                    (0..pages).map(move |page| wgpu::BindGroupEntry {
+                        binding: kind as u32 * pages + page,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    })
+                })
+                .collect();
+            self.layout = layout.clone();
+            self.bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(&self.label),
+                layout,
+                entries: &entries,
+            });
+        }
+    }
+}

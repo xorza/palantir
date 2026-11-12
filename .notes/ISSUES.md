@@ -10,3 +10,7 @@
 - The gradient LUT atlas only grows (`CpuGradientAtlas::grow`, "a one-way ratchet", up to 4096
   rows: 8 MiB of texture and 8 MiB of CPU rows), the high-water mark `src/gpu/AGENTS.md` (GPU
   memory) refuses.
+- A backdrop result wider or taller than the results atlas's budget edge (2048 texels), as a glass
+  toolbar across a 2560 px surface at full resolution, keeps the atlas past its budget for good:
+  `PackedAtlas::shrink_to_budget` cannot place it, so a 4096² `Rgba16Float` atlas, 128 MiB, stays
+  while 10.4 MiB is live (`cargo atlas-memory`, `backdrop/glass/*`).

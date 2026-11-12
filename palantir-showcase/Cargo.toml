@@ -56,3 +56,8 @@ required-features = ["internals"]
 name = "damage_sweep"
 harness = false
 required-features = ["internals"]
+
+[[bench]]
+name = "atlas_memory"
+harness = false
+required-features = ["internals"]

@@ -748,9 +748,54 @@ const fn slot_origin(slot: URect) -> U16Vec2 {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::backdrop::backdrops::Backdrops;
+    use crate::gpu::atlas_memory::{self, AtlasUse};
+    use crate::gpu::backdrop::backdrop_blur::LEVEL_FORMAT;
+    use crate::gpu::backdrop::backdrops::{Backdrops, Kept};
 
     impl Backdrops {
+        /// The memory of the results atlas against the slots its results hold, each rounded up to
+        /// `SLOT_GRANULE`, then of the blur's textures; none before the first frame with a
+        /// backdrop.
+        pub(crate) fn memory(&self) -> [AtlasUse; 2] {
+            const RESULTS: &str = "backdrop results";
+            const BLUR: &str = "backdrop blur";
+            let Some(resources) = &self.resources else {
+                return [
+                    AtlasUse {
+                        name: RESULTS,
+                        textures: 0,
+                        bytes: 0,
+                        live_bytes: Some(0),
+                    },
+                    AtlasUse::scratch(BLUR, None),
+                ];
+            };
+            let texel = u64::from(
+                LEVEL_FORMAT
+                    .block_copy_size(None)
+                    .expect("results hold a color format"),
+            );
+            let texels: u64 = self
+                .cache
+                .values()
+                .filter_map(|cached| match cached.kept {
+                    Kept::Slot(slot) => Some(u64::from(slot.size.x) * u64::from(slot.size.y)),
+                    Kept::Clear(_) => None,
+                })
+                .sum();
+            let results = AtlasUse {
+                name: RESULTS,
+                textures: 1,
+                bytes: atlas_memory::texture_bytes(resources.atlas.texture()),
+                live_bytes: Some(texels * texel),
+            };
+            let blur = resources
+                .blur
+                .as_ref()
+                .map_or_else(|| AtlasUse::scratch(BLUR, None), |blur| blur.memory(BLUR));
+            [results, blur]
+        }
+
         /// The blurs the last prepared frame ran.
         pub(crate) const fn blurs(&self) -> usize {
             self.jobs.len()

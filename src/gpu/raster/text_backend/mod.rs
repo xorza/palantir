@@ -162,11 +162,17 @@ impl TextBackend {
 pub(crate) mod internals {
     #[cfg(test)]
     use crate::common::counters::CounterSet;
+    use crate::gpu::atlas_memory::AtlasUse;
     #[cfg(test)]
     use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     use crate::gpu::raster::text_backend::TextBackend;
 
     impl TextBackend {
+        /// The glyph atlas's memory, mask then color.
+        pub(crate) fn atlas_memory(&self) -> [AtlasUse; 2] {
+            self.pass.atlas.memory(["text mask", "text color"])
+        }
+
         /// The glyph atlas's eviction and growth counts so far.
         #[cfg(test)]
         pub(crate) fn atlas_counts(&self) -> AtlasCounts {

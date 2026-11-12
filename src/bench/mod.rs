@@ -84,6 +84,12 @@ pub fn run<S: Scene>(c: &mut Criterion) {
     measure_cache::bench::integration(c);
 }
 
+/// What each GPU atlas holds over the bench scenes of `S`, a target of its own:
+/// `cargo atlas-memory`.
+pub fn atlas_memory<S: Scene>() -> ExitCode {
+    gpu::atlas_memory::bench::study::<S>()
+}
+
 /// The damage sweep over `S`, a target of its own: `cargo damage-sweep`.
 pub fn damage_sweep<S: Scene>() -> ExitCode {
     damage::sweep::run::<S>()

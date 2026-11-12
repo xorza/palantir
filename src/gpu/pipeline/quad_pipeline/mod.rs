@@ -563,6 +563,7 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::atlas_memory::AtlasUse;
     #[cfg(test)]
     use crate::gpu::pipeline::clip_variant::Clipping;
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
@@ -581,9 +582,14 @@ pub(crate) mod internals {
     }
 
     impl QuadPipeline {
+        /// The shadow cutout atlas's memory.
+        pub(crate) fn cutout_memory(&self) -> AtlasUse {
+            self.cutouts.memory()
+        }
+
         /// The cutout tables the atlas holds from the frames before.
         #[cfg(test)]
-        pub(crate) fn held_cutout_tables(&self) -> usize {
+        pub(crate) const fn held_cutout_tables(&self) -> usize {
             self.cutouts.held_len()
         }
 

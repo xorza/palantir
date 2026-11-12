@@ -130,22 +130,36 @@ fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
     specialized
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::pipeline::shader_body::ShaderBody;
+    #[cfg(test)]
     use crate::gpu::test_gpu::headless_test_gpu;
+    #[cfg(test)]
     use bytemuck::Pod;
+    #[cfg(test)]
     use naga::front::wgsl;
+    #[cfg(test)]
     use naga::proc::Layouter;
+    #[cfg(test)]
     use std::iter;
+    #[cfg(test)]
     use std::sync::mpsc;
+    #[cfg(test)]
     use wgpu::util::DeviceExt;
 
     impl ShaderBody {
+        /// The complete source a module of this body compiles, for a bench that builds a variant
+        /// of it.
+        pub(crate) fn source(self) -> String {
+            self.specialize()
+        }
+
         /// Run `probe`, WGSL appended to this body, on the test GPU: its compute entry point
         /// `probe` runs once per input, at `global_invocation_id.x`, and reads `array<I>` at
         /// `@group(0) @binding(14)` and writes one `O` per input to `array<O>` at
         /// `@group(0) @binding(15)`, so the body's functions run on the GPU as they draw.
+        #[cfg(test)]
         pub(crate) fn probe<I: Pod, O: Pod>(self, probe: &str, inputs: &[I]) -> Vec<O> {
             assert!(!inputs.is_empty(), "a probe runs on at least one input");
             let gpu = headless_test_gpu();
@@ -221,6 +235,7 @@ pub(crate) mod internals {
         }
 
         /// The specialized source, parsed as wgpu parses it.
+        #[cfg(test)]
         pub(crate) fn parse(self) -> naga::Module {
             wgsl::parse_str(&self.specialize())
                 .unwrap_or_else(|err| panic!("{} parses: {err}", self.label))
@@ -230,6 +245,7 @@ pub(crate) mod internals {
         /// `size` bytes with `members` in order, each a WGSL member's name and the offset of the
         /// Rust field that mirrors it.
         #[track_caller]
+        #[cfg(test)]
         pub(crate) fn assert_struct_layout(
             self,
             name: &str,

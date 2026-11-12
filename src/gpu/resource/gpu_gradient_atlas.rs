@@ -114,6 +114,24 @@ impl GpuGradientAtlas {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gpu::atlas_memory::{self, AtlasUse};
+    use crate::gpu::resource::gpu_gradient_atlas::{GpuGradientAtlas, ROW_PITCH};
+
+    impl GpuGradientAtlas {
+        /// The texture's memory against `live_rows`, the rows the frontend's atlas holds a ramp in.
+        pub(crate) fn memory(&self, live_rows: u32) -> AtlasUse {
+            AtlasUse {
+                name: "gradient rows",
+                textures: 1,
+                bytes: atlas_memory::texture_bytes(&self.texture),
+                live_bytes: Some(u64::from(live_rows) * u64::from(ROW_PITCH)),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::gpu::resource::gpu_gradient_atlas::{GpuGradientAtlas, ROW_PITCH};

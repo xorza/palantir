@@ -532,6 +532,34 @@ mod gpu {
     /// whatever the byte budget says: eviction frees rectangles but never
     /// widens the texture. The side extents bracket the insert, pinning that
     /// only the side that grew moves.
+    /// A side reports its texture's bytes against its rasters': three 16² masks fill
+    /// `3 · 256 = 768` bytes of the 128² mask side's 16384, one 5 × 3 color raster `15 · 4 = 60`
+    /// of the 64² color side's `64² · 4 = 16384`, and an entry that draws nothing fills none.
+    #[test]
+    fn a_side_reports_its_texture_against_its_rasters() {
+        let gpu = headless_test_gpu();
+        let mut atlas = small_atlas(&gpu);
+        fill(&mut atlas, 3);
+        let metadata = PackedMetadata::new(UVec2::new(5, 3), IVec2::new(0, 0)).unwrap();
+        let color = PackedRaster {
+            metadata,
+            content: ContentType::Color,
+            pixels: &[0; 5 * 3 * 4],
+        };
+        assert!(atlas.insert(key(100), color).is_some());
+        atlas.insert_unallocated(key(101));
+        let [mask, color] = atlas.memory(["mask", "color"]);
+        assert_eq!(
+            (mask.textures, mask.bytes, mask.live_bytes),
+            (1, 16384, Some(768))
+        );
+        assert_eq!(
+            (color.textures, color.bytes, color.live_bytes),
+            (1, 16384, Some(60))
+        );
+        assert_eq!((mask.name, color.name), ("mask", "color"));
+    }
+
     #[test]
     fn an_entry_wider_than_the_side_grows_rather_than_evicting() {
         let gpu = headless_test_gpu();

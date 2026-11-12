@@ -15,7 +15,7 @@ Seven textures across four systems, one set per device:
 | text color | same | RGBA8 sRGB | 256² · 256 KiB, at startup | 4 / 16 MiB | never |
 | icon masks | same, a second instance | R8 | 256² · 64 KiB, at startup | 4 / 16 MiB | never |
 | icon color | same | RGBA8 sRGB | 512² · 1 MiB, at startup | 4 / 16 MiB | never |
-| backdrop results | `Backdrops` over `PackedAtlas` | RGBA16F | 1024² · 8 MiB | 32 MiB / device edge | to 32 MiB, never below, never freed |
+| backdrop results | `Backdrops` over `PackedAtlas` | RGBA16F | 1024² · 8 MiB | 32 MiB / device edge | to 32 MiB, never below, never freed; never while a result passes 2048 |
 | shadow cutouts | `CutoutTables` + `CutoutPlacements` | R32F | 1024² · 4 MiB fixed, at startup | — | never |
 | gradient rows | `CpuGradientAtlas` + `GpuGradientAtlas` | RGBA16F | 256 rows · 512 KiB + a CPU mirror | 4096 rows · 8 + 8 MiB | never |
 
@@ -24,7 +24,9 @@ Seven textures across four systems, one set per device:
 - **Two tenants per format double the headroom**, each texture keeping its own empty half.
 - **A grow copies the whole texture**, 296–914 µs measured beside a 248 µs text frame.
 - **A full-window backdrop pays its page**: a 1920 × 1080 result takes a 2048² RGBA16F texture,
-  32 MiB for 16, kept after it goes.
+  32 MiB for 16, kept after it goes. Measured worse: a glass toolbar 2560 px wide at full
+  resolution takes the atlas to 4096², 128 MiB for 10.4 MiB live, for good
+  (`.notes/research/2026-11-12-atlas-pool-measurements.md`).
 - **The one shrink there is moves everything in one frame**, a copy command a result, where a
   command costs about 22 µs on the AMD iGPU.
 
@@ -210,21 +212,26 @@ changes; a step that finds it must stops and asks.
 
 Nothing past step 0 builds on a number it has not measured.
 
-- **0.1 Memory counters.** A `BenchOnly` counter set per atlas texture of today: bytes made, live
-  area, texture count, grows. Read in a bench-side report over every showcase page and the
-  scrolling, theming and glass scenes. The pool keeps them as its own in step 1.
-- **0.2 M2, moving rectangles.** `atomic/atlas_move/gpu/<copy|draw>/<r8|rgba8|rgba16f>/<n>` moves
-  `n` ∈ {16, 64, 256} rectangles of 24 × 24 and of 128 × 128 between two 2048² pages, submitted and
-  waited for, as `atomic/gradient_upload` measures. Settles the move mechanism per device and the
-  budget's command count.
-- **0.3 M3, the page branch.** A bench variant of the raster shader with four bound pages per
-  format and the 2-bit switch, every instance on page 0, against today's on
-  `integration/frame/gpu/*` and `text_atlas/*`, on V3D and Apple first. Settles one page per draw
-  or four.
-- **0.4 M4, making a page.** `atomic/atlas_page/gpu/<format>/<edge>`: create, first clear and one
-  upload, per format at 256, 1024 and 2048.
-- **0.5 M5, the mirrorless flush.** `atomic/gradient_upload` with gap rows baked from ramps against
-  read from the mirror, on the gradient churn scene.
+- **0.1 Memory report.** `AtlasMemory`: per atlas its textures, their bytes and the bytes its live
+  items fill, read from the textures and the slots when asked rather than counted, so a shipping
+  build holds none of it. `cargo atlas-memory` prints it over each arm of `integration/frame` on
+  the showcase's first page and every backdrop look and scene. The pool reports the same in
+  step 1.
+- **0.2 M2, moving rectangles.** `atomic/atlas_move/gpu/<copy|draw>/<r8|rgba8|rgba16f>/<side>/<n>`
+  moves `n` ∈ {16, 64, 256} rectangles of 24² or 128² between two 2048² pages, submitted and
+  waited for, as `atomic/gradient_upload` measures; each case first checks every texel lands.
+  Settles the move mechanism per device and the budget's command count.
+- **0.3 M3, the page branch.** `atomic/atlas_pages/gpu/<one|four>`: the device time of one pass
+  drawing the steady text scene eight times over, the atlas bound as today or through the raster
+  shader rewritten to four pages of each kind and a branch on the page, every quad on page 0. On
+  V3D and Apple first. The scene draws masks alone, so the color branch goes unmeasured. Settles
+  one page per draw or four.
+- **0.4 M4, making a page.** `atomic/atlas_page/gpu/<r8|rgba8|rgba16f>/<edge>`: create, the first
+  write of a 64² raster and the clear wgpu runs before it, at 256, 1024 and 2048.
+- **0.5 M5, the mirrorless flush.** `atomic/gradient_atlas/cpu/gap_row/<mirror|bake>/<oklab|linear>`:
+  one clean row staged from the mirror against baked again from its ramp; each case first checks
+  that both give the same bytes.
+- **Status.** Built: 0.1 to 0.5. Run: the memory study on an Apple laptop. To run: the timing cases on each bench host.
 - **0.6 Record.** `.notes/research/<date>-atlas-pool-measurements.md`: the numbers, the hosts, and
   what each settles; then this file's constants and move rule.
 

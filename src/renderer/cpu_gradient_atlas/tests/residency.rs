@@ -23,10 +23,13 @@ fn row_zero_reserved_as_magenta_fallback() {
 }
 
 /// Same gradient registered twice returns the same row and does
-/// not re-mark dirty after a flush.
+/// not re-mark dirty after a flush. The memory report counts row 0's fallback alone at first and
+/// the one row the ramp holds after, however often it registers; the mirror holds every row of the
+/// capacity, `256 · 2048 = 524288` bytes.
 #[test]
 fn register_same_gradient_twice_reuses_row() {
     let mut atlas = CpuGradientAtlas::default();
+    assert_eq!(atlas.live_rows(), 1, "the fallback alone");
     let g = distinct_grad(50);
     let r1 = atlas.register(&g.ramp);
     // Flush so later registrations of the same content show as no-ops.
@@ -37,6 +40,8 @@ fn register_same_gradient_twice_reuses_row() {
         atlas.flush().is_none(),
         "re-registering existing content must not dirty",
     );
+    assert_eq!(atlas.live_rows(), 2, "the fallback and the one ramp");
+    assert_eq!(atlas.mirror_bytes(), 524_288);
 }
 
 /// Keys differing in the smallest possible way (one stop byte, or only the interpolation space) must

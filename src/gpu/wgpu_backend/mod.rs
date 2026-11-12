@@ -1299,6 +1299,7 @@ fn begin_load_pass<'e>(
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::atlas_memory::{AtlasMemory, AtlasUse};
     #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
     #[cfg(test)]
@@ -1311,8 +1312,38 @@ pub(crate) mod internals {
     use crate::gpu::surface::backbuffer_out::BackbufferOut;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
+    use crate::renderer::cpu_gradient_atlas::CpuGradientAtlas;
+    use crate::renderer::cpu_gradient_atlas::bake::LutRowTexels;
 
     impl WgpuBackend {
+        /// Every atlas's memory, its gradient rows read against `gradient`, the frontend's atlas
+        /// they mirror.
+        pub(crate) fn atlas_memory(&self, gradient: &CpuGradientAtlas) -> AtlasMemory {
+            let [text_mask, text_color] = self.text.atlas_memory();
+            let [icon_mask, icon_color] = self.icon.atlas_memory();
+            let [results, blur] = self.backdrops.memory();
+            let live_rows = gradient.live_rows();
+            let mirror = AtlasUse {
+                name: "gradient mirror (CPU)",
+                textures: 0,
+                bytes: gradient.mirror_bytes(),
+                live_bytes: Some(u64::from(live_rows) * size_of::<LutRowTexels>() as u64),
+            };
+            AtlasMemory {
+                uses: [
+                    text_mask,
+                    text_color,
+                    icon_mask,
+                    icon_color,
+                    results,
+                    blur,
+                    self.programs.quad.cutout_memory(),
+                    self.gradient.memory(live_rows),
+                    mirror,
+                ],
+            }
+        }
+
         /// Draw every shadow as one quad of the full form instead of its template: the reference
         /// the template is compared with. Builds every format's pipelines again.
         pub(crate) fn disable_shadow_template(&mut self) {
@@ -1357,7 +1388,7 @@ pub(crate) mod internals {
 
         /// The shadow cutout tables the atlas holds from the frames before.
         #[cfg(test)]
-        pub(crate) fn held_cutout_tables(&self) -> usize {
+        pub(crate) const fn held_cutout_tables(&self) -> usize {
             self.programs.quad.held_cutout_tables()
         }
 

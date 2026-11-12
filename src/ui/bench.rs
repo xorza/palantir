@@ -491,6 +491,61 @@ fn gpu_frame<S: Scene>(
         .paint()
 }
 
+/// One arm's frames on the device: its host and the targets it renders at.
+#[derive(Debug)]
+struct GpuArm {
+    arm: Arm,
+    host: OffscreenHost,
+    targets: Vec<OwnedTarget>,
+}
+
+impl GpuArm {
+    fn new(arm: Arm, g: &BenchGpu) -> Self {
+        Self {
+            arm,
+            host: bench_host(g, arm.clock()),
+            targets: arm.targets(g),
+        }
+    }
+
+    /// Frame `n` of the arm over `state`, waited for.
+    fn frame<S: Scene>(&mut self, g: &BenchGpu, state: &mut SceneFrame<S>, n: u32) -> FramePaint {
+        let Self { arm, host, targets } = self;
+        let target = &targets[n as usize % targets.len()];
+        if arm.clock() == OffscreenTime::Manual {
+            host.advance(THEMING_FRAME);
+        }
+        arm.prepare(host.ui_mut(), n);
+        if let Some(event) = arm.input(state, host.ui_mut(), n) {
+            host.on_input(event);
+            release(event, |up| {
+                host.on_input(up);
+            });
+        }
+        let paint = gpu_frame(host, target, state);
+        g.wait();
+        paint
+    }
+}
+
+/// Run each arm of `integration/frame` on the device for `frames` frames, a host of its own each,
+/// and hand `visit` the arm's label and its host after every frame.
+pub(crate) fn drive_arms<S: Scene>(
+    g: &BenchGpu,
+    frames: u32,
+    mut visit: impl FnMut(&str, &OffscreenHost),
+) {
+    for arm in Arm::ALL {
+        let mut run = GpuArm::new(arm, g);
+        let mut state = SceneFrame::<S>::default();
+        for n in 0..frames {
+            arm.advance(&mut state, n);
+            run.frame(g, &mut state, n);
+            visit(arm.label(), &run.host);
+        }
+    }
+}
+
 /// `integration/frame/<backend>/<scenario>`: one whole frame of the scene.
 pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
     let mut group = Kind::Integration.group(c, "frame", Scale::Frame);
@@ -517,24 +572,8 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
                 }),
                 Backend::Gpu => arm.measure(&mut group, backend, || {
                     let g = backends.device(TIMING);
-                    let targets = arm.targets(backends.device(TIMING));
-                    let mut host = bench_host(g, arm.clock());
-                    move |state: &mut SceneFrame<S>, n: u32| {
-                        let target = &targets[n as usize % targets.len()];
-                        if arm.clock() == OffscreenTime::Manual {
-                            host.advance(THEMING_FRAME);
-                        }
-                        arm.prepare(host.ui_mut(), n);
-                        if let Some(event) = arm.input(state, host.ui_mut(), n) {
-                            host.on_input(event);
-                            release(event, |up| {
-                                host.on_input(up);
-                            });
-                        }
-                        let paint = gpu_frame(&mut host, target, state);
-                        g.wait();
-                        paint
-                    }
+                    let mut run = GpuArm::new(arm, g);
+                    move |state: &mut SceneFrame<S>, n: u32| run.frame(g, state, n)
                 }),
             }
         }

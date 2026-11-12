@@ -402,24 +402,44 @@ pub(crate) fn integration<S: Scene>(c: &mut Criterion, backends: &Backends) {
     group.finish();
 }
 
+/// A host on the desktop's present strategy and the target its frames draw into, at [`FRAME_DPR`].
+#[derive(Debug)]
+struct BackdropHost {
+    host: OffscreenHost,
+    target: OwnedTarget,
+}
+
+impl BackdropHost {
+    fn new(gpu: &BenchGpu, label: &str, surface: UVec2) -> Self {
+        Self {
+            host: OffscreenHost::builder(gpu.handles())
+                .collect_gpu_stats(false)
+                .swapchain_present()
+                .build(),
+            target: gpu.target(label, surface),
+        }
+    }
+
+    /// One frame of `record`, waited for: what it paints and the blurs it runs.
+    fn frame(&mut self, gpu: &BenchGpu, mut record: impl FnMut(&mut Ui)) -> (FramePaint, usize) {
+        let paint = self
+            .host
+            .set_system_scale(FRAME_DPR)
+            .frame(self.target.as_target(), &mut record)
+            .paint();
+        gpu.wait();
+        (paint, self.host.backdrop_blurs())
+    }
+}
+
 /// The device half of `integration/backdrop_frame`.
 fn backdrop_frames<S: Scene>(bencher: &mut Bencher<'_>, backends: &Backends, look: Look, arm: Arm) {
     let gpu = backends.device(Timing::PassOnly);
-    let target = gpu.target("palantir.bench.backdrop_frame", FRAME_SURFACE);
-    let mut host = OffscreenHost::builder(gpu.handles())
-        .collect_gpu_stats(false)
-        .swapchain_present()
-        .build();
+    let mut host = BackdropHost::new(gpu, "palantir.bench.backdrop_frame", FRAME_SURFACE);
     let mut state = MaterialFrame::<S>::default();
     let mut frame = || {
         state.n += 1;
-        let mut app = |ui: &mut Ui| state.record(look, arm, ui);
-        let paint = host
-            .set_system_scale(FRAME_DPR)
-            .frame(target.as_target(), &mut app)
-            .paint();
-        gpu.wait();
-        (paint, host.backdrop_blurs())
+        host.frame(gpu, |ui| state.record(look, arm, ui))
     };
     for _ in 0..4 {
         frame();
@@ -660,22 +680,12 @@ fn scenes<S: Scene>(group: &mut CaseGroup<'_>, backends: &Backends, backend: Bac
     for scene in SceneCase::<S>::ALL {
         group.bench_function(backend.case(scene.name), |bencher| {
             let gpu = backends.device(Timing::PassOnly);
-            let target = gpu.target("palantir.bench.backdrop_scene", scene.surface);
-            let mut host = OffscreenHost::builder(gpu.handles())
-                .collect_gpu_stats(false)
-                .swapchain_present()
-                .build();
+            let mut host = BackdropHost::new(gpu, "palantir.bench.backdrop_scene", scene.surface);
             let mut fixture = SceneFrame::<S>::default();
             let mut n = 0u32;
             let mut frame = || {
                 n += 1;
-                let mut app = |ui: &mut Ui| (scene.record)(&mut fixture, n, ui);
-                let paint = host
-                    .set_system_scale(FRAME_DPR)
-                    .frame(target.as_target(), &mut app)
-                    .paint();
-                gpu.wait();
-                (paint, host.backdrop_blurs())
+                host.frame(gpu, |ui| (scene.record)(&mut fixture, n, ui))
             };
             for _ in 0..4 {
                 frame();
@@ -687,5 +697,35 @@ fn scenes<S: Scene>(group: &mut CaseGroup<'_>, backends: &Backends, backend: Bac
             }
             bencher.iter(&mut frame);
         });
+    }
+}
+
+/// Run the backdrops' frames on the device for `frames` frames each, a host of its own each, and
+/// hand `visit` the run's name and its host after every frame: each look under the three
+/// backdrops as its popup moves and as the page scrolls, then every [`SceneCase`].
+pub(crate) fn drive<S: Scene>(
+    gpu: &BenchGpu,
+    frames: u32,
+    mut visit: impl FnMut(&str, &OffscreenHost),
+) {
+    for look in Look::FRAME {
+        for arm in [Arm::Moving, Arm::Scrolling] {
+            let name = format!("{}/{}", look.label(), arm.label());
+            let mut host = BackdropHost::new(gpu, "palantir.bench.backdrop_frame", FRAME_SURFACE);
+            let mut state = MaterialFrame::<S>::default();
+            for _ in 0..frames {
+                state.n += 1;
+                host.frame(gpu, |ui| state.record(look, arm, ui));
+                visit(&name, &host.host);
+            }
+        }
+    }
+    for scene in SceneCase::<S>::ALL {
+        let mut host = BackdropHost::new(gpu, "palantir.bench.backdrop_scene", scene.surface);
+        let mut fixture = SceneFrame::<S>::default();
+        for n in 1..=frames {
+            host.frame(gpu, |ui| (scene.record)(&mut fixture, n, ui));
+            visit(scene.name, &host.host);
+        }
     }
 }

@@ -593,28 +593,64 @@ const fn unallocated_dies_at(last_use: u64) -> u64 {
     last_use + UNALLOCATED_KEEP_FRAMES + 1
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::atlas_memory::{self, AtlasUse};
+    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::raster::raster_atlas::RasterAtlas;
     use crate::gpu::raster::raster_atlas::atlas_slot::AtlasSlot;
+    use crate::primitives::paint::content_type::ContentType;
+    #[cfg(test)]
     use rustc_hash::FxHashMap;
     use std::fmt::Debug;
     use std::hash::Hash;
 
+    #[cfg(test)]
     pub(crate) const fn unallocated_dies_at(last_use: u64) -> u64 {
         super::unallocated_dies_at(last_use)
     }
 
     impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
+        /// Bind the sides against `layout`, which takes `pages` textures of each kind, as
+        /// `BoundSides::bind_pages` does.
+        pub(crate) fn bind_pages(&mut self, gpu: &Gpu, layout: &wgpu::BindGroupLayout, pages: u32) {
+            self.bound.bind_pages(gpu, layout, pages, &self.sides);
+        }
+
+        /// The memory of each side, `[mask, color]`, named by `names`: its texture's bytes
+        /// against the rasters it holds.
+        pub(crate) fn memory(&self, names: [&'static str; 2]) -> [AtlasUse; 2] {
+            [ContentType::Mask, ContentType::Color].map(|content| {
+                let texels: u64 = self
+                    .slots
+                    .iter()
+                    .filter_map(AtlasSlot::placement)
+                    .filter(|placement| placement.content == content)
+                    .map(|placement| u64::from(placement.size.x) * u64::from(placement.size.y))
+                    .sum();
+                AtlasUse {
+                    name: names[content as usize],
+                    textures: 1,
+                    bytes: atlas_memory::texture_bytes(
+                        self.sides[content as usize].atlas.texture(),
+                    ),
+                    live_bytes: Some(texels * u64::from(content.bytes_per_pixel())),
+                }
+            })
+        }
+
+        #[cfg(test)]
         pub(crate) fn slots(&self) -> &[AtlasSlot] {
             &self.slots
         }
 
         /// The slots, for a test that stales one as an eviction would.
+        #[cfg(test)]
         pub(crate) fn slots_mut(&mut self) -> &mut [AtlasSlot] {
             &mut self.slots
         }
 
+        #[cfg(test)]
         pub(crate) const fn cache(&self) -> &FxHashMap<K, u32> {
             &self.cache
         }

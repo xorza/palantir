@@ -120,18 +120,30 @@ impl CutoutPlacements {
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::cutout_placements::CutoutPlacements;
+    #[cfg(test)]
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutKey;
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 
     impl CutoutPlacements {
+        /// The texels of the tables placed, in use or kept for reuse: each table's side squared.
+        pub(crate) fn placed_texels(&self) -> u64 {
+            self.keys
+                .values()
+                .map(|placed| u64::from(CutoutPlan::table_side(placed.code)).pow(2))
+                .sum()
+        }
+
         /// The plans that hold a use of `key`, none where it is not placed.
+        #[cfg(test)]
         pub(crate) fn users(&self, key: CutoutKey) -> u32 {
             self.keys.get(&key).map_or(0, |placed| placed.users)
         }
 
         /// The uses every plan holds, of every key.
+        #[cfg(test)]
         pub(crate) fn uses(&self) -> u32 {
             self.keys.values().map(|placed| placed.users).sum()
         }
@@ -153,7 +165,8 @@ mod tests {
     /// one placement at the origin; a second key lands beside it. Sixteen fill the atlas; with
     /// every key in use a seventeenth finds no room. Released keys go least recently released
     /// first: `b`, released before `c`, gives up its cells (16, 0) to the newcomer, and `c` keeps
-    /// its own.
+    /// its own. The placed texels count a shared table once, `2 · 256² = 131072` for two keys, and
+    /// fill the atlas at sixteen, `16 · 256² = 1024²`, released keys among them.
     #[test]
     fn placements_stay_until_a_new_key_needs_the_room() {
         let mut placements = CutoutPlacements::default();
@@ -161,14 +174,21 @@ mod tests {
         assert_eq!(placements.acquire(key(1.0), 256), Some(at(0, 0)));
         assert_eq!(placements.acquire(key(1.0), 256), Some(at(0, 0)), "shared");
         assert_eq!(placements.acquire(key(2.0), 256), Some(at(16, 0)));
+        assert_eq!(placements.placed_texels(), 131_072);
         assert_eq!(placements.acquire(key(3.0), 256), Some(at(32, 0)));
         for k in 4..=16 {
             assert!(placements.acquire(key(k as f32), 256).is_some(), "key {k}");
         }
         assert_eq!(placements.acquire(key(17.0), 256), None, "every key in use");
+        assert_eq!(placements.placed_texels(), 1024 * 1024);
 
         placements.release(key(2.0));
         placements.release(key(3.0));
+        assert_eq!(
+            placements.placed_texels(),
+            1024 * 1024,
+            "released, still placed"
+        );
         assert_eq!(placements.acquire(key(3.0), 256), Some(at(32, 0)), "kept");
         placements.release(key(3.0));
         assert_eq!(

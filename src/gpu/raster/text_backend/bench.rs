@@ -8,11 +8,14 @@
 //!
 //! Each runs as a whole `frame`, and some as `prepare` alone, for the CPU cost a GPU submit would
 //! drown.
+//!
+//! `atomic/atlas_pages` times the draw alone, on the device, with the atlas bound as today and as
+//! four pages of each kind a quad picks among, the branch `.notes/proposals/atlas-pool.md` adds.
 
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
-use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
+use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::clip_variant::Clipping;
@@ -24,11 +27,12 @@ use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, Swe
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::resource::frame_group::FrameGroup;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
-use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::resource::texture_binding::{self, Filtering, TextureBinding};
 use crate::gpu::resource::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::wgsl::FRAME_GROUP;
 use crate::renderer::render_buffer::clip_chain::ClipChain;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
@@ -44,6 +48,7 @@ use glam::{UVec2, Vec2};
 use std::hint::black_box;
 use std::mem;
 use std::slice;
+use std::time::Duration;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
@@ -175,6 +180,8 @@ struct Batch<'a> {
 struct Fixture {
     backend: TextBackend,
     pipelines: RasterVariants,
+    /// The device's group-0 layouts, which a variant program composes over.
+    textures: TextureBinding,
     frame: FrameGroup,
     belt: UploadStaging,
     store: RecordStore,
@@ -191,7 +198,7 @@ impl Fixture {
         let textures = TextureBinding::new(&g.gpu);
         let program = RasterPipeline::new(&g.gpu, &textures);
         // The frame group the raster pipelines take first, which their glyphs read no clip of.
-        let frame = FrameGroup::new(&g.gpu, textures, &GpuGradientAtlas::new(&g.gpu, 1));
+        let frame = FrameGroup::new(&g.gpu, textures.clone(), &GpuGradientAtlas::new(&g.gpu, 1));
         let mut pipelines = RasterVariants::NONE;
         program.ensure(
             &mut pipelines,
@@ -204,6 +211,7 @@ impl Fixture {
         Self {
             backend: TextBackend::new(&g.gpu, &program, shaper),
             pipelines,
+            textures,
             frame,
             belt: UploadStaging::new(&g.gpu.device, 1 << 20),
             store,
@@ -245,46 +253,113 @@ impl Fixture {
             }
             self.backend.flush(&mut ctx);
         }
-        {
-            let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("palantir.text_atlas.pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.target,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            // `render_batch` binds the pipeline a span needs, and the recorder pushes the viewport
-            // with the first.
-            let mut rec = PassRecorder::new(
-                pass,
-                ViewportPush {
-                    size: Vec2::ZERO,
-                    origin: Vec2::ZERO,
-                },
-            );
-            rec.group(FRAME_GROUP, self.frame.group());
-            let pipelines = RasterPipelinePair {
-                flat: self.pipelines.flat.get(Clipping::Off),
-                spun: self.pipelines.spun.get(Clipping::Off),
-            };
-            for idx in 0..batches.len() {
-                self.backend.render_batch(&mut rec, idx, pipelines);
-            }
-        }
+        self.draw(&mut encoder, batches.len(), 1);
         self.belt.finish();
         self.gpu.queue.submit([encoder.finish()]);
         self.belt.recall();
         self.gpu.wait();
         self.backend.tick_frame();
+    }
+
+    /// Record one pass that clears the target and draws the first `batches` prepared batches
+    /// `repeats` times over.
+    fn draw(&self, encoder: &mut wgpu::CommandEncoder, batches: usize, repeats: usize) {
+        let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.text_atlas.pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        // `render_batch` binds the pipeline a span needs, and the recorder pushes the viewport
+        // with the first.
+        let mut rec = PassRecorder::new(
+            pass,
+            ViewportPush {
+                size: Vec2::ZERO,
+                origin: Vec2::ZERO,
+            },
+        );
+        rec.group(FRAME_GROUP, self.frame.group());
+        let pipelines = RasterPipelinePair {
+            flat: self.pipelines.flat.get(Clipping::Off),
+            spun: self.pipelines.spun.get(Clipping::Off),
+        };
+        for _ in 0..repeats {
+            for idx in 0..batches {
+                self.backend.render_batch(&mut rec, idx, pipelines);
+            }
+        }
+    }
+
+    /// Bind the atlas as [`PAGES`] pages of each kind and draw through [`paged_shader`], each
+    /// page the side's one texture, so every quad reads page 0 through the branch.
+    fn use_pages(&mut self, g: &BenchGpu) {
+        let entries: Vec<wgpu::BindGroupLayoutEntry> = (0..2 * PAGES)
+            .map(|binding| texture_binding::texture_entry(binding, Filtering::Filtered))
+            .collect();
+        let layout = g
+            .gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.text_atlas.paged layout"),
+                entries: &entries,
+            });
+        let shader = g
+            .gpu
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("palantir.text_atlas.paged"),
+                source: wgpu::ShaderSource::Wgsl(paged_shader().into()),
+            });
+        let program = RasterPipeline::from_parts(&g.gpu, &self.textures, shader, layout.clone());
+        self.pipelines = RasterVariants::NONE;
+        program.ensure(
+            &mut self.pipelines,
+            &g.gpu,
+            VariantTarget {
+                format: TARGET_FORMAT.get(),
+                clipping: Clipping::Off,
+            },
+        );
+        self.backend.pass.atlas.bind_pages(&g.gpu, &layout, PAGES);
+    }
+
+    /// The device time of one pass drawing every run at `scale` [`REPEATS`] times over, its
+    /// prepare and its upload recorded ahead of it.
+    fn pass_time(&mut self, g: &BenchGpu, timer: &mut PassTimer, scale: f32) -> Duration {
+        let time = timer.time(g, |encoder| {
+            {
+                let mut ctx = GpuCtx::new(&self.gpu, &mut self.belt, encoder, 0);
+                self.backend.prepare_batch(TextBatchInput {
+                    idx: 0,
+                    runs: &self.runs,
+                    scale,
+                    interned_text: self.store.text.interned(),
+                });
+                self.backend.flush(&mut ctx);
+            }
+            self.draw(encoder, 1, REPEATS);
+            self.belt.finish();
+        });
+        self.belt.recall();
+        self.backend.tick_frame();
+        time
+    }
+
+    /// The edge of each side of the atlas, `[mask, color]`.
+    fn atlas_edges(&self) -> [u32; 2] {
+        [ContentType::Mask, ContentType::Color]
+            .map(|content| self.backend.pass.atlas.side_px(content))
     }
 
     /// `prepare` alone at `scale`: no flush, draw or submit.
@@ -320,6 +395,138 @@ type Stage = fn(&mut Fixture, f32);
 /// The device timing every GPU case here opens.
 const TIMING: Timing = Timing::Bare;
 
+/// The pages of each kind the `four` arm of `atomic/atlas_pages` binds, Skia's
+/// `kMaxMultitexturePages`.
+const PAGES: u32 = 4;
+
+/// The draws of the frame's batch one timed pass of `atomic/atlas_pages` makes, so the fragments
+/// the branch adds to weigh in the pass beside its fixed costs.
+const REPEATS: usize = 8;
+
+/// The atlas group of [`RasterPipeline::SHADER`] as [`PAGES`] pages of each kind: the textures,
+/// the page a quad's slot names, the high bits of its `u` past a 4096 page, and a load through a
+/// branch on it.
+const PAGED_ATLAS: &str = "
+@group(ATLAS_GROUP) @binding(0) var mask_page0: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(1) var mask_page1: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(2) var mask_page2: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(3) var mask_page3: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(4) var color_page0: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(5) var color_page1: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(6) var color_page2: texture_2d<f32>;
+@group(ATLAS_GROUP) @binding(7) var color_page3: texture_2d<f32>;
+
+fn page_of(rect: vec4<i32>) -> u32 {
+    return u32(rect.x) >> 12u;
+}
+
+fn mask_load(page: u32, at: vec2<i32>, level: i32) -> vec4<f32> {
+    switch page {
+        case 1u: { return textureLoad(mask_page1, at, level); }
+        case 2u: { return textureLoad(mask_page2, at, level); }
+        case 3u: { return textureLoad(mask_page3, at, level); }
+        default: { return textureLoad(mask_page0, at, level); }
+    }
+}
+
+fn color_load(page: u32, at: vec2<i32>, level: i32) -> vec4<f32> {
+    switch page {
+        case 1u: { return textureLoad(color_page1, at, level); }
+        case 2u: { return textureLoad(color_page2, at, level); }
+        case 3u: { return textureLoad(color_page3, at, level); }
+        default: { return textureLoad(color_page0, at, level); }
+    }
+}
+";
+
+/// [`RasterPipeline::SHADER`] reading its atlas through [`PAGED_ATLAS`]: every load of a texel
+/// goes through the page its quad's slot names.
+///
+/// # Panics
+///
+/// Panics where the shader no longer holds a form this rewrites as often as it did, so a changed
+/// shader fails the case rather than timing another program.
+fn paged_shader() -> String {
+    let mut source = RasterPipeline::SHADER.source();
+    let mut rewrite = |from: &str, to: &str, count: usize| {
+        assert_eq!(
+            source.matches(from).count(),
+            count,
+            "the raster shader holds `{from}` {count} times"
+        );
+        source = source.replace(from, to);
+    };
+    rewrite(
+        "@group(ATLAS_GROUP) @binding(0) var mask_atlas: texture_2d<f32>;\n\
+         @group(ATLAS_GROUP) @binding(1) var color_atlas: texture_2d<f32>;",
+        PAGED_ATLAS,
+        1,
+    );
+    rewrite(
+        "textureLoad(mask_atlas, ",
+        "mask_load(page_of(in.texel_rect), ",
+        5,
+    );
+    rewrite(
+        "textureLoad(color_atlas, vec2<i32>(in.texel), 0)",
+        "color_load(page_of(in.texel_rect), vec2<i32>(in.texel), 0)",
+        1,
+    );
+    rewrite(
+        "fn premultiplied_texel(at: vec2<i32>) -> vec4<f32> {\n    let s = textureLoad(color_atlas, at, 0);",
+        "fn premultiplied_texel(page: u32, at: vec2<i32>) -> vec4<f32> {\n    let s = color_load(page, at, 0);",
+        1,
+    );
+    rewrite(
+        "premultiplied_texel(vec2<i32>(",
+        "premultiplied_texel(page_of(in.texel_rect), vec2<i32>(",
+        4,
+    );
+    source
+}
+
+/// How the atlas binds in an arm of `atomic/atlas_pages`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pages {
+    /// One texture of each kind, as today.
+    One,
+    /// [`PAGES`] of each kind, picked per quad.
+    Four,
+}
+
+/// `atomic/atlas_pages/gpu/<one|four>`: the device time of one pass drawing the steady scene's
+/// text [`REPEATS`] times over, the atlas bound as one texture of each kind or as four pages
+/// picked per quad. The difference is the branch's cost. Each case checks that no grow rebinds the
+/// atlas while it is timed.
+fn atlas_pages(c: &mut Criterion, backends: &Backends, backend: Backend) {
+    let mut group = Kind::Atomic.group(c, "atlas_pages", Scale::Frame);
+    for (pages, name) in [(Pages::One, "one"), (Pages::Four, "four")] {
+        group.bench_function(backend.case(name), |b| {
+            let g = backends.device(Timing::PassOnly);
+            let mut steady = Fixture::new(g, node_rows);
+            for _ in 0..2 {
+                steady.frame(BASE_SCALE);
+            }
+            if pages == Pages::Four {
+                steady.use_pages(g);
+            }
+            let edges = steady.atlas_edges();
+            let mut timer = PassTimer::new(g);
+            b.iter_custom(|iters| {
+                (0..iters)
+                    .map(|_| steady.pass_time(g, &mut timer, BASE_SCALE))
+                    .sum::<Duration>()
+            });
+            assert_eq!(
+                steady.atlas_edges(),
+                edges,
+                "{name}: the atlas grew while timed"
+            );
+        });
+    }
+    group.finish();
+}
+
 /// `atomic/text_atlas/gpu/<workload>/<frame|prepare>`: the text backend driven directly, a
 /// whole frame (prepare, flush, draw and submit) or `prepare` alone for the CPU cost a submit
 /// would drown. Both need the device.
@@ -328,6 +535,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
+    atlas_pages(c, backends, backend);
     let mut group = Kind::Atomic.group(c, "text_atlas", Scale::Frame);
     let case = |name: &str| backend.case(name);
 
